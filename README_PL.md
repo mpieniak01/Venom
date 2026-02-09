@@ -1,7 +1,7 @@
 # Venom v1.0 🐍
 
-[![CI](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml/badge.svg)](
-https://github.com/mpieniak01/Venom/actions/workflows/ci.yml
+[![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](
+https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml
 )
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](
@@ -680,87 +680,30 @@ make run
 
 ### Współpraca
 - [Przewodnik współpracy](docs/PL/CONTRIBUTING.md)
+- [Polityka testów](docs/PL/POLITYKA_TESTOW.md)
 - [Testowanie i wydajność](docs/PL/TESTING_CHAT_LATENCY.md)
 
 ## 🧪 Testy
 
+Polityka testów i komendy są scentralizowane w:
+
+- [`docs/PL/POLITYKA_TESTOW.md`](docs/PL/POLITYKA_TESTOW.md)
+- [`docs/PL/TESTING_CHAT_LATENCY.md`](docs/PL/TESTING_CHAT_LATENCY.md) (szczegóły performance/latency)
+
+Szybka ścieżka lokalna przed PR:
+
 ```bash
-cd /home/ubuntu/venom
-source .venv/bin/activate || true
-
-# Szybki pełny scenariusz (optymalne ustawienia dla naszego środowiska)
-# pytest: heavy (-n 1), long (-n 2), light (-n 6)
-pytest -n 1 $(cat config/pytest-groups/heavy.txt)
-pytest -n 2 $(cat config/pytest-groups/long.txt)
-pytest -n 6 $(cat config/pytest-groups/light.txt)
-
-# Alternatywnie (skrypt):
-./scripts/run-pytest-optimal.sh
-
-# Alternatywnie (make):
-make pytest
-
-# Uwaga: make pytest testuje backend API (domyślnie port 8000),
-# nie frontend UI (web-next jest na porcie 3000).
-# Jeśli API działa na innym porcie:
-VENOM_API_BASE=http://127.0.0.1:8010 make pytest
-
-# Playwright E2E: latency (1 worker) + functional (4 workers)
-npm --prefix web-next run test:e2e:preflight
-npm --prefix web-next run test:e2e:latency
-npm --prefix web-next run test:e2e:functional -- --workers=4
-# Skład grupy functional: smoke + chat-mode-routing + streaming + chat-context-icons
-
-# Alternatywnie (skrypt):
-./scripts/run-e2e-optimal.sh
-
-# Alternatywnie (make):
-make e2e
-
-# Tryb awaryjny (słabsze środowisko -> wszystko seryjnie)
-pytest -n 1 $(cat config/pytest-groups/heavy.txt)
-pytest -n 1 $(cat config/pytest-groups/long.txt)
-pytest -n 1 $(cat config/pytest-groups/light.txt)
-npm --prefix web-next run test:e2e:preflight
-npm --prefix web-next run test:e2e:latency
-npm --prefix web-next run test:e2e:functional -- --workers=1
+make pr-fast
 ```
 
-## 🔬 Testy i benchmarki
+Równoważnik manualny (gdy potrzebny):
 
-Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/PL/TESTING_CHAT_LATENCY.md`](docs/PL/TESTING_CHAT_LATENCY.md). Najważniejsze komendy:
-
-### Backend (FastAPI / agenci)
-- `pytest -q` — szybki test całego systemu.
-- `pytest tests/test_researcher_agent.py` / `tests/test_architect_agent.py` — scenariusze agentów.
-- `pytest tests/perf/test_chat_pipeline.py -m performance` — pomiar SSE (task_update → task_finished) + batch równoległy.
-- `pytest --cov=venom_core --cov-report=html` — raport pokrycia.
-- `make sonar-reports-backend` — generuje raporty backendu pod Sonar:
-  - `test-results/sonar/python-coverage.xml`
-  - `test-results/sonar/python-junit.xml`
-
-### Frontend Next.js
-- `npm --prefix web-next run lint`
-- `npm --prefix web-next run build`
-- `npm --prefix web-next run test:e2e` — Playwright na buildzie prod.
-- `npm --prefix web-next run test:unit:coverage` — generuje frontendowy raport Sonar:
-  - `web-next/coverage/lcov.info`
-- Optymalnie (nasze środowisko): `test:e2e:latency` działa na 1 workerze, `test:e2e:functional` na 4 workerach.
-- W razie problemów uruchamiaj testy seryjnie (patrz “Tryb awaryjny” powyżej).
-
-### Pakiet raportów Sonar (lokalny pre-check)
-- `make sonar-reports` — uruchamia generowanie raportów backend + frontend używanych w workflow SonarCloud.
-- Na PR w GitHub SonarCloud korzysta z raportów wygenerowanych w głównym workflow `CI` (model single-run, bez osobnego dublującego workflow testowego).
-
-### Czas reakcji i wydajność chatu
-- `npm --prefix web-next run test:perf` — Playwright mierzący latency Next Cockpit (raport HTML odkłada się do `test-results/perf-report`).
--  Dostępne env-y: `PERF_NEXT_LATENCY_BUDGET` (domyślnie 15000ms) oraz `PERF_*_RESPONSE_TIMEOUT` jeśli trzeba rozluźnić limity na wolniejszych maszynach.
-- `pytest tests/perf/test_chat_pipeline.py -m performance` — backendowy pipeline (czas do `task_finished` + batch).
-- `./scripts/run-locust.sh` — start panelu Locusta (`http://127.0.0.1:8089`) i ręczne obciążenie API.
-- `./scripts/archive-perf-results.sh` — zrzut `test-results/`, raportów Playwright/Locust do `perf-artifacts/<timestamp>/`.
-
-> Wyniki testów NIE trafiają do repo (ignorujemy `**/test-results/`, `perf-artifacts/`, `playwright-report/`, itd.) – dzięki temu przechowujesz je lokalnie bez ryzyka ujawnienia danych.
-> Dotyczy to również artefaktów Sonar: `test-results/sonar/python-junit.xml`, `test-results/sonar/python-coverage.xml` oraz `web-next/coverage/lcov.info`.
+```bash
+source .venv/bin/activate || true
+pre-commit run --all-files
+mypy venom_core
+make check-new-code-coverage
+```
 
 ## 📦 Paczka Docker (użytkownik końcowy)
 

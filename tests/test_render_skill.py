@@ -2,6 +2,7 @@
 
 import pytest
 
+import venom_core.execution.skills.render_skill as render_skill_module
 from venom_core.execution.skills.render_skill import RenderSkill
 from venom_core.ui.component_engine import ComponentEngine, WidgetType
 
@@ -40,6 +41,21 @@ def test_sanitize_html():
     sanitized = skill._sanitize_html(dangerous_html)
     assert "<script>" not in sanitized
     assert "Safe" in sanitized
+
+
+def test_sanitize_html_fallback_strips_attributes(monkeypatch):
+    """Test fallback sanitizera bez bleach - atrybuty nie powinny przejść."""
+    monkeypatch.setattr(render_skill_module, "BLEACH_AVAILABLE", False)
+    monkeypatch.setattr(render_skill_module, "bleach", None)
+
+    skill = RenderSkill()
+    html = '<div class="x" onclick="alert(1)">Safe</div>'
+    sanitized = skill._sanitize_html(html)
+
+    assert "<div>" in sanitized
+    assert "Safe" in sanitized
+    assert "onclick" not in sanitized
+    assert 'class="' not in sanitized
 
 
 def test_render_chart(render_skill):

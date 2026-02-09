@@ -81,21 +81,10 @@ def read_file(
         >>> if content:
         ...     print(f"Odczytano {len(content)} znaków")
     """
+    path = Path(file_path)
     try:
-        path = Path(file_path)
-
-        if not path.exists():
-            logger.error(f"Plik nie istnieje: {file_path}")
-            if raise_on_error:
-                raise FileNotFoundError(f"Plik nie istnieje: {file_path}")
+        if not _validate_readable_path(path, file_path, raise_on_error):
             return None
-
-        if not path.is_file():
-            logger.error(f"Ścieżka nie wskazuje na plik: {file_path}")
-            if raise_on_error:
-                raise IOError(f"Ścieżka nie wskazuje na plik: {file_path}")
-            return None
-
         with open(path, "r", encoding=encoding) as f:
             content = f.read()
 
@@ -116,6 +105,24 @@ def read_file(
         if raise_on_error:
             raise IOError(f"Błąd odczytu: {e}") from e
         return None
+
+
+def _validate_readable_path(
+    path: Path, file_path: Union[str, Path], raise_on_error: bool
+) -> bool:
+    if not path.exists():
+        logger.error(f"Plik nie istnieje: {file_path}")
+        if raise_on_error:
+            raise FileNotFoundError(f"Plik nie istnieje: {file_path}")
+        return False
+
+    if path.is_file():
+        return True
+
+    logger.error(f"Ścieżka nie wskazuje na plik: {file_path}")
+    if raise_on_error:
+        raise IOError(f"Ścieżka nie wskazuje na plik: {file_path}")
+    return False
 
 
 def write_file(

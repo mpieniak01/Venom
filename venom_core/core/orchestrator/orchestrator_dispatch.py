@@ -65,162 +65,36 @@ async def run_task(
     tool_required = False
 
     try:
-        # --- 0. Init & Logging ---
-        task = orch.state_manager.get_task(task_id)
+        task = await _initialize_task_execution(orch, task_id)
         if task is None:
-            logger.error("Zadanie %s nie istnieje", task_id)
             return
-
-        await orch.state_manager.update_status(task_id, TaskStatus.PROCESSING)
-        orch.state_manager.add_log(
-            task_id, f"Rozpoczęto przetwarzanie: {datetime.now().isoformat()}"
-        )
-
-        if orch.request_tracer:
-            orch.request_tracer.update_status(task_id, TraceStatus.PROCESSING)
-            await orch._trace_step_async(
-                task_id, "Orchestrator", "start_processing", status="ok"
-            )
-
-        await orch._broadcast_event(
-            event_type="TASK_STARTED",
-            message=f"Rozpoczynam przetwarzanie zadania {task_id}",
-            data={"task_id": str(task_id)},
-        )
-
-        logger.info("Rozpoczynam przetwarzanie zadania %s", task_id)
 
         orch._persist_session_context(task_id, request)
 
-        # --- 1. Request Preprocessing ---
         await orch.context_builder.preprocess_request(task_id, request)
-        request_content = request.content  # Update context after slash commands
+        request_content = request.content
 
-        # --- 1.5. Perf Test Shortcut (Early) ---
         if orch._is_perf_test_prompt(request_content):
             await orch._complete_perf_test_task(task_id)
             logger.info("Zadanie %s zakończone w trybie perf-test", task_id)
             return
 
-        # --- 2. Intent Classification (Early) ---
         orch.validator.validate_forced_tool(
             task_id, request.forced_tool, request.forced_intent
         )
-
-        if request.forced_intent:
-            intent = request.forced_intent
-            intent_debug = {"source": "forced", "intent": request.forced_intent}
-        else:
-            # Optimize: Classify on request content instead of full context
-            intent = await orch.intent_manager.classify_intent(request_content)
-            intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
-
-        # Intent Debug Logging
-        if intent_debug:
-            orch.state_manager.update_context(task_id, {"intent_debug": intent_debug})
-            if orch.request_tracer:
-                try:
-                    details = json.dumps(intent_debug, ensure_ascii=False)
-                except Exception:
-                    details = str(intent_debug)
-                orch.request_tracer.add_step(
-                    task_id,
-                    "DecisionGate",
-                    "intent_debug",
-                    status="ok",
-                    details=details,
-                )
-
-        # --- 3. Build Context (Conditional) ---
-        if intent in STATIC_INTENTS:
-            # Fast Path: Skip heavy context building for templates
-            context = request_content
-            logger.info(f"Fast path: Skipping context build for intent {intent}")
-            orch.state_manager.add_log(
-                task_id, "🚀 Fast Path: Pominięto budowanie kontekstu"
-            )
-        else:
-            # Normal Path: Full context with history/memory
-            context = await orch.context_builder.build_context(
-                task_id, request, fast_path
-            )
-
-        # Capture generation params log
-        if request.generation_params:
-            orch.state_manager.update_context(
-                task_id, {"generation_params": request.generation_params}
-            )
-            logger.info(
-                "Zapisano parametry generacji dla zadania %s: %s",
-                task_id,
-                request.generation_params,
-            )
-
-        # NON-LLM tracing metadata
-        if (
-            orch.request_tracer
-            and intent in orch.NON_LLM_INTENTS
-            and intent_debug.get("source") != "llm"
-        ):
-            orch.request_tracer.set_llm_metadata(
-                task_id, provider=None, model=None, endpoint=None
-            )
-            orch.state_manager.update_context(
-                task_id,
-                {
-                    "llm_runtime": {
-                        "status": "skipped",
-                        "error": None,
-                        "last_success_at": None,
-                    }
-                },
-            )
-
-        tool_required = orch.intent_manager.requires_tool(intent)
-        orch.state_manager.update_context(
-            task_id, {"tool_requirement": {"required": tool_required, "intent": intent}}
+        intent, intent_debug = await _classify_intent_and_log(
+            orch, task_id, request, request_content
         )
-        if orch.request_tracer:
-            orch.request_tracer.add_step(
-                task_id,
-                "DecisionGate",
-                "tool_requirement",
-                status="ok",
-                details=f"Tool required: {tool_required}",
-            )
+        context = await _build_context_for_intent(
+            orch, task_id, request, request_content, intent, fast_path
+        )
+        _store_generation_params_if_present(orch, task_id, request)
+        _set_non_llm_metadata_if_applicable(orch, task_id, intent, intent_debug)
 
-        # Metrics: Tool Required
-        collector = metrics_module.metrics_collector
-        if collector:
-            if tool_required:
-                collector.increment_tool_required_request()
-            else:
-                collector.increment_llm_only_request()
+        tool_required, intent = _evaluate_tool_requirement_and_routing(
+            orch, task_id, intent
+        )
 
-        # Handle Unsupported Agent
-        if tool_required:
-            agent = orch.task_dispatcher.agent_map.get(intent)
-            if agent is None or agent.__class__.__name__ == "UnsupportedAgent":
-                orch.state_manager.add_log(
-                    task_id,
-                    f"Brak narzędzia dla intencji {intent} - routing do UnsupportedAgent",
-                )
-                if orch.request_tracer:
-                    orch.request_tracer.add_step(
-                        task_id,
-                        "DecisionGate",
-                        "route_unsupported",
-                        status="ok",
-                        details=f"Tool required but missing for intent={intent}",
-                    )
-                intent = "UNSUPPORTED_TASK"
-
-        # Validate Capabilities & Routing (Disabled for now as it causes regressions)
-        # kernel_required = tool_required or intent in orch.KERNEL_FUNCTION_INTENTS
-        # orch.validator.validate_capabilities(task_id, kernel_required, tool_required)
-        # orch.validator.validate_routing(task_id, request, request.forced_provider)
-
-        # --- 4. Context Enrichment (Lessons & Hidden Prompts) ---
         if intent not in orch.NON_LEARNING_INTENTS and not tool_required:
             context = await orch.context_builder.enrich_context_with_lessons(
                 task_id, context
@@ -242,13 +116,7 @@ async def run_task(
                 details=f"Intent: {intent}",
             )
 
-        await orch._broadcast_event(
-            event_type="AGENT_THOUGHT",
-            message=f"Rozpoznano intencję: {intent}",
-            data={"task_id": str(task_id), "intent": intent},
-        )
-
-        # --- 5. Execution ---
+        await _broadcast_intent(orch, task_id, intent)
         orch._append_session_history(
             task_id,
             role="user",
@@ -256,22 +124,173 @@ async def run_task(
             session_id=request.session_id,
         )
 
-        stream_callback = orch.streaming_handler.create_stream_callback(task_id)
-        stream_token = set_llm_stream_callback(stream_callback)
+        result = await _execute_with_stream_callback(
+            orch, task_id, intent, context, request
+        )
 
-        try:
-            strategy = ExecutionStrategy(orch)
-            result = await strategy.execute(task_id, intent, context, request)
-        finally:
-            reset_llm_stream_callback(stream_token)
-
-        # --- 6. Processing Results ---
         await orch.result_processor.process_success(
             task_id, result, intent, context, request, tool_required
         )
 
     except Exception as exc:
         await orch.result_processor.process_error(task_id, exc, request, context)
+
+
+async def _initialize_task_execution(orch: "Orchestrator", task_id: UUID):
+    task = orch.state_manager.get_task(task_id)
+    if task is None:
+        logger.error("Zadanie %s nie istnieje", task_id)
+        return None
+    await orch.state_manager.update_status(task_id, TaskStatus.PROCESSING)
+    orch.state_manager.add_log(
+        task_id, f"Rozpoczęto przetwarzanie: {datetime.now().isoformat()}"
+    )
+    if orch.request_tracer:
+        orch.request_tracer.update_status(task_id, TraceStatus.PROCESSING)
+        await orch._trace_step_async(
+            task_id, "Orchestrator", "start_processing", status="ok"
+        )
+    await orch._broadcast_event(
+        event_type="TASK_STARTED",
+        message=f"Rozpoczynam przetwarzanie zadania {task_id}",
+        data={"task_id": str(task_id)},
+    )
+    logger.info("Rozpoczynam przetwarzanie zadania %s", task_id)
+    return task
+
+
+async def _classify_intent_and_log(
+    orch: "Orchestrator", task_id: UUID, request: TaskRequest, request_content: str
+) -> tuple[str, dict]:
+    if request.forced_intent:
+        intent = request.forced_intent
+        intent_debug = {"source": "forced", "intent": request.forced_intent}
+    else:
+        intent = await orch.intent_manager.classify_intent(request_content)
+        intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
+    if intent_debug:
+        orch.state_manager.update_context(task_id, {"intent_debug": intent_debug})
+        if orch.request_tracer:
+            try:
+                details = json.dumps(intent_debug, ensure_ascii=False)
+            except Exception:
+                details = str(intent_debug)
+            orch.request_tracer.add_step(
+                task_id, "DecisionGate", "intent_debug", status="ok", details=details
+            )
+    return intent, intent_debug
+
+
+async def _build_context_for_intent(
+    orch: "Orchestrator",
+    task_id: UUID,
+    request: TaskRequest,
+    request_content: str,
+    intent: str,
+    fast_path: bool,
+) -> str:
+    if intent in STATIC_INTENTS:
+        logger.info(f"Fast path: Skipping context build for intent {intent}")
+        orch.state_manager.add_log(
+            task_id, "🚀 Fast Path: Pominięto budowanie kontekstu"
+        )
+        return request_content
+    return await orch.context_builder.build_context(task_id, request, fast_path)
+
+
+def _store_generation_params_if_present(
+    orch: "Orchestrator", task_id: UUID, request: TaskRequest
+) -> None:
+    if not request.generation_params:
+        return
+    orch.state_manager.update_context(
+        task_id, {"generation_params": request.generation_params}
+    )
+    logger.info(
+        "Zapisano parametry generacji dla zadania %s: %s",
+        task_id,
+        request.generation_params,
+    )
+
+
+def _set_non_llm_metadata_if_applicable(
+    orch: "Orchestrator", task_id: UUID, intent: str, intent_debug: dict
+) -> None:
+    if not orch.request_tracer:
+        return
+    if intent not in orch.NON_LLM_INTENTS or intent_debug.get("source") == "llm":
+        return
+    orch.request_tracer.set_llm_metadata(
+        task_id, provider=None, model=None, endpoint=None
+    )
+    orch.state_manager.update_context(
+        task_id,
+        {"llm_runtime": {"status": "skipped", "error": None, "last_success_at": None}},
+    )
+
+
+def _evaluate_tool_requirement_and_routing(
+    orch: "Orchestrator", task_id: UUID, intent: str
+) -> tuple[bool, str]:
+    tool_required = orch.intent_manager.requires_tool(intent)
+    orch.state_manager.update_context(
+        task_id, {"tool_requirement": {"required": tool_required, "intent": intent}}
+    )
+    if orch.request_tracer:
+        orch.request_tracer.add_step(
+            task_id,
+            "DecisionGate",
+            "tool_requirement",
+            status="ok",
+            details=f"Tool required: {tool_required}",
+        )
+
+    collector = metrics_module.metrics_collector
+    if collector:
+        if tool_required:
+            collector.increment_tool_required_request()
+        else:
+            collector.increment_llm_only_request()
+
+    if not tool_required:
+        return tool_required, intent
+
+    agent = orch.task_dispatcher.agent_map.get(intent)
+    if agent is None or agent.__class__.__name__ == "UnsupportedAgent":
+        orch.state_manager.add_log(
+            task_id,
+            f"Brak narzędzia dla intencji {intent} - routing do UnsupportedAgent",
+        )
+        if orch.request_tracer:
+            orch.request_tracer.add_step(
+                task_id,
+                "DecisionGate",
+                "route_unsupported",
+                status="ok",
+                details=f"Tool required but missing for intent={intent}",
+            )
+        intent = "UNSUPPORTED_TASK"
+    return tool_required, intent
+
+
+async def _broadcast_intent(orch: "Orchestrator", task_id: UUID, intent: str) -> None:
+    await orch._broadcast_event(
+        event_type="AGENT_THOUGHT",
+        message=f"Rozpoznano intencję: {intent}",
+        data={"task_id": str(task_id), "intent": intent},
+    )
+
+
+async def _execute_with_stream_callback(
+    orch: "Orchestrator", task_id: UUID, intent: str, context: str, request: TaskRequest
+):
+    stream_callback = orch.streaming_handler.create_stream_callback(task_id)
+    stream_token = set_llm_stream_callback(stream_callback)
+    try:
+        strategy = ExecutionStrategy(orch)
+        return await strategy.execute(task_id, intent, context, request)
+    finally:
+        reset_llm_stream_callback(stream_token)
 
 
 def append_learning_log(

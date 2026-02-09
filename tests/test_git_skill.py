@@ -3,6 +3,7 @@
 import shutil
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from git import Repo
@@ -300,6 +301,39 @@ async def test_reset_invalid_mode(git_skill, temp_workspace):
     assert "❌" in result
     assert "Nieprawidłowy tryb" in result or "invalid" in result.lower()
     assert "soft" in result and "mixed" in result and "hard" in result
+
+
+def test_git_skill_pull_helpers():
+    class DummyRepo:
+        active_branch = SimpleNamespace(name="main")
+
+    assert GitSkill._resolve_branch_name(DummyRepo(), "feature/x") == "feature/x"
+    assert GitSkill._resolve_branch_name(DummyRepo(), None) == "main"
+
+    changed = GitSkill._collect_changed_files_from_pull(
+        [
+            SimpleNamespace(commit=None, old_commit=None),
+            SimpleNamespace(commit=SimpleNamespace(diff=lambda _old: []), old_commit=1),
+        ]
+    )
+    assert changed == []
+
+    result_empty = GitSkill._format_pull_result("origin", "main", [])
+    assert "już aktualne" in result_empty
+
+    result_changed = GitSkill._format_pull_result(
+        "origin", "main", ["a.py", "b.py", "c.py"]
+    )
+    assert "Zmienione pliki" in result_changed
+    assert "a.py" in result_changed
+
+
+def test_git_skill_has_pull_error_reports_conflict(temp_workspace):
+    skill = GitSkill(workspace_root=temp_workspace)
+    repo = SimpleNamespace()
+    skill._format_conflict_message = lambda *_args, **_kwargs: "conflict-msg"  # type: ignore[method-assign]
+    info = SimpleNamespace(flags=1, ERROR=1)
+    assert skill._has_pull_error([info], repo, "origin", "main") == "conflict-msg"
 
 
 @pytest.mark.asyncio

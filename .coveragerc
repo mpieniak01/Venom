@@ -1,8 +1,7 @@
 [run]
 branch = True
 source = venom_core
-omit = venom_core/main.py
-    tests/*
+omit = tests/*
     venom_core/nodes/protocol.py
     venom_core/agents/writer.py
     venom_core/infrastructure/onnx_runtime.py

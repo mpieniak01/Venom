@@ -52,7 +52,7 @@ class AssistantSkill:
         name="get_current_time",
         description="Zwraca aktualny czas lokalny w formacie czytelnym dla człowieka.",
     )
-    def get_current_time(
+    async def get_current_time(
         self,
         format_type: Annotated[
             str, "Format czasu: 'short' (HH:MM), 'full' (pełna data i czas)"
@@ -228,63 +228,88 @@ class AssistantSkill:
             if not services:
                 return "⚠️  Brak zarejestrowanych usług do monitorowania."
 
-            # Zlicz statusy
-            online_count = sum(1 for s in services if s.status.value == "online")
-            offline_count = sum(1 for s in services if s.status.value == "offline")
-            degraded_count = sum(1 for s in services if s.status.value == "degraded")
-            unknown_count = sum(1 for s in services if s.status.value == "unknown")
+            status_counts = self._count_service_statuses(services)
+            result = self._build_services_summary(services, status_counts)
 
-            total = len(services)
-
-            # Podstawowe podsumowanie
-            result = "🔍 Status usług systemowych\n\n"
-            result += f"✅ Online: {online_count}/{total}\n"
-
-            if offline_count > 0:
-                result += f"❌ Offline: {offline_count}/{total}\n"
-            if degraded_count > 0:
-                result += f"⚠️  Degraded: {degraded_count}/{total}\n"
-            if unknown_count > 0:
-                result += f"❓ Unknown: {unknown_count}/{total}\n"
-
-            # Sprawdź usługi krytyczne
-            critical_services = self.service_registry.get_critical_services()
-            critical_offline = [
-                s for s in critical_services if s.status.value == "offline"
-            ]
-
+            critical_offline = self._get_critical_offline_services()
             if critical_offline:
                 result += "\n⚠️  UWAGA: Krytyczne usługi offline:\n"
-                for service in critical_offline:
-                    result += f"  • {service.name}\n"
+                result += "".join(
+                    f"  • {service.name}\n" for service in critical_offline
+                )
 
-            # Szczegóły jeśli wymagane
             if detailed:
-                result += "\n📋 Szczegóły usług:\n\n"
-                for service in services:
-                    status_icon = {
-                        "online": "✅",
-                        "offline": "❌",
-                        "degraded": "⚠️",
-                        "unknown": "❓",
-                    }.get(service.status.value, "❓")
-
-                    result += f"{status_icon} {service.name}\n"
-                    result += f"   Typ: {service.service_type}\n"
-
-                    if service.endpoint:
-                        result += f"   Endpoint: {service.endpoint}\n"
-
-                    if service.status.value == "online" and service.latency_ms > 0:
-                        result += f"   Latencja: {service.latency_ms:.2f}ms\n"
-
-                    if service.error_message:
-                        result += f"   Błąd: {service.error_message}\n"
-
-                    result += "\n"
+                result += self._build_detailed_services_section(services)
 
             return result
 
         except Exception as e:
             logger.error(f"Błąd podczas sprawdzania usług: {e}")
             return f"✗ Błąd podczas sprawdzania usług: {e}"
+
+    @staticmethod
+    def _count_service_statuses(services) -> dict[str, int]:
+        return {
+            "online": sum(
+                1 for service in services if service.status.value == "online"
+            ),
+            "offline": sum(
+                1 for service in services if service.status.value == "offline"
+            ),
+            "degraded": sum(
+                1 for service in services if service.status.value == "degraded"
+            ),
+            "unknown": sum(
+                1 for service in services if service.status.value == "unknown"
+            ),
+        }
+
+    def _build_services_summary(self, services, status_counts: dict[str, int]) -> str:
+        total = len(services)
+        result = "🔍 Status usług systemowych\n\n"
+        result += f"✅ Online: {status_counts['online']}/{total}\n"
+
+        if status_counts["offline"] > 0:
+            result += f"❌ Offline: {status_counts['offline']}/{total}\n"
+        if status_counts["degraded"] > 0:
+            result += f"⚠️  Degraded: {status_counts['degraded']}/{total}\n"
+        if status_counts["unknown"] > 0:
+            result += f"❓ Unknown: {status_counts['unknown']}/{total}\n"
+        return result
+
+    def _get_critical_offline_services(self):
+        critical_services = self.service_registry.get_critical_services()
+        return [
+            service
+            for service in critical_services
+            if service.status.value == "offline"
+        ]
+
+    @staticmethod
+    def _service_status_icon(status_value: str) -> str:
+        return {
+            "online": "✅",
+            "offline": "❌",
+            "degraded": "⚠️",
+            "unknown": "❓",
+        }.get(status_value, "❓")
+
+    def _build_detailed_services_section(self, services) -> str:
+        details = "\n📋 Szczegóły usług:\n\n"
+        for service in services:
+            details += (
+                f"{self._service_status_icon(service.status.value)} {service.name}\n"
+            )
+            details += f"   Typ: {service.service_type}\n"
+
+            if service.endpoint:
+                details += f"   Endpoint: {service.endpoint}\n"
+
+            if service.status.value == "online" and service.latency_ms > 0:
+                details += f"   Latencja: {service.latency_ms:.2f}ms\n"
+
+            if service.error_message:
+                details += f"   Błąd: {service.error_message}\n"
+
+            details += "\n"
+        return details

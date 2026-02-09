@@ -426,6 +426,39 @@ class ChronosEngine:
         except Exception as e:
             logger.warning(f"Błąd podczas backupu pamięci: {e}")
 
+    def _copy_memory_items(self, source_dir: Path, target_dir: Path) -> None:
+        for item in source_dir.iterdir():
+            if item.is_file():
+                shutil.copy2(item, target_dir / item.name)
+            elif item.is_dir():
+                shutil.copytree(item, target_dir / item.name, dirs_exist_ok=True)
+
+    def _restore_memory_from_backup(self, memory_backup: Path) -> None:
+        self.memory_root.mkdir(parents=True, exist_ok=True)
+        self._copy_memory_items(memory_backup, self.memory_root)
+
+    def _rollback_memory_restore(
+        self, temp_backup: Path, restore_error: Exception
+    ) -> None:
+        logger.error(f"Błąd podczas przywracania pamięci: {restore_error}")
+        logger.info("Przywracam z tymczasowego backupu...")
+        if self.memory_root.exists():
+            shutil.rmtree(self.memory_root)
+        shutil.copytree(temp_backup, self.memory_root)
+        shutil.rmtree(temp_backup)
+        raise RuntimeError(
+            "Nie udało się przywrócić pamięci, przywrócono poprzedni stan"
+        ) from restore_error
+
+    def _restore_with_temp_backup(self, memory_backup: Path, temp_backup: Path) -> None:
+        try:
+            shutil.rmtree(self.memory_root)
+            self._restore_memory_from_backup(memory_backup)
+            shutil.rmtree(temp_backup)
+            logger.debug("Pamięć przywrócona pomyślnie")
+        except Exception as restore_error:
+            self._rollback_memory_restore(temp_backup, restore_error)
+
     def _restore_memory(self, checkpoint_dir: Path) -> None:
         """Przywraca bazy danych pamięci."""
         memory_backup = checkpoint_dir / "memory_dump"
@@ -442,50 +475,10 @@ class ChronosEngine:
                 )
                 logger.debug(f"Tworzę tymczasowy backup: {temp_backup}")
                 shutil.copytree(self.memory_root, temp_backup)
-
-                try:
-                    # Usuń obecny katalog pamięci
-                    shutil.rmtree(self.memory_root)
-
-                    # Przywróć z checkpointu
-                    self.memory_root.mkdir(parents=True, exist_ok=True)
-                    for item in memory_backup.iterdir():
-                        if item.is_file():
-                            shutil.copy2(item, self.memory_root / item.name)
-                        elif item.is_dir():
-                            shutil.copytree(
-                                item, self.memory_root / item.name, dirs_exist_ok=True
-                            )
-
-                    # Sukces - usuń tymczasowy backup
-                    shutil.rmtree(temp_backup)
-                    logger.debug("Pamięć przywrócona pomyślnie")
-
-                except Exception as e:
-                    # Błąd - przywróć z tymczasowego backupu
-                    logger.error(f"Błąd podczas przywracania pamięci: {e}")
-                    logger.info("Przywracam z tymczasowego backupu...")
-
-                    if self.memory_root.exists():
-                        shutil.rmtree(self.memory_root)
-
-                    shutil.copytree(temp_backup, self.memory_root)
-                    shutil.rmtree(temp_backup)
-
-                    raise RuntimeError(
-                        "Nie udało się przywrócić pamięci, przywrócono poprzedni stan"
-                    ) from e
+                self._restore_with_temp_backup(memory_backup, temp_backup)
             else:
                 # Brak obecnego stanu - po prostu przywróć
-                self.memory_root.mkdir(parents=True, exist_ok=True)
-                for item in memory_backup.iterdir():
-                    if item.is_file():
-                        shutil.copy2(item, self.memory_root / item.name)
-                    elif item.is_dir():
-                        shutil.copytree(
-                            item, self.memory_root / item.name, dirs_exist_ok=True
-                        )
-
+                self._restore_memory_from_backup(memory_backup)
                 logger.debug("Pamięć przywrócona")
 
         except Exception as e:

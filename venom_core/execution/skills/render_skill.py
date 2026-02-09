@@ -1,14 +1,84 @@
 """Moduł: render_skill - umiejętność wizualizacji i renderowania UI."""
 
+from html.parser import HTMLParser
 from typing import Annotated, Any, Dict, List, Optional
 
-import bleach
 from semantic_kernel.functions import kernel_function
 
 from venom_core.ui.component_engine import ComponentEngine, WidgetType
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+try:
+    import bleach
+
+    BLEACH_AVAILABLE = True
+except ImportError:  # pragma: no cover - zależność opcjonalna
+    bleach = None  # type: ignore[assignment]
+    BLEACH_AVAILABLE = False
+
+
+class _ScriptStripper(HTMLParser):
+    """Usuwa zawartość <script>...</script> bez użycia podatnego regexu."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._chunks: list[str] = []
+        self._script_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "script":
+            self._script_depth += 1
+            return
+        if self._script_depth == 0:
+            self._chunks.append(self.get_starttag_text() or "")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "script":
+            self._script_depth = max(self._script_depth - 1, 0)
+            return
+        if self._script_depth == 0:
+            self._chunks.append(f"</{tag}>")
+
+    def handle_data(self, data: str) -> None:
+        if self._script_depth == 0:
+            self._chunks.append(data)
+
+    def get_sanitized(self) -> str:
+        return "".join(self._chunks)
+
+
+def _strip_script_content(html: str) -> str:
+    stripper = _ScriptStripper()
+    stripper.feed(html)
+    stripper.close()
+    return stripper.get_sanitized()
+
+
+class _AllowlistHtmlStripper(HTMLParser):
+    """Fallback sanitizer: zachowuje tylko dozwolone tagi bez atrybutów."""
+
+    def __init__(self, allowed_tags: set[str]) -> None:
+        super().__init__(convert_charrefs=True)
+        self._allowed_tags = allowed_tags
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag_name = tag.lower()
+        if tag_name in self._allowed_tags:
+            self._chunks.append(f"<{tag_name}>")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag_name = tag.lower()
+        if tag_name in self._allowed_tags:
+            self._chunks.append(f"</{tag_name}>")
+
+    def handle_data(self, data: str) -> None:
+        self._chunks.append(data)
+
+    def get_sanitized(self) -> str:
+        return "".join(self._chunks)
 
 
 class RenderSkill:
@@ -78,9 +148,19 @@ class RenderSkill:
         Returns:
             Czysty HTML
         """
-        return bleach.clean(
-            html, tags=self.ALLOWED_TAGS, attributes=self.ALLOWED_ATTRIBUTES, strip=True
-        )
+        if BLEACH_AVAILABLE and bleach is not None:
+            return bleach.clean(
+                html,
+                tags=self.ALLOWED_TAGS,
+                attributes=self.ALLOWED_ATTRIBUTES,
+                strip=True,
+            )
+        # Fallback bez bleach: usuń script oraz wszystkie atrybuty, zachowaj tylko allowlistę tagów.
+        without_scripts = _strip_script_content(html)
+        sanitizer = _AllowlistHtmlStripper(set(self.ALLOWED_TAGS))
+        sanitizer.feed(without_scripts)
+        sanitizer.close()
+        return sanitizer.get_sanitized()
 
     @kernel_function(
         name="render_chart",

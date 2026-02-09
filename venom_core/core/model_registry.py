@@ -952,103 +952,17 @@ class ModelRegistry:
         """
         logger.info(f"Aktywacja modelu {model_name} dla runtime {runtime}")
 
-        if model_name not in self.manifest:
-            if runtime == "ollama":
-                provider = self.providers.get(ModelProvider.OLLAMA)
-                if provider:
-                    try:
-                        metadata = await provider.get_model_info(model_name)
-                        if metadata:
-                            self.manifest[model_name] = metadata
-                            self._save_manifest()
-                        else:
-                            logger.error(f"Model {model_name} nie znaleziony w Ollama")
-                            return False
-                    except Exception as exc:
-                        logger.warning(
-                            f"Nie udało się pobrać metadanych modelu Ollama {model_name}: {exc}"
-                        )
-                        return False
-                else:
-                    logger.error("Provider Ollama niedostępny")
-                    return False
-            else:
-                logger.error(f"Model {model_name} nie znaleziony w manifeście")
-                return False
+        if not await self._ensure_model_metadata_for_activation(model_name, runtime):
+            return False
 
         meta = self.manifest.get(model_name)
         if not meta:
             logger.error("Brak metadanych modelu %s po aktywacji", model_name)
             return False
 
-        # Aktualizuj SETTINGS i .env przez config_manager
         try:
-            from venom_core.config import SETTINGS
-            from venom_core.services.config_manager import config_manager
-
-            template_value = ""
-            updates = {
-                "LLM_MODEL_NAME": model_name,
-                "ACTIVE_LLM_SERVER": runtime,
-            }
-            if runtime == "vllm":
-                local_path = meta.local_path or model_name
-                template_candidate = Path(local_path) / "chat_template.jinja"
-                if not template_candidate.is_absolute():
-                    template_candidate = Path(SETTINGS.REPO_ROOT) / template_candidate
-                if template_candidate.exists():
-                    template_value = str(template_candidate)
-                updates.update(
-                    {
-                        "VLLM_MODEL_PATH": local_path,
-                        "VLLM_SERVED_MODEL_NAME": model_name,
-                        "VLLM_CHAT_TEMPLATE": template_value,
-                        "LAST_MODEL_VLLM": model_name,
-                    }
-                )
-                SETTINGS.VLLM_MODEL_PATH = local_path
-                SETTINGS.VLLM_SERVED_MODEL_NAME = model_name
-                try:
-                    SETTINGS.VLLM_CHAT_TEMPLATE = template_value
-                except Exception:
-                    # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
-                    pass
-            if runtime == "ollama":
-                updates["LAST_MODEL_OLLAMA"] = model_name
-
-            config_manager.update_config(updates)
-
-            SETTINGS.LLM_MODEL_NAME = model_name
-            SETTINGS.ACTIVE_LLM_SERVER = runtime
-            if runtime == "ollama":
-                try:
-                    SETTINGS.LAST_MODEL_OLLAMA = model_name
-                except Exception:
-                    # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
-                    pass
-            if runtime == "vllm":
-                try:
-                    SETTINGS.LAST_MODEL_VLLM = model_name
-                except Exception:
-                    # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
-                    pass
-
-            # Restart odpowiedniego runtime, jeśli mamy komendę
-            try:
-                from venom_core.core.llm_server_controller import LlmServerController
-
-                controller = LlmServerController(SETTINGS)
-                action = "restart"
-                if controller.has_server(runtime):
-                    result = await controller.run_action(runtime, action)
-                    if not result.ok:
-                        logger.warning(
-                            "Restart %s po aktywacji modelu nie powiódł się: %s",
-                            runtime,
-                            result.stderr,
-                        )
-            except Exception as exc:
-                logger.warning("Nie udało się wykonać restartu %s: %s", runtime, exc)
+            settings = self._apply_model_activation_config(model_name, runtime, meta)
+            await self._restart_runtime_after_activation(runtime, settings)
 
         except Exception as e:
             logger.warning(
@@ -1058,3 +972,108 @@ class ModelRegistry:
 
         logger.info(f"Model {model_name} aktywowany (runtime={runtime})")
         return True
+
+    async def _ensure_model_metadata_for_activation(
+        self, model_name: str, runtime: str
+    ) -> bool:
+        if model_name in self.manifest:
+            return True
+        if runtime != "ollama":
+            logger.error(f"Model {model_name} nie znaleziony w manifeście")
+            return False
+        provider = self.providers.get(ModelProvider.OLLAMA)
+        if not provider:
+            logger.error("Provider Ollama niedostępny")
+            return False
+        try:
+            metadata = await provider.get_model_info(model_name)
+            if not metadata:
+                logger.error(f"Model {model_name} nie znaleziony w Ollama")
+                return False
+            self.manifest[model_name] = metadata
+            self._save_manifest()
+            return True
+        except Exception as exc:
+            logger.warning(
+                f"Nie udało się pobrać metadanych modelu Ollama {model_name}: {exc}"
+            )
+            return False
+
+    def _apply_model_activation_config(
+        self, model_name: str, runtime: str, meta: "ModelMetadata"
+    ):
+        from venom_core.config import SETTINGS
+        from venom_core.services.config_manager import config_manager
+
+        updates = {
+            "LLM_MODEL_NAME": model_name,
+            "ACTIVE_LLM_SERVER": runtime,
+        }
+        if runtime == "vllm":
+            self._apply_vllm_activation_updates(model_name, meta, updates, SETTINGS)
+        if runtime == "ollama":
+            updates["LAST_MODEL_OLLAMA"] = model_name
+
+        config_manager.update_config(updates)
+        SETTINGS.LLM_MODEL_NAME = model_name
+        SETTINGS.ACTIVE_LLM_SERVER = runtime
+        if runtime == "ollama":
+            self._safe_setattr(SETTINGS, "LAST_MODEL_OLLAMA", model_name)
+        if runtime == "vllm":
+            self._safe_setattr(SETTINGS, "LAST_MODEL_VLLM", model_name)
+        return SETTINGS
+
+    def _apply_vllm_activation_updates(
+        self,
+        model_name: str,
+        meta: "ModelMetadata",
+        updates: Dict[str, Any],
+        settings: Any,
+    ) -> None:
+        template_value = ""
+        local_path = meta.local_path or model_name
+        template_candidate = Path(local_path) / "chat_template.jinja"
+        if not template_candidate.is_absolute():
+            template_candidate = Path(settings.REPO_ROOT) / template_candidate
+        if template_candidate.exists():
+            template_value = str(template_candidate)
+        updates.update(
+            {
+                "VLLM_MODEL_PATH": local_path,
+                "VLLM_SERVED_MODEL_NAME": model_name,
+                "VLLM_CHAT_TEMPLATE": template_value,
+                "LAST_MODEL_VLLM": model_name,
+            }
+        )
+        settings.VLLM_MODEL_PATH = local_path
+        settings.VLLM_SERVED_MODEL_NAME = model_name
+        self._safe_setattr(settings, "VLLM_CHAT_TEMPLATE", template_value)
+
+    def _safe_setattr(self, target: Any, attr: str, value: Any) -> None:
+        try:
+            setattr(target, attr, value)
+        except Exception as exc:
+            logger.debug(
+                "Nie udało się ustawić atrybutu %s na obiekcie %r: %s",
+                attr,
+                target,
+                exc,
+            )
+
+    async def _restart_runtime_after_activation(
+        self, runtime: str, settings: Any
+    ) -> None:
+        try:
+            from venom_core.core.llm_server_controller import LlmServerController
+
+            controller = LlmServerController(settings)
+            if controller.has_server(runtime):
+                result = await controller.run_action(runtime, "restart")
+                if not result.ok:
+                    logger.warning(
+                        "Restart %s po aktywacji modelu nie powiódł się: %s",
+                        runtime,
+                        result.stderr,
+                    )
+        except Exception as exc:
+            logger.warning("Nie udało się wykonać restartu %s: %s", runtime, exc)

@@ -343,3 +343,92 @@ async def test_max_attempts_exceeded_with_new_features(
         "Wyczerpano limit prób" in result or f"{MAX_REPAIR_ATTEMPTS} próbach" in result
     )
     assert mock_coder_agent.process.call_count == MAX_REPAIR_ATTEMPTS + 1
+
+
+def test_summary_and_result_builders():
+    loop = CodeReviewLoop(
+        state_manager=MagicMock(spec=StateManager),
+        coder_agent=MagicMock(spec=CoderAgent),
+        critic_agent=MagicMock(spec=CriticAgent),
+        token_economist=MagicMock(spec=TokenEconomist),
+        file_skill=MagicMock(spec=FileSkill),
+    )
+
+    long_text = "x" * 600
+    summary = loop._summarize_text(long_text)
+    assert summary.endswith("...")
+    assert len(summary) <= 503
+
+    budget_result = loop._build_budget_exceeded_result("print('ok')")
+    assert "Przekroczono budżet sesji" in budget_result
+    assert "print('ok')" in budget_result
+
+    loop_result = loop._build_loop_detected_result(
+        loop_msg="loop detected",
+        critic_feedback="feedback " + ("z" * 700),
+        generated_code="code()",
+    )
+    assert "loop detected" in loop_result
+    assert "code()" in loop_result
+
+    max_attempts = loop._build_max_attempts_result(
+        generated_code="generated()", critic_feedback="critic " + ("y" * 700)
+    )
+    assert "nie został w pełni zaakceptowany" in max_attempts
+    assert "generated()" in max_attempts
+
+
+@pytest.mark.asyncio
+async def test_generate_code_for_attempt_paths(
+    mock_state_manager,
+    mock_coder_agent,
+    mock_critic_agent,
+    mock_token_economist,
+    mock_file_skill,
+):
+    loop = CodeReviewLoop(
+        mock_state_manager,
+        mock_coder_agent,
+        mock_critic_agent,
+        mock_token_economist,
+        mock_file_skill,
+    )
+    task_id = uuid4()
+
+    mock_coder_agent.process.side_effect = ["first", "second", "third"]
+    mock_file_skill.read_file.return_value = "content"
+
+    generated_1, prompt_1 = await loop._generate_code_for_attempt(
+        task_id=task_id,
+        attempt=1,
+        user_request="write code",
+        generated_code="",
+        critic_feedback="",
+        current_file=None,
+    )
+    assert generated_1 == "first"
+    assert prompt_1 == "write code"
+
+    generated_2, prompt_2 = await loop._generate_code_for_attempt(
+        task_id=task_id,
+        attempt=2,
+        user_request="write code",
+        generated_code="generated code",
+        critic_feedback="critic feedback",
+        current_file="a.py",
+    )
+    assert generated_2 == "second"
+    assert "FEEDBACK OD KRYTYKA" in prompt_2
+    assert "a.py" in prompt_2
+
+    mock_file_skill.read_file.side_effect = RuntimeError("missing")
+    generated_3, prompt_3 = await loop._generate_code_for_attempt(
+        task_id=task_id,
+        attempt=2,
+        user_request="write code",
+        generated_code="generated code",
+        critic_feedback="critic feedback",
+        current_file="missing.py",
+    )
+    assert generated_3 == "third"
+    assert "nie istnieje jeszcze" in prompt_3

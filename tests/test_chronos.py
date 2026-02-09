@@ -263,3 +263,47 @@ class TestChronosIntegration:
         assert checkpoints[0].checkpoint_id == id3
         assert checkpoints[1].checkpoint_id == id2
         assert checkpoints[2].checkpoint_id == id1
+
+
+class TestChronosRestoreHelpers:
+    def test_copy_and_restore_memory_helpers(self, chronos_engine, tmp_path):
+        source = tmp_path / "src"
+        source.mkdir()
+        (source / "a.txt").write_text("A")
+        nested = source / "nested"
+        nested.mkdir()
+        (nested / "b.txt").write_text("B")
+
+        target = tmp_path / "dst"
+        target.mkdir()
+        chronos_engine._copy_memory_items(source, target)
+
+        assert (target / "a.txt").read_text() == "A"
+        assert (target / "nested" / "b.txt").read_text() == "B"
+
+        chronos_engine._restore_memory_from_backup(source)
+        assert (chronos_engine.memory_root / "a.txt").exists()
+
+    def test_restore_with_temp_backup_rolls_back(
+        self, chronos_engine, tmp_path, monkeypatch
+    ):
+        memory_backup = tmp_path / "memory_backup"
+        memory_backup.mkdir()
+        (memory_backup / "x.txt").write_text("new")
+
+        temp_backup = tmp_path / "temp_backup"
+        temp_backup.mkdir()
+        (temp_backup / "rollback.txt").write_text("old")
+
+        chronos_engine.memory_root.mkdir(parents=True, exist_ok=True)
+        (chronos_engine.memory_root / "current.txt").write_text("current")
+
+        def fail_restore(_backup):
+            raise RuntimeError("restore-fail")
+
+        monkeypatch.setattr(chronos_engine, "_restore_memory_from_backup", fail_restore)
+
+        with pytest.raises(RuntimeError):
+            chronos_engine._restore_with_temp_backup(memory_backup, temp_backup)
+
+        assert (chronos_engine.memory_root / "rollback.txt").exists()

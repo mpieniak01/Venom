@@ -137,65 +137,77 @@ class RequestTracer:
                 return
 
             data = json.loads(content)
-            loaded_count = 0
-
-            with self._traces_lock:
-                for trace_dict in data:
-                    try:
-                        trace = RequestTrace.model_validate(trace_dict)
-                        self._traces[trace.request_id] = trace
-                        loaded_count += 1
-                    except Exception as e:
-                        logger.warning(
-                            f"Pominięto uszkodzony trace podczas ładowania: {e}"
-                        )
+            loaded_count = self._load_traces_from_data(data)
 
             logger.info(f"Załadowano {loaded_count} śladów z {self._trace_file_path}")
-
-            # Załaduj feedback z jsonl aby uzupełnić historię (dla spójności po restarcie)
-            feedback_path = Path("data/feedback/feedback.jsonl")
-            if feedback_path.exists():
-                try:
-                    feedback_map = {}
-                    with open(feedback_path, "r", encoding="utf-8") as f:
-                        for line in f:
-                            if not line.strip():
-                                continue
-                            try:
-                                entry = json.loads(line)
-                                t_id = entry.get("task_id")
-                                if t_id:
-                                    feedback_map[t_id] = {
-                                        "rating": entry.get("rating"),
-                                        "comment": entry.get("comment"),
-                                    }
-                            except Exception:
-                                # Ignorujemy błędy parsowania linii JSON - kontynuujemy z kolejnymi
-                                pass
-
-                    if feedback_map:
-                        updated_count = 0
-                        with self._traces_lock:
-                            for t_id_str, fb_data in feedback_map.items():
-                                try:
-                                    u_id = UUID(t_id_str)
-                                    if u_id in self._traces:
-                                        # Nadpisz tylko jeśli brak w trace (lub zaktualizuj)
-                                        # Przyjmujemy jsonl jako źródło prawdy dla feedbacku
-                                        self._traces[u_id].feedback = fb_data
-                                        updated_count += 1
-                                except Exception:
-                                    # Ignorujemy błędy UUID/dostępu - przeskakujemy nieprawidłowy wpis
-                                    pass
-                        logger.info(
-                            f"Zaktualizowano feedback dla {updated_count} śladów"
-                        )
-
-                except Exception as e:
-                    logger.warning(f"Błąd podczas ładowania feedbacku: {e}")
-
+            self._load_feedback_for_traces()
         except Exception as e:
             logger.error(f"Błąd podczas ładowania śladów: {e}")
+
+    def _load_traces_from_data(self, data: list[dict[str, Any]]) -> int:
+        loaded_count = 0
+        with self._traces_lock:
+            for trace_dict in data:
+                try:
+                    trace = RequestTrace.model_validate(trace_dict)
+                    self._traces[trace.request_id] = trace
+                    loaded_count += 1
+                except Exception as e:
+                    logger.warning(f"Pominięto uszkodzony trace podczas ładowania: {e}")
+        return loaded_count
+
+    def _load_feedback_for_traces(self) -> None:
+        feedback_path = Path("data/feedback/feedback.jsonl")
+        if not feedback_path.exists():
+            return
+        try:
+            feedback_map = self._read_feedback_map(feedback_path)
+            if not feedback_map:
+                return
+            updated_count = self._apply_feedback_map(feedback_map)
+            logger.info(f"Zaktualizowano feedback dla {updated_count} śladów")
+        except Exception as e:
+            logger.warning(f"Błąd podczas ładowania feedbacku: {e}")
+
+    def _read_feedback_map(self, feedback_path: Path) -> dict[str, dict[str, Any]]:
+        feedback_map: dict[str, dict[str, Any]] = {}
+        with open(feedback_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                entry = self._parse_feedback_line(line)
+                if entry:
+                    feedback_map[entry["task_id"]] = entry["feedback"]
+        return feedback_map
+
+    def _parse_feedback_line(self, line: str) -> Optional[dict[str, Any]]:
+        try:
+            entry = json.loads(line)
+            task_id = entry.get("task_id")
+            if not task_id:
+                return None
+            return {
+                "task_id": task_id,
+                "feedback": {
+                    "rating": entry.get("rating"),
+                    "comment": entry.get("comment"),
+                },
+            }
+        except Exception:
+            return None
+
+    def _apply_feedback_map(self, feedback_map: dict[str, dict[str, Any]]) -> int:
+        updated_count = 0
+        with self._traces_lock:
+            for t_id_str, fb_data in feedback_map.items():
+                try:
+                    u_id = UUID(t_id_str)
+                except Exception:
+                    continue
+                if u_id in self._traces:
+                    self._traces[u_id].feedback = fb_data
+                    updated_count += 1
+        return updated_count
 
     async def _save_traces_async(self) -> None:
         """Zapisuje ślady do pliku JSON (asynchronicznie)."""

@@ -19,6 +19,104 @@ def _get_translation_service():
     return models_module.translation_service
 
 
+SUPPORTED_NEWS_LANGS = {"pl", "en", "de"}
+
+
+def _parse_provider(provider: str) -> ModelProvider:
+    try:
+        return ModelProvider(provider.lower())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Nieprawidłowy provider: {provider}"
+        ) from exc
+
+
+def _parse_target_lang(lang: str) -> str:
+    target_lang = (lang or "en").lower()
+    if target_lang not in SUPPORTED_NEWS_LANGS:
+        raise HTTPException(status_code=400, detail="Obsługiwane języki: pl, en, de")
+    return target_lang
+
+
+def _trim_papers_summaries(items: list[dict], item_type: str) -> None:
+    if item_type != "papers" or not items:
+        return
+    max_summary_chars = SETTINGS.NEWS_SUMMARY_MAX_CHARS
+    for item in items:
+        summary = item.get("summary")
+        if summary and len(summary) > max_summary_chars:
+            trimmed = summary[:max_summary_chars].rstrip()
+            item["summary"] = f"{trimmed}..."
+
+
+async def _translate_news_field(
+    translator, text: str, target_lang: str, timeout_per_call: float
+) -> str:
+    if not text:
+        return text
+    try:
+        return await asyncio.wait_for(
+            translator.translate_text(
+                text,
+                target_lang=target_lang,
+                source_lang="en",
+                allow_fallback=True,
+            ),
+            timeout=timeout_per_call,
+        )
+    except Exception:
+        return text
+
+
+async def _translate_news_item(
+    translator, item: dict, target_lang: str, timeout_per_call: float
+) -> dict:
+    title = item.get("title") or ""
+    summary = item.get("summary") or ""
+    translated_title, translated_summary = await asyncio.gather(
+        _translate_news_field(translator, title, target_lang, timeout_per_call),
+        _translate_news_field(translator, summary, target_lang, timeout_per_call),
+    )
+    translated_item = dict(item)
+    translated_item["title"] = translated_title
+    translated_item["summary"] = translated_summary
+    return translated_item
+
+
+async def _translate_news_items(
+    items: list[dict], target_lang: str
+) -> tuple[list[dict], str | None]:
+    if target_lang == "en" or not items:
+        return items, None
+
+    translator = _get_translation_service()
+    if translator is None:
+        return items, "translator_unavailable"
+
+    try:
+        timeout_per_call = max(SETTINGS.TRANSLATION_TIMEOUT_NEWS, 0.5)
+        translated_items = await asyncio.gather(
+            *(
+                _translate_news_item(translator, item, target_lang, timeout_per_call)
+                for item in items
+            )
+        )
+        return translated_items, None
+    except Exception as exc:
+        logger.warning(f"Nie udało się przetłumaczyć newsów: {exc}")
+        return items, str(exc)
+
+
+def _merge_news_errors(
+    base_error: str | None, translation_error: str | None
+) -> str | None:
+    if not translation_error:
+        return base_error
+    if base_error:
+        return f"{base_error}; translation: {translation_error}"
+    return f"translation: {translation_error}"
+
+
 router = APIRouter(prefix="/api/v1", tags=["models"])
 MODEL_REGISTRY_UNAVAILABLE_DETAIL = "ModelRegistry nie jest dostępny"
 
@@ -197,14 +295,7 @@ async def list_model_news(
         raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
-        from venom_core.core.model_registry import ModelProvider
-
-        try:
-            provider_enum = ModelProvider(provider.lower())
-        except ValueError:
-            raise HTTPException(
-                status_code=400, detail=f"Nieprawidłowy provider: {provider}"
-            )
+        provider_enum = _parse_provider(provider)
 
         result = await model_registry.list_news(
             provider=provider_enum,
@@ -213,72 +304,11 @@ async def list_model_news(
             month=month or None,
         )
         items = result.get("items", [])
-        target_lang = (lang or "en").lower()
-        if target_lang not in ["pl", "en", "de"]:
-            raise HTTPException(
-                status_code=400, detail="Obsługiwane języki: pl, en, de"
-            )
+        target_lang = _parse_target_lang(lang)
 
-        if type == "papers" and items:
-            max_summary_chars = SETTINGS.NEWS_SUMMARY_MAX_CHARS
-            for item in items:
-                summary = item.get("summary")
-                if summary and len(summary) > max_summary_chars:
-                    trimmed = summary[:max_summary_chars].rstrip()
-                    item["summary"] = f"{trimmed}..."
-
-        translation_error = None
-        if target_lang != "en" and items:
-            translator = _get_translation_service()
-            if translator is None:
-                translation_error = "translator_unavailable"
-            else:
-                try:
-                    timeout_per_call = max(SETTINGS.TRANSLATION_TIMEOUT_NEWS, 0.5)
-
-                    async def translate_field(text: str) -> str:
-                        if not text:
-                            return text
-                        try:
-                            return await asyncio.wait_for(
-                                translator.translate_text(
-                                    text,
-                                    target_lang=target_lang,
-                                    source_lang="en",
-                                    allow_fallback=True,
-                                ),
-                                timeout=timeout_per_call,
-                            )
-                        except Exception:
-                            return text
-
-                    async def translate_item(item: dict) -> dict:
-                        title = item.get("title") or ""
-                        summary = item.get("summary") or ""
-                        translated_title, translated_summary = await asyncio.gather(
-                            translate_field(title), translate_field(summary)
-                        )
-                        translated_item = dict(item)
-                        translated_item["title"] = translated_title
-                        translated_item["summary"] = translated_summary
-                        return translated_item
-
-                    items = await asyncio.gather(
-                        *(translate_item(item) for item in items)
-                    )
-                except Exception as exc:
-                    translation_error = str(exc)
-                    logger.warning(f"Nie udało się przetłumaczyć newsów: {exc}")
-
-        base_error = result.get("error")
-        if translation_error:
-            error_message = (
-                f"{base_error}; translation: {translation_error}"
-                if base_error
-                else f"translation: {translation_error}"
-            )
-        else:
-            error_message = base_error
+        _trim_papers_summaries(items, item_type=type)
+        items, translation_error = await _translate_news_items(items, target_lang)
+        error_message = _merge_news_errors(result.get("error"), translation_error)
 
         return {
             "success": True,

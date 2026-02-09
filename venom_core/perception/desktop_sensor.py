@@ -8,10 +8,12 @@ zapewnienia kontekstowej pomocy przez Shadow Agent.
 import asyncio
 import platform
 import re
+import sys
 import threading
 from contextlib import suppress
 from datetime import datetime
 from io import BytesIO
+from types import ModuleType
 from typing import Any, Callable, Dict, List, Optional
 
 try:
@@ -21,12 +23,58 @@ try:
 except ImportError:
     PIL_AVAILABLE = False
 
-import pyperclip  # type: ignore[import-untyped]
+try:
+    import pyperclip  # type: ignore[import-untyped]
+
+    PYPERCLIP_AVAILABLE = True
+except ImportError:  # pragma: no cover - zależność opcjonalna
+    pyperclip = ModuleType("pyperclip")
+
+    def _fallback_paste() -> str:
+        return ""
+
+    def _fallback_copy(_text: str) -> None:
+        return None
+
+    pyperclip.paste = _fallback_paste  # type: ignore[attr-defined]
+    pyperclip.copy = _fallback_copy  # type: ignore[attr-defined]
+    sys.modules.setdefault("pyperclip", pyperclip)
+    PYPERCLIP_AVAILABLE = False
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _install_pynput_stub() -> None:
+    class _ListenerStub:
+        def __init__(self, *args, **kwargs):
+            # Stub wymagany dla środowisk bez pynput; interfejs zachowany celowo.
+            pass
+
+        def start(self) -> None:
+            return None
+
+        def stop(self) -> None:
+            return None
+
+    pynput_module = ModuleType("pynput")
+    mouse_module = ModuleType("pynput.mouse")
+    keyboard_module = ModuleType("pynput.keyboard")
+    mouse_module.Listener = _ListenerStub  # type: ignore[attr-defined]
+    keyboard_module.Listener = _ListenerStub  # type: ignore[attr-defined]
+    pynput_module.mouse = mouse_module  # type: ignore[attr-defined]
+    pynput_module.keyboard = keyboard_module  # type: ignore[attr-defined]
+    sys.modules.setdefault("pynput", pynput_module)
+    sys.modules.setdefault("pynput.mouse", mouse_module)
+    sys.modules.setdefault("pynput.keyboard", keyboard_module)
+
+
+try:
+    import pynput  # type: ignore[import-untyped]  # noqa: F401
+except ImportError:  # pragma: no cover - zależność opcjonalna
+    _install_pynput_stub()
 
 
 class PrivacyFilter:
@@ -399,97 +447,13 @@ class DesktopSensor:
             logger.warning("Nagrywanie już jest włączone")
             return
 
-        self._recording_mode = True
-        self._recorded_actions = []
-        self._mouse_listener = None
-        self._keyboard_listener = None
-        self._mouse_move_counter = 0  # Licznik dla próbkowania ruchów myszy
-        self._mouse_move_lock = (
-            threading.Lock()
-        )  # Lock dla thread-safe dostępu do licznika
+        self._initialize_recording_state()
 
         try:
-            from pynput import keyboard, mouse  # type: ignore[import-untyped]
+            from pynput import keyboard, mouse
 
-            # Callback dla myszy
-            def on_click(x, y, button, pressed):
-                if self._recording_mode:
-                    self._recorded_actions.append(
-                        {
-                            "timestamp": datetime.now().isoformat(),
-                            "event_type": "mouse_click",
-                            "payload": {
-                                "x": x,
-                                "y": y,
-                                "button": str(button),
-                                "pressed": pressed,
-                            },
-                        }
-                    )
-
-            def on_scroll(x, y, dx, dy):
-                if self._recording_mode:
-                    self._recorded_actions.append(
-                        {
-                            "timestamp": datetime.now().isoformat(),
-                            "event_type": "mouse_scroll",
-                            "payload": {"x": x, "y": y, "dx": dx, "dy": dy},
-                        }
-                    )
-
-            def on_move(x, y):
-                # Zapisuj tylko co 10-ty ruch myszy, aby nie zaśmiecać logów
-                if self._recording_mode:
-                    with self._mouse_move_lock:
-                        self._mouse_move_counter += 1
-                        if self._mouse_move_counter % 10 == 0:
-                            self._recorded_actions.append(
-                                {
-                                    "timestamp": datetime.now().isoformat(),
-                                    "event_type": "mouse_move",
-                                    "payload": {"x": x, "y": y},
-                                }
-                            )
-
-            # Callback dla klawiatury - bezpieczne logowanie
-            def on_press(key):
-                if not self._recording_mode:
-                    return
-
-                # Bezpieczeństwo: nie loguj normalnych klawiszy jeśli privacy_filter włączony
-                # Loguj tylko klawisze funkcyjne i specjalne
-                if self.privacy_filter:
-                    # Sprawdź czy to klawisz specjalny/funkcyjny
-                    try:
-                        key_name = key.name if hasattr(key, "name") else None
-                        # Użyj stałej klasy SAFE_KEYS
-                        if key_name and key_name.lower() in self.SAFE_KEYS:
-                            self._recorded_actions.append(
-                                {
-                                    "timestamp": datetime.now().isoformat(),
-                                    "event_type": "keyboard_press",
-                                    "payload": {"key": key_name},
-                                }
-                            )
-                    except AttributeError:
-                        # Ignoruj zwykłe znaki w trybie bezpiecznym
-                        pass
-                else:
-                    # Bez filtra prywatności - loguj wszystko
-                    try:
-                        key_str = key.char if hasattr(key, "char") else str(key)
-                        self._recorded_actions.append(
-                            {
-                                "timestamp": datetime.now().isoformat(),
-                                "event_type": "keyboard_press",
-                                "payload": {"key": key_str},
-                            }
-                        )
-                    except AttributeError:
-                        # Key object may not have all attributes depending on the key type
-                        logger.debug("Key press event missing expected attributes")
-
-            # Uruchom listenery w osobnych wątkach
+            on_click, on_scroll, on_move = self._build_mouse_callbacks()
+            on_press = self._build_keyboard_callback()
             self._mouse_listener = mouse.Listener(
                 on_click=on_click, on_scroll=on_scroll, on_move=on_move
             )
@@ -508,6 +472,73 @@ class DesktopSensor:
             logger.error(f"Błąd podczas uruchamiania nagrywania: {e}")
             self._recording_mode = False
             raise
+
+    def _initialize_recording_state(self) -> None:
+        self._recording_mode = True
+        self._recorded_actions = []
+        self._mouse_listener = None
+        self._keyboard_listener = None
+        self._mouse_move_counter = 0
+        self._mouse_move_lock = threading.Lock()
+
+    def _build_mouse_callbacks(self):
+        def on_click(x, y, button, pressed):
+            if self._recording_mode:
+                self._append_recorded_action(
+                    "mouse_click",
+                    {"x": x, "y": y, "button": str(button), "pressed": pressed},
+                )
+
+        def on_scroll(x, y, dx, dy):
+            if self._recording_mode:
+                self._append_recorded_action(
+                    "mouse_scroll", {"x": x, "y": y, "dx": dx, "dy": dy}
+                )
+
+        def on_move(x, y):
+            if not self._recording_mode:
+                return
+            with self._mouse_move_lock:
+                self._mouse_move_counter += 1
+                if self._mouse_move_counter % 10 == 0:
+                    self._append_recorded_action("mouse_move", {"x": x, "y": y})
+
+        return on_click, on_scroll, on_move
+
+    def _build_keyboard_callback(self):
+        def on_press(key):
+            if not self._recording_mode:
+                return
+            if self.privacy_filter:
+                self._record_safe_keyboard_event(key)
+            else:
+                self._record_full_keyboard_event(key)
+
+        return on_press
+
+    def _record_safe_keyboard_event(self, key: Any) -> None:
+        try:
+            key_name = key.name if hasattr(key, "name") else None
+            if key_name and key_name.lower() in self.SAFE_KEYS:
+                self._append_recorded_action("keyboard_press", {"key": key_name})
+        except AttributeError:
+            logger.debug("Key press event missing expected attributes")
+
+    def _record_full_keyboard_event(self, key: Any) -> None:
+        try:
+            key_str = key.char if hasattr(key, "char") else str(key)
+            self._append_recorded_action("keyboard_press", {"key": key_str})
+        except AttributeError:
+            logger.debug("Key press event missing expected attributes")
+
+    def _append_recorded_action(self, event_type: str, payload: Dict[str, Any]) -> None:
+        self._recorded_actions.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "event_type": event_type,
+                "payload": payload,
+            }
+        )
 
     def stop_recording(self) -> List[Dict[str, Any]]:
         """

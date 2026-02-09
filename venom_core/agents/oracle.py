@@ -1,6 +1,7 @@
 """Moduł: oracle - Agent Wyrocznia (Deep Research & Multi-Hop Reasoning)."""
 
-from typing import Any, Optional
+from pathlib import Path
+from typing import Annotated, Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
@@ -10,6 +11,7 @@ from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSetti
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
+from semantic_kernel.functions import kernel_function
 
 from venom_core.agents.base import BaseAgent
 from venom_core.memory.graph_rag_service import GraphRAGService
@@ -17,6 +19,135 @@ from venom_core.memory.ingestion_engine import IngestionEngine
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class OraclePlugin:
+    """Plugin Oracle z funkcjami do reasoning."""
+
+    def __init__(self, oracle_agent: "OracleAgent"):
+        self.oracle = oracle_agent
+
+    @kernel_function(
+        name="global_search",
+        description="Wyszukiwanie globalne w grafie wiedzy. Używaj dla pytań o ogólny obraz, kontekst, podsumowanie. Analizuje społeczności w grafie.",
+    )
+    async def global_search(
+        self, query: Annotated[str, "Zapytanie użytkownika"]
+    ) -> str:
+        """Wyszukiwanie globalne."""
+        try:
+            llm_service: Any = self.oracle.kernel.get_service()
+            result = await self.oracle.graph_rag.global_search(query, llm_service)
+            return result
+        except Exception as e:
+            logger.error(f"Błąd w global_search: {e}")
+            return f"Błąd: {str(e)}"
+
+    @kernel_function(
+        name="local_search",
+        description="Wyszukiwanie lokalne z multi-hop reasoning. Używaj dla pytań o konkretne związki między encjami, łańcuchy przyczynowo-skutkowe.",
+    )
+    async def local_search(
+        self,
+        query: Annotated[str, "Zapytanie użytkownika"],
+        max_hops: Annotated[int, "Maksymalna liczba skoków w grafie (domyślnie 2)"] = 2,
+    ) -> str:
+        """Wyszukiwanie lokalne."""
+        try:
+            llm_service: Any = self.oracle.kernel.get_service()
+            result = await self.oracle.graph_rag.local_search(
+                query, max_hops, llm_service
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Błąd w local_search: {e}")
+            return f"Błąd: {str(e)}"
+
+    @kernel_function(
+        name="ingest_file",
+        description="Przetwarza i dodaje plik do grafu wiedzy. Obsługuje: PDF, DOCX, obrazy, audio, video, tekst.",
+    )
+    async def ingest_file(self, file_path: Annotated[str, "Ścieżka do pliku"]) -> str:
+        """Przetwarzanie pliku."""
+        try:
+            result = await self.oracle.ingestion_engine.ingest_file(file_path)
+            text = result["text"]
+            chunks = result["chunks"]
+            self.oracle.graph_rag.vector_store.upsert(
+                text=text,
+                metadata={**result["metadata"], "entity_id": f"doc_{file_path}"},
+                chunk_text=False,
+            )
+
+            if result["file_type"] in ["pdf", "docx", "text", "web"]:
+                llm_service: Any = self.oracle.kernel.get_service()
+                extraction_result = (
+                    await self.oracle.graph_rag.extract_knowledge_from_text(
+                        text[:3000], f"doc_{file_path}", llm_service
+                    )
+                )
+                safe_filename = Path(file_path).name
+                return (
+                    f"Plik przetworzony: {safe_filename}\nChunks: {len(chunks)}\n"
+                    f"Encje: {extraction_result.get('entities', 0)}\n"
+                    f"Relacje: {extraction_result.get('relationships', 0)}"
+                )
+
+            safe_filename = Path(file_path).name
+            return (
+                f"Plik przetworzony: {safe_filename}\nChunks: {len(chunks)}\n"
+                "(ekstrakcja wiedzy niedostępna dla tego typu pliku)"
+            )
+        except Exception as e:
+            logger.error(f"Błąd w ingest_file: {e}")
+            return f"Błąd podczas przetwarzania pliku: {str(e)}"
+
+    @kernel_function(
+        name="ingest_url",
+        description="Pobiera treść ze strony WWW i dodaje do grafu wiedzy.",
+    )
+    async def ingest_url(self, url: Annotated[str, "URL strony do pobrania"]) -> str:
+        """Pobieranie URL."""
+        try:
+            result = await self.oracle.ingestion_engine.ingest_url(url)
+            text = result["text"]
+            chunks = result["chunks"]
+            self.oracle.graph_rag.vector_store.upsert(
+                text=text,
+                metadata={**result["metadata"], "entity_id": f"url_{url}"},
+                chunk_text=False,
+            )
+
+            llm_service: Any = self.oracle.kernel.get_service()
+            extraction_result = await self.oracle.graph_rag.extract_knowledge_from_text(
+                text[:3000], f"url_{url}", llm_service
+            )
+            return (
+                f"URL przetworzony: {url}\nChunks: {len(chunks)}\n"
+                f"Encje: {extraction_result.get('entities', 0)}\n"
+                f"Relacje: {extraction_result.get('relationships', 0)}"
+            )
+        except Exception as e:
+            logger.error(f"Błąd w ingest_url: {e}")
+            return f"Błąd podczas przetwarzania URL: {str(e)}"
+
+    @kernel_function(
+        name="get_graph_stats",
+        description="Zwraca statystyki grafu wiedzy (liczba encji, relacji, społeczności).",
+    )
+    def get_graph_stats(self) -> str:
+        """Statystyki grafu."""
+        try:
+            stats = self.oracle.graph_rag.get_stats()
+            return f"""Statystyki grafu wiedzy:
+- Encje: {stats["total_nodes"]}
+- Relacje: {stats["total_edges"]}
+- Społeczności: {stats["communities_count"]}
+- Największa społeczność: {stats["largest_community_size"]} encji
+- Typy encji: {stats["entity_types"]}
+- Typy relacji: {stats["relationship_types"]}"""
+        except Exception as e:
+            return f"Błąd: {str(e)}"
 
 
 class OracleAgent(BaseAgent):
@@ -101,158 +232,6 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
 
     def _register_oracle_functions(self):
         """Rejestruje funkcje Oracle jako plugin dla Semantic Kernel."""
-        from typing import Annotated
-
-        from semantic_kernel.functions import kernel_function
-
-        class OraclePlugin:
-            """Plugin Oracle z funkcjami do reasoning."""
-
-            def __init__(self, oracle_agent):
-                self.oracle = oracle_agent
-
-            @kernel_function(
-                name="global_search",
-                description="Wyszukiwanie globalne w grafie wiedzy. Używaj dla pytań o ogólny obraz, kontekst, podsumowanie. Analizuje społeczności w grafie.",
-            )
-            async def global_search(
-                self, query: Annotated[str, "Zapytanie użytkownika"]
-            ) -> str:
-                """Wyszukiwanie globalne."""
-                try:
-                    llm_service = self.oracle.kernel.get_service()
-                    result = await self.oracle.graph_rag.global_search(
-                        query, llm_service
-                    )
-                    return result
-                except Exception as e:
-                    logger.error(f"Błąd w global_search: {e}")
-                    return f"Błąd: {str(e)}"
-
-            @kernel_function(
-                name="local_search",
-                description="Wyszukiwanie lokalne z multi-hop reasoning. Używaj dla pytań o konkretne związki między encjami, łańcuchy przyczynowo-skutkowe.",
-            )
-            async def local_search(
-                self,
-                query: Annotated[str, "Zapytanie użytkownika"],
-                max_hops: Annotated[
-                    int, "Maksymalna liczba skoków w grafie (domyślnie 2)"
-                ] = 2,
-            ) -> str:
-                """Wyszukiwanie lokalne."""
-                try:
-                    llm_service = self.oracle.kernel.get_service()
-                    result = await self.oracle.graph_rag.local_search(
-                        query, max_hops, llm_service
-                    )
-                    return result
-                except Exception as e:
-                    logger.error(f"Błąd w local_search: {e}")
-                    return f"Błąd: {str(e)}"
-
-            @kernel_function(
-                name="ingest_file",
-                description="Przetwarza i dodaje plik do grafu wiedzy. Obsługuje: PDF, DOCX, obrazy, audio, video, tekst.",
-            )
-            async def ingest_file(
-                self, file_path: Annotated[str, "Ścieżka do pliku"]
-            ) -> str:
-                """Przetwarzanie pliku."""
-                try:
-                    result = await self.oracle.ingestion_engine.ingest_file(file_path)
-                    text = result["text"]
-                    chunks = result["chunks"]
-
-                    # Dodaj do VectorStore
-                    self.oracle.graph_rag.vector_store.upsert(
-                        text=text,
-                        metadata={
-                            **result["metadata"],
-                            "entity_id": f"doc_{file_path}",
-                        },
-                        chunk_text=False,  # Już podzielone
-                    )
-
-                    # Ekstrahuj wiedzę (tylko dla tekstów, nie dla obrazów/audio)
-                    if result["file_type"] in ["pdf", "docx", "text", "web"]:
-                        llm_service = self.oracle.kernel.get_service()
-                        extraction_result = (
-                            await self.oracle.graph_rag.extract_knowledge_from_text(
-                                text[:3000],  # Ogranicz dla LLM
-                                f"doc_{file_path}",
-                                llm_service,
-                            )
-                        )
-
-                        # Sanityzuj nazwę pliku dla bezpieczeństwa
-                        from pathlib import Path
-
-                        safe_filename = Path(file_path).name
-                        return f"Plik przetworzony: {safe_filename}\nChunks: {len(chunks)}\nEncje: {extraction_result.get('entities', 0)}\nRelacje: {extraction_result.get('relationships', 0)}"
-                    else:
-                        # Sanityzuj nazwę pliku dla bezpieczeństwa
-                        from pathlib import Path
-
-                        safe_filename = Path(file_path).name
-                        return f"Plik przetworzony: {safe_filename}\nChunks: {len(chunks)}\n(ekstrakcja wiedzy niedostępna dla tego typu pliku)"
-
-                except Exception as e:
-                    logger.error(f"Błąd w ingest_file: {e}")
-                    return f"Błąd podczas przetwarzania pliku: {str(e)}"
-
-            @kernel_function(
-                name="ingest_url",
-                description="Pobiera treść ze strony WWW i dodaje do grafu wiedzy.",
-            )
-            async def ingest_url(
-                self, url: Annotated[str, "URL strony do pobrania"]
-            ) -> str:
-                """Pobieranie URL."""
-                try:
-                    result = await self.oracle.ingestion_engine.ingest_url(url)
-                    text = result["text"]
-                    chunks = result["chunks"]
-
-                    # Dodaj do VectorStore
-                    self.oracle.graph_rag.vector_store.upsert(
-                        text=text,
-                        metadata={**result["metadata"], "entity_id": f"url_{url}"},
-                        chunk_text=False,
-                    )
-
-                    # Ekstrahuj wiedzę
-                    llm_service = self.oracle.kernel.get_service()
-                    extraction_result = (
-                        await self.oracle.graph_rag.extract_knowledge_from_text(
-                            text[:3000], f"url_{url}", llm_service
-                        )
-                    )
-
-                    return f"URL przetworzony: {url}\nChunks: {len(chunks)}\nEncje: {extraction_result.get('entities', 0)}\nRelacje: {extraction_result.get('relationships', 0)}"
-
-                except Exception as e:
-                    logger.error(f"Błąd w ingest_url: {e}")
-                    return f"Błąd podczas przetwarzania URL: {str(e)}"
-
-            @kernel_function(
-                name="get_graph_stats",
-                description="Zwraca statystyki grafu wiedzy (liczba encji, relacji, społeczności).",
-            )
-            def get_graph_stats(self) -> str:
-                """Statystyki grafu."""
-                try:
-                    stats = self.oracle.graph_rag.get_stats()
-                    return f"""Statystyki grafu wiedzy:
-- Encje: {stats["total_nodes"]}
-- Relacje: {stats["total_edges"]}
-- Społeczności: {stats["communities_count"]}
-- Największa społeczność: {stats["largest_community_size"]} encji
-- Typy encji: {stats["entity_types"]}
-- Typy relacji: {stats["relationship_types"]}"""
-                except Exception as e:
-                    return f"Błąd: {str(e)}"
-
         plugin = OraclePlugin(self)
         self.kernel.add_plugin(plugin, plugin_name="OraclePlugin")
 

@@ -353,111 +353,127 @@ class Professor(BaseAgent):
         ]
 
         logger.info("Rozpoczynam ewaluację modelu w Arenie...")
-
-        # Jeśli nie podano candidate_model, użyj ostatniego z treningu
-        if not candidate_model and self.training_history:
-            last_training = self.training_history[-1]
-            if last_training.get("status") == "completed":
-                # Sprawdź czy adapter istnieje
-                from pathlib import Path
-
-                adapter_path_str = last_training.get("adapter_path")
-                if adapter_path_str:
-                    adapter_path = Path(adapter_path_str)
-                    if adapter_path.exists():
-                        candidate_model = str(adapter_path)
+        candidate_model = self._resolve_candidate_model(candidate_model)
 
         if not candidate_model:
             return "❌ Brak nowego modelu do ewaluacji. Przeprowadź trening najpierw."
 
-        # Dla uproszczenia, używamy prostej metryki bez faktycznego uruchamiania modeli
-        # (wymaga integracji z Ollama lub transformers)
-        # W produkcji tutaj należy uruchomić oba modele i porównać odpowiedzi
-
         try:
-            # Symulujemy ewaluację - sprawdzamy czy modele są dostępne
             candidate_available = self._check_model_availability(candidate_model)
-
             if not candidate_available:
                 return f"❌ Model kandydujący nie jest dostępny: {candidate_model}"
-
-            # Przeprowadź testy
-            candidate_scores = []
-            baseline_scores = []
-
-            for i, question in enumerate(golden_questions):
-                logger.info(f"Testowanie pytania {i + 1}/{len(golden_questions)}...")
-
-                # W rzeczywistym systemie tutaj uruchamiamy modele
-                # Na razie symulujemy wyniki na podstawie prostych metryk
-                candidate_response = self._simulate_model_response(
-                    question, "candidate"
-                )
-                baseline_response = self._simulate_model_response(question, "baseline")
-
-                # Oceń odpowiedzi (prosta metryka: długość i obecność kodu)
-                candidate_score = self._score_response(
-                    candidate_response, question["instruction"]
-                )
-                baseline_score = self._score_response(
-                    baseline_response, question["instruction"]
-                )
-
-                candidate_scores.append(candidate_score)
-                baseline_scores.append(baseline_score)
-
-            # Oblicz średnie wyniki
+            candidate_scores, baseline_scores = self._run_evaluation_questions(
+                golden_questions
+            )
             if not candidate_scores or not baseline_scores:
                 return "❌ Błąd: Brak wyników ewaluacji"
-
-            avg_candidate = sum(candidate_scores) / len(candidate_scores)
-            avg_baseline = sum(baseline_scores) / len(baseline_scores)
-
-            # Oblicz improvement score z obsługą zerowej baseline
-            if avg_baseline > 0:
-                improvement_score = (avg_candidate - avg_baseline) / avg_baseline
-            elif avg_candidate > 0:
-                # Jeśli baseline=0 ale candidate>0, to 100% improvement
-                improvement_score = 1.0
-            else:
-                # Oba zero - brak poprawy
-                improvement_score = 0.0
-
-            winner = "new_model" if avg_candidate > avg_baseline else "baseline_model"
-
-            # Generuj raport
-            report = (
-                "🏟️ ARENA - Ewaluacja Modelu\n\n"
-                f"📊 Wyniki:\n"
-                f"- Model bazowy: {avg_baseline:.2f}/10\n"
-                f"- Nowy model: {avg_candidate:.2f}/10\n"
-                f"- Improvement: {improvement_score * 100:+.1f}%\n\n"
-                f"🏆 Zwycięzca: {winner}\n\n"
-                "📝 Szczegóły testów:\n"
+            avg_candidate, avg_baseline = self._compute_averages(
+                candidate_scores, baseline_scores
             )
-
-            for i, (q, c_score, b_score) in enumerate(
-                zip(golden_questions, candidate_scores, baseline_scores)
-            ):
-                instruction_preview = q["instruction"][:50] + (
-                    "..." if len(q["instruction"]) > 50 else ""
-                )
-                report += f"{i + 1}. {instruction_preview}\n"
-                report += f"   Baseline: {b_score}/10, Candidate: {c_score}/10\n"
-
-            if winner == "new_model" and improvement_score > 0.1:
-                report += "\n✅ REKOMENDACJA: Promuj nowy model do produkcji"
-            elif improvement_score > 0:
-                report += "\n⚠️ REKOMENDACJA: Niewielka poprawa, rozważ więcej treningu"
-            else:
-                report += "\n❌ REKOMENDACJA: Zostań przy aktualnym modelu"
-
-            return report
+            improvement_score = self._calculate_improvement(avg_candidate, avg_baseline)
+            winner = "new_model" if avg_candidate > avg_baseline else "baseline_model"
+            return self._build_evaluation_report(
+                golden_questions,
+                candidate_scores,
+                baseline_scores,
+                avg_candidate,
+                avg_baseline,
+                improvement_score,
+                winner,
+            )
 
         except Exception as e:
             error_msg = f"❌ Błąd podczas ewaluacji: {e}"
             logger.error(error_msg)
             return error_msg
+
+    def _resolve_candidate_model(self, candidate_model: Optional[str]) -> Optional[str]:
+        if candidate_model or not self.training_history:
+            return candidate_model
+        last_training = self.training_history[-1]
+        if last_training.get("status") != "completed":
+            return candidate_model
+        from pathlib import Path
+
+        adapter_path_str = last_training.get("adapter_path")
+        if not adapter_path_str:
+            return candidate_model
+        adapter_path = Path(adapter_path_str)
+        if adapter_path.exists():
+            return str(adapter_path)
+        return candidate_model
+
+    def _run_evaluation_questions(
+        self, golden_questions: list[dict[str, str]]
+    ) -> tuple[list[float], list[float]]:
+        candidate_scores: list[float] = []
+        baseline_scores: list[float] = []
+        for i, question in enumerate(golden_questions):
+            logger.info(f"Testowanie pytania {i + 1}/{len(golden_questions)}...")
+            candidate_response = self._simulate_model_response(question, "candidate")
+            baseline_response = self._simulate_model_response(question, "baseline")
+            candidate_scores.append(
+                self._score_response(candidate_response, question["instruction"])
+            )
+            baseline_scores.append(
+                self._score_response(baseline_response, question["instruction"])
+            )
+        return candidate_scores, baseline_scores
+
+    def _compute_averages(
+        self, candidate_scores: list[float], baseline_scores: list[float]
+    ) -> tuple[float, float]:
+        avg_candidate = sum(candidate_scores) / len(candidate_scores)
+        avg_baseline = sum(baseline_scores) / len(baseline_scores)
+        return avg_candidate, avg_baseline
+
+    def _calculate_improvement(
+        self, avg_candidate: float, avg_baseline: float
+    ) -> float:
+        if avg_baseline > 0:
+            return (avg_candidate - avg_baseline) / avg_baseline
+        if avg_candidate > 0:
+            return 1.0
+        return 0.0
+
+    def _build_evaluation_report(
+        self,
+        golden_questions: list[dict[str, str]],
+        candidate_scores: list[float],
+        baseline_scores: list[float],
+        avg_candidate: float,
+        avg_baseline: float,
+        improvement_score: float,
+        winner: str,
+    ) -> str:
+        report = (
+            "🏟️ ARENA - Ewaluacja Modelu\n\n"
+            f"📊 Wyniki:\n"
+            f"- Model bazowy: {avg_baseline:.2f}/10\n"
+            f"- Nowy model: {avg_candidate:.2f}/10\n"
+            f"- Improvement: {improvement_score * 100:+.1f}%\n\n"
+            f"🏆 Zwycięzca: {winner}\n\n"
+            "📝 Szczegóły testów:\n"
+        )
+        for i, (q, c_score, b_score) in enumerate(
+            zip(golden_questions, candidate_scores, baseline_scores)
+        ):
+            instruction_preview = q["instruction"][:50] + (
+                "..." if len(q["instruction"]) > 50 else ""
+            )
+            report += f"{i + 1}. {instruction_preview}\n"
+            report += f"   Baseline: {b_score}/10, Candidate: {c_score}/10\n"
+        report += self._build_evaluation_recommendation(winner, improvement_score)
+        return report
+
+    def _build_evaluation_recommendation(
+        self, winner: str, improvement_score: float
+    ) -> str:
+        if winner == "new_model" and improvement_score > 0.1:
+            return "\n✅ REKOMENDACJA: Promuj nowy model do produkcji"
+        if improvement_score > 0:
+            return "\n⚠️ REKOMENDACJA: Niewielka poprawa, rozważ więcej treningu"
+        return "\n❌ REKOMENDACJA: Zostań przy aktualnym modelu"
 
     def _check_model_availability(self, model_path: str) -> bool:
         """
@@ -620,69 +636,9 @@ class Professor(BaseAgent):
         Returns:
             Słownik z parametrami treningu
         """
-        # Domyślne wartości
-        batch_size = self.DEFAULT_BATCH_SIZE
-        num_epochs = self.DEFAULT_NUM_EPOCHS
+        batch_size, num_epochs = self._select_dataset_based_parameters(dataset_size)
         learning_rate = self.DEFAULT_LEARNING_RATE
-
-        # Tylko jeśli dataset_size został faktycznie podany (> 0)
-        if dataset_size > 0:
-            # Heurystyka #1: Dostosuj batch_size na podstawie rozmiaru datasetu
-            if dataset_size > 1000:
-                # Duży dataset -> większy batch size dla lepszego wykorzystania GPU
-                batch_size = 8
-            elif dataset_size > 500:
-                batch_size = 6
-            elif dataset_size < 100:
-                # Mały dataset -> mniejszy batch size, aby uniknąć overfittingu
-                batch_size = 2
-            # Dla 100-500: używamy domyślnych wartości (batch_size=4)
-
-            # Heurystyka #2: Dostosuj liczbę epok na podstawie rozmiaru datasetu
-            if dataset_size < 100:
-                # Mały dataset -> więcej epok, aby model dobrze się nauczył
-                num_epochs = 5
-            elif dataset_size > 1000:
-                # Duży dataset -> mniej epok (model się szybciej uczy)
-                num_epochs = 2
-            # Dla 100-1000: używamy domyślnych wartości (num_epochs=3)
-
-        # Heurystyka #3: Sprawdź dostępną VRAM (jeśli gpu_habitat dostępny)
-        if self.gpu_habitat:
-            try:
-                import shutil
-                import subprocess
-
-                # Sprawdź czy nvidia-smi jest dostępny
-                if shutil.which("nvidia-smi"):
-                    result = subprocess.run(
-                        [
-                            "nvidia-smi",
-                            "--query-gpu=memory.total",
-                            "--format=csv,noheader,nounits",
-                        ],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                        check=False,  # Nie rzucaj wyjątku przy niezerowym exit code
-                    )
-                    if result.returncode == 0 and result.stdout.strip():
-                        vram_lines = result.stdout.strip().split("\n")
-                        vram_values = [int(line) for line in vram_lines if line.strip()]
-                        if vram_values:
-                            vram_mb = min(
-                                vram_values
-                            )  # Użyj minimalnej VRAM dla multi-GPU
-                            vram_gb = vram_mb / 1024
-
-                            if vram_gb < 8:
-                                # Niska VRAM -> wymuś bardzo mały batch size
-                                batch_size = min(batch_size, 1)
-                                logger.info(
-                                    f"Wykryto niską VRAM ({vram_gb:.1f}GB), ustawiono batch_size=1"
-                                )
-            except (ValueError, IndexError, subprocess.TimeoutExpired, OSError) as e:
-                logger.debug(f"Nie można sprawdzić VRAM: {e}")
+        batch_size = self._apply_vram_constraints(batch_size)
 
         logger.info(
             f"Dobrano parametry dla dataset_size={dataset_size}: "
@@ -697,6 +653,64 @@ class Professor(BaseAgent):
             "max_seq_length": self.DEFAULT_MAX_SEQ_LENGTH,
             "batch_size": batch_size,
         }
+
+    def _select_dataset_based_parameters(self, dataset_size: int) -> tuple[int, int]:
+        batch_size = self.DEFAULT_BATCH_SIZE
+        num_epochs = self.DEFAULT_NUM_EPOCHS
+        if dataset_size <= 0:
+            return batch_size, num_epochs
+        if dataset_size > 1000:
+            batch_size = 8
+            num_epochs = 2
+            return batch_size, num_epochs
+        if dataset_size > 500:
+            batch_size = 6
+            return batch_size, num_epochs
+        if dataset_size < 100:
+            batch_size = 2
+            num_epochs = 5
+        return batch_size, num_epochs
+
+    def _apply_vram_constraints(self, batch_size: int) -> int:
+        if not self.gpu_habitat:
+            return batch_size
+        vram_gb = self._detect_min_vram_gb()
+        if vram_gb is None:
+            return batch_size
+        if vram_gb < 8:
+            logger.info(f"Wykryto niską VRAM ({vram_gb:.1f}GB), ustawiono batch_size=1")
+            return min(batch_size, 1)
+        return batch_size
+
+    def _detect_min_vram_gb(self) -> Optional[float]:
+        try:
+            import shutil
+            import subprocess
+
+            if not shutil.which("nvidia-smi"):
+                return None
+            result = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                return None
+            vram_values = [
+                int(line) for line in result.stdout.strip().split("\n") if line.strip()
+            ]
+            if not vram_values:
+                return None
+            return min(vram_values) / 1024
+        except Exception as e:
+            logger.debug(f"Nie można sprawdzić VRAM: {e}")
+            return None
 
     def _get_learning_status(self) -> str:
         """

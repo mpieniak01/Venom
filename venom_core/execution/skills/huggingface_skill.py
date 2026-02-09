@@ -67,60 +67,83 @@ class HuggingFaceSkill:
         )
 
         try:
-            # Parametry wyszukiwania
-            search_params = {
-                "limit": MAX_MODELS_RESULTS * FILTER_MULTIPLIER,
-                "sort": sort,
-            }
-
-            # Dodaj task jeśli podany
-            if task:
-                search_params["filter"] = task
-
-            # Dodaj query jeśli podany
-            if query:
-                search_params["search"] = query
-
-            # Wyszukaj modele
+            search_params = self._build_model_search_params(
+                task=task, query=query, sort=sort
+            )
             models = list(self.api.list_models(**search_params))
 
             if not models:
                 return f"Nie znaleziono modeli dla: task={task}, query={query}"
 
-            # Preferuj modele z ONNX lub GGUF (lekkie, lokalne)
-            onnx_models = []
-            gguf_models = []
-            other_models = []
+            prioritized_models = self._prioritize_models(models)
+            results = self._to_model_results(prioritized_models)
 
-            for model in models:
-                tags_lower = [tag.lower() for tag in (model.tags or [])]
-                model_id_lower = model.id.lower()
+            if not results:
+                return f"Nie znaleziono modeli dla: task={task}, query={query}"
 
-                # Klasyfikuj i zapisz typ kompatybilności
-                if "onnx" in tags_lower or "onnx" in model_id_lower:
-                    model._venom_compat = "✅ ONNX (lokalne uruchamianie)"
-                    onnx_models.append(model)
-                elif "gguf" in tags_lower or "gguf" in model_id_lower:
-                    model._venom_compat = "✅ GGUF (lokalne uruchamianie)"
-                    gguf_models.append(model)
-                else:
-                    model._venom_compat = "⚠️ Standard (wymaga GPU/transformers)"
-                    other_models.append(model)
+            output = self._format_model_search_output(results, task=task, query=query)
 
-            # Preferuj kolejność: ONNX > GGUF > inne
-            prioritized_models = (
-                onnx_models[:MAX_MODELS_RESULTS]
-                + gguf_models[: MAX_MODELS_RESULTS - len(onnx_models)]
-                + other_models[
-                    : MAX_MODELS_RESULTS - len(onnx_models) - len(gguf_models)
-                ]
-            )
+            logger.info(f"HuggingFaceSkill: znaleziono {len(results)} modeli")
+            return output.strip()
 
-            # Ogranicz do TOP 5
-            results = []
-            for i, model in enumerate(prioritized_models[:MAX_MODELS_RESULTS], 1):
-                model_info = {
-                    "rank": i,
+        except Exception as e:
+            logger.error(f"Błąd podczas wyszukiwania modeli: {e}")
+            return f"❌ Wystąpił błąd: {str(e)}"
+
+    @staticmethod
+    def _build_model_search_params(
+        task: str, query: str, sort: str
+    ) -> dict[str, object]:
+        params: dict[str, object] = {
+            "limit": MAX_MODELS_RESULTS * FILTER_MULTIPLIER,
+            "sort": sort,
+        }
+        if task:
+            params["filter"] = task
+        if query:
+            params["search"] = query
+        return params
+
+    @staticmethod
+    def _classify_model_compatibility(model) -> str:
+        tags_lower = [tag.lower() for tag in (model.tags or [])]
+        model_id_lower = model.id.lower()
+        if "onnx" in tags_lower or "onnx" in model_id_lower:
+            return "onnx"
+        if "gguf" in tags_lower or "gguf" in model_id_lower:
+            return "gguf"
+        return "other"
+
+    def _prioritize_models(self, models: list) -> list:
+        onnx_models = []
+        gguf_models = []
+        other_models = []
+        for model in models:
+            bucket = self._classify_model_compatibility(model)
+            if bucket == "onnx":
+                model._venom_compat = "✅ ONNX (lokalne uruchamianie)"
+                onnx_models.append(model)
+            elif bucket == "gguf":
+                model._venom_compat = "✅ GGUF (lokalne uruchamianie)"
+                gguf_models.append(model)
+            else:
+                model._venom_compat = "⚠️ Standard (wymaga GPU/transformers)"
+                other_models.append(model)
+
+        prioritized = (
+            onnx_models[:MAX_MODELS_RESULTS]
+            + gguf_models[: MAX_MODELS_RESULTS - len(onnx_models)]
+            + other_models[: MAX_MODELS_RESULTS - len(onnx_models) - len(gguf_models)]
+        )
+        return prioritized[:MAX_MODELS_RESULTS]
+
+    @staticmethod
+    def _to_model_results(prioritized_models: list) -> list[dict[str, object]]:
+        results: list[dict[str, object]] = []
+        for rank, model in enumerate(prioritized_models, 1):
+            results.append(
+                {
+                    "rank": rank,
                     "id": model.id,
                     "task": getattr(model, "pipeline_tag", "Nieznane"),
                     "downloads": getattr(model, "downloads", 0),
@@ -129,36 +152,30 @@ class HuggingFaceSkill:
                     "tags": ", ".join(model.tags[:5]) if model.tags else "Brak tagów",
                     "compatibility": model._venom_compat,
                 }
+            )
+        return results
 
-                results.append(model_info)
+    @staticmethod
+    def _format_model_search_output(
+        results: list[dict[str, object]], *, task: str, query: str
+    ) -> str:
+        output = f"🤗 TOP {len(results)} modeli Hugging Face\n"
+        if task:
+            output += f"📋 Zadanie: {task}\n"
+        if query:
+            output += f"🔍 Zapytanie: {query}\n"
+        output += "\n"
 
-            if not results:
-                return f"Nie znaleziono modeli dla: task={task}, query={query}"
-
-            # Formatuj wyniki
-            output = f"🤗 TOP {len(results)} modeli Hugging Face\n"
-            if task:
-                output += f"📋 Zadanie: {task}\n"
-            if query:
-                output += f"🔍 Zapytanie: {query}\n"
-            output += "\n"
-
-            for r in results:
-                output += f"[{r['rank']}] {r['id']}\n"
-                output += (
-                    f"📊 Pobrania: {r['downloads']:,} | ❤️ Polubienia: {r['likes']}\n"
-                )
-                output += f"🎯 Zadanie: {r['task']}\n"
-                output += f"{r['compatibility']}\n"
-                output += f"🏷️ Tagi: {r['tags']}\n"
-                output += f"🔗 URL: {r['url']}\n\n"
-
-            logger.info(f"HuggingFaceSkill: znaleziono {len(results)} modeli")
-            return output.strip()
-
-        except Exception as e:
-            logger.error(f"Błąd podczas wyszukiwania modeli: {e}")
-            return f"❌ Wystąpił błąd: {str(e)}"
+        for row in results:
+            output += f"[{row['rank']}] {row['id']}\n"
+            output += (
+                f"📊 Pobrania: {row['downloads']:,} | ❤️ Polubienia: {row['likes']}\n"
+            )
+            output += f"🎯 Zadanie: {row['task']}\n"
+            output += f"{row['compatibility']}\n"
+            output += f"🏷️ Tagi: {row['tags']}\n"
+            output += f"🔗 URL: {row['url']}\n\n"
+        return output
 
     @kernel_function(
         name="get_model_card",

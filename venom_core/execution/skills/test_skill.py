@@ -285,38 +285,13 @@ class TestSkill:
         Returns:
             Obiekt TestReport
         """
-        passed = 0
-        failed = 0
-        failures = []
-
-        # Parsuj linię z podsumowaniem (np. "5 passed, 2 failed in 1.23s")
         lines = output.split("\n")
-
-        for line in lines:
-            # Szukaj linii z podsumowaniem
-            if " passed" in line or " failed" in line:
-                # Obsługa formatów typu:
-                # "2 passed, 1 failed in 0.10s" oraz "2 passed in 0.05s"
-                lowered = line.lower().replace(",", " ").replace("=", " ")
-                parts = lowered.split()
-                for i, part in enumerate(parts):
-                    if part == "passed" and i > 0 and parts[i - 1].isdigit():
-                        passed = int(parts[i - 1])
-                    if part == "failed" and i > 0 and parts[i - 1].isdigit():
-                        failed = int(parts[i - 1])
-
-            # Zbierz szczegóły błędów (linie z FAILED)
-            if line.strip().startswith("FAILED") or "AssertionError" in line:
-                failures.append(line.strip())
+        passed, failed = self._extract_pytest_summary(lines)
+        failures = self._extract_pytest_failures(lines)
 
         # Jeśli nie znaleziono podsumowania, spróbuj alternatywnej metody
         if passed == 0 and failed == 0 and exit_code != 0:
-            # Sprawdź czy są jakieś linie z PASSED/FAILED
-            for line in lines:
-                if "PASSED" in line:
-                    passed += 1
-                elif "FAILED" in line:
-                    failed += 1
+            passed, failed = self._fallback_count_tests(lines)
 
         return TestReport(
             exit_code=exit_code,
@@ -325,6 +300,42 @@ class TestSkill:
             failures=failures,
             raw_output=output,
         )
+
+    @staticmethod
+    def _extract_pytest_summary(lines: list[str]) -> tuple[int, int]:
+        passed = 0
+        failed = 0
+        for line in lines:
+            if " passed" not in line and " failed" not in line:
+                continue
+            lowered = line.lower().replace(",", " ").replace("=", " ")
+            parts = lowered.split()
+            for i, part in enumerate(parts):
+                if part == "passed" and i > 0 and parts[i - 1].isdigit():
+                    passed = int(parts[i - 1])
+                if part == "failed" and i > 0 and parts[i - 1].isdigit():
+                    failed = int(parts[i - 1])
+        return passed, failed
+
+    @staticmethod
+    def _extract_pytest_failures(lines: list[str]) -> list[str]:
+        failures: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("FAILED") or "AssertionError" in line:
+                failures.append(stripped)
+        return failures
+
+    @staticmethod
+    def _fallback_count_tests(lines: list[str]) -> tuple[int, int]:
+        passed = 0
+        failed = 0
+        for line in lines:
+            if "PASSED" in line:
+                passed += 1
+            elif "FAILED" in line:
+                failed += 1
+        return passed, failed
 
     def _parse_linter_output(self, exit_code: int, output: str) -> LintReport:
         """

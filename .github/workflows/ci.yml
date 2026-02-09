@@ -45,6 +45,7 @@ jobs:
           make audit-ci-lite
           make check-new-code-coverage \
             NEW_CODE_INCLUDE_BASELINE=1 \
+            NEW_CODE_AUTO_INCLUDE_CHANGED=1 \
             NEW_CODE_BASELINE_GROUP=config/pytest-groups/ci-lite.txt \
             NEW_CODE_TEST_GROUP=config/pytest-groups/sonar-new-code.txt \
             NEW_CODE_COV_TARGET=venom_core \
@@ -106,6 +107,9 @@ jobs:
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@bfd4e558cda28cda6b5defafb9232d191be8c203
+        with:
+          args: >
+            -Dsonar.newCode.referenceBranch=main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

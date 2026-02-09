@@ -14,14 +14,16 @@
 **Venom** is an autonomous multi-agent engineering system with planning, tool execution, and persistent memory.
 
 ### Key Features
-- **Strategic Planning** — Breaks complex goals into executable steps.
-- **Agent Orchestration** — Routes tasks to specialized agents.
-- **Tooling + MCP Import** — Uses local tools and imports MCP tools from Git.
-- **Runtime LLM Selection** — Switches Ollama / vLLM from the UI.
-- **Long-term Memory** — Stores and reuses lessons and context.
-- **Learning by Observation** — Records demonstrations and builds workflows.
-- **Chat Continuity** — Session history per `session_id` across restarts.
-- **Services Panel** — `/config` shows runtime status of local stack.
+- 🧠 **Strategic Planning** — Breaks complex goals into executable steps.
+- 🤖 **Agent Orchestration** — Routes tasks to specialized agents.
+- 🔌 **Tooling + MCP Import** — Uses local tools and imports MCP tools from Git.
+- 🧭 **Runtime LLM Selection** — Switches Ollama / vLLM from the UI.
+- 💾 **Long-term Memory** — Stores and reuses lessons and context.
+- 🎓 **Learning by Observation** — Records demonstrations and builds workflows.
+- 👍👎 **Quality Loop** — User feedback, logs, and response quality metrics.
+- 🧠 **Hidden Prompts** — Approved responses stored as contextual shortcuts.
+- 💬 **Chat Continuity** — Session history per `session_id` across restarts.
+- 🛠️ **Services Panel** — `/config` shows runtime status of local stack.
 
 See `docs/` for architecture, frontend guide, and testing policy.
 

@@ -1,6 +1,6 @@
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -15,7 +15,12 @@ from venom_core.core.orchestrator.orchestrator_events import (
     trace_llm_start,
     trace_step_async,
 )
-from venom_core.core.orchestrator.orchestrator_submit import should_use_fast_path
+from venom_core.core.orchestrator.orchestrator_submit import (
+    run_task_fastpath,
+    run_task_with_queue,
+    should_use_fast_path,
+    submit_task,
+)
 from venom_core.core.orchestrator.task_manager import TaskManager
 from venom_core.core.orchestrator.task_pipeline.context_builder import (
     ContextBuilder,
@@ -379,3 +384,209 @@ async def test_trace_step_async_swallow_exceptions_from_tracer():
 
     orch = SimpleNamespace(request_tracer=FailingTracer())
     await trace_step_async(orch, uuid4(), "actor", "action", status="ok")
+
+
+@pytest.mark.asyncio
+async def test_submit_task_returns_queued_response_when_paused(monkeypatch):
+    task_id = uuid4()
+    task = SimpleNamespace(id=task_id, status="PENDING")
+    runtime_info = SimpleNamespace(
+        provider="local",
+        model_name="test-model",
+        endpoint="http://localhost:11434",
+        to_payload=lambda: {"provider": "local", "model": "test-model"},
+    )
+
+    class DummyStateManager:
+        def __init__(self):
+            self.context_updates = []
+            self.logs = []
+
+        def create_task(self, content):
+            self.created_content = content
+            return task
+
+        def update_context(self, t_id, payload):
+            self.context_updates.append((t_id, payload))
+
+        def add_log(self, t_id, message):
+            self.logs.append((t_id, message))
+
+    state_manager = DummyStateManager()
+    request_tracer = SimpleNamespace(
+        create_trace=MagicMock(),
+        add_step=MagicMock(),
+        set_llm_metadata=MagicMock(),
+    )
+    orch = SimpleNamespace(
+        _refresh_kernel_if_needed=lambda: None,
+        last_activity=None,
+        state_manager=state_manager,
+        request_tracer=request_tracer,
+        task_manager=SimpleNamespace(is_paused=True, check_capacity=AsyncMock()),
+        _broadcast_event=AsyncMock(),
+    )
+
+    spawned = []
+
+    def _capture_spawn(coro):
+        spawned.append(coro)
+
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.orchestrator_submit.get_active_llm_runtime",
+        lambda: runtime_info,
+    )
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.orchestrator_submit._spawn_background_task",
+        _capture_spawn,
+    )
+
+    request = TaskRequest(
+        content="task-content",
+        session_id="s-1",
+        expected_config_hash="cfg-1",
+        expected_runtime_id="rt-1",
+        images=["img-a", "img-b"],
+    )
+    response = await submit_task(orch, request)
+
+    assert response.task_id == task_id
+    assert response.llm_provider == "local"
+    assert response.llm_model == "test-model"
+    assert response.llm_endpoint == "http://localhost:11434"
+
+    assert state_manager.context_updates
+    llm_payload = state_manager.context_updates[0][1]["llm_runtime"]
+    assert llm_payload["status"] == "ready"
+    assert llm_payload["expected_config_hash"] == "cfg-1"
+    assert llm_payload["expected_runtime_id"] == "rt-1"
+    assert any("Zadanie zawiera 2 obrazów" in msg for _, msg in state_manager.logs)
+    assert any("trybie pauzy" in msg for _, msg in state_manager.logs)
+    request_tracer.create_trace.assert_called_once()
+    request_tracer.add_step.assert_called_once()
+    request_tracer.set_llm_metadata.assert_called_once()
+    orch._broadcast_event.assert_awaited()
+    assert len(spawned) == 1
+    for coro in spawned:
+        coro.close()
+
+
+@pytest.mark.asyncio
+async def test_submit_task_queues_when_capacity_limit_reached(monkeypatch):
+    task_id = uuid4()
+    task = SimpleNamespace(id=task_id, status="PENDING")
+    runtime_info = SimpleNamespace(
+        provider="local",
+        model_name="test-model",
+        endpoint="http://localhost:11434",
+        to_payload=lambda: {"provider": "local", "model": "test-model"},
+    )
+    state_manager = SimpleNamespace(
+        create_task=lambda content: task,
+        update_context=lambda *_args, **_kwargs: None,
+        add_log=MagicMock(),
+    )
+    task_manager = SimpleNamespace(
+        is_paused=False,
+        check_capacity=AsyncMock(return_value=(False, 2)),
+    )
+    orch = SimpleNamespace(
+        _refresh_kernel_if_needed=lambda: None,
+        last_activity=None,
+        state_manager=state_manager,
+        request_tracer=None,
+        task_manager=task_manager,
+        _broadcast_event=AsyncMock(),
+    )
+    spawned = []
+
+    def _capture_spawn(coro):
+        spawned.append(coro)
+
+    async def _fake_run_task_with_queue(_orch, _task_id, _request):
+        return None
+
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.orchestrator_submit.get_active_llm_runtime",
+        lambda: runtime_info,
+    )
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.orchestrator_submit._spawn_background_task",
+        _capture_spawn,
+    )
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.orchestrator_submit.run_task_with_queue",
+        _fake_run_task_with_queue,
+    )
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.orchestrator_submit.SETTINGS.ENABLE_QUEUE_LIMITS",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.orchestrator_submit.SETTINGS.MAX_CONCURRENT_TASKS",
+        4,
+        raising=False,
+    )
+
+    response = await submit_task(orch, TaskRequest(content="task-content"))
+
+    assert response.task_id == task_id
+    task_manager.check_capacity.assert_awaited_once()
+    orch._broadcast_event.assert_awaited()
+    assert len(spawned) == 2
+    state_manager.add_log.assert_called()
+    for coro in spawned:
+        coro.close()
+
+
+@pytest.mark.asyncio
+async def test_run_task_with_queue_marks_failed_when_no_task_handle(monkeypatch):
+    task_id = uuid4()
+    task_manager = SimpleNamespace(
+        is_paused=False,
+        check_capacity=AsyncMock(return_value=(True, 0)),
+        register_task=AsyncMock(),
+        unregister_task=AsyncMock(),
+    )
+    state_manager = SimpleNamespace(update_status=AsyncMock())
+    orch = SimpleNamespace(
+        task_manager=task_manager,
+        state_manager=state_manager,
+        _run_task=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.orchestrator_submit.asyncio.current_task",
+        lambda: None,
+    )
+
+    await run_task_with_queue(orch, task_id, TaskRequest(content="x"))
+
+    state_manager.update_status.assert_awaited_once()
+    task_manager.register_task.assert_not_called()
+    task_manager.unregister_task.assert_not_called()
+    orch._run_task.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_task_fastpath_marks_failed_when_no_task_handle(monkeypatch):
+    task_id = uuid4()
+    orch = SimpleNamespace(
+        task_manager=SimpleNamespace(
+            register_task=AsyncMock(),
+            unregister_task=AsyncMock(),
+        ),
+        state_manager=SimpleNamespace(update_status=AsyncMock()),
+        _run_task=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.orchestrator_submit.asyncio.current_task",
+        lambda: None,
+    )
+
+    await run_task_fastpath(orch, task_id, TaskRequest(content="x"))
+
+    orch.state_manager.update_status.assert_awaited_once()
+    orch.task_manager.register_task.assert_not_called()
+    orch.task_manager.unregister_task.assert_not_called()
+    orch._run_task.assert_not_called()

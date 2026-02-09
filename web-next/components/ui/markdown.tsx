@@ -56,8 +56,7 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
 
   return (
     <div
-      className={`prose prose-invert max-w-none break-words text-sm leading-relaxed [&_a]:break-all [&_.chat-sources-label]:text-xs ${hasSources ? "[&_a]:text-xs [&_a]:italic" : ""
-        }`}
+      className={`prose prose-invert max-w-none break-words text-sm leading-relaxed [&_a]:break-all [&_.chat-sources-label]:text-xs ${hasSources ? "[&_a]:text-xs [&_a]:italic" : ""}`}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

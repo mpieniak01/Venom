@@ -290,12 +290,13 @@ export function VoiceCommandCenter() {
             }}
             variant="outline"
             size="md"
-            className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recording
+            className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${
+              recording
                 ? "border-rose-400/60 bg-rose-500/10 text-rose-100"
                 : connected
                   ? "border-emerald-400/40 bg-emerald-500/10 text-white"
                   : "border-white/10 bg-white/5 text-zinc-300"
-              }`}
+            }`}
             disabled={!connected}
           >
             🎙 {recording ? "Nagrywanie..." : "Przytrzymaj i mów"}

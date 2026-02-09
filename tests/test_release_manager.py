@@ -119,3 +119,63 @@ def test_generate_changelog_empty(release_manager):
 
     # Powinien zawierać przynajmniej nagłówek
     assert "## [Unreleased]" in changelog
+
+
+def test_prepare_release_helper_decisions(release_manager):
+    commits = [
+        {"type": "fix", "breaking": False},
+        {"type": "feat", "breaking": False},
+    ]
+    assert release_manager._resolve_release_type("auto", commits) == "minor"
+    assert (
+        release_manager._resolve_release_type(
+            "auto", [{"type": "feat", "breaking": True}]
+        )
+        == "major"
+    )
+    assert (
+        release_manager._resolve_release_type(
+            "auto", [{"type": "fix", "breaking": False}]
+        )
+        == "patch"
+    )
+    assert release_manager._resolve_release_type("patch", commits) == "patch"
+
+
+def test_prepare_release_changelog_merge_helpers(tmp_path):
+    path = tmp_path / "CHANGELOG.md"
+    merged = ReleaseManagerAgent._merge_changelog(path, "## [Unreleased]\n- A")
+    assert merged.startswith("# Changelog")
+
+    path.write_text("# Changelog\n\nOld entry", encoding="utf-8")
+    merged_existing = ReleaseManagerAgent._merge_changelog(
+        path, "## [Unreleased]\n- New"
+    )
+    assert "New" in merged_existing
+    assert "Old entry" in merged_existing
+
+    path.write_text("Legacy content", encoding="utf-8")
+    merged_legacy = ReleaseManagerAgent._merge_changelog(path, "## [Unreleased]\n- New")
+    assert merged_legacy.startswith("# Changelog")
+    assert "Legacy content" in merged_legacy
+
+
+def test_prepare_release_summary_helpers(release_manager):
+    summary = release_manager._build_commit_summary(
+        [
+            {"type": "feat", "breaking": False},
+            {"type": "fix", "breaking": False},
+            {"type": "other", "breaking": True},
+        ]
+    )
+    assert "Features: 1" in summary
+    assert "Fixes: 1" in summary
+    assert "Breaking: 1" in summary
+
+    assert "Automatycznie wykryto typ" in release_manager._build_release_type_line(
+        "auto", "minor"
+    )
+    assert "Użyto ręcznego typu" in release_manager._build_release_type_line(
+        "patch", "patch"
+    )
+    assert "Następne kroki" in release_manager._build_release_next_steps()

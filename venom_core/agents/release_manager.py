@@ -194,86 +194,91 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
             Raport z przygotowania release'u
         """
         logger.info(f"Przygotowywanie release'u: {version_type}")
-
         report_lines = ["📦 Przygotowanie release'u\n"]
 
         try:
-            # 1. Pobierz historię commitów
             commit_log = await self.git_skill.get_last_commit_log(commit_count)
             report_lines.append(f"1. Pobrano {commit_count} ostatnich commitów\n")
 
-            # 2. Przeanalizuj commity
             commits = self._parse_commits(commit_log)
+            report_lines.append(self._build_commit_summary(commits))
+
+            suggested_type = self._resolve_release_type(version_type, commits)
             report_lines.append(
-                f"2. Przeanalizowano {len(commits)} commitów:\n"
-                f"   - Features: {len([c for c in commits if c['type'] == 'feat'])}\n"
-                f"   - Fixes: {len([c for c in commits if c['type'] == 'fix'])}\n"
-                f"   - Breaking: {len([c for c in commits if c['breaking']])}\n"
+                self._build_release_type_line(version_type, suggested_type)
             )
 
-            # 3. Określ typ release'u
-            if version_type == "auto":
-                if any(c["breaking"] for c in commits):
-                    suggested_type = "major"
-                elif any(c["type"] == "feat" for c in commits):
-                    suggested_type = "minor"
-                else:
-                    suggested_type = "patch"
-                report_lines.append(
-                    f"3. Automatycznie wykryto typ: {suggested_type.upper()}\n"
-                )
-            else:
-                suggested_type = version_type
-                report_lines.append(
-                    f"3. Użyto ręcznego typu: {suggested_type.upper()}\n"
-                )
-
-            # 4. Wygeneruj CHANGELOG
             changelog = self._generate_changelog(commits)
             changelog_path = Path(self.git_skill.workspace_root) / "CHANGELOG.md"
-
-            # Dopisz do istniejącego lub utwórz nowy
-            if changelog_path.exists():
-                existing = changelog_path.read_text(encoding="utf-8")
-                # Wstaw nowy wpis po nagłówku
-                if existing.startswith("# Changelog"):
-                    parts = existing.split("\n", 2)
-                    if len(parts) >= 2:
-                        # Bezpieczne wstawienie - sprawdzamy długość parts
-                        new_content = (
-                            f"{parts[0]}\n{parts[1]}\n\n{changelog}\n"
-                            f"{parts[2] if len(parts) > 2 else ''}"
-                        )
-                    else:
-                        # Jeśli plik ma tylko nagłówek lub mniej
-                        new_content = f"# Changelog\n\n{changelog}"
-                else:
-                    new_content = f"# Changelog\n\n{changelog}\n\n{existing}"
-            else:
-                new_content = f"# Changelog\n\n{changelog}"
-
-            # Zapisz
+            new_content = self._merge_changelog(changelog_path, changelog)
             await self.file_skill.write_file(
                 path=str(changelog_path), content=new_content
             )
             report_lines.append("4. Zaktualizowano CHANGELOG.md\n")
 
-            # 5. Podsumowanie
-            report_lines.append("\n✅ Release przygotowany!\n")
-            report_lines.append(
-                "📋 Następne kroki:\n"
-                "   1. Sprawdź CHANGELOG.md\n"
-                "   2. Zaktualizuj numer wersji w plikach projektu\n"
-                "   3. Commitnij zmiany: git commit -m 'chore: prepare release'\n"
-                "   4. Utwórz tag: git tag v<NOWA_WERSJA>\n"
-                "   5. Wypchnij: git push && git push --tags\n"
-            )
-
+            report_lines.append(self._build_release_next_steps())
         except Exception as e:
             report_lines.append(f"\n❌ Błąd podczas przygotowania: {str(e)}")
             logger.error(f"Błąd w prepare_release: {e}")
 
         return "\n".join(report_lines)
+
+    @staticmethod
+    def _build_commit_summary(commits: list[dict]) -> str:
+        feat_count = sum(1 for c in commits if c["type"] == "feat")
+        fix_count = sum(1 for c in commits if c["type"] == "fix")
+        breaking_count = sum(1 for c in commits if c["breaking"])
+        return (
+            f"2. Przeanalizowano {len(commits)} commitów:\n"
+            f"   - Features: {feat_count}\n"
+            f"   - Fixes: {fix_count}\n"
+            f"   - Breaking: {breaking_count}\n"
+        )
+
+    @staticmethod
+    def _resolve_release_type(version_type: str, commits: list[dict]) -> str:
+        if version_type != "auto":
+            return version_type
+        if any(c["breaking"] for c in commits):
+            return "major"
+        if any(c["type"] == "feat" for c in commits):
+            return "minor"
+        return "patch"
+
+    @staticmethod
+    def _build_release_type_line(version_type: str, suggested_type: str) -> str:
+        if version_type == "auto":
+            return f"3. Automatycznie wykryto typ: {suggested_type.upper()}\n"
+        return f"3. Użyto ręcznego typu: {suggested_type.upper()}\n"
+
+    @staticmethod
+    def _merge_changelog(changelog_path: Path, changelog: str) -> str:
+        if not changelog_path.exists():
+            return f"# Changelog\n\n{changelog}"
+
+        existing = changelog_path.read_text(encoding="utf-8")
+        if not existing.startswith("# Changelog"):
+            return f"# Changelog\n\n{changelog}\n\n{existing}"
+
+        parts = existing.split("\n", 2)
+        if len(parts) >= 2:
+            return (
+                f"{parts[0]}\n{parts[1]}\n\n{changelog}\n"
+                f"{parts[2] if len(parts) > 2 else ''}"
+            )
+        return f"# Changelog\n\n{changelog}"
+
+    @staticmethod
+    def _build_release_next_steps() -> str:
+        return (
+            "\n✅ Release przygotowany!\n"
+            "📋 Następne kroki:\n"
+            "   1. Sprawdź CHANGELOG.md\n"
+            "   2. Zaktualizuj numer wersji w plikach projektu\n"
+            "   3. Commitnij zmiany: git commit -m 'chore: prepare release'\n"
+            "   4. Utwórz tag: git tag v<NOWA_WERSJA>\n"
+            "   5. Wypchnij: git push && git push --tags\n"
+        )
 
     def _parse_commits(self, commit_log: str) -> list[dict]:
         """

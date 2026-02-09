@@ -26,11 +26,15 @@ while IFS= read -r file; do
     web-next/*)
       frontend_changed=1
       ;;
+    *)
+      ;;
   esac
 
   case "$file" in
     venom_core/*|tests/*|scripts/*|config/pytest-groups/*|Makefile|pytest.ini|sonar-project.properties|requirements*.txt)
       backend_changed=1
+      ;;
+    *)
       ;;
   esac
 done <<< "$CHANGED_FILES"

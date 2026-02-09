@@ -422,36 +422,31 @@ class ComplexitySkill:
             Szacowana liczba plików
         """
         desc_lower = description.lower()
-        heurystyki = []
-
-        # Heurystyki — zbieramy potencjalne wartości
-        if "system" in desc_lower or "architektura" in desc_lower:
-            heurystyki.append(15)
-
-        if "api" in desc_lower or "endpoint" in desc_lower:
-            heurystyki.append(5)
-
-        if "baza danych" in desc_lower or "database" in desc_lower:
-            heurystyki.append(3)
-
-        if "testy" in desc_lower or "test" in desc_lower:
-            heurystyki.append(3)
-
-        if "model" in desc_lower:
-            heurystyki.append(2)
-
-        if "service" in desc_lower or "serwis" in desc_lower:
-            heurystyki.append(4)
-
-        if "ui" in desc_lower or "interfejs" in desc_lower:
-            heurystyki.append(5)
+        heurystyki = self._collect_file_count_heuristics(desc_lower)
 
         # Jeśli nic nie dopasowano, ale tekst jest długi
-        if not heurystyki and len(description) > 300:
-            return 2
+        if not heurystyki:
+            return 2 if len(description) > 300 else 1
 
         # Używamy max zamiast sumy aby uniknąć nadmiernego zawyżania
-        return max(heurystyki) if heurystyki else 1
+        return max(heurystyki)
+
+    @staticmethod
+    def _collect_file_count_heuristics(desc_lower: str) -> list[int]:
+        keyword_groups: tuple[tuple[tuple[str, ...], int], ...] = (
+            (("system", "architektura"), 15),
+            (("api", "endpoint"), 5),
+            (("baza danych", "database"), 3),
+            (("testy", "test"), 3),
+            (("model",), 2),
+            (("service", "serwis"), 4),
+            (("ui", "interfejs"), 5),
+        )
+        heurystyki: list[int] = []
+        for keywords, estimate in keyword_groups:
+            if any(keyword in desc_lower for keyword in keywords):
+                heurystyki.append(estimate)
+        return heurystyki
 
     def _complexity_to_time(self, complexity: TaskComplexity) -> float:
         """

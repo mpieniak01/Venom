@@ -29,3 +29,7 @@ tests/test_complexity_skill.py
 tests/test_intent_manager_new_code_coverage.py
 tests/test_code_review_optimization.py
 tests/test_skills_init.py
+tests/test_release_manager.py
+tests/test_strategist_agent.py
+tests/test_feedback_hidden_prompts.py
+tests/test_hidden_prompts_semantic.py

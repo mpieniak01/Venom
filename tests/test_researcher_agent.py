@@ -150,3 +150,11 @@ class TestResearcherAgent:
             "https://a.example",
             "https://b.example",
         ]
+
+    def test_format_grounding_sources_empty_metadata(self):
+        assert format_grounding_sources({}) == ""
+        assert format_grounding_sources({"grounding_metadata": {}}) == ""
+
+    def test_get_last_search_source_default_is_duckduckgo(self, mock_kernel):
+        agent = ResearcherAgent(mock_kernel)
+        assert agent.get_last_search_source() == "duckduckgo"

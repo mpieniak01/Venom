@@ -51,3 +51,4 @@ tests/test_persona_factory.py
 tests/test_researcher_agent.py
 tests/test_scenario_weaver.py
 tests/test_lessons_manager.py
+tests/test_service_monitor.py

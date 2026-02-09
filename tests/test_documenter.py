@@ -52,6 +52,7 @@ def hello():
     await agent.handle_code_change(str(test_file))
 
     status = agent.get_status()
+    assert isinstance(status["enabled"], bool)
     assert status["workspace_root"] == str(temp_workspace.resolve())
     assert status["processing_files"] == 1
 
@@ -70,6 +71,7 @@ async def test_documenter_ignores_non_python_files(temp_workspace):
 
     status = agent.get_status()
     assert status["workspace_root"] == str(temp_workspace.resolve())
+    assert isinstance(status["enabled"], bool)
     assert status["processing_files"] == 1
 
 
@@ -92,5 +94,5 @@ async def test_documenter_prevents_infinite_loop(temp_workspace):
 
     status = agent.get_status()
     assert status["workspace_root"] == str(temp_workspace.resolve())
-    # Drugi call powinien zostać pominięty - nadal tylko jeden plik w przetwarzaniu.
+    assert isinstance(status["enabled"], bool)
     assert status["processing_files"] == 1

@@ -5,9 +5,9 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 
 **Quality Signals**
-- [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml) GitHub fast checks: Python compile smoke, CI-lite dependency audit, frontend script sanity.
-- [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/) Secret detection and leak prevention for repository history and pull requests.
-- [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom) SonarCloud gate from backend (`python-coverage.xml`, `python-junit.xml`) and frontend (`lcov.info`) reports.
+- *Quick Validate:* GitHub fast checks (Python compile smoke, CI-lite dependency audit, frontend script sanity).
+- *GitGuardian:* secret detection and leak prevention for repository history and pull requests.
+- *Quality Gate Status:* SonarCloud gate from backend (`python-coverage.xml`, `python-junit.xml`) and frontend (`lcov.info`) reports.
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 

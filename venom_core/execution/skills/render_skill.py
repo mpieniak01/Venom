@@ -1,6 +1,5 @@
 """Moduł: render_skill - umiejętność wizualizacji i renderowania UI."""
 
-import re
 from html.parser import HTMLParser
 from typing import Annotated, Any, Dict, List, Optional
 
@@ -55,6 +54,31 @@ def _strip_script_content(html: str) -> str:
     stripper.feed(html)
     stripper.close()
     return stripper.get_sanitized()
+
+
+class _AllowlistHtmlStripper(HTMLParser):
+    """Fallback sanitizer: zachowuje tylko dozwolone tagi bez atrybutów."""
+
+    def __init__(self, allowed_tags: set[str]) -> None:
+        super().__init__(convert_charrefs=True)
+        self._allowed_tags = allowed_tags
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag_name = tag.lower()
+        if tag_name in self._allowed_tags:
+            self._chunks.append(f"<{tag_name}>")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag_name = tag.lower()
+        if tag_name in self._allowed_tags:
+            self._chunks.append(f"</{tag_name}>")
+
+    def handle_data(self, data: str) -> None:
+        self._chunks.append(data)
+
+    def get_sanitized(self) -> str:
+        return "".join(self._chunks)
 
 
 class RenderSkill:
@@ -131,20 +155,12 @@ class RenderSkill:
                 attributes=self.ALLOWED_ATTRIBUTES,
                 strip=True,
             )
-        # Fallback bez zależności: usuń script i niedozwolone tagi, zachowaj treść.
-        sanitized = _strip_script_content(html)
-
-        allowed = set(self.ALLOWED_TAGS)
-
-        def _filter_tag(match: re.Match[str]) -> str:
-            full_tag = match.group(0)
-            tag_name = match.group(1).lower()
-            if tag_name in allowed:
-                return full_tag
-            return ""
-
-        sanitized = re.sub(r"</?([a-zA-Z0-9]+)(?:\s[^>]*)?>", _filter_tag, sanitized)
-        return sanitized
+        # Fallback bez bleach: usuń script oraz wszystkie atrybuty, zachowaj tylko allowlistę tagów.
+        without_scripts = _strip_script_content(html)
+        sanitizer = _AllowlistHtmlStripper(set(self.ALLOWED_TAGS))
+        sanitizer.feed(without_scripts)
+        sanitizer.close()
+        return sanitizer.get_sanitized()
 
     @kernel_function(
         name="render_chart",

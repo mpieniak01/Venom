@@ -467,7 +467,7 @@ class IngestionEngine:
             if self._can_append_to_chunk(current_chunk, part, separator):
                 current_chunk += part + separator
                 continue
-            current_chunk = self._flush_current_chunk(chunks, current_chunk)
+            self._flush_current_chunk(chunks, current_chunk)
             current_chunk = self._append_or_split_part(
                 chunks, part, separator, separators
             )

@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -42,16 +43,20 @@ async def test_iot_helper_responses():
 async def test_iot_metric_helpers(monkeypatch):
     class GoodBridge:
         async def read_sensor(self, _name):
+            await asyncio.sleep(0)
             return 42.34
 
         async def execute_command(self, _command):
+            await asyncio.sleep(0)
             return {"return_code": 0, "stdout": " 123/456MB "}
 
     class BadBridge:
         async def read_sensor(self, _name):
+            await asyncio.sleep(0)
             raise RuntimeError("boom")
 
         async def execute_command(self, _command):
+            await asyncio.sleep(0)
             return {"return_code": 1, "stdout": "x"}
 
     assert await system_iot_routes._read_cpu_temperature(GoodBridge()) == "42.3°C"
@@ -69,6 +74,7 @@ async def test_iot_metric_helpers(monkeypatch):
 
     class ExplodingBridge:
         async def execute_command(self, _command):
+            await asyncio.sleep(0)
             raise RuntimeError("boom")
 
     assert (

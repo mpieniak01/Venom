@@ -1,69 +1,53 @@
 # Polityka testów
 
-Ten dokument jest jednym, nadrzędnym źródłem zasad uruchamiania testów, bramek pokrycia i oczekiwań CI.
+Ten dokument jest nadrzędnym źródłem zasad testowania: od codziennej pracy lokalnej, przez gotowość do PR, po walidację pod wydanie.
 
-## Cele
+## Drabina testów (od najszybszych do najbardziej restrykcyjnych)
 
-- Szybki feedback lokalnie przed otwarciem PR.
-- Stabilne pokrycie „new code” dla Sonara.
-- Brak duplikacji instrukcji testowych w wielu dokumentach.
+### Poziom 1: Codzienna praca lokalna (codziennie)
 
-## Lokalne punkty wejścia testów
+Cel: bardzo szybki feedback w trakcie implementacji.
 
-### Szybki smoke
+Uruchom:
 
 ```bash
 source .venv/bin/activate || true
 pytest -q
 ```
 
-### Pełna suita backendu (domyślna ścieżka projektu)
-
-```bash
-make pytest
-```
-
-### Frontend
+Gdy zmieniasz frontend, dodaj:
 
 ```bash
 npm --prefix web-next run lint
-npm --prefix web-next run build
-npm --prefix web-next run test:e2e
 ```
 
-## Lokalny pre-check pod Sonar
+### Poziom 2: Gałąź gotowa do PR (obowiązkowo przed push)
 
-### Generowanie raportów Sonar
+Cel: szybka walidacja zbliżona do bramek PR.
+
+Uruchom jedną komendę:
 
 ```bash
-make sonar-reports
+make pr-fast
 ```
 
-Artefakty:
+Zakres:
 
-- `test-results/sonar/python-coverage.xml`
-- `test-results/sonar/python-junit.xml`
-- `web-next/coverage/lcov.info`
+- wykrywanie zmienionych plików względem `origin/main` (lub `PR_BASE_REF`)
+- backend fast lane: compile check + audit CI-lite + bramka pokrycia zmienionych linii
+- frontend fast lane (tylko gdy zmieniono `web-next/**`): lint + unit CI-lite
 
-### Lekki raport pokrycia backendu pod new code
+### Poziom 3: Jakość pod PR (obowiązkowo przed merge)
 
-```bash
-make test-light-coverage
-```
+Cel: zgodność z wymaganiami CI i Sonar.
 
-Przydatne opcje:
+Wymagane checki:
 
-- `NEW_CODE_COVERAGE_MIN=70`
-- `NEW_CODE_COV_TARGET=venom_core/execution/skills`
-- `NEW_CODE_INCLUDE_BASELINE=0`
+1. `pre-commit run --all-files`
+2. `mypy venom_core`
+3. `make check-new-code-coverage`
 
-### Bramka pokrycia zmienionych linii (zalecane przed każdym PR)
-
-```bash
-make check-new-code-coverage
-```
-
-Domyślnie:
+Domyślna bramka pokrycia:
 
 - baza diff: `origin/main`
 - minimalne pokrycie zmienionych linii: `70%`
@@ -75,62 +59,48 @@ NEW_CODE_CHANGED_LINES_MIN=80 make check-new-code-coverage
 NEW_CODE_DIFF_BASE=origin/main make check-new-code-coverage
 ```
 
-## Performance i latency
+### Poziom 4: Walidacja pod wydanie (gdy potrzebna)
 
-Szczegółowe scenariusze i oczekiwane wartości:
+Cel: wyższa pewność dla większych zmian lub przed release.
+
+Backend:
+
+```bash
+make pytest
+```
+
+Frontend:
+
+```bash
+npm --prefix web-next run build
+npm --prefix web-next run test:e2e
+```
+
+Pakiet raportów Sonar:
+
+```bash
+make sonar-reports
+```
+
+Artefakty:
+
+- `test-results/sonar/python-coverage.xml`
+- `test-results/sonar/python-junit.xml`
+- `web-next/coverage/lcov.info`
+
+Scenariusze performance/latency:
 
 - `docs/PL/TESTING_CHAT_LATENCY.md`
-
-Główne komendy:
-
 - `npm --prefix web-next run test:perf`
 - `pytest tests/perf/test_chat_pipeline.py -m performance`
 - `./scripts/run-locust.sh`
 
-## CI i bramki PR
+## CI i Sonar (referencja)
 
-Wymagane bramki jakości na PR:
+Wymagane bramki na PR:
 
 - CI Lite (szybki lint + wybrane testy unit)
 - SonarCloud (bugi, podatności, utrzymywalność, duplikacje)
-
-Oczekiwane lokalne checki przed PR:
-
-1. `pre-commit run --all-files`
-2. `mypy venom_core`
-3. `make check-new-code-coverage`
-
-## Najkrótszy proces wydania na PR
-
-Użyj jednej komendy:
-
-```bash
-make pr-fast
-```
-
-Co robi:
-
-- Wykrywa zmienione pliki względem `origin/main` (lub `PR_BASE_REF`).
-- Uruchamia backend fast lane tylko gdy zmieniono backend.
-- Uruchamia frontend fast lane tylko gdy zmieniono `web-next/**`.
-- Dla zmian wyłącznie dokumentacyjnych pomija lane testowe.
-
-Backend fast lane:
-
-- `python3 -m compileall -q venom_core scripts tests`
-- `make audit-ci-lite`
-- `make check-new-code-coverage` (na grupach CI-lite + sonar-new-code)
-
-Frontend fast lane:
-
-- `npm --prefix web-next run lint`
-- `npm --prefix web-next run test:unit:ci-lite`
-
-Opcjonalna zmiana bazy diff:
-
-```bash
-PR_BASE_REF=origin/main make pr-fast
-```
 
 ## Polityka artefaktów testowych
 

@@ -321,7 +321,18 @@ async def _task_stream_generator(task_id: UUID) -> AsyncGenerator[str, None]:
     ticks_since_emit = 0
 
     while True:
-        task: Optional[VenomTask] = _state_manager.get_task(task_id)
+        state_manager = _state_manager
+        if state_manager is None:
+            payload = {
+                "task_id": str(task_id),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event": "service_unavailable",
+                "detail": STATE_MANAGER_UNAVAILABLE,
+            }
+            yield f"event:service_unavailable\ndata:{json.dumps(payload)}\n\n"
+            break
+
+        task: Optional[VenomTask] = state_manager.get_task(task_id)
         if task is None:
             payload = _build_missing_task_payload(task_id)
             yield f"event:task_missing\ndata:{json.dumps(payload)}\n\n"

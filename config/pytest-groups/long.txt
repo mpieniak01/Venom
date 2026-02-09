@@ -15,3 +15,7 @@ tests/test_planning_integration.py
 tests/test_rag_integration.py
 tests/test_state_and_orchestrator.py
 tests/test_tasks_stream.py
+tests/verify_acceptance_criteria.py
+tests/integration/verify_backend.py
+tests/test_new_chat_session_api.py
+tests/test_lesson_management_api.py

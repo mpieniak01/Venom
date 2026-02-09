@@ -163,6 +163,31 @@ def test_path_traversal_attack_exists(temp_workspace):
     assert "Odmowa dostępu" in result or "Wystąpił błąd" in result
 
 
+def test_list_files_recursive_and_helper_branches(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    root = Path(temp_workspace)
+    (root / "a").mkdir()
+    (root / "a" / "nested").mkdir()
+    (root / "a" / "f.txt").write_text("ok")
+
+    output = skill.list_files("a", recursive=True, max_depth=1)
+    assert "rekurencyjnie" in output
+    assert "[plik]" in output
+
+    depth = skill._get_relative_depth(str(root / "a" / "nested"), root / "a")
+    assert depth == 1
+    assert skill._get_relative_depth("/outside/root", root / "a") == 0
+
+    items: list[str] = []
+    skill._append_recursive_dirs(
+        items, ["nested"], str(root / "a"), depth=0, max_depth=1
+    )
+    assert any("nested/" in item for item in items)
+
+    skipped = skill._append_recursive_files(items, ["missing.txt"], str(root / "a"), "")
+    assert skipped == 1
+
+
 @pytest.mark.asyncio
 async def test_overwrite_file(temp_workspace):
     """Test nadpisania istniejącego pliku."""

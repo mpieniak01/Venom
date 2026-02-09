@@ -82,25 +82,22 @@ test-light-coverage:
 		echo "❌ Brak testów w $(NEW_CODE_TEST_GROUP)"; \
 		exit 1; \
 	fi; \
+	TESTS_TO_RUN="$$NEW_CODE_TESTS"; \
 	if [ "$(NEW_CODE_INCLUDE_BASELINE)" = "1" ]; then \
 		BASELINE_TESTS=$$(grep -vE '^\s*(#|$$)' "$(NEW_CODE_BASELINE_GROUP)"); \
 		if [ -z "$$BASELINE_TESTS" ]; then \
 			echo "❌ Brak testów w $(NEW_CODE_BASELINE_GROUP)"; \
 			exit 1; \
 		fi; \
-		$$PYTEST_BIN -n 4 $$BASELINE_TESTS \
-			--cov=$(NEW_CODE_COV_TARGET) \
-			--junitxml=$(NEW_CODE_JUNIT_XML); \
-		COV_APPEND_FLAG="--cov-append"; \
-	else \
-		COV_APPEND_FLAG=""; \
+		TESTS_TO_RUN="$$BASELINE_TESTS $$NEW_CODE_TESTS"; \
 	fi; \
-	$$PYTEST_BIN -n 4 $$NEW_CODE_TESTS $$COV_APPEND_FLAG \
+	$$PYTEST_BIN -n 4 $$TESTS_TO_RUN \
 		--cov=$(NEW_CODE_COV_TARGET) \
 		--cov-report=term-missing:skip-covered \
 		--cov-report=xml:$(NEW_CODE_COVERAGE_XML) \
 		--cov-report=html:$(NEW_CODE_COVERAGE_HTML) \
-		--cov-fail-under=$(NEW_CODE_COVERAGE_MIN)
+		--cov-fail-under=$(NEW_CODE_COVERAGE_MIN) \
+		--junitxml=$(NEW_CODE_JUNIT_XML)
 
 sonar-reports-backend-new-code: test-light-coverage
 

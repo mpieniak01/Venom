@@ -1,10 +1,10 @@
 "use client";
 
-type LatencyCardProps = {
+type LatencyCardProps = Readonly<{
   label: string;
   value: string;
   hint: string;
-};
+}>;
 
 export function LatencyCard({ label, value, hint }: LatencyCardProps) {
   return (

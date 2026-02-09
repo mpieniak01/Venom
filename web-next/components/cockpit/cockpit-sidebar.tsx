@@ -4,14 +4,14 @@ import type { ReactNode } from "react";
 
 import { motion } from "framer-motion";
 
-type CockpitSidebarProps = {
+type CockpitSidebarProps = Readonly<{
   chatFullscreen: boolean;
   showArtifacts: boolean;
   showReferenceSections: boolean;
   referencePanel: ReactNode;
   fallbackPanels: ReactNode;
   skipEntrance?: boolean;
-};
+}>;
 
 export function CockpitSidebar({
   chatFullscreen,

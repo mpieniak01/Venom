@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-type EmptyStateProps = {
+type EmptyStateProps = Readonly<{
   icon?: ReactNode;
   title: string;
   description?: string;
   className?: string;
-};
+}>;
 
 export function EmptyState({ icon, title, description, className }: EmptyStateProps) {
   return (

@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 
-type PanelProps = {
+type PanelProps = Readonly<{
   eyebrow?: string;
   title?: string;
   description?: string;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
-};
+}>;
 
 export function Panel({ eyebrow, title, description, action, children, className }: PanelProps) {
   return (
@@ -31,13 +31,13 @@ export function Panel({ eyebrow, title, description, action, children, className
 
 type StatCardAccent = "purple" | "green" | "blue" | "violet" | "indigo";
 
-type StatCardProps = {
+type StatCardProps = Readonly<{
   label: string;
   value: string | number;
   hint?: string;
   accent?: StatCardAccent;
   suppressHydrationWarning?: boolean;
-};
+}>;
 
 export function StatCard({ label, value, hint, accent = "purple", suppressHydrationWarning }: StatCardProps) {
   const accentPalette: Record<StatCardAccent, string> = {

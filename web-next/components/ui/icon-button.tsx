@@ -1,7 +1,7 @@
 import type { MouseEventHandler, ReactNode } from "react";
 import { Button, type ButtonSize, type ButtonVariant } from "./button";
 
-type IconButtonProps = {
+type IconButtonProps = Readonly<{
   label: string;
   icon?: ReactNode;
   children?: ReactNode;
@@ -13,7 +13,7 @@ type IconButtonProps = {
   disabled?: boolean;
   asChild?: boolean;
   dataTestId?: string;
-};
+}>;
 
 export function IconButton({
   label,

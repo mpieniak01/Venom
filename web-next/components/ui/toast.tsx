@@ -38,7 +38,7 @@ const createToastId = () => {
   return `${Date.now()}-${toastIdFallbackCounter.toString(16).padStart(4, "0")}`;
 };
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const timersRef = useRef<Map<string, number>>(new Map());
 
@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
     const timer = timersRef.current.get(id);
     if (timer) {
-      window.clearTimeout(timer);
+      globalThis.window.clearTimeout(timer);
       timersRef.current.delete(id);
     }
   }, []);
@@ -55,7 +55,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (message: string, tone: ToastTone = "success") => {
       const id = createToastId();
       setToasts((prev) => [...prev, { id, message, tone }]);
-      const timer = window.setTimeout(() => removeToast(id), NOTIFICATIONS.TOAST_TIMEOUT_MS);
+      const timer = globalThis.window.setTimeout(() => removeToast(id), NOTIFICATIONS.TOAST_TIMEOUT_MS);
       timersRef.current.set(id, timer);
     },
     [removeToast],
@@ -64,7 +64,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const timers = timersRef.current;
     return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
+      timers.forEach((timer) => globalThis.window.clearTimeout(timer));
       timers.clear();
     };
   }, []);

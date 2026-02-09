@@ -6,21 +6,21 @@ import { Pin, PinOff } from "lucide-react";
 import { type LogEntryType, isLogPayload } from "@/lib/logs";
 import { useTranslation } from "@/lib/i18n";
 
-type LogEntryProps = {
+type LogEntryProps = Readonly<{
   entry: LogEntryType;
   pinned?: boolean;
   onPin?: () => void;
-};
+}>;
 
 export function LogEntry({ entry, pinned, onPin }: LogEntryProps) {
   const payload = entry.payload;
   const t = useTranslation();
   const logObj = isLogPayload(payload) ? payload : null;
-  const rawText = logObj?.message
-    ? logObj.message
-    : typeof payload === "string"
-      ? payload
-      : JSON.stringify(payload, null, 2);
+  const rawText = (() => {
+    if (logObj?.message) return logObj.message;
+    if (typeof payload === "string") return payload;
+    return JSON.stringify(payload, null, 2);
+  })();
 
   // Próbujemy przetłumaczyć rawText jako klucz i18n
   const text = t(rawText, logObj?.data);

@@ -5,10 +5,10 @@ import { useEffect, useRef } from "react";
 
 import type { TokenSample } from "@/components/cockpit/token-types";
 
-type TokenChartProps = {
+type TokenChartProps = Readonly<{
   history: TokenSample[];
   height?: number;
-};
+}>;
 
 export function TokenChart({ history, height = 220 }: TokenChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

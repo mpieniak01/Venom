@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils";
 import type { BenchmarkLog } from "@/lib/types";
 
 interface BenchmarkConsoleProps {
-  logs: BenchmarkLog[];
-  isRunning?: boolean;
+  readonly logs: ReadonlyArray<BenchmarkLog>;
+  readonly isRunning?: boolean;
 }
 
 // Stałe dla ikon poziomu logów

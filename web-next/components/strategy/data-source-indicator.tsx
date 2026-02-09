@@ -6,11 +6,11 @@ import { cn } from "@/lib/utils";
 
 type DataSourceStatus = "live" | "cache" | "stale" | "offline";
 
-type DataSourceIndicatorProps = {
+type DataSourceIndicatorProps = Readonly<{
   status: DataSourceStatus;
   timestamp?: number | null;
   className?: string;
-};
+}>;
 
 const statusConfig: Record<DataSourceStatus, { label: string; tone: "success" | "warning" | "danger" | "neutral"; icon: string }> = {
   live: { label: "Live", tone: "success", icon: "🟢" },

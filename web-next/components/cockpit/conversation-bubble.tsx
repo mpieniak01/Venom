@@ -9,7 +9,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-type ConversationBubbleProps = {
+type ConversationBubbleProps = Readonly<{
   role: "user" | "assistant";
   timestamp: string;
   text: string;
@@ -27,7 +27,7 @@ type ConversationBubbleProps = {
     lessons?: string[];
     memory_entries?: string[];
   } | null;
-};
+}>;
 
 function resolveStatusLabel(
   status: string | null | undefined,

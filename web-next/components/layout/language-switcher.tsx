@@ -11,7 +11,7 @@ const LANGUAGE_OPTIONS = [
   { code: "de", flag: "🇩🇪", label: "DE", name: "Deutsch" },
 ] as const;
 
-function FlagIcon({ code }: { code: LanguageCode }) {
+function FlagIcon({ code }: Readonly<{ code: LanguageCode }>) {
   if (code === "pl") {
     return (
       <svg viewBox="0 0 24 16" className="h-4 w-6 rounded-sm shadow-sm">
@@ -44,7 +44,7 @@ function FlagIcon({ code }: { code: LanguageCode }) {
   );
 }
 
-export function LanguageSwitcher({ className }: { className?: string }) {
+export function LanguageSwitcher({ className }: Readonly<{ className?: string }>) {
   const { language, setLanguage } = useLanguage();
   const t = useTranslation();
   const options = useMemo<SelectMenuOption[]>(

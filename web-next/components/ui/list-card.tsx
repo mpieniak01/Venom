@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
-type ListCardProps = {
+type ListCardProps = Readonly<{
   title: ReactNode;
   subtitle?: ReactNode;
   badge?: ReactNode;
@@ -10,7 +10,7 @@ type ListCardProps = {
   selected?: boolean;
   onClick?: () => void;
   children?: ReactNode;
-};
+}>;
 
 export function ListCard({
   title,

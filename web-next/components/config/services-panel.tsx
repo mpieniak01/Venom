@@ -393,7 +393,11 @@ export function ServicesPanel() {
     if (!value) return "—";
     const parsed = Date.parse(value);
     if (Number.isNaN(parsed)) return value;
-    const locale = language === "pl" ? "pl-PL" : language === "de" ? "de-DE" : "en-US";
+    const locale = (() => {
+      if (language === "pl") return "pl-PL";
+      if (language === "de") return "de-DE";
+      return "en-US";
+    })();
     return new Date(parsed).toLocaleString(locale);
   };
 
@@ -586,50 +590,52 @@ export function ServicesPanel() {
         <h2 className="mb-4 heading-h2">{t("config.services.storage.title")}</h2>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm text-zinc-200">
-            {storageSnapshot?.disk_root ? (
-              <div className="flex flex-col gap-1">
-                {(() => {
-                  const total = storageSnapshot.disk_root!.total_bytes ?? 0;
-                  const free = storageSnapshot.disk_root!.free_bytes ?? 0;
-                  const used =
-                    storageSnapshot.disk_root!.used_bytes ?? Math.max(total - free, 0);
-                  return (
+            {(() => {
+              if (storageSnapshot?.disk_root) {
+                const total = storageSnapshot.disk_root.total_bytes ?? 0;
+                const free = storageSnapshot.disk_root.free_bytes ?? 0;
+                const used =
+                  storageSnapshot.disk_root.used_bytes ?? Math.max(total - free, 0);
+                return (
+                  <div className="flex flex-col gap-1">
                     <span>
                       {t("config.services.storage.wslUsage")}:{" "}
                       <span className="font-semibold text-white">
                         {formatBytes(used)}
                       </span>
                     </span>
-                  );
-                })()}
-                {storageSnapshot.disk ? (
-                  <div className="mt-1 pt-1 border-t border-white/5 text-xs text-zinc-400">
+                    {storageSnapshot.disk ? (
+                      <div className="mt-1 pt-1 border-t border-white/5 text-xs text-zinc-400">
+                        {t("config.services.storage.physical")}:{" "}
+                        <span className="font-semibold text-white">
+                          {formatBytes(storageSnapshot.disk.total_bytes)}
+                        </span>
+                        <span className="mx-2 opacity-40">|</span>
+                        {t("config.services.storage.used")}: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
+                        <span className="mx-2 opacity-40">|</span>
+                        {t("config.services.storage.free")}: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
+              if (storageSnapshot?.disk) {
+                return (
+                  <span className="text-sm">
                     {t("config.services.storage.physical")}:{" "}
                     <span className="font-semibold text-white">
                       {formatBytes(storageSnapshot.disk.total_bytes)}
                     </span>
-                    <span className="mx-2 opacity-40">|</span>
-                    {t("config.services.storage.used")}: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
-                    <span className="mx-2 opacity-40">|</span>
-                    {t("config.services.storage.free")}: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
-                  </div>
-                ) : null}
-              </div>
-            ) : storageSnapshot?.disk ? (
-              <span className="text-sm">
-                {t("config.services.storage.physical")}:{" "}
-                <span className="font-semibold text-white">
-                  {formatBytes(storageSnapshot.disk.total_bytes)}
-                </span>
-                <span className="mx-2 text-zinc-600">|</span>
-                <span className="text-xs text-zinc-400">
-                  {t("config.services.storage.used")}: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
-                  {" "}/ {t("config.services.storage.free")}: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
-                </span>
-              </span>
-            ) : (
-              <span>{t("config.services.storage.noData")}</span>
-            )}
+                    <span className="mx-2 text-zinc-600">|</span>
+                    <span className="text-xs text-zinc-400">
+                      {t("config.services.storage.used")}: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
+                      {" "}/ {t("config.services.storage.free")}: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
+                    </span>
+                  </span>
+                );
+              }
+              return <span>{t("config.services.storage.noData")}</span>;
+            })()}
           </div>
           <Button
             size="xs"
@@ -648,52 +654,57 @@ export function ServicesPanel() {
         ) : null}
         {storageError ? (
           <p className="mt-3 text-xs text-rose-300">{storageError}</p>
-        ) : storageLoading && !storageSnapshot ? (
-          <div className="mt-4 grid gap-2 md:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div
-                key={i}
-                className="flex flex-col gap-2 rounded-2xl border border-white/5 bg-white/5 px-4 py-3 animate-pulse"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 w-24 bg-white/10 rounded" />
-                    <div className="h-3 w-16 bg-white/5 rounded" />
+        ) : (() => {
+          if (storageLoading && !storageSnapshot) {
+            return (
+              <div className="mt-4 grid gap-2 md:grid-cols-3">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col gap-2 rounded-2xl border border-white/5 bg-white/5 px-4 py-3 animate-pulse"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-24 bg-white/10 rounded" />
+                        <div className="h-3 w-16 bg-white/5 rounded" />
+                      </div>
+                      <div className="h-4 w-12 bg-white/10 rounded" />
+                    </div>
+                    <div className="h-3 w-3/4 bg-white/5 rounded" />
                   </div>
-                  <div className="h-4 w-12 bg-white/10 rounded" />
-                </div>
-                <div className="h-3 w-3/4 bg-white/5 rounded" />
+                ))}
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-4 grid gap-2 md:grid-cols-3">
-            {(storageSnapshot?.items ?? [])
-              .slice()
-              .sort((a, b) => b.size_bytes - a.size_bytes)
-              .map((item) => (
-                <div
-                  key={`${item.path}:${item.name}`}
-                  className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white">
-                        {t(`config.services.storage.items.${item.name}`) || item.name}
-                      </p>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                        {item.kind}
+            );
+          }
+          return (
+            <div className="mt-4 grid gap-2 md:grid-cols-3">
+              {(storageSnapshot?.items ?? [])
+                .slice()
+                .sort((a, b) => b.size_bytes - a.size_bytes)
+                .map((item) => (
+                  <div
+                    key={`${item.path}:${item.name}`}
+                    className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white">
+                          {t(`config.services.storage.items.${item.name}`) || item.name}
+                        </p>
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                          {item.kind}
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold text-white text-right">
+                        {formatBytes(item.size_bytes)}
                       </p>
                     </div>
-                    <p className="text-sm font-semibold text-white text-right">
-                      {formatBytes(item.size_bytes)}
-                    </p>
+                    <p className="min-w-0 text-[11px] text-zinc-500">{item.path}</p>
                   </div>
-                  <p className="min-w-0 text-[11px] text-zinc-500">{item.path}</p>
-                </div>
-              ))}
-          </div>
-        )}
+                ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* History */}

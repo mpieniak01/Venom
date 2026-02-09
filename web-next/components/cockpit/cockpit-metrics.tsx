@@ -5,12 +5,12 @@ import { CockpitTelemetryPanel } from "@/components/cockpit/cockpit-telemetry-pa
 import type { TelemetryFeedEntry } from "@/components/cockpit/cockpit-utils";
 import type { TokenSample } from "@/components/cockpit/token-types";
 
-type QueueSnapshot = {
+type QueueSnapshot = Readonly<{
   active?: number | null;
   limit?: number | string | null;
-};
+}>;
 
-type CockpitMetricsProps = {
+type CockpitMetricsProps = Readonly<{
   metrics: Record<string, unknown> | null;
   metricsLoading: boolean;
   successRate: number | null;
@@ -27,7 +27,7 @@ type CockpitMetricsProps = {
   totalTokens: number;
   showReferenceSections: boolean;
   telemetryFeed: TelemetryFeedEntry[];
-};
+}>;
 
 export function CockpitMetrics({
   metrics,

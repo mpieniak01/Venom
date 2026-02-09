@@ -3,10 +3,10 @@
 import type { Lesson } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
 
-type LessonListProps = {
-  lessons: Lesson[];
+type LessonListProps = Readonly<{
+  lessons: ReadonlyArray<Lesson>;
   emptyMessage?: string;
-};
+}>;
 
 export function LessonList({ lessons, emptyMessage }: LessonListProps) {
   const t = useTranslation();

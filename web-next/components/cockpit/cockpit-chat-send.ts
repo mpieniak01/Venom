@@ -169,21 +169,21 @@ const buildSimpleRequestSteps = (
   const steps = [
     timing?.historyMs !== undefined
       ? {
-          component: "UI",
-          action: "submit_to_history",
-          status: "OK",
-          timestamp,
-          details: `history_ms=${Math.round(timing.historyMs)}`,
-        }
+        component: "UI",
+        action: "submit_to_history",
+        status: "OK",
+        timestamp,
+        details: `history_ms=${Math.round(timing.historyMs)}`,
+      }
       : null,
     timing?.ttftMs !== undefined
       ? {
-          component: "UI",
-          action: "ttft",
-          status: "OK",
-          timestamp,
-          details: `ttft_ms=${Math.round(timing.ttftMs)}`,
-        }
+        component: "UI",
+        action: "ttft",
+        status: "OK",
+        timestamp,
+        details: `ttft_ms=${Math.round(timing.ttftMs)}`,
+      }
       : null,
   ].filter(Boolean) as NonNullable<HistoryRequestDetail["steps"]>;
   return steps.length > 0 ? steps : undefined;
@@ -414,7 +414,7 @@ async function handleSimpleTaskSend(params: {
       console.warn("Nie udało się zapisać pamięci dla trybu prostego:", err);
     }
     updateDurationMetrics({ duration, setLastResponseDurationMs, setResponseDurations });
-    window.setTimeout(() => {
+    globalThis.window.setTimeout(() => {
       dropOptimisticRequest(clientId);
       clearSimpleStream(clientId);
     }, 200);
@@ -572,7 +572,7 @@ export function useChatSend({
     const activeRuntime = activeServerInfo?.active_server ?? null;
     if (forcedRuntimeProvider && activeRuntime !== forcedRuntimeProvider) {
       const label = forcedRuntimeProvider === "openai" ? "OpenAI" : "Gemini";
-      const confirmed = window.confirm(
+      const confirmed = globalThis.window.confirm(
         `Dyrektywa wymaga przełączenia runtime na ${label}. Przełączyć teraz?`,
       );
       if (!confirmed) {

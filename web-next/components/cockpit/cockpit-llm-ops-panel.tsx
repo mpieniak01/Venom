@@ -6,7 +6,7 @@ import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { CockpitLogs } from "@/components/cockpit/cockpit-logs";
 import { CockpitModels } from "@/components/cockpit/cockpit-models";
 
-type CockpitLlmOpsPanelProps = {
+type CockpitLlmOpsPanelProps = Readonly<{
   llmServersLoading: boolean;
   llmServers: LlmServerInfo[];
   selectedLlmServer: string;
@@ -38,7 +38,7 @@ type CockpitLlmOpsPanelProps = {
   onExportPinnedLogs: () => void;
   onClearPinnedLogs: () => void;
   tasksPreview: Task[];
-};
+}>;
 
 export function CockpitLlmOpsPanel({
   llmServersLoading,

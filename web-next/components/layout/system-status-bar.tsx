@@ -22,7 +22,7 @@ type SystemStatusInitialData = {
   gitStatus?: GitStatus | null;
 };
 
-export function SystemStatusBar({ initialData }: { initialData?: SystemStatusInitialData }) {
+export function SystemStatusBar({ initialData }: Readonly<{ initialData?: SystemStatusInitialData }>) {
   const { data: usageResponse } = useModelsUsage(30000);
   const usage = usageResponse?.usage ?? initialData?.modelsUsage?.usage;
   const { data: liveTokenMetrics } = useTokenMetrics(30000);
@@ -109,12 +109,15 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
       {
         key: "disk",
         label: t("statusBar.labels.disk"),
-        value:
-          usage?.disk_system_usage_percent !== undefined
-            ? formatDiskSnapshot(usage?.disk_system_used_gb, usage?.disk_system_total_gb)
-            : usage?.disk_usage_percent !== undefined
-              ? formatDiskSnapshot(usage?.disk_usage_gb, usage?.disk_limit_gb)
-              : "—",
+        value: (() => {
+          if (usage?.disk_system_usage_percent !== undefined) {
+            return formatDiskSnapshot(usage?.disk_system_used_gb, usage?.disk_system_total_gb);
+          }
+          if (usage?.disk_usage_percent !== undefined) {
+            return formatDiskSnapshot(usage?.disk_usage_gb, usage?.disk_limit_gb);
+          }
+          return "—";
+        })(),
       },
       {
         key: "cost",

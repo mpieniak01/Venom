@@ -178,8 +178,8 @@ export function Sidebar() {
     const targetState = !(costMode?.enabled ?? false);
     if (
       targetState &&
-      typeof window !== "undefined" &&
-      !window.confirm(t("sidebar.messages.costConfirm"))
+      typeof globalThis.window !== "undefined" &&
+      !globalThis.window.confirm(t("sidebar.messages.costConfirm"))
     ) {
       setStatusMessage(t("sidebar.messages.costCancelled"));
       return;
@@ -374,11 +374,12 @@ export function Sidebar() {
               disabled={costLoading}
               onClick={handleCostToggle}
             >
-              {costLoading
-                ? t("sidebar.cost.switching")
-                : costMode?.enabled
+              {(() => {
+                if (costLoading) return t("sidebar.cost.switching");
+                return costMode?.enabled
                   ? t("sidebar.cost.switchToEco")
-                  : t("sidebar.cost.switchToPro")}
+                  : t("sidebar.cost.switchToPro");
+              })()}
             </Button>
           </section>
 

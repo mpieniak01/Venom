@@ -37,6 +37,8 @@ semantic-kernel==1.39.2
 redis==5.3.1
 arq>=0.26.0
 websockets==15.0.1
+watchdog==6.0.0
+huggingface_hub==0.35.3
 
 # Note: Heavy libs (transformers, onnxruntime, graphrag, etc.) are excluded.
 # Tests relying on them should be skipped or mocked in 'light' profile.

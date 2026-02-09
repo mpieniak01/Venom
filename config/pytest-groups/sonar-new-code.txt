@@ -22,6 +22,6 @@ tests/test_swarm_wrapper.py
 tests/test_assistant_skill.py
 tests/test_file_skill.py
 tests/test_git_skill_roi.py
-tests/test_test_skill.py
+tests/test_test_skill_local.py
 tests/test_config_manager.py
 tests/test_complexity_skill.py

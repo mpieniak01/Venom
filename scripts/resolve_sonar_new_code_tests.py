@@ -19,7 +19,7 @@ LIGHT_BLOCKED_MARKERS = (
 )
 
 
-def _read_group(path: Path) -> list[str]:
+def read_group(path: Path) -> list[str]:
     if not path.exists():
         return []
     tests: list[str] = []
@@ -31,7 +31,7 @@ def _read_group(path: Path) -> list[str]:
     return tests
 
 
-def _git_changed_files(diff_base: str) -> list[str]:
+def git_changed_files(diff_base: str) -> list[str]:
     cmd = ["git", "diff", "--name-only", f"{diff_base}...HEAD"]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
@@ -39,21 +39,23 @@ def _git_changed_files(diff_base: str) -> list[str]:
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
-def _all_test_files() -> list[str]:
+def all_test_files() -> list[str]:
     return sorted(
-        str(path).replace("\\", "/") for path in Path("tests").glob("test_*.py")
+        str(path).replace("\\", "/") for path in Path("tests").rglob("test_*.py")
     )
 
 
-def _collect_changed_tests(changed_files: list[str]) -> set[str]:
+def collect_changed_tests(changed_files: list[str]) -> set[str]:
     return {
         path
         for path in changed_files
-        if path.startswith("tests/test_") and path.endswith(".py")
+        if path.startswith("tests/")
+        and path.endswith(".py")
+        and Path(path).name.startswith("test_")
     }
 
 
-def _related_tests_for_modules(
+def related_tests_for_modules(
     changed_files: list[str], test_files: list[str]
 ) -> set[str]:
     related: set[str] = set()
@@ -80,7 +82,7 @@ def _related_tests_for_modules(
                     module_path,
                     "tests",
                     "-g",
-                    "test_*.py",
+                    "**/test_*.py",
                 ],
                 capture_output=True,
                 text=True,
@@ -99,7 +101,7 @@ def _related_tests_for_modules(
                     module_stem,
                     "tests",
                     "-g",
-                    "test_*.py",
+                    "**/test_*.py",
                 ],
                 capture_output=True,
                 text=True,
@@ -124,7 +126,7 @@ def _related_tests_for_modules(
     return related
 
 
-def _is_light_test(path: str) -> bool:
+def is_light_test(path: str) -> bool:
     file_path = Path(path)
     if not file_path.exists():
         return False
@@ -145,17 +147,35 @@ def resolve_tests(
     include_baseline: bool,
     diff_base: str,
 ) -> list[str]:
-    selected: set[str] = set(_read_group(new_code_group))
+    selected: set[str] = set(read_group(new_code_group))
     if include_baseline:
-        selected.update(_read_group(baseline_group))
+        selected.update(read_group(baseline_group))
 
-    changed_files = _git_changed_files(diff_base)
-    all_tests = _all_test_files()
-    selected.update(_collect_changed_tests(changed_files))
-    selected.update(_related_tests_for_modules(changed_files, all_tests))
+    changed_files = git_changed_files(diff_base)
+    all_tests = all_test_files()
+    selected.update(collect_changed_tests(changed_files))
+    selected.update(related_tests_for_modules(changed_files, all_tests))
 
-    light_tests = sorted(path for path in selected if _is_light_test(path))
+    light_tests = sorted(path for path in selected if is_light_test(path))
     return light_tests
+
+
+def resolve_candidates_from_changed_files(changed_files: list[str]) -> list[str]:
+    """Resolve lightweight candidates from an explicit changed-file list."""
+    tests = all_test_files()
+    selected = collect_changed_tests(changed_files) | related_tests_for_modules(
+        changed_files, tests
+    )
+    return sorted(path for path in selected if is_light_test(path))
+
+
+# Backward-compatible aliases for legacy imports/tests.
+_read_group = read_group
+_git_changed_files = git_changed_files
+_all_test_files = all_test_files
+_collect_changed_tests = collect_changed_tests
+_related_tests_for_modules = related_tests_for_modules
+_is_light_test = is_light_test
 
 
 def main() -> int:

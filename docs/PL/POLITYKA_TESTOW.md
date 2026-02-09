@@ -57,7 +57,17 @@ Przydatne opcje:
 ```bash
 NEW_CODE_CHANGED_LINES_MIN=80 make check-new-code-coverage
 NEW_CODE_DIFF_BASE=origin/main make check-new-code-coverage
+NEW_CODE_AUTO_INCLUDE_CHANGED=1 make check-new-code-coverage
 ```
+
+Zachowanie runu new-code coverage:
+
+- bazowe grupy testów: `config/pytest-groups/ci-lite.txt` + `config/pytest-groups/sonar-new-code.txt`
+- automatyczne dołączanie testów zmienionych/powiązanych jest domyślnie aktywne (`NEW_CODE_AUTO_INCLUDE_CHANGED=1`)
+- wzorzec auto-include dla zmienionych testów: `tests/**/test_*.py`
+- resolver listy: `scripts/resolve_sonar_new_code_tests.py`
+- gdy lokalnie nie ma `ripgrep` (`rg`), resolver używa fallbacku Python (bez blokowania runu)
+- w CI backend-lite doinstalowuje `ripgrep` dla szybszego wyboru i czytelnych logów
 
 ### Poziom 4: Walidacja pod wydanie (gdy potrzebna)
 
@@ -159,6 +169,21 @@ Wskaźniki:
 - lokalna bramka changed-lines: `make check-new-code-coverage`
 - minimalny próg wymuszony: `NEW_CODE_CHANGED_LINES_MIN=80` (domyślnie)
 - rekomendowany bufor przed push: `>= 80%`
+- referencyjna gałąź Sonar dla new-code: `main` (`sonar.newCode.referenceBranch=main`)
+
+### 5) Rozjazd optional dependencies w CI-lite
+
+Typowe wpadki:
+
+- test importuje opcjonalną paczkę, której nie ma w środowisku CI-lite
+- brak paczki kończy się `ERROR`/`FAILED` zamiast jawnego `skipped`
+- nowy test trafia do runu bez zdefiniowanej polityki zależności
+
+Wskaźniki:
+
+- testy z opcjonalną biblioteką używają `pytest.importorskip(...)`, jeśli dependency nie jest obowiązkowe dla CI-lite
+- lekkie zależności systemowe pomocne dla szybkich bramek (np. `ripgrep`) są instalowane w jobie CI-lite
+- backend-lite pokazuje jawne `skipped` (a nie import error) dla testów optional-dependency
 
 ## Polityka artefaktów testowych
 
@@ -191,3 +216,17 @@ Zmiana jest `Done` dopiero po przejściu wszystkich bramek dla zakresu PR:
 5. Gdy zmieniasz frontend:
    - `npm --prefix web-next run lint`
    - `npm --prefix web-next run test:unit:ci-lite`
+
+## Polityka Optional Dependencies (CI-lite)
+
+Stosuj poniższą regułę dla testów uruchamianych przez `make check-new-code-coverage`:
+
+1. Doinstaluj paczkę w CI-lite, gdy jest lekka i szeroko przydatna dla szybkich bramek.
+2. Użyj `pytest.importorskip("package")`, gdy paczka jest ciężka, środowiskowa lub opcjonalna z założenia.
+3. Brak opcjonalnej paczki nie może wywracać backend-lite surowym import error.
+
+Przykłady aktualnie egzekwowane:
+
+- `tests/test_mcp_manager.py` używa `pytest.importorskip("mcp")`
+- `tests/test_model_discovery.py` używa `pytest.importorskip("bs4")` w ścieżce scrapingowej
+- job backend-lite instaluje `ripgrep` dla `scripts/resolve_sonar_new_code_tests.py`

@@ -49,21 +49,21 @@ def test_resolve_tests_includes_groups_and_changed_items(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         module,
-        "_git_changed_files",
+        "git_changed_files",
         lambda _base: [
             "tests/test_changed.py",
             "venom_core/core/model_registry_clients.py",
         ],
     )
-    monkeypatch.setattr(module, "_all_test_files", lambda: sorted(files))
+    monkeypatch.setattr(module, "all_test_files", lambda: sorted(files))
     monkeypatch.setattr(
         module,
-        "_related_tests_for_modules",
+        "related_tests_for_modules",
         lambda _changed, _tests: {"tests/test_related.py", "tests/test_integration.py"},
     )
     monkeypatch.setattr(
         module,
-        "_is_light_test",
+        "is_light_test",
         lambda path: path != "tests/test_integration.py",
     )
 
@@ -79,3 +79,16 @@ def test_resolve_tests_includes_groups_and_changed_items(monkeypatch, tmp_path):
     assert "tests/test_changed.py" in resolved
     assert "tests/test_related.py" in resolved
     assert "tests/test_integration.py" not in resolved
+
+
+def test_collect_changed_tests_supports_nested_tests_paths():
+    module = _load_module()
+    changed = [
+        "tests/api/test_queue.py",
+        "tests/test_root.py",
+        "tests/api/not_a_test.py",
+    ]
+    assert module.collect_changed_tests(changed) == {
+        "tests/api/test_queue.py",
+        "tests/test_root.py",
+    }

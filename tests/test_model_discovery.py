@@ -166,6 +166,40 @@ async def test_hf_fetch_papers_month_rejects_invalid_month_for_url_path():
     )
 
 
+@pytest.mark.asyncio
+async def test_hf_fetch_papers_month_follows_relative_redirect():
+    client = HuggingFaceClient()
+
+    first_response = MagicMock()
+    first_response.is_redirect = True
+    first_response.headers = {"location": "/papers/month/2025-01"}
+    first_response.raise_for_status.return_value = None
+    first_response.text = ""
+
+    second_response = MagicMock()
+    second_response.is_redirect = False
+    second_response.headers = {}
+    second_response.raise_for_status.return_value = None
+    second_response.text = "<html></html>"
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.side_effect = [first_response, second_response]
+        mock_client_cls.return_value = mock_client
+
+        with patch(
+            "venom_core.core.model_registry_clients._parse_hf_papers_html",
+            return_value=[],
+        ):
+            await client.fetch_papers_month(limit=5, month="2025-01")
+
+    assert mock_client.get.await_args_list[1].args[0] == (
+        "https://huggingface.co/papers/month/2025-01"
+    )
+
+
 def test_parse_hf_papers_html_returns_empty_when_section_missing():
     assert _parse_hf_papers_html("<html></html>", limit=3) == []
 
@@ -229,6 +263,42 @@ def test_parse_hf_papers_html_parses_expected_fields():
     assert parsed[0]["url"] == "https://huggingface.co/papers/paper-1"
     assert parsed[0]["authors"] == ["Alice"]
     assert parsed[0]["title"] == "Entry title"
+
+
+def test_remove_cached_model_success(tmp_path):
+    client = HuggingFaceClient()
+    cache_dir = tmp_path / "cache"
+    model_name = "owner/model"
+    model_cache_dir = cache_dir / model_name.replace("/", "--")
+    model_cache_dir.mkdir(parents=True)
+    assert client.remove_cached_model(cache_dir, model_name) is True
+    assert not model_cache_dir.exists()
+
+
+def test_remove_cached_model_not_found_returns_false(tmp_path):
+    client = HuggingFaceClient()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    assert client.remove_cached_model(cache_dir, "owner/missing") is False
+
+
+def test_remove_cached_model_rejects_path_outside_cache(tmp_path):
+    client = HuggingFaceClient()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    assert client.remove_cached_model(cache_dir, "..") is False
+
+
+def test_remove_cached_model_handles_rmtree_error(tmp_path):
+    client = HuggingFaceClient()
+    cache_dir = tmp_path / "cache"
+    model_name = "owner/model"
+    model_cache_dir = cache_dir / model_name.replace("/", "--")
+    model_cache_dir.mkdir(parents=True)
+
+    with patch("venom_core.core.model_registry_clients.shutil.rmtree") as mock_rmtree:
+        mock_rmtree.side_effect = OSError("boom")
+        assert client.remove_cached_model(cache_dir, model_name) is False
 
 
 def test_api_search_endpoint():

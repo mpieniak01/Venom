@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime
-from typing import Annotated, Optional
+from typing import Annotated, Any, Dict, Optional
 
 import aiohttp
 from semantic_kernel.functions import kernel_function
@@ -117,80 +117,20 @@ class AssistantSkill:
             Informacje o pogodzie
         """
         try:
-            # Walidacja jednostek
-            if units not in ("metric", "imperial"):
-                logger.warning(
-                    f"Nieprawidłowa wartość units: '{units}'. Używam 'metric'."
-                )
-                units = "metric"
-
-            # Podstawowa walidacja lokalizacji (usuń potencjalnie problematyczne znaki)
-            if not location or not location.strip():
+            units = self._normalize_units(units)
+            location_safe = (location or "").strip()
+            if not location_safe:
                 return "✗ Nazwa lokalizacji nie może być pusta."
 
-            # Używamy wttr.in - darmowe API bez wymagania klucza
-            # Format: ?format=j1 zwraca pełne dane w formacie JSON
-            location_safe = location.strip()
             url = f"https://wttr.in/{location_safe}?format=j1"
+            data = await self._fetch_weather_payload(url, location_safe)
+            if isinstance(data, str):
+                return data
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url, timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status != 200:
-                        return f"✗ Nie udało się pobrać danych pogodowych dla '{location}'. Sprawdź nazwę lokalizacji."
-
-                    data = await response.json()
-
-                    # Parsowanie odpowiedzi z wttr.in - bezpieczna obsługa pustych list
-                    current_list = data.get("current_condition") or []
-                    if not current_list:
-                        return f"✗ Brak danych pogodowych dla '{location}'."
-                    current = current_list[0]
-
-                    nearest_area_list = data.get("nearest_area") or []
-                    nearest_area = nearest_area_list[0] if nearest_area_list else {}
-
-                    temp_c = current.get("temp_C", "N/A")
-                    temp_f = current.get("temp_F", "N/A")
-                    feels_like_c = current.get("FeelsLikeC", "N/A")
-                    feels_like_f = current.get("FeelsLikeF", "N/A")
-                    humidity = current.get("humidity", "N/A")
-
-                    # Bezpieczne wydobycie opisu pogody
-                    weather_desc_list = current.get("weatherDesc") or []
-                    weather_desc = (
-                        weather_desc_list[0].get("value", "N/A")
-                        if weather_desc_list
-                        else "N/A"
-                    )
-
-                    wind_speed = current.get("windspeedKmph", "N/A")
-                    wind_dir = current.get("winddir16Point", "N/A")
-
-                    # Bezpieczne wydobycie nazwy obszaru
-                    area_name_list = nearest_area.get("areaName") or []
-                    area_name = (
-                        area_name_list[0].get("value", location)
-                        if area_name_list
-                        else location
-                    )
-
-                    country_list = nearest_area.get("country") or []
-                    country = country_list[0].get("value", "") if country_list else ""
-
-                    if units == "metric":
-                        temp_display = f"{temp_c}°C (odczuwalna: {feels_like_c}°C)"
-                    else:
-                        temp_display = f"{temp_f}°F (odczuwalna: {feels_like_f}°F)"
-
-                    return (
-                        f"🌤️  Pogoda dla: {area_name}, {country}\n\n"
-                        f"🌡️  Temperatura: {temp_display}\n"
-                        f"☁️  Warunki: {weather_desc}\n"
-                        f"💧 Wilgotność: {humidity}%\n"
-                        f"💨 Wiatr: {wind_speed} km/h ({wind_dir})"
-                    )
+            parsed = self._parse_weather_payload(data, location_safe)
+            if isinstance(parsed, str):
+                return parsed
+            return self._format_weather_response(parsed, units)
 
         except asyncio.TimeoutError:
             logger.error("Timeout podczas pobierania danych pogodowych")
@@ -201,6 +141,82 @@ class AssistantSkill:
         except Exception as e:
             logger.error(f"Błąd podczas pobierania pogody: {e}")
             return f"✗ Błąd podczas pobierania pogody: {e}"
+
+    @staticmethod
+    def _normalize_units(units: str) -> str:
+        if units in ("metric", "imperial"):
+            return units
+        logger.warning(f"Nieprawidłowa wartość units: '{units}'. Używam 'metric'.")
+        return "metric"
+
+    async def _fetch_weather_payload(
+        self, url: str, location: str
+    ) -> Dict[str, Any] | str:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status != 200:
+                    return (
+                        f"✗ Nie udało się pobrać danych pogodowych dla '{location}'. "
+                        "Sprawdź nazwę lokalizacji."
+                    )
+                return await response.json()
+
+    @staticmethod
+    def _first_nested_value(items: Any, field: str, default: str) -> str:
+        if not items:
+            return default
+        first = items[0] or {}
+        return first.get(field, default)
+
+    def _parse_weather_payload(
+        self, data: Dict[str, Any], location: str
+    ) -> Dict[str, str] | str:
+        current_list = data.get("current_condition") or []
+        if not current_list:
+            return f"✗ Brak danych pogodowych dla '{location}'."
+
+        current = current_list[0]
+        nearest_area = (data.get("nearest_area") or [{}])[0] or {}
+
+        return {
+            "temp_c": current.get("temp_C", "N/A"),
+            "temp_f": current.get("temp_F", "N/A"),
+            "feels_like_c": current.get("FeelsLikeC", "N/A"),
+            "feels_like_f": current.get("FeelsLikeF", "N/A"),
+            "humidity": current.get("humidity", "N/A"),
+            "weather_desc": self._first_nested_value(
+                current.get("weatherDesc"), "value", "N/A"
+            ),
+            "wind_speed": current.get("windspeedKmph", "N/A"),
+            "wind_dir": current.get("winddir16Point", "N/A"),
+            "area_name": self._first_nested_value(
+                nearest_area.get("areaName"), "value", location
+            ),
+            "country": self._first_nested_value(
+                nearest_area.get("country"), "value", ""
+            ),
+        }
+
+    @staticmethod
+    def _format_weather_response(parsed: Dict[str, str], units: str) -> str:
+        if units == "metric":
+            temp_display = (
+                f"{parsed['temp_c']}°C (odczuwalna: {parsed['feels_like_c']}°C)"
+            )
+        else:
+            temp_display = (
+                f"{parsed['temp_f']}°F (odczuwalna: {parsed['feels_like_f']}°F)"
+            )
+
+        return (
+            f"🌤️  Pogoda dla: {parsed['area_name']}, {parsed['country']}\n\n"
+            f"🌡️  Temperatura: {temp_display}\n"
+            f"☁️  Warunki: {parsed['weather_desc']}\n"
+            f"💧 Wilgotność: {parsed['humidity']}%\n"
+            f"💨 Wiatr: {parsed['wind_speed']} km/h ({parsed['wind_dir']})"
+        )
 
     @kernel_function(
         name="check_services",

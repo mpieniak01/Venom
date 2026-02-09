@@ -244,7 +244,7 @@ def test_initialize_model_services_success_path(monkeypatch, tmp_path):
 
     class DummyBenchmark:
         def __init__(self, **_kwargs):
-            pass
+            self.kwargs = _kwargs
 
     monkeypatch.setattr(main_module, "service_monitor", object())
     monkeypatch.setattr(main_module, "llm_controller", object())

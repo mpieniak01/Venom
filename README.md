@@ -1,12 +1,13 @@
 # Venom v1.0 🐍
 
-[![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](
-https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml
-)
+[![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml)
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](
-https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom
-)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
+
+**What these checks mean**
+- `Quick Validate` (GitHub Actions): `python -m compileall venom_core scripts tests`, CI-lite dependency audit (`scripts/audit_lite_deps.py` + `requirements-ci-lite.txt` + `config/pytest-groups/ci-lite.txt`), and frontend manifest sanity (`lint`, `test:unit:ci-lite` scripts present).
+- `GitGuardian`: secret detection and leak prevention in repository history and pull requests.
+- `Quality Gate Status` (SonarCloud): backend + frontend analysis based on `test-results/sonar/python-coverage.xml`, `test-results/sonar/python-junit.xml`, and `web-next/coverage/lcov.info`.
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 

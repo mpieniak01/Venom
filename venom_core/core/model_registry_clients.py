@@ -27,13 +27,10 @@ def _normalize_hf_papers_month(month: Optional[str]) -> str:
                 datetime.strptime(candidate, "%Y-%m")
                 return candidate
             except ValueError:
-                logger.warning(
-                    "Odrzucono nieprawidłowy format miesiąca dla HuggingFace papers; użyto bieżącego miesiąca."
-                )
-        else:
-            logger.warning(
-                "Odrzucono nieprawidłowy format miesiąca dla HuggingFace papers; użyto bieżącego miesiąca."
-            )
+                pass
+        logger.warning(
+            "Odrzucono nieprawidłowy format miesiąca dla HuggingFace papers; użyto bieżącego miesiąca."
+        )
     return datetime.now().strftime("%Y-%m")
 
 

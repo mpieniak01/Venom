@@ -94,3 +94,11 @@ tests/test_memory.py
 tests/test_memory_cache.py
 tests/test_rag_integration.py
 tests/test_research_skill.py
+tests/test_coder_critic_loop.py
+tests/test_file_operations_integration.py
+tests/test_hidden_prompts_cache.py
+tests/test_intent_manager.py
+tests/test_intent_tool_requirement.py
+tests/test_orchestrator_decision_gates.py
+tests/test_orchestrator_intent.py
+tests/test_planning_integration.py

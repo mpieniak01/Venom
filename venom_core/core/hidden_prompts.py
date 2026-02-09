@@ -225,7 +225,17 @@ def get_cached_hidden_response(
     2) zagregowane wpisy spełniające min_score
     """
     prompt_norm = _normalize(prompt)
+    exact_hit = _find_exact_cached_response(
+        prompt_norm, intent=intent, min_score=min_score
+    )
+    if exact_hit is not None:
+        return exact_hit
+    return _find_semantic_cached_response(prompt=prompt, intent=intent)
 
+
+def _find_exact_cached_response(
+    prompt_norm: str, *, intent: Optional[str], min_score: int
+) -> Optional[str]:
     for item in get_active_hidden_prompts(intent=intent):
         if _normalize(item.get("prompt") or "") == prompt_norm:
             return item.get("approved_response")
@@ -233,8 +243,10 @@ def get_cached_hidden_response(
     for item in aggregate_hidden_prompts(intent=intent, min_score=min_score, limit=100):
         if _normalize(item.get("prompt") or "") == prompt_norm:
             return item.get("approved_response")
+    return None
 
-    # Fallback: Semantic Cache (Vector Search)
+
+def _find_semantic_cached_response(prompt: str, intent: Optional[str]) -> Optional[str]:
     try:
         from venom_core.core.orchestrator.constants import (
             SEMANTIC_CACHE_COLLECTION_NAME,
@@ -242,37 +254,32 @@ def get_cached_hidden_response(
         )
         from venom_core.memory.vector_store import VectorStore
 
-        # Użyj singletona lub nowej instancji (VectorStore jest lekki, connection jest lazy)
         store = VectorStore(collection_name=SEMANTIC_CACHE_COLLECTION_NAME)
         results = store.search(query=prompt, limit=1)
+        if not results:
+            return None
 
-        if results:
-            best_match = results[0]
-            # LanceDB zwraca _distance (cosine distance), gdzie 0 = identyczny, 1 = przeciwny.
-            # Dla sentence-transformers i LanceDB, score często jest distance.
-            # Ale VectorStore.search zwraca `score` jako `_distance`.
-            # Zatem similarity = 1 - distance.
-            # Jeśli SEMANTIC_CACHE_THRESHOLD = 0.85, to szukamy distance < 0.15.
-            distance = best_match.get("score")
-            # Zabezpieczenie przed None
-            if distance is not None:
-                similarity = 1.0 - float(distance)
-                if similarity >= SEMANTIC_CACHE_THRESHOLD:
-                    meta = best_match.get("metadata") or {}
-                    # Sprawdź intent (opcjonalnie)
-                    cached_intent = meta.get("intent")
-                    if not intent or (
-                        cached_intent and cached_intent.upper() == intent.upper()
-                    ):
-                        logger.info(
-                            f"Semantic Cache HIT: similarity={similarity:.4f} for '{prompt[:50]}...'"
-                        )
-                        return meta.get("response")
+        best_match = results[0]
+        distance = best_match.get("score")
+        if distance is None:
+            return None
 
+        similarity = 1.0 - float(distance)
+        if similarity < SEMANTIC_CACHE_THRESHOLD:
+            return None
+
+        meta = best_match.get("metadata") or {}
+        cached_intent = meta.get("intent")
+        if intent and not (cached_intent and cached_intent.upper() == intent.upper()):
+            return None
+
+        logger.info(
+            f"Semantic Cache HIT: similarity={similarity:.4f} for '{prompt[:50]}...'"
+        )
+        return meta.get("response")
     except Exception as exc:
         logger.warning(f"Semantic Cache lookup failed: {exc}")
-
-    return None
+        return None
 
 
 def _prepare_hidden_prompt_entry(

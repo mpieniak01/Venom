@@ -87,3 +87,10 @@ tests/test_state_and_orchestrator.py
 tests/test_work_ledger.py
 tests/test_llm_simple_logic.py
 tests/test_llm_simple_stream.py
+tests/test_api_dependencies.py
+tests/test_historian_agent.py
+tests/test_lessons_store.py
+tests/test_memory.py
+tests/test_memory_cache.py
+tests/test_rag_integration.py
+tests/test_research_skill.py

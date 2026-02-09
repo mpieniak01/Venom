@@ -12,6 +12,7 @@ from venom_core.infrastructure.hardware_pi import HardwareBridge
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+HARDWARE_BRIDGE_UNAVAILABLE_MSG = "Hardware Bridge nie jest dostępny."
 
 
 class OperatorAgent(BaseAgent):
@@ -164,7 +165,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
 
     async def _handle_status_command(self) -> str:
         if self.hardware_bridge is None:
-            return "Hardware Bridge nie jest dostępny."
+            return HARDWARE_BRIDGE_UNAVAILABLE_MSG
         info = await self.hardware_bridge.get_system_info()
         if not info:
             return "Nie udało się pobrać statusu Rider Pi."
@@ -177,7 +178,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
 
     async def _handle_temperature_command(self) -> str:
         if self.hardware_bridge is None:
-            return "Hardware Bridge nie jest dostępny."
+            return HARDWARE_BRIDGE_UNAVAILABLE_MSG
         temp = await self.hardware_bridge.read_sensor("cpu_temp")
         if temp:
             return f"Temperatura CPU na Rider Pi wynosi {temp:.1f} stopni Celsjusza."
@@ -185,7 +186,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
 
     async def _handle_gpio_command(self, text_lower: str, enable: bool) -> str:
         if self.hardware_bridge is None:
-            return "Hardware Bridge nie jest dostępny."
+            return HARDWARE_BRIDGE_UNAVAILABLE_MSG
         pin = self._extract_gpio_pin(text_lower)
         if pin is None:
             return "Nie rozpoznano numeru pinu. Spróbuj ponownie."
@@ -196,7 +197,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
 
     async def _handle_emergency_command(self, text_lower: str) -> str:
         if self.hardware_bridge is None:
-            return "Hardware Bridge nie jest dostępny."
+            return HARDWARE_BRIDGE_UNAVAILABLE_MSG
         if "reset" not in text_lower:
             return "Nieznana procedura awaryjna. Dostępne: reset GPIO."
         success = await self.hardware_bridge.emergency_procedure("reset_gpio")

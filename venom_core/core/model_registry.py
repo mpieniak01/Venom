@@ -1052,8 +1052,13 @@ class ModelRegistry:
     def _safe_setattr(self, target: Any, attr: str, value: Any) -> None:
         try:
             setattr(target, attr, value)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(
+                "Nie udało się ustawić atrybutu %s na obiekcie %r: %s",
+                attr,
+                target,
+                exc,
+            )
 
     async def _restart_runtime_after_activation(
         self, runtime: str, settings: Any

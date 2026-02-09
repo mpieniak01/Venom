@@ -215,30 +215,47 @@ async def _synchronize_startup_local_model(runtime) -> None:
         logger.warning("Nie udało się zweryfikować modelu LLM: %s", exc)
 
 
+async def _start_configured_local_server(active_server: str) -> None:
+    if not llm_controller or not active_server:
+        return
+    if not llm_controller.has_server(active_server):
+        return
+
+    try:
+        for server in llm_controller.list_servers():
+            name = server.get("name", "").lower()
+            if not name or name == active_server:
+                continue
+            if server.get("supports", {}).get("stop"):
+                await llm_controller.run_action(name, "stop")
+        await llm_controller.run_action(active_server, "start")
+        logger.info("Uruchamianie lokalnego LLM (%s) na starcie.", active_server)
+    except Exception as exc:
+        logger.warning("Nie udało się uruchomić lokalnego LLM: %s", exc)
+
+
+async def _wait_for_runtime_online(
+    runtime, attempts: int = 90, delay_seconds: float = 1.0
+) -> str:
+    status = "offline"
+    for _ in range(attempts):
+        status, _ = await probe_runtime_status(runtime)
+        if status == "online":
+            return status
+        await asyncio.sleep(delay_seconds)
+    return status
+
+
 async def _start_local_runtime_if_needed(runtime) -> str:
     status, _ = await probe_runtime_status(runtime)
     if status == "online":
         return status
 
     active_server = (SETTINGS.ACTIVE_LLM_SERVER or runtime.provider or "").lower()
-    if llm_controller and active_server and llm_controller.has_server(active_server):
-        try:
-            for server in llm_controller.list_servers():
-                name = server.get("name", "").lower()
-                if not name or name == active_server:
-                    continue
-                if server.get("supports", {}).get("stop"):
-                    await llm_controller.run_action(name, "stop")
-            await llm_controller.run_action(active_server, "start")
-            logger.info("Uruchamianie lokalnego LLM (%s) na starcie.", active_server)
-        except Exception as exc:
-            logger.warning("Nie udało się uruchomić lokalnego LLM: %s", exc)
-
-    for _ in range(90):
-        status, _ = await probe_runtime_status(runtime)
-        if status == "online":
-            return status
-        await asyncio.sleep(1.0)
+    await _start_configured_local_server(active_server)
+    status = await _wait_for_runtime_online(runtime)
+    if status == "online":
+        return status
     logger.warning("Lokalny LLM nadal offline po oczekiwaniu na start.")
     return status
 
@@ -340,7 +357,7 @@ async def _initialize_observability() -> None:
         llm_controller = None
 
 
-async def _initialize_model_services() -> None:
+def _initialize_model_services() -> None:
     global model_manager, model_registry, benchmark_service
 
     from venom_core.core.model_manager import ModelManager
@@ -601,65 +618,96 @@ async def _initialize_documenter_and_watcher(workspace_path: Path) -> None:
         file_watcher = None
 
 
+def _initialize_audio_engine_if_enabled() -> AudioEngine | None:
+    if not SETTINGS.ENABLE_AUDIO_INTERFACE:
+        return None
+    try:
+        audio = AudioEngine(
+            whisper_model_size=SETTINGS.WHISPER_MODEL_SIZE,
+            tts_model_path=SETTINGS.TTS_MODEL_PATH,
+            device=SETTINGS.AUDIO_DEVICE,
+        )
+        logger.info("AudioEngine zainicjalizowany")
+        return audio
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować AudioEngine: {exc}")
+        return None
+
+
+async def _initialize_hardware_bridge_if_enabled() -> HardwareBridge | None:
+    if not SETTINGS.ENABLE_IOT_BRIDGE:
+        return None
+    try:
+        password_value = extract_secret_value(SETTINGS.RIDER_PI_PASSWORD)
+        bridge = HardwareBridge(
+            host=SETTINGS.RIDER_PI_HOST,
+            port=SETTINGS.RIDER_PI_PORT,
+            username=SETTINGS.RIDER_PI_USERNAME,
+            password=password_value,
+            protocol=SETTINGS.RIDER_PI_PROTOCOL,
+        )
+        connected = await bridge.connect()
+        if connected:
+            logger.info("HardwareBridge połączony z Rider-Pi")
+        else:
+            logger.warning("Nie udało się połączyć z Rider-Pi")
+        return bridge
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować HardwareBridge: {exc}")
+        return None
+
+
+def _initialize_operator_agent_if_possible(
+    current_audio_engine: AudioEngine | None,
+    current_hardware_bridge: HardwareBridge | None,
+) -> OperatorAgent | None:
+    if not (SETTINGS.ENABLE_AUDIO_INTERFACE and current_audio_engine):
+        return None
+    try:
+        from venom_core.execution.kernel_builder import KernelBuilder
+
+        operator_kernel = KernelBuilder().build_kernel()
+        agent = OperatorAgent(
+            kernel=operator_kernel,
+            hardware_bridge=current_hardware_bridge,
+        )
+        logger.info("OperatorAgent zainicjalizowany")
+        return agent
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować OperatorAgent: {exc}")
+        return None
+
+
+def _initialize_audio_stream_handler_if_possible(
+    current_audio_engine: AudioEngine | None,
+    current_operator_agent: OperatorAgent | None,
+) -> AudioStreamHandler | None:
+    if not (current_audio_engine and current_operator_agent):
+        return None
+    try:
+        handler = AudioStreamHandler(
+            audio_engine=current_audio_engine,
+            vad_threshold=SETTINGS.VAD_THRESHOLD,
+            silence_duration=SETTINGS.SILENCE_DURATION,
+        )
+        logger.info("AudioStreamHandler zainicjalizowany")
+        return handler
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować AudioStreamHandler: {exc}")
+        return None
+
+
 async def _initialize_avatar_stack() -> None:
     global audio_engine, hardware_bridge, operator_agent, audio_stream_handler
 
-    if SETTINGS.ENABLE_AUDIO_INTERFACE:
-        try:
-            audio_engine = AudioEngine(
-                whisper_model_size=SETTINGS.WHISPER_MODEL_SIZE,
-                tts_model_path=SETTINGS.TTS_MODEL_PATH,
-                device=SETTINGS.AUDIO_DEVICE,
-            )
-            logger.info("AudioEngine zainicjalizowany")
-        except Exception as exc:
-            logger.warning(f"Nie udało się zainicjalizować AudioEngine: {exc}")
-            audio_engine = None
-
-    if SETTINGS.ENABLE_IOT_BRIDGE:
-        try:
-            password_value = extract_secret_value(SETTINGS.RIDER_PI_PASSWORD)
-            hardware_bridge = HardwareBridge(
-                host=SETTINGS.RIDER_PI_HOST,
-                port=SETTINGS.RIDER_PI_PORT,
-                username=SETTINGS.RIDER_PI_USERNAME,
-                password=password_value,
-                protocol=SETTINGS.RIDER_PI_PROTOCOL,
-            )
-            connected = await hardware_bridge.connect()
-            if connected:
-                logger.info("HardwareBridge połączony z Rider-Pi")
-            else:
-                logger.warning("Nie udało się połączyć z Rider-Pi")
-        except Exception as exc:
-            logger.warning(f"Nie udało się zainicjalizować HardwareBridge: {exc}")
-            hardware_bridge = None
-
-    if SETTINGS.ENABLE_AUDIO_INTERFACE and audio_engine:
-        try:
-            from venom_core.execution.kernel_builder import KernelBuilder
-
-            operator_kernel = KernelBuilder().build_kernel()
-            operator_agent = OperatorAgent(
-                kernel=operator_kernel,
-                hardware_bridge=hardware_bridge,
-            )
-            logger.info("OperatorAgent zainicjalizowany")
-        except Exception as exc:
-            logger.warning(f"Nie udało się zainicjalizować OperatorAgent: {exc}")
-            operator_agent = None
-
-    if audio_engine and operator_agent:
-        try:
-            audio_stream_handler = AudioStreamHandler(
-                audio_engine=audio_engine,
-                vad_threshold=SETTINGS.VAD_THRESHOLD,
-                silence_duration=SETTINGS.SILENCE_DURATION,
-            )
-            logger.info("AudioStreamHandler zainicjalizowany")
-        except Exception as exc:
-            logger.warning(f"Nie udało się zainicjalizować AudioStreamHandler: {exc}")
-            audio_stream_handler = None
+    audio_engine = _initialize_audio_engine_if_enabled()
+    hardware_bridge = await _initialize_hardware_bridge_if_enabled()
+    operator_agent = _initialize_operator_agent_if_possible(
+        audio_engine, hardware_bridge
+    )
+    audio_stream_handler = _initialize_audio_stream_handler_if_possible(
+        audio_engine, operator_agent
+    )
 
 
 async def _initialize_shadow_stack() -> None:
@@ -798,7 +846,7 @@ async def _shutdown_runtime_components() -> None:
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
     await _initialize_observability()
-    await _initialize_model_services()
+    _initialize_model_services()
     _initialize_calendar_skill()
     await _initialize_node_manager()
     _initialize_orchestrator()

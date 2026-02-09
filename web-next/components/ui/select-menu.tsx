@@ -14,7 +14,7 @@ export type SelectMenuOption = {
   disabled?: boolean;
 };
 
-type SelectMenuProps = {
+type SelectMenuProps = Readonly<{
   value: string;
   options: SelectMenuOption[];
   onChange: (value: string) => void;
@@ -31,7 +31,7 @@ type SelectMenuProps = {
   menuWidth?: "trigger" | "content";
   renderButton?: (option: SelectMenuOption | null) => ReactNode;
   renderOption?: (option: SelectMenuOption, active: boolean) => ReactNode;
-};
+}>;
 
 export function SelectMenu({
   value,
@@ -73,11 +73,11 @@ export function SelectMenu({
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
-    window.addEventListener("mousedown", handleOutside);
-    window.addEventListener("keydown", handleEsc);
+    globalThis.window.addEventListener("mousedown", handleOutside);
+    globalThis.window.addEventListener("keydown", handleEsc);
     return () => {
-      window.removeEventListener("mousedown", handleOutside);
-      window.removeEventListener("keydown", handleEsc);
+      globalThis.window.removeEventListener("mousedown", handleOutside);
+      globalThis.window.removeEventListener("keydown", handleEsc);
     };
   }, []);
 
@@ -107,11 +107,11 @@ export function SelectMenu({
       );
     };
     updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
+    globalThis.window.addEventListener("resize", updatePosition);
+    globalThis.window.addEventListener("scroll", updatePosition, true);
     return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
+      globalThis.window.removeEventListener("resize", updatePosition);
+      globalThis.window.removeEventListener("scroll", updatePosition, true);
     };
   }, [open, menuWidth]);
 

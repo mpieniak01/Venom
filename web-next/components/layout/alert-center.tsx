@@ -17,10 +17,10 @@ import { AlertTriangle, Filter, Copy } from "lucide-react";
 import { OverlayFallback } from "./overlay-fallback";
 import { useTranslation } from "@/lib/i18n";
 
-type AlertCenterProps = {
+type AlertCenterProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-};
+}>;
 
 export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
   const { entries, connected } = useTelemetryFeed(150);
@@ -93,40 +93,48 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
         </div>
 
         <div className="flex-1 overflow-auto rounded-2xl box-muted p-4 space-y-3">
-          {!connected ? (
-            <OverlayFallback
-              icon={<AlertTriangle className="h-5 w-5" />}
-              title={t("alertCenter.offlineTitle")}
-              description={t("alertCenter.offlineDescription")}
-              hint={t("alertCenter.hint")}
-              testId="alert-center-offline-state"
-            />
-          ) : visibleEntries.length === 0 ? (
-            <OverlayFallback
-              icon={<AlertTriangle className="h-5 w-5" />}
-              title={t("alertCenter.emptyTitle")}
-              description={t("alertCenter.emptyDescription")}
-              hint={t("alertCenter.hint")}
-              testId="alert-center-empty-state"
-            />
-          ) : (
-            <div className="space-y-3" data-testid="alert-center-entries">
-              {visibleEntries.map((entry) => (
-                <ListCard
-                  key={entry.id}
-                  title={entry.message}
-                  badge={<Badge tone={toneFromLevel(entry.level)}>{entry.levelLabel}</Badge>}
-                  meta={<span className="text-hint">{formatTimestamp(entry.ts)}</span>}
-                >
-                  {entry.details && (
-                    <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-black/40 p-3 text-xs text-zinc-300">
-                      {entry.details}
-                    </pre>
-                  )}
-                </ListCard>
-              ))}
-            </div>
-          )}
+          {(() => {
+            if (!connected) {
+              return (
+                <OverlayFallback
+                  icon={<AlertTriangle className="h-5 w-5" />}
+                  title={t("alertCenter.offlineTitle")}
+                  description={t("alertCenter.offlineDescription")}
+                  hint={t("alertCenter.hint")}
+                  testId="alert-center-offline-state"
+                />
+              );
+            }
+            if (visibleEntries.length === 0) {
+              return (
+                <OverlayFallback
+                  icon={<AlertTriangle className="h-5 w-5" />}
+                  title={t("alertCenter.emptyTitle")}
+                  description={t("alertCenter.emptyDescription")}
+                  hint={t("alertCenter.hint")}
+                  testId="alert-center-empty-state"
+                />
+              );
+            }
+            return (
+              <div className="space-y-3" data-testid="alert-center-entries">
+                {visibleEntries.map((entry) => (
+                  <ListCard
+                    key={entry.id}
+                    title={entry.message}
+                    badge={<Badge tone={toneFromLevel(entry.level)}>{entry.levelLabel}</Badge>}
+                    meta={<span className="text-hint">{formatTimestamp(entry.ts)}</span>}
+                  >
+                    {entry.details && (
+                      <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-black/40 p-3 text-xs text-zinc-300">
+                        {entry.details}
+                      </pre>
+                    )}
+                  </ListCard>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </SheetContent>
     </Sheet>
@@ -139,18 +147,19 @@ function parseTelemetryEntry(entry: { id: string; ts: number; payload: unknown }
 
   if (isLogPayload(entry.payload)) {
     const levelRaw = entry.payload.level?.toLowerCase() ?? "info";
-    const details =
-      typeof entry.payload.details === "string"
-        ? entry.payload.details
-        : entry.payload.details
-          ? JSON.stringify(entry.payload.details, null, 2)
-          : undefined;
+    const details = (() => {
+      if (typeof entry.payload.details === "string") return entry.payload.details;
+      if (entry.payload.details) return JSON.stringify(entry.payload.details, null, 2);
+      return undefined;
+    })();
     return {
       id: entry.id,
       ts: entry.ts,
-      level: (levelRaw.includes("error") && "error") ||
-        (levelRaw.includes("warn") && "warn") ||
-        "info",
+      level: (() => {
+        if (levelRaw.includes("error")) return "error";
+        if (levelRaw.includes("warn")) return "warn";
+        return "info";
+      })(),
       levelLabel: levelRaw.toUpperCase(),
       message: entry.payload.message ?? defaultMessage,
       details,

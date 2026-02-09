@@ -64,14 +64,14 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<LanguageCode>("pl");
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof globalThis.window === "undefined") return;
     document.documentElement.dataset.hydrated = "true";
-    const stored = window.localStorage.getItem(STORAGE_KEY) as LanguageCode | null;
+    const stored = globalThis.window.localStorage.getItem(STORAGE_KEY) as LanguageCode | null;
     if (stored && stored in translations) {
       setLanguage(stored);
       return;
     }
-    const browser = window.navigator.language?.slice(0, 2).toLowerCase();
+    const browser = globalThis.window.navigator.language?.slice(0, 2).toLowerCase();
     if (browser && (browser === "en" || browser === "de")) {
       setLanguage(browser as LanguageCode);
     }
@@ -79,8 +79,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEY, language);
+    if (typeof globalThis.window === "undefined") return;
+    globalThis.window.localStorage.setItem(STORAGE_KEY, language);
     dayjs.locale(language);
   }, [language]);
 

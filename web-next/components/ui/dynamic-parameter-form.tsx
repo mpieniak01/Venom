@@ -10,14 +10,14 @@ export type { GenerationSchema };
 /**
  * Props dla DynamicParameterForm
  */
-type DynamicParameterFormProps = {
+type DynamicParameterFormProps = Readonly<{
   schema: GenerationSchema;
   values?: Record<string, number | string | boolean | null | undefined>;
   onChange?: (
     values: Record<string, number | string | boolean | null | undefined>,
   ) => void;
   onReset?: () => void;
-};
+}>;
 
 /**
  * Komponent renderujący pojedynczy parametr
@@ -27,12 +27,12 @@ function ParameterControl({
   schema,
   value,
   onChange,
-}: {
+}: Readonly<{
   name: string;
   schema: GenerationParameterSchema;
   value: number | string | boolean | null | undefined;
   onChange: (value: number | string | boolean | null | undefined) => void;
-}) {
+}>) {
   const { type, min, max, desc, options } = schema;
 
   // Float/Int - Slider + Input numeryczny

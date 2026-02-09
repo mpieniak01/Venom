@@ -15,10 +15,10 @@ import { AlertTriangle, Pause, Play, Trash2 } from "lucide-react";
 import { QueueStatusCard } from "@/components/queue/queue-status-card";
 import { useTranslation } from "@/lib/i18n";
 
-type QuickActionsProps = {
+type QuickActionsProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-};
+}>;
 
 const deriveQueueActionEndpoint = (paused?: boolean) =>
   paused ? "/api/v1/queue/resume" : "/api/v1/queue/pause";

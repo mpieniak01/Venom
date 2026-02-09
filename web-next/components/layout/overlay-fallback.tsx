@@ -2,13 +2,13 @@
 
 import type { ReactNode } from "react";
 
-type OverlayFallbackProps = {
+type OverlayFallbackProps = Readonly<{
   icon: ReactNode;
   title: string;
   description: string;
   hint?: string;
   testId?: string;
-};
+}>;
 
 export function OverlayFallback({
   icon,

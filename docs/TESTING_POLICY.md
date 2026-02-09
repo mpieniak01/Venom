@@ -1,69 +1,53 @@
 # Testing Policy
 
-This document is the single source of truth for test execution, coverage gates, and CI expectations.
+This document is the single source of truth for daily local testing, PR readiness checks, and release-oriented validation.
 
-## Goals
+## Testing Ladder (from fastest to strictest)
 
-- Keep fast local feedback before opening a PR.
-- Keep Sonar new-code coverage stable.
-- Avoid duplicated test instructions across docs.
+### Level 1: Daily local work (every day)
 
-## Local Test Entry Points
+Goal: very fast feedback while coding.
 
-### Quick smoke
+Run:
 
 ```bash
 source .venv/bin/activate || true
 pytest -q
 ```
 
-### Full backend suite (project default)
-
-```bash
-make pytest
-```
-
-### Frontend checks
+When frontend code changes, add:
 
 ```bash
 npm --prefix web-next run lint
-npm --prefix web-next run build
-npm --prefix web-next run test:e2e
 ```
 
-## Sonar Pre-Check (Local)
+### Level 2: Branch ready for PR (mandatory before push)
 
-### Generate Sonar reports
+Goal: verify the branch with lightweight PR-equivalent gates.
+
+Run one command:
 
 ```bash
-make sonar-reports
+make pr-fast
 ```
 
-Artifacts:
+What it includes:
 
-- `test-results/sonar/python-coverage.xml`
-- `test-results/sonar/python-junit.xml`
-- `web-next/coverage/lcov.info`
+- changed-file scope detection against `origin/main` (or `PR_BASE_REF`)
+- backend fast lane: compile check + CI-lite audit + changed-lines coverage gate
+- frontend fast lane (only when `web-next/**` changed): lint + unit CI-lite
 
-### Lightweight backend coverage for new code
+### Level 3: PR quality gates (mandatory before merge)
 
-```bash
-make test-light-coverage
-```
+Goal: align with CI and Sonar expectations.
 
-Useful overrides:
+Required checks:
 
-- `NEW_CODE_COVERAGE_MIN=70`
-- `NEW_CODE_COV_TARGET=venom_core/execution/skills`
-- `NEW_CODE_INCLUDE_BASELINE=0`
+1. `pre-commit run --all-files`
+2. `mypy venom_core`
+3. `make check-new-code-coverage`
 
-### Changed-lines coverage gate (recommended before every PR)
-
-```bash
-make check-new-code-coverage
-```
-
-Defaults:
+Coverage gate defaults:
 
 - diff base: `origin/main`
 - minimum changed-lines coverage: `70%`
@@ -75,62 +59,48 @@ NEW_CODE_CHANGED_LINES_MIN=80 make check-new-code-coverage
 NEW_CODE_DIFF_BASE=origin/main make check-new-code-coverage
 ```
 
-## Performance and Latency
+### Level 4: Release-oriented validation (when needed)
 
-Detailed scenarios and expected values are in:
+Goal: higher confidence for larger changes or pre-release checks.
+
+Backend:
+
+```bash
+make pytest
+```
+
+Frontend:
+
+```bash
+npm --prefix web-next run build
+npm --prefix web-next run test:e2e
+```
+
+Sonar report bundle:
+
+```bash
+make sonar-reports
+```
+
+Artifacts:
+
+- `test-results/sonar/python-coverage.xml`
+- `test-results/sonar/python-junit.xml`
+- `web-next/coverage/lcov.info`
+
+Performance/latency scenarios:
 
 - `docs/TESTING_CHAT_LATENCY.md`
-
-Main commands:
-
 - `npm --prefix web-next run test:perf`
 - `pytest tests/perf/test_chat_pipeline.py -m performance`
 - `./scripts/run-locust.sh`
 
-## CI and PR Gates
+## CI and Sonar Gates (reference)
 
-Required quality gates for PRs:
+Required PR gates:
 
 - CI Lite (fast lint + selected unit tests)
 - SonarCloud (bugs, vulnerabilities, maintainability, duplication)
-
-Expected local pre-PR checks:
-
-1. `pre-commit run --all-files`
-2. `mypy venom_core`
-3. `make check-new-code-coverage`
-
-## Shortest PR Release Process
-
-Use one command:
-
-```bash
-make pr-fast
-```
-
-What it does:
-
-- Detects changed files against `origin/main` (or `PR_BASE_REF`).
-- Runs backend fast lane only when backend-related files changed.
-- Runs frontend fast lane only when `web-next/**` changed.
-- Skips test lanes for docs-only changes.
-
-Backend fast lane:
-
-- `python3 -m compileall -q venom_core scripts tests`
-- `make audit-ci-lite`
-- `make check-new-code-coverage` (with CI-lite + sonar-new-code groups)
-
-Frontend fast lane:
-
-- `npm --prefix web-next run lint`
-- `npm --prefix web-next run test:unit:ci-lite`
-
-Optional base override:
-
-```bash
-PR_BASE_REF=origin/main make pr-fast
-```
 
 ## Test Artifacts Policy
 

@@ -88,50 +88,51 @@ def validate_generation_params(
     errors: List[str] = []
 
     for key, value in params.items():
-        if key not in schema:
+        spec = schema.get(key)
+        if spec is None:
             errors.append(f"Nieznany parametr: {key}")
             continue
 
-        spec = schema[key]
-        param_type = spec.get("type")
-        min_value = spec.get("min")
-        max_value = spec.get("max")
-        options = spec.get("options") or []
-
-        if param_type in ["float", "int"]:
-            parsed, error = _parse_numeric_param(
-                key=key,
-                value=value,
-                as_int=param_type == "int",
-                min_value=min_value,
-                max_value=max_value,
-            )
-            if error:
-                errors.append(error)
-                continue
-            validated[key] = parsed
+        parsed_value, error = _validate_single_param(key=key, value=value, spec=spec)
+        if error:
+            errors.append(error)
             continue
-
-        if param_type == "bool":
-            if not isinstance(value, bool):
-                errors.append(f"Parametr {key} musi być wartością bool")
-                continue
-            validated[key] = value
-            continue
-
-        if param_type in ["list", "enum"]:
-            if options and value not in options:
-                errors.append(f"Parametr {key} musi być jedną z opcji")
-                continue
-            validated[key] = value
-            continue
-
-        errors.append(f"Nieobsługiwany typ parametru {key}")
+        validated[key] = parsed_value
 
     if errors:
         raise HTTPException(status_code=400, detail="; ".join(errors))
 
     return validated
+
+
+def _validate_single_param(
+    *, key: str, value: Any, spec: Dict[str, Any]
+) -> tuple[Any, str | None]:
+    param_type = spec.get("type")
+    if param_type in {"float", "int"}:
+        return _parse_numeric_param(
+            key=key,
+            value=value,
+            as_int=param_type == "int",
+            min_value=spec.get("min"),
+            max_value=spec.get("max"),
+        )
+    if param_type == "bool":
+        if not isinstance(value, bool):
+            return None, f"Parametr {key} musi być wartością bool"
+        return value, None
+    if param_type in {"list", "enum"}:
+        return _validate_enum_like_param(key=key, value=value, spec=spec)
+    return None, f"Nieobsługiwany typ parametru {key}"
+
+
+def _validate_enum_like_param(
+    *, key: str, value: Any, spec: Dict[str, Any]
+) -> tuple[Any, str | None]:
+    options = spec.get("options") or []
+    if options and value not in options:
+        return None, f"Parametr {key} musi być jedną z opcji: {options}"
+    return value, None
 
 
 def _parse_numeric_param(

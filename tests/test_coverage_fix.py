@@ -69,6 +69,8 @@ from venom_core.core.model_router import ComplexityScore, ServiceId  # noqa: E40
 from venom_core.execution.skills.chrono_skill import ChronoSkill  # noqa: E402
 from venom_core.execution.skills.complexity_skill import ComplexitySkill  # noqa: E402
 
+pytestmark = pytest.mark.integration
+
 for _name, _original in _module_backup.items():
     if _original is None:
         sys.modules.pop(_name, None)

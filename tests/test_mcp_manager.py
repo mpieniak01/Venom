@@ -156,6 +156,26 @@ async def test_introspect_tools_fails_cleanly_without_mcp(manager, monkeypatch):
         )
 
 
+@pytest.mark.asyncio
+async def test_run_shell_raises_runtime_error_on_nonzero_exit(manager, monkeypatch):
+    class FailingProcess:
+        returncode = 1
+
+        async def communicate(self):
+            return b"", b"permission denied"
+
+    async def _fake_subprocess_shell(*_args, **_kwargs):
+        return FailingProcess()
+
+    monkeypatch.setattr(
+        "venom_core.skills.mcp_manager_skill.asyncio.create_subprocess_shell",
+        _fake_subprocess_shell,
+    )
+
+    with pytest.raises(RuntimeError, match="permission denied"):
+        await manager._run_shell("echo fail")
+
+
 def test_optional_import_path_marks_mcp_available_when_module_exists(monkeypatch):
     fake_mcp = types.ModuleType("mcp")
     fake_mcp.ClientSession = object

@@ -91,7 +91,7 @@ async def _start_server_if_supported(
         return {"ok": False, "error": str(exc)}
 
 
-async def _await_server_health(server_name: str, health_url: str) -> bool:
+async def _await_server_health(_server_name: str, health_url: str) -> bool:
     logger.info("Oczekiwanie na gotowość serwera LLM.")
     async with httpx.AsyncClient(timeout=2.0) as client:
         for attempt in range(60):

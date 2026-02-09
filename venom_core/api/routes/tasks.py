@@ -3,7 +3,7 @@
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, AsyncGenerator, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -291,6 +291,102 @@ def _resolve_poll_interval(
     return poll_interval_seconds
 
 
+def _assert_task_available_for_stream(task_id: UUID) -> None:
+    if _state_manager is None:
+        raise HTTPException(status_code=503, detail=STATE_MANAGER_UNAVAILABLE)
+    if _state_manager.get_task(task_id) is None:
+        raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
+
+
+def _build_missing_task_payload(task_id: UUID) -> dict[str, Any]:
+    return {
+        "task_id": str(task_id),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": "gone",
+        "detail": "Task no longer available in StateManager",
+    }
+
+
+def _is_terminal_status(status: TaskStatus) -> bool:
+    return status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
+
+
+async def _task_stream_generator(task_id: UUID) -> AsyncGenerator[str, None]:
+    poll_interval_seconds = 0.25
+    fast_poll_interval_seconds = 0.05
+    heartbeat_every_ticks = 10
+    previous_status: Optional[TaskStatus] = None
+    previous_log_index = 0
+    previous_result: Optional[str] = None
+    ticks_since_emit = 0
+
+    while True:
+        state_manager = _state_manager
+        if state_manager is None:
+            payload = {
+                "task_id": str(task_id),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event": "service_unavailable",
+                "detail": STATE_MANAGER_UNAVAILABLE,
+            }
+            yield f"event:service_unavailable\ndata:{json.dumps(payload)}\n\n"
+            break
+
+        task: Optional[VenomTask] = state_manager.get_task(task_id)
+        if task is None:
+            payload = _build_missing_task_payload(task_id)
+            yield f"event:task_missing\ndata:{json.dumps(payload)}\n\n"
+            break
+
+        logs_delta = task.logs[previous_log_index:]
+        status_changed = task.status != previous_status
+        result_changed = task.result != previous_result
+        should_emit = _should_emit_stream_event(
+            status_changed=status_changed,
+            logs_delta=logs_delta,
+            result_changed=result_changed,
+            ticks_since_emit=ticks_since_emit,
+            heartbeat_every_ticks=heartbeat_every_ticks,
+        )
+
+        if should_emit:
+            payload = _build_stream_payload(task, logs_delta)
+            event_name = _resolve_stream_event_name(
+                status_changed=status_changed,
+                logs_delta=logs_delta,
+                result_changed=result_changed,
+            )
+            yield "event:{event}\ndata:{data}\n\n".format(
+                event=event_name,
+                data=json.dumps(payload, default=str),
+            )
+            previous_status = task.status
+            previous_log_index = len(task.logs)
+            previous_result = task.result
+            ticks_since_emit = 0
+        else:
+            ticks_since_emit += 1
+
+        if _is_terminal_status(task.status):
+            complete_payload = _build_task_finished_payload(task)
+            yield "event:task_finished\ndata:{data}\n\n".format(
+                data=json.dumps(complete_payload, default=str),
+            )
+            break
+
+        try:
+            interval = _resolve_poll_interval(
+                previous_result=previous_result,
+                status=task.status,
+                fast_poll_interval_seconds=fast_poll_interval_seconds,
+                poll_interval_seconds=poll_interval_seconds,
+            )
+            await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            logger.debug("Zamknięto stream SSE dla zadania %s", task_id)
+            raise
+
+
 def _bootstrap_orchestrator_if_testing():
     """
     Zachowane dla kompatybilności wstecznej.
@@ -381,88 +477,10 @@ def stream_task(task_id: UUID):
         StreamingResponse z wydarzeniami `task_update`/`heartbeat`
     """
 
-    if _state_manager is None:
-        raise HTTPException(status_code=503, detail=STATE_MANAGER_UNAVAILABLE)
-
-    if _state_manager.get_task(task_id) is None:
-        raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
-
-    async def event_generator():
-        """Asynchroniczny generator zdarzeń SSE."""
-
-        poll_interval_seconds = 0.25
-        fast_poll_interval_seconds = 0.05
-        heartbeat_every_ticks = 10
-        previous_status: Optional[TaskStatus] = None
-        previous_log_index = 0
-        previous_result: Optional[str] = None
-        ticks_since_emit = 0
-
-        while True:
-            task: Optional[VenomTask] = _state_manager.get_task(task_id)
-            if task is None:
-                payload = {
-                    "task_id": str(task_id),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "event": "gone",
-                    "detail": "Task no longer available in StateManager",
-                }
-                yield f"event:task_missing\ndata:{json.dumps(payload)}\n\n"
-                break
-
-            logs_delta = task.logs[previous_log_index:]
-            status_changed = task.status != previous_status
-            result_changed = task.result != previous_result
-            should_emit = _should_emit_stream_event(
-                status_changed=status_changed,
-                logs_delta=logs_delta,
-                result_changed=result_changed,
-                ticks_since_emit=ticks_since_emit,
-                heartbeat_every_ticks=heartbeat_every_ticks,
-            )
-
-            if should_emit:
-                payload = _build_stream_payload(task, logs_delta)
-                event_name = _resolve_stream_event_name(
-                    status_changed=status_changed,
-                    logs_delta=logs_delta,
-                    result_changed=result_changed,
-                )
-
-                # json.dumps nie obsługuje Enum więc wymuś str()
-                yield "event:{event}\ndata:{data}\n\n".format(
-                    event=event_name,
-                    data=json.dumps(payload, default=str),
-                )
-
-                previous_status = task.status
-                previous_log_index = len(task.logs)
-                previous_result = task.result
-                ticks_since_emit = 0
-            else:
-                ticks_since_emit += 1
-
-            if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-                # Wyślij końcowy event i zamknij stream
-                complete_payload = _build_task_finished_payload(task)
-                yield "event:task_finished\ndata:{data}\n\n".format(
-                    data=json.dumps(complete_payload, default=str),
-                )
-                break
-
-            try:
-                interval = _resolve_poll_interval(
-                    previous_result=previous_result,
-                    status=task.status,
-                    fast_poll_interval_seconds=fast_poll_interval_seconds,
-                    poll_interval_seconds=poll_interval_seconds,
-                )
-                await asyncio.sleep(interval)
-            except asyncio.CancelledError:
-                logger.debug("Zamknięto stream SSE dla zadania %s", task_id)
-                raise
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    _assert_task_available_for_stream(task_id)
+    return StreamingResponse(
+        _task_stream_generator(task_id), media_type="text/event-stream"
+    )
 
 
 @router.get("/tasks", response_model=list[VenomTask], responses=TASKS_LIST_RESPONSES)

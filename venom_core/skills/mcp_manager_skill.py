@@ -2,24 +2,31 @@ import asyncio
 import os
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-# Import MCP Client for introspection
-try:
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
-
-    _MCP_AVAILABLE = True
-except ImportError:  # pragma: no cover - środowiska bez optional dependency
-    ClientSession = None  # type: ignore[assignment]
-    StdioServerParameters = None  # type: ignore[assignment]
-    stdio_client = None  # type: ignore[assignment]
-    _MCP_AVAILABLE = False
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
 from venom_core.execution.skills.base_skill import BaseSkill, async_safe_action
 from venom_core.skills.mcp.proxy_generator import McpProxyGenerator, McpToolMetadata
+
+# Import MCP Client for introspection
+MCPClientSession: Any = None
+MCPStdioServerParameters: Any = None
+mcp_stdio_client: Any = None
+try:
+    from mcp import ClientSession as MCPClientSession
+    from mcp import StdioServerParameters as MCPStdioServerParameters
+    from mcp.client.stdio import stdio_client as mcp_stdio_client
+
+    _MCP_AVAILABLE = True
+except ImportError:  # pragma: no cover - środowiska bez optional dependency
+    _MCP_AVAILABLE = False
+
+# Backward-compatible aliases used in tests and monkeypatch hooks.
+ClientSession = MCPClientSession
+StdioServerParameters = MCPStdioServerParameters
+stdio_client = mcp_stdio_client
 
 
 class McpManagerSkill(BaseSkill):
@@ -172,7 +179,7 @@ class McpManagerSkill(BaseSkill):
         if process.returncode != 0:
             error_msg = stderr.decode().strip()
             self.logger.error(f"Command failed: {cmd}\nError: {error_msg}")
-            raise Exception(f"Shell command failed: {error_msg}")
+            raise RuntimeError(f"Shell command failed: {error_msg}")
 
         return stdout.decode().strip()
 

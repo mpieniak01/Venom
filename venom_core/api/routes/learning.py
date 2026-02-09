@@ -30,7 +30,7 @@ LEARNING_TOGGLE_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-def set_dependencies(orchestrator=None, state_manager=None, request_tracer=None):
+def set_dependencies(orchestrator=None, state_manager=None, _request_tracer=None):
     """Ustawia zależności (używane głównie w testach)."""
     from venom_core.api import dependencies as api_deps
 

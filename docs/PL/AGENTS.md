@@ -19,6 +19,12 @@ Jeśli szukasz listy agentów systemu Venom, użyj:
 - Uruchamiaj odpowiednie grupy `pytest` dla zmienianych modułów.
 - Potwierdź brak nowych podatności critical/high.
 
+## Zasada Świadomości Stosu CI
+
+- Przed dodaniem/aktualizacją testów dla CI-lite sprawdź, jakie zależności i narzędzia są dostępne w stosie CI-lite.
+- Używaj `requirements-ci-lite.txt`, `config/pytest-groups/ci-lite.txt` oraz `scripts/audit_lite_deps.py` jako źródła prawdy.
+- Jeśli test wymaga opcjonalnej paczki, której nie ma gwarantowanej w CI-lite, użyj `pytest.importorskip(...)` albo przenieś test poza lekką ścieżkę.
+
 ## Stos Narzędzi Jakości i Bezpieczeństwa (Standard Projektu)
 
 - **SonarCloud (bramka PR):** obowiązkowa analiza pull requestów pod kątem bugów, podatności, code smelli, duplikacji i utrzymywalności.

@@ -34,6 +34,7 @@ test-results/
 **/test-results/
 **/.pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 **/.ruff_cache/
 **/playwright-report/
@@ -93,3 +94,4 @@ docs_dev/
 
 # Local benchmark outputs
 data/benchmarks/
+.mypy_cache/

@@ -31,6 +31,8 @@ from venom_core.api.routes import memory as memory_routes  # noqa: E402
 from venom_core.api.routes import tasks as tasks_routes  # noqa: E402
 from venom_core.core.models import TaskStatus, VenomTask  # noqa: E402
 
+pytestmark = pytest.mark.integration
+
 for _name, _original in _module_backup.items():
     if _original is None:
         sys.modules.pop(_name, None)

@@ -104,51 +104,58 @@ class IngestionEngine:
         """
         suffix = file_path.suffix.lower()
         mime_type, _ = mimetypes.guess_type(str(file_path))
+        mime_type = mime_type or ""
 
-        # PDF
-        if suffix == ".pdf" or (mime_type and "pdf" in mime_type):
+        if self._is_pdf(suffix, mime_type):
             return "pdf"
-
-        # DOCX
-        if suffix in [".docx", ".doc"] or (
-            mime_type
-            and (
-                "word" in mime_type
-                or mime_type
-                == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
-        ):
+        if self._is_docx(suffix, mime_type):
             return "docx"
-
-        # Obrazy
-        if suffix in [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"] or (
-            mime_type and mime_type.startswith("image/")
+        if self._matches_suffix_or_mime(
+            suffix,
+            mime_type,
+            [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"],
+            "image/",
         ):
             return "image"
-
-        # Audio
-        if suffix in [".mp3", ".wav", ".ogg", ".flac", ".m4a"] or (
-            mime_type and mime_type.startswith("audio/")
+        if self._matches_suffix_or_mime(
+            suffix, mime_type, [".mp3", ".wav", ".ogg", ".flac", ".m4a"], "audio/"
         ):
             return "audio"
-
-        # Video
-        if suffix in [".mp4", ".avi", ".mkv", ".mov", ".webm"] or (
-            mime_type and mime_type.startswith("video/")
+        if self._matches_suffix_or_mime(
+            suffix, mime_type, [".mp4", ".avi", ".mkv", ".mov", ".webm"], "video/"
         ):
             return "video"
-
-        # Text
-        if suffix in [".txt", ".md", ".rst", ".log"] or (
-            mime_type and mime_type.startswith("text/")
-        ):
+        if self._is_text_type(suffix, mime_type):
             return "text"
-
-        # Python, JavaScript, etc.
-        if suffix in [".py", ".js", ".ts", ".java", ".cpp", ".c", ".h", ".go", ".rs"]:
-            return "text"
-
         return "unknown"
+
+    @staticmethod
+    def _matches_suffix_or_mime(
+        suffix: str, mime_type: str, suffixes: List[str], mime_prefix: str
+    ) -> bool:
+        return suffix in suffixes or mime_type.startswith(mime_prefix)
+
+    @staticmethod
+    def _is_pdf(suffix: str, mime_type: str) -> bool:
+        return suffix == ".pdf" or "pdf" in mime_type
+
+    @staticmethod
+    def _is_docx(suffix: str, mime_type: str) -> bool:
+        return suffix in [".docx", ".doc"] or (
+            "word" in mime_type
+            or mime_type
+            == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+
+    @staticmethod
+    def _is_text_type(suffix: str, mime_type: str) -> bool:
+        text_suffixes = [".txt", ".md", ".rst", ".log"]
+        code_suffixes = [".py", ".js", ".ts", ".java", ".cpp", ".c", ".h", ".go", ".rs"]
+        return (
+            suffix in text_suffixes
+            or suffix in code_suffixes
+            or mime_type.startswith("text/")
+        )
 
     async def ingest_file(
         self, file_path: str, metadata: Optional[Dict[str, Any]] = None

@@ -1,5 +1,7 @@
 """Moduł: skills - zestawienie wszystkich umiejętności Venom."""
 
+from importlib import import_module
+
 # Import only when needed to avoid circular dependencies
 __all__ = [
     "AssistantSkill",
@@ -17,54 +19,31 @@ __all__ = [
 ]
 
 
+_SKILL_IMPORTS = {
+    "AssistantSkill": "venom_core.execution.skills.assistant_skill.AssistantSkill",
+    "BrowserSkill": "venom_core.execution.skills.browser_skill.BrowserSkill",
+    "CoreSkill": "venom_core.execution.skills.core_skill.CoreSkill",
+    "DocsSkill": "venom_core.execution.skills.docs_skill.DocsSkill",
+    "FileSkill": "venom_core.execution.skills.file_skill.FileSkill",
+    "GitSkill": "venom_core.execution.skills.git_skill.GitSkill",
+    "InputSkill": "venom_core.execution.skills.input_skill.InputSkill",
+    "MediaSkill": "venom_core.execution.skills.media_skill.MediaSkill",
+    "PlatformSkill": "venom_core.execution.skills.platform_skill.PlatformSkill",
+    "ShellSkill": "venom_core.execution.skills.shell_skill.ShellSkill",
+    "TestSkill": "venom_core.execution.skills.test_skill.TestSkill",
+    "WebSearchSkill": "venom_core.execution.skills.web_skill.WebSearchSkill",
+}
+
+
+def _resolve_skill(name):
+    target = _SKILL_IMPORTS.get(name)
+    if not target:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, class_name = target.rsplit(".", 1)
+    module = import_module(module_name)
+    return getattr(module, class_name)
+
+
 def __getattr__(name):
     """Lazy import for skills to avoid import errors."""
-    if name == "AssistantSkill":
-        from venom_core.execution.skills.assistant_skill import AssistantSkill
-
-        return AssistantSkill
-    elif name == "BrowserSkill":
-        from venom_core.execution.skills.browser_skill import BrowserSkill
-
-        return BrowserSkill
-    elif name == "CoreSkill":
-        from venom_core.execution.skills.core_skill import CoreSkill
-
-        return CoreSkill
-    elif name == "DocsSkill":
-        from venom_core.execution.skills.docs_skill import DocsSkill
-
-        return DocsSkill
-    elif name == "FileSkill":
-        from venom_core.execution.skills.file_skill import FileSkill
-
-        return FileSkill
-    elif name == "GitSkill":
-        from venom_core.execution.skills.git_skill import GitSkill
-
-        return GitSkill
-    elif name == "InputSkill":
-        from venom_core.execution.skills.input_skill import InputSkill
-
-        return InputSkill
-    elif name == "MediaSkill":
-        from venom_core.execution.skills.media_skill import MediaSkill
-
-        return MediaSkill
-    elif name == "PlatformSkill":
-        from venom_core.execution.skills.platform_skill import PlatformSkill
-
-        return PlatformSkill
-    elif name == "ShellSkill":
-        from venom_core.execution.skills.shell_skill import ShellSkill
-
-        return ShellSkill
-    elif name == "TestSkill":
-        from venom_core.execution.skills.test_skill import TestSkill
-
-        return TestSkill
-    elif name == "WebSearchSkill":
-        from venom_core.execution.skills.web_skill import WebSearchSkill
-
-        return WebSearchSkill
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return _resolve_skill(name)

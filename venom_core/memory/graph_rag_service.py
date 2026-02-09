@@ -119,12 +119,35 @@ class GraphRAGService:
             return {"entities": 0, "relationships": 0}
 
         try:
-            # Sanityzuj tekst przed wstawieniem do promptu
-            sanitized_text = text[:2000]
-            # Usuń markdown code blocks, które mogłyby zamknąć kontekst
-            sanitized_text = sanitized_text.replace("```", "")
+            extraction_prompt = self._build_extraction_prompt(text)
+            result_text = await self._run_extraction_prompt(
+                llm_service, extraction_prompt
+            )
+            data = self._parse_extraction_response(result_text)
+            if isinstance(data, dict) and "error" in data:
+                return data
 
-            extraction_prompt = f"""Przeanalizuj poniższy tekst i wyekstrahuj kluczowe fakty w formie trójek (podmiot, relacja, dopełnienie).
+            entities_count = self._add_extracted_entities(data, source_id)
+            relationships_count = self._add_extracted_relationships(data, source_id)
+            self.add_entity(
+                entity_id=source_id,
+                entity_type="Document",
+                properties={"text": text[:500]},
+            )
+
+            logger.info(
+                f"Wyekstrahowano {entities_count} encji i {relationships_count} relacji z {source_id}"
+            )
+
+            return {"entities": entities_count, "relationships": relationships_count}
+
+        except Exception as e:
+            logger.error(f"Błąd podczas ekstrakcji wiedzy: {e}")
+            return {"entities": 0, "relationships": 0, "error": str(e)}
+
+    def _build_extraction_prompt(self, text: str) -> str:
+        sanitized_text = text[:2000].replace("```", "")
+        return f"""Przeanalizuj poniższy tekst i wyekstrahuj kluczowe fakty w formie trójek (podmiot, relacja, dopełnienie).
 
 Format odpowiedzi (JSON):
 {{{{
@@ -161,96 +184,71 @@ Tekst do analizy:
 
 Odpowiedź (JSON):"""
 
-            # Wywołaj LLM
-            from semantic_kernel.contents import ChatHistory
-            from semantic_kernel.contents.chat_message_content import ChatMessageContent
-            from semantic_kernel.contents.utils.author_role import AuthorRole
+    async def _run_extraction_prompt(self, llm_service: LLMService, prompt: str) -> str:
+        from semantic_kernel.contents import ChatHistory
+        from semantic_kernel.contents.chat_message_content import ChatMessageContent
+        from semantic_kernel.contents.utils.author_role import AuthorRole
 
-            chat_history = ChatHistory()
-            chat_history.add_message(
-                ChatMessageContent(role=AuthorRole.USER, content=extraction_prompt)
-            )
+        chat_history = ChatHistory()
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.USER, content=prompt)
+        )
+        response = await llm_service.get_chat_message_content(chat_history=chat_history)
+        return str(response).strip()
 
-            response = await llm_service.get_chat_message_content(
-                chat_history=chat_history
-            )
-            result_text = str(response).strip()
+    def _parse_extraction_response(self, result_text: str) -> Dict[str, Any]:
+        try:
+            extracted_text = self._extract_json_block(result_text)
+            return json.loads(extracted_text)
+        except json.JSONDecodeError as e:
+            logger.error(f"Błąd parsowania JSON z LLM: {e}")
+            logger.debug(f"Otrzymana odpowiedź: {result_text[:500]}")
+            return {
+                "entities": 0,
+                "relationships": 0,
+                "error": f"Invalid JSON: {str(e)}",
+            }
 
-            # Parsuj JSON z obsługą błędów
-            try:
-                # Spróbuj najpierw znaleźć JSON w markdown
-                if "```json" in result_text:
-                    json_match = re.search(
-                        r"```json\s*(\{.*?\})\s*```", result_text, re.DOTALL
-                    )
-                    if json_match:
-                        result_text = json_match.group(1)
-                elif "```" in result_text:
-                    json_match = re.search(
-                        r"```\s*(\{.*?\})\s*```", result_text, re.DOTALL
-                    )
-                    if json_match:
-                        result_text = json_match.group(1)
+    def _extract_json_block(self, result_text: str) -> str:
+        if "```json" in result_text:
+            json_match = re.search(r"```json\s*(\{.*?\})\s*```", result_text, re.DOTALL)
+            if json_match:
+                return json_match.group(1)
+        elif "```" in result_text:
+            json_match = re.search(r"```\s*(\{.*?\})\s*```", result_text, re.DOTALL)
+            if json_match:
+                return json_match.group(1)
+        return result_text
 
-                data = json.loads(result_text)
-            except json.JSONDecodeError as e:
-                logger.error(f"Błąd parsowania JSON z LLM: {e}")
-                logger.debug(f"Otrzymana odpowiedź: {result_text[:500]}")
-                return {
-                    "entities": 0,
-                    "relationships": 0,
-                    "error": f"Invalid JSON: {str(e)}",
-                }
-
-            # Dodaj encje do grafu
-            entities_count = 0
-            for entity in data.get("entities", []):
-                entity_id = entity.get("id")
-                if not entity_id:
-                    continue
-
-                self.add_entity(
-                    entity_id=entity_id,
-                    entity_type=entity.get("type", "Unknown"),
-                    properties={
-                        "name": entity.get("name", entity_id),
-                        "source": source_id,
-                    },
-                )
-                entities_count += 1
-
-            # Dodaj relacje do grafu
-            relationships_count = 0
-            for rel in data.get("relationships", []):
-                source = rel.get("source")
-                target = rel.get("target")
-                rel_type = rel.get("type", "RELATED_TO")
-
-                if source and target:
-                    self.add_relationship(
-                        source_id=source,
-                        target_id=target,
-                        relationship_type=rel_type,
-                        properties={"source": source_id},
-                    )
-                    relationships_count += 1
-
-            # Dodaj dokument jako encję
+    def _add_extracted_entities(self, data: Dict[str, Any], source_id: str) -> int:
+        entities_count = 0
+        for entity in data.get("entities", []):
+            entity_id = entity.get("id")
+            if not entity_id:
+                continue
             self.add_entity(
-                entity_id=source_id,
-                entity_type="Document",
-                properties={"text": text[:500]},
+                entity_id=entity_id,
+                entity_type=entity.get("type", "Unknown"),
+                properties={"name": entity.get("name", entity_id), "source": source_id},
             )
+            entities_count += 1
+        return entities_count
 
-            logger.info(
-                f"Wyekstrahowano {entities_count} encji i {relationships_count} relacji z {source_id}"
-            )
-
-            return {"entities": entities_count, "relationships": relationships_count}
-
-        except Exception as e:
-            logger.error(f"Błąd podczas ekstrakcji wiedzy: {e}")
-            return {"entities": 0, "relationships": 0, "error": str(e)}
+    def _add_extracted_relationships(self, data: Dict[str, Any], source_id: str) -> int:
+        relationships_count = 0
+        for rel in data.get("relationships", []):
+            source = rel.get("source")
+            target = rel.get("target")
+            rel_type = rel.get("type", "RELATED_TO")
+            if source and target:
+                self.add_relationship(
+                    source_id=source,
+                    target_id=target,
+                    relationship_type=rel_type,
+                    properties={"source": source_id},
+                )
+                relationships_count += 1
+        return relationships_count
 
     def find_communities(self, refresh_cache: bool = False) -> List[Set[str]]:
         """
@@ -296,7 +294,11 @@ Odpowiedź (JSON):"""
         if not community:
             return ""
 
-        # Zbierz informacje o węzłach
+        entities = self._collect_community_entities(community)
+        relationships = self._collect_community_relationships(community)
+        return self._format_community_summary(entities, relationships)
+
+    def _collect_community_entities(self, community: Set[str]) -> list[str]:
         entities = []
         for node_id in community:
             if node_id not in self.graph:
@@ -305,34 +307,38 @@ Odpowiedź (JSON):"""
             entities.append(
                 f"{node_data.get('name', node_id)} ({node_data.get('entity_type', 'Unknown')})"
             )
+        return entities
 
-        # Zbierz relacje wewnątrz społeczności (z limitem wczesnego przerwania)
+    def _collect_community_relationships(self, community: Set[str]) -> list[str]:
         relationships: list[str] = []
-        max_relationships = 100  # Limit przed obcięciem do 5
+        max_relationships = 100
         for source in community:
             if source not in self.graph:
                 continue
             if len(relationships) >= max_relationships:
                 break
             for target in self.graph.successors(source):
-                if target in community:
-                    edge_data = self.graph.get_edge_data(source, target)
-                    rel_type = edge_data.get("relationship_type", "RELATED_TO")
-                    relationships.append(f"{source} -{rel_type}-> {target}")
-                    if len(relationships) >= max_relationships:
-                        break
+                if target not in community:
+                    continue
+                edge_data = self.graph.get_edge_data(source, target)
+                rel_type = edge_data.get("relationship_type", "RELATED_TO")
+                relationships.append(f"{source} -{rel_type}-> {target}")
+                if len(relationships) >= max_relationships:
+                    break
+        return relationships
 
+    def _format_community_summary(
+        self, entities: list[str], relationships: list[str]
+    ) -> str:
         summary = f"Społeczność zawiera {len(entities)} encji:\n"
-        summary += ", ".join(entities[:10])  # Ogranicz do 10
+        summary += ", ".join(entities[:10])
         if len(entities) > 10:
             summary += f" ... (i {len(entities) - 10} więcej)"
-
         if relationships:
             summary += f"\n\nKluczowe relacje ({len(relationships)}):\n"
-            summary += "\n".join(relationships[:5])  # Ogranicz do 5
+            summary += "\n".join(relationships[:5])
             if len(relationships) > 5:
                 summary += f"\n... (i {len(relationships) - 5} więcej)"
-
         return summary
 
     async def global_search(
@@ -414,129 +420,135 @@ Odpowiedź (JSON):"""
         """
         logger.info(f"Local search: {query[:100]}... (max_hops={max_hops})")
 
-        # Najpierw użyj wyszukiwania wektorowego, aby znaleźć najbardziej relevantne węzły
         try:
             search_results = self.vector_store.search(query, limit=5)
             if not search_results:
                 return "Nie znaleziono relevantnych informacji w grafie wiedzy."
 
-            # Zbierz ID węzłów z metadanych
-            starting_nodes = []
-            for result in search_results:
-                node_id = result.get("metadata", {}).get("entity_id")
-                if node_id and node_id in self.graph:
-                    starting_nodes.append(node_id)
-
+            starting_nodes = self._extract_starting_nodes(search_results)
             if not starting_nodes:
                 return "Nie znaleziono węzłów w grafie pasujących do zapytania."
 
-            # Eksploruj sąsiedztwo (multi-hop)
-            explored_nodes: Set[str] = set()
-            explored_edges: list[tuple[str, str, str]] = []
-
-            for start_node in starting_nodes[:3]:  # Ogranicz do 3 węzłów startowych
-                # BFS do max_hops kroków
-                visited = {start_node}
-                queue = deque([(start_node, 0)])
-
-                while queue:
-                    current_node, depth = queue.popleft()
-
-                    if depth >= max_hops:
-                        continue
-
-                    explored_nodes.add(current_node)
-
-                    # Eksploruj sąsiadów (zarówno następniki jak i poprzedniki)
-                    neighbors = itertools.chain(
-                        self.graph.successors(current_node),
-                        self.graph.predecessors(current_node),
-                    )
-                    for neighbor in neighbors:
-                        if neighbor not in visited:
-                            visited.add(neighbor)
-                            queue.append((neighbor, depth + 1))
-                            explored_nodes.add(neighbor)
-
-                            # Zapisz krawędź
-                            if self.graph.has_edge(current_node, neighbor):
-                                edge_data = self.graph.get_edge_data(
-                                    current_node, neighbor
-                                )
-                                explored_edges.append(
-                                    (
-                                        current_node,
-                                        neighbor,
-                                        edge_data.get(
-                                            "relationship_type", "RELATED_TO"
-                                        ),
-                                    )
-                                )
-                            elif self.graph.has_edge(neighbor, current_node):
-                                edge_data = self.graph.get_edge_data(
-                                    neighbor, current_node
-                                )
-                                explored_edges.append(
-                                    (
-                                        neighbor,
-                                        current_node,
-                                        edge_data.get(
-                                            "relationship_type", "RELATED_TO"
-                                        ),
-                                    )
-                                )
-
-            # Zbuduj kontekst z eksplorowanego podgrafu
-            context_parts = []
-
-            # Encje
-            context_parts.append(f"Znalezione encje ({len(explored_nodes)}):")
-            for node_id in list(explored_nodes)[:20]:  # Ogranicz do 20
-                node_data = self.graph.nodes[node_id]
-                context_parts.append(
-                    f"- {node_data.get('name', node_id)} ({node_data.get('entity_type', 'Unknown')})"
-                )
-
-            # Relacje
-            if explored_edges:
-                context_parts.append(f"\nZnalezione relacje ({len(explored_edges)}):")
-                for source, target, rel_type in explored_edges[:20]:  # Ogranicz do 20
-                    source_name = self.graph.nodes[source].get("name", source)
-                    target_name = self.graph.nodes[target].get("name", target)
-                    context_parts.append(f"- {source_name} -{rel_type}-> {target_name}")
-
-            context = "\n".join(context_parts)
-
-            # Użyj LLM do syntezy odpowiedzi
+            explored_nodes, explored_edges = self._explore_subgraph(
+                starting_nodes, max_hops
+            )
+            context = self._build_local_context(explored_nodes, explored_edges)
             if not llm_service:
                 return context
 
-            from semantic_kernel.contents import ChatHistory
-            from semantic_kernel.contents.chat_message_content import ChatMessageContent
-            from semantic_kernel.contents.utils.author_role import AuthorRole
-
-            chat_history = ChatHistory()
-            chat_history.add_message(
-                ChatMessageContent(
-                    role=AuthorRole.SYSTEM,
-                    content="Jesteś analitykiem wiedzy. Na podstawie eksploracji grafu wiedzy odpowiedz na pytanie użytkownika. Wyjaśnij połączenia między encjami.",
-                )
-            )
-            chat_history.add_message(
-                ChatMessageContent(
-                    role=AuthorRole.USER,
-                    content=f"Kontekst z grafu wiedzy:\n{context}\n\nPytanie: {query}\n\nOdpowiedź:",
-                )
-            )
-
-            response = await llm_service.get_chat_message_content(
-                chat_history=chat_history
-            )
-            return str(response).strip()
+            return await self._synthesize_local_answer(llm_service, context, query)
 
         except Exception as e:
             logger.error(f"Błąd podczas local_search: {e}")
             return f"Wystąpił błąd podczas wyszukiwania: {str(e)}"
+
+    def _extract_starting_nodes(
+        self, search_results: list[dict[str, Any]]
+    ) -> list[str]:
+        starting_nodes = []
+        for result in search_results:
+            node_id = result.get("metadata", {}).get("entity_id")
+            if node_id and node_id in self.graph:
+                starting_nodes.append(node_id)
+        return starting_nodes
+
+    def _explore_subgraph(
+        self, starting_nodes: list[str], max_hops: int
+    ) -> tuple[Set[str], list[tuple[str, str, str]]]:
+        explored_nodes: Set[str] = set()
+        explored_edges: list[tuple[str, str, str]] = []
+        for start_node in starting_nodes[:3]:
+            self._bfs_from_node(start_node, max_hops, explored_nodes, explored_edges)
+        return explored_nodes, explored_edges
+
+    def _bfs_from_node(
+        self,
+        start_node: str,
+        max_hops: int,
+        explored_nodes: Set[str],
+        explored_edges: list[tuple[str, str, str]],
+    ) -> None:
+        visited = {start_node}
+        queue = deque([(start_node, 0)])
+        while queue:
+            current_node, depth = queue.popleft()
+            if depth >= max_hops:
+                continue
+            explored_nodes.add(current_node)
+            for neighbor in self._iter_neighbors(current_node):
+                if neighbor in visited:
+                    continue
+                visited.add(neighbor)
+                queue.append((neighbor, depth + 1))
+                explored_nodes.add(neighbor)
+                edge = self._resolve_edge(current_node, neighbor)
+                if edge:
+                    explored_edges.append(edge)
+
+    def _iter_neighbors(self, node_id: str):
+        return itertools.chain(
+            self.graph.successors(node_id),
+            self.graph.predecessors(node_id),
+        )
+
+    def _resolve_edge(
+        self, current_node: str, neighbor: str
+    ) -> Optional[tuple[str, str, str]]:
+        if self.graph.has_edge(current_node, neighbor):
+            edge_data = self.graph.get_edge_data(current_node, neighbor)
+            return (
+                current_node,
+                neighbor,
+                edge_data.get("relationship_type", "RELATED_TO"),
+            )
+        if self.graph.has_edge(neighbor, current_node):
+            edge_data = self.graph.get_edge_data(neighbor, current_node)
+            return (
+                neighbor,
+                current_node,
+                edge_data.get("relationship_type", "RELATED_TO"),
+            )
+        return None
+
+    def _build_local_context(
+        self, explored_nodes: Set[str], explored_edges: list[tuple[str, str, str]]
+    ) -> str:
+        context_parts = [f"Znalezione encje ({len(explored_nodes)}):"]
+        for node_id in list(explored_nodes)[:20]:
+            node_data = self.graph.nodes[node_id]
+            context_parts.append(
+                f"- {node_data.get('name', node_id)} ({node_data.get('entity_type', 'Unknown')})"
+            )
+        if explored_edges:
+            context_parts.append(f"\nZnalezione relacje ({len(explored_edges)}):")
+            for source, target, rel_type in explored_edges[:20]:
+                source_name = self.graph.nodes[source].get("name", source)
+                target_name = self.graph.nodes[target].get("name", target)
+                context_parts.append(f"- {source_name} -{rel_type}-> {target_name}")
+        return "\n".join(context_parts)
+
+    async def _synthesize_local_answer(
+        self, llm_service: LLMService, context: str, query: str
+    ) -> str:
+        from semantic_kernel.contents import ChatHistory
+        from semantic_kernel.contents.chat_message_content import ChatMessageContent
+        from semantic_kernel.contents.utils.author_role import AuthorRole
+
+        chat_history = ChatHistory()
+        chat_history.add_message(
+            ChatMessageContent(
+                role=AuthorRole.SYSTEM,
+                content="Jesteś analitykiem wiedzy. Na podstawie eksploracji grafu wiedzy odpowiedz na pytanie użytkownika. Wyjaśnij połączenia między encjami.",
+            )
+        )
+        chat_history.add_message(
+            ChatMessageContent(
+                role=AuthorRole.USER,
+                content=f"Kontekst z grafu wiedzy:\n{context}\n\nPytanie: {query}\n\nOdpowiedź:",
+            )
+        )
+        response = await llm_service.get_chat_message_content(chat_history=chat_history)
+        return str(response).strip()
 
     def save_graph(self) -> None:
         """Zapisuje graf do pliku JSON."""

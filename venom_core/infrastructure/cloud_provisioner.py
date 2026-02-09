@@ -5,17 +5,54 @@ import re
 import socket
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from types import ModuleType
+from typing import Any, Optional, cast
 
-import asyncssh
 import httpx
-from zeroconf import ServiceInfo, Zeroconf
+
+try:
+    from zeroconf import ServiceInfo, Zeroconf
+
+    ZEROCONF_AVAILABLE = True
+except ImportError:  # pragma: no cover - zależność opcjonalna
+    ServiceInfo = Any  # type: ignore[assignment,misc]
+    Zeroconf = Any  # type: ignore[assignment,misc]
+    ZEROCONF_AVAILABLE = False
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
+ASYNCSSH_ERROR: type[Exception]
+
+try:
+    import asyncssh
+
+    ASYNCSSH_AVAILABLE = True
+    ASYNCSSH_ERROR = cast(type[Exception], asyncssh.Error)
+except ImportError:  # pragma: no cover - zależność opcjonalna
+    ASYNCSSH_AVAILABLE = False
+
+    class _AsyncsshFallbackError(Exception):
+        pass
+
+    class _MissingAsyncsshConnection:
+        async def __aenter__(self):
+            raise _AsyncsshFallbackError(
+                "Biblioteka asyncssh nie jest zainstalowana. "
+                "Zainstaluj opcjonalną zależność deploymentu."
+            )
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    def _missing_asyncssh_connect(*args, **kwargs):
+        return _MissingAsyncsshConnection()
+
+    asyncssh = cast(Any, ModuleType("asyncssh"))
+    asyncssh.connect = _missing_asyncssh_connect
+    ASYNCSSH_ERROR = _AsyncsshFallbackError
 
 
 class CloudProvisionerError(Exception):
@@ -151,7 +188,7 @@ class CloudProvisioner:
             raise CloudProvisionerError(
                 f"Timeout podczas wykonywania komendy na {host}"
             )
-        except asyncssh.Error as e:
+        except ASYNCSSH_ERROR as e:
             raise CloudProvisionerError(f"Błąd SSH: {e}")
         except Exception as e:
             raise CloudProvisionerError(f"Nieoczekiwany błąd: {e}")
@@ -308,7 +345,7 @@ class CloudProvisioner:
 
         except asyncio.TimeoutError:
             raise CloudProvisionerError(f"Timeout podczas deploymentu na {host}")
-        except asyncssh.Error as e:
+        except ASYNCSSH_ERROR as e:
             raise CloudProvisionerError(f"Błąd SSH podczas deploymentu: {e}")
         except Exception as e:
             raise CloudProvisionerError(f"Nieoczekiwany błąd podczas deploymentu: {e}")
@@ -376,6 +413,13 @@ class CloudProvisioner:
         Returns:
             Dict ze statusem konfiguracji mDNS
         """
+        if not ZEROCONF_AVAILABLE:
+            message = (
+                "Biblioteka zeroconf nie jest zainstalowana. "
+                "Zainstaluj opcjonalną zależność sieci LAN."
+            )
+            logger.warning(message)
+            return {"status": "error", "message": message}
         try:
             hostname = socket.gethostname()
             service_name = service_name or f"venom-{hostname}"

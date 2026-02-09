@@ -141,24 +141,54 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
         Returns:
             Słownik z wynikami analizy
         """
-        # Statystyki podstawowe
-        sessions = defaultdict(list)
+        sessions = self._group_events_by_session(events)
+        (
+            successful_sessions,
+            rage_quits,
+            total_frustration,
+            frustration_reasons,
+            emotional_states_count,
+            personas_performance,
+        ) = self._analyze_session_metrics(sessions)
+        top_problems = Counter(frustration_reasons).most_common(5)
+        frustration_heatmap = self._build_frustration_heatmap(personas_performance)
+        total_sessions = len(sessions)
+        return {
+            "summary": self._build_summary(
+                total_sessions, successful_sessions, rage_quits, total_frustration
+            ),
+            "top_problems": [
+                {"problem": problem, "occurrences": count}
+                for problem, count in top_problems
+            ],
+            "frustration_heatmap": frustration_heatmap,
+            "emotional_states": dict(emotional_states_count),
+            "personas_performance": dict(personas_performance),
+        }
+
+    def _group_events_by_session(
+        self, events: list[dict]
+    ) -> DefaultDict[str, list[dict]]:
+        sessions: DefaultDict[str, list[dict]] = defaultdict(list)
         for event in events:
             sessions[event["session_id"]].append(event)
+        return sessions
 
-        total_sessions = len(sessions)
+    def _analyze_session_metrics(
+        self, sessions: DefaultDict[str, list[dict]]
+    ) -> tuple[
+        int, int, int, list[str], Counter[str], DefaultDict[str, dict[str, int]]
+    ]:
         successful_sessions = 0
         rage_quits = 0
         total_frustration = 0
-        frustration_reasons = []
+        frustration_reasons: list[str] = []
         emotional_states_count: Counter[str] = Counter()
         personas_performance: DefaultDict[str, dict[str, int]] = defaultdict(
             lambda: {"success": 0, "total": 0}
         )
 
-        # Analiza per sesja
-        for session_id, session_events in sessions.items():
-            # Ostatni event to session_end
+        for _session_id, session_events in sessions.items():
             end_event = next(
                 (
                     e
@@ -174,25 +204,42 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
                 if end_event.get("rage_quit"):
                     rage_quits += 1
 
-                persona_name = end_event.get("persona_name", "unknown")
-                personas_performance[persona_name]["total"] += 1
-                if end_event.get("goal_achieved"):
-                    personas_performance[persona_name]["success"] += 1
-
+                self._update_persona_performance(personas_performance, end_event)
                 total_frustration += end_event.get("frustration_level", 0)
+            self._collect_session_events(
+                session_events, frustration_reasons, emotional_states_count
+            )
+        return (
+            successful_sessions,
+            rage_quits,
+            total_frustration,
+            frustration_reasons,
+            emotional_states_count,
+            personas_performance,
+        )
 
-            # Zbierz powody frustracji
-            for event in session_events:
-                if event["event_type"] == "frustration_increase":
-                    frustration_reasons.append(event.get("reason", "unknown"))
+    def _update_persona_performance(
+        self, personas_performance: DefaultDict[str, dict[str, int]], end_event: dict
+    ) -> None:
+        persona_name = end_event.get("persona_name", "unknown")
+        personas_performance[persona_name]["total"] += 1
+        if end_event.get("goal_achieved"):
+            personas_performance[persona_name]["success"] += 1
 
-                emotional_states_count[event.get("emotional_state", "unknown")] += 1
+    def _collect_session_events(
+        self,
+        session_events: list[dict],
+        frustration_reasons: list[str],
+        emotional_states_count: Counter[str],
+    ) -> None:
+        for event in session_events:
+            if event["event_type"] == "frustration_increase":
+                frustration_reasons.append(event.get("reason", "unknown"))
+            emotional_states_count[event.get("emotional_state", "unknown")] += 1
 
-        # Najczęstsze problemy
-        frustration_frequency = Counter(frustration_reasons)
-        top_problems = frustration_frequency.most_common(5)
-
-        # Heatmapa frustracji (które persony miały najwięcej problemów)
+    def _build_frustration_heatmap(
+        self, personas_performance: DefaultDict[str, dict[str, int]]
+    ) -> list[dict[str, object]]:
         frustration_heatmap = []
         for persona, perf in personas_performance.items():
             success_rate = perf["success"] / perf["total"] if perf["total"] > 0 else 0
@@ -204,39 +251,36 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
                     "failure_rate": round((1 - success_rate) * 100, 1),
                 }
             )
+        frustration_heatmap.sort(key=self._failure_rate, reverse=True)
+        return frustration_heatmap
 
-        # Sortuj po failure rate
-        def _failure_rate(item: dict[str, object]) -> float:
-            value = item.get("failure_rate", 0)
-            if isinstance(value, (int, float, str)):
-                return float(value)
-            return 0.0
+    def _failure_rate(self, item: dict[str, object]) -> float:
+        value = item.get("failure_rate", 0)
+        if isinstance(value, (int, float, str)):
+            return float(value)
+        return 0.0
 
-        frustration_heatmap.sort(key=_failure_rate, reverse=True)
-
+    def _build_summary(
+        self,
+        total_sessions: int,
+        successful_sessions: int,
+        rage_quits: int,
+        total_frustration: int,
+    ) -> dict[str, object]:
         return {
-            "summary": {
-                "total_sessions": total_sessions,
-                "successful_sessions": successful_sessions,
-                "rage_quits": rage_quits,
-                "success_rate": (
-                    round(successful_sessions / total_sessions * 100, 1)
-                    if total_sessions > 0
-                    else 0
-                ),
-                "avg_frustration": (
-                    round(total_frustration / total_sessions, 2)
-                    if total_sessions > 0
-                    else 0
-                ),
-            },
-            "top_problems": [
-                {"problem": problem, "occurrences": count}
-                for problem, count in top_problems
-            ],
-            "frustration_heatmap": frustration_heatmap,
-            "emotional_states": dict(emotional_states_count),
-            "personas_performance": dict(personas_performance),
+            "total_sessions": total_sessions,
+            "successful_sessions": successful_sessions,
+            "rage_quits": rage_quits,
+            "success_rate": (
+                round(successful_sessions / total_sessions * 100, 1)
+                if total_sessions > 0
+                else 0
+            ),
+            "avg_frustration": (
+                round(total_frustration / total_sessions, 2)
+                if total_sessions > 0
+                else 0
+            ),
         }
 
     async def generate_recommendations(self, analysis: dict) -> str:

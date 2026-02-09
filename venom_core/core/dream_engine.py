@@ -141,32 +141,46 @@ class DreamEngine:
         Returns:
             Raport z sesji śnienia
         """
-        # Użyj lock aby zapobiec race conditions
+        if not await self._start_rem_session():
+            return {"error": "Dream engine not idle", "state": self.state}
+
+        session_start = datetime.now()
+        short_session_id = (self.current_session_id or "unknown")[:8]
+        logger.info(f"🌙 Rozpoczynam fazę REM (session_id={short_session_id})")
+        timeline_name = self._create_dream_timeline(short_session_id)
+        max_scenarios, difficulty = self._resolve_dream_parameters(
+            max_scenarios, difficulty
+        )
+        self.energy_manager.set_low_priority()
+
+        try:
+            return await self._run_rem_cycle(
+                timeline_name, session_start, max_scenarios, difficulty
+            )
+        finally:
+            self.state = DreamState.IDLE
+            self.current_checkpoint_id = None
+            self.current_session_id = None
+
+    async def _start_rem_session(self) -> bool:
         async with self._state_lock:
             if self.state != DreamState.IDLE:
                 logger.warning(
                     f"Nie można rozpocząć śnienia - aktualny stan: {self.state}"
                 )
-                return {"error": "Dream engine not idle", "state": self.state}
-
-            # Rozpocznij sesję
+                return False
             self.current_session_id = str(uuid.uuid4())
             self.state = DreamState.DREAMING
+            return True
 
-        session_start = datetime.now()
-
-        logger.info(
-            f"🌙 Rozpoczynam fazę REM (session_id={self.current_session_id[:8]})"
-        )
-
-        # Utwórz checkpoint przed rozpoczęciem śnienia (tymczasowa timeline)
-        timeline_name = f"dream_{self.current_session_id[:8]}"
+    def _create_dream_timeline(self, short_session_id: str) -> str:
+        timeline_name = f"dream_{short_session_id}"
         timeline_created = False
         try:
             self.chronos.create_timeline(timeline_name)
             timeline_created = True
             self.current_checkpoint_id = self.chronos.create_checkpoint(
-                name=f"dream_start_{self.current_session_id[:8]}",
+                name=f"dream_start_{short_session_id}",
                 description="Punkt startowy sesji śnienia - na wypadek błędów",
                 timeline=timeline_name,
             )
@@ -176,31 +190,39 @@ class DreamEngine:
         except Exception as e:
             logger.warning(f"Nie udało się utworzyć checkpointu dla śnienia: {e}")
             self.current_checkpoint_id = None
-            # Cleanup partially created timeline if checkpoint failed
             if timeline_created:
-                try:
-                    timeline_path = self.chronos.timelines_dir / timeline_name
-                    if timeline_path.exists() and not list(timeline_path.iterdir()):
-                        timeline_path.rmdir()
-                        logger.debug(f"Usunięto pustą timeline: {timeline_name}")
-                except Exception as cleanup_error:
-                    logger.debug(f"Nie udało się wyczyścić timeline: {cleanup_error}")
+                self._cleanup_partial_timeline(timeline_name)
+        return timeline_name
 
-        max_scenarios = max_scenarios or SETTINGS.DREAMING_MAX_SCENARIOS
-        difficulty = difficulty or SETTINGS.DREAMING_SCENARIO_COMPLEXITY
-
-        # Ustaw niski priorytet procesu
-        self.energy_manager.set_low_priority()
-
+    def _cleanup_partial_timeline(self, timeline_name: str) -> None:
         try:
-            # Pobierz klastry wiedzy z GraphRAG
-            knowledge_fragments = await self._get_knowledge_clusters(max_scenarios)
+            timeline_path = self.chronos.timelines_dir / timeline_name
+            if timeline_path.exists() and not list(timeline_path.iterdir()):
+                timeline_path.rmdir()
+                logger.debug(f"Usunięto pustą timeline: {timeline_name}")
+        except Exception as cleanup_error:
+            logger.debug(f"Nie udało się wyczyścić timeline: {cleanup_error}")
 
+    def _resolve_dream_parameters(
+        self, max_scenarios: Optional[int], difficulty: Optional[str]
+    ) -> tuple[int, str]:
+        resolved_max = max_scenarios or SETTINGS.DREAMING_MAX_SCENARIOS
+        resolved_difficulty = difficulty or SETTINGS.DREAMING_SCENARIO_COMPLEXITY
+        return resolved_max, resolved_difficulty
+
+    async def _run_rem_cycle(
+        self,
+        timeline_name: str,
+        session_start: datetime,
+        max_scenarios: int,
+        difficulty: str,
+    ) -> Dict[str, Any]:
+        try:
+            knowledge_fragments = await self._get_knowledge_clusters(max_scenarios)
             if not knowledge_fragments:
                 logger.warning(
                     "Brak klastrów wiedzy w GraphRAG - nie można śnić bez wiedzy"
                 )
-                # Cleanup empty timeline before returning
                 self._cleanup_empty_timeline(timeline_name, self.current_checkpoint_id)
                 return {
                     "session_id": self.current_session_id,
@@ -212,86 +234,16 @@ class DreamEngine:
             logger.info(
                 f"Pobrano {len(knowledge_fragments)} klastrów wiedzy z GraphRAG"
             )
-
-            # Generuj scenariusze
             scenarios = await self.scenario_weaver.weave_multiple_scenarios(
                 knowledge_fragments, count=max_scenarios, difficulty=difficulty
             )
-
             logger.info(f"Wygenerowano {len(scenarios)} scenariuszy do realizacji")
-
-            # Wykonuj scenariusze jeden po drugim
-            results = []
-            for i, scenario in enumerate(scenarios, 1):
-                # Sprawdź czy nie jesteśmy przerywani
-                if self.state == DreamState.INTERRUPTED:
-                    logger.warning("Śnienie przerwane przez użytkownika")
-                    break
-
-                logger.info(f"💭 Sen {i}/{len(scenarios)}: {scenario.title}")
-
-                try:
-                    result = await self._dream_scenario(scenario)
-                    results.append(result)
-
-                    if result.get("success"):
-                        self.successful_dreams += 1
-
-                    self.dreams_count += 1
-
-                except Exception as e:
-                    logger.error(f"Błąd podczas śnienia scenariusza {i}: {e}")
-                    results.append(
-                        {"success": False, "error": str(e), "scenario": scenario.title}
-                    )
-
-            # Koniec sesji
-            session_end = datetime.now()
-            duration = (session_end - session_start).total_seconds()
-
-            success_rate = (
-                sum(1 for r in results if r.get("success")) / len(results)
-                if results
-                else 0.0
-            )
-            report = {
-                "session_id": self.current_session_id,
-                "status": (
-                    "completed"
-                    if self.state != DreamState.INTERRUPTED
-                    else "interrupted"
-                ),
-                "duration_seconds": duration,
-                "dreams_attempted": len(results),
-                "dreams_successful": sum(1 for r in results if r.get("success")),
-                "scenarios": [r.get("scenario", "unknown") for r in results],
-                "success_rate": success_rate,
-            }
-
-            logger.info(
-                f"✨ Sesja śnienia zakończona: "
-                f"{report['dreams_successful']}/{report['dreams_attempted']} sukcesów"
-            )
-
-            # Jeśli sesja była pomyślna, merge wiedzy do głównej linii
-            if success_rate > 0.5 and self.current_checkpoint_id:
-                logger.info(
-                    "✅ Sesja śnienia pomyślna - wiedza zostanie zachowana w głównej linii"
-                )
-                # Wiedza jest już w LessonsStore, więc nie musimy nic robić
-                # Timeline może zostać jako historia eksperymentów
-            elif self.current_checkpoint_id:
-                logger.info(
-                    "⚠️ Sesja śnienia niepomyślna - rozważ przywrócenie checkpointu"
-                )
-                report["checkpoint_id"] = self.current_checkpoint_id
-                report["timeline"] = timeline_name
-
+            results = await self._run_scenarios(scenarios)
+            report = self._build_rem_report(results, session_start)
+            self._attach_checkpoint_context(report, timeline_name)
             return report
-
         except Exception as e:
             logger.error(f"Błąd krytyczny w enter_rem_phase: {e}")
-            # Cleanup empty timeline on critical error
             self._cleanup_empty_timeline(timeline_name, self.current_checkpoint_id)
             return {
                 "session_id": self.current_session_id,
@@ -299,11 +251,65 @@ class DreamEngine:
                 "error": str(e),
             }
 
-        finally:
-            # Reset stanu
-            self.state = DreamState.IDLE
-            self.current_checkpoint_id = None
-            self.current_session_id = None
+    async def _run_scenarios(
+        self, scenarios: List[ScenarioSpec]
+    ) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        for i, scenario in enumerate(scenarios, 1):
+            if self.state == DreamState.INTERRUPTED:
+                logger.warning("Śnienie przerwane przez użytkownika")
+                break
+            logger.info(f"💭 Sen {i}/{len(scenarios)}: {scenario.title}")
+            try:
+                result = await self._dream_scenario(scenario)
+                results.append(result)
+                if result.get("success"):
+                    self.successful_dreams += 1
+                self.dreams_count += 1
+            except Exception as e:
+                logger.error(f"Błąd podczas śnienia scenariusza {i}: {e}")
+                results.append(
+                    {"success": False, "error": str(e), "scenario": scenario.title}
+                )
+        return results
+
+    def _build_rem_report(
+        self, results: List[Dict[str, Any]], session_start: datetime
+    ) -> Dict[str, Any]:
+        session_end = datetime.now()
+        duration = (session_end - session_start).total_seconds()
+        success_count = sum(1 for r in results if r.get("success"))
+        success_rate = success_count / len(results) if results else 0.0
+        report = {
+            "session_id": self.current_session_id,
+            "status": "completed"
+            if self.state != DreamState.INTERRUPTED
+            else "interrupted",
+            "duration_seconds": duration,
+            "dreams_attempted": len(results),
+            "dreams_successful": success_count,
+            "scenarios": [r.get("scenario", "unknown") for r in results],
+            "success_rate": success_rate,
+        }
+        logger.info(
+            f"✨ Sesja śnienia zakończona: "
+            f"{report['dreams_successful']}/{report['dreams_attempted']} sukcesów"
+        )
+        return report
+
+    def _attach_checkpoint_context(
+        self, report: Dict[str, Any], timeline_name: str
+    ) -> None:
+        if not self.current_checkpoint_id:
+            return
+        if report["success_rate"] > 0.5:
+            logger.info(
+                "✅ Sesja śnienia pomyślna - wiedza zostanie zachowana w głównej linii"
+            )
+            return
+        logger.info("⚠️ Sesja śnienia niepomyślna - rozważ przywrócenie checkpointu")
+        report["checkpoint_id"] = self.current_checkpoint_id
+        report["timeline"] = timeline_name
 
     async def _get_knowledge_clusters(self, count: int) -> List[str]:
         """

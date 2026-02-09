@@ -155,6 +155,22 @@ class SessionHandler:
     ) -> str:
         """Buduje blok kontekstu sesji (metadane + historia)."""
         parts: List[str] = []
+        meta_block = self._build_session_meta_block(request)
+        if meta_block:
+            parts.append(meta_block)
+
+        try:
+            history_block = self._build_session_history_block(
+                request, task_id, include_memory, parts
+            )
+            if history_block:
+                parts.append(history_block)
+        except Exception as exc:  # pragma: no cover
+            logger.warning(f"Nie udało się zbudować historii sesji: {exc}")
+
+        return "\n\n".join(parts).strip()
+
+    def _build_session_meta_block(self, request: TaskRequest) -> str:
         session_id = request.session_id
         scope = request.preference_scope or "default"
         tone = request.tone
@@ -171,40 +187,57 @@ class SessionHandler:
             meta_lines.append(f"Styl: {style_notes}")
         if preferred_language:
             meta_lines.append(f"Preferowany język: {preferred_language}")
-        if meta_lines:
-            parts.append("[KONTEKST SESJI]\n" + "\n".join(meta_lines))
+        return "[KONTEKST SESJI]\n" + "\n".join(meta_lines) if meta_lines else ""
 
-        try:
-            task = self.state_manager.get_task(task_id)
-            history: List[Dict[str, Any]] = []
-            if task and isinstance(getattr(task, "context_history", {}), dict):
-                if not self._testing_mode:
-                    self._ensure_session_summary(task_id, task)
-                summary, history = self._load_session_summary_and_history(
-                    task, session_id
-                )
-                if not summary and history and self._should_generate_summary(request):
-                    summary = self._heuristic_summary(history)
-                    self.state_manager.update_context(
-                        task_id, {"session_summary": summary}
-                    )
-                    if session_id and self.session_store:
-                        self.session_store.set_summary(session_id, summary)
-                if summary:
-                    parts.append("[STRESZCZENIE SESJI]\n" + summary)
-                if not self._testing_mode and include_memory:
-                    self._attach_memory_block(task_id, task, request, history, parts)
-            if history:
-                lines = []
-                for entry in history[-SESSION_HISTORY_LIMIT:]:
-                    role = entry.get("role", "user")
-                    msg = entry.get("content", "")
-                    lines.append(f"{role}: {msg}")
-                parts.append("[HISTORIA SESJI]\n" + "\n".join(lines))
-        except Exception as exc:  # pragma: no cover
-            logger.warning(f"Nie udało się zbudować historii sesji: {exc}")
+    def _build_session_history_block(
+        self,
+        request: TaskRequest,
+        task_id: UUID,
+        include_memory: bool,
+        parts: list[str],
+    ) -> str:
+        task = self.state_manager.get_task(task_id)
+        if not task or not isinstance(getattr(task, "context_history", {}), dict):
+            return ""
 
-        return "\n\n".join(parts).strip()
+        session_id = request.session_id
+        if not self._testing_mode:
+            self._ensure_session_summary(task_id, task)
+        summary, history = self._load_session_summary_and_history(task, session_id)
+        summary = self._ensure_summary_if_needed(
+            request, task_id, session_id, summary, history
+        )
+        if summary:
+            parts.append("[STRESZCZENIE SESJI]\n" + summary)
+        if not self._testing_mode and include_memory:
+            self._attach_memory_block(task_id, task, request, history, parts)
+        return self._format_session_history_block(history)
+
+    def _ensure_summary_if_needed(
+        self,
+        request: TaskRequest,
+        task_id: UUID,
+        session_id: Optional[str],
+        summary: Optional[str],
+        history: list[Dict[str, Any]],
+    ) -> Optional[str]:
+        if summary or not history or not self._should_generate_summary(request):
+            return summary
+        summary = self._heuristic_summary(history)
+        self.state_manager.update_context(task_id, {"session_summary": summary})
+        if session_id and self.session_store:
+            self.session_store.set_summary(session_id, summary)
+        return summary
+
+    def _format_session_history_block(self, history: list[Dict[str, Any]]) -> str:
+        if not history:
+            return ""
+        lines = []
+        for entry in history[-SESSION_HISTORY_LIMIT:]:
+            role = entry.get("role", "user")
+            msg = entry.get("content", "")
+            lines.append(f"{role}: {msg}")
+        return "[HISTORIA SESJI]\n" + "\n".join(lines)
 
     def _load_session_summary_and_history(
         self, task: "VenomTask", session_id: Optional[str]
@@ -367,15 +400,7 @@ class SessionHandler:
         - wywoływanie tej metody wyłącznie z kontekstu asynchronicznego.
         """
         try:
-            # Przytnij wejście do sensownego fragmentu
-            # Używamy trim_to_char_limit dla spójności i dodatkowej walidacji
-            history_text, was_trimmed = trim_to_char_limit(
-                history_text, HISTORY_SUMMARY_TRIGGER_CHARS
-            )
-            if was_trimmed:
-                logger.debug(
-                    f"Historia przycięta do {HISTORY_SUMMARY_TRIGGER_CHARS} znaków dla streszczenia LLM"
-                )
+            history_text = self._trim_history_text_for_summary(history_text)
             strategy = getattr(SETTINGS, "SUMMARY_STRATEGY", SUMMARY_STRATEGY_DEFAULT)
             if strategy == "heuristic_only":
                 return ""
@@ -383,39 +408,11 @@ class SessionHandler:
             model_name = runtime.model_name or SETTINGS.LLM_MODEL_NAME
             if not model_name:
                 return ""
-            endpoint = runtime.endpoint or ""
-            if runtime.provider == "openai":
-                endpoint = SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT
+            endpoint = self._resolve_summary_endpoint(runtime)
             if not endpoint:
                 return ""
-            if endpoint.endswith("/v1"):
-                endpoint = endpoint + "/chat/completions"
-            elif not endpoint.endswith("/chat/completions"):
-                endpoint = endpoint.rstrip("/") + "/v1/chat/completions"
-
-            headers: Dict[str, str] = {}
-            if runtime.provider == "openai" and SETTINGS.OPENAI_API_KEY:
-                headers["Authorization"] = f"Bearer {SETTINGS.OPENAI_API_KEY}"
-            if runtime.service_type == "local" and getattr(
-                SETTINGS, "LLM_LOCAL_API_KEY", None
-            ):
-                headers["Authorization"] = f"Bearer {SETTINGS.LLM_LOCAL_API_KEY}"
-
-            system_prompt = (
-                "Jesteś asystentem podsumowującym rozmowę. "
-                "Streszczasz krótko po polsku, max 1000 znaków, bez wodolejstwa. "
-                "Wylistuj tylko fakty/ustalenia/wnioski, pomiń szczegóły i cytaty. "
-                "Nie wymyślaj nowych treści."
-            )
-            payload = {
-                "model": model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": history_text},
-                ],
-                "max_tokens": SUMMARY_MODEL_MAX_TOKENS,
-                "temperature": 0.2,
-            }
+            headers = self._build_summary_headers(runtime)
+            payload = self._build_summary_payload(model_name, history_text)
 
             with httpx.Client(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
                 resp = client.post(endpoint, headers=headers, json=payload)
@@ -431,6 +428,57 @@ class SessionHandler:
         except Exception as exc:  # pragma: no cover
             logger.warning(f"Streszczenie LLM nieudane: {exc}")
             return ""
+
+    def _trim_history_text_for_summary(self, history_text: str) -> str:
+        history_text, was_trimmed = trim_to_char_limit(
+            history_text, HISTORY_SUMMARY_TRIGGER_CHARS
+        )
+        if was_trimmed:
+            logger.debug(
+                f"Historia przycięta do {HISTORY_SUMMARY_TRIGGER_CHARS} znaków dla streszczenia LLM"
+            )
+        return history_text
+
+    def _resolve_summary_endpoint(self, runtime: Any) -> str:
+        endpoint = runtime.endpoint or ""
+        if runtime.provider == "openai":
+            endpoint = SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT
+        if not endpoint:
+            return ""
+        if endpoint.endswith("/v1"):
+            return endpoint + "/chat/completions"
+        if endpoint.endswith("/chat/completions"):
+            return endpoint
+        return endpoint.rstrip("/") + "/v1/chat/completions"
+
+    def _build_summary_headers(self, runtime: Any) -> Dict[str, str]:
+        headers: Dict[str, str] = {}
+        if runtime.provider == "openai" and SETTINGS.OPENAI_API_KEY:
+            headers["Authorization"] = f"Bearer {SETTINGS.OPENAI_API_KEY}"
+        if runtime.service_type == "local" and getattr(
+            SETTINGS, "LLM_LOCAL_API_KEY", None
+        ):
+            headers["Authorization"] = f"Bearer {SETTINGS.LLM_LOCAL_API_KEY}"
+        return headers
+
+    def _build_summary_payload(
+        self, model_name: str, history_text: str
+    ) -> Dict[str, Any]:
+        system_prompt = (
+            "Jesteś asystentem podsumowującym rozmowę. "
+            "Streszczasz krótko po polsku, max 1000 znaków, bez wodolejstwa. "
+            "Wylistuj tylko fakty/ustalenia/wnioski, pomiń szczegóły i cytaty. "
+            "Nie wymyślaj nowych treści."
+        )
+        return {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": history_text},
+            ],
+            "max_tokens": SUMMARY_MODEL_MAX_TOKENS,
+            "temperature": 0.2,
+        }
 
     def _memory_upsert(self, text: str, metadata: Dict[str, Any]) -> None:
         if not text:

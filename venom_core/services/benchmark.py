@@ -520,138 +520,23 @@ class BenchmarkService:
         result.status = "running"
 
         try:
-            # Ustal endpoint i runtime na podstawie manifestu / nazwy modelu
-            runtime = "vllm"
-            endpoint = SETTINGS.VLLM_ENDPOINT.rstrip("/")
-            if ":" in model_name:
-                runtime = "ollama"
-                endpoint = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
-            meta = self.model_registry.manifest.get(model_name)
-            if meta:
-                if meta.runtime:
-                    runtime = meta.runtime
-                if meta.provider and meta.provider.value == "ollama":
-                    runtime = "ollama"
-            if runtime == "ollama":
-                endpoint = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
-            else:
-                endpoint = SETTINGS.VLLM_ENDPOINT.rstrip("/")
-
-            # Sprawdź czy model jest już załadowany aby uniknąć restartu
-            model_already_loaded = False
-            try:
-                async with httpx.AsyncClient(timeout=2.0) as client:
-                    resp = await client.get(f"{endpoint}/models")
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        running_models = []
-                        # Obsługa formatu OpenAI (vLLM)
-                        if "data" in data and isinstance(data["data"], list):
-                            running_models = [m.get("id") for m in data["data"]]
-                        # Obsługa formatu Ollama
-                        elif "models" in data and isinstance(data["models"], list):
-                            running_models = [m.get("name") for m in data["models"]]
-
-                        if model_name in running_models:
-                            model_already_loaded = True
-                            # Symulujemy czas startu jako 0, skoro model jest gotowy
-                            t_startup = time.time()
-                            logger.info(
-                                f"Model {model_name} jest już aktywny - pomijam restart serwera."
-                            )
-            except Exception as e:
-                logger.debug(
-                    f"Nie udało się sprawdzić aktywnych modeli (to normalne przy starcie): {e}"
-                )
-
-            if not model_already_loaded:
-                # Aktywuj model przez ModelRegistry
-                logger.info(f"Aktywacja modelu: {model_name}")
-                # Próba aktywacji modelu - jeśli nie powiedzie się, kontynuuj z obecnym modelem
-                try:
-                    t_startup = time.time()
-                    await self.model_registry.activate_model(model_name, runtime)
-                    # Jeśli mamy kontroler serwerów, zrestartuj runtime aby załadować model
-                    if self.llm_controller:
-                        action = "restart"
-                        try:
-                            await self.llm_controller.run_action(runtime, action)
-                            logger.info(
-                                f"{runtime} zrestartowany dla modelu {model_name} (benchmark)"
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                f"Nie udało się wykonać {action} dla {runtime}: {e}"
-                            )
-                except Exception as e:
-                    logger.warning(f"Nie można aktywować modelu {model_name}: {e}")
-            else:
-                # Jeśli model był załadowany, upewnij się że t_startup jest zdefiniowane dla metryk
-                if "t_startup" not in locals():
-                    t_startup = time.time()
+            runtime, endpoint = self._resolve_runtime_and_endpoint(model_name)
+            model_already_loaded, t_startup = await self._check_model_loaded(
+                endpoint, model_name
+            )
+            t_startup = await self._ensure_model_activated(
+                model_name, runtime, model_already_loaded, t_startup
+            )
 
             # Czekaj na healthcheck
             await self._wait_for_healthcheck(endpoint=endpoint, timeout=60)
-            if "t_startup" in locals():
+            if t_startup is not None:
                 result.startup_latency_ms = round((time.time() - t_startup) * 1000, 2)
 
-            # Testuj z pytaniami
-            total_latency = 0.0
-            total_ttft = 0.0  # Suma time-to-first-token
-            ttft_count = 0  # Liczba udanych pomiarów TTFT
-            total_tokens = 0
-            total_duration = 0.0
-            peak_vram = 0.0
-
-            for question in questions:
-                # Mierz metryki dla pojedynczego pytania
-                metrics = await self._query_model_with_metrics(
-                    question=question.question,
-                    model_name=model_name,
-                    endpoint=endpoint,
-                )
-
-                # Sumuj TTFT osobno od latencji
-                if metrics.get("time_to_first_token_ms") is not None:
-                    total_ttft += metrics["time_to_first_token_ms"]
-                    ttft_count += 1
-
-                # Sumuj latencję tylko jeśli jest dostępna (backward compatibility)
-                if metrics["latency_ms"] is not None:
-                    total_latency += metrics["latency_ms"]
-
-                total_tokens += metrics.get("tokens_generated", 0)
-
-                # Sprawdź czy duration_ms nie jest None
-                if metrics["duration_ms"] is not None:
-                    total_duration += metrics["duration_ms"]
-                else:
-                    logger.warning("Brak duration_ms w metrykach - pomijam")
-
-                # Śledź szczytowe VRAM
-                if metrics.get("peak_vram_mb") and metrics["peak_vram_mb"] > peak_vram:
-                    peak_vram = metrics["peak_vram_mb"]
-
-            # Oblicz średnie
-            num_questions = len(questions)
-            result.latency_ms = (
-                round(total_latency / num_questions, 2) if total_latency > 0 else None
+            aggregates = await self._collect_benchmark_aggregates(
+                model_name=model_name, endpoint=endpoint, questions=questions
             )
-            result.time_to_first_token_ms = (
-                round(total_ttft / ttft_count, 2) if ttft_count > 0 else None
-            )
-            result.total_duration_ms = round(total_duration, 2)
-            result.peak_vram_mb = round(peak_vram, 2) if peak_vram > 0 else None
-
-            # Oblicz tokens per second
-            if total_duration > 0:
-                result.tokens_per_second = round(
-                    (total_tokens / total_duration) * 1000, 2
-                )
-
-            result.questions_tested = num_questions
-            result.status = "completed"
-            result.completed_at = datetime.now().isoformat()
+            self._apply_aggregates_to_result(result, questions, aggregates)
 
             logger.info(
                 f"Model {model_name} przetestowany: "
@@ -666,6 +551,141 @@ class BenchmarkService:
             result.error_message = str(e)
             result.completed_at = datetime.now().isoformat()
             raise
+
+    def _resolve_runtime_and_endpoint(self, model_name: str) -> tuple[str, str]:
+        runtime = "ollama" if ":" in model_name else "vllm"
+        meta = self.model_registry.manifest.get(model_name)
+        if meta:
+            if meta.runtime:
+                runtime = meta.runtime
+            if meta.provider and meta.provider.value == "ollama":
+                runtime = "ollama"
+        endpoint = (
+            SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
+            if runtime == "ollama"
+            else SETTINGS.VLLM_ENDPOINT.rstrip("/")
+        )
+        return runtime, endpoint
+
+    async def _check_model_loaded(
+        self, endpoint: str, model_name: str
+    ) -> tuple[bool, Optional[float]]:
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                resp = await client.get(f"{endpoint}/models")
+                if resp.status_code != 200:
+                    return False, None
+                running_models = self._extract_running_models(resp.json())
+                if model_name in running_models:
+                    logger.info(
+                        f"Model {model_name} jest już aktywny - pomijam restart serwera."
+                    )
+                    return True, time.time()
+        except Exception as e:
+            logger.debug(
+                f"Nie udało się sprawdzić aktywnych modeli (to normalne przy starcie): {e}"
+            )
+        return False, None
+
+    def _extract_running_models(self, response_data: Dict[str, Any]) -> list[Any]:
+        if "data" in response_data and isinstance(response_data["data"], list):
+            return [m.get("id") for m in response_data["data"]]
+        if "models" in response_data and isinstance(response_data["models"], list):
+            return [m.get("name") for m in response_data["models"]]
+        return []
+
+    async def _ensure_model_activated(
+        self,
+        model_name: str,
+        runtime: str,
+        model_already_loaded: bool,
+        startup_started_at: Optional[float],
+    ) -> Optional[float]:
+        if model_already_loaded:
+            return startup_started_at or time.time()
+        logger.info(f"Aktywacja modelu: {model_name}")
+        startup_started_at = time.time()
+        try:
+            await self.model_registry.activate_model(model_name, runtime)
+            await self._restart_runtime_for_benchmark(runtime, model_name)
+        except Exception as e:
+            logger.warning(f"Nie można aktywować modelu {model_name}: {e}")
+        return startup_started_at
+
+    async def _restart_runtime_for_benchmark(
+        self, runtime: str, model_name: str
+    ) -> None:
+        if not self.llm_controller:
+            return
+        action = "restart"
+        try:
+            await self.llm_controller.run_action(runtime, action)
+            logger.info(f"{runtime} zrestartowany dla modelu {model_name} (benchmark)")
+        except Exception as e:
+            logger.warning(f"Nie udało się wykonać {action} dla {runtime}: {e}")
+
+    async def _collect_benchmark_aggregates(
+        self, model_name: str, endpoint: str, questions: List[BenchmarkQuestion]
+    ) -> Dict[str, float]:
+        aggregates = {
+            "total_latency": 0.0,
+            "total_ttft": 0.0,
+            "ttft_count": 0.0,
+            "total_tokens": 0.0,
+            "total_duration": 0.0,
+            "peak_vram": 0.0,
+        }
+        for question in questions:
+            metrics = await self._query_model_with_metrics(
+                question=question.question, model_name=model_name, endpoint=endpoint
+            )
+            self._update_aggregates(aggregates, metrics)
+        return aggregates
+
+    def _update_aggregates(
+        self, aggregates: Dict[str, float], metrics: Dict[str, Any]
+    ) -> None:
+        if metrics.get("time_to_first_token_ms") is not None:
+            aggregates["total_ttft"] += float(metrics["time_to_first_token_ms"])
+            aggregates["ttft_count"] += 1
+        if metrics.get("latency_ms") is not None:
+            aggregates["total_latency"] += float(metrics["latency_ms"])
+        aggregates["total_tokens"] += float(metrics.get("tokens_generated", 0))
+        if metrics.get("duration_ms") is not None:
+            aggregates["total_duration"] += float(metrics["duration_ms"])
+        else:
+            logger.warning("Brak duration_ms w metrykach - pomijam")
+        peak_vram = metrics.get("peak_vram_mb")
+        if peak_vram and float(peak_vram) > aggregates["peak_vram"]:
+            aggregates["peak_vram"] = float(peak_vram)
+
+    def _apply_aggregates_to_result(
+        self,
+        result: ModelBenchmarkResult,
+        questions: List[BenchmarkQuestion],
+        aggregates: Dict[str, float],
+    ) -> None:
+        num_questions = len(questions)
+        total_latency = aggregates["total_latency"]
+        total_ttft = aggregates["total_ttft"]
+        ttft_count = int(aggregates["ttft_count"])
+        total_duration = aggregates["total_duration"]
+        total_tokens = aggregates["total_tokens"]
+        peak_vram = aggregates["peak_vram"]
+
+        result.latency_ms = (
+            round(total_latency / num_questions, 2) if total_latency > 0 else None
+        )
+        result.time_to_first_token_ms = (
+            round(total_ttft / ttft_count, 2) if ttft_count > 0 else None
+        )
+        result.total_duration_ms = round(total_duration, 2)
+        result.peak_vram_mb = round(peak_vram, 2) if peak_vram > 0 else None
+        if total_duration > 0:
+            result.tokens_per_second = round((total_tokens / total_duration) * 1000, 2)
+        result.questions_tested = num_questions
+        result.status = "completed"
+        result.completed_at = datetime.now().isoformat()
 
     async def _wait_for_healthcheck(self, endpoint: str, timeout: int = 60):
         """
@@ -743,7 +763,12 @@ class BenchmarkService:
 
                     tokens_generated = 0
                     chunk_count = 0
-                    async for line in response.aiter_lines():
+                    line_stream = response.aiter_lines()
+                    if hasattr(line_stream, "__aiter__"):
+                        line_iterator = line_stream
+                    else:
+                        line_iterator = self._iterate_sync_lines(line_stream)
+                    async for line in line_iterator:
                         if not line.strip() or not line.startswith("data: "):
                             continue
 
@@ -793,6 +818,11 @@ class BenchmarkService:
             with suppress(asyncio.CancelledError):
                 await sampling_task
             raise
+
+    async def _iterate_sync_lines(self, line_stream: Any):
+        """Adapter testowy: zamienia synchroniczny iterator linii na async iterator."""
+        for line in line_stream:
+            yield line
 
     async def _sample_vram_during_generation(self, samples: List[float]):
         """

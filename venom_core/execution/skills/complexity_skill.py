@@ -101,11 +101,61 @@ class ComplexitySkill:
         """Inicjalizacja ComplexitySkill."""
         logger.info("ComplexitySkill zainicjalizowany")
 
+    def _append_risk_once(
+        self, risks: List[tuple[str, str]], risk_type: str, risk_description: str
+    ) -> None:
+        if any(
+            existing_description == risk_description
+            for _, existing_description in risks
+        ):
+            return
+        risks.append((risk_type, risk_description))
+
+    def _collect_pattern_risks(self, desc_lower: str) -> List[tuple[str, str]]:
+        risks: List[tuple[str, str]] = []
+        for risk_type, patterns in self.RISK_PATTERNS.items():
+            for pattern in patterns:
+                if not re.search(pattern, desc_lower):
+                    continue
+                risk_description = self._get_risk_description(risk_type)
+                self._append_risk_once(risks, risk_type, risk_description)
+                break
+        return risks
+
+    @staticmethod
+    def _collect_additional_risks(
+        description: str, desc_lower: str
+    ) -> List[tuple[str, str]]:
+        additional_risks: List[tuple[str, str]] = []
+        if len(description) > 500:
+            additional_risks.append(
+                ("complexity", "Bardzo długi opis zadania - możliwe scope creep")
+            )
+        if "szybko" in desc_lower or "pilne" in desc_lower or "urgent" in desc_lower:
+            additional_risks.append(
+                ("time_pressure", "Presja czasowa - ryzyko obniżenia jakości")
+            )
+        if "wszystkie" in desc_lower or "każdy" in desc_lower:
+            additional_risks.append(
+                ("scope", "Szeroki zakres - możliwe niedoszacowanie")
+            )
+        return additional_risks
+
+    @staticmethod
+    def _build_risk_recommendation(risks_count: int) -> str:
+        if risks_count >= 3:
+            return "Wysokie ryzyko - rozważ prototyp lub proof-of-concept najpierw."
+        if risks_count == 2:
+            return (
+                "Średnie ryzyko - zaplanuj dodatkowy czas na nieprzewidziane problemy."
+            )
+        return "Niskie ryzyko - kontynuuj zgodnie z planem."
+
     @kernel_function(
         name="estimate_time",
         description="Szacuje czas wykonania zadania technicznego w minutach i zwraca JSON.",
     )
-    def estimate_time(
+    async def estimate_time(
         self,
         description: Annotated[str, "Opis zadania do oszacowania"],
     ) -> str:
@@ -162,7 +212,7 @@ class ComplexitySkill:
         name="estimate_complexity",
         description="Ocenia złożoność zadania technicznego (TRIVIAL/LOW/MEDIUM/HIGH/EPIC).",
     )
-    def estimate_complexity(
+    async def estimate_complexity(
         self,
         description: Annotated[str, "Opis zadania do oceny"],
     ) -> str:
@@ -216,7 +266,7 @@ class ComplexitySkill:
         name="suggest_subtasks",
         description="Proponuje podział dużego zadania na mniejsze podzadania.",
     )
-    def suggest_subtasks(
+    async def suggest_subtasks(
         self,
         description: Annotated[str, "Opis dużego zadania do podziału"],
     ) -> str:
@@ -283,7 +333,7 @@ class ComplexitySkill:
         name="flag_risks",
         description="Identyfikuje potencjalne ryzyka w zadaniu technicznym.",
     )
-    def flag_risks(
+    async def flag_risks(
         self,
         description: Annotated[str, "Opis zadania do analizy ryzyk"],
     ) -> str:
@@ -296,29 +346,10 @@ class ComplexitySkill:
         Returns:
             Lista zidentyfikowanych ryzyk
         """
-        risks: List[tuple[str, str]] = []
         desc_lower = description.lower()
 
-        # Sprawdź wzorce ryzyk
-        for risk_type, patterns in self.RISK_PATTERNS.items():
-            for pattern in patterns:
-                if re.search(pattern, desc_lower):
-                    risk_description = self._get_risk_description(risk_type)
-                    if risk_description not in [r[1] for r in risks]:
-                        risks.append((risk_type, risk_description))
-                    break
-
-        # Dodatkowe ryzyka
-        if len(description) > 500:
-            risks.append(
-                ("complexity", "Bardzo długi opis zadania - możliwe scope creep")
-            )
-
-        if "szybko" in desc_lower or "pilne" in desc_lower or "urgent" in desc_lower:
-            risks.append(("time_pressure", "Presja czasowa - ryzyko obniżenia jakości"))
-
-        if "wszystkie" in desc_lower or "każdy" in desc_lower:
-            risks.append(("scope", "Szeroki zakres - możliwe niedoszacowanie"))
+        risks = self._collect_pattern_risks(desc_lower)
+        risks.extend(self._collect_additional_risks(description, desc_lower))
 
         # Wynik
         if not risks:
@@ -329,14 +360,7 @@ class ComplexitySkill:
             result += f"{i}. [{risk_type.upper()}] {description}\n"
 
         result += "\n💡 Rekomendacja: "
-        if len(risks) >= 3:
-            result += "Wysokie ryzyko - rozważ prototyp lub proof-of-concept najpierw."
-        elif len(risks) == 2:
-            result += (
-                "Średnie ryzyko - zaplanuj dodatkowy czas na nieprzewidziane problemy."
-            )
-        else:
-            result += "Niskie ryzyko - kontynuuj zgodnie z planem."
+        result += self._build_risk_recommendation(len(risks))
 
         return result
 

@@ -304,9 +304,12 @@ async def test_agents_and_skills_new_code_paths() -> None:
     assert "zaawansowana funkcja" in await chrono.merge_timeline("exp", "main")
 
 
-def test_complexity_skill_new_code_paths() -> None:
+@pytest.mark.asyncio
+async def test_complexity_skill_new_code_paths() -> None:
     skill = ComplexitySkill()
-    assert "estimated_minutes" in skill.estimate_time("prosty test")
-    assert "Złożoność" in skill.estimate_complexity("api i baza danych")
-    assert "podział" in skill.suggest_subtasks("zaprojektuj system api i integrację")
-    assert "ryzyka" in skill.flag_risks("zrób to szybko, pełny system i migracja")
+    assert "estimated_minutes" in await skill.estimate_time("prosty test")
+    assert "Złożoność" in await skill.estimate_complexity("api i baza danych")
+    assert "podział" in await skill.suggest_subtasks(
+        "zaprojektuj system api i integrację"
+    )
+    assert "ryzyka" in await skill.flag_risks("zrób to szybko, pełny system i migracja")

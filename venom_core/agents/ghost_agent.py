@@ -422,103 +422,137 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
         located_coords: Optional[tuple[int, int]] = None
 
         for i, step in enumerate(plan):
-            if self.emergency_stop:
-                logger.warning("Emergency stop aktywny - przerywam plan")
-                return "🛑 Plan przerwany przez Emergency Stop"
-
-            if i >= self.max_steps:
-                logger.warning(f"Osiągnięto maksymalną liczbę kroków: {self.max_steps}")
+            if self._should_stop_plan(i):
+                if self.emergency_stop:
+                    logger.warning("Emergency stop aktywny - przerywam plan")
+                    return "🛑 Plan przerwany przez Emergency Stop"
                 break
 
             step.status = "running"
             logger.info(f"Krok {i + 1}/{len(plan)}: {step.description}")
-
             try:
-                # Wykonaj krok na podstawie typu
-                if step.action_type == "screenshot":
-                    last_screenshot = ImageGrab.grab()
-                    step.result = f"Screenshot: {last_screenshot.size}"
-                    step.status = "success"
-
-                elif step.action_type == "locate":
-                    if not last_screenshot:
-                        last_screenshot = ImageGrab.grab()
-
-                    description = step.params.get("description", "")
-                    coords = await self.vision.locate_element(
-                        last_screenshot, description
-                    )
-
-                    if coords:
-                        located_coords = coords
-                        step.result = f"Element znaleziony: {coords}"
-                        step.status = "success"
-                    else:
-                        step.result = "Element nie znaleziony"
-                        step.status = "failed"
-                        logger.warning(f"Nie znaleziono elementu: {description}")
-                        # Próbujemy kontynuować
-
-                elif step.action_type == "click":
-                    use_located = step.params.get("use_located", False)
-
-                    if use_located and located_coords:
-                        x, y = located_coords
-                    else:
-                        x = step.params.get("x", 0)
-                        y = step.params.get("y", 0)
-
-                    result = await self.input_skill.mouse_click(x, y)
-                    step.result = result
-                    step.status = "success" if "✅" in result else "failed"
-
-                elif step.action_type == "type":
-                    text = step.params.get("text", "")
-                    result = await self.input_skill.keyboard_type(text)
-                    step.result = result
-                    step.status = "success" if "✅" in result else "failed"
-
-                elif step.action_type == "hotkey":
-                    keys = step.params.get("keys", "")
-                    result = await self.input_skill.keyboard_hotkey(keys)
-                    step.result = result
-                    step.status = "success" if "✅" in result else "failed"
-
-                elif step.action_type == "wait":
-                    duration = step.params.get("duration", 1.0)
-                    await asyncio.sleep(duration)
-                    step.result = f"Oczekiwano {duration}s"
-                    step.status = "success"
-
-                else:
-                    step.result = f"Nieznany typ akcji: {step.action_type}"
-                    step.status = "failed"
-
+                last_screenshot, located_coords = await self._execute_single_step(
+                    step, last_screenshot, located_coords
+                )
                 self.action_history.append(step)
-
-                # Weryfikacja po każdym kroku jeśli włączona
-                if self.verification_enabled and step.status == "success":
-                    # Zrób screenshot po akcji i sprawdź czy akcja zakończyła się sukcesem
-                    verification_result = self._verify_step_result(
-                        step, last_screenshot
-                    )
-                    if not verification_result:
-                        logger.warning(f"Weryfikacja kroku {i + 1} nie powiodła się")
-                        step.status = "failed"
-                        step.result = (step.result or "") + " (weryfikacja nieudana)"
-
-                # Czekaj między krokami
-                if step.action_type != "wait":
-                    await asyncio.sleep(self.step_delay)
-
+                self._verify_step_if_enabled(i, step, last_screenshot)
+                await self._delay_between_steps(step.action_type)
             except Exception as e:
-                step.status = "failed"
-                step.result = f"Błąd: {e}"
-                logger.error(f"Błąd w kroku {i + 1}: {e}", exc_info=True)
+                self._mark_step_error(i, step, e)
                 self.action_history.append(step)
 
         # Generuj raport
         return self._generate_report()
+
+    def _should_stop_plan(self, step_index: int) -> bool:
+        if self.emergency_stop:
+            return True
+        if step_index >= self.max_steps:
+            logger.warning(f"Osiągnięto maksymalną liczbę kroków: {self.max_steps}")
+            return True
+        return False
+
+    async def _execute_single_step(
+        self,
+        step: ActionStep,
+        last_screenshot: Optional[Any],
+        located_coords: Optional[tuple[int, int]],
+    ) -> tuple[Optional[Any], Optional[tuple[int, int]]]:
+        if step.action_type == "screenshot":
+            return self._execute_screenshot_step(step), located_coords
+        if step.action_type == "locate":
+            new_screenshot, found_coords = await self._execute_locate_step(
+                step, last_screenshot
+            )
+            return new_screenshot, found_coords or located_coords
+        if step.action_type == "click":
+            self._set_step_result_from_action(
+                step, await self._execute_click_step(step, located_coords)
+            )
+            return last_screenshot, located_coords
+        if step.action_type == "type":
+            self._set_step_result_from_action(
+                step, await self.input_skill.keyboard_type(step.params.get("text", ""))
+            )
+            return last_screenshot, located_coords
+        if step.action_type == "hotkey":
+            self._set_step_result_from_action(
+                step,
+                await self.input_skill.keyboard_hotkey(step.params.get("keys", "")),
+            )
+            return last_screenshot, located_coords
+        if step.action_type == "wait":
+            await self._execute_wait_step(step)
+            return last_screenshot, located_coords
+
+        step.result = f"Nieznany typ akcji: {step.action_type}"
+        step.status = "failed"
+        return last_screenshot, located_coords
+
+    def _execute_screenshot_step(self, step: ActionStep):
+        screenshot = ImageGrab.grab()
+        step.result = f"Screenshot: {screenshot.size}"
+        step.status = "success"
+        return screenshot
+
+    async def _execute_locate_step(
+        self, step: ActionStep, last_screenshot: Optional[Any]
+    ) -> tuple[Any, Optional[tuple[int, int]]]:
+        if not last_screenshot:
+            last_screenshot = ImageGrab.grab()
+        description = step.params.get("description", "")
+        coords = await self.vision.locate_element(last_screenshot, description)
+        if coords:
+            step.result = f"Element znaleziony: {coords}"
+            step.status = "success"
+            return last_screenshot, coords
+        step.result = "Element nie znaleziony"
+        step.status = "failed"
+        logger.warning(f"Nie znaleziono elementu: {description}")
+        return last_screenshot, None
+
+    async def _execute_click_step(
+        self, step: ActionStep, located_coords: Optional[tuple[int, int]]
+    ) -> str:
+        use_located = step.params.get("use_located", False)
+        if use_located and located_coords:
+            x, y = located_coords
+        else:
+            x = step.params.get("x", 0)
+            y = step.params.get("y", 0)
+        return await self.input_skill.mouse_click(x, y)
+
+    async def _execute_wait_step(self, step: ActionStep) -> None:
+        duration = step.params.get("duration", 1.0)
+        await asyncio.sleep(duration)
+        step.result = f"Oczekiwano {duration}s"
+        step.status = "success"
+
+    def _set_step_result_from_action(self, step: ActionStep, result: str) -> None:
+        step.result = result
+        step.status = "success" if "✅" in result else "failed"
+
+    def _verify_step_if_enabled(
+        self, step_index: int, step: ActionStep, last_screenshot: Optional[Any]
+    ) -> None:
+        if not self.verification_enabled or step.status != "success":
+            return
+        verification_result = self._verify_step_result(step, last_screenshot)
+        if not verification_result:
+            logger.warning(f"Weryfikacja kroku {step_index + 1} nie powiodła się")
+            step.status = "failed"
+            step.result = (step.result or "") + " (weryfikacja nieudana)"
+
+    async def _delay_between_steps(self, action_type: str) -> None:
+        if action_type != "wait":
+            await asyncio.sleep(self.step_delay)
+
+    def _mark_step_error(
+        self, step_index: int, step: ActionStep, error: Exception
+    ) -> None:
+        step.status = "failed"
+        step.result = f"Błąd: {error}"
+        logger.error(f"Błąd w kroku {step_index + 1}: {error}", exc_info=True)
 
     def _verify_step_result(self, step: ActionStep, pre_action_screenshot) -> bool:
         """

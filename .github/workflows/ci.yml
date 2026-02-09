@@ -38,6 +38,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-ci-lite.txt
 
+      - name: Install lightweight system tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+
       - name: Run backend lite + sonar new-code tests with Sonar reports
         timeout-minutes: 10
         run: |

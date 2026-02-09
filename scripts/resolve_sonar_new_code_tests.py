@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,7 @@ def _related_tests_for_modules(
 ) -> set[str]:
     related: set[str] = set()
     test_set = set(test_files)
+    has_rg = shutil.which("rg") is not None
 
     for path in changed_files:
         if not (path.startswith("venom_core/") and path.endswith(".py")):
@@ -68,27 +70,56 @@ def _related_tests_for_modules(
         if direct_candidate in test_set:
             related.add(direct_candidate)
 
-        # Search tests referencing full dotted module path.
-        rg_full = subprocess.run(
-            ["rg", "-l", "--fixed-strings", module_path, "tests", "-g", "test_*.py"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        for line in rg_full.stdout.splitlines():
-            if line:
-                related.add(line.strip().replace("\\", "/"))
+        if has_rg:
+            # Search tests referencing full dotted module path.
+            rg_full = subprocess.run(
+                [
+                    "rg",
+                    "-l",
+                    "--fixed-strings",
+                    module_path,
+                    "tests",
+                    "-g",
+                    "test_*.py",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            for line in rg_full.stdout.splitlines():
+                if line:
+                    related.add(line.strip().replace("\\", "/"))
 
-        # Fallback by module stem to catch local imports/helpers.
-        rg_stem = subprocess.run(
-            ["rg", "-l", "--fixed-strings", module_stem, "tests", "-g", "test_*.py"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        for line in rg_stem.stdout.splitlines():
-            if line:
-                related.add(line.strip().replace("\\", "/"))
+            # Fallback by module stem to catch local imports/helpers.
+            rg_stem = subprocess.run(
+                [
+                    "rg",
+                    "-l",
+                    "--fixed-strings",
+                    module_stem,
+                    "tests",
+                    "-g",
+                    "test_*.py",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            for line in rg_stem.stdout.splitlines():
+                if line:
+                    related.add(line.strip().replace("\\", "/"))
+        else:
+            # Portable fallback for environments without ripgrep.
+            for test_path in test_files:
+                path_obj = Path(test_path)
+                if not path_obj.exists():
+                    continue
+                try:
+                    text = path_obj.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                if module_path in text or module_stem in text:
+                    related.add(test_path)
 
     return related
 

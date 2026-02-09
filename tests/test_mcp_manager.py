@@ -2,6 +2,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+pytest.importorskip("mcp")
+
 from tests.helpers.url_fixtures import http_url
 from venom_core.skills.mcp_manager_skill import McpManagerSkill, McpToolMetadata
 

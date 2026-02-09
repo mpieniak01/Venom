@@ -84,6 +84,7 @@ async def test_hf_search_success(mock_hf_response):
 
 @pytest.mark.asyncio
 async def test_ollama_search_scraping_success(mock_ollama_html):
+    pytest.importorskip("bs4")
     client = OllamaClient()
     # Mock return object for client.get
     mock_response = MagicMock()

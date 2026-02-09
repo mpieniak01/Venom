@@ -5,7 +5,11 @@ from pathlib import Path
 
 
 def _load_module():
-    script_path = Path("scripts/resolve_sonar_new_code_tests.py")
+    script_path = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "resolve_sonar_new_code_tests.py"
+    )
     spec = importlib.util.spec_from_file_location(
         "resolve_sonar_new_code_tests", script_path
     )
@@ -49,21 +53,21 @@ def test_resolve_tests_includes_groups_and_changed_items(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         module,
-        "_git_changed_files",
+        "git_changed_files",
         lambda _base: [
             "tests/test_changed.py",
             "venom_core/core/model_registry_clients.py",
         ],
     )
-    monkeypatch.setattr(module, "_all_test_files", lambda: sorted(files))
+    monkeypatch.setattr(module, "all_test_files", lambda: sorted(files))
     monkeypatch.setattr(
         module,
-        "_related_tests_for_modules",
+        "related_tests_for_modules",
         lambda _changed, _tests: {"tests/test_related.py", "tests/test_integration.py"},
     )
     monkeypatch.setattr(
         module,
-        "_is_light_test",
+        "is_light_test",
         lambda path: path != "tests/test_integration.py",
     )
 
@@ -79,3 +83,47 @@ def test_resolve_tests_includes_groups_and_changed_items(monkeypatch, tmp_path):
     assert "tests/test_changed.py" in resolved
     assert "tests/test_related.py" in resolved
     assert "tests/test_integration.py" not in resolved
+
+
+def test_collect_changed_tests_supports_nested_tests_paths():
+    module = _load_module()
+    changed = [
+        "tests/api/test_queue.py",
+        "tests/test_root.py",
+        "tests/api/not_a_test.py",
+    ]
+    assert module.collect_changed_tests(changed) == {
+        "tests/api/test_queue.py",
+        "tests/test_root.py",
+    }
+
+
+def test_resolve_candidates_from_changed_files_returns_sorted_light_unique(
+    monkeypatch,
+):
+    module = _load_module()
+    monkeypatch.setattr(
+        module,
+        "all_test_files",
+        lambda: ["tests/test_a.py", "tests/test_b.py"],
+    )
+    monkeypatch.setattr(
+        module,
+        "collect_changed_tests",
+        lambda _changed: {"tests/test_b.py", "tests/test_a.py"},
+    )
+    monkeypatch.setattr(
+        module,
+        "related_tests_for_modules",
+        lambda _changed, _tests: {"tests/test_a.py", "tests/test_c.py"},
+    )
+    monkeypatch.setattr(
+        module,
+        "is_light_test",
+        lambda path: path != "tests/test_c.py",
+    )
+
+    resolved = module.resolve_candidates_from_changed_files(
+        ["venom_core/core/file.py", "tests/api/test_any.py"]
+    )
+    assert resolved == ["tests/test_a.py", "tests/test_b.py"]

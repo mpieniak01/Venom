@@ -48,17 +48,41 @@ def _read_group_items(path: Path) -> list[str]:
     return items
 
 
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
+
 def _append_auto_items(path: Path, new_items: list[str]) -> None:
     content = path.read_text(encoding="utf-8") if path.exists() else ""
     lines = content.splitlines()
 
-    if lines and lines[-1].strip():
-        lines.append("")
-
-    if AUTO_SECTION_HEADER not in content:
+    header_idx = next(
+        (idx for idx, line in enumerate(lines) if line.strip() == AUTO_SECTION_HEADER),
+        None,
+    )
+    if header_idx is None:
+        if lines and lines[-1].strip():
+            lines.append("")
         lines.append(AUTO_SECTION_HEADER)
+        lines.extend(new_items)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
 
-    lines.extend(new_items)
+    insert_idx = header_idx + 1
+    while insert_idx < len(lines):
+        stripped = lines[insert_idx].strip()
+        if stripped.startswith("#"):
+            break
+        insert_idx += 1
+
+    lines[insert_idx:insert_idx] = new_items
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -68,19 +92,43 @@ def main() -> int:
         p
         for p in staged
         if p.startswith("venom_core/")
-        or (p.startswith("tests/test_") and p.endswith(".py"))
+        or (
+            p.startswith("tests/")
+            and p.endswith(".py")
+            and Path(p).name.startswith("test_")
+        )
     ]
     if not relevant_changes:
         print("No staged backend/test changes detected; skip Sonar group update.")
         return 0
 
     resolver = _load_resolver_module()
-    all_tests = resolver._all_test_files()
-    changed_tests = resolver._collect_changed_tests(staged)
-    related_tests = resolver._related_tests_for_modules(staged, all_tests)
-
-    candidates = sorted(changed_tests | related_tests)
-    candidates = [test for test in candidates if resolver._is_light_test(test)]
+    resolver_fn = getattr(resolver, "resolve_candidates_from_changed_files", None)
+    if callable(resolver_fn):
+        candidates = resolver_fn(relevant_changes)
+    else:
+        all_tests_fn = getattr(resolver, "all_test_files", None) or getattr(
+            resolver, "_all_test_files", None
+        )
+        changed_fn = getattr(resolver, "collect_changed_tests", None) or getattr(
+            resolver, "_collect_changed_tests", None
+        )
+        related_fn = getattr(resolver, "related_tests_for_modules", None) or getattr(
+            resolver, "_related_tests_for_modules", None
+        )
+        light_fn = getattr(resolver, "is_light_test", None) or getattr(
+            resolver, "_is_light_test", None
+        )
+        if not all(
+            callable(fn) for fn in (all_tests_fn, changed_fn, related_fn, light_fn)
+        ):
+            raise RuntimeError("Resolver module does not expose required API.")
+        all_tests = all_tests_fn()
+        changed_tests = changed_fn(relevant_changes)
+        related_tests = related_fn(relevant_changes, all_tests)
+        candidates = sorted(changed_tests | related_tests)
+        candidates = [test for test in candidates if light_fn(test)]
+    candidates = _dedupe_keep_order(candidates)
 
     existing = set(_read_group_items(GROUP_PATH))
     to_add = [test for test in candidates if test not in existing]

@@ -64,6 +64,7 @@ Zachowanie runu new-code coverage:
 
 - bazowe grupy testów: `config/pytest-groups/ci-lite.txt` + `config/pytest-groups/sonar-new-code.txt`
 - automatyczne dołączanie testów zmienionych/powiązanych jest domyślnie aktywne (`NEW_CODE_AUTO_INCLUDE_CHANGED=1`)
+- wzorzec auto-include dla zmienionych testów: `tests/**/test_*.py`
 - resolver listy: `scripts/resolve_sonar_new_code_tests.py`
 - gdy lokalnie nie ma `ripgrep` (`rg`), resolver używa fallbacku Python (bez blokowania runu)
 - w CI backend-lite doinstalowuje `ripgrep` dla szybszego wyboru i czytelnych logów

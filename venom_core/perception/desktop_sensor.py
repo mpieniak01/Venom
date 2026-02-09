@@ -53,6 +53,7 @@ def _ensure_pynput_stub() -> None:
 
     class _ListenerStub:
         def __init__(self, *args, **kwargs):
+            # Stub wymagany dla środowisk bez pynput; interfejs zachowany celowo.
             pass
 
         def start(self) -> None:

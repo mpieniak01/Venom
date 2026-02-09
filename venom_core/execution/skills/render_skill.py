@@ -1,6 +1,7 @@
 """Moduł: render_skill - umiejętność wizualizacji i renderowania UI."""
 
 import re
+from html.parser import HTMLParser
 from typing import Annotated, Any, Dict, List, Optional
 
 from semantic_kernel.functions import kernel_function
@@ -17,6 +18,43 @@ try:
 except ImportError:  # pragma: no cover - zależność opcjonalna
     bleach = None  # type: ignore[assignment]
     BLEACH_AVAILABLE = False
+
+
+class _ScriptStripper(HTMLParser):
+    """Usuwa zawartość <script>...</script> bez użycia podatnego regexu."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._chunks: list[str] = []
+        self._script_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "script":
+            self._script_depth += 1
+            return
+        if self._script_depth == 0:
+            self._chunks.append(self.get_starttag_text() or "")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "script":
+            self._script_depth = max(self._script_depth - 1, 0)
+            return
+        if self._script_depth == 0:
+            self._chunks.append(f"</{tag}>")
+
+    def handle_data(self, data: str) -> None:
+        if self._script_depth == 0:
+            self._chunks.append(data)
+
+    def get_sanitized(self) -> str:
+        return "".join(self._chunks)
+
+
+def _strip_script_content(html: str) -> str:
+    stripper = _ScriptStripper()
+    stripper.feed(html)
+    stripper.close()
+    return stripper.get_sanitized()
 
 
 class RenderSkill:
@@ -94,7 +132,7 @@ class RenderSkill:
                 strip=True,
             )
         # Fallback bez zależności: usuń script i niedozwolone tagi, zachowaj treść.
-        sanitized = re.sub(r"(?is)<script.*?>.*?</script>", "", html)
+        sanitized = _strip_script_content(html)
 
         allowed = set(self.ALLOWED_TAGS)
 

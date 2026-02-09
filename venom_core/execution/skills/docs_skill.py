@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 ALLOWED_MKDOCS_THEMES = {"material", "readthedocs"}
 MKDOCS_CONFIG_FILE = "mkdocs.yml"
 INDEX_DOC_FILE = "index.md"
+README_DOC_FILE = "readme.md"
 
 
 class DocsSkill:
@@ -156,8 +157,8 @@ class DocsSkill:
         try:
             # Szukaj pliku index.md lub README.md jako strona główna
             index_file = self._resolve_homepage_name()
-            if not index_file and (self.docs_dir / "readme.md").exists():
-                index_file = "readme.md"
+            if not index_file and (self.docs_dir / README_DOC_FILE).exists():
+                index_file = README_DOC_FILE
 
             if index_file:
                 nav_lines.append(f"  - Strona główna: {index_file}")
@@ -165,7 +166,7 @@ class DocsSkill:
             # Dodaj wszystkie pliki .md (poza index/readme)
             md_files = sorted(self.docs_dir.glob("*.md"))
             for md_file in md_files:
-                if md_file.name.lower() in [INDEX_DOC_FILE, "readme.md"]:
+                if md_file.name.lower() in [INDEX_DOC_FILE, README_DOC_FILE]:
                     continue
                 title = self._humanize_doc_title(md_file.stem)
                 nav_lines.append(f"  - {title}: {md_file.name}")

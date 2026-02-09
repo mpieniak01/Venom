@@ -297,47 +297,54 @@ class StrategistAgent(BaseAgent):
         result += f"Łączne wywołania API: {total_api_calls}\n"
         result += f"Łączne tokeny użyte: {total_tokens}\n\n"
 
-        # Sprawdź limity per provider
         result += "Limity API:\n"
         for prov, limits in self.api_limits.items():
             if provider and prov != provider:
                 continue
-
-            # Policz aktualne użycie
-            current_calls = 0
-            current_tokens = 0
-
-            for task in self.work_ledger.list_tasks():
-                if "api_usage" in task.metadata and prov in task.metadata["api_usage"]:
-                    current_calls += task.metadata["api_usage"][prov]["calls"]
-                    current_tokens += task.metadata["api_usage"][prov]["tokens"]
-
-            calls_percent = (
-                (current_calls / limits["calls"]) * 100 if limits["calls"] > 0 else 0
+            current_calls, current_tokens = self._calculate_provider_usage(prov)
+            result += self._format_provider_limit_block(
+                prov, limits, current_calls, current_tokens
             )
-            tokens_percent = (
-                (current_tokens / limits["tokens"]) * 100 if limits["tokens"] > 0 else 0
-            )
-
-            status = "✅"
-            if calls_percent > 80 or tokens_percent > 80:
-                status = "⚠️"
-            if calls_percent > 95 or tokens_percent > 95:
-                status = "🚨"
-
-            result += f"\n{status} {prov.upper()}:\n"
-            result += (
-                f"  Calls: {current_calls}/{limits['calls']} ({calls_percent:.1f}%)\n"
-            )
-            result += f"  Tokens: {current_tokens}/{limits['tokens']} ({tokens_percent:.1f}%)\n"
-
-            # Rekomendacje
-            if calls_percent > 90 or tokens_percent > 90:
-                result += "  🚨 OSTRZEŻENIE: Zbliżasz się do limitu - rozważ użycie lokalnych modeli.\n"
-            elif calls_percent > 75 or tokens_percent > 75:
-                result += "  ⚠️ Uwaga: Wysokie zużycie - monitoruj.\n"
 
         return result
+
+    def _calculate_provider_usage(self, provider: str) -> tuple[int, int]:
+        current_calls = 0
+        current_tokens = 0
+        for task in self.work_ledger.list_tasks():
+            api_usage = task.metadata.get("api_usage") if task.metadata else None
+            if not api_usage or provider not in api_usage:
+                continue
+            current_calls += api_usage[provider]["calls"]
+            current_tokens += api_usage[provider]["tokens"]
+        return current_calls, current_tokens
+
+    @staticmethod
+    def _usage_percent(current: int, limit: int) -> float:
+        return (current / limit) * 100 if limit > 0 else 0.0
+
+    def _format_provider_limit_block(
+        self, provider: str, limits: dict, current_calls: int, current_tokens: int
+    ) -> str:
+        calls_percent = self._usage_percent(current_calls, limits["calls"])
+        tokens_percent = self._usage_percent(current_tokens, limits["tokens"])
+
+        status = "✅"
+        if calls_percent > 95 or tokens_percent > 95:
+            status = "🚨"
+        elif calls_percent > 80 or tokens_percent > 80:
+            status = "⚠️"
+
+        block = (
+            f"\n{status} {provider.upper()}:\n"
+            f"  Calls: {current_calls}/{limits['calls']} ({calls_percent:.1f}%)\n"
+            f"  Tokens: {current_tokens}/{limits['tokens']} ({tokens_percent:.1f}%)\n"
+        )
+        if calls_percent > 90 or tokens_percent > 90:
+            block += "  🚨 OSTRZEŻENIE: Zbliżasz się do limitu - rozważ użycie lokalnych modeli.\n"
+        elif calls_percent > 75 or tokens_percent > 75:
+            block += "  ⚠️ Uwaga: Wysokie zużycie - monitoruj.\n"
+        return block
 
     def suggest_local_fallback(self, task_description: str) -> str:
         """

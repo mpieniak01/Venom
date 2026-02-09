@@ -61,3 +61,4 @@ tests/test_github_skill.py
 tests/test_gpu_habitat.py
 tests/test_overmind_integration.py
 tests/test_documenter.py
+tests/test_ingestion_engine.py

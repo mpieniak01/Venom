@@ -6,6 +6,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.helpers.url_fixtures import MOCK_HTTP, http_url
 from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.main import app
 
@@ -14,7 +15,7 @@ class DummyRuntime:
     def __init__(self, provider: str = "ollama", model_name: str | None = "model-x"):
         self.provider = provider
         self.model_name = model_name
-        self.endpoint = "http://localhost:1234"
+        self.endpoint = http_url("localhost", 1234)
         self.config_hash = "cfg"
         self.runtime_id = "rid"
 
@@ -51,7 +52,7 @@ class ErrorStreamResponse:
         return False
 
     def raise_for_status(self):
-        request = httpx.Request("POST", "http://localhost")
+        request = httpx.Request("POST", MOCK_HTTP)
         response = httpx.Response(502, request=request, text="bad gateway")
         raise httpx.HTTPStatusError("bad", request=request, response=response)
 
@@ -166,7 +167,7 @@ def test_build_preview_messages_and_payload(monkeypatch):
 
 
 def test_build_llm_http_error_and_stream_headers():
-    request = httpx.Request("POST", "http://localhost")
+    request = httpx.Request("POST", MOCK_HTTP)
     response = httpx.Response(502, request=request, text="upstream error")
     exc = httpx.HTTPStatusError("bad gateway", request=request, response=response)
 
@@ -284,7 +285,7 @@ def test_stream_simple_chat_http_status_error_emits_error_event(monkeypatch):
     monkeypatch.setattr(
         llm_simple_routes,
         "_build_chat_completions_url",
-        lambda _rt: "http://localhost/v1/chat/completions",
+        lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
     monkeypatch.setattr("httpx.AsyncClient", DummyClientHttpStatus)
     client = TestClient(app)
@@ -309,7 +310,7 @@ def test_stream_simple_chat_connection_error_emits_error_event(monkeypatch):
     monkeypatch.setattr(
         llm_simple_routes,
         "_build_chat_completions_url",
-        lambda _rt: "http://localhost/v1/chat/completions",
+        lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
     monkeypatch.setattr("httpx.AsyncClient", DummyClientConnectionError)
     client = TestClient(app)
@@ -334,7 +335,7 @@ def test_stream_simple_chat_internal_error_emits_error_event(monkeypatch):
     monkeypatch.setattr(
         llm_simple_routes,
         "_build_chat_completions_url",
-        lambda _rt: "http://localhost/v1/chat/completions",
+        lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
     monkeypatch.setattr("httpx.AsyncClient", DummyClientInternalError)
     client = TestClient(app)

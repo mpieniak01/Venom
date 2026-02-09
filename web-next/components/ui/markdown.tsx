@@ -10,11 +10,11 @@ import {
   tokenizeMath,
 } from "@/lib/markdown-format";
 
-type MarkdownPreviewProps = {
+type MarkdownPreviewProps = Readonly<{
   content?: string | null;
   emptyState?: string;
   mode?: "final" | "stream";
-};
+}>;
 
 export function MarkdownPreview({ content, emptyState, mode = "final" }: MarkdownPreviewProps) {
   const [html, setHtml] = useState<string>("");
@@ -56,9 +56,8 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
 
   return (
     <div
-      className={`prose prose-invert max-w-none break-words text-sm leading-relaxed [&_a]:break-all [&_.chat-sources-label]:text-xs ${
-        hasSources ? "[&_a]:text-xs [&_a]:italic" : ""
-      }`}
+      className={`prose prose-invert max-w-none break-words text-sm leading-relaxed [&_a]:break-all [&_.chat-sources-label]:text-xs ${hasSources ? "[&_a]:text-xs [&_a]:italic" : ""
+        }`}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

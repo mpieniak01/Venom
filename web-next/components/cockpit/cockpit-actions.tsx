@@ -2,10 +2,10 @@
 
 import { QuickActions } from "@/components/layout/quick-actions";
 
-type CockpitActionsProps = {
+type CockpitActionsProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-};
+}>;
 
 export function CockpitActions({ open, onOpenChange }: CockpitActionsProps) {
   return <QuickActions open={open} onOpenChange={onOpenChange} />;

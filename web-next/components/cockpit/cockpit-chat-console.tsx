@@ -17,7 +17,7 @@ type ChatPreset = {
   readonly icon: string;
 };
 
-type CockpitChatConsoleProps = {
+type CockpitChatConsoleProps = Readonly<{
   chatFullscreen: boolean;
   onToggleFullscreen: () => void;
   labMode: boolean;
@@ -35,7 +35,7 @@ type CockpitChatConsoleProps = {
   promptPresets: ReadonlyArray<ChatPreset>;
   onSuggestionClick: (prompt: string) => void;
   onNewChat: () => void;
-};
+}>;
 
 export function CockpitChatConsole({
   chatFullscreen,

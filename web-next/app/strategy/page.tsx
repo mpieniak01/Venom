@@ -140,20 +140,20 @@ export default function StrategyPage() {
   const campaignRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof globalThis.window === "undefined") return;
     setCachedRoadmap(
-      safeParseJson<RoadmapResponse>(window.sessionStorage.getItem(ROADMAP_CACHE_KEY)),
+      safeParseJson<RoadmapResponse>(globalThis.window.sessionStorage.getItem(ROADMAP_CACHE_KEY)),
     );
-    setRoadmapTimestamp(safeNumber(window.sessionStorage.getItem(ROADMAP_TS_KEY)));
-    setStatusReport(window.sessionStorage.getItem(REPORT_CACHE_KEY));
-    setReportTimestamp(safeNumber(window.sessionStorage.getItem(REPORT_TS_KEY)));
+    setRoadmapTimestamp(safeNumber(globalThis.window.sessionStorage.getItem(ROADMAP_TS_KEY)));
+    setStatusReport(globalThis.window.sessionStorage.getItem(REPORT_CACHE_KEY));
+    setReportTimestamp(safeNumber(globalThis.window.sessionStorage.getItem(REPORT_TS_KEY)));
   }, []);
   const persistStatusReport = useCallback((value: string) => {
-    if (typeof window === "undefined") return;
+    if (typeof globalThis.window === "undefined") return;
     try {
       const timestamp = Date.now();
-      window.sessionStorage.setItem(REPORT_CACHE_KEY, value);
-      window.sessionStorage.setItem(REPORT_TS_KEY, timestamp.toString());
+      globalThis.window.sessionStorage.setItem(REPORT_CACHE_KEY, value);
+      globalThis.window.sessionStorage.setItem(REPORT_TS_KEY, timestamp.toString());
       setReportTimestamp(timestamp);
     } catch (err) {
       if (process.env.NODE_ENV !== "production") {
@@ -200,11 +200,11 @@ export default function StrategyPage() {
   useEffect(() => {
     if (!liveRoadmap) return;
     setCachedRoadmap(liveRoadmap);
-    if (typeof window === "undefined") return;
+    if (typeof globalThis.window === "undefined") return;
     try {
       const timestamp = Date.now();
-      window.sessionStorage.setItem(ROADMAP_CACHE_KEY, JSON.stringify(liveRoadmap));
-      window.sessionStorage.setItem(ROADMAP_TS_KEY, timestamp.toString());
+      globalThis.window.sessionStorage.setItem(ROADMAP_CACHE_KEY, JSON.stringify(liveRoadmap));
+      globalThis.window.sessionStorage.setItem(ROADMAP_TS_KEY, timestamp.toString());
       setRoadmapTimestamp(timestamp);
     } catch (err) {
       if (process.env.NODE_ENV !== "production") {
@@ -524,21 +524,33 @@ export default function StrategyPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title={t("strategy.panels.liveKpis.title")} description={t("strategy.panels.liveKpis.description")}>
-          {liveTasksLoading ? (
-            <p className="text-hint">{t("strategy.panels.liveKpis.loading")}</p>
-          ) : liveTaskStats.length ? (
-            <div className="grid gap-3 sm:grid-cols-3">
-              {liveTaskStats.map((stat) => (
-                <StatCard key={stat.label} label={stat.label} value={stat.value} hint={stat.hint} accent={stat.accent} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<span className="text-lg">🛰️</span>}
-              title={t("strategy.panels.liveKpis.emptyTitle")}
-              description={t("strategy.panels.liveKpis.emptyDesc")}
-            />
-          )}
+          {(() => {
+            if (liveTasksLoading) {
+              return <p className="text-hint">{t("strategy.panels.liveKpis.loading")}</p>;
+            }
+            if (liveTaskStats.length > 0) {
+              return (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {liveTaskStats.map((stat) => (
+                    <StatCard
+                      key={stat.label}
+                      label={stat.label}
+                      value={stat.value}
+                      hint={stat.hint}
+                      accent={stat.accent}
+                    />
+                  ))}
+                </div>
+              );
+            }
+            return (
+              <EmptyState
+                icon={<span className="text-lg">🛰️</span>}
+                title={t("strategy.panels.liveKpis.emptyTitle")}
+                description={t("strategy.panels.liveKpis.emptyDesc")}
+              />
+            );
+          })()}
         </Panel>
 
         <Panel title={t("strategy.panels.timeline.title")} description={t("strategy.panels.timeline.description")}>

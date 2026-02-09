@@ -78,17 +78,17 @@ export function VoiceCommandCenter() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof globalThis.window === "undefined") return;
     if (!audioEnabled) {
       setConnected(false);
       setStatusMessage("Kanał audio wyłączony w konfiguracji.");
       return;
     }
     let destroyed = false;
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const protocol = globalThis.window.location.protocol === "https:" ? "wss:" : "ws:";
     const connect = () => {
       if (destroyed) return;
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/audio`);
+      const ws = new WebSocket(`${protocol}//${globalThis.window.location.host}/ws/audio`);
       wsRef.current = ws;
       setStatusMessage("Łączenie z kanałem audio…");
       ws.onopen = () => {
@@ -117,9 +117,9 @@ export function VoiceCommandCenter() {
           reconnectAttemptsRef.current = Math.min(attempt + 1, 6);
           setStatusMessage(`Kanał audio offline – ponawiam za ${Math.ceil(delay / 1000)}s…`);
           if (reconnectTimeoutRef.current) {
-            window.clearTimeout(reconnectTimeoutRef.current);
+            globalThis.window.clearTimeout(reconnectTimeoutRef.current);
           }
-          reconnectTimeoutRef.current = window.setTimeout(connect, delay);
+          reconnectTimeoutRef.current = globalThis.window.setTimeout(connect, delay);
         }
       };
     };
@@ -127,7 +127,7 @@ export function VoiceCommandCenter() {
     return () => {
       destroyed = true;
       if (reconnectTimeoutRef.current) {
-        window.clearTimeout(reconnectTimeoutRef.current);
+        globalThis.window.clearTimeout(reconnectTimeoutRef.current);
       }
       wsRef.current?.close();
     };
@@ -179,7 +179,7 @@ export function VoiceCommandCenter() {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = mediaStream;
-      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      const AudioContextCtor = globalThis.window.AudioContext || globalThis.window.webkitAudioContext;
       if (!AudioContextCtor) {
         setStatusMessage("Brak wsparcia AudioContext w przeglądarce.");
         return;
@@ -290,13 +290,12 @@ export function VoiceCommandCenter() {
             }}
             variant="outline"
             size="md"
-            className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${
-              recording
+            className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recording
                 ? "border-rose-400/60 bg-rose-500/10 text-rose-100"
                 : connected
                   ? "border-emerald-400/40 bg-emerald-500/10 text-white"
                   : "border-white/10 bg-white/5 text-zinc-300"
-            }`}
+              }`}
             disabled={!connected}
           >
             🎙 {recording ? "Nagrywanie..." : "Przytrzymaj i mów"}

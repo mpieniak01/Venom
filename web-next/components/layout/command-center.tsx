@@ -16,10 +16,10 @@ import { ArrowUpRight, Compass, Cpu, RefreshCw } from "lucide-react";
 import { OverlayFallback } from "./overlay-fallback";
 import { useTranslation } from "@/lib/i18n";
 
-type CommandCenterProps = {
+type CommandCenterProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-};
+}>;
 
 export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
   const router = useRouter();
@@ -96,13 +96,12 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
           <StatCard
             label={t("commandCenter.stats.queueLabel")}
             value={queueAvailable ? `${queueStatus.active}/${queueStatus.limit}` : "—"}
-            hint={
-              queueAvailable
-                ? queueStatus.paused
-                  ? t("commandCenter.stats.queueHintPaused")
-                  : t("commandCenter.stats.queueHintActive")
-                : t("commandCenter.stats.queueHintOffline")
-            }
+            hint={(() => {
+              if (!queueAvailable) return t("commandCenter.stats.queueHintOffline");
+              return queueStatus.paused
+                ? t("commandCenter.stats.queueHintPaused")
+                : t("commandCenter.stats.queueHintActive");
+            })()}
             accent="blue"
           />
           <StatCard

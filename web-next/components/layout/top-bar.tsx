@@ -15,7 +15,7 @@ import { ServiceStatusDrawer } from "./service-status-drawer";
 import { LanguageSwitcher } from "./language-switcher";
 import { useTranslation } from "@/lib/i18n";
 
-export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsInitialData }) {
+export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: StatusPillsInitialData }>) {
   const [commandOpen, setCommandOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -31,8 +31,8 @@ export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsI
         setPaletteOpen(true);
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    globalThis.window.addEventListener("keydown", handler);
+    return () => globalThis.window.removeEventListener("keydown", handler);
   }, []);
 
   return (
@@ -113,19 +113,18 @@ function TopBarIconAction({
   onClick,
   hidden,
   testId,
-}: {
+}: Readonly<{
   label: string;
   icon: ReactNode;
   onClick: () => void;
   hidden?: TopBarActionVisibility;
   testId?: string;
-}) {
-  const visibilityClass =
-    hidden === "desktop"
-      ? "md:hidden"
-      : hidden === "mobile"
-        ? "hidden md:flex"
-        : "flex";
+}>) {
+  const displayClass = (() => {
+    if (hidden === "desktop") return "lg:hidden";
+    if (hidden === "mobile") return "hidden lg:inline-flex";
+    return "flex"; // Default to "flex" if not hidden
+  })();
 
   return (
     <Button
@@ -135,8 +134,8 @@ function TopBarIconAction({
       variant="outline"
       size="sm"
       className={cn(
-        "gap-2 px-3 py-2 text-xs uppercase tracking-wider hover:border-white/40 focus:ring-2 focus:ring-emerald-400",
-        visibilityClass,
+        "relative p-2.5 hover:bg-white/10 transition-colors",
+        displayClass,
       )}
     >
       {icon}

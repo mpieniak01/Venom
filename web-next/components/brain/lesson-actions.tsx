@@ -4,11 +4,11 @@ import type { TagEntry } from "@/components/brain/types";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
 
-type LessonActionsProps = {
+type LessonActionsProps = Readonly<{
   tags: TagEntry[];
   activeTag: string | null;
   onSelect: (tag: string | null) => void;
-};
+}>;
 
 const PRESET_TAGS = ["agent", "memory", "analysis", "ops"];
 

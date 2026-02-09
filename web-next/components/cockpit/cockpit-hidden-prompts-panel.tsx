@@ -12,7 +12,7 @@ import { formatRelativeTime } from "@/lib/date";
 import { Inbox } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 
-type CockpitHiddenPromptsPanelProps = {
+type CockpitHiddenPromptsPanelProps = Readonly<{
   hiddenScoreFilter: number;
   hiddenIntentFilter: string;
   onHiddenIntentFilterChange: (value: string) => void;
@@ -35,7 +35,7 @@ type CockpitHiddenPromptsPanelProps = {
     active: boolean;
     actor: string;
   }) => Promise<void>;
-};
+}>;
 
 export function CockpitHiddenPromptsPanel({
   hiddenScoreFilter,

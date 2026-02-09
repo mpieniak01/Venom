@@ -27,7 +27,7 @@ export function useCockpitMacros(
     // Load from local storage
     useEffect(() => {
         try {
-            const raw = window.localStorage.getItem(MACRO_STORAGE_KEY);
+            const raw = globalThis.window.localStorage.getItem(MACRO_STORAGE_KEY);
             if (raw) {
                 const parsed = JSON.parse(raw) as MacroAction[];
                 if (Array.isArray(parsed)) {
@@ -42,7 +42,7 @@ export function useCockpitMacros(
     // Save to local storage
     useEffect(() => {
         try {
-            window.localStorage.setItem(MACRO_STORAGE_KEY, JSON.stringify(customMacros));
+            globalThis.window.localStorage.setItem(MACRO_STORAGE_KEY, JSON.stringify(customMacros));
         } catch (e) {
             console.error("Failed to save macros", e);
         }

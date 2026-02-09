@@ -49,10 +49,10 @@ type SystemTimeStatProps = {
 const SystemTimeStat = memo(function SystemTimeStat({ label, hint }: SystemTimeStatProps) {
   const [systemTime, setSystemTime] = useState(() => formatSystemClock(new Date()));
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const timer = globalThis.window.setInterval(() => {
       setSystemTime(formatSystemClock(new Date()));
     }, 1000);
-    return () => window.clearInterval(timer);
+    return () => globalThis.window.clearInterval(timer);
   }, []);
 
   return <StatCard label={label} value={systemTime} hint={hint} suppressHydrationWarning />;
@@ -161,24 +161,32 @@ export function CockpitKpiSection({
             description={t("cockpit.metrics.queue.description")}
             className="kpi-panel"
           >
-            {metricsLoading && !metrics ? (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-400">
-                {t("cockpit.metrics.queue.loading")}
-              </div>
-            ) : successRate === null ? (
-              <EmptyState
-                icon={<Bot className="h-4 w-4" />}
-                title={t("cockpit.metrics.queue.emptyTitle")}
-                description={t("cockpit.metrics.queue.emptyDescription")}
-              />
-            ) : (
-              <CockpitMetricCard
-                primaryValue={`${successRate}%`}
-                secondaryLabel={tasksSummaryLabel}
-                progress={successRate}
-                footer={uptimeLabel}
-              />
-            )}
+            {(() => {
+              if (metricsLoading && !metrics) {
+                return (
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-400">
+                    {t("cockpit.metrics.queue.loading")}
+                  </div>
+                );
+              }
+              if (successRate === null) {
+                return (
+                  <EmptyState
+                    icon={<Bot className="h-4 w-4" />}
+                    title={t("cockpit.metrics.queue.emptyTitle")}
+                    description={t("cockpit.metrics.queue.emptyDescription")}
+                  />
+                );
+              }
+              return (
+                <CockpitMetricCard
+                  primaryValue={`${successRate}%`}
+                  secondaryLabel={tasksSummaryLabel}
+                  progress={successRate}
+                  footer={uptimeLabel}
+                />
+              );
+            })()}
           </Panel>
           <Panel
             eyebrow={t("cockpit.metrics.tokens.eyebrow")}

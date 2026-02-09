@@ -241,7 +241,11 @@ export function MobileNav() {
                 disabled={costLoading}
                 onClick={handleCostToggle}
               >
-                {costLoading ? t("mobileNav.telemetry.switching") : `${t("mobileNav.telemetry.switchTo")} ${costMode?.enabled ? "Eco" : "Pro"}`}
+                {(() => {
+                  if (costLoading) return t("mobileNav.telemetry.switching");
+                  const targetLabel = costMode?.enabled ? "Eco" : "Pro";
+                  return `${t("mobileNav.telemetry.switchTo")} ${targetLabel}`;
+                })()}
               </Button>
             </div>
 

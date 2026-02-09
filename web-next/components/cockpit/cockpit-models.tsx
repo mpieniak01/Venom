@@ -9,7 +9,7 @@ import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { SelectMenu } from "@/components/ui/select-menu";
 import type { LlmServerInfo } from "@/lib/types";
 
-type CockpitModelsProps = {
+type CockpitModelsProps = Readonly<{
   llmServersLoading: boolean;
   llmServers: LlmServerInfo[];
   selectedLlmServer: string;
@@ -31,7 +31,7 @@ type CockpitModelsProps = {
   activeServerName?: string | null;
   llmActionPending: string | null;
   onActivateServer: () => void;
-};
+}>;
 
 export function CockpitModels({
   llmServersLoading,
@@ -63,15 +63,21 @@ export function CockpitModels({
       className="allow-overflow overflow-visible"
     >
       <div className="space-y-3">
-        {llmServersLoading ? (
-          <p className="text-hint">Ładuję status serwerów…</p>
-        ) : llmServers.length === 0 ? (
-          <EmptyState
-            icon={<Package className="h-4 w-4" />}
-            title="Brak danych"
-            description="Skonfiguruj komendy LLM_*_COMMAND w .env, aby włączyć sterowanie serwerami."
-          />
-        ) : null}
+        {(() => {
+          if (llmServersLoading) {
+            return <p className="text-hint">Ładuję status serwerów…</p>;
+          }
+          if (llmServers.length === 0) {
+            return (
+              <EmptyState
+                icon={<Package className="h-4 w-4" />}
+                title="Brak danych"
+                description="Skonfiguruj komendy LLM_*_COMMAND w .env, aby włączyć sterowanie serwerami."
+              />
+            );
+          }
+          return null;
+        })()}
         <div className="card-shell card-base p-4 text-sm">
           <div className="grid gap-3">
             <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
@@ -127,9 +133,9 @@ export function CockpitModels({
               Status:{" "}
               {selectedServerEntry
                 ? resolveServerStatus(
-                    selectedServerEntry.display_name,
-                    selectedServerEntry.status,
-                  )
+                  selectedServerEntry.display_name,
+                  selectedServerEntry.status,
+                )
                 : "unknown"}
             </span>
             <span className="flex flex-wrap items-center gap-2">

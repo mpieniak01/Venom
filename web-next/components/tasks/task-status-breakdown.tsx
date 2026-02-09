@@ -3,22 +3,22 @@
 import type { ReactNode } from "react";
 import { statusTone, type StatusTone } from "@/lib/status";
 
-type StatusEntry = {
+type StatusEntry = Readonly<{
   label: string;
   value: number;
   hint?: string;
   tone?: StatusTone;
   icon?: ReactNode;
-};
+}>;
 
-type TaskStatusBreakdownProps = {
+type TaskStatusBreakdownProps = Readonly<{
   title?: string;
   datasetLabel?: string;
   totalLabel?: string;
   totalValue?: string | number;
-  entries: StatusEntry[];
+  entries: ReadonlyArray<StatusEntry>;
   emptyMessage?: string;
-};
+}>;
 
 export function TaskStatusBreakdown({
   title = "Task status",

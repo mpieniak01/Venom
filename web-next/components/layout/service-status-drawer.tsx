@@ -15,10 +15,10 @@ import { ServerCog, RefreshCw } from "lucide-react";
 import { OverlayFallback } from "./overlay-fallback";
 import { useTranslation } from "@/lib/i18n";
 
-type ServiceStatusDrawerProps = {
+type ServiceStatusDrawerProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-};
+}>;
 
 export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerProps) {
   const { data: services } = useServiceStatus(20000);

@@ -4,9 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
 import type { TelemetryFeedEntry } from "@/components/cockpit/cockpit-utils";
 
-type CockpitTelemetryPanelProps = {
+type CockpitTelemetryPanelProps = Readonly<{
   telemetryFeed: TelemetryFeedEntry[];
-};
+}>;
 
 export function CockpitTelemetryPanel({ telemetryFeed }: CockpitTelemetryPanelProps) {
   return (

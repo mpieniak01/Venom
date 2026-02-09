@@ -18,7 +18,8 @@ def temp_workspace():
 @pytest.fixture
 def graph_store(temp_workspace):
     """Fixture dla CodeGraphStore z tymczasowym workspace."""
-    return CodeGraphStore(workspace_root=temp_workspace)
+    graph_file = Path(temp_workspace) / "code_graph.json"
+    return CodeGraphStore(workspace_root=temp_workspace, graph_file=str(graph_file))
 
 
 @pytest.fixture

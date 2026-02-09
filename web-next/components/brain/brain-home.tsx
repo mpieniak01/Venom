@@ -78,14 +78,14 @@ function isAssistantEntry(node: unknown): boolean {
   const data = getNodeData(node);
   const label = typeof data.label === "string" ? data.label : "";
   const meta = (data.meta as Record<string, unknown> | undefined) || {};
-  const roleHint =
-    typeof meta.role === "string"
-      ? meta.role
-      : typeof meta.author === "string"
-        ? meta.author
-        : typeof meta.speaker === "string"
-          ? meta.speaker
-          : "";
+  let roleHint = "";
+  if (typeof meta.role === "string") {
+    roleHint = meta.role;
+  } else if (typeof meta.author === "string") {
+    roleHint = meta.author;
+  } else if (typeof meta.speaker === "string") {
+    roleHint = meta.speaker;
+  }
   return /assistant|asystent|venom/i.test(roleHint) || /^(assistant|asystent|venom)\b/i.test(label);
 }
 
@@ -391,12 +391,12 @@ function buildRelationEntries(
 function buildLessonStatsEntries(
   raw:
     | {
-        total_lessons?: number;
-        total?: number;
-        unique_tags?: number;
-        tags_count?: number;
-        tag_distribution?: Record<string, number>;
-      }
+      total_lessons?: number;
+      total?: number;
+      unique_tags?: number;
+      tags_count?: number;
+      tag_distribution?: Record<string, number>;
+    }
     | null
     | undefined,
   t: (key: string, vars?: Record<string, string | number>) => string,
@@ -426,7 +426,7 @@ function buildLessonStatsEntries(
   return entries;
 }
 
-export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
+export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialData }>) {
   const t = useTranslation();
   const { data: liveSummary, refresh: refreshSummary } = useGraphSummary();
   const summary = liveSummary ?? initialData.summary ?? null;
@@ -489,11 +489,11 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       return pos && typeof pos.x === "number" && typeof pos.y === "number";
     }) || false;
   const isMemoryLayout = activeTab === "memory" && showMemoryLayer;
-  const layoutName = hasPresetPositions || isMemoryLayout
-    ? "preset"
-    : activeTab === "repo"
-      ? "cose"
-      : "concentric";
+  const layoutName = (() => {
+    if (hasPresetPositions || isMemoryLayout) return "preset";
+    if (activeTab === "repo") return "cose";
+    return "concentric";
+  })();
   const preparedElements = useMemo(
     () => prepareGraphElements(mergedGraph, colorFromTopic, hasPresetPositions, isMemoryLayout),
     [mergedGraph, colorFromTopic, hasPresetPositions, isMemoryLayout],
@@ -519,10 +519,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("focus", handleVisibility);
+    globalThis.window.addEventListener("focus", handleVisibility);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("focus", handleVisibility);
+      globalThis.window.removeEventListener("focus", handleVisibility);
     };
   }, [refreshGraph, refreshMemoryGraph, refreshSummary, showMemoryLayer]);
   const { data: liveLessons, refresh: refreshLessons } = useLessons(5);
@@ -706,7 +706,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   };
 
   const handleDeleteMemory = async (entryId: string) => {
-    const confirmed = window.confirm(t("brain.toasts.deleteConfirm"));
+    const confirmed = globalThis.window.confirm(t("brain.toasts.deleteConfirm"));
     if (!confirmed) return;
     try {
       setMemoryActionPending(entryId);

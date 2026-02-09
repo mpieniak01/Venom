@@ -6,9 +6,9 @@ import { cn } from "@/lib/utils";
 import type { BenchmarkConfig } from "@/lib/types";
 
 interface BenchmarkConfiguratorProps {
-  availableModels: { name: string; provider: string }[];
-  onStart: (config: BenchmarkConfig) => void;
-  disabled?: boolean;
+  readonly availableModels: ReadonlyArray<{ readonly name: string; readonly provider: string }>;
+  readonly onStart: (config: BenchmarkConfig) => void;
+  readonly disabled?: boolean;
 }
 
 export function BenchmarkConfigurator({

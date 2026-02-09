@@ -2,14 +2,14 @@
 
 const SOURCE_LABEL = "Źródło:";
 
-type RoadmapKpiCardProps = {
+type RoadmapKpiCardProps = Readonly<{
   label: string;
   value: string;
   description: string;
   percent: number;
   tone?: "violet" | "indigo" | "emerald";
   source?: string;
-};
+}>;
 
 const toneGradients: Record<NonNullable<RoadmapKpiCardProps["tone"]>, string> = {
   violet: "from-violet-500/70 via-violet-500/30 to-violet-500/10",

@@ -294,12 +294,11 @@ export function useCockpitChatUi({
       : null;
   const responseBadgeText =
     lastResponseDurationMs !== null ? `${(lastResponseDurationMs / 1000).toFixed(1)}s` : t("cockpit.response.notAvailable");
-  const responseBadgeTone =
-    lastResponseDurationMs === null
-      ? "neutral"
-      : lastResponseDurationMs <= 4000
-        ? "success"
-        : "warning";
+  const responseBadgeTone = (() => {
+    if (lastResponseDurationMs === null) return "neutral";
+    if (lastResponseDurationMs <= 4000) return "success";
+    return "warning";
+  })();
   const responseBadgeTitle =
     averageResponseDurationMs !== null
       ? t("cockpit.response.avg", {

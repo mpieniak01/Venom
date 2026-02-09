@@ -17,8 +17,8 @@ const SESSION_BOOT_KEY = "venom-backend-boot-id";
 let sessionIdFallbackCounter = 0;
 
 const getBuildId = () => {
-  if (typeof window === "undefined") return "unknown";
-  const nextData = (window as typeof window & { __NEXT_DATA__?: { buildId?: string } })
+  if (typeof globalThis.window === "undefined") return "unknown";
+  const nextData = (globalThis.window as typeof globalThis.window & { __NEXT_DATA__?: { buildId?: string } })
     .__NEXT_DATA__;
   return nextData?.buildId ?? "unknown";
 };
@@ -46,10 +46,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const setSessionId = useCallback((value: string) => {
     setSessionIdState(value);
-    if (typeof window === "undefined") return;
+    if (typeof globalThis.window === "undefined") return;
     try {
-      window.localStorage.setItem(SESSION_ID_KEY, value);
-      window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
+      globalThis.window.localStorage.setItem(SESSION_ID_KEY, value);
+      globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
     } catch {
       // ignore storage issues
     }
@@ -62,7 +62,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [setSessionId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof globalThis.window === "undefined") return;
     let active = true;
     const syncBootId = async () => {
       try {
@@ -71,16 +71,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const data = (await response.json()) as { boot_id?: string };
         const bootId = data.boot_id;
         if (!bootId) return;
-        const storedBoot = window.localStorage.getItem(SESSION_BOOT_KEY);
+        const storedBoot = globalThis.window.localStorage.getItem(SESSION_BOOT_KEY);
         if (!storedBoot) {
-          window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
+          globalThis.window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
           return;
         }
         if (storedBoot !== bootId) {
           const nextSession = createSessionId();
-          window.localStorage.setItem(SESSION_ID_KEY, nextSession);
-          window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
-          window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
+          globalThis.window.localStorage.setItem(SESSION_ID_KEY, nextSession);
+          globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
+          globalThis.window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
           if (active) {
             setSessionIdState(nextSession);
           }
@@ -91,12 +91,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
     try {
       const buildId = getBuildId();
-      const storedBuild = window.localStorage.getItem(SESSION_BUILD_KEY);
-      let storedSession = window.localStorage.getItem(SESSION_ID_KEY);
+      const storedBuild = globalThis.window.localStorage.getItem(SESSION_BUILD_KEY);
+      let storedSession = globalThis.window.localStorage.getItem(SESSION_ID_KEY);
       if (!storedSession || storedBuild !== buildId) {
         storedSession = createSessionId();
-        window.localStorage.setItem(SESSION_ID_KEY, storedSession);
-        window.localStorage.setItem(SESSION_BUILD_KEY, buildId);
+        globalThis.window.localStorage.setItem(SESSION_ID_KEY, storedSession);
+        globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, buildId);
       }
       setSessionIdState(storedSession);
     } catch {
@@ -111,14 +111,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         void syncBootId();
       }
     };
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("visibilitychange", handleVisibility);
-    const interval = window.setInterval(syncBootId, POLLING.BOOT_SYNC_INTERVAL_MS);
+    globalThis.window.addEventListener("focus", handleFocus);
+    globalThis.window.addEventListener("visibilitychange", handleVisibility);
+    const interval = globalThis.window.setInterval(syncBootId, POLLING.BOOT_SYNC_INTERVAL_MS);
     return () => {
       active = false;
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("visibilitychange", handleVisibility);
-      window.clearInterval(interval);
+      globalThis.window.removeEventListener("focus", handleFocus);
+      globalThis.window.removeEventListener("visibilitychange", handleVisibility);
+      globalThis.window.clearInterval(interval);
     };
   }, []);
 

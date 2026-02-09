@@ -259,47 +259,61 @@ class ConfigUpdateRequest(BaseModel):
     @field_validator("updates", mode="before")
     def validate_updates(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Sprawdź whitelist i zakresy wartości dla konfiguracji."""
-        # 1. Sprawdź whitelist
-        invalid_keys = set(v.keys()) - CONFIG_WHITELIST
+        cls._validate_whitelist(v)
+        errors: List[str] = []
+        cls._validate_port_params(v, errors)
+        cls._validate_threshold_params(v, errors)
+        cls._validate_boolean_params(v, errors)
+        cls._validate_non_negative_int_params(v, errors)
+        cls._validate_mode_params(v, errors)
+
+        if errors:
+            raise ValueError("; ".join(errors))
+
+        return v
+
+    @classmethod
+    def _validate_whitelist(cls, updates: Dict[str, Any]) -> None:
+        invalid_keys = set(updates.keys()) - CONFIG_WHITELIST
         if invalid_keys:
-            # Nie ujawniamy które klucze są nieprawidłowe ze względów bezpieczeństwa
             raise ValueError(
                 f"Znaleziono {len(invalid_keys)} nieprawidłowych kluczy konfiguracji"
             )
 
-        # 2. Walidacja zakresów wartości
-        errors = []
+    @classmethod
+    def _validate_port_params(cls, updates: Dict[str, Any], errors: List[str]) -> None:
+        for param in ["REDIS_PORT", "NEXUS_PORT"]:
+            if param not in updates:
+                continue
+            try:
+                port = int(updates[param])
+                if port < 1 or port > 65535:
+                    errors.append(f"{param} musi być w zakresie 1-65535")
+            except (ValueError, TypeError):
+                errors.append(f"{param} musi być liczbą całkowitą")
 
-        # Walidacja portów (1-65535)
-        port_params = [
-            "REDIS_PORT",
-            "NEXUS_PORT",
-        ]
-        for param in port_params:
-            if param in v:
-                try:
-                    port = int(v[param])
-                    if port < 1 or port > 65535:
-                        errors.append(f"{param} musi być w zakresie 1-65535")
-                except (ValueError, TypeError):
-                    errors.append(f"{param} musi być liczbą całkowitą")
-
-        # Walidacja progów pewności (0.0-1.0)
-        threshold_params = [
+    @classmethod
+    def _validate_threshold_params(
+        cls, updates: Dict[str, Any], errors: List[str]
+    ) -> None:
+        for param in [
             "SHADOW_CONFIDENCE_THRESHOLD",
             "GHOST_VISION_CONFIDENCE",
             "VAD_THRESHOLD",
-        ]
-        for param in threshold_params:
-            if param in v:
-                try:
-                    threshold = float(v[param])
-                    if threshold < 0.0 or threshold > 1.0:
-                        errors.append(f"{param} musi być w zakresie 0.0-1.0")
-                except (ValueError, TypeError):
-                    errors.append(f"{param} musi być liczbą zmiennoprzecinkową")
+        ]:
+            if param not in updates:
+                continue
+            try:
+                threshold = float(updates[param])
+                if threshold < 0.0 or threshold > 1.0:
+                    errors.append(f"{param} musi być w zakresie 0.0-1.0")
+            except (ValueError, TypeError):
+                errors.append(f"{param} musi być liczbą zmiennoprzecinkową")
 
-        # Walidacja wartości boolean
+    @classmethod
+    def _validate_boolean_params(
+        cls, updates: Dict[str, Any], errors: List[str]
+    ) -> None:
         bool_params = [
             "ENABLE_HIVE",
             "ENABLE_NEXUS",
@@ -319,12 +333,16 @@ class ConfigUpdateRequest(BaseModel):
             "GHOST_VERIFICATION_ENABLED",
         ]
         for param in bool_params:
-            if param in v:
-                val_str = str(v[param]).lower()
-                if val_str not in ["true", "false", "0", "1", "yes", "no"]:
-                    errors.append(f"{param} musi być wartością boolean (true/false)")
+            if param not in updates:
+                continue
+            val_str = str(updates[param]).lower()
+            if val_str not in ["true", "false", "0", "1", "yes", "no"]:
+                errors.append(f"{param} musi być wartością boolean (true/false)")
 
-        # Walidacja liczb całkowitych nieujemnych
+    @classmethod
+    def _validate_non_negative_int_params(
+        cls, updates: Dict[str, Any], errors: List[str]
+    ) -> None:
         non_negative_int_params = [
             "REDIS_DB",
             "HIVE_TASK_TIMEOUT",
@@ -340,39 +358,35 @@ class ConfigUpdateRequest(BaseModel):
             "SILENCE_DURATION",
         ]
         for param in non_negative_int_params:
-            if param in v:
-                try:
-                    val = int(v[param])
-                    if val < 0:
-                        errors.append(f"{param} musi być liczbą nieujemną")
-                except (ValueError, TypeError):
-                    errors.append(f"{param} musi być liczbą całkowitą")
+            if param not in updates:
+                continue
+            try:
+                value = int(updates[param])
+                if value < 0:
+                    errors.append(f"{param} musi być liczbą nieujemną")
+            except (ValueError, TypeError):
+                errors.append(f"{param} musi być liczbą całkowitą")
 
-        # Walidacja AI_MODE
-        if "AI_MODE" in v:
+    @classmethod
+    def _validate_mode_params(cls, updates: Dict[str, Any], errors: List[str]) -> None:
+        if "AI_MODE" in updates:
             valid_modes = ["LOCAL", "CLOUD", "HYBRID"]
-            if str(v["AI_MODE"]).upper() not in valid_modes:
+            if str(updates["AI_MODE"]).upper() not in valid_modes:
                 errors.append(f"AI_MODE musi być jednym z: {', '.join(valid_modes)}")
 
-        # Walidacja LLM_SERVICE_TYPE
-        if "LLM_SERVICE_TYPE" in v:
+        if "LLM_SERVICE_TYPE" in updates:
             valid_types = ["local", "openai", "google", "ollama", "vllm"]
-            if str(v["LLM_SERVICE_TYPE"]).lower() not in valid_types:
+            if str(updates["LLM_SERVICE_TYPE"]).lower() not in valid_types:
                 errors.append(
                     f"LLM_SERVICE_TYPE musi być jednym z: {', '.join(valid_types)}"
                 )
 
-        if "URL_SCHEME_POLICY" in v:
+        if "URL_SCHEME_POLICY" in updates:
             valid_policies = ["auto", "force_http", "force_https"]
-            if str(v["URL_SCHEME_POLICY"]).lower() not in valid_policies:
+            if str(updates["URL_SCHEME_POLICY"]).lower() not in valid_policies:
                 errors.append(
                     "URL_SCHEME_POLICY musi być jednym z: " + ", ".join(valid_policies)
                 )
-
-        if errors:
-            raise ValueError("; ".join(errors))
-
-        return v
 
 
 class ConfigManager:

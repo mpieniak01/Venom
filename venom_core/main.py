@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -132,58 +133,216 @@ model_registry = None
 google_calendar_skill = None
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Zarządzanie cyklem życia aplikacji."""
-    global vector_store, graph_store, lessons_store, gardener_agent, git_skill
-    global background_scheduler, file_watcher, documenter_agent
-    global audio_engine, operator_agent, hardware_bridge, audio_stream_handler
-    global node_manager, orchestrator, request_tracer
-    global shadow_agent, desktop_sensor, notifier
-    global service_registry, service_monitor, model_manager, llm_controller
-    global benchmark_service, google_calendar_skill, model_registry
+def _extract_available_local_models(
+    models: list[dict[str, object]], server_name: str
+) -> set[str]:
+    return {
+        str(model["name"])
+        for model in models
+        if model.get("provider") == server_name and model.get("name")
+    }
 
-    # Startup
-    # Inicjalizuj MetricsCollector
+
+def _select_startup_model(
+    available: set[str], desired_model: str, previous_model: str
+) -> str:
+    if desired_model in available:
+        return desired_model
+    if previous_model in available:
+        return previous_model
+    return next(iter(available))
+
+
+async def _synchronize_startup_local_model(runtime) -> None:
+    if not model_manager:
+        return
+    try:
+        from venom_core.services.config_manager import config_manager
+        from venom_core.utils.llm_runtime import compute_llm_config_hash
+
+        server_name = (SETTINGS.ACTIVE_LLM_SERVER or runtime.provider or "").lower()
+        models = await model_manager.list_local_models()
+        available = _extract_available_local_models(models, server_name)
+        if not available or SETTINGS.LLM_MODEL_NAME in available:
+            return
+
+        config = config_manager.get_config(mask_secrets=False)
+        last_model_key = (
+            "LAST_MODEL_OLLAMA" if server_name == "ollama" else "LAST_MODEL_VLLM"
+        )
+        prev_model_key = (
+            "PREVIOUS_MODEL_OLLAMA"
+            if server_name == "ollama"
+            else "PREVIOUS_MODEL_VLLM"
+        )
+        desired_model = (
+            config.get(last_model_key)
+            or config.get("HYBRID_LOCAL_MODEL")
+            or config.get("LLM_MODEL_NAME", "")
+        )
+        previous_model = config.get(prev_model_key) or ""
+        selected_model = _select_startup_model(available, desired_model, previous_model)
+        updates = {
+            "LLM_MODEL_NAME": selected_model,
+            "HYBRID_LOCAL_MODEL": selected_model,
+            last_model_key: selected_model,
+        }
+        old_last = config.get(last_model_key) or ""
+        if old_last and old_last != selected_model:
+            updates[prev_model_key] = old_last
+        config_manager.update_config(updates)
+        try:
+            SETTINGS.LLM_MODEL_NAME = selected_model
+            SETTINGS.HYBRID_LOCAL_MODEL = selected_model
+        except Exception:
+            logger.warning("Nie udało się zaktualizować SETTINGS dla modelu LLM.")
+
+        config_hash = compute_llm_config_hash(
+            server_name, runtime.endpoint, selected_model
+        )
+        config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
+        try:
+            SETTINGS.LLM_CONFIG_HASH = config_hash
+            SETTINGS.ACTIVE_LLM_SERVER = server_name
+        except Exception:
+            logger.warning("Nie udało się zaktualizować SETTINGS dla hash LLM.")
+        logger.warning(
+            "Skorygowano model LLM na starcie: %s -> %s",
+            config.get("LLM_MODEL_NAME", ""),
+            selected_model,
+        )
+    except Exception as exc:
+        logger.warning("Nie udało się zweryfikować modelu LLM: %s", exc)
+
+
+async def _start_local_runtime_if_needed(runtime) -> str:
+    status, _ = await probe_runtime_status(runtime)
+    if status == "online":
+        return status
+
+    active_server = (SETTINGS.ACTIVE_LLM_SERVER or runtime.provider or "").lower()
+    if llm_controller and active_server and llm_controller.has_server(active_server):
+        try:
+            for server in llm_controller.list_servers():
+                name = server.get("name", "").lower()
+                if not name or name == active_server:
+                    continue
+                if server.get("supports", {}).get("stop"):
+                    await llm_controller.run_action(name, "stop")
+            await llm_controller.run_action(active_server, "start")
+            logger.info("Uruchamianie lokalnego LLM (%s) na starcie.", active_server)
+        except Exception as exc:
+            logger.warning("Nie udało się uruchomić lokalnego LLM: %s", exc)
+
+    for _ in range(90):
+        status, _ = await probe_runtime_status(runtime)
+        if status == "online":
+            return status
+        await asyncio.sleep(1.0)
+    logger.warning("Lokalny LLM nadal offline po oczekiwaniu na start.")
+    return status
+
+
+def _parse_node_message(message_str: str):
+    from venom_core.nodes.protocol import NodeMessage
+
+    message_dict = json.loads(message_str)
+    return NodeMessage(**message_dict)
+
+
+async def _receive_node_handshake(websocket: WebSocket):
+    from venom_core.nodes.protocol import MessageType, NodeHandshake
+
+    message = _parse_node_message(await websocket.receive_text())
+    if message.message_type != MessageType.HANDSHAKE:
+        await websocket.close(code=1003, reason="Expected HANDSHAKE message")
+        return None
+    return NodeHandshake(**message.payload)
+
+
+async def _handle_node_message(message, current_node_id: str) -> bool:
+    from venom_core.nodes.protocol import HeartbeatMessage, MessageType, NodeResponse
+
+    if node_manager is None:
+        logger.warning(
+            "NodeManager niedostępny podczas obsługi wiadomości węzła %s.",
+            current_node_id,
+        )
+        return False
+
+    if message.message_type == MessageType.HEARTBEAT:
+        heartbeat = HeartbeatMessage(**message.payload)
+        await node_manager.update_heartbeat(heartbeat)
+        return True
+    if message.message_type == MessageType.RESPONSE:
+        response = NodeResponse(**message.payload)
+        await node_manager.handle_response(response)
+        return True
+    if message.message_type == MessageType.DISCONNECT:
+        logger.info(f"Węzeł {current_node_id} zgłosił rozłączenie")
+        return False
+    return True
+
+
+async def _run_node_message_loop(websocket: WebSocket, current_node_id: str) -> None:
+    while True:
+        try:
+            message = _parse_node_message(await websocket.receive_text())
+            keep_connected = await _handle_node_message(message, current_node_id)
+            if not keep_connected:
+                break
+        except json.JSONDecodeError as exc:
+            logger.warning(f"Nieprawidłowy JSON od węzła {current_node_id}: {exc}")
+            continue
+        except Exception as exc:
+            logger.warning(
+                f"Błąd parsowania wiadomości od węzła {current_node_id}: {exc}"
+            )
+            continue
+
+
+async def _initialize_observability() -> None:
+    global request_tracer, service_registry, service_monitor, llm_controller
+
     init_metrics_collector()
 
-    # Ustaw EventBroadcaster dla live log streaming
     from venom_core.utils import logger as logger_module
 
     logger_module.set_event_broadcaster(event_broadcaster)
     logger.info("Live log streaming włączony")
 
-    # Inicjalizuj RequestTracer
     try:
-        # data/memory/request_traces.json - persystencja historii requestów
         traces_path = str(Path(SETTINGS.MEMORY_ROOT) / "request_traces.json")
         request_tracer = RequestTracer(
             watchdog_timeout_minutes=5, trace_file_path=traces_path
         )
         await request_tracer.start_watchdog()
         logger.info(f"RequestTracer zainicjalizowany z historią w {traces_path}")
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować RequestTracer: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować RequestTracer: {exc}")
         request_tracer = None
 
-    # Inicjalizuj Service Health Monitor
     try:
         service_registry = ServiceRegistry()
         service_monitor = ServiceHealthMonitor(
             service_registry, event_broadcaster=event_broadcaster
         )
         logger.info("Service Health Monitor zainicjalizowany")
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować Service Health Monitor: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować Service Health Monitor: {exc}")
         service_registry = None
         service_monitor = None
+
     try:
         llm_controller = LlmServerController(SETTINGS)
-    except Exception as e:  # pragma: no cover - błędy inicjalizacji są logowane
-        logger.warning(f"Nie udało się utworzyć kontrolera LLM: {e}")
+    except Exception as exc:  # pragma: no cover - błędy inicjalizacji są logowane
+        logger.warning(f"Nie udało się utworzyć kontrolera LLM: {exc}")
         llm_controller = None
 
-    # Inicjalizuj Model Manager (THE_ARMORY)
+
+async def _initialize_model_services() -> None:
+    global model_manager, model_registry, benchmark_service
+
     from venom_core.core.model_manager import ModelManager
 
     try:
@@ -191,11 +350,10 @@ async def lifespan(app: FastAPI):
         logger.info(
             f"ModelManager zainicjalizowany (models_dir={model_manager.models_dir})"
         )
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować ModelManager: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować ModelManager: {exc}")
         model_manager = None
 
-    # Inicjalizuj Benchmark Service
     try:
         from venom_core.core.model_registry import ModelRegistry
         from venom_core.services.benchmark import BenchmarkService
@@ -209,119 +367,136 @@ async def lifespan(app: FastAPI):
             llm_controller=llm_controller,
         )
         logger.info("BenchmarkService zainicjalizowany")
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować BenchmarkService: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować BenchmarkService: {exc}")
         benchmark_service = None
 
-    # Inicjalizuj Google Calendar Skill
-    if SETTINGS.ENABLE_GOOGLE_CALENDAR:
-        try:
-            from venom_core.execution.skills.google_calendar_skill import (
-                GoogleCalendarSkill,
-            )
 
-            google_calendar_skill = GoogleCalendarSkill()
-            if google_calendar_skill.credentials_available:
-                logger.info("GoogleCalendarSkill zainicjalizowany dla API")
-            else:
-                logger.info(
-                    "GoogleCalendarSkill zainicjalizowany bez credentials - graceful degradation"
-                )
-        except Exception as e:
-            logger.warning(f"Nie udało się zainicjalizować GoogleCalendarSkill: {e}")
-            google_calendar_skill = None
-    else:
+def _initialize_calendar_skill() -> None:
+    global google_calendar_skill
+
+    if not SETTINGS.ENABLE_GOOGLE_CALENDAR:
         logger.info("GoogleCalendarSkill wyłączony w konfiguracji")
+        return
 
-    # Inicjalizuj Node Manager (THE_NEXUS) - jako pierwszy, bo orchestrator go potrzebuje
-    if SETTINGS.ENABLE_NEXUS:
-        try:
-            from venom_core.core.node_manager import NodeManager
+    try:
+        from venom_core.execution.skills.google_calendar_skill import (
+            GoogleCalendarSkill,
+        )
 
-            token = SETTINGS.NEXUS_SHARED_TOKEN.get_secret_value()
-            if not token:
-                logger.warning(
-                    "ENABLE_NEXUS=true ale NEXUS_SHARED_TOKEN jest pusty. "
-                    "Węzły nie będą mogły się połączyć."
-                )
-            else:
-                node_manager = NodeManager(
-                    shared_token=token,
-                    heartbeat_timeout=SETTINGS.NEXUS_HEARTBEAT_TIMEOUT,
-                )
-                await node_manager.start()
-                logger.info("NodeManager uruchomiony - Venom działa w trybie Nexus")
-                # Port aplikacji FastAPI, domyślnie 8000
-                app_port = getattr(SETTINGS, "APP_PORT", 8000)
-                logger.info(
-                    f"Węzły mogą łączyć się przez WebSocket: ws://localhost:{app_port}/ws/nodes"
-                )
-        except Exception as e:
-            logger.warning(f"Nie udało się uruchomić NodeManager: {e}")
-            node_manager = None
+        google_calendar_skill = GoogleCalendarSkill()
+        if google_calendar_skill.credentials_available:
+            logger.info("GoogleCalendarSkill zainicjalizowany dla API")
+        else:
+            logger.info(
+                "GoogleCalendarSkill zainicjalizowany bez credentials - "
+                "graceful degradation"
+            )
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować GoogleCalendarSkill: {exc}")
+        google_calendar_skill = None
 
-    # Inicjalizuj Orchestrator (z node_manager jeśli dostępny)
+
+async def _initialize_node_manager() -> None:
+    global node_manager
+
+    if not SETTINGS.ENABLE_NEXUS:
+        return
+
+    try:
+        from venom_core.core.node_manager import NodeManager
+
+        token = SETTINGS.NEXUS_SHARED_TOKEN.get_secret_value()
+        if not token:
+            logger.warning(
+                "ENABLE_NEXUS=true ale NEXUS_SHARED_TOKEN jest pusty. "
+                "Węzły nie będą mogły się połączyć."
+            )
+            return
+        node_manager = NodeManager(
+            shared_token=token,
+            heartbeat_timeout=SETTINGS.NEXUS_HEARTBEAT_TIMEOUT,
+        )
+        await node_manager.start()
+        logger.info("NodeManager uruchomiony - Venom działa w trybie Nexus")
+        app_port = getattr(SETTINGS, "APP_PORT", 8000)
+        logger.info(
+            f"Węzły mogą łączyć się przez WebSocket: ws://localhost:{app_port}/ws/nodes"
+        )
+    except Exception as exc:
+        logger.warning(f"Nie udało się uruchomić NodeManager: {exc}")
+        node_manager = None
+
+
+def _initialize_orchestrator() -> None:
     global orchestrator
-    if orchestrator is None:
-        orchestrator = Orchestrator(
-            state_manager,
-            event_broadcaster=event_broadcaster,
-            node_manager=node_manager,
-            session_store=session_store,
-            request_tracer=request_tracer,
-        )
-        logger.info(
-            "Orchestrator zainicjalizowany"
-            + (" z obsługą węzłów rozproszonych" if node_manager else "")
-        )
-    else:
-        logger.info(
-            "Orchestrator już zainicjalizowany (np. tryb testowy) – pomijam ponowną inicjalizację"
-        )
 
-    # Utwórz katalog workspace jeśli nie istnieje
+    if orchestrator is not None:
+        logger.info(
+            "Orchestrator już zainicjalizowany (np. tryb testowy) – pomijam "
+            "ponowną inicjalizację"
+        )
+        return
+
+    orchestrator = Orchestrator(
+        state_manager,
+        event_broadcaster=event_broadcaster,
+        node_manager=node_manager,
+        session_store=session_store,
+        request_tracer=request_tracer,
+    )
+    logger.info(
+        "Orchestrator zainicjalizowany"
+        + (" z obsługą węzłów rozproszonych" if node_manager else "")
+    )
+
+
+def _ensure_storage_dirs() -> Path:
     workspace_path = Path(SETTINGS.WORKSPACE_ROOT)
     workspace_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Workspace directory: {workspace_path.resolve()}")
 
-    # Utwórz katalog memory jeśli nie istnieje
     memory_path = Path(SETTINGS.MEMORY_ROOT)
     memory_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Memory directory: {memory_path.resolve()}")
+    return workspace_path
 
-    # Inicjalizuj VectorStore
+
+def _initialize_memory_stores() -> None:
+    global vector_store, graph_store, lessons_store
+
     try:
         vector_store = VectorStore()
         logger.info("VectorStore zainicjalizowany")
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować VectorStore: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować VectorStore: {exc}")
         vector_store = None
 
-    # Inicjalizuj GraphStore
     try:
         graph_store = CodeGraphStore()
-        graph_store.load_graph()  # Załaduj istniejący graf jeśli jest
+        graph_store.load_graph()
         logger.info("CodeGraphStore zainicjalizowany")
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować CodeGraphStore: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować CodeGraphStore: {exc}")
         graph_store = None
 
-    # Inicjalizuj LessonsStore z VectorStore
     try:
         lessons_store = LessonsStore(vector_store=vector_store)
         logger.info(
             f"LessonsStore zainicjalizowany z {len(lessons_store.lessons)} lekcjami"
         )
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować LessonsStore: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować LessonsStore: {exc}")
         lessons_store = None
 
-    # Połącz LessonsStore z Orchestrator
-    if lessons_store:
+    if lessons_store and orchestrator:
         orchestrator.lessons_store = lessons_store
         logger.info("LessonsStore podłączony do Orchestrator (meta-uczenie włączone)")
 
-    # Inicjalizuj i uruchom GardenerAgent
+
+async def _initialize_gardener_and_git(workspace_path: Path) -> None:
+    global gardener_agent, git_skill
+
     try:
         gardener_agent = GardenerAgent(
             graph_store=graph_store,
@@ -330,27 +505,28 @@ async def lifespan(app: FastAPI):
         )
         await gardener_agent.start()
         logger.info("GardenerAgent uruchomiony")
-    except Exception as e:
-        logger.warning(f"Nie udało się uruchomić GardenerAgent: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się uruchomić GardenerAgent: {exc}")
         gardener_agent = None
 
-    # Inicjalizuj GitSkill dla API
     try:
         git_skill = GitSkill(workspace_root=str(workspace_path))
         logger.info("GitSkill zainicjalizowany dla API")
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować GitSkill: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować GitSkill: {exc}")
         git_skill = None
 
-    # Inicjalizuj BackgroundScheduler (THE_OVERMIND)
+
+async def _initialize_background_scheduler() -> None:
+    global background_scheduler
+
     try:
         background_scheduler = BackgroundScheduler(event_broadcaster=event_broadcaster)
         await background_scheduler.start()
         logger.info("BackgroundScheduler uruchomiony")
 
-        # Rejestruj domyślne zadania
         if vector_store and SETTINGS.ENABLE_MEMORY_CONSOLIDATION:
-            # Wrapper do przekazania event_broadcaster
+
             async def _consolidate_memory_wrapper():
                 await job_scheduler.consolidate_memory(event_broadcaster)
 
@@ -363,7 +539,7 @@ async def lifespan(app: FastAPI):
             logger.info("Zadanie consolidate_memory zarejestrowane (COMING SOON)")
 
         if SETTINGS.ENABLE_HEALTH_CHECKS:
-            # Wrapper do przekazania event_broadcaster
+
             async def _check_health_wrapper():
                 await job_scheduler.check_health(event_broadcaster)
 
@@ -379,24 +555,26 @@ async def lifespan(app: FastAPI):
 
             async def _cleanup_traces_wrapper():
                 try:
-                    # Czyść ślady starsze niż 7 dni
                     await asyncio.to_thread(request_tracer.clear_old_traces, days=7)
-                except Exception as e:
-                    logger.warning(f"Błąd podczas czyszczenia śladów: {e}")
+                except Exception as exc:
+                    logger.warning(f"Błąd podczas czyszczenia śladów: {exc}")
 
             background_scheduler.add_interval_job(
                 func=_cleanup_traces_wrapper,
-                minutes=1440,  # Raz na dobę
+                minutes=1440,
                 job_id="cleanup_traces",
                 description="Czyszczenie starych śladów żądań (retencja 7 dni)",
             )
             logger.info("Zadanie cleanup_traces zarejestrowane (retencja 7 dni)")
 
-    except Exception as e:
-        logger.warning(f"Nie udało się uruchomić BackgroundScheduler: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się uruchomić BackgroundScheduler: {exc}")
         background_scheduler = None
 
-    # Inicjalizuj DocumenterAgent
+
+async def _initialize_documenter_and_watcher(workspace_path: Path) -> None:
+    global documenter_agent, file_watcher
+
     try:
         documenter_agent = DocumenterAgent(
             workspace_root=str(workspace_path),
@@ -404,11 +582,10 @@ async def lifespan(app: FastAPI):
             event_broadcaster=event_broadcaster,
         )
         logger.info("DocumenterAgent zainicjalizowany")
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować DocumenterAgent: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować DocumenterAgent: {exc}")
         documenter_agent = None
 
-    # Inicjalizuj FileWatcher
     try:
         file_watcher = FileWatcher(
             workspace_root=str(workspace_path),
@@ -419,11 +596,14 @@ async def lifespan(app: FastAPI):
         )
         await file_watcher.start()
         logger.info("FileWatcher uruchomiony")
-    except Exception as e:
-        logger.warning(f"Nie udało się uruchomić FileWatcher: {e}")
+    except Exception as exc:
+        logger.warning(f"Nie udało się uruchomić FileWatcher: {exc}")
         file_watcher = None
 
-    # Inicjalizuj Audio Engine (THE_AVATAR)
+
+async def _initialize_avatar_stack() -> None:
+    global audio_engine, hardware_bridge, operator_agent, audio_stream_handler
+
     if SETTINGS.ENABLE_AUDIO_INTERFACE:
         try:
             audio_engine = AudioEngine(
@@ -432,11 +612,10 @@ async def lifespan(app: FastAPI):
                 device=SETTINGS.AUDIO_DEVICE,
             )
             logger.info("AudioEngine zainicjalizowany")
-        except Exception as e:
-            logger.warning(f"Nie udało się zainicjalizować AudioEngine: {e}")
+        except Exception as exc:
+            logger.warning(f"Nie udało się zainicjalizować AudioEngine: {exc}")
             audio_engine = None
 
-    # Inicjalizuj Hardware Bridge (Rider-Pi)
     if SETTINGS.ENABLE_IOT_BRIDGE:
         try:
             password_value = extract_secret_value(SETTINGS.RIDER_PI_PASSWORD)
@@ -447,17 +626,15 @@ async def lifespan(app: FastAPI):
                 password=password_value,
                 protocol=SETTINGS.RIDER_PI_PROTOCOL,
             )
-            # Połącz w tle
             connected = await hardware_bridge.connect()
             if connected:
                 logger.info("HardwareBridge połączony z Rider-Pi")
             else:
                 logger.warning("Nie udało się połączyć z Rider-Pi")
-        except Exception as e:
-            logger.warning(f"Nie udało się zainicjalizować HardwareBridge: {e}")
+        except Exception as exc:
+            logger.warning(f"Nie udało się zainicjalizować HardwareBridge: {exc}")
             hardware_bridge = None
 
-    # Inicjalizuj Operator Agent
     if SETTINGS.ENABLE_AUDIO_INTERFACE and audio_engine:
         try:
             from venom_core.execution.kernel_builder import KernelBuilder
@@ -468,11 +645,10 @@ async def lifespan(app: FastAPI):
                 hardware_bridge=hardware_bridge,
             )
             logger.info("OperatorAgent zainicjalizowany")
-        except Exception as e:
-            logger.warning(f"Nie udało się zainicjalizować OperatorAgent: {e}")
+        except Exception as exc:
+            logger.warning(f"Nie udało się zainicjalizować OperatorAgent: {exc}")
             operator_agent = None
 
-    # Inicjalizuj Audio Stream Handler
     if audio_engine and operator_agent:
         try:
             audio_stream_handler = AudioStreamHandler(
@@ -481,300 +657,165 @@ async def lifespan(app: FastAPI):
                 silence_duration=SETTINGS.SILENCE_DURATION,
             )
             logger.info("AudioStreamHandler zainicjalizowany")
-        except Exception as e:
-            logger.warning(f"Nie udało się zainicjalizować AudioStreamHandler: {e}")
+        except Exception as exc:
+            logger.warning(f"Nie udało się zainicjalizować AudioStreamHandler: {exc}")
             audio_stream_handler = None
 
-    # Inicjalizuj Shadow Agent i Desktop Sensor (THE_SHADOW)
-    if SETTINGS.ENABLE_PROACTIVE_MODE:
-        try:
-            from venom_core.agents.shadow import ShadowAgent
-            from venom_core.execution.kernel_builder import KernelBuilder
-            from venom_core.perception.desktop_sensor import DesktopSensor
-            from venom_core.ui.notifier import Notifier
 
-            # Callback dla desktop sensor
-            async def handle_shadow_action(action_payload: dict):
-                """
-                Obsługa akcji z powiadomień Shadow Agent.
+async def _initialize_shadow_stack() -> None:
+    global shadow_agent, desktop_sensor, notifier
 
-                UWAGA: Podstawowa implementacja - akcje nie wykonują rzeczywistych zmian.
-                TODO: Pełna implementacja wymaga integracji z:
-                - Orchestrator (error_fix, code_improvement)
-                - GoalStore (task_update)
-                - Coder Agent (code generation)
-                """
-                logger.info(f"Shadow Agent action triggered: {action_payload}")
+    if not SETTINGS.ENABLE_PROACTIVE_MODE:
+        logger.info("Proactive Mode wyłączony (ENABLE_PROACTIVE_MODE=False)")
+        return
 
-                # Obsługa różnych typów akcji
-                action_type = action_payload.get("type", "unknown")
+    try:
+        from venom_core.agents.shadow import ShadowAgent
+        from venom_core.execution.kernel_builder import KernelBuilder
+        from venom_core.perception.desktop_sensor import DesktopSensor
+        from venom_core.ui.notifier import Notifier
 
-                if action_type == "error_fix":
-                    # TODO: Zintegrować z Orchestrator do naprawy błędu
-                    # Przykład: await orchestrator.submit_task(TaskRequest(content=f"Fix error: {action_payload['error_text']}"))
-                    logger.info("Action: Error fix requested (not implemented)")
+        async def handle_shadow_action(action_payload: dict):
+            logger.info(f"Shadow Agent action triggered: {action_payload}")
+            action_type = action_payload.get("type", "unknown")
+            if action_type == "error_fix":
+                logger.info("Action: Error fix requested (not implemented)")
+            elif action_type == "code_improvement":
+                logger.info("Action: Code improvement requested (not implemented)")
+            elif action_type == "task_update":
+                logger.info("Action: Task update requested (not implemented)")
+            else:
+                logger.warning(f"Unknown action type: {action_type}")
+            await event_broadcaster.broadcast_event(
+                event_type=EventType.SYSTEM_LOG,
+                message="config.parameters.sections.shadowActions.foundProblem",
+                data=action_payload,
+            )
 
-                elif action_type == "code_improvement":
-                    # TODO: Zintegrować z Coder Agent
-                    # Przykład: await coder_agent.improve_code(action_payload['code'])
-                    logger.info("Action: Code improvement requested (not implemented)")
+        notifier = Notifier(webhook_handler=handle_shadow_action)
+        logger.info("Notifier zainicjalizowany")
 
-                elif action_type == "task_update":
-                    # TODO: Zaktualizować status zadania w GoalStore
-                    # Przykład: goal_store.update_goal_status(goal_id, GoalStatus.IN_PROGRESS)
-                    logger.info("Action: Task update requested (not implemented)")
+        shadow_kernel = KernelBuilder().build_kernel()
+        goal_store = getattr(orchestrator, "goal_store", None)
+        shadow_agent = ShadowAgent(
+            kernel=shadow_kernel,
+            goal_store=goal_store,
+            lessons_store=lessons_store,
+            confidence_threshold=SETTINGS.SHADOW_CONFIDENCE_THRESHOLD,
+        )
+        await shadow_agent.start()
+        logger.info("ShadowAgent uruchomiony")
+        shadow = shadow_agent
+        note = notifier
+        assert shadow is not None
+        assert note is not None
 
-                else:
-                    logger.warning(f"Unknown action type: {action_type}")
-
-                # Broadcast akcji do UI
+        async def handle_sensor_data(sensor_data: dict):
+            logger.debug(f"Desktop Sensor data: {sensor_data.get('type')}")
+            suggestion = await shadow.analyze_sensor_data(sensor_data)
+            if suggestion:
+                logger.info(f"Shadow Agent suggestion: {suggestion.title}")
+                await note.send_toast(
+                    title=suggestion.title,
+                    message=suggestion.message,
+                    action_payload=suggestion.action_payload,
+                )
                 await event_broadcaster.broadcast_event(
                     event_type=EventType.SYSTEM_LOG,
-                    message="config.parameters.sections.shadowActions.foundProblem",
-                    data=action_payload,
+                    message=f"Shadow: {suggestion.title}",
+                    data=suggestion.to_dict(),
                 )
 
-            notifier = Notifier(webhook_handler=handle_shadow_action)
-            logger.info("Notifier zainicjalizowany")
-
-            # Inicjalizuj Shadow Agent
-            shadow_kernel = KernelBuilder().build_kernel()
-            shadow_agent = ShadowAgent(
-                kernel=shadow_kernel,
-                goal_store=(
-                    orchestrator.goal_store
-                    if hasattr(orchestrator, "goal_store")
-                    else None
-                ),
-                lessons_store=lessons_store,
-                confidence_threshold=SETTINGS.SHADOW_CONFIDENCE_THRESHOLD,
+        if SETTINGS.ENABLE_DESKTOP_SENSOR:
+            desktop_sensor = DesktopSensor(
+                clipboard_callback=handle_sensor_data,
+                window_callback=handle_sensor_data,
+                privacy_filter=SETTINGS.SHADOW_PRIVACY_FILTER,
             )
-            await shadow_agent.start()
-            logger.info("ShadowAgent uruchomiony")
-            shadow = shadow_agent
-            note = notifier
-            assert shadow is not None
-            assert note is not None
-
-            # Callback dla desktop sensor
-            async def handle_sensor_data(sensor_data: dict):
-                """Obsługa danych z Desktop Sensor."""
-                logger.debug(f"Desktop Sensor data: {sensor_data.get('type')}")
-
-                # Przekaż do Shadow Agent do analizy
-                suggestion = await shadow.analyze_sensor_data(sensor_data)
-
-                if suggestion:
-                    logger.info(f"Shadow Agent suggestion: {suggestion.title}")
-
-                    # Wyślij powiadomienie
-                    await note.send_toast(
-                        title=suggestion.title,
-                        message=suggestion.message,
-                        action_payload=suggestion.action_payload,
-                    )
-
-                    # Broadcast event do UI
-                    await event_broadcaster.broadcast_event(
-                        event_type=EventType.SYSTEM_LOG,
-                        message=f"Shadow: {suggestion.title}",
-                        data=suggestion.to_dict(),
-                    )
-
-            # Inicjalizuj Desktop Sensor
-            if SETTINGS.ENABLE_DESKTOP_SENSOR:
-                desktop_sensor = DesktopSensor(
-                    clipboard_callback=handle_sensor_data,
-                    window_callback=handle_sensor_data,
-                    privacy_filter=SETTINGS.SHADOW_PRIVACY_FILTER,
-                )
-                await desktop_sensor.start()
-                logger.info(
-                    "DesktopSensor uruchomiony - monitorowanie schowka i okien aktywne"
-                )
-            else:
-                logger.info("DesktopSensor wyłączony (ENABLE_DESKTOP_SENSOR=False)")
-
-        except Exception as e:
-            logger.warning(f"Nie udało się zainicjalizować Shadow Agent: {e}")
-            shadow_agent = None
-            desktop_sensor = None
-            notifier = None
-    else:
-        logger.info("Proactive Mode wyłączony (ENABLE_PROACTIVE_MODE=False)")
-
-    # Ustaw zależności routerów po inicjalizacji wszystkich komponentów
-    setup_router_dependencies()
-    logger.info("Aplikacja uruchomiona - zależności routerów ustawione")
-
-    async def ensure_local_llm_ready() -> None:
-        runtime = get_active_llm_runtime()
-        if runtime.service_type != "local":
-            return
-        if model_manager:
-            try:
-                from venom_core.services.config_manager import config_manager
-                from venom_core.utils.llm_runtime import compute_llm_config_hash
-
-                server_name = (
-                    SETTINGS.ACTIVE_LLM_SERVER or runtime.provider or ""
-                ).lower()
-                models = await model_manager.list_local_models()
-                available = {
-                    m["name"]
-                    for m in models
-                    if m.get("provider") == server_name and m.get("name")
-                }
-                if available and SETTINGS.LLM_MODEL_NAME not in available:
-                    config = config_manager.get_config(mask_secrets=False)
-                    last_model_key = (
-                        "LAST_MODEL_OLLAMA"
-                        if server_name == "ollama"
-                        else "LAST_MODEL_VLLM"
-                    )
-                    prev_model_key = (
-                        "PREVIOUS_MODEL_OLLAMA"
-                        if server_name == "ollama"
-                        else "PREVIOUS_MODEL_VLLM"
-                    )
-                    desired_model = (
-                        config.get(last_model_key)
-                        or config.get("HYBRID_LOCAL_MODEL")
-                        or config.get("LLM_MODEL_NAME", "")
-                    )
-                    previous_model = config.get(prev_model_key) or ""
-                    selected_model = None
-                    if desired_model in available:
-                        selected_model = desired_model
-                    elif previous_model in available:
-                        selected_model = previous_model
-                    else:
-                        selected_model = next(iter(available))
-                    updates = {
-                        "LLM_MODEL_NAME": selected_model,
-                        "HYBRID_LOCAL_MODEL": selected_model,
-                        last_model_key: selected_model,
-                    }
-                    old_last = config.get(last_model_key) or ""
-                    if old_last and old_last != selected_model:
-                        updates[prev_model_key] = old_last
-                    config_manager.update_config(updates)
-                    try:
-                        SETTINGS.LLM_MODEL_NAME = selected_model
-                        SETTINGS.HYBRID_LOCAL_MODEL = selected_model
-                    except Exception:
-                        logger.warning(
-                            "Nie udało się zaktualizować SETTINGS dla modelu LLM."
-                        )
-                    endpoint = runtime.endpoint
-                    config_hash = compute_llm_config_hash(
-                        server_name, endpoint, selected_model
-                    )
-                    config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
-                    try:
-                        SETTINGS.LLM_CONFIG_HASH = config_hash
-                        SETTINGS.ACTIVE_LLM_SERVER = server_name
-                    except Exception:
-                        logger.warning(
-                            "Nie udało się zaktualizować SETTINGS dla hash LLM."
-                        )
-                    logger.warning(
-                        "Skorygowano model LLM na starcie: %s -> %s",
-                        config.get("LLM_MODEL_NAME", ""),
-                        selected_model,
-                    )
-            except Exception as exc:
-                logger.warning("Nie udało się zweryfikować modelu LLM: %s", exc)
-        status, _ = await probe_runtime_status(runtime)
-        if status != "online":
-            active_server = (
-                SETTINGS.ACTIVE_LLM_SERVER or runtime.provider or ""
-            ).lower()
-            if (
-                llm_controller
-                and active_server
-                and llm_controller.has_server(active_server)
-            ):
-                try:
-                    for server in llm_controller.list_servers():
-                        name = server.get("name", "").lower()
-                        if not name or name == active_server:
-                            continue
-                        if server.get("supports", {}).get("stop"):
-                            await llm_controller.run_action(name, "stop")
-                    await llm_controller.run_action(active_server, "start")
-                    logger.info(
-                        "Uruchamianie lokalnego LLM (%s) na starcie.",
-                        active_server,
-                    )
-                except Exception as exc:
-                    logger.warning("Nie udało się uruchomić lokalnego LLM: %s", exc)
-            for _ in range(90):
-                status, _ = await probe_runtime_status(runtime)
-                if status == "online":
-                    break
-                await asyncio.sleep(1.0)
-            if status != "online":
-                logger.warning("Lokalny LLM nadal offline po oczekiwaniu na start.")
-
-        if SETTINGS.LLM_WARMUP_ON_STARTUP:
-            await warmup_local_runtime(
-                runtime=runtime,
-                prompt=SETTINGS.LLM_WARMUP_PROMPT,
-                timeout_seconds=SETTINGS.LLM_WARMUP_TIMEOUT_SECONDS,
-                max_tokens=SETTINGS.LLM_WARMUP_MAX_TOKENS,
+            await desktop_sensor.start()
+            logger.info(
+                "DesktopSensor uruchomiony - monitorowanie schowka i okien aktywne"
             )
-            logger.info("Warm-up LLM uruchomiony w tle.")
+        else:
+            logger.info("DesktopSensor wyłączony (ENABLE_DESKTOP_SENSOR=False)")
 
-    app.state.startup_llm_task = asyncio.create_task(ensure_local_llm_ready())
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować Shadow Agent: {exc}")
+        shadow_agent = None
+        desktop_sensor = None
+        notifier = None
 
-    yield
 
-    # Shutdown
+async def _ensure_local_llm_ready() -> None:
+    runtime = get_active_llm_runtime()
+    if runtime.service_type != "local":
+        return
+    await _synchronize_startup_local_model(runtime)
+    await _start_local_runtime_if_needed(runtime)
+    if SETTINGS.LLM_WARMUP_ON_STARTUP:
+        await warmup_local_runtime(
+            runtime=runtime,
+            prompt=SETTINGS.LLM_WARMUP_PROMPT,
+            timeout_seconds=SETTINGS.LLM_WARMUP_TIMEOUT_SECONDS,
+            max_tokens=SETTINGS.LLM_WARMUP_MAX_TOKENS,
+        )
+        logger.info("Warm-up LLM uruchomiony w tle.")
+
+
+async def _shutdown_runtime_components() -> None:
     logger.info("Zamykanie aplikacji...")
 
-    # Zatrzymaj RequestTracer watchdog
     if request_tracer:
         await request_tracer.stop_watchdog()
         logger.info("RequestTracer watchdog zatrzymany")
-
-    # Zatrzymaj Shadow Agent components
     if desktop_sensor:
         await desktop_sensor.stop()
         logger.info("DesktopSensor zatrzymany")
-
     if shadow_agent:
         await shadow_agent.stop()
         logger.info("ShadowAgent zatrzymany")
-
-    # Zatrzymaj Node Manager
     if node_manager:
         await node_manager.stop()
         logger.info("NodeManager zatrzymany")
-
-    # Zatrzymaj BackgroundScheduler najpierw (może korzystać z innych komponentów)
     if background_scheduler:
         await background_scheduler.stop()
         logger.info("BackgroundScheduler zatrzymany")
-
-    # Zatrzymaj FileWatcher
     if file_watcher:
         await file_watcher.stop()
         logger.info("FileWatcher zatrzymany")
-
-    # Zatrzymaj GardenerAgent
     if gardener_agent:
         await gardener_agent.stop()
         logger.info("GardenerAgent zatrzymany")
-
-    # Rozłącz Hardware Bridge
     if hardware_bridge:
         await hardware_bridge.disconnect()
         logger.info("HardwareBridge rozłączony")
 
-    # Czeka na zakończenie zapisów stanu
     await state_manager.shutdown()
     logger.info("Aplikacja zamknięta")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Zarządzanie cyklem życia aplikacji."""
+    await _initialize_observability()
+    await _initialize_model_services()
+    _initialize_calendar_skill()
+    await _initialize_node_manager()
+    _initialize_orchestrator()
+    workspace_path = _ensure_storage_dirs()
+    _initialize_memory_stores()
+    await _initialize_gardener_and_git(workspace_path)
+    await _initialize_background_scheduler()
+    await _initialize_documenter_and_watcher(workspace_path)
+    await _initialize_avatar_stack()
+    await _initialize_shadow_stack()
+    setup_router_dependencies()
+    logger.info("Aplikacja uruchomiona - zależności routerów ustawione")
+    app.state.startup_llm_task = asyncio.create_task(_ensure_local_llm_ready())
+
+    yield
+
+    await _shutdown_runtime_components()
 
 
 app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
@@ -837,8 +878,10 @@ def setup_router_dependencies():
     feedback_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     queue_routes.set_dependencies(orchestrator)
     # TokenEconomist nie jest jeszcze zainicjalizowany — przekazujemy None.
-    # UWAGA: Endpointy metrics mogą zwracać szacunkowe dane, dopóki TokenEconomist nie zostanie dodany.
-    # TODO: Zainicjalizować TokenEconomist i przekazać tutaj, gdy będzie dostępny (np. po dodaniu obsługi w lifespan).
+    # UWAGA: Endpointy metrics mogą zwracać szacunkowe dane, dopóki
+    # TokenEconomist nie zostanie dodany.
+    # TODO: Zainicjalizować TokenEconomist i przekazać tutaj, gdy będzie
+    # dostępny (np. po dodaniu obsługi w lifespan).
     metrics_routes.set_dependencies(token_economist=None)
     llm_simple_routes.set_dependencies(request_tracer)
     git_routes.set_dependencies(git_skill)
@@ -888,7 +931,8 @@ if TESTING_MODE and orchestrator is None:
         )
     except Exception as e:  # pragma: no cover - log zamiast crash w teście
         logger.warning(
-            f"Tryb testowy: nie udało się zainicjalizować orchestratora bez lifespan: {e}"
+            "Tryb testowy: nie udało się zainicjalizować orchestratora "
+            f"bez lifespan: {e}"
         )
 
 
@@ -992,30 +1036,17 @@ async def nodes_websocket_endpoint(websocket: WebSocket):
     node_id = None
 
     try:
-        # Odbierz pierwszą wiadomość (powinna być handshake)
-        from venom_core.nodes.protocol import MessageType, NodeHandshake, NodeMessage
-
-        message_str = await websocket.receive_text()
-        import json
-
-        message_dict = json.loads(message_str)
-        message = NodeMessage(**message_dict)
-
-        if message.message_type != MessageType.HANDSHAKE:
-            await websocket.close(code=1003, reason="Expected HANDSHAKE message")
+        handshake = await _receive_node_handshake(websocket)
+        if handshake is None:
             return
 
-        # Parsuj handshake
-        handshake = NodeHandshake(**message.payload)
         node_id = handshake.node_id
 
-        # Zarejestruj węzeł
         registered = await node_manager.register_node(handshake, websocket)
         if not registered:
             await websocket.close(code=1008, reason="Authentication failed")
             return
 
-        # Broadcast informacji o nowym węźle
         await event_broadcaster.broadcast_event(
             event_type="NODE_CONNECTED",
             message=f"Węzeł {handshake.node_name} ({node_id}) połączył się z Nexusem",
@@ -1027,35 +1058,7 @@ async def nodes_websocket_endpoint(websocket: WebSocket):
             },
         )
 
-        # Pętla odbierania wiadomości
-        while True:
-            try:
-                message_str = await websocket.receive_text()
-                message_dict = json.loads(message_str)
-                message = NodeMessage(**message_dict)
-
-                if message.message_type == MessageType.HEARTBEAT:
-                    from venom_core.nodes.protocol import HeartbeatMessage
-
-                    heartbeat = HeartbeatMessage(**message.payload)
-                    await node_manager.update_heartbeat(heartbeat)
-
-                elif message.message_type == MessageType.RESPONSE:
-                    from venom_core.nodes.protocol import NodeResponse
-
-                    response = NodeResponse(**message.payload)
-                    await node_manager.handle_response(response)
-
-                elif message.message_type == MessageType.DISCONNECT:
-                    logger.info(f"Węzeł {node_id} zgłosił rozłączenie")
-                    break
-
-            except json.JSONDecodeError as e:
-                logger.warning(f"Nieprawidłowy JSON od węzła {node_id}: {e}")
-                continue  # Kontynuuj pętlę, nie rozłączaj węzła
-            except Exception as e:
-                logger.warning(f"Błąd parsowania wiadomości od węzła {node_id}: {e}")
-                continue
+        await _run_node_message_loop(websocket, node_id)
 
     except WebSocketDisconnect:
         logger.info(f"Węzeł {node_id} rozłączony (WebSocket disconnect)")

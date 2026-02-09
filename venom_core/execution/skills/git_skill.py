@@ -82,6 +82,55 @@ class GitSkill(BaseSkill):
             return message
         return ""
 
+    @staticmethod
+    def _resolve_branch_name(repo: Repo, branch: Optional[str]) -> str:
+        if branch is not None:
+            return branch
+        return repo.active_branch.name
+
+    def _has_pull_error(
+        self, pull_info: list, repo: Repo, remote: str, branch: str
+    ) -> str | None:
+        for info in pull_info:
+            if not (info.flags & info.ERROR):
+                continue
+            conflict_msg = self._format_conflict_message(
+                repo, "pull", f"z {remote}/{branch}"
+            )
+            if conflict_msg:
+                self.logger.warning(conflict_msg)
+                return conflict_msg
+        return None
+
+    @staticmethod
+    def _collect_changed_files_from_pull(pull_info: list) -> list[str]:
+        changed_files: list[str] = []
+        for info in pull_info:
+            if not hasattr(info, "commit") or not info.commit or not info.old_commit:
+                continue
+            changed_files.extend(
+                [
+                    item.a_path or item.b_path
+                    for item in info.commit.diff(info.old_commit)
+                    if item.a_path or item.b_path
+                ]
+            )
+        return changed_files
+
+    @staticmethod
+    def _format_pull_result(remote: str, branch: str, changed_files: list[str]) -> str:
+        if not changed_files:
+            return f"✅ Zaktualizowano z {remote}/{branch} (już aktualne)"
+        files_list = "\n".join(
+            f"  - {changed_file}" for changed_file in changed_files[:10]
+        )
+        if len(changed_files) > 10:
+            files_list += f"\n  ... i {len(changed_files) - 10} więcej"
+        return (
+            f"✅ Pomyślnie zaktualizowano z {remote}/{branch}\n"
+            f"Zmienione pliki:\n{files_list}"
+        )
+
     @kernel_function(
         name="init_repo",
         description="Inicjalizuje nowe repozytorium Git w workspace lub klonuje istniejące.",
@@ -332,9 +381,7 @@ class GitSkill(BaseSkill):
         """
         try:
             repo = self._get_repo()
-
-            if branch is None:
-                branch = repo.active_branch.name
+            branch = self._resolve_branch_name(repo, branch)
 
             self.logger.info(f"Pulling z {remote}/{branch}")
 
@@ -342,38 +389,13 @@ class GitSkill(BaseSkill):
             pull_info = origin.pull(branch)
 
             # Sprawdź czy wystąpiły konflikty
-            for info in pull_info:
-                if info.flags & info.ERROR:
-                    conflict_msg = self._format_conflict_message(
-                        repo, "pull", f"z {remote}/{branch}"
-                    )
-                    if conflict_msg:
-                        self.logger.warning(conflict_msg)
-                        return conflict_msg
+            conflict_msg = self._has_pull_error(pull_info, repo, remote, branch)
+            if conflict_msg:
+                return conflict_msg
 
             self.logger.info(f"Pomyślnie zaktualizowano z {remote}/{branch}")
-            changed_files = []
-            for info in pull_info:
-                if hasattr(info, "commit") and info.commit:
-                    if info.old_commit:
-                        changed_files.extend(
-                            [
-                                item.a_path or item.b_path
-                                for item in info.commit.diff(info.old_commit)
-                                if item.a_path or item.b_path
-                            ]
-                        )
-
-            if changed_files:
-                files_list = "\n".join(f"  - {f}" for f in changed_files[:10])
-                if len(changed_files) > 10:
-                    files_list += f"\n  ... i {len(changed_files) - 10} więcej"
-                return (
-                    f"✅ Pomyślnie zaktualizowano z {remote}/{branch}\n"
-                    f"Zmienione pliki:\n{files_list}"
-                )
-            else:
-                return f"✅ Zaktualizowano z {remote}/{branch} (już aktualne)"
+            changed_files = self._collect_changed_files_from_pull(pull_info)
+            return self._format_pull_result(remote, branch, changed_files)
         except GitCommandError as e:
             # Obsługa specyficzna dla błędów Gita (konflikty)
             if "CONFLICT" in str(e) or "conflict" in str(e).lower():

@@ -131,69 +131,84 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         text_lower = text.lower()
 
         try:
-            # Status Rider-Pi
-            if "status" in text_lower and ("rider" in text_lower or "pi" in text_lower):
-                info = await self.hardware_bridge.get_system_info()
-                if info:
-                    temp = info.get("cpu_temp", "N/A")
-                    memory = info.get("memory_usage_percent", "N/A")
-                    return f"Rider Pi działa. Temperatura CPU: {temp} stopni. Użycie pamięci: {memory} procent."
-                else:
-                    return "Nie udało się pobrać statusu Rider Pi."
-
-            # Temperatura
-            elif "temperatura" in text_lower:
-                temp = await self.hardware_bridge.read_sensor("cpu_temp")
-                if temp:
-                    return f"Temperatura CPU na Rider Pi wynosi {temp:.1f} stopni Celsjusza."
-                else:
-                    return "Nie udało się odczytać temperatury."
-
-            # GPIO control
-            elif "włącz" in text_lower and "gpio" in text_lower:
-                # Wyciągnij numer pinu (bardzo prosta heurystyka)
-                match = re.search(r"gpio\s*(\d+)", text_lower)
-                if match:
-                    pin = int(match.group(1))
-                    success = await self.hardware_bridge.set_gpio(pin, True)
-                    if success:
-                        return f"GPIO {pin} włączony."
-                    else:
-                        return f"Nie udało się włączyć GPIO {pin}."
-                else:
-                    return "Nie rozpoznano numeru pinu. Spróbuj ponownie."
-
-            elif "wyłącz" in text_lower and "gpio" in text_lower:
-                match = re.search(r"gpio\s*(\d+)", text_lower)
-                if match:
-                    pin = int(match.group(1))
-                    success = await self.hardware_bridge.set_gpio(pin, False)
-                    if success:
-                        return f"GPIO {pin} wyłączony."
-                    else:
-                        return f"Nie udało się wyłączyć GPIO {pin}."
-                else:
-                    return "Nie rozpoznano numeru pinu. Spróbuj ponownie."
-
-            # Procedura awaryjna
-            elif "procedura awaryjna" in text_lower:
-                if "reset" in text_lower:
-                    success = await self.hardware_bridge.emergency_procedure(
-                        "reset_gpio"
-                    )
-                    if success:
-                        return "Procedura awaryjna reset GPIO wykonana."
-                    else:
-                        return "Nie udało się wykonać procedury awaryjnej."
-                else:
-                    return "Nieznana procedura awaryjna. Dostępne: reset GPIO."
-
-            else:
-                return "Nie rozpoznano komendy sprzętowej. Spróbuj inaczej sformułować."
+            if self._is_status_command(text_lower):
+                return await self._handle_status_command()
+            if self._is_temperature_command(text_lower):
+                return await self._handle_temperature_command()
+            if self._is_gpio_enable_command(text_lower):
+                return await self._handle_gpio_command(text_lower, enable=True)
+            if self._is_gpio_disable_command(text_lower):
+                return await self._handle_gpio_command(text_lower, enable=False)
+            if self._is_emergency_command(text_lower):
+                return await self._handle_emergency_command(text_lower)
+            return "Nie rozpoznano komendy sprzętowej. Spróbuj inaczej sformułować."
 
         except Exception as e:
             logger.error(f"Błąd podczas obsługi komendy sprzętowej: {e}")
             return "Wystąpił błąd podczas wykonywania komendy sprzętowej."
+
+    def _is_status_command(self, text_lower: str) -> bool:
+        return "status" in text_lower and ("rider" in text_lower or "pi" in text_lower)
+
+    def _is_temperature_command(self, text_lower: str) -> bool:
+        return "temperatura" in text_lower
+
+    def _is_gpio_enable_command(self, text_lower: str) -> bool:
+        return "włącz" in text_lower and "gpio" in text_lower
+
+    def _is_gpio_disable_command(self, text_lower: str) -> bool:
+        return "wyłącz" in text_lower and "gpio" in text_lower
+
+    def _is_emergency_command(self, text_lower: str) -> bool:
+        return "procedura awaryjna" in text_lower
+
+    async def _handle_status_command(self) -> str:
+        if self.hardware_bridge is None:
+            return "Hardware Bridge nie jest dostępny."
+        info = await self.hardware_bridge.get_system_info()
+        if not info:
+            return "Nie udało się pobrać statusu Rider Pi."
+        temp = info.get("cpu_temp", "N/A")
+        memory = info.get("memory_usage_percent", "N/A")
+        return (
+            f"Rider Pi działa. Temperatura CPU: {temp} stopni. "
+            f"Użycie pamięci: {memory} procent."
+        )
+
+    async def _handle_temperature_command(self) -> str:
+        if self.hardware_bridge is None:
+            return "Hardware Bridge nie jest dostępny."
+        temp = await self.hardware_bridge.read_sensor("cpu_temp")
+        if temp:
+            return f"Temperatura CPU na Rider Pi wynosi {temp:.1f} stopni Celsjusza."
+        return "Nie udało się odczytać temperatury."
+
+    async def _handle_gpio_command(self, text_lower: str, enable: bool) -> str:
+        if self.hardware_bridge is None:
+            return "Hardware Bridge nie jest dostępny."
+        pin = self._extract_gpio_pin(text_lower)
+        if pin is None:
+            return "Nie rozpoznano numeru pinu. Spróbuj ponownie."
+        success = await self.hardware_bridge.set_gpio(pin, enable)
+        if success:
+            return f"GPIO {pin} {'włączony' if enable else 'wyłączony'}."
+        return f"Nie udało się {'włączyć' if enable else 'wyłączyć'} GPIO {pin}."
+
+    async def _handle_emergency_command(self, text_lower: str) -> str:
+        if self.hardware_bridge is None:
+            return "Hardware Bridge nie jest dostępny."
+        if "reset" not in text_lower:
+            return "Nieznana procedura awaryjna. Dostępne: reset GPIO."
+        success = await self.hardware_bridge.emergency_procedure("reset_gpio")
+        if success:
+            return "Procedura awaryjna reset GPIO wykonana."
+        return "Nie udało się wykonać procedury awaryjnej."
+
+    def _extract_gpio_pin(self, text_lower: str) -> Optional[int]:
+        match = re.search(r"gpio\s*(\d+)", text_lower)
+        if not match:
+            return None
+        return int(match.group(1))
 
     async def _generate_voice_response(self, input_text: str) -> str:
         """

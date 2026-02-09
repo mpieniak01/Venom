@@ -1,5 +1,6 @@
 """Moduł: routes/memory - Endpointy API dla pamięci wektorowej."""
 
+import inspect
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -113,45 +114,68 @@ def _normalize_lessons_for_graph(
     allow_fallback: bool,
     limit: int,
 ) -> list[dict[str, object]]:
-    lessons: list[dict[str, object]] = []
     if not raw_lessons:
-        return lessons
+        return []
     if isinstance(raw_lessons, dict):
-        for lid, ldata in list(raw_lessons.items())[:limit]:
-            lesson_id: object = lid
-            if hasattr(ldata, "id"):
-                lesson_id = ldata.id
-            elif isinstance(ldata, dict) and "id" in ldata:
-                lesson_id = ldata["id"]
-            elif hasattr(ldata, "lesson_id"):
-                lesson_id = ldata.lesson_id
-            elif isinstance(ldata, dict) and "lesson_id" in ldata:
-                lesson_id = ldata["lesson_id"]
-
-            raw_lesson = (
-                ldata.to_dict()
-                if hasattr(ldata, "to_dict")
-                else (
-                    vars(ldata)
-                    if hasattr(ldata, "__dict__")
-                    else (ldata if isinstance(ldata, dict) else {})
-                )
-            )
-            if isinstance(raw_lesson, dict):
-                raw_lesson["id"] = lesson_id
-                lessons.append(dict(raw_lesson))
-        return lessons
+        return _normalize_lessons_mapping(raw_lessons, limit=limit)
     if isinstance(raw_lessons, list):
-        for entry in raw_lessons[:limit]:
-            if isinstance(entry, dict):
-                lessons.append(dict(entry))
-            elif allow_fallback and hasattr(entry, "to_dict"):
-                raw_entry = entry.to_dict()
-                if isinstance(raw_entry, dict):
-                    lessons.append(dict(raw_entry))
-            elif allow_fallback and hasattr(entry, "__dict__"):
-                lessons.append(dict(vars(entry)))
-        return lessons
+        return _normalize_lessons_list(
+            raw_lessons, allow_fallback=allow_fallback, limit=limit
+        )
+    return []
+
+
+def _extract_lesson_id(default_id: object, lesson_data: object) -> object:
+    if hasattr(lesson_data, "id"):
+        return lesson_data.id
+    if isinstance(lesson_data, dict) and "id" in lesson_data:
+        return lesson_data["id"]
+    if hasattr(lesson_data, "lesson_id"):
+        return lesson_data.lesson_id
+    if isinstance(lesson_data, dict) and "lesson_id" in lesson_data:
+        return lesson_data["lesson_id"]
+    return default_id
+
+
+def _to_lesson_dict(lesson_data: object) -> dict[str, object] | None:
+    if isinstance(lesson_data, dict):
+        return dict(lesson_data)
+    if hasattr(lesson_data, "to_dict"):
+        raw = lesson_data.to_dict()
+        if isinstance(raw, dict):
+            return dict(raw)
+        return None
+    if hasattr(lesson_data, "__dict__"):
+        return dict(vars(lesson_data))
+    return None
+
+
+def _normalize_lessons_mapping(
+    raw_lessons: dict[object, object], limit: int
+) -> list[dict[str, object]]:
+    lessons: list[dict[str, object]] = []
+    for default_id, lesson_data in list(raw_lessons.items())[:limit]:
+        normalized = _to_lesson_dict(lesson_data)
+        if normalized is None:
+            continue
+        normalized["id"] = _extract_lesson_id(default_id, lesson_data)
+        lessons.append(normalized)
+    return lessons
+
+
+def _normalize_lessons_list(
+    raw_lessons: list[object], allow_fallback: bool, limit: int
+) -> list[dict[str, object]]:
+    lessons: list[dict[str, object]] = []
+    for entry in raw_lessons[:limit]:
+        if isinstance(entry, dict):
+            lessons.append(dict(entry))
+            continue
+        if not allow_fallback:
+            continue
+        normalized = _to_lesson_dict(entry)
+        if normalized is not None:
+            lessons.append(normalized)
     return lessons
 
 
@@ -196,6 +220,12 @@ def _build_memory_node(entry: dict[str, Any]) -> dict[str, Any]:
     if "x" in meta and "y" in meta:
         node_payload["position"] = {"x": meta.get("x"), "y": meta.get("y")}
     return node_payload
+
+
+async def _resolve_maybe_await(value: Any) -> Any:
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 def _ensure_session_node(
@@ -789,7 +819,8 @@ async def prune_latest_lessons(
     """Alias dla knowledge/lessons/prune/latest"""
     from venom_core.api.routes.knowledge import prune_latest_lessons as knowledge_prune
 
-    return await knowledge_prune(count=count, lessons_store=lessons_store)
+    result = knowledge_prune(count=count, lessons_store=lessons_store)
+    return await _resolve_maybe_await(result)
 
 
 @router.delete("/lessons/prune/range", responses=LESSONS_MUTATION_RESPONSES)
@@ -803,7 +834,8 @@ async def prune_lessons_by_range(
         prune_lessons_by_range as knowledge_prune,
     )
 
-    return await knowledge_prune(start=start, end=end, lessons_store=lessons_store)
+    result = knowledge_prune(start=start, end=end, lessons_store=lessons_store)
+    return await _resolve_maybe_await(result)
 
 
 @router.delete("/lessons/prune/tag", responses=LESSONS_MUTATION_RESPONSES)
@@ -814,7 +846,8 @@ async def prune_lessons_by_tag(
     """Alias dla knowledge/lessons/prune/tag"""
     from venom_core.api.routes.knowledge import prune_lessons_by_tag as knowledge_prune
 
-    return await knowledge_prune(tag=tag, lessons_store=lessons_store)
+    result = knowledge_prune(tag=tag, lessons_store=lessons_store)
+    return await _resolve_maybe_await(result)
 
 
 @router.delete("/lessons/prune/ttl", responses=LESSONS_MUTATION_RESPONSES)
@@ -825,7 +858,8 @@ async def prune_lessons_by_ttl(
     """Alias dla knowledge/lessons/prune/ttl"""
     from venom_core.api.routes.knowledge import prune_lessons_by_ttl as knowledge_prune
 
-    return await knowledge_prune(days=days, lessons_store=lessons_store)
+    result = knowledge_prune(days=days, lessons_store=lessons_store)
+    return await _resolve_maybe_await(result)
 
 
 @router.delete("/lessons/purge", responses=LESSONS_MUTATION_RESPONSES)
@@ -838,7 +872,8 @@ async def purge_all_lessons(
     """Alias dla knowledge/lessons/purge"""
     from venom_core.api.routes.knowledge import purge_all_lessons as knowledge_purge
 
-    return await knowledge_purge(force=force, lessons_store=lessons_store)
+    result = knowledge_purge(force=force, lessons_store=lessons_store)
+    return await _resolve_maybe_await(result)
 
 
 class LearningToggleRequest(BaseModel):
@@ -850,7 +885,7 @@ async def get_learning_status():
     """Alias dla knowledge/lessons/learning/status"""
     from venom_core.api.routes.knowledge import get_learning_status as knowledge_status
 
-    return await knowledge_status()
+    return await _resolve_maybe_await(knowledge_status())
 
 
 @router.post("/lessons/learning/toggle", responses=LESSONS_MUTATION_RESPONSES)
@@ -861,4 +896,5 @@ async def toggle_learning(request: LearningToggleRequest):
     )
     from venom_core.api.routes.knowledge import toggle_learning as knowledge_toggle
 
-    return await knowledge_toggle(KnowledgeRequest(enabled=request.enabled))
+    result = knowledge_toggle(KnowledgeRequest(enabled=request.enabled))
+    return await _resolve_maybe_await(result)

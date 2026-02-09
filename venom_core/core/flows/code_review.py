@@ -64,6 +64,89 @@ class CodeReviewLoop:
         self.session_cost = 0.0
         self.previous_errors: list[int] = []
 
+    @staticmethod
+    def _summarize_text(text: str, limit: int = MAX_PROMPT_LENGTH) -> str:
+        if len(text) > limit:
+            return text[:limit] + "..."
+        return text
+
+    def _build_budget_exceeded_result(self, generated_code: str) -> str:
+        budget_msg = (
+            f"⚠️ Przekroczono budżet sesji ({self.session_cost:.2f}$ > "
+            f"{MAX_HEALING_COST}$). Przerywam samonaprawę."
+        )
+        return f"{budget_msg}\n\nOSTATNI KOD:\n{generated_code or 'Brak kodu'}"
+
+    def _build_loop_detected_result(
+        self, loop_msg: str, critic_feedback: str, generated_code: str
+    ) -> str:
+        feedback_summary = self._summarize_text(critic_feedback)
+        return (
+            f"⚠️ OSTRZEŻENIE: {loop_msg}\n\n"
+            f"UWAGI KRYTYKA:\n{feedback_summary}\n\n---\n\n{generated_code}"
+        )
+
+    def _build_max_attempts_result(
+        self, generated_code: str, critic_feedback: str
+    ) -> str:
+        feedback_summary = self._summarize_text(critic_feedback)
+        return (
+            "⚠️ OSTRZEŻENIE: Kod nie został w pełni zaakceptowany po "
+            f"{MAX_REPAIR_ATTEMPTS} próbach.\n\nUWAGI KRYTYKA:\n{feedback_summary}"
+            f"\n\n---\n\n{generated_code}"
+        )
+
+    async def _generate_code_for_attempt(
+        self,
+        *,
+        task_id: UUID,
+        attempt: int,
+        user_request: str,
+        generated_code: str,
+        critic_feedback: str,
+        current_file: str | None,
+    ) -> tuple[str, str]:
+        if attempt == 1:
+            self.state_manager.add_log(
+                task_id, f"Coder: Próba {attempt} - generowanie kodu"
+            )
+            generated = await self.coder_agent.process(user_request)
+            return generated, user_request
+
+        self.state_manager.add_log(
+            task_id, f"Coder: Próba {attempt} - naprawa na podstawie feedbacku"
+        )
+        code_preview = self._summarize_text(generated_code)
+
+        file_context = ""
+        if current_file:
+            file_context = (
+                f"\n\n⚠️ UWAGA: Naprawiamy teraz plik '{current_file}', "
+                "ponieważ testy/kod wykazały błąd w tym pliku."
+            )
+            try:
+                file_content = await self.file_skill.read_file(current_file)
+                file_context += (
+                    f"\n\nOBECNA TREŚĆ PLIKU '{current_file}':\n"
+                    f"{self._summarize_text(file_content)}"
+                )
+            except Exception as exc:
+                logger.warning(f"Nie udało się wczytać pliku {current_file}: {exc}")
+                file_context += f"\n\nPlik '{current_file}' nie istnieje jeszcze - musisz go stworzyć."
+
+        repair_prompt = f"""FEEDBACK OD KRYTYKA:
+{self._summarize_text(critic_feedback)}
+
+ORYGINALNE ŻĄDANIE UŻYTKOWNIKA:
+{self._summarize_text(user_request)}
+
+POPRZEDNI KOD (fragment):
+{code_preview}{file_context}
+
+Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
+        generated = await self.coder_agent.process(repair_prompt)
+        return generated, repair_prompt
+
     async def execute(self, task_id: UUID, user_request: str) -> str:
         """
         Pętla generowania kodu z oceną przez CriticAgent.
@@ -94,60 +177,26 @@ class CodeReviewLoop:
 
             # Sprawdź budżet przed iteracją
             if self.session_cost > MAX_HEALING_COST:
-                budget_msg = f"⚠️ Przekroczono budżet sesji ({self.session_cost:.2f}$ > {MAX_HEALING_COST}$). Przerywam samonaprawę."
-                self.state_manager.add_log(task_id, budget_msg)
-                logger.warning(f"Zadanie {task_id}: {budget_msg}")
-                return f"{budget_msg}\n\nOSTATNI KOD:\n{generated_code or 'Brak kodu'}"
+                budget_warning = (
+                    f"⚠️ Przekroczono budżet sesji ({self.session_cost:.2f}$ > "
+                    f"{MAX_HEALING_COST}$). Przerywam samonaprawę."
+                )
+                self.state_manager.add_log(task_id, budget_warning)
+                logger.warning(f"Zadanie {task_id}: {budget_warning}")
+                return self._build_budget_exceeded_result(generated_code)
 
             # Krok 1: CoderAgent generuje kod
-            if attempt == 1:
-                self.state_manager.add_log(
-                    task_id, f"Coder: Próba {attempt} - generowanie kodu"
-                )
-                generated_code = await self.coder_agent.process(user_request)
-            else:
-                # Kolejne próby - przekaż feedback od Krytyka
-                self.state_manager.add_log(
-                    task_id, f"Coder: Próba {attempt} - naprawa na podstawie feedbacku"
-                )
-                # Ogranicz długość poprzedniego kodu w promptcie dla wydajności
-                code_preview = (
-                    generated_code[:MAX_PROMPT_LENGTH] + "..."
-                    if len(generated_code) > MAX_PROMPT_LENGTH
-                    else generated_code
-                )
-
-                # Jeśli Krytyk wskazał inny plik do naprawy
-                file_context = ""
-                if current_file:
-                    file_context = f"\n\n⚠️ UWAGA: Naprawiamy teraz plik '{current_file}', ponieważ testy/kod wykazały błąd w tym pliku."
-                    # Spróbuj wczytać treść pliku
-                    try:
-                        file_content = await self.file_skill.read_file(current_file)
-                        file_context += f"\n\nOBECNA TREŚĆ PLIKU '{current_file}':\n{file_content[:MAX_PROMPT_LENGTH]}"
-                    except Exception as e:
-                        logger.warning(
-                            f"Nie udało się wczytać pliku {current_file}: {e}"
-                        )
-                        file_context += f"\n\nPlik '{current_file}' nie istnieje jeszcze - musisz go stworzyć."
-
-                repair_prompt = f"""FEEDBACK OD KRYTYKA:
-{critic_feedback[:MAX_PROMPT_LENGTH]}
-
-ORYGINALNE ŻĄDANIE UŻYTKOWNIKA:
-{user_request[:MAX_PROMPT_LENGTH]}
-
-POPRZEDNI KOD (fragment):
-{code_preview}{file_context}
-
-Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
-                generated_code = await self.coder_agent.process(repair_prompt)
+            generated_code, actual_prompt = await self._generate_code_for_attempt(
+                task_id=task_id,
+                attempt=attempt,
+                user_request=user_request,
+                generated_code=generated_code,
+                critic_feedback=critic_feedback,
+                current_file=current_file,
+            )
 
             # Estymuj koszt tej iteracji (użyj modelu z konfiguracji lub domyślnego)
             model_name = getattr(SETTINGS, "DEFAULT_COST_MODEL", "gpt-3.5-turbo")
-
-            # Użyj rzeczywistego prompta do estymacji kosztów
-            actual_prompt = user_request if attempt == 1 else repair_prompt
             estimated_cost = self.token_economist.estimate_request_cost(
                 prompt=actual_prompt,
                 expected_output_tokens=len(generated_code) // 4,
@@ -189,14 +238,10 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                         task_id,
                         f"⚠️ Wyczerpano limit prób ({MAX_REPAIR_ATTEMPTS}). Zwracam ostatnią wersję z ostrzeżeniem.",
                     )
-                feedback_summary = (
-                    critic_feedback[:MAX_PROMPT_LENGTH] + "..."
-                    if len(critic_feedback) > MAX_PROMPT_LENGTH
-                    else critic_feedback
-                )
-                return (
-                    f"⚠️ OSTRZEŻENIE: {loop_msg}\n\n"
-                    f"UWAGI KRYTYKA:\n{feedback_summary}\n\n---\n\n{generated_code}"
+                return self._build_loop_detected_result(
+                    loop_msg=loop_msg,
+                    critic_feedback=critic_feedback,
+                    generated_code=generated_code,
                 )
 
             self.previous_errors.append(error_hash)
@@ -233,12 +278,10 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                     f"Zadanie {task_id}: Przekroczono limit napraw, zwracam kod z ostrzeżeniem"
                 )
                 # Ogranicz rozmiar feedbacku w finalnej wiadomości
-                feedback_summary = (
-                    critic_feedback[:MAX_PROMPT_LENGTH] + "..."
-                    if len(critic_feedback) > MAX_PROMPT_LENGTH
-                    else critic_feedback
+                return self._build_max_attempts_result(
+                    generated_code=generated_code,
+                    critic_feedback=critic_feedback,
                 )
-                return f"⚠️ OSTRZEŻENIE: Kod nie został w pełni zaakceptowany po {MAX_REPAIR_ATTEMPTS} próbach.\n\nUWAGI KRYTYKA:\n{feedback_summary}\n\n---\n\n{generated_code}"
 
         # Nie powinno się tu dostać, ale dla bezpieczeństwa
         return generated_code or "Błąd: nie udało się wygenerować kodu"

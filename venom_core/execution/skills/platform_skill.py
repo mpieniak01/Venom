@@ -32,73 +32,62 @@ class PlatformSkill:
     def __init__(self):
         """Inicjalizacja PlatformSkill."""
         # Pobierz sekrety i konwertuj SecretStr na string
-        self.github_token = None
-        if hasattr(SETTINGS, "GITHUB_TOKEN"):
-            token = SETTINGS.GITHUB_TOKEN
-            # Handle SecretStr
-            self.github_token = (
-                token.get_secret_value()
-                if hasattr(token, "get_secret_value")
-                else token
-            )
-            if not self.github_token:  # Empty string
-                self.github_token = None
-
+        self.github_token = self._extract_secret_setting("GITHUB_TOKEN")
         self.github_repo_name = getattr(SETTINGS, "GITHUB_REPO_NAME", None)
-
-        # Discord webhook
-        self.discord_webhook = None
-        if hasattr(SETTINGS, "DISCORD_WEBHOOK_URL"):
-            webhook = SETTINGS.DISCORD_WEBHOOK_URL
-            self.discord_webhook = (
-                webhook.get_secret_value()
-                if hasattr(webhook, "get_secret_value")
-                else webhook
-            )
-            if not self.discord_webhook:
-                self.discord_webhook = None
-
-        # Slack webhook
-        self.slack_webhook = None
-        if hasattr(SETTINGS, "SLACK_WEBHOOK_URL"):
-            webhook = SETTINGS.SLACK_WEBHOOK_URL
-            self.slack_webhook = (
-                webhook.get_secret_value()
-                if hasattr(webhook, "get_secret_value")
-                else webhook
-            )
-            if not self.slack_webhook:
-                self.slack_webhook = None
+        self.discord_webhook = self._extract_secret_setting("DISCORD_WEBHOOK_URL")
+        self.slack_webhook = self._extract_secret_setting("SLACK_WEBHOOK_URL")
 
         # Inicjalizuj klienta GitHub jeśli token dostępny
-        self.github_client: Optional["Github"] = None
-        if self.github_token:
-            try:
-                from github import Auth, Github
+        self.github_client: Optional["Github"] = self._init_github_client(
+            self.github_token
+        )
 
-                self.github_client = Github(auth=Auth.Token(self.github_token))
-                # Maskuj token w logach (zabezpieczenie przed krótkimi tokenami)
-                if len(self.github_token) > 8:
-                    masked_token = (
-                        self.github_token[:4] + "..." + self.github_token[-4:]
-                    )
-                else:
-                    masked_token = "***"
-                logger.info(
-                    f"PlatformSkill: GitHub client zainicjalizowany (token: {masked_token})"
-                )
-            except ImportError:
-                logger.warning(
-                    "PlatformSkill: Biblioteka 'PyGithub' nie jest zainstalowana. Funkcje GitHub niedostępne."
-                )
-            except Exception as e:
-                logger.error(f"Błąd inicjalizacji GitHub client: {e}")
-        else:
+        logger.info("PlatformSkill zainicjalizowany")
+
+    @staticmethod
+    def _extract_secret_setting(field_name: str) -> Optional[str]:
+        if not hasattr(SETTINGS, field_name):
+            return None
+        field_value = getattr(SETTINGS, field_name)
+        value = (
+            field_value.get_secret_value()
+            if hasattr(field_value, "get_secret_value")
+            else field_value
+        )
+        if not value:
+            return None
+        return str(value)
+
+    @staticmethod
+    def _mask_token(token: str) -> str:
+        if len(token) > 8:
+            return token[:4] + "..." + token[-4:]
+        return "***"
+
+    def _init_github_client(self, token: Optional[str]) -> Optional["Github"]:
+        if not token:
             logger.warning(
                 "PlatformSkill: GITHUB_TOKEN nie skonfigurowany - funkcje GitHub niedostępne"
             )
+            return None
+        try:
+            from github import Auth, Github
 
-        logger.info("PlatformSkill zainicjalizowany")
+            github_client = Github(auth=Auth.Token(token))
+            logger.info(
+                "PlatformSkill: GitHub client zainicjalizowany "
+                f"(token: {self._mask_token(token)})"
+            )
+            return github_client
+        except ImportError:
+            logger.warning(
+                "PlatformSkill: Biblioteka 'PyGithub' nie jest zainstalowana. "
+                "Funkcje GitHub niedostępne."
+            )
+            return None
+        except Exception as exc:
+            logger.error(f"Błąd inicjalizacji GitHub client: {exc}")
+            return None
 
     def _fetch_issues(self, repo, state: str, assignee: Optional[str]):
         if assignee:

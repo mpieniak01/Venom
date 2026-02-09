@@ -105,78 +105,83 @@ class DocumenterAgent:
 
         file_path_obj = Path(file_path)
 
-        # Sprawdź czy to plik Pythona
-        if not file_path_obj.suffix == ".py":
+        if not self._is_python_file(file_path_obj):
             logger.debug(f"Plik {file_path} nie jest plikiem Python, pomijam")
             return
 
-        # Sprawdź czy to zmiana dokonana przez venom-bot (unikanie pętli)
-        # Sprawdzamy na podstawie nazwy autora
-        try:
-            last_commit_author = self._get_last_commit_author()
-            if last_commit_author:
-                # Sprawdź czy to bot na podstawie nazwy zawierającej "bot" lub "venom"
-                author_lower = last_commit_author.lower()
-                if "venom-bot" in author_lower or (
-                    "venom" in author_lower and "bot" in author_lower
-                ):
-                    logger.debug("Zmiana dokonana przez venom-bot, pomijam")
-                    return
-        except Exception as e:
-            logger.debug(f"Błąd podczas sprawdzania autora: {e}")
-            logger.debug(f"Nie można sprawdzić autora commita: {e}")
+        if self._is_bot_commit_author():
+            logger.debug("Zmiana dokonana przez venom-bot, pomijam")
+            return
 
         logger.info(f"Przetwarzam zmianę w {file_path}")
-
-        if self.event_broadcaster:
-            await self.event_broadcaster.broadcast_event(
-                event_type=EventType.BACKGROUND_JOB_STARTED,
-                message=f"Updating documentation for {file_path_obj.name}",
-                data={"file_path": file_path, "agent": "documenter"},
-            )
+        await self._broadcast_if_available(
+            event_type=EventType.BACKGROUND_JOB_STARTED,
+            message=f"Updating documentation for {file_path_obj.name}",
+            data={"file_path": file_path, "agent": "documenter"},
+        )
 
         try:
-            # Pobierz diff zmienionego pliku
             diff = await self._get_file_diff(file_path)
-
             if not diff or "diff --git" not in diff:
                 logger.debug(f"Brak zmian w git dla {file_path}")
                 return
 
-            # Analizuj czy potrzebna aktualizacja dokumentacji
             needs_update = self._analyze_changes(file_path, diff)
-
             if needs_update:
-                # Aktualizuj dokumentację (obecnie prosty placeholder)
-                await self._update_documentation(file_path, diff)
-
-                # Commituj zmiany
-                await self._commit_documentation_changes(file_path_obj.name)
-
-                if self.event_broadcaster:
-                    await self.event_broadcaster.broadcast_event(
-                        event_type=EventType.DOCUMENTATION_UPDATED,
-                        message=f"Documentation updated for {file_path_obj.name}",
-                        data={"file_path": file_path},
-                    )
-
-                logger.info(f"Dokumentacja zaktualizowana dla {file_path}")
-
-            if self.event_broadcaster:
-                await self.event_broadcaster.broadcast_event(
-                    event_type=EventType.BACKGROUND_JOB_COMPLETED,
-                    message=f"Documentation check completed for {file_path_obj.name}",
-                    data={"file_path": file_path, "updated": needs_update},
+                await self._apply_documentation_update(
+                    file_path, file_path_obj.name, diff
                 )
+            await self._broadcast_if_available(
+                event_type=EventType.BACKGROUND_JOB_COMPLETED,
+                message=f"Documentation check completed for {file_path_obj.name}",
+                data={"file_path": file_path, "updated": needs_update},
+            )
 
         except Exception as e:
             logger.error(f"Błąd podczas aktualizacji dokumentacji dla {file_path}: {e}")
-            if self.event_broadcaster:
-                await self.event_broadcaster.broadcast_event(
-                    event_type=EventType.BACKGROUND_JOB_FAILED,
-                    message=f"Documentation update failed for {file_path_obj.name}: {e}",
-                    data={"file_path": file_path, "error": str(e)},
-                )
+            await self._broadcast_if_available(
+                event_type=EventType.BACKGROUND_JOB_FAILED,
+                message=f"Documentation update failed for {file_path_obj.name}: {e}",
+                data={"file_path": file_path, "error": str(e)},
+            )
+
+    def _is_python_file(self, file_path_obj: Path) -> bool:
+        return file_path_obj.suffix == ".py"
+
+    def _is_bot_commit_author(self) -> bool:
+        try:
+            last_commit_author = self._get_last_commit_author()
+            if not last_commit_author:
+                return False
+            author_lower = last_commit_author.lower()
+            return "venom-bot" in author_lower or (
+                "venom" in author_lower and "bot" in author_lower
+            )
+        except Exception as e:
+            logger.debug(f"Błąd podczas sprawdzania autora: {e}")
+            logger.debug(f"Nie można sprawdzić autora commita: {e}")
+            return False
+
+    async def _broadcast_if_available(
+        self, event_type: str, message: str, data: dict[str, Any]
+    ) -> None:
+        if not self.event_broadcaster:
+            return
+        await self.event_broadcaster.broadcast_event(
+            event_type=event_type, message=message, data=data
+        )
+
+    async def _apply_documentation_update(
+        self, file_path: str, file_name: str, diff: str
+    ) -> None:
+        await self._update_documentation(file_path, diff)
+        await self._commit_documentation_changes(file_name)
+        await self._broadcast_if_available(
+            event_type=EventType.DOCUMENTATION_UPDATED,
+            message=f"Documentation updated for {file_name}",
+            data={"file_path": file_path},
+        )
+        logger.info(f"Dokumentacja zaktualizowana dla {file_path}")
 
     async def _get_file_diff(self, file_path: str) -> str:
         """

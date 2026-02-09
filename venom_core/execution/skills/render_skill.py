@@ -1,14 +1,22 @@
 """Moduł: render_skill - umiejętność wizualizacji i renderowania UI."""
 
+import re
 from typing import Annotated, Any, Dict, List, Optional
 
-import bleach
 from semantic_kernel.functions import kernel_function
 
 from venom_core.ui.component_engine import ComponentEngine, WidgetType
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+try:
+    import bleach
+
+    BLEACH_AVAILABLE = True
+except ImportError:  # pragma: no cover - zależność opcjonalna
+    bleach = None  # type: ignore[assignment]
+    BLEACH_AVAILABLE = False
 
 
 class RenderSkill:
@@ -78,9 +86,27 @@ class RenderSkill:
         Returns:
             Czysty HTML
         """
-        return bleach.clean(
-            html, tags=self.ALLOWED_TAGS, attributes=self.ALLOWED_ATTRIBUTES, strip=True
-        )
+        if BLEACH_AVAILABLE and bleach is not None:
+            return bleach.clean(
+                html,
+                tags=self.ALLOWED_TAGS,
+                attributes=self.ALLOWED_ATTRIBUTES,
+                strip=True,
+            )
+        # Fallback bez zależności: usuń script i niedozwolone tagi, zachowaj treść.
+        sanitized = re.sub(r"(?is)<script.*?>.*?</script>", "", html)
+
+        allowed = set(self.ALLOWED_TAGS)
+
+        def _filter_tag(match: re.Match[str]) -> str:
+            full_tag = match.group(0)
+            tag_name = match.group(1).lower()
+            if tag_name in allowed:
+                return full_tag
+            return ""
+
+        sanitized = re.sub(r"</?([a-zA-Z0-9]+)(?:\s[^>]*)?>", _filter_tag, sanitized)
+        return sanitized
 
     @kernel_function(
         name="render_chart",

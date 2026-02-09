@@ -51,8 +51,9 @@ def hello():
     # Wywołaj handle_code_change (bez GitSkill, nie będzie commitował)
     await agent.handle_code_change(str(test_file))
 
-    # Test zakończony bez błędów
-    assert True
+    status = agent.get_status()
+    assert status["workspace_root"] == str(temp_workspace.resolve())
+    assert status["processing_files"] == 1
 
 
 @pytest.mark.asyncio
@@ -67,8 +68,9 @@ async def test_documenter_ignores_non_python_files(temp_workspace):
     # Wywołaj handle_code_change
     await agent.handle_code_change(str(test_file))
 
-    # Test zakończony bez błędów
-    assert True
+    status = agent.get_status()
+    assert status["workspace_root"] == str(temp_workspace.resolve())
+    assert status["processing_files"] == 1
 
 
 @pytest.mark.asyncio
@@ -88,5 +90,7 @@ async def test_documenter_prevents_infinite_loop(temp_workspace):
     await task1
     await task2
 
-    # Test zakończony bez błędów (drugi call powinien zostać pominięty)
-    assert True
+    status = agent.get_status()
+    assert status["workspace_root"] == str(temp_workspace.resolve())
+    # Drugi call powinien zostać pominięty - nadal tylko jeden plik w przetwarzaniu.
+    assert status["processing_files"] == 1

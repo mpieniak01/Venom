@@ -106,3 +106,4 @@ tests/test_workflow_store.py
 tests/test_github_skill.py
 tests/test_gpu_habitat.py
 tests/test_overmind_integration.py
+tests/test_documenter.py

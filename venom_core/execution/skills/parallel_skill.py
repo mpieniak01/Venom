@@ -155,57 +155,29 @@ class ParallelSkill:
             Lista wyników zadań
         """
         results: List[Dict[str, Any]] = []
+        result_ids: set[str] = set()
         start_time = asyncio.get_event_loop().time()
 
-        # Czekaj na wyniki z pollingiem
         while True:
-            all_done = True
-            for task_id in task_ids:
-                task = await self.message_broker.get_task_status(task_id)
-                if task:
-                    if task.status in ("completed", "failed"):
-                        # Zadanie ukończone
-                        result_entry = {
-                            "task_id": task_id,
-                            "status": task.status,
-                            "result": task.result,
-                            "error": task.error,
-                            "item_index": task.payload.get("item_index"),
-                        }
-                        # Dodaj tylko jeśli nie ma jeszcze w results
-                        if not any(r["task_id"] == task_id for r in results):
-                            results.append(result_entry)
-                    else:
-                        all_done = False
+            all_done = await self._collect_terminal_results(
+                task_ids=task_ids,
+                results=results,
+                result_ids=result_ids,
+            )
 
-            # Sprawdź timeout
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed > timeout:
                 logger.warning(
                     f"Timeout waiting for results ({timeout}s), returning partial results"
                 )
-                # Dodaj pending tasks do wyników
-                for task_id in task_ids:
-                    if not any(r["task_id"] == task_id for r in results):
-                        results.append(
-                            {
-                                "task_id": task_id,
-                                "status": "pending",
-                                "result": None,
-                                "error": "Timeout",
-                                "item_index": None,
-                            }
-                        )
+                self._append_pending_results(task_ids, results, result_ids)
                 break
 
-            # Jeśli wszystkie ukończone, zakończ
             if all_done:
                 break
 
-            # Czekaj przed następnym sprawdzeniem (polling)
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
-        # Sortuj wyniki według item_index
         results.sort(
             key=lambda r: (
                 r["item_index"] if r["item_index"] is not None else DEFAULT_SORT_INDEX
@@ -213,6 +185,65 @@ class ParallelSkill:
         )
 
         return results
+
+    async def _collect_terminal_results(
+        self,
+        *,
+        task_ids: List[str],
+        results: List[Dict[str, Any]],
+        result_ids: set[str],
+    ) -> bool:
+        all_done = True
+        for task_id in task_ids:
+            task = await self.message_broker.get_task_status(task_id)
+            if not task:
+                all_done = False
+                continue
+            if task.status in ("completed", "failed"):
+                self._append_result(task_id, task, results, result_ids)
+                continue
+            all_done = False
+        return all_done
+
+    def _append_result(
+        self,
+        task_id: str,
+        task: Any,
+        results: List[Dict[str, Any]],
+        result_ids: set[str],
+    ) -> None:
+        if task_id in result_ids:
+            return
+        results.append(
+            {
+                "task_id": task_id,
+                "status": task.status,
+                "result": task.result,
+                "error": task.error,
+                "item_index": task.payload.get("item_index"),
+            }
+        )
+        result_ids.add(task_id)
+
+    def _append_pending_results(
+        self,
+        task_ids: List[str],
+        results: List[Dict[str, Any]],
+        result_ids: set[str],
+    ) -> None:
+        for task_id in task_ids:
+            if task_id in result_ids:
+                continue
+            results.append(
+                {
+                    "task_id": task_id,
+                    "status": "pending",
+                    "result": None,
+                    "error": "Timeout",
+                    "item_index": None,
+                }
+            )
+            result_ids.add(task_id)
 
     @kernel_function(
         name="parallel_execute",

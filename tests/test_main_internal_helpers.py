@@ -303,3 +303,213 @@ def test_initialize_model_services_handles_missing_monitor(monkeypatch, tmp_path
     assert main_module.model_manager is not None
     assert main_module.model_registry == "sentinel"
     assert main_module.benchmark_service is None
+
+
+def test_storage_and_memory_store_initialization(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    memory = tmp_path / "memory"
+    monkeypatch.setattr(main_module.SETTINGS, "WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setattr(main_module.SETTINGS, "MEMORY_ROOT", str(memory))
+
+    class DummyVectorStore:
+        pass
+
+    class DummyGraphStore:
+        def load_graph(self):
+            return None
+
+    class DummyLessonsStore:
+        def __init__(self, vector_store):
+            self.vector_store = vector_store
+            self.lessons = ["l1", "l2"]
+
+    monkeypatch.setattr(main_module, "VectorStore", DummyVectorStore)
+    monkeypatch.setattr(main_module, "CodeGraphStore", DummyGraphStore)
+    monkeypatch.setattr(main_module, "LessonsStore", DummyLessonsStore)
+    main_module.orchestrator = SimpleNamespace(lessons_store=None)
+
+    created_workspace = main_module._ensure_storage_dirs()
+    main_module._initialize_memory_stores()
+
+    assert created_workspace.exists()
+    assert memory.exists()
+    assert main_module.vector_store is not None
+    assert main_module.graph_store is not None
+    assert main_module.lessons_store is not None
+    assert main_module.orchestrator.lessons_store is main_module.lessons_store
+
+
+@pytest.mark.asyncio
+async def test_initialize_gardener_and_git(monkeypatch, tmp_path):
+    class DummyGardener:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.started = False
+
+        async def start(self):
+            self.started = True
+
+    class DummyGitSkill:
+        def __init__(self, workspace_root):
+            self.workspace_root = workspace_root
+
+    monkeypatch.setattr(main_module, "GardenerAgent", DummyGardener)
+    monkeypatch.setattr(main_module, "GitSkill", DummyGitSkill)
+    main_module.graph_store = object()
+    main_module.orchestrator = object()
+    main_module.event_broadcaster = object()
+
+    await main_module._initialize_gardener_and_git(tmp_path)
+
+    assert main_module.gardener_agent is not None
+    assert main_module.gardener_agent.started is True
+    assert str(tmp_path) == main_module.git_skill.workspace_root
+
+
+@pytest.mark.asyncio
+async def test_initialize_background_scheduler_registers_jobs(monkeypatch):
+    class DummyScheduler:
+        def __init__(self, event_broadcaster):
+            self.event_broadcaster = event_broadcaster
+            self.job_ids = []
+            self.started = False
+
+        async def start(self):
+            self.started = True
+
+        def add_interval_job(self, func, minutes, job_id, description):
+            self.job_ids.append(job_id)
+
+    class DummyTracer:
+        def clear_old_traces(self, days):
+            assert days == 7
+
+    async def _noop(_event_broadcaster):
+        return None
+
+    monkeypatch.setattr(main_module, "BackgroundScheduler", DummyScheduler)
+    monkeypatch.setattr(main_module.job_scheduler, "consolidate_memory", _noop)
+    monkeypatch.setattr(main_module.job_scheduler, "check_health", _noop)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_MEMORY_CONSOLIDATION", True)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_HEALTH_CHECKS", True)
+    monkeypatch.setattr(
+        main_module.SETTINGS, "MEMORY_CONSOLIDATION_INTERVAL_MINUTES", 5
+    )
+    monkeypatch.setattr(main_module.SETTINGS, "HEALTH_CHECK_INTERVAL_MINUTES", 3)
+    main_module.vector_store = object()
+    main_module.event_broadcaster = object()
+    main_module.request_tracer = DummyTracer()
+
+    await main_module._initialize_background_scheduler()
+
+    assert main_module.background_scheduler is not None
+    assert main_module.background_scheduler.started is True
+    assert "consolidate_memory" in main_module.background_scheduler.job_ids
+    assert "check_health" in main_module.background_scheduler.job_ids
+    assert "cleanup_traces" in main_module.background_scheduler.job_ids
+
+
+@pytest.mark.asyncio
+async def test_initialize_documenter_and_watcher(monkeypatch, tmp_path):
+    class DummyDocumenter:
+        def __init__(self, workspace_root, git_skill, event_broadcaster):
+            self.workspace_root = workspace_root
+            self.git_skill = git_skill
+            self.event_broadcaster = event_broadcaster
+
+        async def handle_code_change(self, _change):
+            return None
+
+    class DummyWatcher:
+        def __init__(self, workspace_root, on_change_callback, event_broadcaster):
+            self.workspace_root = workspace_root
+            self.on_change_callback = on_change_callback
+            self.event_broadcaster = event_broadcaster
+            self.started = False
+
+        async def start(self):
+            self.started = True
+
+    monkeypatch.setattr(main_module, "DocumenterAgent", DummyDocumenter)
+    monkeypatch.setattr(main_module, "FileWatcher", DummyWatcher)
+    main_module.git_skill = object()
+    main_module.event_broadcaster = object()
+
+    await main_module._initialize_documenter_and_watcher(tmp_path)
+
+    assert main_module.documenter_agent is not None
+    assert main_module.file_watcher is not None
+    assert main_module.file_watcher.started is True
+    assert main_module.file_watcher.on_change_callback is not None
+
+
+@pytest.mark.asyncio
+async def test_avatar_stack_helpers(monkeypatch):
+    class DummyAudio:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class DummyBridge:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def connect(self):
+            return True
+
+    class DummyKernelBuilder:
+        def build_kernel(self):
+            return object()
+
+    class DummyOperator:
+        def __init__(self, kernel, hardware_bridge):
+            self.kernel = kernel
+            self.hardware_bridge = hardware_bridge
+
+    class DummyAudioHandler:
+        def __init__(self, audio_engine, vad_threshold, silence_duration):
+            self.audio_engine = audio_engine
+            self.vad_threshold = vad_threshold
+            self.silence_duration = silence_duration
+
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_AUDIO_INTERFACE", True)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_IOT_BRIDGE", True)
+    monkeypatch.setattr(main_module, "AudioEngine", DummyAudio)
+    monkeypatch.setattr(main_module, "HardwareBridge", DummyBridge)
+    monkeypatch.setattr(
+        "venom_core.execution.kernel_builder.KernelBuilder",
+        DummyKernelBuilder,
+        raising=True,
+    )
+    monkeypatch.setattr(main_module, "OperatorAgent", DummyOperator)
+    monkeypatch.setattr(main_module, "AudioStreamHandler", DummyAudioHandler)
+    monkeypatch.setattr(main_module, "extract_secret_value", lambda _secret: "pw")
+
+    audio = main_module._initialize_audio_engine_if_enabled()
+    bridge = await main_module._initialize_hardware_bridge_if_enabled()
+    operator = main_module._initialize_operator_agent_if_possible(audio, bridge)
+    handler = main_module._initialize_audio_stream_handler_if_possible(audio, operator)
+
+    assert audio is not None
+    assert bridge is not None
+    assert operator is not None
+    assert handler is not None
+
+
+@pytest.mark.asyncio
+async def test_ensure_local_llm_ready_local_and_non_local(monkeypatch):
+    local_runtime = SimpleNamespace(service_type="local")
+    cloud_runtime = SimpleNamespace(service_type="openai")
+
+    monkeypatch.setattr(main_module, "_synchronize_startup_local_model", AsyncMock())
+    monkeypatch.setattr(main_module, "_start_local_runtime_if_needed", AsyncMock())
+    monkeypatch.setattr(main_module, "warmup_local_runtime", AsyncMock())
+
+    monkeypatch.setattr(main_module, "get_active_llm_runtime", lambda: cloud_runtime)
+    await main_module._ensure_local_llm_ready()
+    main_module._synchronize_startup_local_model.assert_not_awaited()
+
+    monkeypatch.setattr(main_module, "get_active_llm_runtime", lambda: local_runtime)
+    monkeypatch.setattr(main_module.SETTINGS, "LLM_WARMUP_ON_STARTUP", False)
+    await main_module._ensure_local_llm_ready()
+    main_module._synchronize_startup_local_model.assert_awaited()
+    main_module._start_local_runtime_if_needed.assert_awaited()

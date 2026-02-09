@@ -18,6 +18,22 @@ from venom_core.utils.url_policy import build_http_url
 logger = get_logger(__name__)
 
 
+def _normalize_hf_papers_month(month: Optional[str]) -> str:
+    """Zwraca bezpieczny segment URL miesiąca w formacie YYYY-MM."""
+    if month:
+        candidate = month.strip()
+        if re.fullmatch(r"\d{4}-\d{2}", candidate):
+            try:
+                datetime.strptime(candidate, "%Y-%m")
+                return candidate
+            except ValueError:
+                pass
+        logger.warning(
+            "Odrzucono nieprawidłowy format miesiąca dla HuggingFace papers; użyto bieżącego miesiąca."
+        )
+    return datetime.now().strftime("%Y-%m")
+
+
 class OllamaClient:
     """Klient do integracji z Ollama (HTTP + CLI)."""
 
@@ -193,10 +209,7 @@ class HuggingFaceClient:
     async def fetch_papers_month(
         self, limit: int, month: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        if month:
-            target_month = month
-        else:
-            target_month = datetime.now().strftime("%Y-%m")
+        target_month = _normalize_hf_papers_month(month)
         url = f"https://huggingface.co/papers/month/{target_month}"
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             response = await client.get(url)
@@ -208,7 +221,7 @@ class HuggingFaceClient:
             response.raise_for_status()
             payload = response.text
 
-        return _parse_hf_papers_html(payload, url, limit)
+        return _parse_hf_papers_html(payload, limit)
 
     async def download_snapshot(
         self,
@@ -288,44 +301,37 @@ def _parse_hf_blog_feed(payload: str, limit: int) -> List[Dict[str, Any]]:
     return items
 
 
-def _parse_hf_papers_html(payload: str, url: str, limit: int) -> List[Dict[str, Any]]:
+def _parse_hf_papers_html(payload: str, limit: int) -> List[Dict[str, Any]]:
     marker = 'data-target="DailyPapers" data-props="'
     start_index = payload.find(marker)
     if start_index == -1:
-        logger.warning(
-            "Nie znaleziono sekcji DailyPapers na stronie HuggingFace: %s", url
-        )
+        logger.warning("Nie znaleziono sekcji DailyPapers na stronie HuggingFace.")
         return []
     start_index += len(marker)
     end_index = payload.find('"', start_index)
     if end_index == -1:
         logger.warning(
-            "Nieprawidłowy format atrybutu data-props w sekcji DailyPapers na stronie HuggingFace: %s",
-            url,
+            "Nieprawidłowy format atrybutu data-props w sekcji DailyPapers na stronie HuggingFace."
         )
         return []
 
     raw_props = html.unescape(payload[start_index:end_index])
     try:
         data = json.loads(raw_props)
-    except json.JSONDecodeError as exc:
+    except json.JSONDecodeError:
         logger.warning(
-            "Nie udało się sparsować JSON z atrybutu data-props w sekcji DailyPapers na stronie HuggingFace (%s): %s",
-            url,
-            exc,
+            "Nie udało się sparsować JSON z atrybutu data-props w sekcji DailyPapers na stronie HuggingFace."
         )
         return []
     if not isinstance(data, dict):
         logger.warning(
-            "Nieoczekiwany format danych DailyPapers z HuggingFace (oczekiwano dict) dla URL: %s",
-            url,
+            "Nieoczekiwany format danych DailyPapers z HuggingFace (oczekiwano dict)."
         )
         return []
     daily_papers = data.get("dailyPapers")
     if not isinstance(daily_papers, list):
         logger.warning(
-            "Brak lub nieprawidłowy klucz 'dailyPapers' w danych z HuggingFace dla URL: %s",
-            url,
+            "Brak lub nieprawidłowy klucz 'dailyPapers' w danych z HuggingFace."
         )
         return []
 

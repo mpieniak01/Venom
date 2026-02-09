@@ -1,6 +1,7 @@
 """Testy dla modułu process_monitor - monitorowanie procesów."""
 
 import os
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import psutil
@@ -186,3 +187,60 @@ class TestProcessMonitor:
 
         # Assert
         assert result is None
+
+    @patch("psutil.Process")
+    def test_get_process_info_generic_exception(self, mock_process_class, tmp_path):
+        """Test pobierania informacji gdy wystąpi nieoczekiwany wyjątek."""
+        monitor = ProcessMonitor(tmp_path)
+        mock_process_class.side_effect = RuntimeError("boom")
+        assert monitor.get_process_info(12345) is None
+
+    @patch("psutil.net_connections")
+    def test_check_port_listening_true_when_listen_found(
+        self, mock_net_connections, tmp_path
+    ):
+        """Port powinien być wykryty jako nasłuchujący."""
+        monitor = ProcessMonitor(tmp_path)
+        conn = SimpleNamespace(status="LISTEN", laddr=("127.0.0.1", 8080))
+        mock_net_connections.return_value = [conn]
+        assert monitor.check_port_listening(8080) is True
+
+    @patch("psutil.net_connections")
+    def test_check_port_listening_false_when_not_listening(
+        self, mock_net_connections, tmp_path
+    ):
+        """Brak LISTEN na porcie powinien zwrócić False."""
+        monitor = ProcessMonitor(tmp_path)
+        conn = SimpleNamespace(status="ESTABLISHED", laddr=("127.0.0.1", 8080))
+        mock_net_connections.return_value = [conn]
+        assert monitor.check_port_listening(8080) is False
+
+    @patch("psutil.net_connections", side_effect=PermissionError())
+    @patch("socket.socket")
+    def test_check_port_listening_permission_fallback_free_port(
+        self, mock_socket, _mock_net_connections, tmp_path
+    ):
+        """Fallback socket: bind succeeds => port wolny => False."""
+        monitor = ProcessMonitor(tmp_path)
+        sock_ctx = mock_socket.return_value.__enter__.return_value
+        sock_ctx.bind.return_value = None
+        assert monitor.check_port_listening(8081) is False
+
+    @patch("psutil.net_connections", side_effect=PermissionError())
+    @patch("socket.socket")
+    def test_check_port_listening_permission_fallback_busy_port(
+        self, mock_socket, _mock_net_connections, tmp_path
+    ):
+        """Fallback socket: bind raises OSError => port zajęty => True."""
+        monitor = ProcessMonitor(tmp_path)
+        sock_ctx = mock_socket.return_value.__enter__.return_value
+        sock_ctx.bind.side_effect = OSError("busy")
+        assert monitor.check_port_listening(8082) is True
+
+    @patch("psutil.net_connections", side_effect=RuntimeError("boom"))
+    def test_check_port_listening_generic_exception_returns_false(
+        self, _mock_net_connections, tmp_path
+    ):
+        """Nieoczekiwany wyjątek przy sprawdzaniu portu => False."""
+        monitor = ProcessMonitor(tmp_path)
+        assert monitor.check_port_listening(8083) is False

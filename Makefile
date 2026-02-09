@@ -75,25 +75,41 @@ NEW_CODE_COVERAGE_HTML ?= test-results/sonar/htmlcov-new-code
 NEW_CODE_PYTEST_MARK_EXPR ?= not requires_docker and not requires_docker_compose
 NEW_CODE_CHANGED_LINES_MIN ?= 80
 NEW_CODE_DIFF_BASE ?= origin/main
+NEW_CODE_AUTO_INCLUDE_CHANGED ?= 1
 
 test-light-coverage:
 	@mkdir -p test-results/sonar
 	@PYTEST_BIN="pytest"; \
 	if [ -x "$(VENV)/bin/pytest" ]; then PYTEST_BIN="$(VENV)/bin/pytest"; fi; \
-	NEW_CODE_TESTS=$$(grep -vE '^\s*(#|$$)' "$(NEW_CODE_TEST_GROUP)"); \
-	if [ -z "$$NEW_CODE_TESTS" ]; then \
-		echo "❌ Brak testów w $(NEW_CODE_TEST_GROUP)"; \
-		exit 1; \
-	fi; \
-	TESTS_TO_RUN="$$NEW_CODE_TESTS"; \
-	if [ "$(NEW_CODE_INCLUDE_BASELINE)" = "1" ]; then \
-		BASELINE_TESTS=$$(grep -vE '^\s*(#|$$)' "$(NEW_CODE_BASELINE_GROUP)"); \
-		if [ -z "$$BASELINE_TESTS" ]; then \
-			echo "❌ Brak testów w $(NEW_CODE_BASELINE_GROUP)"; \
+	TESTS_TO_RUN=""; \
+	if [ "$(NEW_CODE_AUTO_INCLUDE_CHANGED)" = "1" ]; then \
+		TESTS_TO_RUN=$$(python3 scripts/resolve_sonar_new_code_tests.py \
+			--baseline-group "$(NEW_CODE_BASELINE_GROUP)" \
+			--new-code-group "$(NEW_CODE_TEST_GROUP)" \
+			--include-baseline "$(NEW_CODE_INCLUDE_BASELINE)" \
+			--diff-base "$(NEW_CODE_DIFF_BASE)"); \
+	else \
+		NEW_CODE_TESTS=$$(grep -vE '^\s*(#|$$)' "$(NEW_CODE_TEST_GROUP)"); \
+		if [ -z "$$NEW_CODE_TESTS" ]; then \
+			echo "❌ Brak testów w $(NEW_CODE_TEST_GROUP)"; \
 			exit 1; \
 		fi; \
-		TESTS_TO_RUN="$$BASELINE_TESTS $$NEW_CODE_TESTS"; \
+		TESTS_TO_RUN="$$NEW_CODE_TESTS"; \
+		if [ "$(NEW_CODE_INCLUDE_BASELINE)" = "1" ]; then \
+			BASELINE_TESTS=$$(grep -vE '^\s*(#|$$)' "$(NEW_CODE_BASELINE_GROUP)"); \
+			if [ -z "$$BASELINE_TESTS" ]; then \
+				echo "❌ Brak testów w $(NEW_CODE_BASELINE_GROUP)"; \
+				exit 1; \
+			fi; \
+			TESTS_TO_RUN="$$BASELINE_TESTS $$NEW_CODE_TESTS"; \
+		fi; \
 	fi; \
+	if [ -z "$$TESTS_TO_RUN" ]; then \
+		echo "❌ Resolver nie zwrócił testów do uruchomienia"; \
+		exit 1; \
+	fi; \
+	echo "ℹ️ Final test list for test-light-coverage:"; \
+	printf '  %s\n' $$TESTS_TO_RUN; \
 	$$PYTEST_BIN -n 4 $$TESTS_TO_RUN \
 		-m "$(NEW_CODE_PYTEST_MARK_EXPR)" \
 		--cov=$(NEW_CODE_COV_TARGET) \

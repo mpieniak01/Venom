@@ -6,6 +6,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.helpers.url_fixtures import MOCK_HTTP, http_url
 from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.main import app
 
@@ -14,7 +15,7 @@ class DummyRuntime:
     def __init__(self, provider: str = "ollama", model_name: str | None = "model-x"):
         self.provider = provider
         self.model_name = model_name
-        self.endpoint = "http://localhost:1234"
+        self.endpoint = http_url("localhost", 1234)
         self.config_hash = "cfg"
         self.runtime_id = "rid"
 
@@ -51,7 +52,7 @@ class ErrorStreamResponse:
         return False
 
     def raise_for_status(self):
-        request = httpx.Request("POST", "http://localhost")
+        request = httpx.Request("POST", MOCK_HTTP)
         response = httpx.Response(502, request=request, text="bad gateway")
         raise httpx.HTTPStatusError("bad", request=request, response=response)
 
@@ -165,6 +166,31 @@ def test_build_preview_messages_and_payload(monkeypatch):
     assert payload["temperature"] == pytest.approx(0.3, abs=1e-12)
 
 
+def test_build_llm_http_error_and_stream_headers():
+    request = httpx.Request("POST", MOCK_HTTP)
+    response = httpx.Response(502, request=request, text="upstream error")
+    exc = httpx.HTTPStatusError("bad gateway", request=request, response=response)
+
+    error_message, error_details, error_payload = (
+        llm_simple_routes._build_llm_http_error(exc, DummyRuntime(), "model-x")
+    )
+    headers = llm_simple_routes._build_streaming_headers("rid", "sid")
+
+    assert "LLM HTTP 502" in error_message
+    assert error_details["status_code"] == 502
+    assert error_payload["code"] == "llm_http_error"
+    assert headers["X-Request-Id"] == "rid"
+    assert headers["X-Session-Id"] == "sid"
+
+
+@pytest.mark.asyncio
+async def test_read_http_error_response_text_returns_body():
+    request = httpx.Request("POST", MOCK_HTTP)
+    response = httpx.Response(502, request=request, content=b"upstream error")
+    text = await llm_simple_routes._read_http_error_response_text(response)
+    assert "upstream error" in text
+
+
 def test_trim_user_content_for_runtime_adds_trace_step(monkeypatch):
     monkeypatch.setattr(llm_simple_routes.SETTINGS, "VLLM_MAX_MODEL_LEN", 64)
     captured = {"steps": []}
@@ -267,7 +293,7 @@ def test_stream_simple_chat_http_status_error_emits_error_event(monkeypatch):
     monkeypatch.setattr(
         llm_simple_routes,
         "_build_chat_completions_url",
-        lambda _rt: "http://localhost/v1/chat/completions",
+        lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
     monkeypatch.setattr("httpx.AsyncClient", DummyClientHttpStatus)
     client = TestClient(app)
@@ -292,7 +318,7 @@ def test_stream_simple_chat_connection_error_emits_error_event(monkeypatch):
     monkeypatch.setattr(
         llm_simple_routes,
         "_build_chat_completions_url",
-        lambda _rt: "http://localhost/v1/chat/completions",
+        lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
     monkeypatch.setattr("httpx.AsyncClient", DummyClientConnectionError)
     client = TestClient(app)
@@ -317,7 +343,7 @@ def test_stream_simple_chat_internal_error_emits_error_event(monkeypatch):
     monkeypatch.setattr(
         llm_simple_routes,
         "_build_chat_completions_url",
-        lambda _rt: "http://localhost/v1/chat/completions",
+        lambda _rt: http_url("localhost", path="/v1/chat/completions"),
     )
     monkeypatch.setattr("httpx.AsyncClient", DummyClientInternalError)
     client = TestClient(app)

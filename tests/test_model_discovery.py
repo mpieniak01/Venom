@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from venom_core.core.model_registry_clients import (
     HuggingFaceClient,
     OllamaClient,
+    _extract_ollama_description,
+    _extract_ollama_model_name,
     _normalize_hf_papers_month,
     _parse_hf_papers_html,
 )
@@ -341,3 +343,23 @@ def test_api_search_validation():
     client = TestClient(app)
     response = client.get("/api/v1/models/search?query=a&provider=huggingface")
     assert response.status_code == 422
+
+
+def test_extract_ollama_model_name_and_description_helpers():
+    class _Anchor:
+        def __init__(self, text: str):
+            self._text = text
+
+        def find(self, _name: str):
+            return None
+
+        def get_text(self, _sep: str, strip: bool = False):
+            assert strip
+            return self._text
+
+    assert _extract_ollama_model_name("/library/llama3") == "llama3"
+    assert _extract_ollama_model_name("/docs/llama3") is None
+    assert _extract_ollama_model_name("/library/") is None
+
+    anchor = _Anchor("llama3 The model description")
+    assert _extract_ollama_description(anchor, "llama3") == "The model description"

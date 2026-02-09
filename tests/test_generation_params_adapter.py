@@ -105,6 +105,10 @@ class TestGenerationParamsAdapter:
         assert GenerationParamsAdapter._detect_provider("OpenAI") == "openai"
         assert GenerationParamsAdapter._detect_provider("azure-openai") == "openai"
 
+    def test_normalize_provider_wrapper(self):
+        """Test publicznego wrappera normalize_provider."""
+        assert GenerationParamsAdapter.normalize_provider("VLLM") == "vllm"
+
     def test_merge_with_defaults_no_user_params(self):
         """Test łączenia z domyślnymi gdy brak parametrów użytkownika."""
         defaults = {"temperature": 0.7, "max_tokens": 2048}

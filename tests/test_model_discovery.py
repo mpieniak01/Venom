@@ -1,3 +1,5 @@
+import html
+import json
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,6 +9,7 @@ from fastapi.testclient import TestClient
 from venom_core.core.model_registry_clients import (
     HuggingFaceClient,
     OllamaClient,
+    _normalize_hf_papers_month,
     _parse_hf_papers_html,
 )
 from venom_core.main import app
@@ -165,6 +168,67 @@ async def test_hf_fetch_papers_month_rejects_invalid_month_for_url_path():
 
 def test_parse_hf_papers_html_returns_empty_when_section_missing():
     assert _parse_hf_papers_html("<html></html>", limit=3) == []
+
+
+def test_normalize_hf_papers_month_rejects_invalid_calendar_month():
+    normalized = _normalize_hf_papers_month("2025-13")
+    assert re.fullmatch(r"\d{4}-\d{2}", normalized)
+    assert normalized != "2025-13"
+
+
+def test_parse_hf_papers_html_returns_empty_when_props_json_invalid():
+    payload = (
+        '<div data-target="DailyPapers" data-props="'
+        + html.escape("{bad-json", quote=True)
+        + '"></div>'
+    )
+    assert _parse_hf_papers_html(payload, limit=3) == []
+
+
+def test_parse_hf_papers_html_returns_empty_when_data_not_dict():
+    payload = (
+        '<div data-target="DailyPapers" data-props="'
+        + html.escape('["x"]', quote=True)
+        + '"></div>'
+    )
+    assert _parse_hf_papers_html(payload, limit=3) == []
+
+
+def test_parse_hf_papers_html_returns_empty_when_daily_papers_not_list():
+    payload = (
+        '<div data-target="DailyPapers" data-props="'
+        + html.escape(json.dumps({"dailyPapers": {"paper": {}}}), quote=True)
+        + '"></div>'
+    )
+    assert _parse_hf_papers_html(payload, limit=3) == []
+
+
+def test_parse_hf_papers_html_parses_expected_fields():
+    raw = json.dumps(
+        {
+            "dailyPapers": [
+                {
+                    "title": "Entry title",
+                    "summary": "Entry summary",
+                    "publishedAt": "2025-01-02",
+                    "paper": {
+                        "id": "paper-1",
+                        "authors": [{"name": "Alice"}, {"name": ""}, {}],
+                    },
+                }
+            ]
+        }
+    )
+    payload = (
+        '<div data-target="DailyPapers" data-props="'
+        + html.escape(raw, quote=True)
+        + '"></div>'
+    )
+    parsed = _parse_hf_papers_html(payload, limit=1)
+    assert len(parsed) == 1
+    assert parsed[0]["url"] == "https://huggingface.co/papers/paper-1"
+    assert parsed[0]["authors"] == ["Alice"]
+    assert parsed[0]["title"] == "Entry title"
 
 
 def test_api_search_endpoint():

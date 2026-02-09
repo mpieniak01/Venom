@@ -9,6 +9,7 @@ from venom_core.core.orchestrator.orchestrator_events import build_error_envelop
 from venom_core.core.orchestrator.orchestrator_submit import should_use_fast_path
 from venom_core.core.orchestrator.task_manager import TaskManager
 from venom_core.core.orchestrator.task_pipeline.context_builder import (
+    ContextBuilder,
     format_extra_context,
 )
 
@@ -170,3 +171,26 @@ def test_should_use_fast_path():
     assert should_use_fast_path(request) is True
     request = TaskRequest(content="", store_knowledge=True)
     assert should_use_fast_path(request) is False
+
+
+def test_context_builder_perf_prompt_uses_default_keywords_when_invalid_type():
+    class DummyIntentManager:
+        PERF_TEST_KEYWORDS = "not-a-list"
+
+    class DummyOrch:
+        intent_manager = DummyIntentManager()
+
+    builder = ContextBuilder(DummyOrch())
+    assert builder.is_perf_test_prompt("Latency benchmark run") is True
+
+
+def test_context_builder_perf_prompt_uses_custom_keywords():
+    class DummyIntentManager:
+        PERF_TEST_KEYWORDS = ["wydajnosc", "pomiar"]
+
+    class DummyOrch:
+        intent_manager = DummyIntentManager()
+
+    builder = ContextBuilder(DummyOrch())
+    assert builder.is_perf_test_prompt("To jest pomiar obciążenia") is True
+    assert builder.is_perf_test_prompt("Zwykłe zadanie") is False

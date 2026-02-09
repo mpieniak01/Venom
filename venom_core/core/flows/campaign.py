@@ -85,23 +85,7 @@ class CampaignFlow(BaseFlow):
             }
 
         logger.info("🚀 Rozpoczynam Tryb Kampanii (Autonomous Campaign Mode)")
-
-        # Utwórz zadanie trackingowe
-        task = self.state_manager.create_task(
-            content="Autonomiczna Kampania - realizacja roadmapy"
-        )
-        task_id = task.id
-
-        self.state_manager.add_log(
-            task_id, "🚀 CAMPAIGN MODE: Rozpoczęcie autonomicznej realizacji celów"
-        )
-
-        await self._broadcast_event(
-            event_type="CAMPAIGN_STARTED",
-            message="Rozpoczęto Tryb Kampanii",
-            agent="Executive",
-            data={"task_id": str(task_id), "max_iterations": max_iterations},
-        )
+        task_id = await self._start_campaign(max_iterations)
 
         iteration = 0
         tasks_completed = 0
@@ -110,145 +94,43 @@ class CampaignFlow(BaseFlow):
         try:
             while iteration < max_iterations:
                 iteration += 1
-
                 self.state_manager.add_log(
                     task_id, f"📍 Iteracja {iteration}/{max_iterations}"
                 )
-
-                # 1. Pobierz kolejne zadanie
                 next_task = goal_store.get_next_task()
-
                 if not next_task:
-                    # Sprawdź czy obecny milestone jest ukończony
-                    current_milestone = goal_store.get_next_milestone()
-                    if not current_milestone:
-                        self.state_manager.add_log(
-                            task_id, "✅ Brak kolejnych zadań - roadmapa ukończona!"
-                        )
-                        break
-
-                    # Milestone ukończony, przejdź do kolejnego
-                    if current_milestone.get_progress() >= 100:
-                        goal_store.update_progress(
-                            current_milestone.goal_id, status=GoalStatus.COMPLETED
-                        )
-                        self.state_manager.add_log(
-                            task_id,
-                            f"✅ Milestone ukończony: {current_milestone.title}",
-                        )
-
-                        # Sprawdź kolejny milestone
-                        next_milestone = goal_store.get_next_milestone()
-                        if not next_milestone:
-                            self.state_manager.add_log(
-                                task_id,
-                                "🎉 Wszystkie Milestones ukończone! Kampania zakończona.",
-                            )
-                            break
-
-                        continue
-                    else:
-                        self.state_manager.add_log(
-                            task_id, "⚠️ Brak zadań w obecnym Milestone"
-                        )
-                        break
-
-                # 2. Oznacz zadanie jako w trakcie
-                goal_store.update_progress(
-                    next_task.goal_id, status=GoalStatus.IN_PROGRESS
-                )
-                self.state_manager.add_log(
-                    task_id, f"🎯 Rozpoczynam: {next_task.title}"
-                )
-
-                await self._broadcast_event(
-                    event_type="CAMPAIGN_TASK_STARTED",
-                    message=f"Kampania: rozpoczęto zadanie {next_task.title}",
-                    agent="Executive",
-                    data={
-                        "task_id": str(task_id),
-                        "goal_id": str(next_task.goal_id),
-                        "iteration": iteration,
-                    },
-                )
-
-                # 3. Wykonaj zadanie - utwórz sub-task w orchestratorze
-                task_request = TaskRequest(content=next_task.description)
-                task_response = await self.orchestrator_submit_task(task_request)
-
-                # Poczekaj na ukończenie sub-task (z timeout)
-                wait_time = 0
-                max_wait = 300  # 5 minut
-                while wait_time < max_wait:
-                    sub_task = self.state_manager.get_task(task_response.task_id)
-                    if sub_task is None:
-                        break
-                    if sub_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
-                        break
-                    await asyncio.sleep(5)
-                    wait_time += 5
-
-                sub_task = self.state_manager.get_task(task_response.task_id)
-                if sub_task is None:
-                    error_msg = (
-                        "❌ Nie znaleziono sub-task w StateManager "
-                        f"(task_id={task_response.task_id})"
+                    should_continue = self._handle_missing_campaign_task(
+                        goal_store, task_id
                     )
-                    logger.error(error_msg)
-                    self.state_manager.add_log(task_id, error_msg)
-                    goal_store.update_progress(
-                        next_task.goal_id, status=GoalStatus.BLOCKED
+                    if should_continue:
+                        continue
+                    break
+
+                await self._mark_campaign_task_started(
+                    task_id, iteration, next_task, goal_store
+                )
+                task_response = await self.orchestrator_submit_task(
+                    TaskRequest(content=next_task.description)
+                )
+                sub_task = await self._wait_for_sub_task(task_response.task_id)
+                if sub_task is None:
+                    self._mark_missing_subtask(
+                        task_id, task_response.task_id, next_task, goal_store
                     )
                     tasks_failed += 1
                     break
 
-                # 4. Zaktualizuj postęp w GoalStore
-                if sub_task.status == TaskStatus.COMPLETED:
-                    goal_store.update_progress(
-                        next_task.goal_id,
-                        status=GoalStatus.COMPLETED,
-                        task_id=sub_task.id,
-                    )
+                was_success = await self._finalize_campaign_task(
+                    task_id, next_task, sub_task, goal_store
+                )
+                if was_success:
                     tasks_completed += 1
-
-                    self.state_manager.add_log(
-                        task_id, f"✅ Ukończono: {next_task.title}"
-                    )
-
-                    await self._broadcast_event(
-                        event_type="CAMPAIGN_TASK_COMPLETED",
-                        message=f"Zadanie ukończone: {next_task.title}",
-                        agent="Executive",
-                        data={"goal_id": str(next_task.goal_id)},
-                    )
                 else:
-                    goal_store.update_progress(
-                        next_task.goal_id, status=GoalStatus.BLOCKED
-                    )
                     tasks_failed += 1
 
-                    self.state_manager.add_log(
-                        task_id, f"❌ Nie udało się: {next_task.title}"
-                    )
+                if self._should_pause_for_milestone(goal_store, task_id):
+                    break
 
-                    await self._broadcast_event(
-                        event_type="CAMPAIGN_TASK_FAILED",
-                        message=f"Zadanie nie powiodło się: {next_task.title}",
-                        agent="Executive",
-                        data={"goal_id": str(next_task.goal_id)},
-                    )
-
-                # 5. Human-in-the-loop checkpoint - co milestone
-                current_milestone = goal_store.get_next_milestone()
-                if current_milestone and current_milestone.get_progress() >= 100:
-                    self.state_manager.add_log(
-                        task_id,
-                        f"🏁 Milestone ukończony: {current_milestone.title}. "
-                        "Pauza dla akceptacji użytkownika.",
-                    )
-                    break  # Zatrzymaj się i czekaj na akceptację
-
-            # Podsumowanie
             summary = f"""
 === KAMPANIA ZAKOŃCZONA ===
 
@@ -300,3 +182,131 @@ Status roadmapy:
                 "iterations": iteration,
                 "tasks_completed": tasks_completed,
             }
+
+    async def _start_campaign(self, max_iterations: int) -> UUID:
+        task = self.state_manager.create_task(
+            content="Autonomiczna Kampania - realizacja roadmapy"
+        )
+        task_id = task.id
+        self.state_manager.add_log(
+            task_id, "🚀 CAMPAIGN MODE: Rozpoczęcie autonomicznej realizacji celów"
+        )
+        await self._broadcast_event(
+            event_type="CAMPAIGN_STARTED",
+            message="Rozpoczęto Tryb Kampanii",
+            agent="Executive",
+            data={"task_id": str(task_id), "max_iterations": max_iterations},
+        )
+        return task_id
+
+    def _handle_missing_campaign_task(
+        self, goal_store: GoalStoreLike, task_id: UUID
+    ) -> bool:
+        current_milestone = goal_store.get_next_milestone()
+        if not current_milestone:
+            self.state_manager.add_log(
+                task_id, "✅ Brak kolejnych zadań - roadmapa ukończona!"
+            )
+            return False
+        if current_milestone.get_progress() < 100:
+            self.state_manager.add_log(task_id, "⚠️ Brak zadań w obecnym Milestone")
+            return False
+
+        goal_store.update_progress(
+            current_milestone.goal_id, status=GoalStatus.COMPLETED
+        )
+        self.state_manager.add_log(
+            task_id, f"✅ Milestone ukończony: {current_milestone.title}"
+        )
+        next_milestone = goal_store.get_next_milestone()
+        if not next_milestone:
+            self.state_manager.add_log(
+                task_id, "🎉 Wszystkie Milestones ukończone! Kampania zakończona."
+            )
+            return False
+        return True
+
+    async def _mark_campaign_task_started(
+        self,
+        task_id: UUID,
+        iteration: int,
+        next_task: GoalLike,
+        goal_store: GoalStoreLike,
+    ) -> None:
+        goal_store.update_progress(next_task.goal_id, status=GoalStatus.IN_PROGRESS)
+        self.state_manager.add_log(task_id, f"🎯 Rozpoczynam: {next_task.title}")
+        await self._broadcast_event(
+            event_type="CAMPAIGN_TASK_STARTED",
+            message=f"Kampania: rozpoczęto zadanie {next_task.title}",
+            agent="Executive",
+            data={
+                "task_id": str(task_id),
+                "goal_id": str(next_task.goal_id),
+                "iteration": iteration,
+            },
+        )
+
+    async def _wait_for_sub_task(self, sub_task_id: UUID):
+        wait_time = 0
+        max_wait = 300
+        while wait_time < max_wait:
+            sub_task = self.state_manager.get_task(sub_task_id)
+            if sub_task is None or sub_task.status in [
+                TaskStatus.COMPLETED,
+                TaskStatus.FAILED,
+            ]:
+                break
+            await asyncio.sleep(5)
+            wait_time += 5
+        return self.state_manager.get_task(sub_task_id)
+
+    def _mark_missing_subtask(
+        self,
+        task_id: UUID,
+        sub_task_id: UUID,
+        next_task: GoalLike,
+        goal_store: GoalStoreLike,
+    ) -> None:
+        error_msg = f"❌ Nie znaleziono sub-task w StateManager (task_id={sub_task_id})"
+        logger.error(error_msg)
+        self.state_manager.add_log(task_id, error_msg)
+        goal_store.update_progress(next_task.goal_id, status=GoalStatus.BLOCKED)
+
+    async def _finalize_campaign_task(
+        self, task_id: UUID, next_task: GoalLike, sub_task, goal_store: GoalStoreLike
+    ) -> bool:
+        if sub_task.status == TaskStatus.COMPLETED:
+            goal_store.update_progress(
+                next_task.goal_id, status=GoalStatus.COMPLETED, task_id=sub_task.id
+            )
+            self.state_manager.add_log(task_id, f"✅ Ukończono: {next_task.title}")
+            await self._broadcast_event(
+                event_type="CAMPAIGN_TASK_COMPLETED",
+                message=f"Zadanie ukończone: {next_task.title}",
+                agent="Executive",
+                data={"goal_id": str(next_task.goal_id)},
+            )
+            return True
+
+        goal_store.update_progress(next_task.goal_id, status=GoalStatus.BLOCKED)
+        self.state_manager.add_log(task_id, f"❌ Nie udało się: {next_task.title}")
+        await self._broadcast_event(
+            event_type="CAMPAIGN_TASK_FAILED",
+            message=f"Zadanie nie powiodło się: {next_task.title}",
+            agent="Executive",
+            data={"goal_id": str(next_task.goal_id)},
+        )
+        return False
+
+    def _should_pause_for_milestone(
+        self, goal_store: GoalStoreLike, task_id: UUID
+    ) -> bool:
+        current_milestone = goal_store.get_next_milestone()
+        if not current_milestone or current_milestone.get_progress() < 100:
+            return False
+        self.state_manager.add_log(
+            task_id,
+            f"🏁 Milestone ukończony: {current_milestone.title}. "
+            "Pauza dla akceptacji użytkownika.",
+        )
+        return True

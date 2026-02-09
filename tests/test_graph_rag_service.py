@@ -271,3 +271,39 @@ def test_find_communities_with_cache(graph_rag_service):
     # Wymuś przeliczenie
     communities3 = graph_rag_service.find_communities(refresh_cache=True)
     assert communities3 is not None
+
+
+def test_extract_json_block_variants(graph_rag_service):
+    fenced_json = '```json\n{"k": 1}\n```'
+    fenced_plain = '```\n{"k": 2}\n```'
+    raw_json = '{"k": 3}'
+
+    assert graph_rag_service._extract_json_block(fenced_json) == '{"k": 1}'
+    assert graph_rag_service._extract_json_block(fenced_plain) == '{"k": 2}'
+    assert graph_rag_service._extract_json_block(raw_json) == raw_json
+
+
+def test_resolve_edge_bidirectional(graph_rag_service):
+    graph_rag_service.add_entity("a", "Type")
+    graph_rag_service.add_entity("b", "Type")
+    graph_rag_service.add_relationship("a", "b", "RELATED_TO")
+
+    assert graph_rag_service._resolve_edge("a", "b") == ("a", "b", "RELATED_TO")
+    assert graph_rag_service._resolve_edge("b", "a") == ("a", "b", "RELATED_TO")
+    assert graph_rag_service._resolve_edge("a", "missing") is None
+
+
+@pytest.mark.asyncio
+async def test_local_search_with_results_returns_context(graph_rag_service):
+    graph_rag_service.add_entity("python", "Language", properties={"name": "Python"})
+    graph_rag_service.add_entity("guido", "Person", properties={"name": "Guido"})
+    graph_rag_service.add_relationship("python", "guido", "CREATED_BY")
+
+    graph_rag_service.vector_store.search = Mock(
+        return_value=[{"metadata": {"entity_id": "python"}}]
+    )
+    result = await graph_rag_service.local_search("python")
+
+    assert "Znalezione encje" in result
+    assert "Python" in result
+    assert "CREATED_BY" in result

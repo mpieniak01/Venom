@@ -28,6 +28,64 @@ router = APIRouter(prefix="/api/v1", tags=["models"])
 MODEL_MANAGER_UNAVAILABLE_DETAIL = "ModelManager nie jest dostępny"
 
 
+def _ensure_model_exists(models: list[dict], model_name: str) -> None:
+    if any(m["name"] == model_name for m in models):
+        return
+    raise HTTPException(status_code=404, detail=f"Model {model_name} nie znaleziony")
+
+
+def _ensure_runtime_provider_match(
+    *,
+    model_name: str,
+    models: list[dict],
+    active_provider: str,
+) -> str | None:
+    model_provider = resolve_model_provider(models, model_name)
+    if active_provider in {"ollama", "vllm"} and model_provider:
+        if model_provider != active_provider:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Model {model_name} należy do {model_provider}, "
+                    f"ale aktywny runtime to {active_provider}"
+                ),
+            )
+    return model_provider
+
+
+def _ensure_registered_version(model_manager, model_name: str) -> None:
+    if model_name in model_manager.versions:
+        return
+    model_manager.register_version(version_id=model_name, base_model=model_name)
+
+
+def _update_runtime_settings(model_name: str) -> None:
+    try:
+        SETTINGS.LLM_MODEL_NAME = model_name
+        SETTINGS.HYBRID_LOCAL_MODEL = model_name
+        SETTINGS.LLM_SERVICE_TYPE = "local"
+    except Exception:
+        logger.warning("Nie udało się zaktualizować SETTINGS w pamięci.")
+
+
+def _update_config_for_active_model(*, active_provider: str, model_name: str) -> None:
+    config_manager.update_config(
+        {
+            "LLM_MODEL_NAME": model_name,
+            "HYBRID_LOCAL_MODEL": model_name,
+            "LLM_SERVICE_TYPE": "local",
+        }
+    )
+    config_hash = compute_llm_config_hash(
+        active_provider, SETTINGS.LLM_LOCAL_ENDPOINT, model_name
+    )
+    config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
+    try:
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+    except Exception:
+        logger.warning("Nie udało się zaktualizować LLM_CONFIG_HASH w SETTINGS.")
+
+
 def _resolve_provider_bucket(models: List[dict]) -> Dict[str, List[dict]]:
     provider_buckets: Dict[str, List[dict]] = {}
 
@@ -169,57 +227,25 @@ async def switch_model(request: ModelSwitchRequest):
 
     try:
         models = await model_manager.list_local_models()
-        model_exists = any(m["name"] == request.name for m in models)
-        if not model_exists:
-            raise HTTPException(
-                status_code=404, detail=f"Model {request.name} nie znaleziony"
-            )
+        _ensure_model_exists(models, request.name)
 
         runtime_info = get_active_llm_runtime()
         active_provider = runtime_info.provider
-        model_provider = resolve_model_provider(models, request.name)
-        if active_provider in {"ollama", "vllm"} and model_provider:
-            if model_provider != active_provider:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Model {request.name} należy do {model_provider}, "
-                        f"ale aktywny runtime to {active_provider}"
-                    ),
-                )
-
-        if request.name not in model_manager.versions:
-            model_manager.register_version(
-                version_id=request.name,
-                base_model=request.name,
-            )
+        model_provider = _ensure_runtime_provider_match(
+            model_name=request.name,
+            models=models,
+            active_provider=active_provider,
+        )
+        _ensure_registered_version(model_manager, request.name)
 
         success = model_manager.activate_version(request.name)
 
         if success:
-            try:
-                SETTINGS.LLM_MODEL_NAME = request.name
-                SETTINGS.HYBRID_LOCAL_MODEL = request.name
-                SETTINGS.LLM_SERVICE_TYPE = "local"
-            except Exception:
-                logger.warning("Nie udało się zaktualizować SETTINGS w pamięci.")
-            config_manager.update_config(
-                {
-                    "LLM_MODEL_NAME": request.name,
-                    "HYBRID_LOCAL_MODEL": request.name,
-                    "LLM_SERVICE_TYPE": "local",
-                }
+            _update_runtime_settings(request.name)
+            _update_config_for_active_model(
+                active_provider=active_provider,
+                model_name=request.name,
             )
-            config_hash = compute_llm_config_hash(
-                active_provider, SETTINGS.LLM_LOCAL_ENDPOINT, request.name
-            )
-            config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
-            try:
-                SETTINGS.LLM_CONFIG_HASH = config_hash
-            except Exception:
-                logger.warning(
-                    "Nie udało się zaktualizować LLM_CONFIG_HASH w SETTINGS."
-                )
             if model_provider:
                 update_last_model(model_provider, request.name)
             return {

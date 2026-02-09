@@ -26,6 +26,51 @@ class IoTStatusResponse(BaseModel):
     message: Optional[str] = None
 
 
+def _iot_disabled_response() -> IoTStatusResponse:
+    return IoTStatusResponse(
+        connected=False,
+        message="IoT bridge jest wyłączony w konfiguracji.",
+    )
+
+
+def _iot_disconnected_response() -> IoTStatusResponse:
+    return IoTStatusResponse(
+        connected=False,
+        message="Brak połączenia z Rider-Pi.",
+    )
+
+
+def _iot_non_ssh_response() -> IoTStatusResponse:
+    return IoTStatusResponse(
+        connected=True,
+        message="Połączono z Rider-Pi, telemetria tylko w trybie SSH.",
+    )
+
+
+async def _read_cpu_temperature(hardware_bridge) -> Optional[str]:
+    try:
+        temp_value = await hardware_bridge.read_sensor("cpu_temp")
+        if temp_value is None:
+            return None
+        return f"{temp_value:.1f}°C"
+    except Exception as exc:
+        logger.warning("Nie udało się pobrać temperatury CPU Rider-Pi: %s", exc)
+        return None
+
+
+async def _read_bridge_command_metric(
+    hardware_bridge, command: str, warning_message: str
+) -> Optional[str]:
+    try:
+        result = await hardware_bridge.execute_command(command)
+        if result.get("return_code") != 0:
+            return None
+        return result.get("stdout", "").strip() or None
+    except Exception as exc:
+        logger.warning("%s: %s", warning_message, exc)
+        return None
+
+
 @router.get(
     "/iot/status",
     response_model=IoTStatusResponse,
@@ -36,52 +81,26 @@ async def get_iot_status():
     Zwraca podstawowy status Rider-Pi (IoT bridge).
     """
     if not SETTINGS.ENABLE_IOT_BRIDGE:
-        return IoTStatusResponse(
-            connected=False,
-            message="IoT bridge jest wyłączony w konfiguracji.",
-        )
+        return _iot_disabled_response()
 
     hardware_bridge = system_deps.get_hardware_bridge()
     if hardware_bridge is None or not getattr(hardware_bridge, "connected", False):
-        return IoTStatusResponse(
-            connected=False,
-            message="Brak połączenia z Rider-Pi.",
-        )
+        return _iot_disconnected_response()
 
     if getattr(hardware_bridge, "protocol", None) != "ssh":
-        return IoTStatusResponse(
-            connected=True,
-            message="Połączono z Rider-Pi, telemetria tylko w trybie SSH.",
-        )
+        return _iot_non_ssh_response()
 
-    cpu_temp = None
-    memory = None
-    disk = None
-
-    try:
-        temp_value = await hardware_bridge.read_sensor("cpu_temp")
-        if temp_value is not None:
-            cpu_temp = f"{temp_value:.1f}°C"
-    except Exception as exc:
-        logger.warning("Nie udało się pobrać temperatury CPU Rider-Pi: %s", exc)
-
-    try:
-        mem_result = await hardware_bridge.execute_command(
-            "free -m | awk 'NR==2{printf \"%s/%sMB\", $3, $2}'"
-        )
-        if mem_result.get("return_code") == 0:
-            memory = mem_result.get("stdout", "").strip() or None
-    except Exception as exc:
-        logger.warning("Nie udało się pobrać pamięci Rider-Pi: %s", exc)
-
-    try:
-        disk_result = await hardware_bridge.execute_command(
-            "df -h / | awk 'NR==2{print $3\"/\"$2}'"
-        )
-        if disk_result.get("return_code") == 0:
-            disk = disk_result.get("stdout", "").strip() or None
-    except Exception as exc:
-        logger.warning("Nie udało się pobrać dysku Rider-Pi: %s", exc)
+    cpu_temp = await _read_cpu_temperature(hardware_bridge)
+    memory = await _read_bridge_command_metric(
+        hardware_bridge,
+        "free -m | awk 'NR==2{printf \"%s/%sMB\", $3, $2}'",
+        "Nie udało się pobrać pamięci Rider-Pi",
+    )
+    disk = await _read_bridge_command_metric(
+        hardware_bridge,
+        "df -h / | awk 'NR==2{print $3\"/\"$2}'",
+        "Nie udało się pobrać dysku Rider-Pi",
+    )
 
     message = None
     if not any([cpu_temp, memory, disk]):

@@ -7,7 +7,11 @@ from typing import Annotated, Optional
 import aiofiles
 from semantic_kernel.functions import kernel_function
 
-from venom_core.execution.skills.base_skill import BaseSkill, async_safe_action
+from venom_core.execution.skills.base_skill import (
+    BaseSkill,
+    async_safe_action,
+    safe_action,
+)
 
 
 class FileSkill(BaseSkill):
@@ -87,6 +91,7 @@ class FileSkill(BaseSkill):
         name="list_files",
         description="Listuje pliki i katalogi w workspace. Może listować rekurencyjnie z konfigurowalną głębokością.",
     )
+    @safe_action
     def list_files(
         self,
         directory: Annotated[
@@ -99,103 +104,98 @@ class FileSkill(BaseSkill):
     ) -> str:
         """
         Listuje pliki i katalogi w podanym katalogu.
-
-        Uwaga: Ta metoda jest synchroniczna (os.walk), więc nie używa @async_safe_action.
-        Zamiast tego używamy wewnętrznego try/except lub (lepiej) synchronicznego @safe_action
-        jeśli zaimplementujemy go w BaseSkill (mamy safe_action).
-        W implementacji BaseSkill mamy safe_action dla metod nie-async.
         """
-        # Używamy manualnego try/except bo metoda jest synchroniczna,
-        # a safe_action w BaseSkill obsługuje to, ale tutaj dla pewności explicite wewnątrz,
-        # lub dodamy dekorator.
-        # DODAJEMY DEKORATOR sync z base_skill
-        from venom_core.execution.skills.base_skill import safe_action
+        safe_path = self.validate_path(directory)
+        if not safe_path.exists():
+            return f"Katalog '{directory}' nie istnieje"
+        if not safe_path.is_dir():
+            return f"'{directory}' nie jest katalogiem"
+        if recursive:
+            return self._list_files_recursive(directory, safe_path, max_depth)
+        return self._list_files_flat(directory, safe_path)
 
-        @safe_action
-        def _list_files_implementation(self, directory, recursive, max_depth):
-            safe_path = self.validate_path(directory)
+    def _list_files_recursive(
+        self, directory: str, safe_path: Path, max_depth: int
+    ) -> str:
+        items = [
+            f"Zawartość katalogu '{directory}' (rekurencyjnie, max {max_depth} poziomy):\n"
+        ]
+        skipped_files = 0
 
-            if not safe_path.exists():
-                return f"Katalog '{directory}' nie istnieje"
+        for root, dirs, files in os.walk(safe_path):
+            depth = self._get_relative_depth(root, safe_path)
+            if depth > max_depth:
+                dirs.clear()
+                continue
+            indent = "  " * depth
+            self._append_recursive_dirs(items, dirs, root, depth, max_depth)
+            if depth >= max_depth:
+                dirs.clear()
+            skipped_files += self._append_recursive_files(items, files, root, indent)
 
-            if not safe_path.is_dir():
-                return f"'{directory}' nie jest katalogiem"
+        if skipped_files > 0:
+            self.logger.warning(f"Pominięto {skipped_files} niedostępnych plików")
+        if len(items) == 1:
+            items.append("  (katalog pusty)")
+        self.logger.info(
+            f"Wylistowano {len(items) - 1} elementów w: {safe_path} (recursive=True)"
+        )
+        return "\n".join(items)
 
-            items = []
+    def _list_files_flat(self, directory: str, safe_path: Path) -> str:
+        items = []
+        for item in sorted(safe_path.iterdir()):
+            stat_result = item.stat()
+            item_type = "katalog" if item.is_dir() else "plik"
+            relative_path = item.relative_to(self.workspace_root)
+            size = str(stat_result.st_size) if item.is_file() else "-"
+            items.append(f"  [{item_type}] {relative_path} ({size} bajtów)")
 
-            if recursive:
-                # Listowanie rekurencyjne
-                items.append(
-                    f"Zawartość katalogu '{directory}' (rekurencyjnie, max {max_depth} poziomy):\n"
-                )
-                skipped_files = 0
+        if not items:
+            return f"Katalog '{directory}' jest pusty"
 
-                for root, dirs, files in os.walk(safe_path):
-                    try:
-                        depth = len(Path(root).relative_to(safe_path).parts)
-                    except ValueError:
-                        depth = 0
+        items.insert(0, f"Zawartość katalogu '{directory}':")
+        self.logger.info(
+            f"Wylistowano {len(items) - 1} elementów w: {safe_path} (recursive=False)"
+        )
+        return "\n".join(items)
 
-                    if depth > max_depth:
-                        dirs.clear()
-                        continue
+    def _get_relative_depth(self, root: str, safe_path: Path) -> int:
+        try:
+            return len(Path(root).relative_to(safe_path).parts)
+        except ValueError:
+            return 0
 
-                    indent = "  " * depth
+    def _append_recursive_dirs(
+        self,
+        items: list[str],
+        dirs: list[str],
+        root: str,
+        depth: int,
+        max_depth: int,
+    ) -> None:
+        if depth >= max_depth:
+            return
+        indent = "  " * depth
+        for dir_name in sorted(dirs):
+            dir_path = Path(root) / dir_name
+            rel_path = dir_path.relative_to(self.workspace_root)
+            items.append(f"{indent}[katalog] {rel_path}/")
 
-                    if depth < max_depth:
-                        for dir_name in sorted(dirs):
-                            dir_path = Path(root) / dir_name
-                            rel_path = dir_path.relative_to(self.workspace_root)
-                            items.append(f"{indent}[katalog] {rel_path}/")
-                    else:
-                        dirs.clear()
-
-                    for file_name in sorted(files):
-                        file_path = Path(root) / file_name
-                        try:
-                            stat_result = file_path.stat()
-                            size = str(stat_result.st_size)
-                            rel_path = file_path.relative_to(self.workspace_root)
-                            items.append(f"{indent}[plik] {rel_path} ({size} bajtów)")
-                        except Exception:
-                            skipped_files += 1
-                            continue
-
-                if skipped_files > 0:
-                    self.logger.warning(
-                        f"Pominięto {skipped_files} niedostępnych plików"
-                    )
-
-                if len(items) == 1:
-                    items.append("  (katalog pusty)")
-
-            else:
-                # Listowanie płaskie
-                for item in sorted(safe_path.iterdir()):
-                    stat_result = item.stat()
-                    item_type = "katalog" if item.is_dir() else "plik"
-                    relative_path = item.relative_to(self.workspace_root)
-                    size = str(stat_result.st_size) if item.is_file() else "-"
-                    items.append(f"  [{item_type}] {relative_path} ({size} bajtów)")
-
-                if not items:
-                    return f"Katalog '{directory}' jest pusty"
-
-                items.insert(0, f"Zawartość katalogu '{directory}':")
-
-            result = "\n".join(items)
-            self.logger.info(
-                f"Wylistowano {len(items) - 1} elementów w: {safe_path} (recursive={recursive})"
-            )
-            return result
-
-        # Wywołanie wewnętrznej funkcji (hack żeby użyć dekoratora na metodzie która już jest)
-        # albo po prostu użyć dekoratora na głównej metodzie.
-        # Użyjmy czystszego podejścia: dekorator na metodzie.
-        return _list_files_implementation(self, directory, recursive, max_depth)
-
-    # Poprawka: Metoda list_files musi być zrobiona inaczej w Pythonie,
-    # nie można wewnątrz metody definiować dekoratora na self.
+    def _append_recursive_files(
+        self, items: list[str], files: list[str], root: str, indent: str
+    ) -> int:
+        skipped = 0
+        for file_name in sorted(files):
+            file_path = Path(root) / file_name
+            try:
+                stat_result = file_path.stat()
+                size = str(stat_result.st_size)
+                rel_path = file_path.relative_to(self.workspace_root)
+                items.append(f"{indent}[plik] {rel_path} ({size} bajtów)")
+            except Exception:
+                skipped += 1
+        return skipped
 
     @kernel_function(
         name="file_exists",

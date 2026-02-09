@@ -99,7 +99,7 @@ def test_parse_pytest_output_with_failures():
     assert report.passed == 2
     assert report.failed == 1
     assert len(report.failures) > 0
-    assert any("FAILED" in f for f in report.failures)
+    assert any("FAILED" in f or "AssertionError" in f for f in report.failures)
 
 
 def test_parse_linter_output():

@@ -35,6 +35,34 @@ def set_dependencies(orchestrator, state_manager, request_tracer=None):
     _request_tracer = request_tracer
 
 
+def _clamp_feedback_limit(limit: int) -> int:
+    if limit < 1:
+        return 1
+    if limit > 500:
+        return 500
+    return limit
+
+
+def _validate_feedback_rating(rating: Optional[str]) -> None:
+    if rating and rating not in ("up", "down"):
+        raise HTTPException(status_code=400, detail="rating musi być 'up' albo 'down'")
+
+
+def _parse_feedback_line(line: str) -> Optional[dict]:
+    if not line.strip():
+        return None
+    try:
+        return json.loads(line)
+    except json.JSONDecodeError:
+        return None
+
+
+def _matches_feedback_rating(entry: dict, rating: Optional[str]) -> bool:
+    if rating is None:
+        return True
+    return entry.get("rating") == rating
+
+
 class FeedbackRequest(BaseModel):
     task_id: UUID
     rating: str = Field(description="up/down")
@@ -214,13 +242,8 @@ async def submit_feedback(payload: FeedbackRequest):
 )
 async def get_feedback_logs(limit: int = 50, rating: Optional[str] = None) -> dict:
     """Zwraca ostatnie wpisy feedbacku użytkownika."""
-    if limit < 1:
-        limit = 1
-    if limit > 500:
-        limit = 500
-
-    if rating and rating not in ("up", "down"):
-        raise HTTPException(status_code=400, detail="rating musi być 'up' albo 'down'")
+    limit = _clamp_feedback_limit(limit)
+    _validate_feedback_rating(rating)
 
     if not FEEDBACK_LOG_PATH.exists():
         return {"count": 0, "items": []}
@@ -230,13 +253,10 @@ async def get_feedback_logs(limit: int = 50, rating: Optional[str] = None) -> di
         async with aiofiles.open(FEEDBACK_LOG_PATH, "r", encoding="utf-8") as handle:
             lines = await handle.readlines()
         for line in reversed(lines):
-            if not line.strip():
+            entry = _parse_feedback_line(line)
+            if entry is None:
                 continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if rating and entry.get("rating") != rating:
+            if not _matches_feedback_rating(entry, rating):
                 continue
             items.append(entry)
             if len(items) >= limit:

@@ -737,6 +737,133 @@ PARAMETER top_k 40
                 if entry_name:
                     models.setdefault(f"ollama::{entry_name}", entry)
 
+    @staticmethod
+    def _is_valid_model_name(model_name: str) -> bool:
+        return bool(model_name and re.match(r"^[\w\-.:]+$", model_name))
+
+    async def _stream_pull_output(
+        self,
+        process: asyncio.subprocess.Process,
+        progress_callback: Optional[Callable[[str], None]],
+    ) -> None:
+        if not process.stdout:
+            return
+        while True:
+            line_bytes = await process.stdout.readline()
+            if not line_bytes:
+                break
+            line = line_bytes.decode(errors="replace").strip()
+            logger.info(f"Ollama: {line.strip()}")
+            if progress_callback:
+                progress_callback(line)
+
+    async def _read_process_stderr(self, process: asyncio.subprocess.Process) -> str:
+        if not process.stderr:
+            return ""
+        return (await process.stderr.read()).decode(errors="replace")
+
+    @staticmethod
+    def _resolve_models_mount() -> Path:
+        disk_mount = Path("/usr/lib/wsl/drivers")
+        if disk_mount.exists():
+            return disk_mount
+        return Path("/")
+
+    async def _collect_gpu_metrics(self) -> Dict[str, Any]:
+        gpu_metrics: Dict[str, Any] = {
+            "gpu_usage_percent": None,
+            "vram_usage_mb": 0,
+            "vram_total_mb": None,
+            "vram_usage_percent": None,
+        }
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu,memory.used,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                return gpu_metrics
+
+            usage_values: list[float] = []
+            used_values: list[float] = []
+            total_values: list[float] = []
+            for line in (
+                ln.strip() for ln in result.stdout.strip().split("\n") if ln.strip()
+            ):
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) < 3:
+                    continue
+                try:
+                    usage_values.append(float(parts[0]))
+                    used_values.append(float(parts[1]))
+                    total_values.append(float(parts[2]))
+                except ValueError:
+                    continue
+
+            if usage_values:
+                gpu_metrics["gpu_usage_percent"] = round(max(usage_values), 2)
+            if not used_values:
+                return gpu_metrics
+
+            max_index = used_values.index(max(used_values))
+            vram_usage_mb = round(float(used_values[max_index]), 2)
+            gpu_metrics["vram_usage_mb"] = vram_usage_mb
+            if max_index >= len(total_values):
+                return gpu_metrics
+            total_mb = total_values[max_index]
+            gpu_metrics["vram_total_mb"] = round(total_mb, 2)
+            if total_mb > 0:
+                gpu_metrics["vram_usage_percent"] = round(
+                    (vram_usage_mb / total_mb) * 100, 2
+                )
+            return gpu_metrics
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return gpu_metrics
+
+    async def _get_model_info_by_name(
+        self, model_name: str
+    ) -> Optional[Dict[str, Any]]:
+        models = await self.list_local_models()
+        return next((m for m in models if m["name"] == model_name), None)
+
+    async def _delete_ollama_model(self, model_name: str) -> bool:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["ollama", "rm", model_name],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            logger.info(f"✅ Model {model_name} usunięty z Ollama")
+            return True
+        logger.error(f"❌ Błąd podczas usuwania modelu: {result.stderr}")
+        return False
+
+    def _delete_local_model_file(self, model_info: Dict[str, Any]) -> bool:
+        model_path = Path(model_info["path"]).resolve()
+        # Sprawdź czy ścieżka jest wewnątrz models_dir (ochrona przed path traversal)
+        if not model_path.is_relative_to(self.models_dir):
+            logger.error(f"Nieprawidłowa ścieżka modelu: {model_path}")
+            return False
+
+        if not model_path.exists():
+            logger.error(f"Ścieżka modelu nie istnieje: {model_path}")
+            return False
+
+        if model_path.is_dir():
+            shutil.rmtree(model_path)
+        else:
+            model_path.unlink()
+        return True
+
     async def list_local_models(self) -> List[Dict[str, Any]]:
         """
         Skanuje katalog models/ i pobiera listę modeli z Ollama.
@@ -803,7 +930,7 @@ PARAMETER top_k 40
             return False
 
         # Walidacja nazwy modelu przed subprocess
-        if not model_name or not re.match(r"^[\w\-.:]+$", model_name):
+        if not self._is_valid_model_name(model_name):
             logger.error(f"Nieprawidłowa nazwa modelu: {model_name}")
             return False
 
@@ -823,26 +950,14 @@ PARAMETER top_k 40
 
             try:
                 # Streamuj output
-                if process.stdout:
-                    while True:
-                        line_bytes = await process.stdout.readline()
-                        if not line_bytes:
-                            break
-                        line = line_bytes.decode(errors="replace").strip()
-                        logger.info(f"Ollama: {line.strip()}")
-                        if progress_callback:
-                            progress_callback(line)
+                await self._stream_pull_output(process, progress_callback)
 
                 return_code = await process.wait()
                 success = return_code == 0
                 if success:
                     logger.info(f"✅ Model {model_name} pobrany pomyślnie")
                 else:
-                    stderr = (
-                        (await process.stderr.read()).decode(errors="replace")
-                        if process.stderr
-                        else ""
-                    )
+                    stderr = await self._read_process_stderr(process)
                     logger.error(f"❌ Błąd podczas pobierania modelu: {stderr}")
             finally:
                 # Upewnij się, że proces jest zamknięty nawet przy wyjątku
@@ -879,53 +994,24 @@ PARAMETER top_k 40
             return False
 
         # Walidacja nazwy modelu przed subprocess
-        if not model_name or not re.match(r"^[\w\-.:]+$", model_name):
+        if not self._is_valid_model_name(model_name):
             logger.error(f"Nieprawidłowa nazwa modelu: {model_name}")
             return False
 
         try:
-            # Sprawdź czy to model Ollama
-            models = await self.list_local_models()
-            model_info = next((m for m in models if m["name"] == model_name), None)
+            model_info = await self._get_model_info_by_name(model_name)
 
             if not model_info:
                 logger.error(f"Model {model_name} nie znaleziony")
                 return False
 
             if model_info["type"] == "ollama":
-                # Usuń z Ollama
-                result = await asyncio.to_thread(
-                    subprocess.run,
-                    ["ollama", "rm", model_name],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
+                return await self._delete_ollama_model(model_name)
 
-                if result.returncode == 0:
-                    logger.info(f"✅ Model {model_name} usunięty z Ollama")
-                    return True
-                else:
-                    logger.error(f"❌ Błąd podczas usuwania modelu: {result.stderr}")
-                    return False
-            else:
-                # Usuń lokalny plik/katalog
-                model_path = Path(model_info["path"]).resolve()
-                # Sprawdź czy ścieżka jest wewnątrz models_dir (ochrona przed path traversal)
-                if not model_path.is_relative_to(self.models_dir):
-                    logger.error(f"Nieprawidłowa ścieżka modelu: {model_path}")
-                    return False
-
-                if model_path.exists():
-                    if model_path.is_dir():
-                        shutil.rmtree(model_path)
-                    else:
-                        model_path.unlink()
-                    logger.info(f"✅ Model {model_name} usunięty z dysku")
-                    return True
-                else:
-                    logger.error(f"Ścieżka modelu nie istnieje: {model_path}")
-                    return False
+            if not self._delete_local_model_file(model_info):
+                return False
+            logger.info(f"✅ Model {model_name} usunięty z dysku")
+            return True
 
         except subprocess.TimeoutExpired:
             logger.error("Timeout podczas usuwania modelu z Ollama")
@@ -981,10 +1067,9 @@ PARAMETER top_k 40
         disk_usage_gb = self.get_models_size_gb()
         memory = psutil.virtual_memory()
         cpu_usage = psutil.cpu_percent(interval=0.1)
-        disk_mount = Path("/usr/lib/wsl/drivers")
-        if not disk_mount.exists():
-            disk_mount = Path("/")
+        disk_mount = self._resolve_models_mount()
         disk_system = psutil.disk_usage(str(disk_mount))
+        models_count = len(await self.list_local_models())
 
         metrics = {
             "disk_usage_gb": disk_usage_gb,
@@ -1000,64 +1085,8 @@ PARAMETER top_k 40
             "memory_total_gb": round(memory.total / BYTES_IN_GB, 2),
             "memory_used_gb": round(memory.used / BYTES_IN_GB, 2),
             "memory_usage_percent": round(memory.percent, 2),
-            "gpu_usage_percent": None,
-            "vram_usage_mb": 0,
-            "vram_total_mb": None,
-            "vram_usage_percent": None,
-            "models_count": len(await self.list_local_models()),
+            "models_count": models_count,
         }
-
-        # Próba pobrania informacji o GPU/VRAM z nvidia-smi (jeśli dostępne)
-        try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                [
-                    "nvidia-smi",
-                    "--query-gpu=utilization.gpu,memory.used,memory.total",
-                    "--format=csv,noheader,nounits",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                lines = [
-                    line.strip()
-                    for line in result.stdout.strip().split("\n")
-                    if line.strip()
-                ]
-
-                gpu_usage_values = []
-                vram_used_values = []
-                vram_total_values = []
-
-                for line in lines:
-                    parts = [p.strip() for p in line.split(",")]
-                    if len(parts) < 3:
-                        continue
-                    try:
-                        gpu_usage_values.append(float(parts[0]))
-                        vram_used_values.append(float(parts[1]))
-                        vram_total_values.append(float(parts[2]))
-                    except ValueError:
-                        continue
-
-                if gpu_usage_values:
-                    metrics["gpu_usage_percent"] = round(max(gpu_usage_values), 2)
-
-                if vram_used_values:
-                    max_index = vram_used_values.index(max(vram_used_values))
-                    vram_usage_mb = round(float(vram_used_values[max_index]), 2)
-                    metrics["vram_usage_mb"] = vram_usage_mb
-                    if max_index < len(vram_total_values):
-                        total_mb = vram_total_values[max_index]
-                        metrics["vram_total_mb"] = round(total_mb, 2)
-                        if total_mb > 0:
-                            metrics["vram_usage_percent"] = round(
-                                (vram_usage_mb / total_mb) * 100, 2
-                            )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            # nvidia-smi nie jest dostępne lub wystąpił błąd - ignorujemy
-            pass
+        metrics.update(await self._collect_gpu_metrics())
 
         return metrics

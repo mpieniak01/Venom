@@ -4,6 +4,7 @@ Ten moduł stanowi most między światem Semantic Kernel (nasze Skille)
 a światem AutoGen (Swarm Intelligence / Group Chat).
 """
 
+import inspect
 from typing import Any, Callable, Dict, List, Optional
 
 from venom_core.agents.base import BaseAgent
@@ -84,65 +85,57 @@ class VenomAgent(ConversableAgent):
 
         Mapuje skille dostępne w venom_agent.kernel jako funkcje callable przez AutoGen.
         """
-        if not hasattr(self.venom_agent, "kernel"):
-            logger.warning(
-                f"Agent {self.name} nie ma kernela - brak funkcji do zarejestrowania"
-            )
+        kernel = self._get_kernel_if_available()
+        if kernel is None:
             return
-
-        kernel = self.venom_agent.kernel
-
-        # Sprawdź czy kernel ma wymagane atrybuty
-        if not hasattr(kernel, "plugins"):
-            logger.warning(
-                f"Kernel agenta {self.name} nie ma atrybutu 'plugins' - pomijam rejestrację"
-            )
-            return
-
-        # Pobierz wszystkie pluginy z kernela
         try:
             plugins = kernel.plugins
             if not plugins:
                 logger.debug(f"Brak pluginów w kernelu dla agenta {self.name}")
                 return
-
-            # Dla każdego pluginu, zarejestruj jego funkcje
             for plugin_name, plugin in plugins.items():
                 logger.debug(f"Przetwarzam plugin: {plugin_name}")
-
-                # Pobierz funkcje z pluginu używając bezpieczniejszego podejścia
-                # Sprawdź czy plugin ma dedykowany interfejs do pobierania funkcji
-                if hasattr(plugin, "functions") and isinstance(plugin.functions, dict):
-                    # Użyj dedykowanego API Semantic Kernel
-                    for func_name, func in plugin.functions.items():
-                        if callable(func):
-                            self._register_function(plugin_name, func_name, func)
-                else:
-                    # Fallback: użyj inspect aby znaleźć tylko metody zdefiniowane w klasie pluginu
-                    import inspect
-
-                    # Pobierz tylko metody zdefiniowane w tej klasie (nie odziedziczone)
-                    for func_name, func in inspect.getmembers(
-                        plugin, predicate=inspect.ismethod
-                    ):
-                        # Pomiń prywatne, magiczne metody i metody z object/type
-                        if func_name.startswith("_"):
-                            continue
-
-                        # Sprawdź czy metoda jest zdefiniowana w tym pluginie (nie odziedziczona)
-                        if func_name not in plugin.__class__.__dict__:
-                            continue
-
-                        # Sprawdź czy ma atrybut __kernel_function__ (dodawany przez dekorator)
-                        if hasattr(func, "__kernel_function__") or hasattr(
-                            func, "__wrapped__"
-                        ):
-                            self._register_function(plugin_name, func_name, func)
-
+                self._register_plugin_functions(plugin_name, plugin)
         except Exception as e:
             logger.error(
                 f"Błąd podczas rejestracji funkcji z kernela agenta {self.name}: {e}"
             )
+
+    def _get_kernel_if_available(self):
+        if not hasattr(self.venom_agent, "kernel"):
+            logger.warning(
+                f"Agent {self.name} nie ma kernela - brak funkcji do zarejestrowania"
+            )
+            return None
+        kernel = self.venom_agent.kernel
+        if not hasattr(kernel, "plugins"):
+            logger.warning(
+                f"Kernel agenta {self.name} nie ma atrybutu 'plugins' - pomijam rejestrację"
+            )
+            return None
+        return kernel
+
+    def _register_plugin_functions(self, plugin_name: str, plugin: Any) -> None:
+        for func_name, func in self._iter_plugin_functions(plugin):
+            if callable(func):
+                self._register_function(plugin_name, func_name, func)
+
+    def _iter_plugin_functions(self, plugin: Any):
+        if hasattr(plugin, "functions") and isinstance(plugin.functions, dict):
+            return plugin.functions.items()
+        methods = inspect.getmembers(plugin, predicate=inspect.ismethod)
+        return [
+            (func_name, func)
+            for func_name, func in methods
+            if self._is_kernel_method(plugin, func_name, func)
+        ]
+
+    def _is_kernel_method(self, plugin: Any, func_name: str, func: Callable) -> bool:
+        if func_name.startswith("_"):
+            return False
+        if func_name not in plugin.__class__.__dict__:
+            return False
+        return hasattr(func, "__kernel_function__") or hasattr(func, "__wrapped__")
 
     def _register_function(self, plugin_name: str, func_name: str, func: Callable):
         """

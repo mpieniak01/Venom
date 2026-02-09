@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import pytest
 from fastapi import HTTPException
 
@@ -23,6 +25,83 @@ async def test_get_iot_status_disabled(monkeypatch):
     response = await system_iot_routes.get_iot_status()
     assert response.connected is False
     assert "wyłączony" in (response.message or "")
+
+
+@pytest.mark.asyncio
+async def test_iot_helper_responses():
+    assert "wyłączony" in (system_iot_routes._iot_disabled_response().message or "")
+    assert "Brak połączenia" in (
+        system_iot_routes._iot_disconnected_response().message or ""
+    )
+    assert "telemetria tylko w trybie SSH" in (
+        system_iot_routes._iot_non_ssh_response().message or ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_iot_metric_helpers(monkeypatch):
+    class GoodBridge:
+        async def read_sensor(self, _name):
+            return 42.34
+
+        async def execute_command(self, _command):
+            return {"return_code": 0, "stdout": " 123/456MB "}
+
+    class BadBridge:
+        async def read_sensor(self, _name):
+            raise RuntimeError("boom")
+
+        async def execute_command(self, _command):
+            return {"return_code": 1, "stdout": "x"}
+
+    assert await system_iot_routes._read_cpu_temperature(GoodBridge()) == "42.3°C"
+    assert await system_iot_routes._read_cpu_temperature(BadBridge()) is None
+    assert (
+        await system_iot_routes._read_bridge_command_metric(
+            GoodBridge(), "cmd", "warn-msg"
+        )
+        == "123/456MB"
+    )
+    assert (
+        await system_iot_routes._read_bridge_command_metric(BadBridge(), "cmd", "warn")
+        is None
+    )
+
+    class ExplodingBridge:
+        async def execute_command(self, _command):
+            raise RuntimeError("boom")
+
+    assert (
+        await system_iot_routes._read_bridge_command_metric(
+            ExplodingBridge(), "cmd", "warn"
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_iot_status_non_ssh_and_ssh_metrics(monkeypatch):
+    monkeypatch.setattr(
+        system_iot_routes.SETTINGS, "ENABLE_IOT_BRIDGE", True, raising=False
+    )
+
+    non_ssh = type("Bridge", (), {"connected": True, "protocol": "serial"})()
+    monkeypatch.setattr(system_deps, "get_hardware_bridge", lambda: non_ssh)
+    response = await system_iot_routes.get_iot_status()
+    assert response.connected is True
+    assert "telemetria tylko w trybie SSH" in (response.message or "")
+
+    ssh_bridge = type("Bridge", (), {"connected": True, "protocol": "ssh"})()
+    monkeypatch.setattr(system_deps, "get_hardware_bridge", lambda: ssh_bridge)
+    monkeypatch.setattr(
+        system_iot_routes, "_read_cpu_temperature", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        system_iot_routes, "_read_bridge_command_metric", AsyncMock(return_value=None)
+    )
+    response = await system_iot_routes.get_iot_status()
+    assert response.connected is True
+    assert "Brak danych telemetrycznych" in (response.message or "")
 
 
 @pytest.mark.asyncio

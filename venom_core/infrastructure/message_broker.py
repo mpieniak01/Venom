@@ -3,11 +3,21 @@
 import asyncio
 import json
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 import redis.asyncio as redis
-from arq import create_pool
-from arq.connections import ArqRedis, RedisSettings
+
+try:
+    from arq import create_pool
+    from arq.connections import ArqRedis, RedisSettings
+
+    ARQ_AVAILABLE = True
+except ImportError:  # pragma: no cover - zależność opcjonalna
+    create_pool = None  # type: ignore[assignment]
+    ArqRedis = Any  # type: ignore[assignment,misc]
+    RedisSettings = SimpleNamespace  # type: ignore[assignment,misc]
+    ARQ_AVAILABLE = False
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -125,16 +135,25 @@ class MessageBroker:
         self._lock = asyncio.Lock()
 
         # Konfiguracja Redis
-        self.redis_settings = RedisSettings(
-            host=SETTINGS.REDIS_HOST,
-            port=SETTINGS.REDIS_PORT,
-            database=SETTINGS.REDIS_DB,
-            password=(
-                SETTINGS.REDIS_PASSWORD.get_secret_value()
-                if SETTINGS.REDIS_PASSWORD.get_secret_value()
-                else None
-            ),
+        redis_password = (
+            SETTINGS.REDIS_PASSWORD.get_secret_value()
+            if SETTINGS.REDIS_PASSWORD.get_secret_value()
+            else None
         )
+        if ARQ_AVAILABLE and RedisSettings is not None:
+            self.redis_settings = RedisSettings(
+                host=SETTINGS.REDIS_HOST,
+                port=SETTINGS.REDIS_PORT,
+                database=SETTINGS.REDIS_DB,
+                password=redis_password,
+            )
+        else:
+            self.redis_settings = SimpleNamespace(
+                host=SETTINGS.REDIS_HOST,
+                port=SETTINGS.REDIS_PORT,
+                database=SETTINGS.REDIS_DB,
+                password=redis_password,
+            )
 
         logger.info("MessageBroker zainicjalizowany")
 
@@ -146,6 +165,14 @@ class MessageBroker:
             True jeśli połączenie udane, False w przeciwnym razie
         """
         try:
+            if not ARQ_AVAILABLE or create_pool is None:
+                logger.error(
+                    "ARQ nie jest zainstalowane. MessageBroker wymaga opcjonalnej "
+                    "zależności `arq`."
+                )
+                self._is_connected = False
+                return False
+
             # Połączenie z Redis dla pub/sub i cache
             self.redis_client = redis.Redis(
                 host=self.redis_settings.host,

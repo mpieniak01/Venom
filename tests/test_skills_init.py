@@ -34,3 +34,33 @@ def test_skills_lazy_imports(monkeypatch):
 
     with pytest.raises(AttributeError):
         getattr(skills, "MissingSkill")
+
+
+def test_skills_resolve_skill_helper(monkeypatch):
+    import venom_core.execution.skills as skills
+
+    module_name = "venom_core.execution.skills.assistant_skill"
+    module = types.ModuleType(module_name)
+    dummy_class = type("AssistantSkill", (), {})
+    setattr(module, "AssistantSkill", dummy_class)
+    monkeypatch.setitem(__import__("sys").modules, module_name, module)
+
+    resolved = skills._resolve_skill("AssistantSkill")
+    assert resolved is dummy_class
+
+    with pytest.raises(AttributeError):
+        skills._resolve_skill("DefinitelyMissingSkill")
+
+
+def test_skills_dunder_getattr_and_all_exports(monkeypatch):
+    import venom_core.execution.skills as skills
+
+    module_name = "venom_core.execution.skills.test_skill"
+    module = types.ModuleType(module_name)
+    dummy_class = type("TestSkill", (), {})
+    setattr(module, "TestSkill", dummy_class)
+    monkeypatch.setitem(__import__("sys").modules, module_name, module)
+
+    assert "TestSkill" in skills.__all__
+    resolved = skills.__getattr__("TestSkill")
+    assert resolved is dummy_class

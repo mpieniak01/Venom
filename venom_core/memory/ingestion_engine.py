@@ -439,51 +439,58 @@ class IngestionEngine:
             return [text]
 
         if not separators:
-            # Brak separatorów, dziel po znakach
-            parts = [
-                text[i : i + SEMANTIC_CHUNK_SIZE]
-                for i in range(0, len(text), SEMANTIC_CHUNK_SIZE)
-            ]
-            return [p.strip() for p in parts if p.strip()]
+            return self._chunk_by_fixed_size(text)
 
         separator = separators[0]
-        if separator in text:
-            parts = text.split(separator)
-        else:
-            # Próbuj z kolejnym separatorem
+        if separator not in text:
             return self._semantic_chunk(text, separators[1:])
-
-        chunks = []
-        current_chunk = ""
-
-        for part in parts:
-            part = part.strip()
-            if not part:
-                continue
-
-            # Jeśli dodanie części nie przekroczy limitu, dodaj ją
-            if len(current_chunk) + len(part) + len(separator) <= SEMANTIC_CHUNK_SIZE:
-                current_chunk += part + separator
-            else:
-                # Zapisz obecny chunk jeśli nie jest pusty
-                if current_chunk.strip():
-                    chunks.append(current_chunk.strip())
-
-                # Rozpocznij nowy chunk
-                if len(part) > SEMANTIC_CHUNK_SIZE:
-                    # Jeśli część jest za duża, rekurencyjnie ją podziel z kolejnymi separatorami
-                    sub_chunks = self._semantic_chunk(part, separators[1:])
-                    chunks.extend(sub_chunks)
-                    current_chunk = ""
-                else:
-                    current_chunk = part + separator
-
-        # Dodaj ostatni chunk
-        if current_chunk.strip():
-            chunks.append(current_chunk.strip())
-
+        chunks = self._chunk_by_separator(text.split(separator), separator, separators)
         logger.info(f"Tekst podzielony na {len(chunks)} fragmentów semantycznych")
         return chunks
+
+    def _chunk_by_fixed_size(self, text: str) -> List[str]:
+        parts = [
+            text[i : i + SEMANTIC_CHUNK_SIZE]
+            for i in range(0, len(text), SEMANTIC_CHUNK_SIZE)
+        ]
+        return [p.strip() for p in parts if p.strip()]
+
+    def _chunk_by_separator(
+        self, parts: List[str], separator: str, separators: List[str]
+    ) -> List[str]:
+        chunks: List[str] = []
+        current_chunk = ""
+        for raw_part in parts:
+            part = raw_part.strip()
+            if not part:
+                continue
+            if self._can_append_to_chunk(current_chunk, part, separator):
+                current_chunk += part + separator
+                continue
+            self._flush_current_chunk(chunks, current_chunk)
+            current_chunk = self._append_or_split_part(
+                chunks, part, separator, separators
+            )
+        self._flush_current_chunk(chunks, current_chunk)
+        return chunks
+
+    def _can_append_to_chunk(
+        self, current_chunk: str, part: str, separator: str
+    ) -> bool:
+        return len(current_chunk) + len(part) + len(separator) <= SEMANTIC_CHUNK_SIZE
+
+    def _flush_current_chunk(self, chunks: List[str], current_chunk: str) -> str:
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
+        return ""
+
+    def _append_or_split_part(
+        self, chunks: List[str], part: str, separator: str, separators: List[str]
+    ) -> str:
+        if len(part) > SEMANTIC_CHUNK_SIZE:
+            chunks.extend(self._semantic_chunk(part, separators[1:]))
+            return ""
+        return part + separator
 
     async def ingest_url(
         self, url: str, metadata: Optional[Dict[str, Any]] = None

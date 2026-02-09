@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 ALLOWED_MKDOCS_THEMES = {"material", "readthedocs"}
 MKDOCS_CONFIG_FILE = "mkdocs.yml"
 INDEX_DOC_FILE = "index.md"
+README_DOC_FILE = "readme.md"
 
 
 class DocsSkill:
@@ -49,7 +50,7 @@ class DocsSkill:
         description=f"Generuje plik konfiguracyjny {MKDOCS_CONFIG_FILE} dla dokumentacji. "
         "Użyj przed budowaniem strony dokumentacji.",
     )
-    def generate_mkdocs_config(
+    async def generate_mkdocs_config(
         self,
         site_name: Annotated[str, "Nazwa projektu/strony (np. 'My Project')"],
         theme: Annotated[
@@ -155,11 +156,9 @@ class DocsSkill:
 
         try:
             # Szukaj pliku index.md lub README.md jako strona główna
-            index_file = None
-            for name in [INDEX_DOC_FILE, "README.md", "readme.md"]:
-                if (self.docs_dir / name).exists():
-                    index_file = name
-                    break
+            index_file = self._resolve_homepage_name()
+            if not index_file and (self.docs_dir / README_DOC_FILE).exists():
+                index_file = README_DOC_FILE
 
             if index_file:
                 nav_lines.append(f"  - Strona główna: {index_file}")
@@ -167,32 +166,34 @@ class DocsSkill:
             # Dodaj wszystkie pliki .md (poza index/readme)
             md_files = sorted(self.docs_dir.glob("*.md"))
             for md_file in md_files:
-                if md_file.name.lower() not in [INDEX_DOC_FILE, "readme.md"]:
-                    # Utwórz czytelny tytuł z nazwy pliku
-                    title = md_file.stem.replace("_", " ").replace("-", " ").title()
-                    nav_lines.append(f"  - {title}: {md_file.name}")
+                if md_file.name.lower() in [INDEX_DOC_FILE, README_DOC_FILE]:
+                    continue
+                title = self._humanize_doc_title(md_file.stem)
+                nav_lines.append(f"  - {title}: {md_file.name}")
 
             # Sprawdź czy istnieją podkatalogi
-            for subdir in sorted(self.docs_dir.iterdir()):
-                if subdir.is_dir() and not subdir.name.startswith((".", "_")):
-                    subdir_files = list(subdir.glob("*.md"))
-                    if subdir_files:
-                        # Dodaj sekcję dla podkatalogu
-                        section_name = (
-                            subdir.name.replace("_", " ").replace("-", " ").title()
-                        )
-                        nav_lines.append(f"  - {section_name}:")
-                        for md_file in sorted(subdir_files):
-                            title = (
-                                md_file.stem.replace("_", " ").replace("-", " ").title()
-                            )
-                            rel_path = f"{subdir.name}/{md_file.name}"
-                            nav_lines.append(f"    - {title}: {rel_path}")
+            for subdir in sorted(self._list_visible_subdirs()):
+                self._append_subdir_nav(nav_lines, subdir)
 
         except Exception as e:
             logger.warning(f"Nie można wygenerować automatycznej nawigacji: {e}")
 
         return nav_lines
+
+    @staticmethod
+    def _humanize_doc_title(raw_name: str) -> str:
+        return raw_name.replace("_", " ").replace("-", " ").title()
+
+    def _append_subdir_nav(self, nav_lines: list[str], subdir: Path) -> None:
+        subdir_files = list(subdir.glob("*.md"))
+        if not subdir_files:
+            return
+        section_name = self._humanize_doc_title(subdir.name)
+        nav_lines.append(f"  - {section_name}:")
+        for md_file in sorted(subdir_files):
+            title = self._humanize_doc_title(md_file.stem)
+            rel_path = f"{subdir.name}/{md_file.name}"
+            nav_lines.append(f"    - {title}: {rel_path}")
 
     def _list_visible_subdirs(self) -> list[Path]:
         return [
@@ -359,7 +360,7 @@ class DocsSkill:
         description="Sprawdza strukturę katalogu docs/ i raportuje co zostało znalezione. "
         "Użyj przed generowaniem dokumentacji.",
     )
-    def check_docs_structure(self) -> str:
+    async def check_docs_structure(self) -> str:
         """
         Sprawdza strukturę dokumentacji.
 

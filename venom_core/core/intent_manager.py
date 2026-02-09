@@ -449,7 +449,6 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
             Nazwa kategorii intencji (CODE_GENERATION, KNOWLEDGE_SEARCH, GENERAL_CHAT, RESEARCH, COMPLEX_PLANNING, VERSION_CONTROL)
         """
         logger.info(f"Klasyfikacja intencji dla wejścia: {user_input[:100]}...")
-
         normalized = self._normalize_text(user_input)
         language = self._detect_language(user_input)
         self.last_intent_debug = {
@@ -459,249 +458,274 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
             "top2": [],
         }
 
-        # Testy wydajnościowe wysyłają charakterystyczne prompt, aby zmierzyć narzut backendu.
-        # W takim przypadku pomiń wywołania LLM i od razu użyj bezpiecznego intentu.
         if any(keyword in normalized for keyword in self.PERF_TEST_KEYWORDS):
             logger.debug(
                 "Wykryto prompt testu wydajności - zwracam GENERAL_CHAT bez klasyfikacji LLM"
             )
             return "GENERAL_CHAT"
 
-        lexicon_languages = [language] if language else list(self.LEXICON_FILES.keys())
-        best_intent = ""
-        best_score = 0.0
-        best_top2: List[Tuple[str, float]] = []
-        for lang in lexicon_languages:
-            lexicon = self._load_lexicon(lang)
-            user_lexicon = self._load_user_lexicon(lang)
-            lexicon = self._merge_lexicons(lexicon, user_lexicon)
-            intent, score, top2 = self._match_intent_lexicon(normalized, lexicon)
-            if intent and score > best_score:
-                best_intent = intent
-                best_score = score
-                best_top2 = top2
+        lexicon_intent = self._classify_from_lexicon(normalized, language)
+        if lexicon_intent:
+            return lexicon_intent
 
-        if language and best_score < self.LEXICON_FALLBACK_SCORE:
-            fallback_best: Tuple[str, float, List[Tuple[str, float]]] = ("", 0.0, [])
-            for lang in self.LEXICON_FILES.keys():
-                lexicon = self._load_lexicon(lang)
-                user_lexicon = self._load_user_lexicon(lang)
-                lexicon = self._merge_lexicons(lexicon, user_lexicon)
-                intent, score, top2 = self._match_intent_lexicon(normalized, lexicon)
-                if intent and score > fallback_best[1]:
-                    fallback_best = (intent, score, top2)
-            if fallback_best[0] and fallback_best[1] > best_score:
-                best_intent, best_score, best_top2 = fallback_best
-                language = ""
-
-        if best_intent:
-            if (
-                len(best_top2) >= 2
-                and abs(best_top2[0][1] - best_top2[1][1]) <= self.TIE_BREAK_DELTA
-            ):
-                top_candidates = {best_top2[0][0], best_top2[1][0]}
-                tool_candidates = top_candidates & self.TOOL_INTENTS
-                if tool_candidates:
-                    best_intent = sorted(tool_candidates)[0]
-                    best_score = max(best_top2[0][1], best_top2[1][1])
-            logger.debug(
-                f"Wykryto intencję przez lexicon: {best_intent} (score={best_score:.2f})"
-            )
-            self.last_intent_debug = {
-                "source": "lexicon",
-                "language": language or "unknown",
-                "score": round(best_score, 4),
-                "top2": best_top2,
-            }
-            return best_intent
-
-        help_detected = any(
-            self._normalize_text(keyword) in normalized
-            for keyword in self.HELP_KEYWORDS
+        keyword_intent = await self._classify_from_keywords(
+            normalized, user_input, language
         )
-        if help_detected:
-            logger.debug("Wykryto słowa kluczowe pomocy - zwracam HELP_REQUEST")
-            self.last_intent_debug["source"] = "keyword"
-            if self.kernel:
-                try:
-                    await self.kernel.get_service().get_chat_message_content()
-                except Exception as e:
-                    # LLM service might not be available - this is expected
-                    logger.debug(f"LLM service not available for intent: {e}")
-            self._append_user_phrase("HELP_REQUEST", user_input, language)
-            return "HELP_REQUEST"
-        if any(
-            self._normalize_text(keyword) in normalized
-            for keyword in self.TIME_KEYWORDS
-        ):
-            logger.debug("Wykryto zapytanie o godzinę - zwracam TIME_REQUEST")
-            self.last_intent_debug["source"] = "keyword"
-            self._append_user_phrase("TIME_REQUEST", user_input, language)
-            return "TIME_REQUEST"
-        if any(
-            self._normalize_text(keyword) in normalized
-            for keyword in self.INFRA_KEYWORDS
-        ):
-            logger.debug("Wykryto zapytanie o infrastrukturę - zwracam INFRA_STATUS")
-            self.last_intent_debug["source"] = "keyword"
-            self._append_user_phrase("INFRA_STATUS", user_input, language)
-            return "INFRA_STATUS"
-
-        runtime = get_active_llm_runtime()
-        use_compact = (
-            runtime.provider in ("vllm", "ollama", "local")
-            and SETTINGS.VLLM_MAX_MODEL_LEN
-            and SETTINGS.VLLM_MAX_MODEL_LEN <= 512
-        )
-        system_prompt = self.LOCAL_SYSTEM_PROMPT if use_compact else self.SYSTEM_PROMPT
-
-        def _build_chat_history(system_as_user: bool) -> ChatHistory:
-            chat_history = ChatHistory()
-            if system_as_user:
-                combined_prompt = (
-                    f"{system_prompt.strip()}\n\n[Klasyfikuj intencję]\n{user_input}"
-                )
-                chat_history.add_message(
-                    ChatMessageContent(
-                        role=AuthorRole.USER,
-                        content=combined_prompt,
-                    )
-                )
-            else:
-                chat_history.add_message(
-                    ChatMessageContent(
-                        role=AuthorRole.SYSTEM,
-                        content=system_prompt,
-                    )
-                )
-                chat_history.add_message(
-                    ChatMessageContent(
-                        role=AuthorRole.USER,
-                        content=f"Klasyfikuj intencję:\n\n{user_input}",
-                    )
-                )
-            return chat_history
+        if keyword_intent:
+            return keyword_intent
 
         if not self.kernel or self._llm_disabled:
             logger.info("Brak dopasowania intencji i brak LLM - zwracam GENERAL_CHAT")
             self.last_intent_debug["source"] = "fallback"
             return "GENERAL_CHAT"
 
-        # Przygotuj historię rozmowy
-        chat_history = _build_chat_history(system_as_user=False)
-
         try:
-            # Pobierz serwis chat completion
-            chat_service: Any = self.kernel.get_service()
-
-            # Wywołaj model
-            settings = OpenAIChatPromptExecutionSettings()
-
-            timeout = getattr(SETTINGS, "INTENT_CLASSIFIER_TIMEOUT_SECONDS", 5.0)
-
-            try:
-                response = await asyncio.wait_for(
-                    chat_service.get_chat_message_content(
-                        chat_history=chat_history, settings=settings
-                    ),
-                    timeout=timeout,
-                )
-            except asyncio.TimeoutError:
-                logger.warning(
-                    f"Intent classification timeout po {timeout}s - używam GENERAL_CHAT"
-                )
-                return "GENERAL_CHAT"
-            except Exception as api_error:
-                error_text = str(api_error).lower()
-                inner = getattr(api_error, "inner_exception", None)
-                if inner:
-                    error_text += f" {str(inner).lower()}"
-
-                if "system role not supported" in error_text:
-                    logger.warning(
-                        "Model nie wspiera roli SYSTEM w IntentManager - retry bez SYSTEM."
-                    )
-                    chat_history = _build_chat_history(system_as_user=True)
-                    try:
-                        response = await asyncio.wait_for(
-                            chat_service.get_chat_message_content(
-                                chat_history=chat_history, settings=settings
-                            ),
-                            timeout=timeout,
-                        )
-                    except asyncio.TimeoutError:
-                        logger.warning(
-                            f"Intent classification timeout po {timeout}s - używam GENERAL_CHAT"
-                        )
-                        return "GENERAL_CHAT"
-                else:
-                    logger.warning(
-                        "Błąd podczas klasyfikacji intencji (%s) - używam GENERAL_CHAT",
-                        api_error,
-                    )
-                    return "GENERAL_CHAT"
-
-            # Wyciągnij czystą odpowiedź (usuń whitespace)
-            intent = str(response).strip().upper()
-
-            # Walidacja odpowiedzi - upewnij się, że to jedna z dozwolonych kategorii
-            valid_intents = [
-                "CODE_GENERATION",
-                "KNOWLEDGE_SEARCH",
-                "GENERAL_CHAT",
-                "RESEARCH",
-                "COMPLEX_PLANNING",
-                "VERSION_CONTROL",
-                "E2E_TESTING",
-                "DOCUMENTATION",
-                "RELEASE_PROJECT",
-                "START_CAMPAIGN",
-                "STATUS_REPORT",
-                "INFRA_STATUS",
-                "HELP_REQUEST",
-                "TIME_REQUEST",
-                "UNSUPPORTED_TASK",
-            ]
-            if intent not in valid_intents:
-                # Jeśli odpowiedź nie jest dokładna, spróbuj znaleźć dopasowanie
-                for valid_intent in valid_intents:
-                    if valid_intent in intent:
-                        intent = valid_intent
-                        break
-                else:
-                    # Fallback - użyj GENERAL_CHAT jako domyślnego
-                    logger.warning(
-                        f"Nierozpoznana intencja: {intent}, używam GENERAL_CHAT jako fallback"
-                    )
-                    intent = "GENERAL_CHAT"
-
-            logger.info(f"Sklasyfikowana intencja: {intent}")
-            self.last_intent_debug["source"] = "llm"
-            if intent in valid_intents and intent != "UNSUPPORTED_TASK":
-                self._append_user_phrase(intent, user_input, language)
+            intent = await self._classify_from_llm(user_input, normalized, language)
             return intent
         except Exception as exc:
             logger.warning(
                 "Błąd LLM przy klasyfikacji intencji (%s) - przechodzę do heurystyk",
                 exc,
             )
-            # W przypadku błędu użyj heurystyki: chat vs unsupported
-            if any(
-                self._normalize_text(keyword) in normalized
-                for keyword in self.HELP_KEYWORDS
-            ):
-                self.last_intent_debug["source"] = "fallback"
-                return "HELP_REQUEST"
-            fallback_langs = [language] if language else list(self.LEXICON_FILES.keys())
-            for lang in fallback_langs:
-                lexicon = self._load_lexicon(lang)
-                user_lexicon = self._load_user_lexicon(lang)
-                lexicon = self._merge_lexicons(lexicon, user_lexicon)
-                if self._match_intent_lexicon(normalized, lexicon)[0]:
-                    self.last_intent_debug["source"] = "fallback"
-                    return "GENERAL_CHAT"
             self.last_intent_debug["source"] = "fallback"
+            if self._contains_keyword(normalized, self.HELP_KEYWORDS):
+                return "HELP_REQUEST"
             return "GENERAL_CHAT"
+
+    def _contains_keyword(self, normalized: str, keywords: List[str]) -> bool:
+        return any(self._normalize_text(keyword) in normalized for keyword in keywords)
+
+    def _best_lexicon_match(
+        self, normalized: str, languages: List[str]
+    ) -> Tuple[str, float, List[Tuple[str, float]]]:
+        best_intent = ""
+        best_score = 0.0
+        best_top2: List[Tuple[str, float]] = []
+        for lang in languages:
+            lexicon = self._merge_lexicons(
+                self._load_lexicon(lang), self._load_user_lexicon(lang)
+            )
+            intent, score, top2 = self._match_intent_lexicon(normalized, lexicon)
+            if intent and score > best_score:
+                best_intent, best_score, best_top2 = intent, score, top2
+        return best_intent, best_score, best_top2
+
+    def _resolve_lexicon_intent(
+        self, normalized: str, language: str
+    ) -> Tuple[str, float, List[Tuple[str, float]], str]:
+        primary_languages = [language] if language else list(self.LEXICON_FILES.keys())
+        best_intent, best_score, best_top2 = self._best_lexicon_match(
+            normalized, primary_languages
+        )
+        resolved_language = language
+        if language and best_score < self.LEXICON_FALLBACK_SCORE:
+            fallback_intent, fallback_score, fallback_top2 = self._best_lexicon_match(
+                normalized, list(self.LEXICON_FILES.keys())
+            )
+            if fallback_intent and fallback_score > best_score:
+                best_intent, best_score, best_top2 = (
+                    fallback_intent,
+                    fallback_score,
+                    fallback_top2,
+                )
+                resolved_language = ""
+        return best_intent, best_score, best_top2, resolved_language
+
+    def _apply_lexicon_tie_break(
+        self, best_intent: str, best_top2: List[Tuple[str, float]]
+    ) -> str:
+        if (
+            len(best_top2) >= 2
+            and abs(best_top2[0][1] - best_top2[1][1]) <= self.TIE_BREAK_DELTA
+        ):
+            candidates = {best_top2[0][0], best_top2[1][0]} & self.TOOL_INTENTS
+            if candidates:
+                return sorted(candidates)[0]
+        return best_intent
+
+    def _classify_from_lexicon(self, normalized: str, language: str) -> str:
+        best_intent, best_score, best_top2, resolved_language = (
+            self._resolve_lexicon_intent(normalized, language)
+        )
+        if not best_intent:
+            return ""
+        intent = self._apply_lexicon_tie_break(best_intent, best_top2)
+        logger.debug(
+            f"Wykryto intencję przez lexicon: {intent} (score={best_score:.2f})"
+        )
+        self.last_intent_debug = {
+            "source": "lexicon",
+            "language": resolved_language or "unknown",
+            "score": round(best_score, 4),
+            "top2": best_top2,
+        }
+        return intent
+
+    async def _classify_from_keywords(
+        self, normalized: str, user_input: str, language: str
+    ) -> str:
+        if self._contains_keyword(normalized, self.HELP_KEYWORDS):
+            logger.debug("Wykryto słowa kluczowe pomocy - zwracam HELP_REQUEST")
+            self.last_intent_debug["source"] = "keyword"
+            if self.kernel:
+                try:
+                    await self.kernel.get_service().get_chat_message_content()
+                except Exception as exc:
+                    logger.debug(f"LLM service not available for intent: {exc}")
+            self._append_user_phrase("HELP_REQUEST", user_input, language)
+            return "HELP_REQUEST"
+        if self._contains_keyword(normalized, self.TIME_KEYWORDS):
+            logger.debug("Wykryto zapytanie o godzinę - zwracam TIME_REQUEST")
+            self.last_intent_debug["source"] = "keyword"
+            self._append_user_phrase("TIME_REQUEST", user_input, language)
+            return "TIME_REQUEST"
+        if self._contains_keyword(normalized, self.INFRA_KEYWORDS):
+            logger.debug("Wykryto zapytanie o infrastrukturę - zwracam INFRA_STATUS")
+            self.last_intent_debug["source"] = "keyword"
+            self._append_user_phrase("INFRA_STATUS", user_input, language)
+            return "INFRA_STATUS"
+        return ""
+
+    def _build_intent_chat_history(
+        self, system_prompt: str, user_input: str, system_as_user: bool
+    ) -> ChatHistory:
+        chat_history = ChatHistory()
+        if system_as_user:
+            chat_history.add_message(
+                ChatMessageContent(
+                    role=AuthorRole.USER,
+                    content=f"{system_prompt.strip()}\n\n[Klasyfikuj intencję]\n{user_input}",
+                )
+            )
+            return chat_history
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.SYSTEM, content=system_prompt)
+        )
+        chat_history.add_message(
+            ChatMessageContent(
+                role=AuthorRole.USER, content=f"Klasyfikuj intencję:\n\n{user_input}"
+            )
+        )
+        return chat_history
+
+    def _is_compact_runtime(self) -> bool:
+        runtime = get_active_llm_runtime()
+        max_model_len = SETTINGS.VLLM_MAX_MODEL_LEN
+        return (
+            runtime.provider in ("vllm", "ollama", "local")
+            and max_model_len is not None
+            and max_model_len <= 512
+        )
+
+    async def _request_intent_response(
+        self,
+        chat_service: Any,
+        chat_history: ChatHistory,
+        settings: Any,
+        timeout: float,
+    ) -> Any:
+        return await asyncio.wait_for(
+            chat_service.get_chat_message_content(
+                chat_history=chat_history, settings=settings
+            ),
+            timeout=timeout,
+        )
+
+    async def _classify_from_llm(
+        self, user_input: str, normalized: str, language: str
+    ) -> str:
+        system_prompt = (
+            self.LOCAL_SYSTEM_PROMPT
+            if self._is_compact_runtime()
+            else self.SYSTEM_PROMPT
+        )
+        chat_history = self._build_intent_chat_history(
+            system_prompt=system_prompt,
+            user_input=user_input,
+            system_as_user=False,
+        )
+        if self.kernel is None:
+            return "GENERAL_CHAT"
+        chat_service: Any = self.kernel.get_service()
+        settings = OpenAIChatPromptExecutionSettings()
+        timeout = getattr(SETTINGS, "INTENT_CLASSIFIER_TIMEOUT_SECONDS", 5.0)
+
+        try:
+            response = await self._request_intent_response(
+                chat_service, chat_history, settings, timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Intent classification timeout po {timeout}s - używam GENERAL_CHAT"
+            )
+            return "GENERAL_CHAT"
+        except Exception as api_error:
+            error_text = str(api_error).lower()
+            inner = getattr(api_error, "inner_exception", None)
+            if inner:
+                error_text += f" {str(inner).lower()}"
+            if "system role not supported" not in error_text:
+                logger.warning(
+                    "Błąd podczas klasyfikacji intencji (%s) - używam GENERAL_CHAT",
+                    api_error,
+                )
+                return "GENERAL_CHAT"
+            logger.warning(
+                "Model nie wspiera roli SYSTEM w IntentManager - retry bez SYSTEM."
+            )
+            chat_history = self._build_intent_chat_history(
+                system_prompt=system_prompt,
+                user_input=user_input,
+                system_as_user=True,
+            )
+            try:
+                response = await self._request_intent_response(
+                    chat_service, chat_history, settings, timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Intent classification timeout po {timeout}s - używam GENERAL_CHAT"
+                )
+                return "GENERAL_CHAT"
+
+        intent = self._normalize_llm_intent(str(response).strip().upper())
+        logger.info(f"Sklasyfikowana intencja: {intent}")
+        self.last_intent_debug["source"] = "llm"
+        if intent != "UNSUPPORTED_TASK":
+            self._append_user_phrase(intent, user_input, language)
+        if intent in ("HELP_REQUEST", "GENERAL_CHAT") and self._contains_keyword(
+            normalized, self.HELP_KEYWORDS
+        ):
+            return "HELP_REQUEST"
+        return intent
+
+    def _normalize_llm_intent(self, intent: str) -> str:
+        valid_intents = [
+            "CODE_GENERATION",
+            "KNOWLEDGE_SEARCH",
+            "GENERAL_CHAT",
+            "RESEARCH",
+            "COMPLEX_PLANNING",
+            "VERSION_CONTROL",
+            "E2E_TESTING",
+            "DOCUMENTATION",
+            "RELEASE_PROJECT",
+            "START_CAMPAIGN",
+            "STATUS_REPORT",
+            "INFRA_STATUS",
+            "HELP_REQUEST",
+            "TIME_REQUEST",
+            "UNSUPPORTED_TASK",
+        ]
+        if intent in valid_intents:
+            return intent
+        for valid_intent in valid_intents:
+            if valid_intent in intent:
+                return valid_intent
+        logger.warning(
+            f"Nierozpoznana intencja: {intent}, używam GENERAL_CHAT jako fallback"
+        )
+        return "GENERAL_CHAT"
 
     def requires_tool(self, intent: str) -> bool:
         """Zwraca True jeśli intencja wymaga narzędzia/systemowej wiedzy."""

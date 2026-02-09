@@ -1,7 +1,7 @@
 # Venom v1.0 🐍
 
-[![CI](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml/badge.svg)](
-https://github.com/mpieniak01/Venom/actions/workflows/ci.yml
+[![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](
+https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml
 )
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](
@@ -751,6 +751,15 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/PL/TESTING_CHAT_L
 ### Pakiet raportów Sonar (lokalny pre-check)
 - `make sonar-reports` — uruchamia generowanie raportów backend + frontend używanych w workflow SonarCloud.
 - Na PR w GitHub SonarCloud korzysta z raportów wygenerowanych w głównym workflow `CI` (model single-run, bez osobnego dublującego workflow testowego).
+- `make test-light-coverage` — lekki raport pokrycia backendu pod „new code” (`config/pytest-groups/sonar-new-code.txt`).
+  - Domyślnie uruchamia baseline `ci-lite` + pakiet `sonar-new-code`, aby zwiększyć wartość sygnału dla Sonar.
+  - Artefakty:
+    - `test-results/sonar/python-coverage.xml`
+    - `test-results/sonar/python-junit.xml`
+    - `test-results/sonar/htmlcov-new-code/index.html`
+  - Opcjonalny próg pokrycia: `NEW_CODE_COVERAGE_MIN=70 make test-light-coverage`
+  - Opcjonalne zawężenie zakresu pokrycia: `NEW_CODE_COV_TARGET=venom_core/execution/skills make test-light-coverage`
+  - Tylko pakiet new-code (bez baseline): `NEW_CODE_INCLUDE_BASELINE=0 make test-light-coverage`
 
 ### Czas reakcji i wydajność chatu
 - `npm --prefix web-next run test:perf` — Playwright mierzący latency Next Cockpit (raport HTML odkłada się do `test-results/perf-report`).

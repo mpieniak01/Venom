@@ -30,7 +30,7 @@ SHELL := /bin/bash
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports \
-	pytest e2e test-optimal test-ci-light \
+	pytest e2e test-optimal test-ci-light test-light-coverage sonar-reports-backend-new-code \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend
@@ -63,6 +63,46 @@ test-all: test test-web-unit test-web-e2e
 sonar-reports-backend:
 	@mkdir -p test-results/sonar
 	pytest --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
+
+NEW_CODE_COVERAGE_MIN ?= 0
+NEW_CODE_TEST_GROUP ?= config/pytest-groups/sonar-new-code.txt
+NEW_CODE_BASELINE_GROUP ?= config/pytest-groups/ci-lite.txt
+NEW_CODE_INCLUDE_BASELINE ?= 1
+NEW_CODE_COV_TARGET ?= venom_core
+NEW_CODE_COVERAGE_XML ?= test-results/sonar/python-coverage.xml
+NEW_CODE_JUNIT_XML ?= test-results/sonar/python-junit.xml
+NEW_CODE_COVERAGE_HTML ?= test-results/sonar/htmlcov-new-code
+
+test-light-coverage:
+	@mkdir -p test-results/sonar
+	@PYTEST_BIN="pytest"; \
+	if [ -x "$(VENV)/bin/pytest" ]; then PYTEST_BIN="$(VENV)/bin/pytest"; fi; \
+	NEW_CODE_TESTS=$$(grep -vE '^\s*(#|$$)' "$(NEW_CODE_TEST_GROUP)"); \
+	if [ -z "$$NEW_CODE_TESTS" ]; then \
+		echo "❌ Brak testów w $(NEW_CODE_TEST_GROUP)"; \
+		exit 1; \
+	fi; \
+	if [ "$(NEW_CODE_INCLUDE_BASELINE)" = "1" ]; then \
+		BASELINE_TESTS=$$(grep -vE '^\s*(#|$$)' "$(NEW_CODE_BASELINE_GROUP)"); \
+		if [ -z "$$BASELINE_TESTS" ]; then \
+			echo "❌ Brak testów w $(NEW_CODE_BASELINE_GROUP)"; \
+			exit 1; \
+		fi; \
+		$$PYTEST_BIN -n 4 $$BASELINE_TESTS \
+			--cov=$(NEW_CODE_COV_TARGET) \
+			--junitxml=$(NEW_CODE_JUNIT_XML); \
+		COV_APPEND_FLAG="--cov-append"; \
+	else \
+		COV_APPEND_FLAG=""; \
+	fi; \
+	$$PYTEST_BIN -n 4 $$NEW_CODE_TESTS $$COV_APPEND_FLAG \
+		--cov=$(NEW_CODE_COV_TARGET) \
+		--cov-report=term-missing:skip-covered \
+		--cov-report=xml:$(NEW_CODE_COVERAGE_XML) \
+		--cov-report=html:$(NEW_CODE_COVERAGE_HTML) \
+		--cov-fail-under=$(NEW_CODE_COVERAGE_MIN)
+
+sonar-reports-backend-new-code: test-light-coverage
 
 sonar-reports-frontend:
 	$(NPM) --prefix $(WEB_DIR) run test:unit:coverage

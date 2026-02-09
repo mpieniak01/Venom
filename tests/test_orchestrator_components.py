@@ -1,5 +1,6 @@
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -8,9 +9,11 @@ from venom_core.core.models import TaskExtraContext, TaskRequest
 from venom_core.core.orchestrator.event_broadcaster import EventBroadcasterClient
 from venom_core.core.orchestrator.kernel_lifecycle import KernelLifecycleManager
 from venom_core.core.orchestrator.orchestrator_events import (
+    broadcast_event,
     build_error_envelope,
     set_runtime_error,
     trace_llm_start,
+    trace_step_async,
 )
 from venom_core.core.orchestrator.orchestrator_submit import should_use_fast_path
 from venom_core.core.orchestrator.task_manager import TaskManager
@@ -345,3 +348,34 @@ def test_set_runtime_error_updates_context_and_tracer():
     assert state.last[1]["llm_runtime"]["error"] == envelope
     assert "last_error_at" in state.last[1]["llm_runtime"]
     assert tracer.last == (task_id, envelope)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_event_delegates_to_event_client():
+    event_client = SimpleNamespace(broadcast=AsyncMock())
+    orch = SimpleNamespace(event_client=event_client)
+
+    await broadcast_event(
+        orch,
+        event_type="TEST_EVENT",
+        message="hello",
+        agent="tester",
+        data={"x": 1},
+    )
+
+    event_client.broadcast.assert_awaited_once_with(
+        event_type="TEST_EVENT",
+        message="hello",
+        agent="tester",
+        data={"x": 1},
+    )
+
+
+@pytest.mark.asyncio
+async def test_trace_step_async_swallow_exceptions_from_tracer():
+    class FailingTracer:
+        def add_step(self, *_args, **_kwargs):
+            raise RuntimeError("tracer failed")
+
+    orch = SimpleNamespace(request_tracer=FailingTracer())
+    await trace_step_async(orch, uuid4(), "actor", "action", status="ok")

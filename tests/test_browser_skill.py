@@ -142,12 +142,16 @@ def test_sanitize_filename_rejects_invalid_cases():
         BrowserSkill._sanitize_screenshot_filename("a" * 200 + ".png")
 
 
-def test_ensure_url_scheme_keeps_existing_and_adds_for_missing():
+def test_ensure_url_scheme_keeps_existing_and_adds_for_missing(monkeypatch):
     assert (
         BrowserSkill._ensure_url_scheme("https://example.com") == "https://example.com"
     )
-    normalized = BrowserSkill._ensure_url_scheme("localhost/path")
-    assert normalized.startswith(("http://", "https://"))
+    monkeypatch.setattr(
+        "venom_core.utils.url_policy.SETTINGS.URL_SCHEME_POLICY",
+        "force_http",
+        raising=False,
+    )
+    assert BrowserSkill._ensure_url_scheme("localhost/path") == "http://localhost/path"
 
 
 def test_require_page_raises_when_missing():

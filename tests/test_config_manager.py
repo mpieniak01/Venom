@@ -74,6 +74,13 @@ def test_config_update_request_validates_ranges():
     assert "LLM_SERVICE_TYPE" in message
 
 
+def test_config_update_request_rejects_non_dict_updates():
+    with pytest.raises(ValueError) as exc:
+        ConfigUpdateRequest(updates=["bad", "payload"])  # type: ignore[arg-type]
+
+    assert "musi być mapą klucz->wartość" in str(exc.value)
+
+
 def test_cleanup_old_backups_removes_excess(config_manager: ConfigManager):
     for idx in range(3):
         (config_manager.env_history_dir / f".env-20250101-00000{idx}").write_text(

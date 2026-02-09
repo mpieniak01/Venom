@@ -257,20 +257,24 @@ class ConfigUpdateRequest(BaseModel):
     )
 
     @field_validator("updates", mode="before")
-    def validate_updates(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_updates(cls, v: Any) -> Dict[str, Any]:
         """Sprawdź whitelist i zakresy wartości dla konfiguracji."""
-        cls._validate_whitelist(v)
+        if not isinstance(v, dict):
+            raise ValueError("Pole 'updates' musi być mapą klucz->wartość")
+
+        typed_updates: Dict[str, Any] = v
+        cls._validate_whitelist(typed_updates)
         errors: List[str] = []
-        cls._validate_port_params(v, errors)
-        cls._validate_threshold_params(v, errors)
-        cls._validate_boolean_params(v, errors)
-        cls._validate_non_negative_int_params(v, errors)
-        cls._validate_mode_params(v, errors)
+        cls._validate_port_params(typed_updates, errors)
+        cls._validate_threshold_params(typed_updates, errors)
+        cls._validate_boolean_params(typed_updates, errors)
+        cls._validate_non_negative_int_params(typed_updates, errors)
+        cls._validate_mode_params(typed_updates, errors)
 
         if errors:
             raise ValueError("; ".join(errors))
 
-        return v
+        return typed_updates
 
     @classmethod
     def _validate_whitelist(cls, updates: Dict[str, Any]) -> None:
@@ -337,7 +341,9 @@ class ConfigUpdateRequest(BaseModel):
                 continue
             val_str = str(updates[param]).lower()
             if val_str not in ["true", "false", "0", "1", "yes", "no"]:
-                errors.append(f"{param} musi być wartością boolean (true/false)")
+                errors.append(
+                    f"{param} musi być wartością boolean (true/false/0/1/yes/no)"
+                )
 
     @classmethod
     def _validate_non_negative_int_params(

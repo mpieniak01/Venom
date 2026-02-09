@@ -47,10 +47,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def _ensure_pynput_stub() -> None:
-    if "pynput" in sys.modules:
-        return
-
+def _install_pynput_stub() -> None:
     class _ListenerStub:
         def __init__(self, *args, **kwargs):
             # Stub wymagany dla środowisk bez pynput; interfejs zachowany celowo.
@@ -69,12 +66,15 @@ def _ensure_pynput_stub() -> None:
     keyboard_module.Listener = _ListenerStub  # type: ignore[attr-defined]
     pynput_module.mouse = mouse_module  # type: ignore[attr-defined]
     pynput_module.keyboard = keyboard_module  # type: ignore[attr-defined]
-    sys.modules["pynput"] = pynput_module
-    sys.modules["pynput.mouse"] = mouse_module
-    sys.modules["pynput.keyboard"] = keyboard_module
+    sys.modules.setdefault("pynput", pynput_module)
+    sys.modules.setdefault("pynput.mouse", mouse_module)
+    sys.modules.setdefault("pynput.keyboard", keyboard_module)
 
 
-_ensure_pynput_stub()
+try:
+    import pynput  # type: ignore[import-untyped]  # noqa: F401
+except ImportError:  # pragma: no cover - zależność opcjonalna
+    _install_pynput_stub()
 
 
 class PrivacyFilter:
@@ -522,7 +522,7 @@ class DesktopSensor:
             if key_name and key_name.lower() in self.SAFE_KEYS:
                 self._append_recorded_action("keyboard_press", {"key": key_name})
         except AttributeError:
-            pass
+            logger.debug("Key press event missing expected attributes")
 
     def _record_full_keyboard_event(self, key: Any) -> None:
         try:

@@ -12,6 +12,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_scheduler_watcher_integration():
     """Test integracji scheduler + watcher."""
+    pytest.importorskip("apscheduler")
     from venom_core.core.scheduler import BackgroundScheduler
     from venom_core.perception.watcher import FileWatcher
 
@@ -19,10 +20,12 @@ async def test_scheduler_watcher_integration():
         # Utwórz scheduler
         scheduler = BackgroundScheduler()
         await scheduler.start()
+        assert scheduler.is_running is True
 
         # Utwórz watcher
         watcher = FileWatcher(workspace_root=tmpdir)
         await watcher.start()
+        assert watcher.is_running is True
 
         # Poczekaj chwilę
         await asyncio.sleep(1)
@@ -30,9 +33,8 @@ async def test_scheduler_watcher_integration():
         # Zatrzymaj
         await watcher.stop()
         await scheduler.stop()
-
-        # Test zakończony bez błędów
-        assert True
+        assert watcher.is_running is False
+        assert scheduler.is_running is False
 
 
 @pytest.mark.asyncio
@@ -49,9 +51,9 @@ async def test_documenter_handles_py_files():
 
         # Wywołaj handler (bez GitSkill, nie będzie commitował)
         await agent.handle_code_change(str(test_file))
-
-        # Test zakończony bez błędów
-        assert True
+        status = agent.get_status()
+        assert status["workspace_root"] == str(Path(tmpdir).resolve())
+        assert status["processing_files"] == 1
 
 
 @pytest.mark.asyncio
@@ -74,11 +76,10 @@ async def test_gardener_idle_mode_integration():
 
         # Start i stop
         await gardener.start()
+        assert gardener.is_running is True
         await asyncio.sleep(0.5)
         await gardener.stop()
-
-        # Test zakończony bez błędów
-        assert True
+        assert gardener.is_running is False
 
 
 def test_config_has_background_settings():
@@ -129,6 +130,4 @@ def test_orchestrator_has_last_activity():
 
         # Sprawdź czy ma atrybut last_activity
         assert hasattr(orchestrator, "last_activity")
-        assert orchestrator.last_activity is None or isinstance(
-            orchestrator.last_activity, type(None)
-        )
+        assert orchestrator.last_activity is None

@@ -299,26 +299,13 @@ def _collect_lesson_graph(
     if not lessons_store:
         return lesson_nodes, lesson_edges
     try:
-        if hasattr(lessons_store, "get_all_lessons"):
-            raw_lessons = lessons_store.get_all_lessons(limit=limit)
-            lessons = _normalize_lessons_for_graph(
-                raw_lessons, allow_fallback=is_testing_mode(), limit=limit
-            )
-        elif hasattr(lessons_store, "lessons"):
-            lessons = _normalize_lessons_for_graph(
-                lessons_store.lessons, allow_fallback=is_testing_mode(), limit=limit
-            )
-        else:
-            lessons = []
+        raw_lessons = _get_raw_lessons_for_graph(lessons_store, limit)
+        lessons = _normalize_lessons_for_graph(
+            raw_lessons, allow_fallback=is_testing_mode(), limit=limit
+        )
 
         for raw_lesson in lessons:
-            lesson_data = raw_lesson
-            if not isinstance(lesson_data, dict):
-                lesson_data = (
-                    lesson_data.to_dict()
-                    if hasattr(lesson_data, "to_dict")
-                    else (vars(lesson_data) if hasattr(lesson_data, "__dict__") else {})
-                )
+            lesson_data = _coerce_lesson_to_dict(raw_lesson)
             raw_id = lesson_data.get("id") or lesson_data.get("lesson_id")
             lesson_id = str(raw_id) if raw_id is not None else ""
             if not lesson_id:
@@ -353,6 +340,26 @@ def _collect_lesson_graph(
     except Exception as e:  # pragma: no cover
         logger.warning(f"Nie udało się pobrać lekcji do grafu: {e}")
     return lesson_nodes, lesson_edges
+
+
+def _get_raw_lessons_for_graph(
+    lessons_store: LessonsStore, limit: int
+) -> list[Any] | dict[str, Any]:
+    if hasattr(lessons_store, "get_all_lessons"):
+        return lessons_store.get_all_lessons(limit=limit)
+    if hasattr(lessons_store, "lessons"):
+        return lessons_store.lessons
+    return []
+
+
+def _coerce_lesson_to_dict(raw_lesson: Any) -> dict[str, Any]:
+    if isinstance(raw_lesson, dict):
+        return raw_lesson
+    if hasattr(raw_lesson, "to_dict"):
+        return raw_lesson.to_dict()
+    if hasattr(raw_lesson, "__dict__"):
+        return vars(raw_lesson)
+    return {}
 
 
 def _append_flow_edges(

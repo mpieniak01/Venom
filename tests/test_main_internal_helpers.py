@@ -269,7 +269,7 @@ def test_initialize_calendar_skill_disabled(monkeypatch):
     monkeypatch.setattr(
         main_module.SETTINGS, "ENABLE_GOOGLE_CALENDAR", False, raising=False
     )
-    main_module.google_calendar_skill = "placeholder"
+    monkeypatch.setattr(main_module, "google_calendar_skill", "placeholder")
     main_module._initialize_calendar_skill()
     assert main_module.google_calendar_skill == "placeholder"
 
@@ -293,8 +293,8 @@ def test_initialize_model_services_handles_missing_monitor(monkeypatch, tmp_path
     monkeypatch.setattr(
         main_module.SETTINGS, "ACADEMY_MODELS_DIR", str(tmp_path), raising=False
     )
-    main_module.model_registry = "sentinel"
-    main_module.benchmark_service = "sentinel"
+    monkeypatch.setattr(main_module, "model_registry", "sentinel")
+    monkeypatch.setattr(main_module, "benchmark_service", "sentinel")
 
     main_module._initialize_model_services()
 
@@ -324,7 +324,9 @@ def test_storage_and_memory_store_initialization(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module, "VectorStore", DummyVectorStore)
     monkeypatch.setattr(main_module, "CodeGraphStore", DummyGraphStore)
     monkeypatch.setattr(main_module, "LessonsStore", DummyLessonsStore)
-    main_module.orchestrator = SimpleNamespace(lessons_store=None)
+    monkeypatch.setattr(
+        main_module, "orchestrator", SimpleNamespace(lessons_store=None)
+    )
 
     created_workspace = main_module._ensure_storage_dirs()
     main_module._initialize_memory_stores()
@@ -354,9 +356,9 @@ async def test_initialize_gardener_and_git(monkeypatch, tmp_path):
 
     monkeypatch.setattr(main_module, "GardenerAgent", DummyGardener)
     monkeypatch.setattr(main_module, "GitSkill", DummyGitSkill)
-    main_module.graph_store = object()
-    main_module.orchestrator = object()
-    main_module.event_broadcaster = object()
+    monkeypatch.setattr(main_module, "graph_store", object())
+    monkeypatch.setattr(main_module, "orchestrator", object())
+    monkeypatch.setattr(main_module, "event_broadcaster", object())
 
     await main_module._initialize_gardener_and_git(tmp_path)
 
@@ -397,9 +399,9 @@ async def test_initialize_background_scheduler_registers_jobs(monkeypatch):
         main_module.SETTINGS, "MEMORY_CONSOLIDATION_INTERVAL_MINUTES", 5
     )
     monkeypatch.setattr(main_module.SETTINGS, "HEALTH_CHECK_INTERVAL_MINUTES", 3)
-    main_module.vector_store = object()
-    main_module.event_broadcaster = object()
-    main_module.request_tracer = DummyTracer()
+    monkeypatch.setattr(main_module, "vector_store", object())
+    monkeypatch.setattr(main_module, "event_broadcaster", object())
+    monkeypatch.setattr(main_module, "request_tracer", DummyTracer())
 
     await main_module._initialize_background_scheduler()
 
@@ -435,8 +437,8 @@ async def test_initialize_documenter_and_watcher(monkeypatch, tmp_path):
 
     monkeypatch.setattr(main_module, "DocumenterAgent", DummyDocumenter)
     monkeypatch.setattr(main_module, "FileWatcher", DummyWatcher)
-    main_module.git_skill = object()
-    main_module.event_broadcaster = object()
+    monkeypatch.setattr(main_module, "git_skill", object())
+    monkeypatch.setattr(main_module, "event_broadcaster", object())
 
     await main_module._initialize_documenter_and_watcher(tmp_path)
 

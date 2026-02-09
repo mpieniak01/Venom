@@ -120,6 +120,7 @@ async def test_ingest_file_text(tmp_path, ingestion_engine):
 @pytest.mark.asyncio
 async def test_ingest_url_success(ingestion_engine):
     """Test ingestii URL (mock)."""
+    pytest.importorskip("trafilatura")
     with (
         patch("trafilatura.fetch_url") as mock_fetch,
         patch("trafilatura.extract") as mock_extract,
@@ -139,6 +140,7 @@ async def test_ingest_url_success(ingestion_engine):
 @pytest.mark.asyncio
 async def test_ingest_url_failure(ingestion_engine):
     """Test ingestii URL z błędem."""
+    pytest.importorskip("trafilatura")
     with patch("trafilatura.fetch_url") as mock_fetch:
         # Mock błąd
         mock_fetch.return_value = None

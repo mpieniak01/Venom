@@ -14,14 +14,16 @@
 **Venom** to autonomiczny system multi-agentowy do zadań inżynierskich: planowanie, wykonanie narzędzi i pamięć długoterminowa.
 
 ### Kluczowe funkcje
-- **Planowanie strategiczne** — rozbija złożone cele na kroki wykonawcze.
-- **Orkiestracja agentów** — kieruje zadania do wyspecjalizowanych agentów.
-- **Narzędzia + import MCP** — używa lokalnych narzędzi i importuje MCP z Git.
-- **Wybór runtime LLM** — przełączanie Ollama / vLLM z panelu.
-- **Pamięć długoterminowa** — zapis i ponowne użycie kontekstu/lessons.
-- **Uczenie przez obserwację** — nagrywanie demonstracji i budowa workflow.
-- **Ciągłość czatu** — historia sesji per `session_id` po restartach.
-- **Panel usług** — `/config` pokazuje status lokalnego stosu.
+- 🧠 **Planowanie strategiczne** — rozbija złożone cele na kroki wykonawcze.
+- 🤖 **Orkiestracja agentów** — kieruje zadania do wyspecjalizowanych agentów.
+- 🔌 **Narzędzia + import MCP** — używa lokalnych narzędzi i importuje MCP z Git.
+- 🧭 **Wybór runtime LLM** — przełączanie Ollama / vLLM z panelu.
+- 💾 **Pamięć długoterminowa** — zapis i ponowne użycie kontekstu/lessons.
+- 🎓 **Uczenie przez obserwację** — nagrywanie demonstracji i budowa workflow.
+- 👍👎 **Pętla jakości** — feedback użytkownika, logi i metryki jakości odpowiedzi.
+- 🧠 **Ukryte prompty** — zatwierdzone odpowiedzi jako skróty kontekstu.
+- 💬 **Ciągłość czatu** — historia sesji per `session_id` po restartach.
+- 🛠️ **Panel usług** — `/config` pokazuje status lokalnego stosu.
 
 Szczegóły architektury, frontendu i testów: `docs/`.
 

@@ -1,9 +1,14 @@
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from venom_core.core.model_registry_clients import HuggingFaceClient, OllamaClient
+from venom_core.core.model_registry_clients import (
+    HuggingFaceClient,
+    OllamaClient,
+    _parse_hf_papers_html,
+)
 from venom_core.main import app
 
 
@@ -99,6 +104,67 @@ async def test_ollama_search_scraping_success(mock_ollama_html):
         assert model["provider"] == "ollama"
         assert "Meta-Llama-3-8B" not in model["name"]
         assert model["description"].startswith("The most capable")
+
+
+@pytest.mark.asyncio
+async def test_hf_fetch_papers_month_uses_validated_month_in_url():
+    client = HuggingFaceClient()
+    mock_response = MagicMock()
+    mock_response.is_redirect = False
+    mock_response.headers = {}
+    mock_response.raise_for_status.return_value = None
+    mock_response.text = "<html></html>"
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        with patch(
+            "venom_core.core.model_registry_clients._parse_hf_papers_html",
+            return_value=[{"title": "ok"}],
+        ) as mock_parser:
+            results = await client.fetch_papers_month(limit=10, month="2025-01")
+
+    first_url = mock_client.get.await_args_list[0].args[0]
+    assert first_url == "https://huggingface.co/papers/month/2025-01"
+    assert results == [{"title": "ok"}]
+    mock_parser.assert_called_once_with("<html></html>", 10)
+
+
+@pytest.mark.asyncio
+async def test_hf_fetch_papers_month_rejects_invalid_month_for_url_path():
+    client = HuggingFaceClient()
+    mock_response = MagicMock()
+    mock_response.is_redirect = False
+    mock_response.headers = {}
+    mock_response.raise_for_status.return_value = None
+    mock_response.text = "<html></html>"
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        with patch(
+            "venom_core.core.model_registry_clients._parse_hf_papers_html",
+            return_value=[],
+        ):
+            await client.fetch_papers_month(limit=5, month="../../etc/passwd")
+
+    first_url = mock_client.get.await_args_list[0].args[0]
+    assert re.fullmatch(
+        r"https://huggingface\.co/papers/month/\d{4}-\d{2}",
+        first_url,
+    )
+
+
+def test_parse_hf_papers_html_returns_empty_when_section_missing():
+    assert _parse_hf_papers_html("<html></html>", limit=3) == []
 
 
 def test_api_search_endpoint():

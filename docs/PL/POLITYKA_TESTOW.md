@@ -50,7 +50,7 @@ Wymagane checki:
 Domyślna bramka pokrycia:
 
 - baza diff: `origin/main`
-- minimalne pokrycie zmienionych linii: `70%`
+- minimalne pokrycie zmienionych linii: `80%`
 
 Przydatne opcje:
 
@@ -154,8 +154,8 @@ Typowe wpadki:
 Wskaźniki:
 
 - lokalna bramka changed-lines: `make check-new-code-coverage`
-- minimalny próg wymuszony: `NEW_CODE_CHANGED_LINES_MIN=70` (domyślnie)
-- rekomendowany bufor przed push: `>= 75%`
+- minimalny próg wymuszony: `NEW_CODE_CHANGED_LINES_MIN=80` (domyślnie)
+- rekomendowany bufor przed push: `>= 80%`
 
 ## Polityka artefaktów testowych
 
@@ -180,7 +180,7 @@ Zmiana jest `Done` dopiero po przejściu wszystkich bramek dla zakresu PR:
    - `ruff check venom_core --select C901` (brak naruszeń złożoności w zmienionym zakresie)
 3. Bramka pokrycia new code:
    - `make check-new-code-coverage`
-   - changed-lines coverage `>= 70%` (rekomendowane `>= 75%`)
+   - changed-lines coverage `>= 80%`
 4. Bramka SonarCloud na PR:
    - brak nowych `Critical/High` bugów/podatności
    - brak nowych otwartych blockerów maintainability w zakresie PR

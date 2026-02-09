@@ -164,7 +164,7 @@ def main() -> int:
     parser.add_argument(
         "--min-coverage",
         type=float,
-        default=70.0,
+        default=80.0,
         help="Required minimum coverage %% on changed coverable lines.",
     )
     parser.add_argument(

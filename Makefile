@@ -73,7 +73,7 @@ NEW_CODE_COVERAGE_XML ?= test-results/sonar/python-coverage.xml
 NEW_CODE_JUNIT_XML ?= test-results/sonar/python-junit.xml
 NEW_CODE_COVERAGE_HTML ?= test-results/sonar/htmlcov-new-code
 NEW_CODE_PYTEST_MARK_EXPR ?= not requires_docker and not requires_docker_compose
-NEW_CODE_CHANGED_LINES_MIN ?= 70
+NEW_CODE_CHANGED_LINES_MIN ?= 80
 NEW_CODE_DIFF_BASE ?= origin/main
 
 test-light-coverage:

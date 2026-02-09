@@ -4,10 +4,10 @@
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 
-**Co oznaczają te bramki**
-- `Quick Validate` (GitHub Actions): `python -m compileall venom_core scripts tests`, audyt zależności CI-lite (`scripts/audit_lite_deps.py` + `requirements-ci-lite.txt` + `config/pytest-groups/ci-lite.txt`) oraz kontrola manifestu frontend (`lint`, `test:unit:ci-lite`).
-- `GitGuardian`: wykrywanie sekretów i zapobieganie wyciekom w historii repozytorium i pull requestach.
-- `Quality Gate Status` (SonarCloud): analiza backend + frontend na podstawie `test-results/sonar/python-coverage.xml`, `test-results/sonar/python-junit.xml` oraz `web-next/coverage/lcov.info`.
+**Sygnały jakości**
+- [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml) Szybkie bramki GitHub: compile smoke Pythona, audyt zależności CI-lite, kontrola skryptów frontendu.
+- [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/) Wykrywanie sekretów i zapobieganie wyciekom w historii repo i pull requestach.
+- [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom) Bramka SonarCloud z raportów backendu (`python-coverage.xml`, `python-junit.xml`) i frontendu (`lcov.info`).
 
 > **| [English Documentation Available](README.md)**
 

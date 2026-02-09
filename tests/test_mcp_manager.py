@@ -2,6 +2,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+pytest.importorskip("mcp")
+
 from tests.helpers.url_fixtures import http_url
 from venom_core.skills.mcp_manager_skill import McpManagerSkill, McpToolMetadata
 
@@ -76,3 +78,26 @@ async def test_introspect_failure(manager):
     result = await manager.import_mcp_tool(repo_url="R", tool_name="T")
 
     assert "⚠️ Nie wykryto żadnych narzędzi" in result
+
+
+@pytest.mark.asyncio
+async def test_introspect_tools_propagates_exception(manager, monkeypatch):
+    class FailingContext:
+        async def __aenter__(self):
+            raise RuntimeError("boom")
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        "venom_core.skills.mcp_manager_skill.stdio_client",
+        lambda *_args, **_kwargs: FailingContext(),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await manager._introspect_tools(
+            command="python3",
+            args=["server.py"],
+            cwd=manager.repos_root,
+            env={},
+        )

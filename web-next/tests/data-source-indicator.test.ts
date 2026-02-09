@@ -1,28 +1,33 @@
 import assert from "node:assert/strict";
+import test from "node:test";
 
 import { calculateDataSourceStatus } from "@/components/strategy/data-source-indicator";
 
 const STALE_THRESHOLD_MS = 60000;
 
-// Test: Dane live dostępne
-const liveStatus = calculateDataSourceStatus(true, false, null, STALE_THRESHOLD_MS);
-assert.equal(liveStatus, "live", "Powinno zwrócić 'live' gdy dane live są dostępne");
+test("returns live when live data is available", () => {
+  const status = calculateDataSourceStatus(true, false, null, STALE_THRESHOLD_MS);
+  assert.equal(status, "live");
+});
 
-// Test: Dane cache dostępne (świeże)
-const now = Date.now();
-const cacheStatus = calculateDataSourceStatus(false, true, now - 30000, STALE_THRESHOLD_MS);
-assert.equal(cacheStatus, "cache", "Powinno zwrócić 'cache' gdy dane cache są świeże");
+test("returns cache for fresh cached data", () => {
+  const now = Date.now();
+  const status = calculateDataSourceStatus(false, true, now - 30000, STALE_THRESHOLD_MS);
+  assert.equal(status, "cache");
+});
 
-// Test: Przestarzałe dane cache
-const staleStatus = calculateDataSourceStatus(false, true, now - 90000, STALE_THRESHOLD_MS);
-assert.equal(staleStatus, "stale", "Powinno zwrócić 'stale' gdy dane cache są stare");
+test("returns stale for outdated cache data", () => {
+  const now = Date.now();
+  const status = calculateDataSourceStatus(false, true, now - 90000, STALE_THRESHOLD_MS);
+  assert.equal(status, "stale");
+});
 
-// Test: Brak danych
-const offlineStatus = calculateDataSourceStatus(false, false, null, STALE_THRESHOLD_MS);
-assert.equal(offlineStatus, "offline", "Powinno zwrócić 'offline' gdy brak danych");
+test("returns offline when no data is available", () => {
+  const status = calculateDataSourceStatus(false, false, null, STALE_THRESHOLD_MS);
+  assert.equal(status, "offline");
+});
 
-// Test: Cache bez timestampu
-const cacheNoTimestamp = calculateDataSourceStatus(false, true, null, STALE_THRESHOLD_MS);
-assert.equal(cacheNoTimestamp, "cache", "Powinno zwrócić 'cache' gdy brak timestampu");
-
-console.log("✅ Wszystkie testy wskaźnika źródła danych przeszły!");
+test("returns cache when timestamp is missing", () => {
+  const status = calculateDataSourceStatus(false, true, null, STALE_THRESHOLD_MS);
+  assert.equal(status, "cache");
+});

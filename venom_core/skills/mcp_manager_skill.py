@@ -172,7 +172,7 @@ class McpManagerSkill(BaseSkill):
         if process.returncode != 0:
             error_msg = stderr.decode().strip()
             self.logger.error(f"Command failed: {cmd}\nError: {error_msg}")
-            raise Exception(f"Shell command failed: {error_msg}")
+            raise RuntimeError(f"Shell command failed: {error_msg}")
 
         return stdout.decode().strip()
 

@@ -48,6 +48,17 @@ def _read_group_items(path: Path) -> list[str]:
     return items
 
 
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
+
 def _append_auto_items(path: Path, new_items: list[str]) -> None:
     content = path.read_text(encoding="utf-8") if path.exists() else ""
     lines = content.splitlines()
@@ -94,7 +105,7 @@ def main() -> int:
     resolver = _load_resolver_module()
     resolver_fn = getattr(resolver, "resolve_candidates_from_changed_files", None)
     if callable(resolver_fn):
-        candidates = resolver_fn(staged)
+        candidates = resolver_fn(relevant_changes)
     else:
         all_tests_fn = getattr(resolver, "all_test_files", None) or getattr(
             resolver, "_all_test_files", None
@@ -113,10 +124,11 @@ def main() -> int:
         ):
             raise RuntimeError("Resolver module does not expose required API.")
         all_tests = all_tests_fn()
-        changed_tests = changed_fn(staged)
-        related_tests = related_fn(staged, all_tests)
+        changed_tests = changed_fn(relevant_changes)
+        related_tests = related_fn(relevant_changes, all_tests)
         candidates = sorted(changed_tests | related_tests)
         candidates = [test for test in candidates if light_fn(test)]
+    candidates = _dedupe_keep_order(candidates)
 
     existing = set(_read_group_items(GROUP_PATH))
     to_add = [test for test in candidates if test not in existing]

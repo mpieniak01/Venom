@@ -5,7 +5,11 @@ from pathlib import Path
 
 
 def _load_module():
-    script_path = Path("scripts/update_sonar_new_code_group.py")
+    script_path = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "update_sonar_new_code_group.py"
+    )
     spec = importlib.util.spec_from_file_location(
         "update_sonar_new_code_group", script_path
     )
@@ -68,6 +72,30 @@ def test_main_handles_nested_tests_and_uses_public_resolver_api(
     output = capsys.readouterr().out
     assert "Added 1 test(s)" in output
     assert "tests/api/test_nested.py" in group_path.read_text(encoding="utf-8")
+
+
+def test_main_dedupes_candidates_from_public_resolver(monkeypatch, tmp_path):
+    module = _load_module()
+    group_path = tmp_path / "sonar-new-code.txt"
+    group_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(module, "GROUP_PATH", group_path)
+    monkeypatch.setattr(
+        module,
+        "_git_staged_files",
+        lambda: ["tests/api/test_nested.py"],
+    )
+
+    class Resolver:
+        def resolve_candidates_from_changed_files(self, staged):
+            return [
+                "tests/api/test_nested.py",
+                "tests/api/test_nested.py",
+            ]
+
+    monkeypatch.setattr(module, "_load_resolver_module", lambda: Resolver())
+    assert module.main() == 0
+    lines = group_path.read_text(encoding="utf-8").splitlines()
+    assert lines.count("tests/api/test_nested.py") == 1
 
 
 def test_main_skips_when_no_relevant_changes(monkeypatch, capsys):

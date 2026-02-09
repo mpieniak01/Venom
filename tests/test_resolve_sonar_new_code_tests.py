@@ -5,7 +5,11 @@ from pathlib import Path
 
 
 def _load_module():
-    script_path = Path("scripts/resolve_sonar_new_code_tests.py")
+    script_path = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "resolve_sonar_new_code_tests.py"
+    )
     spec = importlib.util.spec_from_file_location(
         "resolve_sonar_new_code_tests", script_path
     )
@@ -92,3 +96,34 @@ def test_collect_changed_tests_supports_nested_tests_paths():
         "tests/api/test_queue.py",
         "tests/test_root.py",
     }
+
+
+def test_resolve_candidates_from_changed_files_returns_sorted_light_unique(
+    monkeypatch,
+):
+    module = _load_module()
+    monkeypatch.setattr(
+        module,
+        "all_test_files",
+        lambda: ["tests/test_a.py", "tests/test_b.py"],
+    )
+    monkeypatch.setattr(
+        module,
+        "collect_changed_tests",
+        lambda _changed: {"tests/test_b.py", "tests/test_a.py"},
+    )
+    monkeypatch.setattr(
+        module,
+        "related_tests_for_modules",
+        lambda _changed, _tests: {"tests/test_a.py", "tests/test_c.py"},
+    )
+    monkeypatch.setattr(
+        module,
+        "is_light_test",
+        lambda path: path != "tests/test_c.py",
+    )
+
+    resolved = module.resolve_candidates_from_changed_files(
+        ["venom_core/core/file.py", "tests/api/test_any.py"]
+    )
+    assert resolved == ["tests/test_a.py", "tests/test_b.py"]

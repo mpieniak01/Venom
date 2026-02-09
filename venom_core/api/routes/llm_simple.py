@@ -275,6 +275,124 @@ def _trace_stream_completion(
     _request_tracer.update_status(request_id, TraceStatus.COMPLETED)
 
 
+def _build_llm_http_error(
+    exc: httpx.HTTPStatusError, runtime, model_name: str
+) -> tuple[str, dict, dict]:
+    response_text = (exc.response.text or "") if exc.response else ""
+    error_message = (
+        f"LLM HTTP {exc.response.status_code} dla {runtime.provider}"
+        if exc.response
+        else f"LLM HTTP error dla {runtime.provider}"
+    )
+    error_details = {
+        "status_code": exc.response.status_code if exc.response else None,
+        "response": response_text[:2000],
+        "provider": runtime.provider,
+        "endpoint": runtime.endpoint,
+        "model": model_name,
+    }
+    error_payload = {
+        "code": "llm_http_error",
+        "message": (
+            f"Błąd LLM ({runtime.provider}): "
+            f"{exc.response.status_code if exc.response else 'HTTP'}"
+        ),
+    }
+    return error_message, error_details, error_payload
+
+
+def _build_streaming_headers(
+    request_id: UUID, session_id: Optional[str]
+) -> dict[str, str]:
+    return {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "X-Request-Id": str(request_id),
+        "X-Session-Id": session_id or "",
+    }
+
+
+async def _stream_simple_chunks(
+    *,
+    completions_url: str,
+    payload: dict,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+) -> AsyncIterator[str]:
+    full_text = ""
+    chunk_count = 0
+    stream_start = time.perf_counter()
+    first_chunk_seen = False
+
+    yield "event: start\ndata: {}\n\n"
+
+    try:
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream("POST", completions_url, json=payload) as resp:
+                try:
+                    resp.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    error_message, error_details, error_payload = _build_llm_http_error(
+                        exc, runtime, model_name
+                    )
+                    _record_simple_error(
+                        request_id,
+                        error_code="llm_http_error",
+                        error_message=error_message,
+                        error_details=error_details,
+                        error_class=exc.__class__.__name__,
+                        retryable=False,
+                    )
+                    yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+                    return
+
+                async for content in _iter_stream_contents(resp):
+                    chunk_count += 1
+                    full_text += content
+                    if not first_chunk_seen:
+                        _trace_first_chunk(request_id, stream_start, content)
+                        first_chunk_seen = True
+                    event_payload = {"text": content}
+                    yield f"event: content\ndata: {json.dumps(event_payload)}\n\n"
+
+        _trace_stream_completion(request_id, full_text, chunk_count, stream_start)
+        yield "event: done\ndata: {}\n\n"
+
+    except httpx.HTTPError as exc:
+        _record_simple_error(
+            request_id,
+            error_code="llm_connection_error",
+            error_message=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+            error_details={
+                "provider": runtime.provider,
+                "endpoint": runtime.endpoint,
+                "model": model_name,
+            },
+            error_class=exc.__class__.__name__,
+            retryable=True,
+        )
+        error_payload = {
+            "code": "llm_connection_error",
+            "message": f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+        }
+        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+    except Exception as exc:
+        if _request_tracer:
+            _request_tracer.add_step(
+                request_id,
+                _SIMPLE_MODE_STEP,
+                "error",
+                status="error",
+                details=str(exc),
+            )
+        error_payload = {
+            "code": "internal_error",
+            "message": f"Nieoczekiwany błąd: {exc}",
+        }
+        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+
+
 class SimpleChatRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=50000)
     model: Optional[str] = None
@@ -309,108 +427,15 @@ async def stream_simple_chat(request: SimpleChatRequest):
     messages = _build_messages(system_prompt, user_content)
     payload = _build_payload(request, runtime, model_name, messages)
     _trace_context_preview(request_id, messages)
-
-    async def _stream_chunks() -> AsyncIterator[str]:
-        full_text = ""
-        chunk_count = 0
-        stream_start = time.perf_counter()
-        first_chunk_seen = False
-
-        # Send initial event
-        yield "event: start\ndata: {}\n\n"
-
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("POST", completions_url, json=payload) as resp:
-                    try:
-                        resp.raise_for_status()
-                    except httpx.HTTPStatusError as exc:
-                        response_text = (
-                            (exc.response.text or "") if exc.response else ""
-                        )
-                        _record_simple_error(
-                            request_id,
-                            error_code="llm_http_error",
-                            error_message=(
-                                f"LLM HTTP {exc.response.status_code} dla {runtime.provider}"
-                                if exc.response
-                                else f"LLM HTTP error dla {runtime.provider}"
-                            ),
-                            error_details={
-                                "status_code": (
-                                    exc.response.status_code if exc.response else None
-                                ),
-                                "response": response_text[:2000],
-                                "provider": runtime.provider,
-                                "endpoint": runtime.endpoint,
-                                "model": model_name,
-                            },
-                            error_class=exc.__class__.__name__,
-                            retryable=False,
-                        )
-                        # Instead of raising exception breaking the stream, yield error event
-                        error_payload = {
-                            "code": "llm_http_error",
-                            "message": f"Błąd LLM ({runtime.provider}): {exc.response.status_code if exc.response else 'HTTP'}",
-                        }
-                        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
-                        return
-
-                    async for content in _iter_stream_contents(resp):
-                        chunk_count += 1
-                        full_text += content
-                        if not first_chunk_seen:
-                            _trace_first_chunk(request_id, stream_start, content)
-                            first_chunk_seen = True
-                        event_payload = {"text": content}
-                        yield f"event: content\ndata: {json.dumps(event_payload)}\n\n"
-
-            _trace_stream_completion(request_id, full_text, chunk_count, stream_start)
-
-            # End of stream
-            yield "event: done\ndata: {}\n\n"
-
-        except httpx.HTTPError as exc:
-            _record_simple_error(
-                request_id,
-                error_code="llm_connection_error",
-                error_message=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
-                error_details={
-                    "provider": runtime.provider,
-                    "endpoint": runtime.endpoint,
-                    "model": model_name,
-                },
-                error_class=exc.__class__.__name__,
-                retryable=True,
-            )
-            # Yield error event instead of raising
-            error_payload = {
-                "code": "llm_connection_error",
-                "message": f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
-            }
-            yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
-        except Exception as exc:
-            # Catch-all for other errors
-            if _request_tracer:
-                _request_tracer.add_step(
-                    request_id,
-                    _SIMPLE_MODE_STEP,
-                    "error",
-                    status="error",
-                    details=str(exc),
-                )
-            error_payload = {
-                "code": "internal_error",
-                "message": f"Nieoczekiwany błąd: {exc}",
-            }
-            yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
-
-    headers = {
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no",
-        "X-Request-Id": str(request_id),
-        "X-Session-Id": request.session_id or "",
-    }
+    headers = _build_streaming_headers(request_id, request.session_id)
     return StreamingResponse(
-        _stream_chunks(), media_type="text/event-stream", headers=headers
+        _stream_simple_chunks(
+            completions_url=completions_url,
+            payload=payload,
+            runtime=runtime,
+            request_id=request_id,
+            model_name=model_name,
+        ),
+        media_type="text/event-stream",
+        headers=headers,
     )

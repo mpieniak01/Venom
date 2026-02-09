@@ -85,3 +85,5 @@ tests/test_service_monitor_streaming.py
 tests/test_session_history.py
 tests/test_state_and_orchestrator.py
 tests/test_work_ledger.py
+tests/test_llm_simple_logic.py
+tests/test_llm_simple_stream.py

@@ -69,6 +69,8 @@ Backend:
 make pytest
 ```
 
+`make pytest` runs backend groups in order: `heavy` -> `long` -> `fast`.
+
 Frontend:
 
 ```bash

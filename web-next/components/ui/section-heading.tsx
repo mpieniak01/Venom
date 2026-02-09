@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
-type SectionHeadingProps = {
+type SectionHeadingProps = Readonly<{
   eyebrow?: string;
   title: string;
   description?: ReactNode;
@@ -9,7 +9,7 @@ type SectionHeadingProps = {
   className?: string;
   as?: "h1" | "h2" | "h3" | "h4";
   size?: "lg" | "md" | "sm";
-};
+}>;
 
 const sizeMap: Record<NonNullable<SectionHeadingProps["size"]>, string> = {
   lg: "text-3xl",

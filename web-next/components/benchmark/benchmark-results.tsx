@@ -6,7 +6,7 @@ import { useBenchmark } from "@/hooks/use-benchmark";
 import { getApiBaseUrl } from "@/lib/env";
 
 interface BenchmarkResultsProps {
-  currentResults: BenchmarkModelResult[];
+  readonly currentResults: ReadonlyArray<BenchmarkModelResult>;
 }
 
 interface BenchmarkHistoryItem {
@@ -120,8 +120,7 @@ export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
                     <div className="flex items-center gap-2 mb-1">
                       <span className={cn(
                         "w-2 h-2 rounded-full",
-                        item.status === 'completed' ? "bg-emerald-500" :
-                          item.status === 'failed' ? "bg-rose-500" : "bg-amber-500"
+                        resolveStatusColor(item.status)
                       )} />
                       <span className="font-mono text-xs text-zinc-500">{item.benchmark_id.slice(0, 8)}</span>
                       <span className="text-xs text-zinc-400 flex items-center gap-1">
@@ -158,7 +157,7 @@ export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
 }
 
 // Komponent tabeli (reusable)
-function ResultsTable({ results, mini = false }: { results: BenchmarkModelResult[], mini?: boolean }) {
+function ResultsTable({ results, mini = false }: Readonly<{ results: ReadonlyArray<BenchmarkModelResult>, mini?: boolean }>) {
   return (
     <table className="w-full text-left">
       <thead>
@@ -181,8 +180,7 @@ function ResultsTable({ results, mini = false }: { results: BenchmarkModelResult
               <td className="py-2 text-center">
                 <span className={cn(
                   "px-2 py-0.5 rounded-full text-[10px]",
-                  r.status === 'completed' ? "bg-emerald-500/20 text-emerald-400" :
-                    r.status === 'failed' ? "bg-rose-500/20 text-rose-400" : "bg-zinc-500/20 text-zinc-400"
+                  resolveResultStatusColor(r.status)
                 )}>
                   {r.status}
                 </span>
@@ -193,4 +191,16 @@ function ResultsTable({ results, mini = false }: { results: BenchmarkModelResult
       </tbody>
     </table>
   );
+}
+
+function resolveStatusColor(status: string): string {
+  if (status === 'completed') return "bg-emerald-500";
+  if (status === 'failed') return "bg-rose-500";
+  return "bg-amber-500";
+}
+
+function resolveResultStatusColor(status: string): string {
+  if (status === 'completed') return "bg-emerald-500/20 text-emerald-400";
+  if (status === 'failed') return "bg-rose-500/20 text-rose-400";
+  return "bg-zinc-500/20 text-zinc-400";
 }

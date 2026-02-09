@@ -500,7 +500,7 @@ export function useCockpitLogic({
     useEffect(() => {
         if (!resetKey) return;
         try {
-            const stored = window.sessionStorage.getItem(resetKey);
+            const stored = globalThis.window.sessionStorage.getItem(resetKey);
             resetAtRef.current = stored || null;
         } catch {
             resetAtRef.current = null;
@@ -508,7 +508,7 @@ export function useCockpitLogic({
     }, [resetKey]);
 
     useEffect(() => {
-        if (typeof window === "undefined") return;
+        if (typeof globalThis.window === "undefined") return;
         const handleReset = (evt: Event) => {
             const detail = (evt as CustomEvent<{ sessionId?: string | null }>).detail;
             pendingResetSessionRef.current = detail?.sessionId ?? null;
@@ -516,7 +516,7 @@ export function useCockpitLogic({
             resetAtRef.current = resetAt;
             if (detail?.sessionId) {
                 try {
-                    window.sessionStorage.setItem(
+                    globalThis.window.sessionStorage.setItem(
                         `venom-session-reset-at:${detail.sessionId}`,
                         resetAt,
                     );
@@ -534,11 +534,11 @@ export function useCockpitLogic({
             interactive.setters.setHistoryError(null);
             hydratedRefs.current.clear();
             try {
-                if (typeof window !== "undefined" && window.sessionStorage) {
-                    const keys = Object.keys(window.sessionStorage);
+                if (typeof globalThis.window !== "undefined" && globalThis.window.sessionStorage) {
+                    const keys = Object.keys(globalThis.window.sessionStorage);
                     keys.forEach((key) => {
                         if (key.startsWith("venom-session-history:")) {
-                            window.sessionStorage.removeItem(key);
+                            globalThis.window.sessionStorage.removeItem(key);
                         }
                     });
                 }
@@ -546,8 +546,8 @@ export function useCockpitLogic({
                 // ignore storage errors
             }
         };
-        window.addEventListener("venom-session-reset", handleReset);
-        return () => window.removeEventListener("venom-session-reset", handleReset);
+        globalThis.window.addEventListener("venom-session-reset", handleReset);
+        return () => globalThis.window.removeEventListener("venom-session-reset", handleReset);
     }, [interactive.optimistic, interactive.setters, setLocalSessionHistory]);
 
     // Hidden Prompts

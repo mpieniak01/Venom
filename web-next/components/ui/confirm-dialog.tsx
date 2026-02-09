@@ -72,11 +72,11 @@ const ConfirmDialogDescription = forwardRef<
 ConfirmDialogDescription.displayName = DialogPrimitive.Description.displayName;
 
 interface ConfirmDialogActionsProps {
-  onConfirm: () => void;
-  onCancel: () => void;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  confirmVariant?: "primary" | "danger" | "secondary";
+  readonly onConfirm: () => void;
+  readonly onCancel: () => void;
+  readonly confirmLabel?: string;
+  readonly cancelLabel?: string;
+  readonly confirmVariant?: "primary" | "danger" | "secondary";
 }
 
 function ConfirmDialogActions({

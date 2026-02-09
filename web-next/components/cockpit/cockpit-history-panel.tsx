@@ -6,13 +6,13 @@ import { useTranslation } from "@/lib/i18n";
 
 import type { HistoryRequest } from "@/lib/types";
 
-type CockpitHistoryPanelProps = {
+type CockpitHistoryPanelProps = Readonly<{
   history: HistoryRequest[];
   selectedRequestId: string | null;
   onSelect: (entry: HistoryRequest) => void;
   loadingHistory: boolean;
   historyError: string | null;
-};
+}>;
 
 export function CockpitHistoryPanel({
   history,

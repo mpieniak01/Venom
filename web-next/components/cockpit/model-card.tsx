@@ -3,13 +3,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-type ModelListItemProps = {
+type ModelListItemProps = Readonly<{
   name: string;
   sizeGb?: number | null;
   source?: string | null;
   active?: boolean;
   onActivate: () => void;
-};
+}>;
 
 export function ModelListItem({ name, sizeGb, source, active, onActivate }: ModelListItemProps) {
   return (
@@ -39,13 +39,13 @@ export function ModelListItem({ name, sizeGb, source, active, onActivate }: Mode
   );
 }
 
-type RepoActionCardProps = {
+type RepoActionCardProps = Readonly<{
   title: string;
   description: string;
   variant?: "primary" | "danger";
   onClick: () => void;
   pending?: boolean;
-};
+}>;
 
 export function RepoActionCard({
   title,

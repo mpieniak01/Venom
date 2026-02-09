@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button";
 
 export type GraphFilterType = "all" | "agent" | "memory" | "file" | "function";
 
-type GraphFilterButtonsProps = {
+type GraphFilterButtonsProps = Readonly<{
   selectedFilters: GraphFilterType[];
   onToggleFilter: (value: GraphFilterType) => void;
-};
+}>;
 
 const FILTER_OPTIONS: GraphFilterType[] = ["all", "agent", "memory", "file", "function"];
 

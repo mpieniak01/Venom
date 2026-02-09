@@ -175,15 +175,15 @@ export default function InspectorPage() {
       refreshTasks();
     };
     document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("focus", handleVisibility);
+    globalThis.window.addEventListener("focus", handleVisibility);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("focus", handleVisibility);
+      globalThis.window.removeEventListener("focus", handleVisibility);
     };
   }, [refreshHistory, refreshTasks]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof globalThis.window === "undefined") return;
     let cancelled = false;
     import("mermaid")
       .then((mod) => {
@@ -354,13 +354,13 @@ export default function InspectorPage() {
       const flow = await fetchFlowTrace(requestId);
       const flowSteps = (flow.steps || []) as HistoryStep[];
       setSteps(flowSteps);
-      const diagramSource =
-        (flow.mermaid_diagram && flow.mermaid_diagram.trim().length > 0
-          ? flow.mermaid_diagram
-          : flowSteps.length > 0
-            ? buildSequenceDiagram(flow)
-            : null) ?? DEFAULT_DIAGRAM;
-      setDiagram(diagramSource);
+      let diagramSource: string | null = null;
+      if (flow.mermaid_diagram && flow.mermaid_diagram.trim().length > 0) {
+        diagramSource = flow.mermaid_diagram;
+      } else if (flowSteps.length > 0) {
+        diagramSource = buildSequenceDiagram(flow);
+      }
+      setDiagram(diagramSource ?? DEFAULT_DIAGRAM);
     } catch (flowError) {
       console.error("Flow trace error:", flowError);
       setDetailError(
@@ -679,13 +679,15 @@ export default function InspectorPage() {
                 <StatCard
                   label={t("inspector.panels.details.status")}
                   value={liveSelectedStatus}
-                  hint={
-                    streamForSelected?.connected
-                      ? t("inspector.panels.details.liveHint")
-                      : selectedRequest
-                        ? `${t("inspector.panels.details.completedLabel")}: ${formatRelativeTime(selectedRequest.finished_at)}`
-                        : t("inspector.panels.diagram.selectHint")
-                  }
+                  hint={(() => {
+                    if (streamForSelected?.connected) {
+                      return t("inspector.panels.details.liveHint");
+                    }
+                    if (selectedRequest) {
+                      return `${t("inspector.panels.details.completedLabel")}: ${formatRelativeTime(selectedRequest.finished_at)}`;
+                    }
+                    return t("inspector.panels.diagram.selectHint");
+                  })()}
                   accent="purple"
                 />
                 <StatCard

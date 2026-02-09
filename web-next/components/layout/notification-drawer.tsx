@@ -8,10 +8,10 @@ import { useMemo } from "react";
 import { OverlayFallback } from "./overlay-fallback";
 import { useTranslation } from "@/lib/i18n";
 
-type NotificationDrawerProps = {
+type NotificationDrawerProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-};
+}>;
 
 export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerProps) {
   const { entries, connected } = useTelemetryFeed(100);
@@ -56,31 +56,42 @@ export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerPro
           <SheetDescription>{t("notifications.description")}</SheetDescription>
         </SheetHeader>
         <div className="mt-4 flex-1 overflow-y-auto space-y-3">
-          {!connected ? (
-            <OverlayFallback
-              icon={<span className="text-lg">📡</span>}
-              title={t("notifications.offlineTitle")}
-              description={t("notifications.offlineDescription")}
-              hint={t("notifications.hint")}
-              testId="notification-offline-state"
-            />
-          ) : notifications.length === 0 ? (
-            <OverlayFallback
-              icon={<span className="text-lg">🚨</span>}
-              title={t("notifications.emptyTitle")}
-              description={t("notifications.emptyDescription")}
-              hint={t("notifications.hint")}
-            />
-          ) : (
-            notifications.map((note) => (
-              <ListCard
-                key={note.id}
-                title={note.message}
-                badge={<Badge tone={toneFromLevel(note.level)}>{note.level}</Badge>}
-                meta={<span className="text-hint">{new Date(note.ts).toLocaleString()}</span>}
-              />
-            ))
-          )}
+          {(() => {
+            if (!connected) {
+              return (
+                <OverlayFallback
+                  icon={<span className="text-lg">📡</span>}
+                  title={t("notifications.offlineTitle")}
+                  description={t("notifications.offlineDescription")}
+                  hint={t("notifications.hint")}
+                  testId="notification-offline-state"
+                />
+              );
+            }
+            if (notifications.length === 0) {
+              return (
+                <OverlayFallback
+                  icon={<span className="text-lg">🚨</span>}
+                  title={t("notifications.emptyTitle")}
+                  description={t("notifications.emptyDescription")}
+                  hint={t("notifications.hint")}
+                  testId="notification-empty-state"
+                />
+              );
+            }
+            return (
+              <div className="space-y-3" data-testid="notification-entries">
+                {notifications.map((n) => (
+                  <ListCard
+                    key={n.id}
+                    title={n.message}
+                    badge={<Badge tone={toneFromLevel(n.level)}>{n.level}</Badge>}
+                    meta={<span className="text-hint">{new Date(n.ts).toLocaleString()}</span>}
+                  />
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </SheetContent>
     </Sheet>

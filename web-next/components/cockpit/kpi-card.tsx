@@ -2,12 +2,12 @@
 
 import type { ReactNode } from "react";
 
-type CockpitMetricCardProps = {
+type CockpitMetricCardProps = Readonly<{
   primaryValue: string;
   secondaryLabel?: string;
   progress?: number | null;
   footer?: string;
-};
+}>;
 
 export function CockpitMetricCard({ primaryValue, secondaryLabel, progress, footer }: CockpitMetricCardProps) {
   return (
@@ -34,11 +34,11 @@ type TokenSplit = {
   value: number;
 };
 
-type CockpitTokenCardProps = {
+type CockpitTokenCardProps = Readonly<{
   totalValue?: number;
   splits: TokenSplit[];
   chartSlot?: ReactNode;
-};
+}>;
 
 export function CockpitTokenCard({ totalValue, splits, chartSlot }: CockpitTokenCardProps) {
   return (

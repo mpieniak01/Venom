@@ -4,11 +4,11 @@ import type { HistoryRequest } from "@/lib/types";
 import { statusTone } from "@/lib/status";
 import { Badge } from "@/components/ui/badge";
 
-type RecentRequestListProps = {
-  requests?: HistoryRequest[] | null;
+type RecentRequestListProps = Readonly<{
+  requests?: ReadonlyArray<HistoryRequest> | null;
   limit?: number;
   emptyMessage?: string;
-};
+}>;
 
 export function RecentRequestList({
   requests,

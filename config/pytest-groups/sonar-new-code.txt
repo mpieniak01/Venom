@@ -33,3 +33,11 @@ tests/test_release_manager.py
 tests/test_strategist_agent.py
 tests/test_feedback_hidden_prompts.py
 tests/test_hidden_prompts_semantic.py
+
+# Security + coverage hardening (model registry / utilities / orchestrator)
+tests/test_model_discovery.py
+tests/test_process_monitor.py
+tests/test_generation_params_adapter.py
+tests/test_mcp_manager.py
+tests/test_orchestrator_components.py
+tests/test_markdown_blocks.py

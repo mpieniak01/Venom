@@ -43,12 +43,13 @@ jobs:
         run: |
           python -m pip install pytest-cov
           make audit-ci-lite
-          make sonar-reports-backend-new-code \
+          make check-new-code-coverage \
             NEW_CODE_INCLUDE_BASELINE=1 \
             NEW_CODE_BASELINE_GROUP=config/pytest-groups/ci-lite.txt \
             NEW_CODE_TEST_GROUP=config/pytest-groups/sonar-new-code.txt \
             NEW_CODE_COV_TARGET=venom_core \
-            NEW_CODE_COVERAGE_MIN=0
+            NEW_CODE_COVERAGE_MIN=0 \
+            NEW_CODE_CHANGED_LINES_MIN=80
 
       - name: Upload backend Sonar artifacts
         uses: actions/upload-artifact@v4

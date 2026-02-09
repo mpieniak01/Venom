@@ -18,7 +18,7 @@ def test_set_event_broadcaster_updates_global():
     assert logger_module._event_broadcaster is sentinel
 
 
-def test_log_sink_ignores_message_without_record(monkeypatch):
+def test_log_sink_ignores_message_without_record():
     logger_module._log_tasks.clear()
     logger_module.set_event_broadcaster(object())
     logger_module.log_sink(object())

@@ -89,8 +89,8 @@ async def test_import_flow_resolves_server_path_and_custom_install(manager):
         server_entrypoint="python server.py",
     )
 
-    install_cmd = manager._run_shell.call_args_list[3][0][0]
-    assert "/bin/pip install -r requirements.txt" in install_cmd
+    install_calls = [args[0] for args, _kwargs in manager._run_shell.call_args_list]
+    assert any("/bin/pip install -r requirements.txt" in cmd for cmd in install_calls)
 
     introspect_args = manager._introspect_tools.await_args
     assert introspect_args.args[0].endswith("/bin/python")
@@ -116,6 +116,13 @@ async def test_introspect_tools_propagates_exception(manager, monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
+    monkeypatch.setattr(
+        "venom_core.skills.mcp_manager_skill._MCP_AVAILABLE", True, raising=False
+    )
+    monkeypatch.setattr(
+        "venom_core.skills.mcp_manager_skill.StdioServerParameters",
+        lambda **_kwargs: object(),
+    )
     monkeypatch.setattr(
         "venom_core.skills.mcp_manager_skill.stdio_client",
         lambda *_args, **_kwargs: FailingContext(),

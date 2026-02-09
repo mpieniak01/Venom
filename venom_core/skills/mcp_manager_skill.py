@@ -10,7 +10,7 @@ try:
     from mcp.client.stdio import stdio_client
 
     _MCP_AVAILABLE = True
-except Exception:  # pragma: no cover - środowiska bez optional dependency
+except ImportError:  # pragma: no cover - środowiska bez optional dependency
     ClientSession = None  # type: ignore[assignment]
     StdioServerParameters = None  # type: ignore[assignment]
     stdio_client = None  # type: ignore[assignment]

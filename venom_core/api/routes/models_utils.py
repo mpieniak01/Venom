@@ -131,7 +131,7 @@ def _validate_enum_like_param(
 ) -> tuple[Any, str | None]:
     options = spec.get("options") or []
     if options and value not in options:
-        return None, f"Parametr {key} musi być jedną z opcji"
+        return None, f"Parametr {key} musi być jedną z opcji: {options}"
     return value, None
 
 

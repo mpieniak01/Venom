@@ -1,3 +1,7 @@
+import importlib.util
+import sys
+import types
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -150,3 +154,28 @@ async def test_introspect_tools_fails_cleanly_without_mcp(manager, monkeypatch):
             cwd=manager.repos_root,
             env={},
         )
+
+
+def test_optional_import_path_marks_mcp_available_when_module_exists(monkeypatch):
+    fake_mcp = types.ModuleType("mcp")
+    fake_mcp.ClientSession = object
+    fake_mcp.StdioServerParameters = object
+
+    fake_mcp_client = types.ModuleType("mcp.client")
+    fake_stdio = types.ModuleType("mcp.client.stdio")
+    fake_stdio.stdio_client = lambda *_args, **_kwargs: object()
+
+    monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
+    monkeypatch.setitem(sys.modules, "mcp.client", fake_mcp_client)
+    monkeypatch.setitem(sys.modules, "mcp.client.stdio", fake_stdio)
+
+    module_path = (
+        Path(__file__).resolve().parents[1] / "venom_core/skills/mcp_manager_skill.py"
+    )
+    spec = importlib.util.spec_from_file_location("mcp_manager_skill_cov", module_path)
+    assert spec and spec.loader
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module._MCP_AVAILABLE is True

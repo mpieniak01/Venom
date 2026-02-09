@@ -160,33 +160,11 @@ def aggregate_hidden_prompts(
     aggregated: Dict[str, Dict[str, Any]] = {}
 
     for entry in entries:
-        prompt = entry.get("prompt") or ""
-        response = entry.get("approved_response") or ""
-        entry_intent = entry.get("intent") or "UNKNOWN"
-        if intent and entry_intent.upper() != intent.upper():
+        prepared = _prepare_hidden_prompt_entry(entry, intent)
+        if prepared is None:
             continue
-        if not prompt.strip():
-            continue
-
-        prompt_hash = entry.get("prompt_hash")
-        key = prompt_hash or f"{_normalize(entry_intent)}::{_normalize(prompt)}"
-        current = aggregated.get(key)
-        timestamp = entry.get("timestamp")
-        if current is None:
-            aggregated[key] = {
-                "intent": entry_intent,
-                "prompt": prompt,
-                "approved_response": response,
-                "prompt_hash": prompt_hash,
-                "score": 1,
-                "last_timestamp": timestamp,
-            }
-        else:
-            current["score"] += 1
-            if timestamp and _is_newer(timestamp, current.get("last_timestamp")):
-                current["last_timestamp"] = timestamp
-                if response:
-                    current["approved_response"] = response
+        key, payload = prepared
+        _upsert_aggregated_prompt(aggregated, key, payload)
 
     items = [item for item in aggregated.values() if item["score"] >= min_score]
     items.sort(
@@ -295,6 +273,52 @@ def get_cached_hidden_response(
         logger.warning(f"Semantic Cache lookup failed: {exc}")
 
     return None
+
+
+def _prepare_hidden_prompt_entry(
+    entry: Dict[str, Any], intent_filter: Optional[str]
+) -> Optional[tuple[str, Dict[str, Any]]]:
+    prompt = entry.get("prompt") or ""
+    if not prompt.strip():
+        return None
+
+    entry_intent = entry.get("intent") or "UNKNOWN"
+    if intent_filter and entry_intent.upper() != intent_filter.upper():
+        return None
+
+    prompt_hash = entry.get("prompt_hash")
+    key = prompt_hash or f"{_normalize(entry_intent)}::{_normalize(prompt)}"
+    payload = {
+        "intent": entry_intent,
+        "prompt": prompt,
+        "approved_response": entry.get("approved_response") or "",
+        "prompt_hash": prompt_hash,
+        "timestamp": entry.get("timestamp"),
+    }
+    return key, payload
+
+
+def _upsert_aggregated_prompt(
+    aggregated: Dict[str, Dict[str, Any]], key: str, payload: Dict[str, Any]
+) -> None:
+    current = aggregated.get(key)
+    if current is None:
+        aggregated[key] = {
+            "intent": payload["intent"],
+            "prompt": payload["prompt"],
+            "approved_response": payload["approved_response"],
+            "prompt_hash": payload["prompt_hash"],
+            "score": 1,
+            "last_timestamp": payload["timestamp"],
+        }
+        return
+
+    current["score"] += 1
+    timestamp = payload.get("timestamp")
+    if timestamp and _is_newer(timestamp, current.get("last_timestamp")):
+        current["last_timestamp"] = timestamp
+        if payload.get("approved_response"):
+            current["approved_response"] = payload["approved_response"]
 
 
 def cache_hidden_prompt_semantic(

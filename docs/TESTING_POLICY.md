@@ -50,7 +50,7 @@ Required checks:
 Coverage gate defaults:
 
 - diff base: `origin/main`
-- minimum changed-lines coverage: `70%`
+- minimum changed-lines coverage: `80%`
 
 Useful overrides:
 
@@ -154,8 +154,8 @@ Typical failures:
 Indicators:
 
 - local changed-lines gate: `make check-new-code-coverage`
-- enforced minimum: `NEW_CODE_CHANGED_LINES_MIN=70` (default)
-- recommended safety target before push: `>= 75%`
+- enforced minimum: `NEW_CODE_CHANGED_LINES_MIN=80` (default)
+- recommended safety target before push: `>= 80%`
 
 ## Test Artifacts Policy
 
@@ -179,7 +179,7 @@ A change is `Done` only when all gates below are green for the PR scope:
    - `ruff check venom_core --select C901` (no remaining complexity violations in changed scope)
 3. New-code coverage gate passed:
    - `make check-new-code-coverage`
-   - changed-lines coverage `>= 70%` (recommended `>= 75%`)
+   - changed-lines coverage `>= 80%`
 4. SonarCloud PR gate passed:
    - no new `Critical/High` bugs/vulnerabilities
    - no new open maintainability blocker in PR scope

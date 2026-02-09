@@ -5,7 +5,7 @@ cd /home/ubuntu/venom
 source .venv/bin/activate || true
 
 FAST_GROUP_FILE="config/pytest-groups/fast.txt"
-if [ ! -f "${FAST_GROUP_FILE}" ]; then
+if [[ ! -f "${FAST_GROUP_FILE}" ]]; then
   # Backward compatibility for branches that still use light.txt naming.
   FAST_GROUP_FILE="config/pytest-groups/light.txt"
 fi

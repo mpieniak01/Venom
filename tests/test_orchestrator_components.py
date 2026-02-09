@@ -18,6 +18,7 @@ from venom_core.core.orchestrator.task_pipeline.context_builder import (
     ContextBuilder,
     format_extra_context,
 )
+from venom_core.core.slash_commands import SlashCommandResult
 
 
 class DummyQueueManager:
@@ -179,6 +180,18 @@ def test_should_use_fast_path():
     assert should_use_fast_path(request) is False
 
 
+def test_should_use_fast_path_negative_cases():
+    assert should_use_fast_path(TaskRequest(content="x" * 600)) is False
+    assert should_use_fast_path(TaskRequest(content="ok", images=["img"])) is False
+    assert (
+        should_use_fast_path(TaskRequest(content="ok", forced_tool="browser")) is False
+    )
+    assert (
+        should_use_fast_path(TaskRequest(content="ok", forced_provider="ollama"))
+        is False
+    )
+
+
 def test_context_builder_perf_prompt_uses_default_keywords_when_invalid_type():
     class DummyIntentManager:
         PERF_TEST_KEYWORDS = "not-a-list"
@@ -211,6 +224,80 @@ def test_context_builder_perf_prompt_handles_none_content():
 
     builder = ContextBuilder(DummyOrch())
     assert builder.is_perf_test_prompt(None) is False
+
+
+@pytest.mark.asyncio
+async def test_context_builder_preprocess_request_updates_forced_route(monkeypatch):
+    state_calls = []
+
+    class DummyState:
+        def update_context(self, task_id, payload):
+            state_calls.append((task_id, payload))
+
+        def add_log(self, *_args, **_kwargs):
+            pass
+
+    class DummyTracer:
+        def set_forced_route(self, *args, **kwargs):
+            return None
+
+        def add_step(self, *args, **kwargs):
+            return None
+
+    orch = SimpleNamespace(
+        state_manager=DummyState(),
+        request_tracer=DummyTracer(),
+        session_handler=SimpleNamespace(session_store=None),
+    )
+    builder = ContextBuilder(orch)
+
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.task_pipeline.context_builder.parse_slash_command",
+        lambda _content: SlashCommandResult(
+            token="git",
+            cleaned="status",
+            forced_tool="git",
+            forced_intent="VERSION_CONTROL",
+        ),
+    )
+
+    task_id = uuid4()
+    request = TaskRequest(content="/git status")
+    await builder.preprocess_request(task_id, request)
+
+    assert request.content == "status"
+    assert request.forced_tool == "git"
+    assert any("forced_route" in call[1] for call in state_calls)
+
+
+@pytest.mark.asyncio
+async def test_context_builder_add_hidden_prompts_skips_for_small_vllm(monkeypatch):
+    logs = []
+
+    class DummyState:
+        def add_log(self, _task_id, message):
+            logs.append(message)
+
+    orch = SimpleNamespace(
+        state_manager=DummyState(),
+        request_tracer=None,
+        _get_runtime_context_char_limit=lambda _runtime: 5000,
+    )
+    builder = ContextBuilder(orch)
+
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.task_pipeline.context_builder.get_active_llm_runtime",
+        lambda: SimpleNamespace(provider="vllm"),
+    )
+    monkeypatch.setattr(
+        "venom_core.core.orchestrator.task_pipeline.context_builder.SETTINGS.VLLM_MAX_MODEL_LEN",
+        512,
+        raising=False,
+    )
+
+    out = await builder.add_hidden_prompts(uuid4(), "ctx", intent="GENERAL_CHAT")
+    assert out == "ctx"
+    assert any("Pominięto hidden prompts" in line for line in logs)
 
 
 def test_trace_llm_start_adds_tracer_step_when_present():

@@ -229,3 +229,10 @@ class TestScenarioWeaver:
         assert scenario.difficulty == "simple"
         assert scenario.metadata.get("fallback") is True
         assert len(scenario.test_cases) > 0
+
+    def test_create_fallback_scenario_without_keywords(self, mock_kernel):
+        weaver = ScenarioWeaver(mock_kernel)
+        scenario = weaver._create_fallback_scenario("a, bb, c.", difficulty="medium")
+        assert scenario.metadata.get("fallback") is True
+        assert scenario.title.startswith("Eksploracja")
+        assert scenario.libraries

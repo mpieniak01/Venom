@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from semantic_kernel import Kernel
 
-from venom_core.agents.researcher import ResearcherAgent
+from venom_core.agents.researcher import ResearcherAgent, format_grounding_sources
 from venom_core.config import SETTINGS
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
@@ -125,3 +125,28 @@ class TestResearcherAgent:
             assert num_predict == 800
         else:
             assert max_tokens == 800
+
+    def test_format_grounding_sources_prefers_chunks(self):
+        meta = {
+            "grounding_metadata": {
+                "grounding_chunks": [
+                    {"title": "Doc", "uri": "https://example.com/doc"},
+                    {"title": "NoUri"},
+                ]
+            }
+        }
+        section = format_grounding_sources(meta)
+        assert "Źródła" in section
+        assert "https://example.com/doc" in section
+
+    def test_format_grounding_sources_from_queries_when_no_chunks(self):
+        meta = {"web_search_queries": ["zapytanie 1", "zapytanie 2"]}
+        section = format_grounding_sources(meta)
+        assert "Zapytanie: zapytanie 1" in section
+
+    def test_extract_urls(self):
+        text = "Wynik\nURL: https://a.example\nURL: https://b.example"
+        assert ResearcherAgent._extract_urls(text) == [
+            "https://a.example",
+            "https://b.example",
+        ]

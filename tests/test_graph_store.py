@@ -196,3 +196,32 @@ class TestCodeGraphStore:
 
         assert stats["total_files"] == 3
         assert stats["files_scanned"] == 3
+
+    def test_safe_log_value_sanitizes_control_chars(self):
+        value = "abc\tdef\nxyz"
+        out = CodeGraphStore._safe_log_value(value, max_len=50)
+        assert "\n" not in out
+        assert "\t" not in out
+
+    def test_get_dependencies_returns_empty_for_missing_file(self, graph_store):
+        deps = graph_store.get_dependencies("missing.py")
+        assert deps == []
+
+    def test_get_file_info_returns_empty_for_missing_file(self, graph_store):
+        assert graph_store.get_file_info("missing.py") == {}
+
+    def test_get_impact_analysis_returns_error_for_missing_file(self, graph_store):
+        result = graph_store.get_impact_analysis("missing.py")
+        assert "error" in result
+
+    def test_load_graph_returns_false_when_file_missing(self, graph_store):
+        assert graph_store.load_graph() is False
+
+    def test_load_graph_returns_false_for_invalid_json(self, graph_store):
+        graph_store.graph_file.write_text("{bad json", encoding="utf-8")
+        assert graph_store.load_graph() is False
+
+    def test_parse_file_outside_workspace_returns_false(self, graph_store, tmp_path):
+        external_file = tmp_path / "external.py"
+        external_file.write_text("def x():\n    return 1\n", encoding="utf-8")
+        assert graph_store._parse_file(external_file) is False

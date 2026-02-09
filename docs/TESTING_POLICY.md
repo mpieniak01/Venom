@@ -64,6 +64,7 @@ New-code coverage run behavior:
 
 - baseline test groups: `config/pytest-groups/ci-lite.txt` + `config/pytest-groups/sonar-new-code.txt`
 - automatic include of changed tests/modules is enabled by default (`NEW_CODE_AUTO_INCLUDE_CHANGED=1`)
+- changed test auto-include pattern: `tests/**/test_*.py`
 - resolver script: `scripts/resolve_sonar_new_code_tests.py`
 - if `ripgrep` (`rg`) is unavailable locally, resolver falls back to pure Python scanning
 - CI backend-lite installs `ripgrep` for faster selection and deterministic logs

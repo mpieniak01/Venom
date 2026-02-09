@@ -41,3 +41,6 @@ tests/test_generation_params_adapter.py
 tests/test_mcp_manager.py
 tests/test_orchestrator_components.py
 tests/test_markdown_blocks.py
+
+# AUTO-ADDED by pre-commit (staged backend/test changes)
+tests/test_update_sonar_new_code_group.py

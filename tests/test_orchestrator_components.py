@@ -1,11 +1,17 @@
 import asyncio
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
 from venom_core.core.models import TaskExtraContext, TaskRequest
 from venom_core.core.orchestrator.event_broadcaster import EventBroadcasterClient
 from venom_core.core.orchestrator.kernel_lifecycle import KernelLifecycleManager
-from venom_core.core.orchestrator.orchestrator_events import build_error_envelope
+from venom_core.core.orchestrator.orchestrator_events import (
+    build_error_envelope,
+    set_runtime_error,
+    trace_llm_start,
+)
 from venom_core.core.orchestrator.orchestrator_submit import should_use_fast_path
 from venom_core.core.orchestrator.task_manager import TaskManager
 from venom_core.core.orchestrator.task_pipeline.context_builder import (
@@ -194,3 +200,61 @@ def test_context_builder_perf_prompt_uses_custom_keywords():
     builder = ContextBuilder(DummyOrch())
     assert builder.is_perf_test_prompt("To jest pomiar obciążenia") is True
     assert builder.is_perf_test_prompt("Zwykłe zadanie") is False
+
+
+def test_context_builder_perf_prompt_handles_none_content():
+    class DummyIntentManager:
+        PERF_TEST_KEYWORDS = ["perf"]
+
+    class DummyOrch:
+        intent_manager = DummyIntentManager()
+
+    builder = ContextBuilder(DummyOrch())
+    assert builder.is_perf_test_prompt(None) is False
+
+
+def test_trace_llm_start_adds_tracer_step_when_present():
+    calls = []
+
+    class DummyTracer:
+        def add_step(self, *args, **kwargs):
+            calls.append((args, kwargs))
+
+    orch = SimpleNamespace(request_tracer=DummyTracer())
+    task_id = uuid4()
+
+    trace_llm_start(orch, task_id, "intent-x")
+
+    assert len(calls) == 1
+    assert calls[0][0][1:] == ("LLM", "start")
+    assert calls[0][1]["details"] == "intent=intent-x"
+
+
+def test_set_runtime_error_updates_context_and_tracer():
+    class DummyStateManager:
+        def __init__(self):
+            self.last = None
+
+        def update_context(self, task_id, payload):
+            self.last = (task_id, payload)
+
+    class DummyTracer:
+        def __init__(self):
+            self.last = None
+
+        def set_error_metadata(self, task_id, envelope):
+            self.last = (task_id, envelope)
+
+    state = DummyStateManager()
+    tracer = DummyTracer()
+    orch = SimpleNamespace(state_manager=state, request_tracer=tracer)
+    task_id = uuid4()
+    envelope = {"error_code": "E", "error_message": "msg"}
+
+    set_runtime_error(orch, task_id, envelope)
+
+    assert state.last[0] == task_id
+    assert state.last[1]["llm_runtime"]["status"] == "error"
+    assert state.last[1]["llm_runtime"]["error"] == envelope
+    assert "last_error_at" in state.last[1]["llm_runtime"]
+    assert tracer.last == (task_id, envelope)

@@ -5,8 +5,16 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 # Import MCP Client for introspection
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+try:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    _MCP_AVAILABLE = True
+except Exception:  # pragma: no cover - środowiska bez optional dependency
+    ClientSession = None  # type: ignore[assignment]
+    StdioServerParameters = None  # type: ignore[assignment]
+    stdio_client = None  # type: ignore[assignment]
+    _MCP_AVAILABLE = False
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
@@ -174,6 +182,11 @@ class McpManagerSkill(BaseSkill):
         """
         Uruchamia serwer MCP na chwilę, aby pobrać listę narzędzi.
         """
+        if not _MCP_AVAILABLE:
+            raise RuntimeError(
+                "Biblioteka 'mcp' nie jest zainstalowana. "
+                "Zainstaluj optional dependency, aby używać introspekcji MCP."
+            )
         server_params = StdioServerParameters(
             command=command, args=args, env={**env, "PYTHONUNBUFFERED": "1"}
         )

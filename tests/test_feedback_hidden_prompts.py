@@ -164,3 +164,41 @@ def test_active_hidden_prompts_priority(tmp_path, monkeypatch):
     context = hidden_prompts.build_hidden_prompts_context("GENERAL_CHAT", limit=2)
     assert "P2" in context
     assert context.index("P2") < context.index("P1")
+
+
+def test_hidden_prompt_prepare_entry_filters():
+    assert hidden_prompts._prepare_hidden_prompt_entry({"prompt": "   "}, None) is None
+    assert (
+        hidden_prompts._prepare_hidden_prompt_entry({"prompt": "x", "intent": "A"}, "B")
+        is None
+    )
+    prepared = hidden_prompts._prepare_hidden_prompt_entry(
+        {
+            "prompt": "x",
+            "intent": "A",
+            "approved_response": "R",
+            "timestamp": "2024-01-01T10:00:00",
+        },
+        None,
+    )
+    assert prepared is not None
+
+
+def test_hidden_prompt_upsert_updates_newer_response():
+    aggregated = {}
+    payload = {
+        "intent": "GENERAL_CHAT",
+        "prompt": "P",
+        "approved_response": "R1",
+        "prompt_hash": "h1",
+        "timestamp": "2024-01-01T10:00:00",
+    }
+    hidden_prompts._upsert_aggregated_prompt(aggregated, "h1", payload)
+    assert aggregated["h1"]["score"] == 1
+
+    payload_newer = dict(payload)
+    payload_newer["approved_response"] = "R2"
+    payload_newer["timestamp"] = "2024-01-02T10:00:00"
+    hidden_prompts._upsert_aggregated_prompt(aggregated, "h1", payload_newer)
+    assert aggregated["h1"]["score"] == 2
+    assert aggregated["h1"]["approved_response"] == "R2"

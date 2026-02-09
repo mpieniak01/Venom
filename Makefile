@@ -30,7 +30,7 @@ SHELL := /bin/bash
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports \
-	pytest e2e test-optimal test-ci-light test-light-coverage sonar-reports-backend-new-code \
+	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage sonar-reports-backend-new-code pr-fast \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend
@@ -73,6 +73,8 @@ NEW_CODE_COVERAGE_XML ?= test-results/sonar/python-coverage.xml
 NEW_CODE_JUNIT_XML ?= test-results/sonar/python-junit.xml
 NEW_CODE_COVERAGE_HTML ?= test-results/sonar/htmlcov-new-code
 NEW_CODE_PYTEST_MARK_EXPR ?= not requires_docker and not requires_docker_compose
+NEW_CODE_CHANGED_LINES_MIN ?= 70
+NEW_CODE_DIFF_BASE ?= origin/main
 
 test-light-coverage:
 	@mkdir -p test-results/sonar
@@ -100,6 +102,17 @@ test-light-coverage:
 		--cov-report=html:$(NEW_CODE_COVERAGE_HTML) \
 		--cov-fail-under=$(NEW_CODE_COVERAGE_MIN) \
 		--junitxml=$(NEW_CODE_JUNIT_XML)
+
+check-new-code-coverage: test-light-coverage
+	@python3 scripts/check_new_code_coverage.py \
+		--coverage-xml "$(NEW_CODE_COVERAGE_XML)" \
+		--sonar-config "sonar-project.properties" \
+		--diff-base "$(NEW_CODE_DIFF_BASE)" \
+		--scope "$(NEW_CODE_COV_TARGET)" \
+		--min-coverage "$(NEW_CODE_CHANGED_LINES_MIN)"
+
+pr-fast:
+	@bash scripts/pr_fast_check.sh
 
 sonar-reports-backend-new-code: test-light-coverage
 

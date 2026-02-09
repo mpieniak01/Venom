@@ -274,3 +274,32 @@ def test_initialize_calendar_skill_disabled(monkeypatch):
     main_module.google_calendar_skill = "placeholder"
     main_module._initialize_calendar_skill()
     assert main_module.google_calendar_skill == "placeholder"
+
+
+def test_parse_node_message(monkeypatch):
+    payload = '{"message_type":"HANDSHAKE","payload":{"node_name":"n1","token":"t","capabilities":{}}}'
+    parsed = main_module._parse_node_message(payload)
+    assert parsed.message_type.value == "HANDSHAKE"
+    assert parsed.payload["node_name"] == "n1"
+
+
+def test_initialize_model_services_handles_missing_monitor(monkeypatch, tmp_path):
+    class DummyModelManager:
+        def __init__(self, models_dir):
+            self.models_dir = models_dir
+
+    monkeypatch.setattr(main_module, "service_monitor", None)
+    monkeypatch.setattr(
+        "venom_core.core.model_manager.ModelManager", DummyModelManager, raising=True
+    )
+    monkeypatch.setattr(
+        main_module.SETTINGS, "ACADEMY_MODELS_DIR", str(tmp_path), raising=False
+    )
+    main_module.model_registry = "sentinel"
+    main_module.benchmark_service = "sentinel"
+
+    main_module._initialize_model_services()
+
+    assert main_module.model_manager is not None
+    assert main_module.model_registry == "sentinel"
+    assert main_module.benchmark_service is None

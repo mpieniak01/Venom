@@ -92,18 +92,18 @@ async def _start_server_if_supported(
 
 
 async def _await_server_health(server_name: str, health_url: str) -> bool:
-    logger.info(f"Oczekiwanie na start serwera {server_name} ({health_url})...")
+    logger.info("Oczekiwanie na gotowość serwera LLM.")
     async with httpx.AsyncClient(timeout=2.0) as client:
         for attempt in range(60):
             try:
                 resp = await client.get(health_url)
                 if 200 <= resp.status_code < 300:
-                    logger.info(f"Serwer {server_name} gotowy po {attempt * 0.5}s")
+                    logger.info("Serwer LLM gotowy po %.1fs", attempt * 0.5)
                     return True
             except Exception:
                 pass
             await asyncio.sleep(0.5)
-    logger.error(f"Serwer {server_name} nie odpowiedział prawidłowo po 30s")
+    logger.error("Serwer LLM nie odpowiedział prawidłowo po 30s")
     return False
 
 
@@ -267,7 +267,7 @@ def _build_model_updates(
         model_info = next((m for m in models if m["name"] == selected_model), None)
         if model_info and model_info.get("path"):
             updates["VLLM_MODEL_PATH"] = model_info["path"]
-            logger.info(f"Persisting VLLM_MODEL_PATH: {model_info['path']}")
+            logger.info("Persisting VLLM model path from registry metadata.")
 
     if previous_model and previous_model != selected_model:
         prev_model_key = (

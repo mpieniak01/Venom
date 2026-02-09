@@ -146,7 +146,11 @@ def test_ensure_url_scheme_keeps_existing_and_adds_for_missing(monkeypatch):
     assert (
         BrowserSkill._ensure_url_scheme("https://example.com") == "https://example.com"
     )
-    monkeypatch.setenv("URL_SCHEME_POLICY", "force_http")
+    monkeypatch.setattr(
+        "venom_core.utils.url_policy.SETTINGS.URL_SCHEME_POLICY",
+        "force_http",
+        raising=False,
+    )
     assert BrowserSkill._ensure_url_scheme("localhost/path") == "http://localhost/path"
 
 

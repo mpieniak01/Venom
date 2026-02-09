@@ -99,11 +99,16 @@ def test_get_critical_services(service_registry):
     assert all(s.is_critical for s in critical_services)
 
 
-def test_set_orchestrator_and_get_all_services(service_monitor):
+def test_set_orchestrator(service_monitor):
     orchestrator = MagicMock()
     service_monitor.set_orchestrator(orchestrator)
     assert service_monitor.orchestrator is orchestrator
-    assert service_monitor.get_all_services()
+
+
+def test_get_all_services_returns_list(service_monitor):
+    services = service_monitor.get_all_services()
+    assert isinstance(services, list)
+    assert len(services) > 0
 
 
 @pytest.mark.asyncio

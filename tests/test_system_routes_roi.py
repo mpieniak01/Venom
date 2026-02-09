@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -40,40 +40,37 @@ async def test_iot_helper_responses():
 
 @pytest.mark.asyncio
 async def test_iot_metric_helpers(monkeypatch):
-    class GoodBridge:
-        async def read_sensor(self, _name):
-            return 42.34
+    good_bridge = MagicMock()
+    good_bridge.read_sensor = AsyncMock(return_value=42.34)
+    good_bridge.execute_command = AsyncMock(
+        return_value={"return_code": 0, "stdout": " 123/456MB "}
+    )
 
-        async def execute_command(self, _command):
-            return {"return_code": 0, "stdout": " 123/456MB "}
+    bad_bridge = MagicMock()
+    bad_bridge.read_sensor = AsyncMock(side_effect=RuntimeError("boom"))
+    bad_bridge.execute_command = AsyncMock(
+        return_value={"return_code": 1, "stdout": "x"}
+    )
 
-    class BadBridge:
-        async def read_sensor(self, _name):
-            raise RuntimeError("boom")
-
-        async def execute_command(self, _command):
-            return {"return_code": 1, "stdout": "x"}
-
-    assert await system_iot_routes._read_cpu_temperature(GoodBridge()) == "42.3°C"
-    assert await system_iot_routes._read_cpu_temperature(BadBridge()) is None
+    assert await system_iot_routes._read_cpu_temperature(good_bridge) == "42.3°C"
+    assert await system_iot_routes._read_cpu_temperature(bad_bridge) is None
     assert (
         await system_iot_routes._read_bridge_command_metric(
-            GoodBridge(), "cmd", "warn-msg"
+            good_bridge, "cmd", "warn-msg"
         )
         == "123/456MB"
     )
     assert (
-        await system_iot_routes._read_bridge_command_metric(BadBridge(), "cmd", "warn")
+        await system_iot_routes._read_bridge_command_metric(bad_bridge, "cmd", "warn")
         is None
     )
 
-    class ExplodingBridge:
-        async def execute_command(self, _command):
-            raise RuntimeError("boom")
+    exploding_bridge = MagicMock()
+    exploding_bridge.execute_command = AsyncMock(side_effect=RuntimeError("boom"))
 
     assert (
         await system_iot_routes._read_bridge_command_metric(
-            ExplodingBridge(), "cmd", "warn"
+            exploding_bridge, "cmd", "warn"
         )
         is None
     )

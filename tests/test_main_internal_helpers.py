@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -77,15 +78,14 @@ async def test_handle_node_message_disconnect_and_unknown(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_wait_for_runtime_online(monkeypatch):
-    calls = {"count": 0}
-
-    async def fake_probe(_runtime):
-        calls["count"] += 1
-        if calls["count"] >= 3:
-            return ("online", {})
-        return ("offline", {})
-
-    monkeypatch.setattr(main_module, "probe_runtime_status", fake_probe)
+    mock_probe = AsyncMock(
+        side_effect=[
+            ("offline", {}),
+            ("offline", {}),
+            ("online", {}),
+        ]
+    )
+    monkeypatch.setattr(main_module, "probe_runtime_status", mock_probe)
     monkeypatch.setattr(main_module.asyncio, "sleep", AsyncMock())
 
     runtime = SimpleNamespace(provider="ollama")
@@ -93,23 +93,25 @@ async def test_wait_for_runtime_online(monkeypatch):
         runtime, attempts=5, delay_seconds=0
     )
     assert status == "online"
-    assert calls["count"] == 3
+    assert mock_probe.call_count == 3
 
 
 @pytest.mark.asyncio
 async def test_start_local_runtime_if_needed_paths(monkeypatch):
     runtime = SimpleNamespace(provider="ollama")
 
-    async def online_probe(_runtime):
-        return ("online", {})
-
-    monkeypatch.setattr(main_module, "probe_runtime_status", online_probe)
+    monkeypatch.setattr(
+        main_module,
+        "probe_runtime_status",
+        AsyncMock(return_value=("online", {})),
+    )
     assert await main_module._start_local_runtime_if_needed(runtime) == "online"
 
-    async def offline_probe(_runtime):
-        return ("offline", {})
-
-    monkeypatch.setattr(main_module, "probe_runtime_status", offline_probe)
+    monkeypatch.setattr(
+        main_module,
+        "probe_runtime_status",
+        AsyncMock(return_value=("offline", {})),
+    )
     monkeypatch.setattr(main_module, "_start_configured_local_server", AsyncMock())
     monkeypatch.setattr(
         main_module, "_wait_for_runtime_online", AsyncMock(return_value="online")
@@ -174,6 +176,7 @@ async def test_start_configured_local_server_runs_stop_and_start(monkeypatch):
             ]
 
         async def run_action(self, name, action):
+            await asyncio.sleep(0)
             calls.append((name, action))
 
     monkeypatch.setattr(main_module, "llm_controller", DummyController())
@@ -194,46 +197,41 @@ async def test_start_configured_local_server_noop_when_server_missing(monkeypatc
 
 @pytest.mark.asyncio
 async def test_receive_node_handshake_parsing(monkeypatch):
-    class DummyWebSocket:
-        def __init__(self, payload: str):
-            self.payload = payload
-            self.closed = None
-
-        async def receive_text(self):
-            return self.payload
-
-        async def close(self, code, reason):
-            self.closed = (code, reason)
-
     handshake_payload = '{"message_type":"HANDSHAKE","payload":{"node_name":"n1","token":"t","capabilities":{}}}'
-    ws_ok = DummyWebSocket(handshake_payload)
+    ws_ok = MagicMock()
+    ws_ok.receive_text = AsyncMock(return_value=handshake_payload)
+    ws_ok.close = AsyncMock()
     handshake = await main_module._receive_node_handshake(ws_ok)
     assert handshake is not None
-    assert ws_ok.closed is None
+    ws_ok.close.assert_not_awaited()
 
-    ws_bad = DummyWebSocket('{"message_type":"RESPONSE","payload":{}}')
+    ws_bad = MagicMock()
+    ws_bad.receive_text = AsyncMock(
+        return_value='{"message_type":"RESPONSE","payload":{}}'
+    )
+    ws_bad.close = AsyncMock()
     assert await main_module._receive_node_handshake(ws_bad) is None
-    assert ws_bad.closed == (1003, "Expected HANDSHAKE message")
+    ws_bad.close.assert_awaited_once_with(
+        code=1003, reason="Expected HANDSHAKE message"
+    )
 
 
 @pytest.mark.asyncio
 async def test_run_node_message_loop_handles_json_error_and_disconnect(monkeypatch):
-    messages = iter(
-        [
+    ws = MagicMock()
+    ws.receive_text = AsyncMock(
+        side_effect=[
             "{bad-json",
             '{"message_type":"DISCONNECT","payload":{}}',
         ]
     )
 
-    class DummyWebSocket:
-        async def receive_text(self):
-            return next(messages)
-
     async def fake_handle(message, _node_id):
+        await asyncio.sleep(0)
         return message.message_type != MessageType.DISCONNECT
 
     monkeypatch.setattr(main_module, "_handle_node_message", fake_handle)
-    await main_module._run_node_message_loop(DummyWebSocket(), "node-1")
+    await main_module._run_node_message_loop(ws, "node-1")
 
 
 def test_initialize_model_services_success_path(monkeypatch, tmp_path):
@@ -347,6 +345,7 @@ async def test_initialize_gardener_and_git(monkeypatch, tmp_path):
             self.started = False
 
         async def start(self):
+            await asyncio.sleep(0)
             self.started = True
 
     class DummyGitSkill:
@@ -375,6 +374,7 @@ async def test_initialize_background_scheduler_registers_jobs(monkeypatch):
             self.started = False
 
         async def start(self):
+            await asyncio.sleep(0)
             self.started = True
 
         def add_interval_job(self, func, minutes, job_id, description):
@@ -385,6 +385,7 @@ async def test_initialize_background_scheduler_registers_jobs(monkeypatch):
             assert days == 7
 
     async def _noop(_event_broadcaster):
+        await asyncio.sleep(0)
         return None
 
     monkeypatch.setattr(main_module, "BackgroundScheduler", DummyScheduler)
@@ -418,6 +419,7 @@ async def test_initialize_documenter_and_watcher(monkeypatch, tmp_path):
             self.event_broadcaster = event_broadcaster
 
         async def handle_code_change(self, _change):
+            await asyncio.sleep(0)
             return None
 
     class DummyWatcher:
@@ -428,6 +430,7 @@ async def test_initialize_documenter_and_watcher(monkeypatch, tmp_path):
             self.started = False
 
         async def start(self):
+            await asyncio.sleep(0)
             self.started = True
 
     monkeypatch.setattr(main_module, "DocumenterAgent", DummyDocumenter)
@@ -454,6 +457,7 @@ async def test_avatar_stack_helpers(monkeypatch):
             self.kwargs = kwargs
 
         async def connect(self):
+            await asyncio.sleep(0)
             return True
 
     class DummyKernelBuilder:

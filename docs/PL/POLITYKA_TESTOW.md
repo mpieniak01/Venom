@@ -102,6 +102,61 @@ Wymagane bramki na PR:
 - CI Lite (szybki lint + wybrane testy unit)
 - SonarCloud (bugi, podatności, utrzymywalność, duplikacje)
 
+## Kryteria jakości i typowe obszary wpadek
+
+To są najczęściej powracające problemy jakościowe w repo i wskaźniki, którymi je mierzymy.
+
+### 1) Błędy bezpieczeństwa
+
+Typowe wpadki:
+
+- logowanie danych sterowanych przez użytkownika w route'ach backendu
+- regexy podatne na backtracking (DoS)
+- nieprzejrzane Security Hotspots w Sonar
+
+Wskaźniki:
+
+- Sonar `Security Hotspots Reviewed`: cel `100%` w zakresie PR
+- Sonar `Vulnerabilities` i `Bugs`: brak nowych `Critical/High`
+
+### 2) Kod spaghetti / zbyt złożone ścieżki
+
+Typowe wpadki:
+
+- wysoka złożoność kognitywna (`brain-overload`)
+- długie drzewa warunków w route'ach i orkiestracji
+- mieszanie walidacji, logiki i mapowania odpowiedzi w jednej funkcji
+
+Wskaźniki:
+
+- Python complexity check: `ruff check venom_core --select C901`
+- próg Sonar dla Cognitive Complexity na funkcję: `<= 15`
+- brak nowych `Critical` maintainability w zakresie PR
+
+### 3) Zbyt głębokie zagnieżdżenia
+
+Typowe wpadki:
+
+- głęboko zagnieżdżone bloki/callbacki obniżające czytelność i testowalność
+
+Wskaźniki:
+
+- brak nowych otwartych issue Sonar o nadmiernym zagnieżdżeniu w zakresie PR
+- preferowanie guard clauses / early return przy refaktorze
+
+### 4) Słabe pokrycie new code
+
+Typowe wpadki:
+
+- testy przechodzą, ale zmienione linie są niepokryte
+- nowe testy nie trafiają do lekkiej grupy Sonar
+
+Wskaźniki:
+
+- lokalna bramka changed-lines: `make check-new-code-coverage`
+- minimalny próg wymuszony: `NEW_CODE_CHANGED_LINES_MIN=70` (domyślnie)
+- rekomendowany bufor przed push: `>= 75%`
+
 ## Polityka artefaktów testowych
 
 Nie commitujemy artefaktów wyników testów.
@@ -112,3 +167,24 @@ Ignorowane wg polityki:
 - `perf-artifacts/`
 - `playwright-report/`
 - lokalne artefakty Sonar generowane przez `make sonar-reports`
+
+## Definition of Done (bramki jakości)
+
+Zmiana jest `Done` dopiero po przejściu wszystkich bramek dla zakresu PR:
+
+1. Szybka bramka PR lokalnie:
+   - `make pr-fast`
+2. Statyczna jakość:
+   - `pre-commit run --all-files`
+   - `mypy venom_core`
+   - `ruff check venom_core --select C901` (brak naruszeń złożoności w zmienionym zakresie)
+3. Bramka pokrycia new code:
+   - `make check-new-code-coverage`
+   - changed-lines coverage `>= 70%` (rekomendowane `>= 75%`)
+4. Bramka SonarCloud na PR:
+   - brak nowych `Critical/High` bugów/podatności
+   - brak nowych otwartych blockerów maintainability w zakresie PR
+   - Security Hotspots w zakresie PR przejrzane (`100%`)
+5. Gdy zmieniasz frontend:
+   - `npm --prefix web-next run lint`
+   - `npm --prefix web-next run test:unit:ci-lite`

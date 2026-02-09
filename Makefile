@@ -72,6 +72,7 @@ NEW_CODE_COV_TARGET ?= venom_core
 NEW_CODE_COVERAGE_XML ?= test-results/sonar/python-coverage.xml
 NEW_CODE_JUNIT_XML ?= test-results/sonar/python-junit.xml
 NEW_CODE_COVERAGE_HTML ?= test-results/sonar/htmlcov-new-code
+NEW_CODE_PYTEST_MARK_EXPR ?= not requires_docker and not requires_docker_compose
 
 test-light-coverage:
 	@mkdir -p test-results/sonar
@@ -92,6 +93,7 @@ test-light-coverage:
 		TESTS_TO_RUN="$$BASELINE_TESTS $$NEW_CODE_TESTS"; \
 	fi; \
 	$$PYTEST_BIN -n 4 $$TESTS_TO_RUN \
+		-m "$(NEW_CODE_PYTEST_MARK_EXPR)" \
 		--cov=$(NEW_CODE_COV_TARGET) \
 		--cov-report=term-missing:skip-covered \
 		--cov-report=xml:$(NEW_CODE_COVERAGE_XML) \

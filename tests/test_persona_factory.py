@@ -198,4 +198,8 @@ def test_persona_enrichment_high_patience_branch():
         description="",
     )
     enriched = factory._enrich_persona_with_llm(persona)
-    assert "Jest cierpliwy i" in enriched.description
+    assert enriched.description
+    assert persona.name in enriched.description
+    assert str(persona.age) in enriched.description
+    assert persona.goal in enriched.description
+    assert "Szybko się frustruje" not in enriched.description

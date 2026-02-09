@@ -14,13 +14,13 @@ else
   CHANGED_FILES="$(git diff --name-only HEAD~1..HEAD)"
 fi
 
-if [ -z "${CHANGED_FILES}" ]; then
+if [[ -z "${CHANGED_FILES}" ]]; then
   echo "ℹ️ No changes detected against base. Running minimal backend gate."
   backend_changed=1
 fi
 
 while IFS= read -r file; do
-  [ -z "$file" ] && continue
+  [[ -z "$file" ]] && continue
 
   case "$file" in
     web-next/*)
@@ -40,7 +40,7 @@ echo "  - backend_changed=${backend_changed}"
 echo "  - frontend_changed=${frontend_changed}"
 echo "  - base_ref=${BASE_REF}"
 
-if [ "$backend_changed" -eq 1 ]; then
+if [[ "$backend_changed" -eq 1 ]]; then
   echo "▶ Backend fast lane: compile + ci-lite audit + changed-lines coverage gate"
   python3 -m compileall -q venom_core scripts tests
   make audit-ci-lite
@@ -52,13 +52,13 @@ if [ "$backend_changed" -eq 1 ]; then
     NEW_CODE_COVERAGE_MIN=0
 fi
 
-if [ "$frontend_changed" -eq 1 ]; then
+if [[ "$frontend_changed" -eq 1 ]]; then
   echo "▶ Frontend fast lane: lint + ci-lite unit tests"
   npm --prefix web-next run lint
   npm --prefix web-next run test:unit:ci-lite
 fi
 
-if [ "$backend_changed" -eq 0 ] && [ "$frontend_changed" -eq 0 ]; then
+if [[ "$backend_changed" -eq 0 ]] && [[ "$frontend_changed" -eq 0 ]]; then
   echo "ℹ️ Only docs/meta changes detected. No test lane required."
 fi
 

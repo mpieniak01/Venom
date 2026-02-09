@@ -47,7 +47,7 @@ def test_merge_lexicons_combines_entries_and_overrides_threshold():
 
     merged = IntentManager._merge_lexicons(base, override)
     cfg = merged["intents"]["HELP_REQUEST"]
-    assert cfg["threshold"] == 0.8
+    assert cfg["threshold"] == pytest.approx(0.8)
     assert cfg["phrases"] == ["pomoc", "help"]
     assert cfg["regex"] == ["^help$", "^hilfe$"]
 
@@ -86,7 +86,7 @@ def test_match_intent_lexicon_prefers_regex_and_similarity():
     }
     intent, score, _ = IntentManager._match_intent_lexicon("czas", lexicon)
     assert intent == "TIME_REQUEST"
-    assert score == 1.0
+    assert score == pytest.approx(1.0)
 
     intent2, score2, top2 = IntentManager._match_intent_lexicon("co potrafisz", lexicon)
     assert intent2 == "HELP_REQUEST"

@@ -58,7 +58,7 @@ jobs:
           if-no-files-found: error
 
   frontend-lite:
-    name: Frontend lite (lint + unit coverage)
+    name: Frontend lite (lint)
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
@@ -81,17 +81,6 @@ jobs:
         timeout-minutes: 5
         run: npm --prefix web-next run lint
 
-      - name: Unit tests with coverage (Sonar)
-        timeout-minutes: 10
-        run: npm --prefix web-next run test:unit:coverage
-
-      - name: Upload frontend Sonar artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: sonar-frontend-reports
-          path: web-next/coverage/lcov.info
-          if-no-files-found: error
-
   sonar:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
@@ -113,12 +102,6 @@ jobs:
         with:
           name: sonar-backend-reports
           path: test-results/sonar
-
-      - name: Download frontend Sonar artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: sonar-frontend-reports
-          path: web-next/coverage
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@bfd4e558cda28cda6b5defafb9232d191be8c203

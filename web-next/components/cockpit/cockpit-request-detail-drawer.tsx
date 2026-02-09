@@ -187,7 +187,7 @@ function resolveRequestModeLabel(
   return hasSimple ? "direct" : "normal";
 }
 
-type CockpitRequestDetailDrawerProps = {
+type CockpitRequestDetailDrawerProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onClose: () => void;
@@ -213,7 +213,7 @@ type CockpitRequestDetailDrawerProps = {
     patch: Partial<FeedbackState>,
   ) => void;
   t: (key: string, replacements?: Record<string, string | number>) => string;
-};
+}>;
 
 export function CockpitRequestDetailDrawer({
   open,

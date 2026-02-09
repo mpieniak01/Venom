@@ -3,13 +3,13 @@
 import type { QueueStatus } from "@/lib/types";
 import { CockpitQueueControl } from "@/components/cockpit/cockpit-queue-control";
 
-type CockpitQueueProps = {
+type CockpitQueueProps = Readonly<{
   queue: QueueStatus | null;
   queueAction: string | null;
   queueActionMessage: string | null;
   onToggleQueue: () => void;
   onExecuteQueueMutation: (action: "purge" | "emergency") => void;
-};
+}>;
 
 export function CockpitQueue({
   queue,

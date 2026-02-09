@@ -195,12 +195,11 @@ export function useTokenMetricsSummary({
     lastTokenSample !== null && prevTokenSample !== null
       ? lastTokenSample - prevTokenSample
       : null;
-  const tokenTrendLabel =
-    tokenTrendDelta === null
-      ? "Stabilny"
-      : tokenTrendDelta > 0
-        ? `+${tokenTrendDelta.toLocaleString("pl-PL")}↑`
-        : `${tokenTrendDelta.toLocaleString("pl-PL")}↓`;
+  const tokenTrendLabel = (() => {
+    if (tokenTrendDelta === null) return "Stabilny";
+    if (tokenTrendDelta > 0) return `+${tokenTrendDelta.toLocaleString("pl-PL")}↑`;
+    return `${tokenTrendDelta.toLocaleString("pl-PL")}↓`;
+  })();
 
   return {
     tokenSplits,
@@ -259,9 +258,9 @@ export function useSessionHistoryState({
     sessionId && bootId ? `venom-session-history:${sessionId}:${bootId}` : null;
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof globalThis.window === "undefined") return;
     try {
-      const storedBootId = window.localStorage.getItem("venom-backend-boot-id");
+      const storedBootId = globalThis.window.localStorage.getItem("venom-backend-boot-id");
       setBootId(storedBootId);
     } catch {
       setBootId(null);
@@ -282,7 +281,7 @@ export function useSessionHistoryState({
     lastSessionIdRef.current = sessionId;
     if (sessionHistoryStorageKey) {
       try {
-        const cached = window.sessionStorage.getItem(sessionHistoryStorageKey);
+        const cached = globalThis.window.sessionStorage.getItem(sessionHistoryStorageKey);
         if (cached) {
           const parsed = JSON.parse(cached) as SessionHistoryEntry[];
           if (Array.isArray(parsed) && parsed.length > 0) {
@@ -325,7 +324,7 @@ export function useSessionHistoryState({
     if (localSessionHistory.length === 0) return;
     try {
       const snapshot = localSessionHistory.slice(-200);
-      window.sessionStorage.setItem(
+      globalThis.window.sessionStorage.setItem(
         sessionHistoryStorageKey,
         JSON.stringify(snapshot),
       );
@@ -502,7 +501,7 @@ export function useMacroActions({
   });
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(MACRO_STORAGE_KEY);
+    const raw = globalThis.window.localStorage.getItem(MACRO_STORAGE_KEY);
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as MacroAction[];
@@ -515,7 +514,7 @@ export function useMacroActions({
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(MACRO_STORAGE_KEY, JSON.stringify(customMacros));
+    globalThis.window.localStorage.setItem(MACRO_STORAGE_KEY, JSON.stringify(customMacros));
   }, [customMacros]);
 
   const macroActions = useMemo<MacroAction[]>(

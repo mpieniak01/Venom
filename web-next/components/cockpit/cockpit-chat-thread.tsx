@@ -44,7 +44,7 @@ export type ChatComposerHandle = {
   setDraft: (value: string) => void;
 };
 
-type ChatComposerProps = {
+type ChatComposerProps = Readonly<{
   onSend: (payload: string) => Promise<boolean>;
   sending: boolean;
   chatMode: ChatMode;
@@ -62,7 +62,7 @@ type ChatComposerProps = {
   onOpenTuning: () => void;
   tuningLabel: string;
   compactControls?: boolean;
-};
+}>;
 
 export const ChatComposer = memo(
   forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer(

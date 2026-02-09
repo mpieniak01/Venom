@@ -6,14 +6,14 @@ import { IconButton } from "@/components/ui/icon-button";
 import { formatLogPayload, isLogPayload, type LogEntryType } from "@/lib/logs";
 import { PinOff } from "lucide-react";
 
-type MacroCardProps = {
+type MacroCardProps = Readonly<{
   title: string;
   description?: string;
   isCustom?: boolean;
   pending?: boolean;
   onRun: () => void;
   onRemove?: () => void;
-};
+}>;
 
 export function MacroCard({
   title,
@@ -64,21 +64,20 @@ export function MacroCard({
   );
 }
 
-type PinnedLogCardProps = {
+type PinnedLogCardProps = Readonly<{
   log: LogEntryType;
   onUnpin: () => void;
-};
+}>;
 
 export function PinnedLogCard({ log, onUnpin }: PinnedLogCardProps) {
   const payload = isLogPayload(log.payload) ? log.payload : null;
   const level = payload?.level?.toUpperCase() ?? "INFO";
   const type = payload?.type?.toUpperCase() ?? "LOG";
-  const tone =
-    level.includes("ERR") || level.includes("FAIL")
-      ? "danger"
-      : level.includes("WARN")
-        ? "warning"
-        : "neutral";
+  const tone = (() => {
+    if (level.includes("ERR") || level.includes("FAIL")) return "danger";
+    if (level.includes("WARN")) return "warning";
+    return "neutral";
+  })();
 
   return (
     <div className="rounded-3xl border border-emerald-400/20 bg-black/30 p-4 text-sm text-white shadow-inner shadow-emerald-500/10">

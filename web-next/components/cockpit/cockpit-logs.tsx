@@ -13,7 +13,7 @@ import { statusTone } from "@/lib/status";
 import { Inbox } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 
-type CockpitLogsProps = {
+type CockpitLogsProps = Readonly<{
   connected: boolean;
   logFilter: string;
   onLogFilterChange: (value: string) => void;
@@ -24,7 +24,7 @@ type CockpitLogsProps = {
   onExportPinnedLogs: () => void;
   onClearPinnedLogs: () => void;
   tasksPreview: Task[];
-};
+}>;
 
 export function CockpitLogs({
   connected,

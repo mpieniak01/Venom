@@ -22,7 +22,7 @@ type HiddenPromptsPanelProps = ComponentProps<typeof CockpitHiddenPromptsPanel>;
 type HistoryPanelProps = ComponentProps<typeof CockpitHistoryPanel>;
 type CockpitMetricsProps = ComponentProps<typeof CockpitMetrics>;
 
-type CockpitPrimarySectionProps = {
+type CockpitPrimarySectionProps = Readonly<{
   chatFullscreen: boolean;
   setChatFullscreen: (value: boolean) => void;
   showArtifacts: boolean;
@@ -46,7 +46,7 @@ type CockpitPrimarySectionProps = {
   hiddenPromptsPanelProps: HiddenPromptsPanelProps;
   historyPanelProps: HistoryPanelProps;
   metricsProps: CockpitMetricsProps;
-};
+}>;
 
 export function CockpitPrimarySection({
   chatFullscreen,

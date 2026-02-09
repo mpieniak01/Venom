@@ -7,7 +7,7 @@
 **Quality Signals**
 - *Quick Validate:* GitHub fast checks (Python compile smoke, CI-lite dependency audit, frontend script sanity).
 - *GitGuardian:* secret detection and leak prevention for repository history and pull requests.
-- *Quality Gate Status:* SonarCloud gate from backend (`python-coverage.xml`, `python-junit.xml`) and frontend (`lcov.info`) reports.
+- *Quality Gate Status:* SonarCloud quality gate for backend and frontend.
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 

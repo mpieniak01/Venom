@@ -7,7 +7,7 @@
 **Sygnały jakości**
 - *Quick Validate:* szybkie bramki GitHub (compile smoke Pythona, audyt zależności CI-lite, kontrola skryptów frontendu).
 - *GitGuardian:* wykrywanie sekretów i zapobieganie wyciekom w historii repo i pull requestach.
-- *Quality Gate Status:* bramka SonarCloud z raportów backendu (`python-coverage.xml`, `python-junit.xml`) i frontendu (`lcov.info`).
+- *Quality Gate Status:* bramka jakości SonarCloud dla backendu i frontendu.
 
 > **| [English Documentation Available](README.md)**
 

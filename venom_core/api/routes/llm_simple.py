@@ -276,9 +276,12 @@ def _trace_stream_completion(
 
 
 def _build_llm_http_error(
-    exc: httpx.HTTPStatusError, runtime, model_name: str
+    exc: httpx.HTTPStatusError,
+    runtime,
+    model_name: str,
+    *,
+    response_text: str = "",
 ) -> tuple[str, dict, dict]:
-    response_text = (exc.response.text or "") if exc.response else ""
     error_message = (
         f"LLM HTTP {exc.response.status_code} dla {runtime.provider}"
         if exc.response
@@ -301,6 +304,19 @@ def _build_llm_http_error(
     return error_message, error_details, error_payload
 
 
+async def _read_http_error_response_text(response: Optional[httpx.Response]) -> str:
+    if response is None:
+        return ""
+    try:
+        body = await response.aread()
+    except Exception:
+        return ""
+    if not body:
+        return ""
+    encoding = response.encoding or "utf-8"
+    return body.decode(encoding, errors="replace")
+
+
 def _build_streaming_headers(
     request_id: UUID, session_id: Optional[str]
 ) -> dict[str, str]:
@@ -320,7 +336,7 @@ async def _stream_simple_chunks(
     request_id: UUID,
     model_name: str,
 ) -> AsyncIterator[str]:
-    full_text = ""
+    chunks: list[str] = []
     chunk_count = 0
     stream_start = time.perf_counter()
     first_chunk_seen = False
@@ -333,8 +349,9 @@ async def _stream_simple_chunks(
                 try:
                     resp.raise_for_status()
                 except httpx.HTTPStatusError as exc:
+                    response_text = await _read_http_error_response_text(exc.response)
                     error_message, error_details, error_payload = _build_llm_http_error(
-                        exc, runtime, model_name
+                        exc, runtime, model_name, response_text=response_text
                     )
                     _record_simple_error(
                         request_id,
@@ -349,14 +366,14 @@ async def _stream_simple_chunks(
 
                 async for content in _iter_stream_contents(resp):
                     chunk_count += 1
-                    full_text += content
+                    chunks.append(content)
                     if not first_chunk_seen:
                         _trace_first_chunk(request_id, stream_start, content)
                         first_chunk_seen = True
                     event_payload = {"text": content}
                     yield f"event: content\ndata: {json.dumps(event_payload)}\n\n"
 
-        _trace_stream_completion(request_id, full_text, chunk_count, stream_start)
+        _trace_stream_completion(request_id, "".join(chunks), chunk_count, stream_start)
         yield "event: done\ndata: {}\n\n"
 
     except httpx.HTTPError as exc:

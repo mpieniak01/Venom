@@ -183,6 +183,14 @@ def test_build_llm_http_error_and_stream_headers():
     assert headers["X-Session-Id"] == "sid"
 
 
+@pytest.mark.asyncio
+async def test_read_http_error_response_text_returns_body():
+    request = httpx.Request("POST", MOCK_HTTP)
+    response = httpx.Response(502, request=request, content=b"upstream error")
+    text = await llm_simple_routes._read_http_error_response_text(response)
+    assert "upstream error" in text
+
+
 def test_trim_user_content_for_runtime_adds_trace_step(monkeypatch):
     monkeypatch.setattr(llm_simple_routes.SETTINGS, "VLLM_MAX_MODEL_LEN", 64)
     captured = {"steps": []}

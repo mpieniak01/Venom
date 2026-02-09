@@ -378,50 +378,48 @@ def _parse_ollama_search_html(payload: str, limit: int) -> List[Dict[str, Any]]:
     #     <span class="...">description</span>
     #   </a>
 
-    # Przystosowanie do potencjalnych zmian struktury - szukamy linków do /library/
-    results = []
-
-    seen = set()
-
-    # Znajdźmy kontener wyników (zazwyczaj główny content)
-    # create a resilient finder
+    results: List[Dict[str, Any]] = []
+    seen: set[str] = set()
     anchors = soup.find_all("a", href=True)
 
     for a in anchors:
-        href = str(a["href"])
-        parts = href.split("/")
-        # Check if we have enough parts and the last part is not empty
-        if href.startswith("/library/") and len(parts) >= 3:
-            model_name = parts[-1]
-            if not model_name:
-                continue
+        model_name = _extract_ollama_model_name(a.get("href"))
+        if not model_name or model_name in seen:
+            continue
 
-            if model_name in seen:
-                continue
-
-            # W aktualnym layout ollama.com, opis jest w <p> poniżej tytułu wewnątrz <a>
-            description = ""
-            desc_tag = a.find("p")
-            if desc_tag:
-                description = desc_tag.get_text(strip=True)
-            else:
-                # Fallback: tekst elementu minus nazwa
-                full_text = a.get_text(" ", strip=True)
-                if model_name in full_text:
-                    description = full_text.replace(model_name, "", 1).strip()
-
-            results.append(
-                {
-                    "name": model_name,
-                    "description": description,
-                    "provider": "ollama",
-                    "source": "ollama",
-                    "runtime": "ollama",
-                }
-            )
-            seen.add(model_name)
-
-            if len(results) >= limit:
-                break
+        results.append(
+            {
+                "name": model_name,
+                "description": _extract_ollama_description(a, model_name),
+                "provider": "ollama",
+                "source": "ollama",
+                "runtime": "ollama",
+            }
+        )
+        seen.add(model_name)
+        if len(results) >= limit:
+            break
 
     return results
+
+
+def _extract_ollama_model_name(href_value: Any) -> Optional[str]:
+    href = str(href_value or "")
+    if not href.startswith("/library/"):
+        return None
+    parts = href.split("/")
+    if len(parts) < 3:
+        return None
+    model_name = parts[-1].strip()
+    return model_name or None
+
+
+def _extract_ollama_description(anchor: Any, model_name: str) -> str:
+    desc_tag = anchor.find("p")
+    if desc_tag:
+        return desc_tag.get_text(strip=True)
+
+    full_text = anchor.get_text(" ", strip=True)
+    if model_name in full_text:
+        return full_text.replace(model_name, "", 1).strip()
+    return ""

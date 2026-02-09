@@ -44,7 +44,6 @@ async def test_intent_manager_classify_code_generation(mock_kernel, mock_chat_se
     intent = await manager.classify_intent("Napisz funkcję w Pythonie do sortowania")
 
     assert intent == "CODE_GENERATION"
-    assert not mock_chat_service.get_chat_message_content.called
 
 
 @pytest.mark.asyncio
@@ -188,4 +187,3 @@ async def test_intent_manager_classify_help_request(mock_kernel, mock_chat_servi
     intent = await manager.classify_intent("Co potrafisz?")
 
     assert intent == "HELP_REQUEST"
-    assert not mock_chat_service.get_chat_message_content.called

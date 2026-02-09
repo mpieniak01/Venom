@@ -284,6 +284,24 @@ class TestVectorStore:
             assert len(chunks[i]) > 0
             assert len(chunks[i + 1]) > 0
 
+    def test_list_entries_filters_by_metadata_and_entry_id(self, vector_store):
+        vector_store.upsert("Ala ma kota", metadata={"topic": "animals"})
+        vector_store.upsert("Python test", metadata={"topic": "code"})
+
+        all_entries = vector_store.list_entries(limit=10)
+        assert len(all_entries) >= 2
+
+        animals = vector_store.list_entries(
+            limit=10, metadata_filters={"topic": "animals"}
+        )
+        assert len(animals) >= 1
+        assert all(item["metadata"].get("topic") == "animals" for item in animals)
+
+        entry_id = animals[0]["id"]
+        by_id = vector_store.list_entries(limit=10, entry_id=entry_id)
+        assert len(by_id) == 1
+        assert by_id[0]["id"] == entry_id
+
 
 class TestMemorySkillIntegration:
     """Testy integracyjne dla MemorySkill."""

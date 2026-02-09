@@ -604,37 +604,57 @@ class VectorStore:
         rows = arrow_table.to_pylist()
         results: List[Dict[str, Any]] = []
         for row in rows:
-            meta_raw = row.get("metadata") or "{}"
-            try:
-                meta = (
-                    json.loads(meta_raw)
-                    if isinstance(meta_raw, str)
-                    else dict(meta_raw)
-                )
-            except Exception:
-                meta = {}
-            if entry_id and row.get("id") != entry_id:
+            meta = self._parse_entry_metadata(row.get("metadata"))
+            if not self._entry_matches_filters(
+                row=row,
+                metadata=meta,
+                entry_id=entry_id,
+                metadata_filters=metadata_filters,
+            ):
                 continue
-            if metadata_filters:
-                match = True
-                for key, val in metadata_filters.items():
-                    if val is None:
-                        continue
-                    if meta.get(key) != val:
-                        match = False
-                        break
-                if not match:
-                    continue
-            results.append(
-                {
-                    "id": row.get("id"),
-                    "text": row.get("text"),
-                    "metadata": meta,
-                }
-            )
+            results.append(self._build_entry_row(row, meta))
             if limit and len(results) >= limit:
                 break
         return results
+
+    @staticmethod
+    def _parse_entry_metadata(meta_raw: Any) -> Dict[str, Any]:
+        payload = meta_raw or "{}"
+        try:
+            if isinstance(payload, str):
+                return json.loads(payload)
+            return dict(payload)
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _entry_matches_filters(
+        *,
+        row: Dict[str, Any],
+        metadata: Dict[str, Any],
+        entry_id: Optional[str],
+        metadata_filters: Optional[Dict[str, Any]],
+    ) -> bool:
+        if entry_id and row.get("id") != entry_id:
+            return False
+        if not metadata_filters:
+            return True
+        for key, val in metadata_filters.items():
+            if val is None:
+                continue
+            if metadata.get(key) != val:
+                return False
+        return True
+
+    @staticmethod
+    def _build_entry_row(
+        row: Dict[str, Any], metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        return {
+            "id": row.get("id"),
+            "text": row.get("text"),
+            "metadata": metadata,
+        }
 
     def delete_entry(self, entry_id: str, collection_name: Optional[str] = None) -> int:
         """Usuwa pojedynczy rekord po id."""

@@ -252,22 +252,40 @@ class IntentManager:
             phrases = config.get("phrases", [])
             regexes = config.get("regex", [])
 
-            for pattern in regexes:
-                if re.match(pattern, normalized):
-                    return (intent, 1.0, [(intent, 1.0)])
+            if IntentManager._matches_lexicon_regex(normalized, regexes):
+                return (intent, 1.0, [(intent, 1.0)])
 
-            for phrase in phrases:
-                candidate = IntentManager._normalize_text(phrase)
-                if not candidate:
-                    continue
-                score = SequenceMatcher(None, normalized, candidate).ratio()
-                if score >= threshold and score > best_score:
-                    best_score = score
-                    best_intent = intent
-                scored.append((intent, score))
+            phrase_scores = IntentManager._score_lexicon_phrases(normalized, phrases)
+            if not phrase_scores:
+                continue
+            max_score = max(score for _, score in phrase_scores)
+            if max_score >= threshold and max_score > best_score:
+                best_score = max_score
+                best_intent = intent
+            scored.extend((intent, score) for _, score in phrase_scores)
 
         top2 = sorted(scored, key=lambda item: item[1], reverse=True)[:2]
         return (best_intent, best_score, top2)
+
+    @staticmethod
+    def _matches_lexicon_regex(normalized: str, regexes: List[str]) -> bool:
+        for pattern in regexes:
+            if re.match(pattern, normalized):
+                return True
+        return False
+
+    @staticmethod
+    def _score_lexicon_phrases(
+        normalized: str, phrases: List[str]
+    ) -> List[Tuple[str, float]]:
+        scores: List[Tuple[str, float]] = []
+        for phrase in phrases:
+            candidate = IntentManager._normalize_text(phrase)
+            if not candidate:
+                continue
+            score = SequenceMatcher(None, normalized, candidate).ratio()
+            scores.append((candidate, score))
+        return scores
 
     # Prompt systemowy do klasyfikacji intencji
     SYSTEM_PROMPT = """Jesteś systemem klasyfikacji intencji użytkownika. Twoim zadaniem jest przeczytać wejście użytkownika i sklasyfikować je do JEDNEJ z następujących kategorii:

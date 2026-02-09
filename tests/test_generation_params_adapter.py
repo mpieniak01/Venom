@@ -142,6 +142,13 @@ class TestGenerationParamsAdapter:
         )
         assert GenerationParamsAdapter.get_overrides("vllm", "model-a") == {}
 
+    def test_get_overrides_invalid_json_returns_empty(self, monkeypatch):
+        monkeypatch.setattr(
+            "venom_core.core.generation_params_adapter.config_manager.get_config",
+            lambda mask_secrets=False: {"MODEL_GENERATION_OVERRIDES": "{invalid-json"},
+        )
+        assert GenerationParamsAdapter.get_overrides("vllm", "model-a") == {}
+
     def test_merge_with_defaults_no_user_params(self):
         """Test łączenia z domyślnymi gdy brak parametrów użytkownika."""
         defaults = {"temperature": 0.7, "max_tokens": 2048}

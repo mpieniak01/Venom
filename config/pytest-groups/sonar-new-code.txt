@@ -45,3 +45,9 @@ tests/test_markdown_blocks.py
 # AUTO-ADDED by pre-commit (staged backend/test changes)
 tests/test_update_sonar_new_code_group.py
 tests/test_logger_utils.py
+tests/test_embedding_service.py
+tests/test_graph_store.py
+tests/test_persona_factory.py
+tests/test_researcher_agent.py
+tests/test_scenario_weaver.py
+tests/test_lessons_manager.py

@@ -184,3 +184,18 @@ def test_persona_factory_with_kernel():
 
     persona = factory.generate_persona(goal="Test", use_llm=False)
     assert persona.description != ""  # Powinna mieć podstawowy opis
+
+
+def test_persona_enrichment_high_patience_branch():
+    factory = PersonaFactory(kernel=None)
+    persona = Persona(
+        name="Anna",
+        age=34,
+        tech_literacy=TechLiteracy.HIGH,
+        patience=0.9,
+        goal="Kupić produkt",
+        traits=["dokładny"],
+        description="",
+    )
+    enriched = factory._enrich_persona_with_llm(persona)
+    assert "Jest cierpliwy i" in enriched.description

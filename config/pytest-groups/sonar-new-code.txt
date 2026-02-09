@@ -52,3 +52,4 @@ tests/test_researcher_agent.py
 tests/test_scenario_weaver.py
 tests/test_lessons_manager.py
 tests/test_service_monitor.py
+tests/test_api_new_code_coverage_wave3.py

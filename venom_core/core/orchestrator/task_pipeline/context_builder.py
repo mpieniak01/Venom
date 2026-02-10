@@ -235,18 +235,15 @@ class ContextBuilder:
         if hidden_context:
             context = hidden_context + "\n\n" + context
 
-        self.orch.state_manager.add_log(
-            task_id,
-            (
-                f"Dołączono {len(hidden_context.splitlines()) // 3} hidden prompts do kontekstu"
-                if hidden_context
-                else (
-                    "Pominięto hidden prompts (mały kontekst vLLM)"
-                    if not include_hidden
-                    else "Nie znaleziono pasujących hidden prompts dla tej intencji."
-                )
-            ),
-        )
+        if hidden_context:
+            hidden_prompts_log = f"Dołączono {len(hidden_context.splitlines()) // 3} hidden prompts do kontekstu"
+        elif not include_hidden:
+            hidden_prompts_log = "Pominięto hidden prompts (mały kontekst vLLM)"
+        else:
+            hidden_prompts_log = (
+                "Nie znaleziono pasujących hidden prompts dla tej intencji."
+            )
+        self.orch.state_manager.add_log(task_id, hidden_prompts_log)
 
         if runtime_limit < MAX_CONTEXT_CHARS:
             context, trimmed = trim_to_char_limit(context, runtime_limit)

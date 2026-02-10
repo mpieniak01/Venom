@@ -111,9 +111,7 @@ class HealingFlow(BaseFlow):
                     data={"task_id": str(task_id), "iteration": iteration},
                 )
 
-                test_report = await test_skill.run_pytest(
-                    test_path=test_path, timeout=60
-                )
+                test_report = await test_skill.run_pytest(test_path=test_path)
                 last_test_report = test_report
 
                 # Sprawdź czy testy przeszły - używamy wielokrotnych sprawdzeń dla niezawodności

@@ -1,5 +1,6 @@
 import { useNews } from "./hooks/use-news";
 import { useModelCatalog } from "./hooks/use-model-catalog";
+import { useTrendingModels } from "./hooks/use-trending-models";
 import { useRuntime } from "./hooks/use-runtime";
 import { useLanguage } from "@/lib/i18n";
 
@@ -9,6 +10,7 @@ export function useModelsViewerLogic() {
     // Split hooks
     const news = useNews();
     const catalog = useModelCatalog();
+    const trending = useTrendingModels();
     const runtime = useRuntime();
 
     return {
@@ -21,13 +23,13 @@ export function useModelsViewerLogic() {
         papersCollapsed: news.papersCollapsed, setPapersCollapsed: news.setPapersCollapsed,
 
         // Catalog & Search
-        trendingCollapsed: catalog.trendingCollapsed, setTrendingCollapsed: catalog.setTrendingCollapsed,
+        trendingCollapsed: trending.trendingCollapsed, setTrendingCollapsed: trending.setTrendingCollapsed,
         catalogCollapsed: catalog.catalogCollapsed, setCatalogCollapsed: catalog.setCatalogCollapsed,
         searchCollapsed: catalog.searchCollapsed, setSearchCollapsed: catalog.setSearchCollapsed,
         searchQuery: catalog.searchQuery, setSearchQuery: catalog.setSearchQuery,
         searchProvider: catalog.searchProvider, setSearchProvider: catalog.setSearchProvider,
         searchResults: catalog.searchResults, handleSearch: catalog.handleSearch,
-        trendingHf: catalog.trendingHf, trendingOllama: catalog.trendingOllama, refreshTrending: catalog.refreshTrending,
+        trendingHf: trending.trendingHf, trendingOllama: trending.trendingOllama, refreshTrending: trending.refreshTrending,
         catalogHf: catalog.catalogHf, catalogOllama: catalog.catalogOllama, refreshCatalog: catalog.refreshCatalog,
         handleInstall: catalog.handleInstall,
 

@@ -20,7 +20,6 @@ export function useModelCatalog() {
     const [pendingActions, setPendingActions] = useState<Record<string, boolean>>({});
 
     // Collapse states
-    const [trendingCollapsed, setTrendingCollapsed] = useState(false);
     const [catalogCollapsed, setCatalogCollapsed] = useState(false);
     const [searchCollapsed, setSearchCollapsed] = useState(false);
 
@@ -35,23 +34,17 @@ export function useModelCatalog() {
     }>({ data: [], loading: false, error: null, performed: false });
 
     // Trending & Catalog
-    const [trendingHf, setTrendingHf] = useState<{ data: ModelCatalogEntry[]; stale?: boolean; error?: string | null; loading: boolean }>({ data: [], loading: false });
-    const [trendingOllama, setTrendingOllama] = useState<{ data: ModelCatalogEntry[]; stale?: boolean; error?: string | null; loading: boolean }>({ data: [], loading: false });
     const [catalogHf, setCatalogHf] = useState<{ data: ModelCatalogEntry[]; stale?: boolean; error?: string | null; loading: boolean }>({ data: [], loading: false });
     const [catalogOllama, setCatalogOllama] = useState<{ data: ModelCatalogEntry[]; stale?: boolean; error?: string | null; loading: boolean }>({ data: [], loading: false });
 
     const installed = useModels(0);
     const operations = useModelOperations(10, 0);
 
-    // Inital load
+    // Initial load
     useEffect(() => {
-        const cachedHf = readStorageJson<CatalogCachePayload>("models-trending-hf");
-        const cachedOllama = readStorageJson<CatalogCachePayload>("models-trending-ollama");
         const cachedCatalogHf = readStorageJson<CatalogCachePayload>("models-catalog-hf");
         const cachedCatalogOllama = readStorageJson<CatalogCachePayload>("models-catalog-ollama");
 
-        if (cachedHf) setTrendingHf(prev => ({ ...prev, ...cachedHf }));
-        if (cachedOllama) setTrendingOllama(prev => ({ ...prev, ...cachedOllama }));
         if (cachedCatalogHf) setCatalogHf(prev => ({ ...prev, ...cachedCatalogHf }));
         if (cachedCatalogOllama) setCatalogOllama(prev => ({ ...prev, ...cachedCatalogOllama }));
     }, []);
@@ -90,27 +83,6 @@ export function useModelCatalog() {
         }
     };
 
-    const refreshTrending = async () => {
-        setTrendingHf((prev) => ({ ...prev, loading: true, error: null }));
-        setTrendingOllama((prev) => ({ ...prev, loading: true, error: null }));
-        try {
-            const [hfResponse, ollamaResponse] = await Promise.all([
-                apiFetch<ModelCatalogResponse>("/api/v1/models/trending?provider=huggingface"),
-                apiFetch<ModelCatalogResponse>("/api/v1/models/trending?provider=ollama"),
-            ]);
-            const hfPayload = { data: hfResponse.models ?? [], stale: hfResponse.stale, error: hfResponse.error };
-            const ollamaPayload = { data: ollamaResponse.models ?? [], stale: ollamaResponse.stale, error: ollamaResponse.error };
-            setTrendingHf({ ...hfPayload, loading: false });
-            setTrendingOllama({ ...ollamaPayload, loading: false });
-            writeStorageJson("models-trending-hf", hfPayload);
-            writeStorageJson("models-trending-ollama", ollamaPayload);
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : "Błąd pobierania trendów";
-            setTrendingHf((prev) => ({ ...prev, loading: false, error: msg }));
-            setTrendingOllama((prev) => ({ ...prev, loading: false, error: msg }));
-        }
-    };
-
     const refreshCatalog = async () => {
         setCatalogHf((prev) => ({ ...prev, loading: true, error: null }));
         setCatalogOllama((prev) => ({ ...prev, loading: true, error: null }));
@@ -133,13 +105,11 @@ export function useModelCatalog() {
     };
 
     return {
-        trendingCollapsed, setTrendingCollapsed,
         catalogCollapsed, setCatalogCollapsed,
         searchCollapsed, setSearchCollapsed,
         searchQuery, setSearchQuery,
         searchProvider, setSearchProvider,
         searchResults, handleSearch,
-        trendingHf, trendingOllama, refreshTrending,
         catalogHf, catalogOllama, refreshCatalog,
         handleInstall, pendingActions
     };

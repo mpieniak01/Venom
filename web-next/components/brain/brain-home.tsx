@@ -53,10 +53,12 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
   // Filter & UI State
   const [showMemoryLayer, setShowMemoryLayer] = useState(true);
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
-  const [includeLessons] = useState(false);
+  const [includeLessons, setIncludeLessons] = useState(false);
   const [memorySessionFilter, setMemorySessionFilter] = useState<string>("");
   const [memoryOnlyPinned, setMemoryOnlyPinned] = useState(false);
-  const [layoutName] = useState<"preset" | "cola" | "cose">("preset");
+  const [layoutName, setLayoutName] = useState<"preset" | "cola" | "cose">("preset");
+  const [flowMode, setFlowMode] = useState<"flow" | "default">("flow");
+  const [topicFilter, setTopicFilter] = useState("");
   const [filters, setFilters] = useState<GraphFilterType[]>(["all"]);
   const [highlightTag, setHighlightTag] = useState<string | null>(null);
 
@@ -73,7 +75,9 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     showMemoryLayer,
     memorySessionFilter,
     memoryOnlyPinned,
-    includeLessons
+    includeLessons,
+    flowMode,
+    topicFilter
   );
 
   const isMemoryEmpty =
@@ -264,7 +268,6 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
 
       cy = cytoscape({
         container: cyRef.current,
-        // @ts-expect-error Cytoscape elements type mismatch
         style: [
           {
             selector: "node",
@@ -280,7 +283,6 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
           },
           { selector: "node.highlighted", style: { "border-width": 4, "border-color": "#c084fc" } },
           { selector: "edge", style: { "curve-style": "bezier", "target-arrow-shape": "triangle", width: 2, "line-color": "#475569" } },
-          // @ts-expect-error Cytoscape style prop type mismatch
         ],
         layout: { name: layoutName, animate: true }
       });
@@ -380,11 +382,32 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
                   <Label htmlFor="show-labels" className="text-xs text-zinc-300">{t("brain.filters.edgeLabels")}</Label>
                   <Switch id="show-labels" checked={showEdgeLabels} onCheckedChange={setShowEdgeLabels} />
                 </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="layout-name" className="text-xs text-zinc-300">{t("brain.filters.layout")}</Label>
+                  <select
+                    id="layout-name"
+                    value={layoutName}
+                    onChange={(e) => setLayoutName(e.target.value as "preset" | "cola" | "cose")}
+                    className="h-6 rounded bg-black/50 px-1 text-[10px] text-zinc-300 border-white/10"
+                  >
+                    <option value="preset">Preset</option>
+                    <option value="cola">Cola</option>
+                    <option value="cose">Cose</option>
+                  </select>
+                </div>
                 {showMemoryLayer && (
                   <>
                     <div className="flex items-center justify-between">
                       <Label htmlFor="only-pinned" className="text-xs text-zinc-300">{t("brain.filters.pinnedOnly")}</Label>
                       <Switch id="only-pinned" checked={memoryOnlyPinned} onCheckedChange={setMemoryOnlyPinned} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="include-lessons" className="text-xs text-zinc-300">{t("brain.filters.includeLessons")}</Label>
+                      <Switch id="include-lessons" checked={includeLessons} onCheckedChange={setIncludeLessons} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="flow-mode" className="text-xs text-zinc-300">{t("brain.filters.flowMode")}</Label>
+                      <Switch id="flow-mode" checked={flowMode === "flow"} onCheckedChange={(val: boolean) => setFlowMode(val ? "flow" : "default")} />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="session-filter" className="text-xs text-zinc-300">{t("brain.filters.sessionId")}</Label>
@@ -394,6 +417,16 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMemorySessionFilter(e.target.value)}
                         className="h-7 text-xs bg-black/50 border-white/10"
                         placeholder="Session ID..."
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="topic-filter" className="text-xs text-zinc-300">{t("brain.filters.topic")}</Label>
+                      <Input
+                        id="topic-filter"
+                        value={topicFilter}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTopicFilter(e.target.value)}
+                        className="h-7 text-xs bg-black/50 border-white/10"
+                        placeholder="Filter topic..."
                       />
                     </div>
                   </>

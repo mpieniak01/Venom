@@ -108,7 +108,7 @@ def read_file(
 
 
 def _validate_readable_path(
-    path: Path, file_path: Union[str, Path], raise_on_error: bool
+    path: Path, file_path: str | Path, raise_on_error: bool
 ) -> bool:
     if not path.exists():
         logger.error(f"Plik nie istnieje: {file_path}")

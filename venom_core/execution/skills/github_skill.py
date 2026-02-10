@@ -26,6 +26,10 @@ except ImportError:  # pragma: no cover - optional dependency w CI-lite
 # Limity dla bezpieczeństwa i wydajności
 MAX_REPOS_RESULTS = 5
 MAX_README_LENGTH = 8000
+PYGITHUB_MISSING_MSG = (
+    "❌ Biblioteka 'PyGithub' nie jest zainstalowana. "
+    "Doinstaluj dependency, aby użyć GitHubSkill."
+)
 
 
 class GitHubSkill:
@@ -90,10 +94,7 @@ class GitHubSkill:
             Sformatowana lista TOP 5 repozytoriów
         """
         if self.github is None:
-            return (
-                "❌ Biblioteka 'PyGithub' nie jest zainstalowana. "
-                "Doinstaluj dependency, aby użyć GitHubSkill."
-            )
+            return PYGITHUB_MISSING_MSG
 
         logger.info(
             f"GitHubSkill: search_repos dla '{query}' (language={language}, sort={sort})"
@@ -168,10 +169,7 @@ class GitHubSkill:
             Treść README.md lub komunikat o błędzie
         """
         if self.github is None:
-            return (
-                "❌ Biblioteka 'PyGithub' nie jest zainstalowana. "
-                "Doinstaluj dependency, aby użyć GitHubSkill."
-            )
+            return PYGITHUB_MISSING_MSG
 
         logger.info(f"GitHubSkill: get_readme dla {repo_url}")
 
@@ -227,10 +225,7 @@ class GitHubSkill:
             Lista popularnych projektów
         """
         if self.github is None:
-            return (
-                "❌ Biblioteka 'PyGithub' nie jest zainstalowana. "
-                "Doinstaluj dependency, aby użyć GitHubSkill."
-            )
+            return PYGITHUB_MISSING_MSG
 
         logger.info(f"GitHubSkill: get_trending dla topic='{topic}'")
 

@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Annotated, List, Optional
 
+from anyio import fail_after
 from semantic_kernel.functions import kernel_function
 
 from venom_core.infrastructure.docker_habitat import DockerHabitat
@@ -58,6 +59,7 @@ class TestSkill:
             allow_local_execution: Czy zezwolić na uruchamianie testów lokalnie (bez sandboxa)
         """
         self.allow_local_execution = allow_local_execution
+        self._local_linter_timeout_seconds = 30
 
         # Próbuj użyć habitat jeśli dostępny
         self.habitat: Optional[DockerHabitat] = None
@@ -202,7 +204,8 @@ class TestSkill:
             if self.docker_available and self.habitat:
                 exit_code, output = self._run_linter_in_docker(path, timeout)
             elif self.allow_local_execution:
-                local_result = await self._run_linter_locally(path, timeout)
+                self._local_linter_timeout_seconds = timeout
+                local_result = await self._run_linter_locally(path)
                 if isinstance(local_result, str):
                     return local_result
                 exit_code, output = local_result
@@ -241,15 +244,13 @@ class TestSkill:
         assert self.habitat is not None
         return self.habitat.execute(command, timeout=timeout)
 
-    async def _run_linter_locally(
-        self, path: str, timeout: int
-    ) -> tuple[int, str] | str:
+    async def _run_linter_locally(self, path: str) -> tuple[int, str] | str:
         logger.warning(f"⚠️ Uruchamiam linter LOKALNIE dla: {path}")
-        local_ruff = await self._run_local_linter_binary("ruff", path, timeout)
+        local_ruff = await self._run_local_linter_binary("ruff", path)
         if local_ruff is not None:
             return local_ruff
 
-        local_flake8 = await self._run_local_linter_binary("flake8", path, timeout)
+        local_flake8 = await self._run_local_linter_binary("flake8", path)
         if local_flake8 is not None:
             return local_flake8
         return (
@@ -257,7 +258,7 @@ class TestSkill:
         )
 
     async def _run_local_linter_binary(
-        self, binary: str, path: str, timeout: int
+        self, binary: str, path: str
     ) -> tuple[int, str] | None:
         import asyncio
         import subprocess
@@ -271,10 +272,16 @@ class TestSkill:
             process = await asyncio.create_subprocess_exec(
                 *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
             )
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            with fail_after(self._local_linter_timeout_seconds):
+                stdout, _ = await process.communicate()
             output = stdout.decode()
             exit_code = process.returncode if process.returncode is not None else 1
             return exit_code, output
+        except TimeoutError:
+            if process.returncode is None:
+                process.kill()
+                await process.communicate()
+            return None
         except Exception:
             return None
 

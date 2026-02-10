@@ -48,6 +48,14 @@ class FileSkill(BaseSkill):
         """
         Zapisuje treść do pliku asynchronicznie.
         """
+        # Security Check
+        from venom_core.core.permission_guard import permission_guard
+
+        if not permission_guard.can_write_files():
+            raise PermissionError(
+                f"AutonomyViolation: Brak uprawnień do zapisu plików (Poziom: {permission_guard.get_current_level_name()})"
+            )
+
         safe_path = self.validate_path(file_path)
 
         # Utwórz katalogi nadrzędne jeśli nie istnieją

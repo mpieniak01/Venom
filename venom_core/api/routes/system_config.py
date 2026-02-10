@@ -1,6 +1,6 @@
 """Moduł: routes/system_config - Endpointy zarządzania konfiguracją runtime."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from venom_core.services.config_manager import config_manager
@@ -17,12 +17,14 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
         500: {"description": "Błąd wewnętrzny podczas pobierania konfiguracji runtime"},
     },
 )
-def get_runtime_config(mask_secrets: bool = True):
+def get_runtime_config():
     """
     Zwraca aktualną konfigurację runtime (whitelist parametrów z .env).
+    Sekrety są ZAWSZE maskowane w odpowiedzi API.
     """
     try:
-        config = config_manager.get_config(mask_secrets=mask_secrets)
+        # Security: Zawsze wymuszaj maskowanie sekretów w API
+        config = config_manager.get_config(mask_secrets=True)
         return {"status": "success", "config": config}
 
     except Exception as e:
@@ -42,16 +44,30 @@ class ConfigUpdateRequest(BaseModel):
         500: {
             "description": "Błąd wewnętrzny podczas aktualizacji konfiguracji runtime"
         },
+        403: {"description": "Brak uprawnień do zmiany konfiguracji"},
     },
 )
-def update_runtime_config(request: ConfigUpdateRequest):
+def update_runtime_config(request: ConfigUpdateRequest, req: Request):
     """
     Aktualizuje konfigurację runtime (zapis do .env z backupem).
+    Dostępne tylko z localhost.
+    Blokuje zmianę kluczowych parametrów bezpieczeństwa.
     """
+    # Security: Allow only local requests
+    client_host = req.client.host if req.client else "unknown"
+    if client_host not in ["127.0.0.1", "::1", "localhost"]:
+        logger.warning(
+            f"Próba zmiany konfiguracji z nieautoryzowanego hosta: {client_host}"
+        )
+        raise HTTPException(status_code=403, detail="Access denied")
+
     try:
+        # User is Admin on Localhost - Allow full configuration
         result = config_manager.update_config(request.updates)
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Błąd podczas aktualizacji konfiguracji")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

@@ -1,6 +1,13 @@
 repos:
   - repo: local
     hooks:
+      - id: block-docs-dev-staged
+        name: Block docs_dev staged files
+        entry: python3 scripts/block_docs_dev_staged.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: update-sonar-new-code-group
         name: Update Sonar New-Code Test Group
         entry: python3 scripts/update_sonar_new_code_group.py

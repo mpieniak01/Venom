@@ -299,6 +299,31 @@ def test_critic_analyze_error_without_json():
     assert result["target_file_change"] is None
 
 
+def test_should_stop_for_budget_returns_warning_when_exceeded(
+    mock_state_manager,
+    mock_coder_agent,
+    mock_critic_agent,
+    mock_token_economist,
+    mock_file_skill,
+):
+    loop = CodeReviewLoop(
+        mock_state_manager,
+        mock_coder_agent,
+        mock_critic_agent,
+        mock_token_economist,
+        mock_file_skill,
+    )
+    loop.session_cost = MAX_HEALING_COST + 0.1
+    warning = loop._should_stop_for_budget()
+    assert warning is not None
+    assert "Przekroczono budżet sesji" in warning
+
+
+def test_is_feedback_approved():
+    assert CodeReviewLoop._is_feedback_approved("APPROVED") is True
+    assert CodeReviewLoop._is_feedback_approved("ODRZUCONO") is False
+
+
 # --- Test maksymalnej liczby prób ---
 
 

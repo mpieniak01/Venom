@@ -205,35 +205,7 @@ class ForemanAgent(BaseAgent):
         """Pętla monitoringu - aktualizuje metryki węzłów."""
         while self._is_running:
             try:
-                # Jeśli mamy NodeManager, pobierz metryki węzłów
-                if self.node_manager:
-                    nodes = self.node_manager.nodes
-                    for node_id, node_info in nodes.items():
-                        try:
-                            # Bezpieczne pobieranie atrybutów z fallbackiem
-                            metrics = NodeMetrics(
-                                node_id=node_id,
-                                node_name=getattr(node_info, "node_name", node_id),
-                                cpu_usage=getattr(node_info, "cpu_usage", 0.0),
-                                memory_usage=getattr(node_info, "memory_usage", 0.0),
-                                active_tasks=getattr(node_info, "active_tasks", 0),
-                                gpu_available=(
-                                    getattr(node_info.capabilities, "has_gpu", False)
-                                    if hasattr(node_info, "capabilities")
-                                    else False
-                                ),
-                                capabilities=(
-                                    node_info.capabilities.model_dump()
-                                    if hasattr(node_info, "capabilities")
-                                    and hasattr(node_info.capabilities, "model_dump")
-                                    else {}
-                                ),
-                            )
-                            self.nodes_metrics[node_id] = metrics
-                        except Exception as e:
-                            logger.warning(
-                                f"Nie można pobrać metryk węzła {node_id}: {e}"
-                            )
+                self._collect_node_metrics()
 
                 # Czekaj 30 sekund przed następną aktualizacją
                 await asyncio.sleep(30)
@@ -243,6 +215,37 @@ class ForemanAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"Błąd w monitoring loop: {e}")
                 await asyncio.sleep(30)
+
+    def _collect_node_metrics(self) -> None:
+        if not self.node_manager:
+            return
+        for node_id, node_info in self.node_manager.nodes.items():
+            self._update_single_node_metrics(node_id, node_info)
+
+    def _safe_node_metrics_from_info(self, node_id: str, node_info) -> NodeMetrics:
+        capabilities_obj = getattr(node_info, "capabilities", None)
+        gpu_available = bool(getattr(capabilities_obj, "has_gpu", False))
+        capabilities = (
+            capabilities_obj.model_dump()
+            if hasattr(capabilities_obj, "model_dump")
+            else {}
+        )
+        return NodeMetrics(
+            node_id=node_id,
+            node_name=getattr(node_info, "node_name", node_id),
+            cpu_usage=getattr(node_info, "cpu_usage", 0.0),
+            memory_usage=getattr(node_info, "memory_usage", 0.0),
+            active_tasks=getattr(node_info, "active_tasks", 0),
+            gpu_available=gpu_available,
+            capabilities=capabilities,
+        )
+
+    def _update_single_node_metrics(self, node_id: str, node_info) -> None:
+        try:
+            metrics = self._safe_node_metrics_from_info(node_id, node_info)
+            self.nodes_metrics[node_id] = metrics
+        except Exception as exc:
+            logger.warning(f"Nie można pobrać metryk węzła {node_id}: {exc}")
 
     def select_best_node(
         self, task_requirements: Optional[Dict[str, Any]] = None

@@ -568,62 +568,61 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
         try:
             # Zrób screenshot po akcji
             post_action_screenshot = ImageGrab.grab()
-
-            # Dla różnych typów akcji stosujemy różne strategie weryfikacji
             if step.action_type == "type":
-                # Dla wpisywania tekstu trudno zweryfikować wizualnie bez OCR
-                # Zakładamy sukces jeśli akcja się wykonała
-                logger.debug("Weryfikacja 'type': zakładam sukces (brak OCR)")
-                return True
-
-            elif step.action_type in ["hotkey", "click"]:
-                # Dla kliknięć i skrótów sprawdzamy czy coś się zmieniło na ekranie
-                # Konwertuj na numpy arrays dla porównania
-                pre_array = (
-                    np.array(pre_action_screenshot) if pre_action_screenshot else None
+                return self._verify_type_step()
+            if step.action_type in {"hotkey", "click"}:
+                return self._verify_screen_change_step(
+                    pre_action_screenshot, post_action_screenshot
                 )
-                post_array = np.array(post_action_screenshot)
-
-                if pre_array is None:
-                    logger.debug("Brak pre-screenshot, zakładam sukces")
-                    return True
-
-                # Oblicz średnią różnicę między obrazami (stabilne numerycznie)
-                diff = np.mean(
-                    np.abs(post_array.astype(np.float32) - pre_array.astype(np.float32))
-                )
-                # diff to średnia różnica na piksel (0-255)
-
-                # Jeśli różnica > 0.5% (średnia zmiana piksela), uznajemy że coś się zmieniło
-                change_percent = (diff / 255.0) * 100  # Normalizuj do 0-100%
-                logger.debug(f"Zmiana ekranu: {change_percent:.2f}%")
-
-                if change_percent > 0.5:
-                    logger.debug("Wykryto zmianę ekranu - weryfikacja OK")
-                    return True
-                else:
-                    logger.warning("Brak znaczącej zmiany ekranu - możliwy problem")
-                    return False
-
-            elif step.action_type == "locate":
-                # Dla locate sprawdzamy czy element został znaleziony
-                if step.result and "znaleziony" in step.result:
-                    return True
-                return False
-
-            elif step.action_type in ["wait", "screenshot"]:
-                # Te akcje zawsze są OK
-                return True
-
-            else:
-                # Nieznany typ akcji - zakładamy sukces
-                logger.debug(f"Nieznany typ akcji {step.action_type}, zakładam sukces")
-                return True
+            if step.action_type == "locate":
+                return self._verify_locate_step(step)
+            if step.action_type in {"wait", "screenshot"}:
+                return self._verify_passthrough_step(step.action_type)
+            return self._verify_passthrough_step(step.action_type)
 
         except Exception as e:
             logger.error(f"Błąd podczas weryfikacji kroku: {e}")
             # W przypadku błędu weryfikacji zakładamy sukces (fail-open)
             return True
+
+    def _verify_type_step(self) -> bool:
+        logger.debug("Weryfikacja 'type': zakładam sukces (brak OCR)")
+        return True
+
+    def _verify_screen_change_step(
+        self, pre_action_screenshot, post_action_screenshot
+    ) -> bool:
+        pre_array = np.array(pre_action_screenshot) if pre_action_screenshot else None
+        if pre_array is None:
+            logger.debug("Brak pre-screenshot, zakładam sukces")
+            return True
+
+        post_array = np.array(post_action_screenshot)
+        change_percent = self._compute_screen_change_percent(pre_array, post_array)
+        logger.debug(f"Zmiana ekranu: {change_percent:.2f}%")
+        if change_percent > 0.5:
+            logger.debug("Wykryto zmianę ekranu - weryfikacja OK")
+            return True
+
+        logger.warning("Brak znaczącej zmiany ekranu - możliwy problem")
+        return False
+
+    @staticmethod
+    def _compute_screen_change_percent(pre_array, post_array) -> float:
+        diff = np.mean(
+            np.abs(post_array.astype(np.float32) - pre_array.astype(np.float32))
+        )
+        return (diff / 255.0) * 100
+
+    @staticmethod
+    def _verify_locate_step(step: ActionStep) -> bool:
+        return bool(step.result and "znaleziony" in step.result)
+
+    @staticmethod
+    def _verify_passthrough_step(action_type: str) -> bool:
+        if action_type not in {"wait", "screenshot"}:
+            logger.debug(f"Nieznany typ akcji {action_type}, zakładam sukces")
+        return True
 
     def _generate_report(self) -> str:
         """

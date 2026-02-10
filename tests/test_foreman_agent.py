@@ -301,3 +301,29 @@ async def test_process_returns_status(foreman_agent, mock_message_broker):
     assert "Foreman Status" in result
     assert "Węzły:" in result
     assert "Kolejki:" in result
+
+
+def test_safe_node_metrics_from_info_with_missing_capabilities(foreman_agent):
+    node_info = Mock()
+    node_info.node_name = "Node X"
+    node_info.cpu_usage = 12.5
+    node_info.memory_usage = 33.3
+    node_info.active_tasks = 2
+    node_info.capabilities = None
+
+    metrics = foreman_agent._safe_node_metrics_from_info("node-x", node_info)
+
+    assert metrics.node_id == "node-x"
+    assert metrics.node_name == "Node X"
+    assert metrics.gpu_available is False
+    assert metrics.capabilities == {}
+
+
+def test_update_single_node_metrics_handles_bad_node_info(foreman_agent):
+    bad_node = Mock()
+    bad_node.capabilities = Mock()
+    bad_node.capabilities.model_dump.side_effect = RuntimeError("broken")
+
+    foreman_agent._update_single_node_metrics("bad", bad_node)
+
+    assert "bad" not in foreman_agent.nodes_metrics

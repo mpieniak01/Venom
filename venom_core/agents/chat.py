@@ -171,7 +171,31 @@ Zasady:
                 )
                 return f"Przetworzono: {input_text}"
 
-        # Przygotuj historię rozmowy
+        chat_service: Any = self.kernel.get_service()
+        chat_history = self._build_chat_history_for_runtime(input_text, chat_service)
+
+        try:
+            allow_functions = self._resolve_function_call_policy(
+                chat_service=chat_service, user_input=input_text
+            )
+            response = await self._invoke_with_tool_fallback(
+                chat_service=chat_service,
+                chat_history=chat_history,
+                allow_functions=allow_functions,
+                generation_params=generation_params,
+            )
+            result = self._extract_response_text(response)
+            logger.info(f"ChatAgent wygenerował odpowiedź ({len(result)} znaków)")
+            return result
+
+        except Exception as e:
+            logger.error(f"Błąd podczas generowania odpowiedzi: {e}")
+
+            raise
+
+    def _build_chat_history_for_runtime(
+        self, input_text: str, chat_service: Any
+    ) -> ChatHistory:
         runtime = get_active_llm_runtime()
         use_compact = (
             runtime.provider in ("vllm", "ollama", "local")
@@ -179,9 +203,8 @@ Zasady:
             and SETTINGS.VLLM_MAX_MODEL_LEN <= 512
         )
         system_prompt = self.LOCAL_SYSTEM_PROMPT if use_compact else self.SYSTEM_PROMPT
-
-        chat_service: Any = self.kernel.get_service()
         system_supported = self._supports_system_prompt(chat_service)
+
         chat_history = ChatHistory()
         if system_supported:
             chat_history.add_message(
@@ -190,65 +213,62 @@ Zasady:
             chat_history.add_message(
                 ChatMessageContent(role=AuthorRole.USER, content=input_text)
             )
-        else:
-            logger.debug(
-                "Model %s nie wspiera roli SYSTEM – łączę instrukcję z wiadomością użytkownika.",
-                getattr(chat_service, "ai_model_id", "unknown"),
-            )
-            combined_prompt = (
-                f"{system_prompt.strip()}\n\n[Pytanie użytkownika]\n{input_text}"
-            )
-            chat_history.add_message(
-                ChatMessageContent(role=AuthorRole.USER, content=combined_prompt)
-            )
+            return chat_history
 
+        logger.debug(
+            "Model %s nie wspiera roli SYSTEM – łączę instrukcję z wiadomością użytkownika.",
+            getattr(chat_service, "ai_model_id", "unknown"),
+        )
+        combined_prompt = (
+            f"{system_prompt.strip()}\n\n[Pytanie użytkownika]\n{input_text}"
+        )
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.USER, content=combined_prompt)
+        )
+        return chat_history
+
+    def _resolve_function_call_policy(
+        self, *, chat_service: Any, user_input: str
+    ) -> bool:
+        supports_functions = self._supports_function_calling(chat_service)
+        return supports_functions and self._should_use_functions(user_input)
+
+    async def _invoke_with_tool_fallback(
+        self,
+        *,
+        chat_service: Any,
+        chat_history: ChatHistory,
+        allow_functions: bool,
+        generation_params: Optional[dict[str, Any]],
+    ):
         try:
-            # Pobierz serwis chat completion
-            supports_functions = self._supports_function_calling(chat_service)
-            allow_functions = supports_functions and self._should_use_functions(
-                input_text
+            return await self._invoke_chat_service(
+                chat_service=chat_service,
+                chat_history=chat_history,
+                enable_functions=allow_functions,
+                generation_params=generation_params,
             )
-
-            try:
-                # Wywołaj model,
-                response = await self._invoke_chat_service(
+        except Exception as api_error:
+            error_text = self._build_error_text(api_error)
+            kernel_required_error = "kernel is required for function calls"
+            if (
+                "does not support tools" in error_text
+                or kernel_required_error in error_text
+            ):
+                logger.warning(
+                    "Model nie wspiera function calling - przełączam na tryb bez funkcji."
+                )
+                return await self._invoke_chat_service(
                     chat_service=chat_service,
                     chat_history=chat_history,
-                    enable_functions=allow_functions,
+                    enable_functions=False,
                     generation_params=generation_params,
                 )
-            except Exception as api_error:
-                error_text = str(api_error).lower()
-                inner = getattr(api_error, "inner_exception", None)
-                if inner:
-                    error_text += f" {str(inner).lower()}"
-
-                kernel_required_error = "kernel is required for function calls"
-
-                if (
-                    "does not support tools" in error_text
-                    or kernel_required_error in error_text
-                ):
-                    logger.warning(
-                        "Model nie wspiera function calling - przełączam na tryb bez funkcji."
-                    )
-                    response = await self._invoke_chat_service(
-                        chat_service=chat_service,
-                        chat_history=chat_history,
-                        enable_functions=False,
-                        generation_params=generation_params,
-                    )
-                else:
-                    raise
-
-            result = str(response).strip()
-            logger.info(f"ChatAgent wygenerował odpowiedź ({len(result)} znaków)")
-            return result
-
-        except Exception as e:
-            logger.error(f"Błąd podczas generowania odpowiedzi: {e}")
-
             raise
+
+    @staticmethod
+    def _extract_response_text(response: Any) -> str:
+        return str(response).strip()
 
     def _should_use_functions(self, user_input: str) -> bool:
         """

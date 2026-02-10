@@ -56,6 +56,11 @@ export function MobileNav() {
     }),
     [telemetryTab, queue, metrics, connected, entries.length, latestLogs, t]
   );
+  const telemetryLabelByTab: Record<TelemetryTab, string> = {
+    queue: t("mobileNav.telemetry.queue"),
+    tasks: t("mobileNav.telemetry.tasks"),
+    ws: t("mobileNav.telemetry.ws"),
+  };
 
   const handleCostToggle = async () => {
     setCostLoading(true);
@@ -154,7 +159,7 @@ export function MobileNav() {
                     }`}
                   onClick={() => setTelemetryTab(tab)}
                 >
-                  {tab === "queue" ? t("mobileNav.telemetry.queue") : tab === "tasks" ? t("mobileNav.telemetry.tasks") : t("mobileNav.telemetry.ws")}
+                  {telemetryLabelByTab[tab]}
                 </Button>
               ))}
             </div>

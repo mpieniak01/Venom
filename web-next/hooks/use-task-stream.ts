@@ -68,7 +68,7 @@ const defaultState: TaskStreamState = {
   contextUsed: null,
 };
 
-const TERMINAL_STATUSES: TaskStatus[] = ["COMPLETED", "FAILED", "LOST"];
+const TERMINAL_STATUSES = new Set<TaskStatus>(["COMPLETED", "FAILED", "LOST"]);
 
 function extractRuntime(payload: Record<string, unknown>) {
   const runtime = (payload.active_runtime || payload.runtime || {}) as Record<string, unknown>;
@@ -85,7 +85,7 @@ function extractRuntime(payload: Record<string, unknown>) {
 function normalizeStatus(status: unknown): TaskStatus | null {
   if (!status) return null;
   const s = String(status).toUpperCase();
-  if (TERMINAL_STATUSES.includes(s as TaskStatus)) return s as TaskStatus;
+  if (TERMINAL_STATUSES.has(s as TaskStatus)) return s as TaskStatus;
   if (s === "PENDING" || s === "PROCESSING") return s as TaskStatus;
   return null;
 }
@@ -233,7 +233,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           context: runtime.context,
         });
 
-        if (status && TERMINAL_STATUSES.includes(status)) {
+        if (status && TERMINAL_STATUSES.has(status)) {
           stopPolling(taskId);
         } else {
           const timer = window.setTimeout(() => pollTask(taskId), pollIntervalMs);
@@ -331,7 +331,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         ...(contextUsed ? { contextUsed } : {}),
       };
 
-      const isTerminal = eventName === "task_finished" || eventName === "task_missing" || (status && TERMINAL_STATUSES.includes(status));
+      const isTerminal = eventName === "task_finished" || eventName === "task_missing" || (status && TERMINAL_STATUSES.has(status));
       const hasResult = typeof result === "string" && result.trim().length > 0;
       const firstResultSeen = firstResultSeenRef.current.get(taskId) ?? false;
       const firstResultNow = hasResult && !firstResultSeen;

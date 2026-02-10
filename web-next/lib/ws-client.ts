@@ -9,7 +9,7 @@ export class VenomWebSocket {
   private readonly onMessage: MessageHandler;
   private readonly onStatus?: StatusHandler;
   private reconnectAttempts = 0;
-  private maxAttempts = 5;
+  private readonly maxAttempts = 5;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
 
   constructor(path: string, onMessage: MessageHandler, onStatus?: StatusHandler) {

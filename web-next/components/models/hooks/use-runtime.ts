@@ -63,9 +63,12 @@ export function useRuntime() {
             : (installed.data.models ?? []).filter((m) => normalizeProvider(m.provider) === targetProvider);
 
         const lastModels = activeServer.data?.last_models ?? {};
-        const lastForServer = targetProvider === "ollama"
-            ? lastModels.ollama || lastModels.previous_ollama
-            : targetProvider === "vllm" ? lastModels.vllm || lastModels.previous_vllm : null;
+        let lastForServer: string | null | undefined = null;
+        if (targetProvider === "ollama") {
+            lastForServer = lastModels.ollama || lastModels.previous_ollama;
+        } else if (targetProvider === "vllm") {
+            lastForServer = lastModels.vllm || lastModels.previous_vllm;
+        }
 
         if (!base.length && lastForServer) {
             if (inferProviderFromName(lastForServer) === targetProvider) {

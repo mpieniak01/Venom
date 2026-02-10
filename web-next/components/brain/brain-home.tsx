@@ -71,16 +71,16 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     refreshMemoryGraph,
     setMemoryGraphOverride,
     memoryGraphStats,
-  } = useBrainGraphLogic(
-    initialData.knowledgeGraph,
+  } = useBrainGraphLogic({
+    initialKnowledge: initialData.knowledgeGraph,
     activeTab,
     showMemoryLayer,
     memorySessionFilter,
     memoryOnlyPinned,
     includeLessons,
     flowMode,
-    topicFilter
-  );
+    topicFilter,
+  });
 
   const isMemoryEmpty =
     activeTab === "memory" &&
@@ -261,6 +261,18 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     }
   };
 
+  const mapRelationsForNode = useCallback((node: cytoscapeType.NodeSingular): RelationEntry[] => {
+    return node.connectedEdges().map((edge: cytoscapeType.EdgeSingular) => {
+      const targetIsNode = edge.target().id() === node.id();
+      return {
+        id: targetIsNode ? edge.source().id() : edge.target().id(),
+        label: (targetIsNode ? edge.source().data("label") : edge.target().data("label")) as string,
+        type: (edge.data("label") || edge.data("type")) as string,
+        direction: edge.source().id() === node.id() ? "out" : "in",
+      };
+    });
+  }, []);
+
   // Effect to load cytoscape and setup instance
   useEffect(() => {
     let cy: cytoscapeType.Core | null = null;
@@ -295,13 +307,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
         setDetailsSheetOpen(true);
         cy?.nodes().removeClass("highlighted");
         node.addClass("highlighted");
-        const connectedEdges = node.connectedEdges();
-        setRelations(connectedEdges.map((e: cytoscapeType.EdgeSingular) => ({
-          id: e.target().id() === node.id() ? e.source().id() : e.target().id(),
-          label: (e.target().id() === node.id() ? e.source().data("label") : e.target().data("label")) as string,
-          type: (e.data("label") || e.data("type")) as string,
-          direction: e.source().id() === node.id() ? "out" : "in"
-        })));
+        setRelations(mapRelationsForNode(node));
       });
 
       cy.on("tap", (evt) => {
@@ -314,7 +320,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     return () => {
       if (cy) cy.destroy();
     };
-  }, [mergedGraph, handleClearSelection, showEdgeLabels, layoutName, colorFromTopic]);
+  }, [mergedGraph, handleClearSelection, showEdgeLabels, layoutName, colorFromTopic, mapRelationsForNode]);
 
   return (
     <div className="space-y-6 pb-10">

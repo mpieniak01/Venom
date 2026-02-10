@@ -171,7 +171,7 @@ export function VoiceCommandCenter() {
   }, [refreshIoTStatus]);
 
   const startRecording = useCallback(async () => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
       setStatusMessage("Kanał audio nie jest gotowy.");
       return;
     }
@@ -202,7 +202,7 @@ export function VoiceCommandCenter() {
         for (let i = 0; i < channelData.length; i += 1) {
           int16[i] = Math.max(-32768, Math.min(32767, channelData[i] * 32768));
         }
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(int16.buffer);
         }
         drawVisualizer(channelData);
@@ -262,6 +262,13 @@ export function VoiceCommandCenter() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
 
+  let recordingButtonClass = "border-white/10 bg-white/5 text-zinc-300";
+  if (recording) {
+    recordingButtonClass = "border-rose-400/60 bg-rose-500/10 text-rose-100";
+  } else if (connected) {
+    recordingButtonClass = "border-emerald-400/40 bg-emerald-500/10 text-white";
+  }
+
   return (
     <Panel
       title="Voice Command Center"
@@ -290,12 +297,7 @@ export function VoiceCommandCenter() {
             }}
             variant="outline"
             size="md"
-            className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recording
-                ? "border-rose-400/60 bg-rose-500/10 text-rose-100"
-                : connected
-                  ? "border-emerald-400/40 bg-emerald-500/10 text-white"
-                  : "border-white/10 bg-white/5 text-zinc-300"
-              }`}
+            className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${recordingButtonClass}`}
             disabled={!connected}
           >
             🎙 {recording ? "Nagrywanie..." : "Przytrzymaj i mów"}

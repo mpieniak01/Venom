@@ -27,12 +27,13 @@ export function SectionHeading({
   size = "md",
 }: SectionHeadingProps) {
   const HeadingTag = as;
-  const normalizedEyebrow =
-    eyebrow && eyebrow.trim().length > 0
-      ? eyebrow.trim().startsWith("//")
-        ? eyebrow.trim()
-        : `// ${eyebrow.trim()}`
-      : null;
+  const trimmedEyebrow = eyebrow?.trim();
+  let normalizedEyebrow: string | null = null;
+  if (trimmedEyebrow) {
+    normalizedEyebrow = trimmedEyebrow.startsWith("//")
+      ? trimmedEyebrow
+      : `// ${trimmedEyebrow}`;
+  }
   return (
     <div className={cn("page-heading flex flex-wrap items-start justify-between gap-4", className)}>
       <div>

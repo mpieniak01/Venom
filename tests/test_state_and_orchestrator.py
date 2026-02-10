@@ -134,6 +134,26 @@ def test_state_manager_add_log(temp_state_file):
     assert "Log message 2" in updated_task.logs
 
 
+def test_state_manager_save_lock_rebinds_between_event_loops(temp_state_file):
+    """Lock zapisu nie powinien być przywiązany na stałe do pierwszego loopa."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+    task = state_manager.create_task("Loop switch task")
+
+    async def _set_processing():
+        await state_manager.update_status(task.id, TaskStatus.PROCESSING)
+
+    async def _set_completed():
+        await state_manager.update_status(task.id, TaskStatus.COMPLETED, result="ok")
+
+    asyncio.run(_set_processing())
+    asyncio.run(_set_completed())
+
+    final_task = state_manager.get_task(task.id)
+    assert final_task is not None
+    assert final_task.status == TaskStatus.COMPLETED
+    assert final_task.result == "ok"
+
+
 def test_state_manager_update_context_merges(temp_state_file):
     """StateManager powinien scalać i czyścić kontekst LLMa."""
     state_manager = StateManager(state_file_path=temp_state_file)

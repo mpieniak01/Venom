@@ -19,10 +19,26 @@ logger = get_logger(__name__)
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
+def _log_background_task_failure(task: asyncio.Task[Any]) -> None:
+    """Odbiera wyjątek taska w tle, aby nie gubić błędów i uniknąć warningów asyncio."""
+    try:
+        exc = task.exception()
+    except asyncio.CancelledError:
+        return
+    if exc is None:
+        return
+    logger.error(
+        "Task w tle zakończył się wyjątkiem: %s",
+        exc,
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+
+
 def _spawn_background_task(coro: Coroutine[Any, Any, Any]) -> None:
     """Uruchamia task i trzyma referencję do czasu zakończenia."""
     task = asyncio.create_task(coro)
     _background_tasks.add(task)
+    task.add_done_callback(_log_background_task_failure)
     task.add_done_callback(_background_tasks.discard)
 
 

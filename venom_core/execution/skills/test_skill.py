@@ -156,6 +156,7 @@ class TestSkill:
                         )
                     except TimeoutError:
                         process.kill()
+                        await process.communicate()
                         return (
                             "❌ Przekroczono limit czasu "
                             f"({DEFAULT_PYTEST_TIMEOUT_SECONDS}s) podczas uruchamiania "

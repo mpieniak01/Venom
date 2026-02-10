@@ -16,9 +16,9 @@ try:
     _GITHUB_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency w CI-lite
     Auth = None  # type: ignore[assignment]
-    Github = None  # type: ignore[assignment]
+    Github = None  # type: ignore[assignment, misc]
 
-    class GithubException(Exception):
+    class GithubException(Exception):  # type: ignore[no-redef]
         """Fallback exception when PyGithub is unavailable."""
 
     _GITHUB_AVAILABLE = False

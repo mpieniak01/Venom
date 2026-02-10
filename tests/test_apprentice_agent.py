@@ -69,7 +69,7 @@ class TestApprenticeAgent:
         )
         apprentice_agent.current_session_id = "test_session"
 
-        result = apprentice_agent._stop_recording("Zatrzymaj nagrywanie")
+        result = apprentice_agent._stop_recording()
 
         assert "Zakończono nagrywanie" in result
         assert "/path/to/session.json" in result
@@ -78,7 +78,7 @@ class TestApprenticeAgent:
         """Test zatrzymania gdy nie nagrywa."""
         apprentice_agent.recorder.is_recording = False
 
-        result = apprentice_agent._stop_recording("Zatrzymaj nagrywanie")
+        result = apprentice_agent._stop_recording()
 
         assert "nie jest aktywne" in result
 

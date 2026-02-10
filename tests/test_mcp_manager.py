@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from tests.helpers.url_fixtures import http_url
+from venom_core.core.permission_guard import permission_guard
 from venom_core.skills.mcp_manager_skill import McpManagerSkill, McpToolMetadata
 
 
@@ -22,6 +23,16 @@ def manager(tmp_path):
     m.repos_root.mkdir(parents=True)
     m.custom_skills_dir.mkdir(parents=True)
     return m
+
+
+@pytest.fixture(autouse=True)
+def _allow_shell_for_mcp_tests():
+    previous_level = permission_guard.get_current_level()
+    permission_guard.set_level(40)
+    try:
+        yield
+    finally:
+        permission_guard.set_level(previous_level)
 
 
 @pytest.mark.asyncio

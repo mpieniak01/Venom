@@ -2,6 +2,7 @@
 
 import pytest
 
+from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.core_skill import CoreSkill
 from venom_core.infrastructure.mirror_world import InstanceInfo, MirrorWorld
 
@@ -20,6 +21,16 @@ def core_skill(tmp_path):
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir()
     return CoreSkill(backup_dir=str(backup_dir))
+
+
+@pytest.fixture(autouse=True)
+def _allow_core_mutations_for_test():
+    previous_level = permission_guard.get_current_level()
+    permission_guard.set_level(40)
+    try:
+        yield
+    finally:
+        permission_guard.set_level(previous_level)
 
 
 class TestMirrorWorldBasic:

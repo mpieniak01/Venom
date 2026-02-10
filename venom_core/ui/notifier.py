@@ -93,13 +93,19 @@ class Notifier:
         Args:
             title: Tytuł powiadomienia
             message: Treść powiadomienia
-            action_payload: Dane akcji do wykonania po kliknięciu
+            action_payload: Zarezerwowane dla przyszłego wsparcia akcji "on click".
+                Aktualnie backend powiadomień nie obsługuje callbacków kliknięcia.
             urgency: Pilność ("low", "normal", "critical")
 
         Returns:
             True jeśli wysłano pomyślnie
         """
         try:
+            if action_payload:
+                logger.debug(
+                    "Przekazano action_payload, ale callback kliknięcia "
+                    "nie jest jeszcze wspierany przez notifier backend."
+                )
             if self.system == "Windows":
                 return await self._send_toast_windows(title, message)
             elif self.system == "Linux" and not self._is_wsl:

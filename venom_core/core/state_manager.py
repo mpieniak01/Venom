@@ -39,7 +39,8 @@ class StateManager:
             else "data/memory/state_dump.json"
         )
         self._state_file_path = Path(resolved_path)
-        self._save_lock = asyncio.Lock()
+        self._save_lock: Optional[asyncio.Lock] = None
+        self._save_lock_loop: Optional[asyncio.AbstractEventLoop] = None
         self._save_task: Optional[asyncio.Task] = None
         self._save_requested: bool = False
 
@@ -125,7 +126,8 @@ class StateManager:
 
     async def _save(self) -> None:
         """Zapisuje stan do pliku JSON (asynchronicznie z lockiem)."""
-        async with self._save_lock:
+        lock = self._get_save_lock()
+        async with lock:
             try:
                 # Serializuj zadania
                 tasks_list = [
@@ -148,18 +150,37 @@ class StateManager:
             except Exception as e:
                 logger.error(f"Błąd zapisu stanu do pliku: {e}")
 
+    def _get_save_lock(self) -> asyncio.Lock:
+        """Zwraca lock zapisu powiązany z bieżącą pętlą event loop."""
+        loop = asyncio.get_running_loop()
+        if self._save_lock is None or self._save_lock_loop is not loop:
+            self._save_lock = asyncio.Lock()
+            self._save_lock_loop = loop
+        return self._save_lock
+
     def _schedule_save(self) -> None:
         """Planuje zapis stanu z mechanizmem debouncingu."""
         self._save_requested = True
 
         try:
-            # Sprawdź czy pętla zapisu już działa
-            if self._save_task and not self._save_task.done():
-                return
-
             # Spróbuj uzyskać aktywny event loop
             try:
-                asyncio.get_running_loop()
+                loop = asyncio.get_running_loop()
+                # Sprawdź czy pętla zapisu już działa w bieżącym loopie.
+                if (
+                    self._save_task
+                    and not self._save_task.done()
+                    and self._save_task.get_loop() is loop
+                ):
+                    return
+                # Task zapisów jest powiązany z loopem; po zmianie loopa
+                # trzeba uruchomić nowy worker dla bieżącego kontekstu.
+                if (
+                    self._save_task
+                    and not self._save_task.done()
+                    and self._save_task.get_loop() is not loop
+                ):
+                    self._save_task = None
                 self._save_task = asyncio.create_task(self._process_save_queue())
             except RuntimeError:
                 logger.debug("Brak event loop - pomijam automatyczny zapis stanu")

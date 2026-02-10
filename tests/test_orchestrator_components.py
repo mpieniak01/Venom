@@ -6,6 +6,9 @@ from uuid import uuid4
 import pytest
 
 from venom_core.core.models import TaskExtraContext, TaskRequest
+from venom_core.core.orchestrator import (
+    orchestrator_submit as orchestrator_submit_module,
+)
 from venom_core.core.orchestrator.event_broadcaster import EventBroadcasterClient
 from venom_core.core.orchestrator.kernel_lifecycle import KernelLifecycleManager
 from venom_core.core.orchestrator.orchestrator_events import (
@@ -590,3 +593,22 @@ async def test_run_task_fastpath_marks_failed_when_no_task_handle(monkeypatch):
     orch.task_manager.register_task.assert_not_called()
     orch.task_manager.unregister_task.assert_not_called()
     orch._run_task.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_spawn_background_task_logs_exception(monkeypatch):
+    logged = []
+
+    def _capture_error(*args, **kwargs):
+        logged.append((args, kwargs))
+
+    monkeypatch.setattr(orchestrator_submit_module.logger, "error", _capture_error)
+
+    async def _boom():
+        raise RuntimeError("boom")
+
+    orchestrator_submit_module._spawn_background_task(_boom())
+    await asyncio.sleep(0.01)
+
+    assert logged
+    assert any("Task w tle zakończył się wyjątkiem" in call[0][0] for call in logged)

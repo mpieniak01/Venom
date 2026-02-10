@@ -23,13 +23,18 @@ try:  # pragma: no cover - zależne od środowiska testowego
 except Exception:  # pragma: no cover
     PYNPUT_AVAILABLE = False
 
-    class _PynputStub:
+    class _KeyboardStub:
         class Listener:
             def __init__(self, *_, **__):
                 raise RuntimeError("Biblioteka pynput nie jest zainstalowana")
 
-    keyboard = _PynputStub
-    mouse = _PynputStub
+    class _MouseStub:
+        class Listener:
+            def __init__(self, *_, **__):
+                raise RuntimeError("Biblioteka pynput nie jest zainstalowana")
+
+    keyboard = _KeyboardStub
+    mouse = _MouseStub
 
 from venom_core.config import SETTINGS
 from venom_core.utils import helpers

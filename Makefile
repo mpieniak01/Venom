@@ -29,7 +29,7 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports \
+.PHONY: lint format test install-hooks sync-sonar-new-code-group start start-dev start-prod stop restart status clean-ports \
 	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage sonar-reports-backend-new-code pr-fast \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
@@ -161,6 +161,9 @@ audit-ci-lite:
 
 install-hooks:
 	pre-commit install
+
+sync-sonar-new-code-group:
+	pre-commit run --hook-stage manual update-sonar-new-code-group
 
 define ensure_process_not_running
 	@if [ -f $(2) ]; then \

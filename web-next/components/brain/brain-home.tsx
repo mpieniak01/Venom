@@ -1,16 +1,15 @@
-"use client";
-
-import { Brain, Loader2, Radar, AlertTriangle } from "lucide-react";
+import { Brain, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type cytoscapeType from "cytoscape";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Panel } from "@/components/ui/panel";
-import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/components/ui/toast";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 import {
   fetchGraphFileInfo,
@@ -20,12 +19,10 @@ import {
   deleteMemoryEntry,
   clearSessionMemory,
   useLessons,
-  useLessonsStats,
 } from "@/hooks/use-api";
 import { useProjectionTrigger } from "@/hooks/use-projection";
 import { useTranslation } from "@/lib/i18n";
 import type { BrainInitialData } from "@/lib/server-data";
-import type { Lesson } from "@/lib/types";
 
 import { LessonList } from "@/components/tasks/lesson-list";
 import { LessonActions } from "@/components/brain/lesson-actions";
@@ -44,14 +41,11 @@ import { RecentOperations } from "./recent-operations";
 import { RelationList, RelationEntry } from "./relation-list";
 import { BrainSelectionSummary } from "./selection-summary";
 import { BrainDetailsSheetContent } from "./details-sheet-content";
-import { formatOperationTimestamp } from "./utils/graph-utils";
-
-type SpecificFilter = Exclude<GraphFilterType, "all">;
 
 export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialData }>) {
   const t = useTranslation();
   const { pushToast } = useToast();
-  const projection = useProjectionTrigger();
+  useProjectionTrigger();
 
   // Tabs
   const [activeTab, setActiveTab] = useState<"repo" | "memory" | "hygiene">("memory");
@@ -59,11 +53,10 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
   // Filter & UI State
   const [showMemoryLayer, setShowMemoryLayer] = useState(true);
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
-  const [includeLessons, setIncludeLessons] = useState(false);
+  const [includeLessons] = useState(false);
   const [memorySessionFilter, setMemorySessionFilter] = useState<string>("");
   const [memoryOnlyPinned, setMemoryOnlyPinned] = useState(false);
-  const [topicFilter, setTopicFilter] = useState("");
-  const [flowMode, setFlowMode] = useState<"default" | "flow">("flow");
+  const [layoutName] = useState<"preset" | "cola" | "cose">("preset");
   const [filters, setFilters] = useState<GraphFilterType[]>(["all"]);
   const [highlightTag, setHighlightTag] = useState<string | null>(null);
 
@@ -71,8 +64,6 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
   const {
     mergedGraph,
     loading: graphLoading,
-    error: graphError,
-    refreshGraph,
     refreshMemoryGraph,
     setMemoryGraphOverride,
     memoryGraphStats,
@@ -108,8 +99,25 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
   // Metadata
   const { data: liveLessons, refresh: refreshLessons } = useLessons(5);
   const lessons = liveLessons ?? initialData.lessons ?? null;
-  const { data: liveLessonsStats } = useLessonsStats();
-  const lessonsStats = liveLessonsStats ?? initialData.lessonsStats ?? null;
+  const { colorFromTopic } = useTopicColors();
+
+  // Derived Lessons Stats
+  const lessonStatsEntries = useMemo(() => {
+    if (!lessons) return [];
+    const total = lessons.count || 0;
+    const tags = new Set<string>();
+    lessons.lessons.forEach(l => l.tags?.forEach(t => tags.add(t)));
+    return [
+      { label: t("brain.stats.total"), value: total },
+      { label: t("brain.stats.tags"), value: tags.size }
+    ];
+  }, [lessons, t]);
+
+  const filteredLessons = useMemo(() => {
+    if (!lessons) return [];
+    if (!highlightTag) return lessons.lessons;
+    return lessons.lessons.filter(l => l.tags?.includes(highlightTag));
+  }, [lessons, highlightTag]);
 
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
@@ -171,7 +179,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       await pinMemoryEntry(entryId, pinned);
       pushToast(pinned ? t("brain.toasts.pinSuccess") : t("brain.toasts.unpinSuccess"), "success");
       refreshMemoryGraph();
-    } catch (err) {
+    } catch {
       pushToast(t("brain.toasts.pinError"), "error");
     } finally {
       setMemoryActionPending(null);
@@ -186,7 +194,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       handleClearSelection();
       refreshMemoryGraph();
       pushToast(t("brain.toasts.deleteSuccess"), "success");
-    } catch (err) {
+    } catch {
       pushToast(t("brain.toasts.deleteError"), "error");
     } finally {
       setMemoryActionPending(null);
@@ -205,7 +213,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       setMemoryGraphOverride({ elements: { nodes: [], edges: [] }, stats: { nodes: 0, edges: 0 } });
       await refreshMemoryGraph();
       setMemoryGraphOverride(null);
-    } catch (err) {
+    } catch {
       pushToast(t("brain.toasts.clearSessionError"), "error");
     } finally {
       setMemoryWipePending(false);
@@ -240,7 +248,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     try {
       await triggerGraphScan();
       pushToast(t("brain.toasts.scanStarted"), "success");
-    } catch (err) {
+    } catch {
       pushToast(t("brain.toasts.scanError"), "error");
     } finally {
       setScanning(false);
@@ -253,35 +261,56 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     const setup = async () => {
       if (!cyRef.current || !mergedGraph?.elements) return;
       const cytoscape = (await import("cytoscape")).default;
+
       cy = cytoscape({
         container: cyRef.current,
-        elements: mergedGraph.elements as any,
+        // @ts-expect-error Cytoscape elements type mismatch
         style: [
-          { selector: "node", style: { label: "data(label)", "background-color": "#6366f1", color: "#fff", "font-size": 10 } },
+          {
+            selector: "node",
+            style: {
+              label: "data(label)",
+              "background-color": (ele: cytoscapeType.NodeSingular) => colorFromTopic(ele.data("topic")) || "#6366f1",
+              color: "#fff",
+              "font-size": 10,
+              "text-opacity": 0.8,
+              "text-valign": "center",
+              "text-halign": "center"
+            }
+          },
           { selector: "node.highlighted", style: { "border-width": 4, "border-color": "#c084fc" } },
-          { selector: "edge", style: { "curve-style": "bezier", "target-arrow-shape": "triangle", width: 2, "line-color": "#475569" } }
-        ] as any,
-        layout: { name: "preset" } as any
+          { selector: "edge", style: { "curve-style": "bezier", "target-arrow-shape": "triangle", width: 2, "line-color": "#475569" } },
+          // @ts-expect-error Cytoscape style prop type mismatch
+        ],
+        layout: { name: layoutName, animate: true }
       });
-      cy.on("tap", "node", (evt) => {
+
+      cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
         const node = evt.target;
         setSelected(node.data());
         setDetailsSheetOpen(true);
         cy?.nodes().removeClass("highlighted");
         node.addClass("highlighted");
-        setRelations(node.connectedEdges().map((e: any) => ({
+        const connectedEdges = node.connectedEdges();
+        setRelations(connectedEdges.map((e: cytoscapeType.EdgeSingular) => ({
           id: e.target().id() === node.id() ? e.source().id() : e.target().id(),
-          label: e.target().id() === node.id() ? e.source().data("label") : e.target().data("label"),
-          type: e.data("label") || e.data("type"),
+          label: (e.target().id() === node.id() ? e.source().data("label") : e.target().data("label")) as string,
+          type: (e.data("label") || e.data("type")) as string,
           direction: e.source().id() === node.id() ? "out" : "in"
         })));
       });
-      cy.on("tap", (evt) => { if (evt.target === cy) handleClearSelection(); });
+
+      cy.on("tap", (evt) => {
+        if (evt.target === cy) handleClearSelection();
+      });
+
       cyInstanceRef.current = cy;
     };
     setup();
-    return () => cy?.destroy();
-  }, [mergedGraph, handleClearSelection]);
+    return () => {
+      if (cy) cy.destroy();
+    };
+  }, [mergedGraph, handleClearSelection, showEdgeLabels, layoutName, colorFromTopic]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -302,7 +331,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
               size="sm"
               variant={activeTab === tab ? "secondary" : "ghost"}
               className="rounded-full px-4"
-              onClick={() => setActiveTab(tab as any)}
+              onClick={() => setActiveTab(tab as "memory" | "repo" | "hygiene")}
             >
               {t(`brain.tabs.${tab}`)}
             </Button>
@@ -339,7 +368,38 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
                 <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
               </div>
             )}
-            <div className="absolute left-6 top-6"><GraphFilterButtons selectedFilters={filters} onToggleFilter={handleFilterToggle} /></div>
+            <div className="absolute left-6 top-6 flex flex-col gap-3">
+              <GraphFilterButtons selectedFilters={filters} onToggleFilter={handleFilterToggle} />
+
+              <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 p-3 backdrop-blur lg:w-[240px]">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="show-memory" className="text-xs text-zinc-300">{t("brain.filters.memoryLayer")}</Label>
+                  <Switch id="show-memory" checked={showMemoryLayer} onCheckedChange={setShowMemoryLayer} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="show-labels" className="text-xs text-zinc-300">{t("brain.filters.edgeLabels")}</Label>
+                  <Switch id="show-labels" checked={showEdgeLabels} onCheckedChange={setShowEdgeLabels} />
+                </div>
+                {showMemoryLayer && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="only-pinned" className="text-xs text-zinc-300">{t("brain.filters.pinnedOnly")}</Label>
+                      <Switch id="only-pinned" checked={memoryOnlyPinned} onCheckedChange={setMemoryOnlyPinned} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="session-filter" className="text-xs text-zinc-300">{t("brain.filters.sessionId")}</Label>
+                      <Input
+                        id="session-filter"
+                        value={memorySessionFilter}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMemorySessionFilter(e.target.value)}
+                        className="h-7 text-xs bg-black/50 border-white/10"
+                        placeholder="Session ID..."
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
             <div className="absolute right-6 top-6"><GraphActionButtons onFit={() => cyInstanceRef.current?.fit()} onScan={handleScanGraph} scanning={scanning} /></div>
           </div>
 
@@ -357,9 +417,9 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
         <>
           <Panel title={t("brain.lessons.panelTitle")} description={t("brain.lessons.panelDescription")} action={<Button size="sm" onClick={() => refreshLessons()}>{t("brain.lessons.refresh")}</Button>}>
             <div className="space-y-4">
-              <LessonStats entries={[]} />
+              <LessonStats entries={lessonStatsEntries} />
               <LessonActions tags={lessonTags} activeTag={highlightTag} onSelect={setHighlightTag} />
-              <LessonList lessons={lessons?.lessons || []} />
+              <LessonList lessons={filteredLessons || []} />
             </div>
           </Panel>
 
@@ -371,8 +431,11 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
             </div>
           </Panel>
 
-          <Sheet open={detailsSheetOpen} onOpenChange={setDetailsSheetOpen}>
-            <BrainDetailsSheetContent selected={selected} relations={relations} memoryActionPending={memoryActionPending} onPin={handlePinMemory} onDelete={handleDeleteMemory} />
+          <Sheet open={detailsSheetOpen} onOpenChange={(open) => {
+            setDetailsSheetOpen(open);
+            if (!open) handleClearSelection();
+          }}>
+            <BrainDetailsSheetContent selected={selected} relations={relations} memoryActionPending={memoryActionPending} onPin={handlePinMemory} onDelete={handleDeleteMemory} memoryWipePending={memoryWipePending} onClearSession={handleClearSessionMemory} />
           </Sheet>
         </>
       )}

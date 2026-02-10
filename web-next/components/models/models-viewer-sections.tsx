@@ -12,6 +12,11 @@ import {
 import {
     formatDateTime
 } from "@/lib/date";
+import type { ModelCatalogEntry, ModelInfo, ModelOperation } from "@/lib/types";
+import type { NewsItem } from "./models-helpers";
+import { useModelsViewerLogic } from "./use-models-viewer-logic";
+
+type ModelsViewerLogic = ReturnType<typeof useModelsViewerLogic>;
 
 export function RuntimeSection({
     selectedServer,
@@ -27,7 +32,7 @@ export function RuntimeSection({
     switchModel,
     pushToast,
     t
-}: any) {
+}: ModelsViewerLogic) {
     return (
         <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -107,7 +112,7 @@ export function SearchSection({
     handleInstall,
     pendingActions,
     t
-}: any) {
+}: ModelsViewerLogic) {
     return (
         <section className="grid gap-10">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -138,7 +143,7 @@ export function SearchSection({
                                         { value: "huggingface", label: "HuggingFace" },
                                         { value: "ollama", label: "Ollama" },
                                     ]}
-                                    onChange={(val) => setSearchProvider(val as any)}
+                                    onChange={(val) => setSearchProvider(val as "huggingface" | "ollama")}
                                     className="w-full sm:w-[160px]"
                                     buttonClassName="w-full justify-between rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-100 hover:border-white/30 hover:bg-white/10"
                                     renderButton={(opt) => <span className="flex-1 truncate text-left text-slate-100 uppercase tracking-wider text-[10px]">{opt?.label ?? "Provider"}</span>}
@@ -154,7 +159,7 @@ export function SearchSection({
                         )}
                         {searchResults.data.length > 0 && (
                             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                                {searchResults.data.map((model: any) => (
+                                {searchResults.data.map((model: ModelCatalogEntry) => (
                                     <CatalogCard
                                         key={`${model.provider}-${model.model_name}`}
                                         model={model}
@@ -176,7 +181,7 @@ export function NewsSection({
     newsCollapsed, setNewsCollapsed, newsHf, refreshNews, newsSort, setNewsSort, language,
     papersCollapsed, setPapersCollapsed, papersHf, refreshPapers,
     t
-}: any) {
+}: ModelsViewerLogic) {
     const sortedNews = newsSort === "oldest" ? [...newsHf.items].reverse() : newsHf.items;
     const sortedPapers = newsSort === "oldest" ? [...papersHf.items].reverse() : papersHf.items;
 
@@ -198,7 +203,7 @@ export function NewsSection({
                             <select
                                 className="h-7 rounded-full border border-white/10 bg-white/5 px-3 text-[10px] text-slate-200 outline-none hover:border-white/20"
                                 value={newsSort}
-                                onChange={(e) => setNewsSort(e.target.value as any)}
+                                onChange={(e) => setNewsSort(e.target.value as "newest" | "oldest")}
                             >
                                 <option value="newest">{t("models.ui.newest")}</option>
                                 <option value="oldest">{t("models.ui.oldest")}</option>
@@ -212,7 +217,7 @@ export function NewsSection({
                             newsHf.error ? <p className="text-xs text-amber-200/70">{newsHf.error}</p> :
                                 newsHf.items.length === 0 ? <p className="text-xs text-slate-500">{t("models.ui.noData")}</p> : (
                                     <div className="flex flex-col">
-                                        {sortedNews.slice(0, 5).map((item: any, idx: number) => (
+                                        {sortedNews.slice(0, 5).map((item: NewsItem, idx: number) => (
                                             <div key={idx} className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 py-2.5 last:border-b-0 last:pb-0 first:pt-0">
                                                 <p className="min-w-0 flex-1 text-sm font-medium text-slate-200 line-clamp-1">{item.title || "Nowa publikacja"}</p>
                                                 <div className="flex items-center gap-4">
@@ -243,7 +248,7 @@ export function NewsSection({
                         {papersHf.loading ? <p className="col-span-full text-xs text-slate-500">{t("models.ui.loading")}</p> :
                             papersHf.error ? <p className="col-span-full text-xs text-amber-200/70">{papersHf.error}</p> :
                                 papersHf.items.length === 0 ? <p className="col-span-full text-xs text-slate-500">{t("models.ui.noData")}</p> :
-                                    sortedPapers.slice(0, 3).map((item: any, idx: number) => (
+                                    sortedPapers.slice(0, 3).map((item: NewsItem, idx: number) => (
                                         <div key={idx} className="flex h-full flex-col rounded-2xl border border-white/10 bg-black/30 p-4 text-sm">
                                             <p className="text-sm font-semibold text-slate-100 line-clamp-2">{item.title || t("models.sections.papers.defaultTitle")}</p>
                                             <p className="mt-2 text-[11px] text-slate-400 line-clamp-3 leading-relaxed">{item.summary || t("models.sections.papers.noPreview")}</p>
@@ -266,7 +271,7 @@ export function RecommendedAndCatalog({
     catalogCollapsed, setCatalogCollapsed, catalogHf, catalogOllama, refreshCatalog,
     handleInstall, pendingActions,
     t
-}: any) {
+}: ModelsViewerLogic) {
     return (
         <div className="flex flex-col gap-10">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -289,7 +294,7 @@ export function RecommendedAndCatalog({
                                 </div>
                                 {p.res.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> : (
                                     <div className="grid gap-4">
-                                        {p.res.data.slice(0, 4).map((m: any) => (
+                                        {p.res.data.slice(0, 4).map((m: ModelCatalogEntry) => (
                                             <CatalogCard key={m.model_name} model={m} actionLabel={t("models.actions.install")} pending={pendingActions[`install:${m.provider}:${m.model_name}`]} onAction={() => handleInstall(m)} />
                                         ))}
                                     </div>
@@ -317,7 +322,7 @@ export function RecommendedAndCatalog({
                                 <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold">{p.label}</h3>
                                 {p.res.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> : (
                                     <div className="grid gap-4">
-                                        {p.res.data.slice(0, 6).map((m: any) => (
+                                        {p.res.data.slice(0, 6).map((m: ModelCatalogEntry) => (
                                             <CatalogCard key={m.model_name} model={m} actionLabel="Zainstaluj" pending={pendingActions[`install:${m.provider}:${m.model_name}`]} onAction={() => handleInstall(m)} />
                                         ))}
                                     </div>
@@ -336,7 +341,7 @@ export function InstalledAndOperations({
     handleActivate, handleRemove, pendingActions,
     operationsCollapsed, setOperationsCollapsed, operations,
     t
-}: any) {
+}: ModelsViewerLogic) {
     const allowRemoveProviders = new Set(["ollama", "huggingface"]);
 
     return (
@@ -363,7 +368,7 @@ export function InstalledAndOperations({
                                             <Badge tone="neutral" className="text-[9px]">{p.data.length}</Badge>
                                         </div>
                                         <div className="grid gap-3">
-                                            {p.data.length ? p.data.map((m: any) => (
+                                            {p.data.length ? p.data.map((m: ModelInfo) => (
                                                 <InstalledCard
                                                     key={m.name} model={m}
                                                     pendingActivate={pendingActions[`activate:${m.name}`]}
@@ -395,7 +400,7 @@ export function InstalledAndOperations({
                 {!operationsCollapsed && (
                     <div className="mt-5 flex flex-col gap-3">
                         {operations.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> :
-                            operations.data?.operations?.length ? operations.data.operations.map((op: any) => <OperationRow key={op.operation_id} op={op} />) :
+                            operations.data?.operations?.length ? operations.data.operations.map((op: ModelOperation) => <OperationRow key={op.operation_id} op={op} />) :
                                 <p className="text-xs text-slate-500">{t("models.sections.operations.noOperations")}</p>
                         }
                     </div>

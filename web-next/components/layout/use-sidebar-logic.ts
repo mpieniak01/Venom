@@ -13,7 +13,7 @@ import {
     AutonomySnapshot
 } from "./sidebar-helpers";
 
-export function useSidebarLogic(t: any) {
+export function useSidebarLogic(t: (key: string, options?: Record<string, unknown>) => string) {
     const { data: costMode, refresh: refreshCost } = useCostMode(15000);
     const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel(20000);
 
@@ -33,8 +33,8 @@ export function useSidebarLogic(t: any) {
             return {
                 level,
                 name: details.name,
-                risk: t(`sidebar.autonomy.risks.${details.riskKey}` as any),
-                description: t(`sidebar.autonomy.descriptions.${details.descriptionKey}` as any),
+                risk: t(`sidebar.autonomy.risks.${details.riskKey}` as string),
+                description: t(`sidebar.autonomy.descriptions.${details.descriptionKey}` as string),
             };
         },
         [t],

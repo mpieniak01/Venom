@@ -18,7 +18,7 @@ export function BrandSection({
     collapsed: boolean;
     isSynced: boolean;
     onToggle: () => void;
-    t: any;
+    t: (key: string) => string;
 }) {
     return (
         <div className="flex flex-col gap-6">
@@ -70,7 +70,7 @@ export function NavigationSection({
     collapsed: boolean;
     isSynced: boolean;
     pathname: string;
-    t: any;
+    t: (key: string) => string;
 }) {
     return (
         <nav className="mt-8 space-y-5">
@@ -119,10 +119,10 @@ export function CostModeSection({
     onToggle,
     t
 }: {
-    costMode: any;
+    costMode: { enabled: boolean; provider?: string } | null;
     costLoading: boolean;
     onToggle: () => void;
-    t: any;
+    t: (key: string) => string;
 }) {
     return (
         <section className="rounded-2xl card-shell bg-gradient-to-b from-emerald-500/5 to-transparent p-4 text-sm" data-testid="sidebar-cost-mode">
@@ -162,7 +162,7 @@ export function AutonomySection({
     selectedAutonomy: string;
     autonomyLoading: number | null;
     onAutonomyChange: (level: number) => void;
-    t: any;
+    t: (key: string) => string;
 }) {
     return (
         <section className="rounded-2xl card-shell bg-gradient-to-b from-violet-500/5 to-transparent p-4 text-sm" data-testid="sidebar-autonomy">
@@ -193,7 +193,7 @@ export function AutonomySection({
                     </option>
                     {AUTONOMY_LEVELS.map((level) => (
                         <option key={level} value={level}>
-                            {t(`sidebar.autonomy.levels.${level}` as any) ?? `Poziom ${level}`}
+                            {t(`sidebar.autonomy.levels.${level}` as string) ?? `Poziom ${level}`}
                         </option>
                     ))}
                 </select>

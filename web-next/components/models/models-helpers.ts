@@ -1,4 +1,4 @@
-import type { ModelCatalogEntry, ModelInfo, ModelOperation } from "@/lib/types";
+import type { ModelCatalogEntry } from "@/lib/types";
 
 export const formatNumber = (value?: number | null) => {
     if (value === null || value === undefined) return "—";
@@ -28,7 +28,7 @@ export const getStatusTone = (status?: string) => {
     return "neutral";
 };
 
-export const getInstalledModelSizeLabel = (t: any, sizeGb?: number) =>
+export const getInstalledModelSizeLabel = (t: (key: string, vars?: Record<string, unknown>) => string, sizeGb?: number) =>
     typeof sizeGb === "number"
         ? `${sizeGb.toFixed(2)} GB`
         : `${t("models.status.size")} —`;

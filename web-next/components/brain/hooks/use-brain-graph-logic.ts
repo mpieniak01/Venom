@@ -1,5 +1,5 @@
 import { KnowledgeGraph } from "@/lib/types";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useKnowledgeGraph, useMemoryGraph, KNOWLEDGE_GRAPH_LIMIT, MEMORY_GRAPH_LIMIT } from "@/hooks/use-api";
 
 export function useBrainGraphLogic(

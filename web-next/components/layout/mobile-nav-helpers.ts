@@ -1,3 +1,5 @@
+import type { Metrics, QueueStatus } from "@/lib/types";
+
 export type TelemetryTab = "queue" | "tasks" | "ws";
 
 export const AUTONOMY_LEVELS = [
@@ -24,12 +26,12 @@ export const getTelemetryContent = ({
     t
 }: {
     telemetryTab: TelemetryTab;
-    queue: any;
-    metrics: any;
+    queue: QueueStatus;
+    metrics: Metrics;
     connected: boolean;
     entriesCount: number;
     latestLogsTs: string | null;
-    t: any;
+    t: (key: string, options?: Record<string, unknown>) => string;
 }) => {
     if (telemetryTab === "queue") {
         return {

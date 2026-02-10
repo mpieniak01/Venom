@@ -198,54 +198,25 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
             # Krok 3: Sprawdź czy zaakceptowano
             if self._is_feedback_approved(critic_feedback):
-                self.state_manager.add_log(
-                    task_id,
-                    f"✅ Critic ZAAKCEPTOWAŁ kod po {attempt} próbach. Koszt sesji: ${self.session_cost:.4f}",
-                )
-                logger.info(
-                    f"Zadanie {task_id}: Kod zaakceptowany po {attempt} próbach"
-                )
+                self._log_approved_result(task_id=task_id, attempt=attempt)
                 return generated_code
 
             # Krok 4: Wykrywanie pętli błędów (Loop Detection)
-            error_hash = hash(critic_feedback)
-            # Wykrywamy pętlę, jeśli ten sam błąd pojawił się już MAX_ERROR_REPEATS-1 razy
-            # (łącznie z bieżącym wystąpieniem będzie MAX_ERROR_REPEATS)
-            if self.previous_errors.count(error_hash) >= MAX_ERROR_REPEATS - 1:
-                loop_msg = f"🔄 Wykryto pętlę błędów: ten sam błąd wystąpił {MAX_ERROR_REPEATS} razy. Model nie potrafi tego naprawić."
-                self.state_manager.add_log(task_id, loop_msg)
-                logger.warning(f"Zadanie {task_id}: {loop_msg}")
-                if attempt > MAX_REPAIR_ATTEMPTS:
-                    self.state_manager.add_log(
-                        task_id,
-                        f"⚠️ Wyczerpano limit prób ({MAX_REPAIR_ATTEMPTS}). Zwracam ostatnią wersję z ostrzeżeniem.",
-                    )
-                return self._build_loop_detected_result(
-                    loop_msg=loop_msg,
-                    critic_feedback=critic_feedback,
-                    generated_code=generated_code,
-                )
-
-            self.previous_errors.append(error_hash)
-
-            # Jeśli odrzucono
-            analysis_preview = diagnostic.get("analysis", "Brak analizy")[:100]
-            self.state_manager.add_log(
-                task_id, f"❌ Critic ODRZUCIŁ kod: {analysis_preview}..."
+            loop_result = self._check_error_loop(
+                task_id=task_id,
+                attempt=attempt,
+                critic_feedback=critic_feedback,
+                generated_code=generated_code,
             )
+            if loop_result is not None:
+                return loop_result
 
-            # Sprawdź czy Krytyk wskazuje na inny plik
-            target_file_change = diagnostic.get("target_file_change")
-            if target_file_change and target_file_change != current_file:
-                new_file = target_file_change
-                self.state_manager.add_log(
-                    task_id,
-                    f"🔀 Zmiana celu naprawy: {current_file or '(brak)'} -> {new_file}",
-                )
-                logger.info(
-                    f"Zadanie {task_id}: Przełączam kontekst naprawy na plik {new_file}"
-                )
-                current_file = new_file
+            self._log_rejected_feedback(task_id=task_id, diagnostic=diagnostic)
+            current_file = self._resolve_target_file_change(
+                task_id=task_id,
+                current_file=current_file,
+                diagnostic=diagnostic,
+            )
 
             # Jeśli to była ostatnia próba
             if attempt > MAX_REPAIR_ATTEMPTS:
@@ -257,6 +228,63 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
         # Nie powinno się tu dostać, ale dla bezpieczeństwa
         return generated_code or "Błąd: nie udało się wygenerować kodu"
+
+    def _log_approved_result(self, *, task_id: UUID, attempt: int) -> None:
+        self.state_manager.add_log(
+            task_id,
+            f"✅ Critic ZAAKCEPTOWAŁ kod po {attempt} próbach. Koszt sesji: ${self.session_cost:.4f}",
+        )
+        logger.info(f"Zadanie {task_id}: Kod zaakceptowany po {attempt} próbach")
+
+    def _check_error_loop(
+        self, *, task_id: UUID, attempt: int, critic_feedback: str, generated_code: str
+    ) -> str | None:
+        error_hash = hash(critic_feedback)
+        # Wykrywamy pętlę, jeśli ten sam błąd pojawił się już MAX_ERROR_REPEATS-1 razy
+        # (łącznie z bieżącym wystąpieniem będzie MAX_ERROR_REPEATS)
+        if self.previous_errors.count(error_hash) < MAX_ERROR_REPEATS - 1:
+            self.previous_errors.append(error_hash)
+            return None
+
+        loop_msg = (
+            "🔄 Wykryto pętlę błędów: ten sam błąd wystąpił "
+            f"{MAX_ERROR_REPEATS} razy. Model nie potrafi tego naprawić."
+        )
+        self.state_manager.add_log(task_id, loop_msg)
+        logger.warning(f"Zadanie {task_id}: {loop_msg}")
+        if attempt > MAX_REPAIR_ATTEMPTS:
+            self.state_manager.add_log(
+                task_id,
+                f"⚠️ Wyczerpano limit prób ({MAX_REPAIR_ATTEMPTS}). Zwracam ostatnią wersję z ostrzeżeniem.",
+            )
+        return self._build_loop_detected_result(
+            loop_msg=loop_msg,
+            critic_feedback=critic_feedback,
+            generated_code=generated_code,
+        )
+
+    def _log_rejected_feedback(self, *, task_id: UUID, diagnostic: dict) -> None:
+        analysis_preview = diagnostic.get("analysis", "Brak analizy")[:100]
+        self.state_manager.add_log(
+            task_id, f"❌ Critic ODRZUCIŁ kod: {analysis_preview}..."
+        )
+
+    def _resolve_target_file_change(
+        self, *, task_id: UUID, current_file: str | None, diagnostic: dict
+    ) -> str | None:
+        target_file_change = diagnostic.get("target_file_change")
+        if not target_file_change or target_file_change == current_file:
+            return current_file
+
+        new_file = target_file_change
+        self.state_manager.add_log(
+            task_id,
+            f"🔀 Zmiana celu naprawy: {current_file or '(brak)'} -> {new_file}",
+        )
+        logger.info(
+            f"Zadanie {task_id}: Przełączam kontekst naprawy na plik {new_file}"
+        )
+        return new_file
 
     def _should_stop_for_budget(self) -> str | None:
         if self.session_cost <= MAX_HEALING_COST:

@@ -15,6 +15,7 @@ from venom_core.utils.port_authority import find_free_port
 from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
+DEFAULT_VERIFY_TIMEOUT_SECONDS = 30
 
 
 @dataclass
@@ -236,9 +237,7 @@ class MirrorWorld:
         )
         return False
 
-    async def verify_instance(
-        self, instance_id: str, timeout: int = 30
-    ) -> tuple[bool, str]:
+    async def verify_instance(self, instance_id: str) -> tuple[bool, str]:
         """
         Weryfikuje czy instancja lustrzana działa poprawnie.
 
@@ -249,7 +248,6 @@ class MirrorWorld:
 
         Args:
             instance_id: ID instancji do weryfikacji
-            timeout: Maksymalny czas oczekiwania w sekundach
 
         Returns:
             Krotka (sukces, komunikat)
@@ -264,7 +262,9 @@ class MirrorWorld:
         base_url = build_http_url("localhost", info.port)
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=DEFAULT_VERIFY_TIMEOUT_SECONDS
+            ) as client:
                 # 1. Sprawdź health endpoint
                 try:
                     response = await client.get(f"{base_url}/healthz")

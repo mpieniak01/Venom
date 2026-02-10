@@ -207,8 +207,8 @@ def test_memory_routes(mock_app):
     # We should mock get_session_store dependency instead.
     from venom_core.api.dependencies import get_session_store
 
-    mock_app.app.dependency_overrides[get_session_store] = (
-        lambda: memory_routes._session_store
+    mock_app.app.dependency_overrides[get_session_store] = lambda: (
+        memory_routes._session_store
     )
 
     # We need to set the mock on the module level if we want the router to pick it up?

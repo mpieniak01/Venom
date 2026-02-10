@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 
 # Stała dla opóźnienia stabilizacji DOM
 DOM_STABILIZATION_DELAY_MS = 500
+DEFAULT_BROWSER_ACTION_TIMEOUT_MS = 30000
 MAX_SCREENSHOT_FILENAME_LEN = 128
 ALLOWED_SCREENSHOT_CHARS = re.compile(r"^[A-Za-z0-9._-]+$")
 ALLOWED_BROWSER_SCHEMES = {"http", "https"}
@@ -351,14 +352,12 @@ class BrowserSkill:
         selector: Annotated[
             str, "Selektor CSS elementu (np. '#login-button', '.submit-btn')"
         ],
-        timeout: Annotated[int, "Timeout w milisekundach (domyślnie 30000)"] = 30000,
     ) -> str:
         """
         Klika w element na stronie i wykonuje zrzut ekranu weryfikacyjny.
 
         Args:
             selector: Selektor CSS elementu
-            timeout: Timeout w ms
 
         Returns:
             Komunikat o wyniku operacji wraz ze ścieżką do zrzutu ekranu
@@ -368,7 +367,7 @@ class BrowserSkill:
 
             logger.info(f"Klikanie w element: {selector}")
             page = self._require_page()
-            await page.click(selector, timeout=timeout)
+            await page.click(selector, timeout=DEFAULT_BROWSER_ACTION_TIMEOUT_MS)
 
             # Wykonaj automatyczny zrzut ekranu weryfikacyjny
             screenshot_path = await self._capture_verification_screenshot("click")
@@ -394,7 +393,6 @@ class BrowserSkill:
             str, "Selektor CSS pola formularza (np. '#username', 'input[name=email]')"
         ],
         value: Annotated[str, "Wartość do wpisania w pole"],
-        timeout: Annotated[int, "Timeout w milisekundach (domyślnie 30000)"] = 30000,
     ) -> str:
         """
         Wypełnia pole formularza i wykonuje zrzut ekranu weryfikacyjny.
@@ -402,7 +400,6 @@ class BrowserSkill:
         Args:
             selector: Selektor CSS pola
             value: Wartość do wpisania
-            timeout: Timeout w ms
 
         Returns:
             Komunikat o wyniku operacji wraz ze ścieżką do zrzutu ekranu
@@ -412,7 +409,7 @@ class BrowserSkill:
 
             logger.info(f"Wypełnianie pola: {selector}")
             page = self._require_page()
-            await page.fill(selector, value, timeout=timeout)
+            await page.fill(selector, value, timeout=DEFAULT_BROWSER_ACTION_TIMEOUT_MS)
 
             # Wykonaj automatyczny zrzut ekranu weryfikacyjny
             screenshot_path = await self._capture_verification_screenshot("fill")
@@ -433,14 +430,12 @@ class BrowserSkill:
     async def get_text_content(
         self,
         selector: Annotated[str, "Selektor CSS elementu (np. 'h1', '.message')"],
-        timeout: Annotated[int, "Timeout w milisekundach (domyślnie 30000)"] = 30000,
     ) -> str:
         """
         Pobiera tekst z elementu.
 
         Args:
             selector: Selektor CSS elementu
-            timeout: Timeout w ms
 
         Returns:
             Tekst elementu lub komunikat błędu
@@ -450,7 +445,9 @@ class BrowserSkill:
 
             logger.info(f"Pobieranie tekstu z elementu: {selector}")
             page = self._require_page()
-            text = await page.text_content(selector, timeout=timeout)
+            text = await page.text_content(
+                selector, timeout=DEFAULT_BROWSER_ACTION_TIMEOUT_MS
+            )
 
             logger.info(f"Pobrano tekst z elementu: {selector}")
             return text or ""
@@ -472,7 +469,6 @@ class BrowserSkill:
             Literal["attached", "detached", "visible", "hidden"],
             "Stan elementu: 'attached', 'detached', 'visible', 'hidden' (domyślnie 'visible')",
         ] = "visible",
-        timeout: Annotated[int, "Timeout w milisekundach (domyślnie 30000)"] = 30000,
     ) -> str:
         """
         Czeka na pojawienie się elementu.
@@ -480,7 +476,6 @@ class BrowserSkill:
         Args:
             selector: Selektor CSS elementu
             state: Oczekiwany stan elementu
-            timeout: Timeout w ms
 
         Returns:
             Komunikat o wyniku operacji
@@ -490,7 +485,11 @@ class BrowserSkill:
 
             logger.info(f"Oczekiwanie na element: {selector} (stan: {state})")
             page = self._require_page()
-            await page.wait_for_selector(selector, state=state, timeout=timeout)
+            await page.wait_for_selector(
+                selector,
+                state=state,
+                timeout=DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
+            )
 
             logger.info(f"Element znaleziony: {selector}")
             return f"✅ Element znaleziony: {selector}"

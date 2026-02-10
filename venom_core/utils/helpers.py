@@ -12,14 +12,14 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-def extract_secret_value(secret_field: Any) -> Optional[str]:
+def extract_secret_value(secret_field: Any) -> str | None:
     """
     Bezpiecznie ekstrahuje wartość z pola SecretStr lub zwraca string.
 
@@ -57,10 +57,10 @@ def extract_secret_value(secret_field: Any) -> Optional[str]:
 
 
 def read_file(
-    file_path: Union[str, Path],
+    file_path: str | Path,
     encoding: str = "utf-8",
     raise_on_error: bool = False,
-) -> Optional[str]:
+) -> str | None:
     """
     Odczytuje zawartość pliku tekstowego w bezpieczny sposób.
 
@@ -126,7 +126,7 @@ def _validate_readable_path(
 
 
 def write_file(
-    file_path: Union[str, Path],
+    file_path: str | Path,
     content: str,
     encoding: str = "utf-8",
     create_dirs: bool = True,
@@ -182,9 +182,7 @@ def write_file(
         return False
 
 
-def read_json(
-    file_path: Union[str, Path], raise_on_error: bool = False
-) -> Optional[Any]:
+def read_json(file_path: str | Path, raise_on_error: bool = False) -> Any | None:
     """
     Odczytuje plik JSON i zwraca jako dowolną strukturę danych.
 
@@ -227,7 +225,7 @@ def read_json(
 
 
 def write_json(
-    file_path: Union[str, Path],
+    file_path: str | Path,
     data: Any,
     indent: int = 2,
     create_dirs: bool = True,
@@ -283,7 +281,7 @@ def write_json(
 
 
 def generate_hash(
-    content: Union[str, bytes], algorithm: str = "sha256", encoding: str = "utf-8"
+    content: str | bytes, algorithm: str = "sha256", encoding: str = "utf-8"
 ) -> str:
     """
     Generuje hash z podanej zawartości.
@@ -336,7 +334,7 @@ def generate_hash(
         raise
 
 
-def file_exists(file_path: Union[str, Path]) -> bool:
+def file_exists(file_path: str | Path) -> bool:
     """
     Sprawdza czy plik istnieje.
 
@@ -357,7 +355,7 @@ def file_exists(file_path: Union[str, Path]) -> bool:
         return False
 
 
-def ensure_dir(dir_path: Union[str, Path]) -> bool:
+def ensure_dir(dir_path: str | Path) -> bool:
     """
     Upewnia się, że katalog istnieje. Tworzy go jeśli nie istnieje.
 
@@ -381,7 +379,7 @@ def ensure_dir(dir_path: Union[str, Path]) -> bool:
         return False
 
 
-def get_file_size(file_path: Union[str, Path]) -> Optional[int]:
+def get_file_size(file_path: str | Path) -> int | None:
     """
     Zwraca rozmiar pliku w bajtach.
 

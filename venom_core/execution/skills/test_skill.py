@@ -11,8 +11,10 @@ from venom_core.infrastructure.docker_habitat import DockerHabitat
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+DEFAULT_PYTEST_TIMEOUT_SECONDS = 60
+DEFAULT_LINTER_TIMEOUT_SECONDS = 30
 _LOCAL_LINTER_TIMEOUT_SECONDS: ContextVar[int] = ContextVar(
-    "local_linter_timeout_seconds", default=30
+    "local_linter_timeout_seconds", default=DEFAULT_LINTER_TIMEOUT_SECONDS
 )
 
 
@@ -92,14 +94,12 @@ class TestSkill:
         test_path: Annotated[
             str, "Ścieżka do testów (domyślnie '.' dla wszystkich)"
         ] = ".",
-        timeout: Annotated[int, "Timeout w sekundach"] = 60,
     ) -> str:
         """
         Uruchamia pytest w kontenerze i parsuje wyniki.
 
         Args:
             test_path: Ścieżka do testów
-            timeout: Maksymalny czas wykonania
 
         Returns:
             Sformatowany raport z wyników testów
@@ -119,7 +119,9 @@ class TestSkill:
             if self.docker_available and self.habitat:
                 logger.info(f"Uruchamiam pytest w Dockerze dla: {test_path}")
                 command = f"python -m pytest {safe_path} -v --tb=short --color=no"
-                exit_code, output = self.habitat.execute(command, timeout=timeout)
+                exit_code, output = self.habitat.execute(
+                    command, timeout=DEFAULT_PYTEST_TIMEOUT_SECONDS
+                )
 
             # --- Tryb Lokalny (Fallback) ---
             elif self.allow_local_execution:
@@ -146,16 +148,20 @@ class TestSkill:
                     )
 
                     try:
-                        stdout, _ = await asyncio.wait_for(
-                            process.communicate(), timeout=timeout
-                        )
+                        with fail_after(DEFAULT_PYTEST_TIMEOUT_SECONDS):
+                            stdout, _ = await process.communicate()
                         output = stdout.decode("utf-8", errors="replace")
                         exit_code = (
                             process.returncode if process.returncode is not None else 1
                         )
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         process.kill()
-                        return f"❌ Przekroczono limit czasu ({timeout}s) podczas uruchamiania testów lokalnie."
+                        await process.communicate()
+                        return (
+                            "❌ Przekroczono limit czasu "
+                            f"({DEFAULT_PYTEST_TIMEOUT_SECONDS}s) podczas uruchamiania "
+                            "testów lokalnie."
+                        )
 
                 except Exception as e:
                     return f"❌ Błąd uruchamiania lokalnego procesu: {str(e)}"
@@ -188,14 +194,12 @@ class TestSkill:
     async def run_linter(
         self,
         path: Annotated[str, "Ścieżka do sprawdzenia (domyślnie '.')"] = ".",
-        timeout: Annotated[int, "Timeout w sekundach"] = 30,
     ) -> str:
         """
         Uruchamia ruff linter w kontenerze.
 
         Args:
             path: Ścieżka do plików do sprawdzenia
-            timeout: Maksymalny czas wykonania
 
         Returns:
             Sformatowany raport z lintera
@@ -205,9 +209,13 @@ class TestSkill:
                 return f"❌ Błąd: Nieprawidłowa ścieżka: {path}"
 
             if self.docker_available and self.habitat:
-                exit_code, output = self._run_linter_in_docker(path, timeout)
+                exit_code, output = self._run_linter_in_docker(
+                    path, DEFAULT_LINTER_TIMEOUT_SECONDS
+                )
             elif self.allow_local_execution:
-                timeout_token = _LOCAL_LINTER_TIMEOUT_SECONDS.set(timeout)
+                timeout_token = _LOCAL_LINTER_TIMEOUT_SECONDS.set(
+                    DEFAULT_LINTER_TIMEOUT_SECONDS
+                )
                 try:
                     local_result = await self._run_linter_locally(path)
                 finally:

@@ -59,7 +59,6 @@ class TestNotifier:
                 title="Test Title",
                 message="Test Message",
                 urgency="normal",
-                timeout=5000,
             )
 
             assert result is True
@@ -135,7 +134,7 @@ class TestNotifier:
             mock_exec.side_effect = FileNotFoundError()
 
             result = await notifier._send_toast_linux(
-                title="Test", message="Test", urgency="normal", timeout=5000
+                title="Test", message="Test", urgency="normal"
             )
 
             assert result is False

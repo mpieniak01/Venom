@@ -221,7 +221,7 @@ async def test_wait_for_results_timeout():
     broker.get_task_status = AsyncMock(side_effect=mock_get_status)
 
     skill = ParallelSkill(broker)
-    results = await skill._wait_for_results(["task_1", "task_2"], timeout=1)
+    results = await skill._wait_for_results_with_timeout(["task_1", "task_2"], 1)
 
     # Powinno zwrócić pending dla wszystkich z powodu timeout
     assert len(results) == 2
@@ -244,7 +244,7 @@ async def test_wait_for_results_all_completed():
     broker.get_task_status = AsyncMock(side_effect=mock_get_status)
 
     skill = ParallelSkill(broker)
-    results = await skill._wait_for_results(["task_1", "task_2"], timeout=10)
+    results = await skill._wait_for_results(["task_1", "task_2"])
 
     assert len(results) == 2
     assert all(r["status"] == "completed" for r in results)
@@ -279,7 +279,7 @@ async def test_wait_for_results_mixed_status():
     broker.get_task_status = AsyncMock(side_effect=mock_get_status)
 
     skill = ParallelSkill(broker)
-    results = await skill._wait_for_results(["task_1", "task_2"], timeout=10)
+    results = await skill._wait_for_results(["task_1", "task_2"])
 
     assert len(results) == 2
     assert results[0]["status"] == "completed"

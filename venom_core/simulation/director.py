@@ -324,8 +324,6 @@ class SimulationDirector:
             chaos_action = secure_random.choice(
                 [
                     "restart_service",
-                    # "kill_service",  # Zbyt agresywne dla MVP
-                    # "network_delay",  # Wymaga dodatkowych narzędzi
                 ]
             )
 

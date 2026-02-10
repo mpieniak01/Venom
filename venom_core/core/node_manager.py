@@ -18,6 +18,7 @@ from venom_core.nodes.protocol import (
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+DEFAULT_NODE_EXECUTION_TIMEOUT_SECONDS = 30
 
 
 class NodeInfo:
@@ -195,7 +196,6 @@ class NodeManager:
         skill_name: str,
         method_name: str,
         parameters: dict,
-        timeout: int = 30,
     ) -> NodeResponse:
         """
         Wykonuje skill na zdalnym węźle.
@@ -205,7 +205,6 @@ class NodeManager:
             skill_name: Nazwa skilla
             method_name: Nazwa metody
             parameters: Parametry wywołania
-            timeout: Timeout w sekundach
 
         Returns:
             Odpowiedź od węzła
@@ -232,7 +231,7 @@ class NodeManager:
             skill_name=skill_name,
             method_name=method_name,
             parameters=parameters,
-            timeout=timeout,
+            timeout=DEFAULT_NODE_EXECUTION_TIMEOUT_SECONDS,
         )
 
         # Utwórz Future dla odpowiedzi (z lockiem dla _pending_requests)
@@ -251,14 +250,18 @@ class NodeManager:
             )
 
             # Czekaj na odpowiedź z timeout
-            response = await asyncio.wait_for(future, timeout=timeout)
+            async with asyncio.timeout(DEFAULT_NODE_EXECUTION_TIMEOUT_SECONDS):
+                response = await future
             return response
 
         except asyncio.TimeoutError:
             logger.error(
                 f"Timeout podczas wykonywania {skill_name}.{method_name} na węźle {node_id}"
             )
-            raise TimeoutError(f"Węzeł {node_id} nie odpowiedział w czasie {timeout}s")
+            raise TimeoutError(
+                f"Węzeł {node_id} nie odpowiedział w czasie "
+                f"{DEFAULT_NODE_EXECUTION_TIMEOUT_SECONDS}s"
+            )
         except Exception as e:
             logger.error(f"Nie udało się wysłać wiadomości do węzła {node_id}: {e}")
             # Oznacz węzeł jako offline

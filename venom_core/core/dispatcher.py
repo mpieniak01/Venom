@@ -59,7 +59,6 @@ class NodeManagerLike(Protocol):
         skill_name: str,
         method_name: str,
         parameters: dict[str, object],
-        timeout: int,
     ) -> NodeExecutionResult: ...
 
 
@@ -68,9 +67,27 @@ class TaskDispatcher:
 
     # Wzorzec regex dla ścieżek plików - skompilowany raz dla wydajności
     FILE_PATH_PATTERN = re.compile(
-        r"[\w/\-]+(?:\.[\w\-]+)*\.(?:py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)(?=$|[^0-9A-Za-z_])",
+        r"[\w/-]+(?:\.[\w-]+)*\.[A-Za-z0-9]+(?=$|[^0-9A-Za-z_])",
         re.IGNORECASE,
     )
+    ALLOWED_FILE_EXTENSIONS = {
+        "py",
+        "js",
+        "ts",
+        "txt",
+        "md",
+        "json",
+        "yaml",
+        "yml",
+        "html",
+        "css",
+        "java",
+        "go",
+        "rs",
+        "cpp",
+        "c",
+        "h",
+    }
 
     # Słowa kluczowe do wykrywania akcji
     ACTION_KEYWORDS = {
@@ -184,7 +201,9 @@ class TaskDispatcher:
         # Używamy skompilowanego wzorca z klasy
         targets = []
         for match in self.FILE_PATH_PATTERN.finditer(content):
-            targets.append(match.group(0))
+            candidate = match.group(0)
+            if self._is_allowed_path(candidate):
+                targets.append(candidate)
 
         # Próba wykrycia akcji z prostych słów kluczowych
         action = "unknown"
@@ -311,7 +330,7 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         # Sprawdź czy zadanie powinno być wykonane na zdalnym węźle
         if self.node_manager and node_preference:
             try:
-                result = await self._dispatch_to_node(intent, content, node_preference)
+                result = await self._dispatch_to_node(content, node_preference)
                 if result:
                     return result
             except Exception as e:
@@ -353,13 +372,12 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             raise
 
     async def _dispatch_to_node(
-        self, intent: str, content: str, node_preference: dict[str, object]
+        self, content: str, node_preference: dict[str, object]
     ) -> Optional[str]:
         """
         Próbuje wykonać zadanie na zdalnym węźle.
 
         Args:
-            intent: Sklasyfikowana intencja
             content: Treść zadania
             node_preference: Preferencje węzła
 
@@ -407,7 +425,6 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             skill_name=skill_name,
             method_name=method_name,
             parameters=self._prepare_skill_parameters(skill_name, content),
-            timeout=60,
         )
 
         if response.success:
@@ -444,7 +461,9 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             # Try to find path in content using regex if not already found
             paths = []
             for match in self.FILE_PATH_PATTERN.finditer(content):
-                paths.append(match.group(0))
+                candidate = match.group(0)
+                if self._is_allowed_path(candidate):
+                    paths.append(candidate)
 
             if paths:
                 params["path"] = paths[0]
@@ -456,3 +475,8 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             return params
         else:
             return {}
+
+    @classmethod
+    def _is_allowed_path(cls, path: str) -> bool:
+        extension = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+        return extension in cls.ALLOWED_FILE_EXTENSIONS

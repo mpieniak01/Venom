@@ -184,9 +184,7 @@ async def test_wait_for_healthcheck_success(benchmark_service):
         mock_client_class.return_value = mock_client
 
         # Powinno zakończyć się bez błędu
-        await benchmark_service._wait_for_healthcheck(
-            endpoint=LOCALHOST_8000, timeout=5
-        )
+        await benchmark_service._wait_for_healthcheck(endpoint=LOCALHOST_8000)
 
 
 @pytest.mark.asyncio
@@ -200,10 +198,11 @@ async def test_wait_for_healthcheck_timeout(benchmark_service):
 
         mock_client_class.return_value = mock_client
 
-        with pytest.raises(TimeoutError, match="healthcheck failed"):
-            await benchmark_service._wait_for_healthcheck(
-                endpoint=LOCALHOST_8000, timeout=1
-            )
+        with patch(
+            "venom_core.services.benchmark.DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS", 1
+        ):
+            with pytest.raises(TimeoutError, match="healthcheck failed"):
+                await benchmark_service._wait_for_healthcheck(endpoint=LOCALHOST_8000)
 
 
 @pytest.mark.asyncio

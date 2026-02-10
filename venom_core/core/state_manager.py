@@ -365,22 +365,30 @@ class StateManager:
             return
 
         for key, value in updates.items():
-            if value is None:
-                task.context_history.pop(key, None)
-                continue
-
-            existing = task.context_history.get(key)
-            if isinstance(existing, dict) and isinstance(value, dict):
-                for nested_key, nested_value in value.items():
-                    if nested_value is None:
-                        existing.pop(nested_key, None)
-                    else:
-                        existing[nested_key] = nested_value
-                task.context_history[key] = existing
-            else:
-                task.context_history[key] = value
+            self._merge_context_value(task.context_history, key, value)
 
         self._schedule_save()
+
+    @staticmethod
+    def _merge_context_value(
+        context_history: Dict[str, Any], key: str, value: Any
+    ) -> None:
+        """Scala pojedynczy wpis kontekstu (obsługuje usunięcia przez None)."""
+        if value is None:
+            context_history.pop(key, None)
+            return
+
+        existing = context_history.get(key)
+        if not (isinstance(existing, dict) and isinstance(value, dict)):
+            context_history[key] = value
+            return
+
+        for nested_key, nested_value in value.items():
+            if nested_value is None:
+                existing.pop(nested_key, None)
+            else:
+                existing[nested_key] = nested_value
+        context_history[key] = existing
 
     def set_paid_mode(self, enabled: bool) -> None:
         """

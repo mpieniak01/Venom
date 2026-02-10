@@ -175,18 +175,13 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
         while attempt <= MAX_REPAIR_ATTEMPTS:
             attempt += 1
 
-            # Sprawdź budżet przed iteracją
-            if self.session_cost > MAX_HEALING_COST:
-                budget_warning = (
-                    f"⚠️ Przekroczono budżet sesji ({self.session_cost:.2f}$ > "
-                    f"{MAX_HEALING_COST}$). Przerywam samonaprawę."
-                )
+            budget_warning = self._should_stop_for_budget()
+            if budget_warning:
                 self.state_manager.add_log(task_id, budget_warning)
                 logger.warning(f"Zadanie {task_id}: {budget_warning}")
                 return self._build_budget_exceeded_result(generated_code)
 
-            # Krok 1: CoderAgent generuje kod
-            generated_code, actual_prompt = await self._generate_code_for_attempt(
+            generated_code = await self._run_coder_iteration(
                 task_id=task_id,
                 attempt=attempt,
                 user_request=user_request,
@@ -195,27 +190,14 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 current_file=current_file,
             )
 
-            # Estymuj koszt tej iteracji (użyj modelu z konfiguracji lub domyślnego)
-            model_name = getattr(SETTINGS, "DEFAULT_COST_MODEL", "gpt-3.5-turbo")
-            estimated_cost = self.token_economist.estimate_request_cost(
-                prompt=actual_prompt,
-                expected_output_tokens=len(generated_code) // 4,
-                model_name=model_name,
+            critic_feedback, diagnostic = await self._run_critic_iteration(
+                task_id=task_id,
+                user_request=user_request,
+                generated_code=generated_code,
             )
-            self.session_cost += estimated_cost.get("total_cost_usd", 0.0)
-
-            self.state_manager.add_log(
-                task_id,
-                f"Coder wygenerował kod ({len(generated_code)} znaków). Koszt sesji: ${self.session_cost:.4f}",
-            )
-
-            # Krok 2: CriticAgent ocenia kod
-            self.state_manager.add_log(task_id, "Critic: Ocena kodu...")
-            review_input = f"USER_REQUEST: {user_request[:MAX_PROMPT_LENGTH]}\n\nCODE:\n{generated_code}"
-            critic_feedback = await self.critic_agent.process(review_input)
 
             # Krok 3: Sprawdź czy zaakceptowano
-            if "APPROVED" in critic_feedback:
+            if self._is_feedback_approved(critic_feedback):
                 self.state_manager.add_log(
                     task_id,
                     f"✅ Critic ZAAKCEPTOWAŁ kod po {attempt} próbach. Koszt sesji: ${self.session_cost:.4f}",
@@ -246,9 +228,6 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
             self.previous_errors.append(error_hash)
 
-            # Krok 5: Analiza diagnostyczna i ewentualna zmiana pliku docelowego
-            diagnostic = self.critic_agent.analyze_error(critic_feedback)
-
             # Jeśli odrzucono
             analysis_preview = diagnostic.get("analysis", "Brak analizy")[:100]
             self.state_manager.add_log(
@@ -270,18 +249,78 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
             # Jeśli to była ostatnia próba
             if attempt > MAX_REPAIR_ATTEMPTS:
-                self.state_manager.add_log(
-                    task_id,
-                    f"⚠️ Wyczerpano limit prób ({MAX_REPAIR_ATTEMPTS}). Zwracam ostatnią wersję z ostrzeżeniem.",
-                )
-                logger.warning(
-                    f"Zadanie {task_id}: Przekroczono limit napraw, zwracam kod z ostrzeżeniem"
-                )
-                # Ogranicz rozmiar feedbacku w finalnej wiadomości
-                return self._build_max_attempts_result(
+                return self._finalize_attempt_result(
+                    task_id=task_id,
                     generated_code=generated_code,
                     critic_feedback=critic_feedback,
                 )
 
         # Nie powinno się tu dostać, ale dla bezpieczeństwa
         return generated_code or "Błąd: nie udało się wygenerować kodu"
+
+    def _should_stop_for_budget(self) -> str | None:
+        if self.session_cost <= MAX_HEALING_COST:
+            return None
+        return (
+            f"⚠️ Przekroczono budżet sesji ({self.session_cost:.2f}$ > "
+            f"{MAX_HEALING_COST}$). Przerywam samonaprawę."
+        )
+
+    async def _run_coder_iteration(
+        self,
+        *,
+        task_id: UUID,
+        attempt: int,
+        user_request: str,
+        generated_code: str,
+        critic_feedback: str,
+        current_file: str | None,
+    ) -> str:
+        generated_code, actual_prompt = await self._generate_code_for_attempt(
+            task_id=task_id,
+            attempt=attempt,
+            user_request=user_request,
+            generated_code=generated_code,
+            critic_feedback=critic_feedback,
+            current_file=current_file,
+        )
+        model_name = getattr(SETTINGS, "DEFAULT_COST_MODEL", "gpt-3.5-turbo")
+        estimated_cost = self.token_economist.estimate_request_cost(
+            prompt=actual_prompt,
+            expected_output_tokens=len(generated_code) // 4,
+            model_name=model_name,
+        )
+        self.session_cost += estimated_cost.get("total_cost_usd", 0.0)
+        self.state_manager.add_log(
+            task_id,
+            f"Coder wygenerował kod ({len(generated_code)} znaków). Koszt sesji: ${self.session_cost:.4f}",
+        )
+        return generated_code
+
+    async def _run_critic_iteration(
+        self, *, task_id: UUID, user_request: str, generated_code: str
+    ) -> tuple[str, dict]:
+        self.state_manager.add_log(task_id, "Critic: Ocena kodu...")
+        review_input = f"USER_REQUEST: {user_request[:MAX_PROMPT_LENGTH]}\n\nCODE:\n{generated_code}"
+        critic_feedback = await self.critic_agent.process(review_input)
+        diagnostic = self.critic_agent.analyze_error(critic_feedback)
+        return critic_feedback, diagnostic
+
+    @staticmethod
+    def _is_feedback_approved(critic_feedback: str) -> bool:
+        return "APPROVED" in critic_feedback
+
+    def _finalize_attempt_result(
+        self, *, task_id: UUID, generated_code: str, critic_feedback: str
+    ) -> str:
+        self.state_manager.add_log(
+            task_id,
+            f"⚠️ Wyczerpano limit prób ({MAX_REPAIR_ATTEMPTS}). Zwracam ostatnią wersję z ostrzeżeniem.",
+        )
+        logger.warning(
+            f"Zadanie {task_id}: Przekroczono limit napraw, zwracam kod z ostrzeżeniem"
+        )
+        return self._build_max_attempts_result(
+            generated_code=generated_code,
+            critic_feedback=critic_feedback,
+        )

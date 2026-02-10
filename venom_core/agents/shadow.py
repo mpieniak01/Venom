@@ -439,20 +439,53 @@ Gdy otrzymujesz dane z sensora:
             return None
 
         try:
-            # Pobierz zadania w trakcie realizacji
             active_tasks = self.goal_store.get_tasks(status=GoalStatus.IN_PROGRESS)
-
             if not active_tasks:
                 logger.debug("Brak aktywnych zadań do sprawdzenia")
                 return None
 
-            # Użyj LLM do oceny czy window_title pasuje do któregoś zadania
-            task_titles = [
-                f"- {task.title}" for task in active_tasks[:5]
-            ]  # Max 5 zadań
-            tasks_text = "\n".join(task_titles)
+            response_text = await self._parse_task_context_response(
+                window_title, active_tasks
+            )
+            logger.debug(f"LLM odpowiedź dla task context: {response_text}")
+            if "TAK" not in response_text:
+                return None
 
-            prompt = f"""Przeanalizuj czy użytkownik pracuje nad jednym z aktywnych zadań.
+            confidence = self.CONFIDENCE_TASK_UPDATE
+            if confidence < self.confidence_threshold:
+                return None
+
+            matched_task = self._pick_matched_task(
+                response_text=response_text,
+                window_title=window_title,
+                active_tasks=active_tasks,
+            )
+            return Suggestion(
+                suggestion_type=SuggestionType.TASK_UPDATE,
+                title="Wykryto pracę nad zadaniem",
+                message=(
+                    "Widzę, że pracujesz nad: "
+                    f"'{matched_task.title}'. Czy chcesz zaktualizować jego status?"
+                ),
+                confidence=confidence,
+                action_payload={
+                    "window_title": window_title,
+                    "task_id": str(matched_task.goal_id),
+                    "task_title": matched_task.title,
+                },
+                metadata={"source": "window", "task_detected": True},
+            )
+
+        except Exception as e:
+            logger.error(f"Błąd podczas sprawdzania task context: {e}")
+            return None
+
+    def _build_task_context_prompt(
+        self, window_title: str, active_tasks: List[Any]
+    ) -> str:
+        task_titles = [f"- {task.title}" for task in active_tasks[:5]]
+        tasks_text = "\n".join(task_titles)
+        return f"""Przeanalizuj czy użytkownik pracuje nad jednym z aktywnych zadań.
 
 TYTUŁ OKNA: {window_title}
 
@@ -464,61 +497,32 @@ Odpowiedz tylko: TAK (i podaj numer zadania) lub NIE
 
 ODPOWIEDŹ:"""
 
-            # Wywołaj LLM
-            chat_history = ChatHistory()
-            chat_history.add_message(
-                ChatMessageContent(role=AuthorRole.USER, content=prompt)
-            )
+    async def _parse_task_context_response(
+        self, window_title: str, active_tasks: List[Any]
+    ) -> str:
+        prompt = self._build_task_context_prompt(window_title, active_tasks)
+        chat_history = ChatHistory()
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.USER, content=prompt)
+        )
+        chat_service: Any = self.kernel.get_service()
+        settings = OpenAIChatPromptExecutionSettings()
+        response = await self._invoke_chat_with_fallbacks(
+            chat_service=chat_service,
+            chat_history=chat_history,
+            settings=settings,
+            enable_functions=False,
+        )
+        return str(response).strip().upper()
 
-            chat_service: Any = self.kernel.get_service()
-            settings = OpenAIChatPromptExecutionSettings()
-            response = await self._invoke_chat_with_fallbacks(
-                chat_service=chat_service,
-                chat_history=chat_history,
-                settings=settings,
-                enable_functions=False,
-            )
-
-            response_text = str(response).strip().upper()
-
-            logger.debug(f"LLM odpowiedź dla task context: {response_text}")
-
-            # Parsuj odpowiedź
-            if "TAK" in response_text:
-                confidence = self.CONFIDENCE_TASK_UPDATE
-
-                if confidence >= self.confidence_threshold:
-                    # Znajdź najbardziej pasujące zadanie
-                    matched_task = None
-                    for i, task in enumerate(active_tasks[:5], 1):
-                        if (
-                            str(i) in response_text
-                            or task.title.lower() in window_title.lower()
-                        ):
-                            matched_task = task
-                            break
-
-                    if not matched_task:
-                        matched_task = active_tasks[0]  # Fallback do pierwszego
-
-                    return Suggestion(
-                        suggestion_type=SuggestionType.TASK_UPDATE,
-                        title="Wykryto pracę nad zadaniem",
-                        message=f"Widzę, że pracujesz nad: '{matched_task.title}'. Czy chcesz zaktualizować jego status?",
-                        confidence=confidence,
-                        action_payload={
-                            "window_title": window_title,
-                            "task_id": str(matched_task.goal_id),
-                            "task_title": matched_task.title,
-                        },
-                        metadata={"source": "window", "task_detected": True},
-                    )
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Błąd podczas sprawdzania task context: {e}")
-            return None
+    @staticmethod
+    def _pick_matched_task(
+        response_text: str, window_title: str, active_tasks: List[Any]
+    ):
+        for i, task in enumerate(active_tasks[:5], 1):
+            if str(i) in response_text or task.title.lower() in window_title.lower():
+                return task
+        return active_tasks[0]
 
     def _find_similar_lessons(self, context: str) -> List[Any]:
         """

@@ -6,6 +6,7 @@ import asyncio
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -300,3 +301,20 @@ class TestGhostAgent:
 
             # Sprawdź czy mouse_click został wywołany z właściwymi współrzędnymi
             ghost_agent.input_skill.mouse_click.assert_called_with(100, 150)
+
+    def test_compute_screen_change_percent(self, ghost_agent):
+        pre = (np.zeros((4, 4, 3), dtype=np.uint8),)
+        post = np.full((4, 4, 3), 255, dtype=np.uint8)
+        percent = ghost_agent._compute_screen_change_percent(pre[0], post)
+        assert percent == pytest.approx(100.0)
+
+    def test_verify_locate_step_false_when_result_missing(self, ghost_agent):
+        step = ActionStep("locate", "locate")
+        step.result = None
+        assert ghost_agent._verify_locate_step(step) is False
+
+    def test_verify_step_result_unknown_action_type_assumes_success(self, ghost_agent):
+        step = ActionStep("unknown", "Unknown action")
+        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
+            mock_grab.return_value = Image.new("RGB", (100, 100))
+            assert ghost_agent._verify_step_result(step, None) is True

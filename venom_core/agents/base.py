@@ -235,40 +235,77 @@ class BaseAgent(ABC):
                 system_fallback_used,
             )
             try:
-                kwargs = {
-                    "chat_history": chat_history,
-                    "settings": settings,
-                }
-                if functions_enabled:
-                    kwargs["kernel"] = self.kernel
-
-                stream_callback = _llm_stream_callback.get()
-                if (
-                    stream_callback
-                    and not functions_enabled
-                    and hasattr(chat_service, "get_streaming_chat_message_contents")
-                ):
-                    return await self._invoke_chat_streaming(
-                        chat_service, stream_callback, **kwargs
-                    )
-
-                return await chat_service.get_chat_message_content(**kwargs)
+                return await self._invoke_chat_once(
+                    chat_service=chat_service,
+                    chat_history=chat_history,
+                    settings=settings,
+                    functions_enabled=functions_enabled,
+                )
             except Exception as api_error:
-                error_text = self._build_error_text(api_error)
-                handled = self._apply_context_window_fallback(error_text, settings)
-                if self._should_apply_system_fallback(error_text, system_fallback_used):
-                    chat_history = self._strip_system_messages(chat_history)
-                    system_fallback_used = True
-                    handled = True
-                if functions_enabled and self._should_disable_functions(error_text):
-                    functions_enabled = False
-                    self._disable_function_choice_behavior(settings, error_text)
-                    handled = True
-
+                (
+                    handled,
+                    chat_history,
+                    functions_enabled,
+                    system_fallback_used,
+                ) = self._handle_chat_api_error(
+                    api_error=api_error,
+                    chat_history=chat_history,
+                    settings=settings,
+                    functions_enabled=functions_enabled,
+                    system_fallback_used=system_fallback_used,
+                )
                 if not handled:
                     raise
 
         raise RuntimeError("Nie udało się uzyskać odpowiedzi z LLM po fallbackach.")
+
+    async def _invoke_chat_once(
+        self,
+        *,
+        chat_service,
+        chat_history: ChatHistory,
+        settings: OpenAIChatPromptExecutionSettings,
+        functions_enabled: bool,
+    ):
+        kwargs = {"chat_history": chat_history, "settings": settings}
+        if functions_enabled:
+            kwargs["kernel"] = self.kernel
+
+        stream_callback = _llm_stream_callback.get()
+        if (
+            stream_callback
+            and not functions_enabled
+            and hasattr(chat_service, "get_streaming_chat_message_contents")
+        ):
+            return await self._invoke_chat_streaming(
+                chat_service, stream_callback, **kwargs
+            )
+
+        return await chat_service.get_chat_message_content(**kwargs)
+
+    def _handle_chat_api_error(
+        self,
+        *,
+        api_error: Exception,
+        chat_history: ChatHistory,
+        settings: OpenAIChatPromptExecutionSettings,
+        functions_enabled: bool,
+        system_fallback_used: bool,
+    ) -> tuple[bool, ChatHistory, bool, bool]:
+        error_text = self._build_error_text(api_error)
+        handled = self._apply_context_window_fallback(error_text, settings)
+
+        if self._should_apply_system_fallback(error_text, system_fallback_used):
+            chat_history = self._strip_system_messages(chat_history)
+            system_fallback_used = True
+            handled = True
+
+        if functions_enabled and self._should_disable_functions(error_text):
+            functions_enabled = False
+            self._disable_function_choice_behavior(settings, error_text)
+            handled = True
+
+        return handled, chat_history, functions_enabled, system_fallback_used
 
     def _build_error_text(self, api_error: Exception) -> str:
         error_text = str(api_error).lower()

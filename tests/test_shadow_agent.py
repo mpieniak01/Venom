@@ -1,6 +1,6 @@
 """Testy jednostkowe dla ShadowAgent."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from semantic_kernel import Kernel
@@ -243,3 +243,34 @@ class TestShadowAgent:
         assert "rejected_count" in status
         assert status["is_running"] is False
         assert status["confidence_threshold"] == pytest.approx(0.8)
+
+    @pytest.mark.asyncio
+    async def test_check_task_context_returns_none_for_no_match(self, shadow_agent):
+        task = MagicMock()
+        task.title = "Implement API endpoint"
+        task.goal_id = "goal-1"
+        shadow_agent.goal_store.get_tasks.return_value = [task]
+        shadow_agent._parse_task_context_response = AsyncMock(return_value="NIE")
+
+        suggestion = await shadow_agent._check_task_context("Random browser tab")
+
+        assert suggestion is None
+
+    @pytest.mark.asyncio
+    async def test_check_task_context_builds_task_update_suggestion(self, shadow_agent):
+        task_a = MagicMock()
+        task_a.title = "Fix queue route"
+        task_a.goal_id = "goal-a"
+        task_b = MagicMock()
+        task_b.title = "Refactor tests"
+        task_b.goal_id = "goal-b"
+        shadow_agent.goal_store.get_tasks.return_value = [task_a, task_b]
+        shadow_agent._parse_task_context_response = AsyncMock(return_value="TAK 2")
+        shadow_agent.confidence_threshold = 0.5
+
+        suggestion = await shadow_agent._check_task_context("Refactor tests in editor")
+
+        assert suggestion is not None
+        assert suggestion.suggestion_type == SuggestionType.TASK_UPDATE
+        assert suggestion.action_payload["task_id"] == "goal-b"
+        assert suggestion.action_payload["task_title"] == "Refactor tests"

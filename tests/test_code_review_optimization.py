@@ -324,6 +324,36 @@ def test_is_feedback_approved():
     assert CodeReviewLoop._is_feedback_approved("ODRZUCONO") is False
 
 
+def test_check_error_loop_logs_exhaustion_when_attempt_exceeds_limit(
+    mock_state_manager,
+    mock_coder_agent,
+    mock_critic_agent,
+    mock_token_economist,
+    mock_file_skill,
+):
+    loop = CodeReviewLoop(
+        mock_state_manager,
+        mock_coder_agent,
+        mock_critic_agent,
+        mock_token_economist,
+        mock_file_skill,
+    )
+    task_id = uuid4()
+    repeated_feedback = "ODRZUCONO - to samo"
+    loop.previous_errors = [hash(repeated_feedback)] * (MAX_ERROR_REPEATS - 1)
+
+    result = loop._check_error_loop(
+        task_id=task_id,
+        attempt=MAX_REPAIR_ATTEMPTS + 1,
+        critic_feedback=repeated_feedback,
+        generated_code="code",
+    )
+
+    assert result is not None
+    log_messages = [call.args[1] for call in mock_state_manager.add_log.call_args_list]
+    assert any("Wyczerpano limit prób" in message for message in log_messages)
+
+
 # --- Test maksymalnej liczby prób ---
 
 

@@ -1,5 +1,6 @@
 """Unit tests for TestSkill in local execution mode."""
 
+import asyncio
 import tempfile
 from pathlib import Path
 
@@ -89,3 +90,36 @@ async def test_local_execution_disabled_by_default():
 async def test_run_linter_invalid_path_returns_error(local_test_skill):
     result = await local_test_skill.run_linter(path="bad path with spaces")
     assert "Nieprawidłowa ścieżka" in result
+
+
+@pytest.mark.asyncio
+async def test_run_local_linter_binary_timeout_kills_process(local_test_skill):
+    class DummyProcess:
+        def __init__(self):
+            self.returncode = None
+            self.killed = False
+
+        async def communicate(self):
+            await asyncio.sleep(1)
+            return b"", None
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+
+    process = DummyProcess()
+
+    async def _fake_create_subprocess_exec(*_args, **_kwargs):
+        return process
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_create_subprocess_exec)
+    try:
+        result = await local_test_skill._run_local_linter_binary(
+            "ruff", ".", timeout=0.01
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert result is None
+    assert process.killed is True

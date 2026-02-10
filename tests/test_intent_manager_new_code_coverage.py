@@ -198,6 +198,19 @@ async def test_classify_from_llm_system_role_fallback_path():
     assert result == "HELP_REQUEST"
 
 
+@pytest.mark.asyncio
+async def test_classify_from_llm_system_role_fallback_timeout_returns_general_chat():
+    kernel = MagicMock()
+    kernel.get_service.return_value = MagicMock()
+    manager = IntentManager(kernel=kernel)
+    manager._request_intent_response = AsyncMock(
+        side_effect=[Exception("system role not supported"), TimeoutError()]
+    )
+
+    result = await manager._classify_from_llm("co potrafisz", "co potrafisz", "pl")
+    assert result == "GENERAL_CHAT"
+
+
 def test_load_lexicon_and_cache(tmp_path, monkeypatch):
     manager = IntentManager(kernel=MagicMock())
     manager._lexicon_cache.clear()

@@ -1,6 +1,5 @@
 """Moduł: intent_manager - klasyfikacja intencji użytkownika."""
 
-import asyncio
 import json
 import os
 import re
@@ -9,6 +8,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from anyio import fail_after
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
@@ -640,13 +640,9 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
         chat_service: Any,
         chat_history: ChatHistory,
         settings: Any,
-        timeout: float,
     ) -> Any:
-        return await asyncio.wait_for(
-            chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=settings
-            ),
-            timeout=timeout,
+        return await chat_service.get_chat_message_content(
+            chat_history=chat_history, settings=settings
         )
 
     async def _classify_from_llm(
@@ -669,10 +665,11 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
         timeout = getattr(SETTINGS, "INTENT_CLASSIFIER_TIMEOUT_SECONDS", 5.0)
 
         try:
-            response = await self._request_intent_response(
-                chat_service, chat_history, settings, timeout
-            )
-        except asyncio.TimeoutError:
+            with fail_after(timeout):
+                response = await self._request_intent_response(
+                    chat_service, chat_history, settings
+                )
+        except TimeoutError:
             logger.warning(
                 f"Intent classification timeout po {timeout}s - używam GENERAL_CHAT"
             )
@@ -697,10 +694,11 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
                 system_as_user=True,
             )
             try:
-                response = await self._request_intent_response(
-                    chat_service, chat_history, settings, timeout
-                )
-            except asyncio.TimeoutError:
+                with fail_after(timeout):
+                    response = await self._request_intent_response(
+                        chat_service, chat_history, settings
+                    )
+            except TimeoutError:
                 logger.warning(
                     f"Intent classification timeout po {timeout}s - używam GENERAL_CHAT"
                 )

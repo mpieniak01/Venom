@@ -228,3 +228,12 @@ def test_multiple_widgets(render_skill):
 
     widgets = render_skill.component_engine.list_widgets()
     assert len(widgets) == 3
+
+
+def test_parse_form_fields_ignores_invalid_entries(render_skill):
+    properties, required = render_skill._parse_form_fields(
+        "name*:text:Name;invalid;amount:number:Amount"
+    )
+    assert properties["name"]["type"] == "string"
+    assert properties["amount"]["type"] == "number"
+    assert required == ["name"]

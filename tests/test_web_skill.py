@@ -248,3 +248,8 @@ class TestWebSearchSkill:
                 mock_ddgs_instance.text.assert_called_once()
                 # Tavily nie powinien być wywołany
                 mock_tavily_instance.search.assert_not_called()
+
+    def test_format_tavily_response_no_results(self, web_skill):
+        response = {"answer": "none", "results": []}
+        result = web_skill._format_tavily_response("q", response, 5)
+        assert "Nie znaleziono wyników" in result

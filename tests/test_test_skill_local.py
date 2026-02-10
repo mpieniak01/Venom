@@ -83,3 +83,9 @@ async def test_local_execution_disabled_by_default():
 
     result = await skill.run_pytest(test_path=".")
     assert "Docker sandbox jest niedostępny" in result
+
+
+@pytest.mark.asyncio
+async def test_run_linter_invalid_path_returns_error(local_test_skill):
+    result = await local_test_skill.run_linter(path="bad path with spaces")
+    assert "Nieprawidłowa ścieżka" in result

@@ -128,3 +128,17 @@ tests/test_session_context.py
 tests/test_session_summary_llm.py
 tests/test_state_manager_session_clear.py
 tests/test_system_status_api.py
+tests/test_council.py
+tests/test_external_discovery_integration.py
+tests/test_generation_params_integration.py
+tests/test_google_calendar_skill.py
+tests/test_guardian_agent.py
+tests/test_kernel_builder.py
+tests/test_ota_manager.py
+tests/test_professor.py
+tests/test_skill_manager.py
+tests/test_skills_enhancements.py
+tests/test_streaming_handler.py
+tests/test_tool_reliability.py
+tests/test_web_skill.py
+tests/test_web_skill_tavily.py

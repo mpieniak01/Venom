@@ -196,64 +196,16 @@ class TestSkill:
             Sformatowany raport z lintera
         """
         try:
-            # Walidacja path
-            import re
-
-            if not re.match(r"^[a-zA-Z0-9_./\-]+$", path):
+            if not self._is_valid_lint_path(path):
                 return f"❌ Błąd: Nieprawidłowa ścieżka: {path}"
 
-            import shlex
-
-            safe_path = shlex.quote(path)
-
-            # --- Tryb Docker Sandbox ---
             if self.docker_available and self.habitat:
-                logger.info(f"Uruchamiam linter w Dockerze dla: {path}")
-                command = (
-                    f"python -m ruff check {safe_path} || python -m flake8 {safe_path}"
-                )
-                exit_code, output = self.habitat.execute(command, timeout=timeout)
-
-            # --- Tryb Lokalny (Fallback) ---
+                exit_code, output = self._run_linter_in_docker(path, timeout)
             elif self.allow_local_execution:
-                logger.warning(f"⚠️ Uruchamiam linter LOKALNIE dla: {path}")
-                import asyncio
-                import subprocess
-                import sys
-
-                # Złożona komenda z || jest trudna dla subprocess.exec,
-                # więc spróbujmy po prostu ruff, a jak fail to flake8 w python logic
-                # Próba 1: Ruff
-                cmd = [sys.executable, "-m", "ruff", "check", path]
-                try:
-                    process = await asyncio.create_subprocess_exec(
-                        *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-                    )
-                    stdout, _ = await asyncio.wait_for(
-                        process.communicate(), timeout=timeout
-                    )
-                    output = stdout.decode()
-                    exit_code = (
-                        process.returncode if process.returncode is not None else 1
-                    )
-                except (FileNotFoundError, ImportError, Exception):
-                    # Fallback do flake8 jeśli ruff nie zadziałał (np. nie zainstalowany)
-                    cmd = [sys.executable, "-m", "flake8", path]
-                    try:
-                        process = await asyncio.create_subprocess_exec(
-                            *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-                        )
-                        stdout, _ = await asyncio.wait_for(
-                            process.communicate(), timeout=timeout
-                        )
-                        output = stdout.decode()
-                        exit_code = (
-                            process.returncode if process.returncode is not None else 1
-                        )
-                    except Exception as e:
-                        return f"❌ Błąd uruchamiania lintera lokalnie: {str(e)}"
-
-            # --- Tryb Niedostępny ---
+                local_result = await self._run_linter_locally(path, timeout)
+                if isinstance(local_result, str):
+                    return local_result
+                exit_code, output = local_result
             else:
                 return "⚠️ Docker sandbox jest niedostępny, a uruchamianie lokalne jest wyłączone."
 
@@ -273,6 +225,58 @@ class TestSkill:
             error_msg = f"❌ Błąd podczas uruchamiania lintera: {str(e)}"
             logger.error(error_msg)
             return error_msg
+
+    @staticmethod
+    def _is_valid_lint_path(path: str) -> bool:
+        import re
+
+        return bool(re.match(r"^[a-zA-Z0-9_./\-]+$", path))
+
+    def _run_linter_in_docker(self, path: str, timeout: int) -> tuple[int, str]:
+        import shlex
+
+        safe_path = shlex.quote(path)
+        logger.info(f"Uruchamiam linter w Dockerze dla: {path}")
+        command = f"python -m ruff check {safe_path} || python -m flake8 {safe_path}"
+        assert self.habitat is not None
+        return self.habitat.execute(command, timeout=timeout)
+
+    async def _run_linter_locally(
+        self, path: str, timeout: int
+    ) -> tuple[int, str] | str:
+        logger.warning(f"⚠️ Uruchamiam linter LOKALNIE dla: {path}")
+        local_ruff = await self._run_local_linter_binary("ruff", path, timeout)
+        if local_ruff is not None:
+            return local_ruff
+
+        local_flake8 = await self._run_local_linter_binary("flake8", path, timeout)
+        if local_flake8 is not None:
+            return local_flake8
+        return (
+            "❌ Błąd uruchamiania lintera lokalnie: brak ruff/flake8 lub błąd wykonania"
+        )
+
+    async def _run_local_linter_binary(
+        self, binary: str, path: str, timeout: int
+    ) -> tuple[int, str] | None:
+        import asyncio
+        import subprocess
+        import sys
+
+        cmd = [sys.executable, "-m", binary, "check", path]
+        if binary == "flake8":
+            cmd = [sys.executable, "-m", "flake8", path]
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            output = stdout.decode()
+            exit_code = process.returncode if process.returncode is not None else 1
+            return exit_code, output
+        except Exception:
+            return None
 
     def _parse_pytest_output(self, exit_code: int, output: str) -> TestReport:
         """

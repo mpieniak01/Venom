@@ -47,7 +47,7 @@ Dziękujemy, że chcesz pomóc w rozwoju projektu! Poniżej znajdziesz zasady, w
 
 ## Tests and CI
 
-- Wszystkie zasady uruchamiania testów są opisane w `docs/PL/POLITYKA_TESTOW.md`.
+- Wszystkie zasady uruchamiania testów są opisane w `docs/PL/TESTING_POLICY.md`.
 - Wszystkie nowo dodawane funkcjonalności muszą mieć testy (pytest).
 - Testy wrzucamy do katalogu `/tests`.
 - CI Lite na PR najpierw sprawdza szybkie bramki jakości (lint + wybrane testy unit).

@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, Optional
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+DEFAULT_LINUX_TOAST_TIMEOUT_MS = 5000
 
 
 class Notifier:
@@ -85,7 +86,6 @@ class Notifier:
         message: str,
         action_payload: Optional[Dict] = None,
         urgency: str = "normal",
-        timeout: int = 5000,
     ) -> bool:
         """
         Wysyła powiadomienie toast.
@@ -95,16 +95,15 @@ class Notifier:
             message: Treść powiadomienia
             action_payload: Dane akcji do wykonania po kliknięciu
             urgency: Pilność ("low", "normal", "critical")
-            timeout: Timeout w ms (tylko Linux)
 
         Returns:
             True jeśli wysłano pomyślnie
         """
         try:
             if self.system == "Windows":
-                return await self._send_toast_windows(title, message, action_payload)
+                return await self._send_toast_windows(title, message)
             elif self.system == "Linux" and not self._is_wsl:
-                return await self._send_toast_linux(title, message, urgency, timeout)
+                return await self._send_toast_linux(title, message, urgency)
             elif self._is_wsl:
                 logger.warning(
                     "Powiadomienia w WSL2 wymagają satelity - próba wysłania przez PowerShell"
@@ -118,16 +117,13 @@ class Notifier:
             logger.error(f"Błąd przy wysyłaniu powiadomienia: {e}")
             return False
 
-    async def _send_toast_windows(
-        self, title: str, message: str, action_payload: Optional[Dict]
-    ) -> bool:
+    async def _send_toast_windows(self, title: str, message: str) -> bool:
         """
         Wysyła powiadomienie Windows Toast.
 
         Args:
             title: Tytuł
             message: Treść
-            action_payload: Akcja
 
         Returns:
             True jeśli sukces
@@ -228,9 +224,7 @@ class Notifier:
             logger.error(f"Błąd przy wysyłaniu PowerShell Toast: {e}")
             return False
 
-    async def _send_toast_linux(
-        self, title: str, message: str, urgency: str, timeout: int
-    ) -> bool:
+    async def _send_toast_linux(self, title: str, message: str, urgency: str) -> bool:
         """
         Wysyła powiadomienie Linux notify-send.
 
@@ -238,7 +232,6 @@ class Notifier:
             title: Tytuł
             message: Treść
             urgency: Pilność
-            timeout: Timeout w ms
 
         Returns:
             True jeśli sukces
@@ -249,7 +242,7 @@ class Notifier:
                 "-u",
                 urgency,
                 "-t",
-                str(timeout),
+                str(DEFAULT_LINUX_TOAST_TIMEOUT_MS),
                 "-a",
                 "Venom",
                 title,

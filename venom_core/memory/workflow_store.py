@@ -447,7 +447,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
             Bezpieczny identyfikator (tylko alfanumeryczne znaki i _)
         """
         # Najpierw neutralizuj próby przejścia do katalogu nadrzędnego
-        identifier = re.sub(r"\.\.(?:/|\\)", "____", identifier)
+        identifier = re.sub(r"\.\.[\\/]", "____", identifier)
         identifier = identifier.replace("..", "____")
 
         # Zamień separatory ścieżek na podkreślenia

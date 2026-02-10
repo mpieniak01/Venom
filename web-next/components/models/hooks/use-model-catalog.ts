@@ -59,7 +59,7 @@ export function useModelCatalog() {
         try {
             const params = new URLSearchParams({ query: searchQuery, provider: searchProvider, limit: "12" });
             const response = await apiFetch<ModelCatalogResponse>(`/api/v1/models/search?${params.toString()}`);
-            if (response && response.success) {
+            if (response?.success) {
                 setSearchResults({ data: response.models, loading: false, error: null, performed: true });
             } else {
                 setSearchResults({ data: [], loading: false, error: response?.error || t("models.search.error"), performed: true });

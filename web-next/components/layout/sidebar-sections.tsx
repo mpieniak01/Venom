@@ -124,6 +124,12 @@ export function CostModeSection({
     onToggle: () => void;
     t: (key: string) => string;
 }) {
+    let toggleLabel = t("sidebar.cost.switchToPro");
+    if (costLoading) {
+        toggleLabel = t("sidebar.cost.switching");
+    } else if (costMode?.enabled) {
+        toggleLabel = t("sidebar.cost.switchToEco");
+    }
     return (
         <section className="rounded-2xl card-shell bg-gradient-to-b from-emerald-500/5 to-transparent p-4 text-sm" data-testid="sidebar-cost-mode">
             <div className="flex items-start justify-between gap-3">
@@ -145,7 +151,7 @@ export function CostModeSection({
                 disabled={costLoading}
                 onClick={onToggle}
             >
-                {costLoading ? t("sidebar.cost.switching") : (costMode?.enabled ? t("sidebar.cost.switchToEco") : t("sidebar.cost.switchToPro"))}
+                {toggleLabel}
             </Button>
         </section>
     );

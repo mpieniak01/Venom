@@ -970,9 +970,9 @@ function sanitizeSequenceText(value?: string | null) {
   return value
     .replaceAll(/[<>]/g, "")
     .replaceAll(/[\r\n]/g, " ")
-    .replaceAll(/[|]/g, "‖")
+    .replaceAll("|", "‖")
     .replaceAll("--", "–")
-    .replaceAll(/["]/g, "'")
+    .replaceAll('"', "'")
     .trim();
 }
 
@@ -1033,7 +1033,8 @@ function buildFlowchartDiagram(steps: HistoryStep[]) {
     lines.push(`${nodeId}["${label}"]:::${isDecision ? "decision" : statusClass}`);
     if (idx > 0) {
       const edgeLabel = sanitizeMermaidText(steps[idx - 1]?.status || "");
-      lines.push(`S${idx - 1} -->${edgeLabel ? `|${edgeLabel}|` : ""} ${nodeId}`);
+      const edgeText = edgeLabel ? `|${edgeLabel}|` : "";
+      lines.push(`S${idx - 1} -->${edgeText} ${nodeId}`);
     }
     if (step.details && step.details.length > 80) {
       const noteId = `${nodeId}_note`;

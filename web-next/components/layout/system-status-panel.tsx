@@ -21,15 +21,31 @@ export function SystemStatusPanel() {
 
   const statuses: StatusRow[] = useMemo(() => {
     const hasQueue = Boolean(queue);
-    const apiTone: StatusTone = hasQueue ? "success" : queueError ? "danger" : "warning";
+    let apiTone: StatusTone = "warning";
+    if (hasQueue) {
+      apiTone = "success";
+    } else if (queueError) {
+      apiTone = "danger";
+    }
 
-    const queueTone: StatusTone = hasQueue
-      ? queue?.paused
-        ? "warning"
-        : "success"
-      : "neutral";
+    let queueTone: StatusTone = "neutral";
+    if (hasQueue) {
+      queueTone = queue?.paused ? "warning" : "success";
+    }
 
-    const wsTone: StatusTone = connected ? "success" : hasQueue ? "warning" : "danger";
+    let wsTone: StatusTone = "danger";
+    if (connected) {
+      wsTone = "success";
+    } else if (hasQueue) {
+      wsTone = "warning";
+    }
+
+    let wsHint = t("systemStatus.hints.wsChannel");
+    if (connected) {
+      wsHint = t("systemStatus.hints.wsLive");
+    } else if (hasQueue) {
+      wsHint = t("systemStatus.hints.wsInactive");
+    }
 
     return [
       {
@@ -49,15 +65,17 @@ export function SystemStatusPanel() {
       {
         id: "ws",
         label: t("systemStatus.ws"),
-        hint: connected
-          ? t("systemStatus.hints.wsLive")
-          : hasQueue
-            ? t("systemStatus.hints.wsInactive")
-            : t("systemStatus.hints.wsChannel"),
+        hint: wsHint,
         tone: wsTone,
       },
     ];
   }, [connected, queue, queueError, t]);
+
+  const toneClassName = (tone: StatusTone) => {
+    if (tone === "success") return "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]";
+    if (tone === "warning") return "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]";
+    return "bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.6)]";
+  };
 
   return (
     <div className="surface-card p-4 text-sm text-zinc-100" data-testid="system-status-panel">
@@ -76,11 +94,7 @@ export function SystemStatusPanel() {
             <span
               className={[
                 "mt-1 h-2.5 w-2.5 rounded-full",
-                status.tone === "success"
-                  ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]"
-                  : status.tone === "warning"
-                    ? "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]"
-                    : "bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.6)]",
+                toneClassName(status.tone),
               ].join(" ")}
               aria-hidden="true"
             />

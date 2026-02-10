@@ -397,8 +397,8 @@ export function LogsSection({ logs, t }: { logs: string[]; t: (key: string, opti
                 <h4 className="heading-h4">{t("cockpit.requestDetails.taskLogsTitle", { count: logs.length })}</h4>
             </div>
             <div className="mt-3 max-h-[180px] space-y-2 overflow-y-auto pr-2 text-xs text-zinc-300">
-                {logs.map((log, idx) => (
-                    <p key={`task-log-${idx}`} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                {logs.map((log) => (
+                    <p key={`task-log-${log}`} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                         {log}
                     </p>
                 ))}
@@ -435,8 +435,8 @@ export function StepsSection({
             </div>
             <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-2">
                 {steps.length === 0 && <p className="text-hint">{t("cockpit.requestDetails.noSteps")}</p>}
-                {steps.map((step, idx) => (
-                    <div key={`${requestId}-${idx}`} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm">
+                {steps.map((step) => (
+                    <div key={`${requestId ?? "request"}-${step.timestamp ?? "no-time"}-${step.component ?? "component"}-${step.action ?? "action"}-${step.status ?? "status"}`} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm">
                         <div className="flex items-center justify-between">
                             <span className="font-semibold text-white">
                                 {step.component || t("cockpit.requestDetails.stepFallback")}

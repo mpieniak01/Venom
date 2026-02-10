@@ -2,16 +2,27 @@ import { KnowledgeGraph } from "@/lib/types";
 import { useMemo, useState } from "react";
 import { useKnowledgeGraph, useMemoryGraph, KNOWLEDGE_GRAPH_LIMIT, MEMORY_GRAPH_LIMIT } from "@/hooks/use-api";
 
-export function useBrainGraphLogic(
-    initialKnowledge: KnowledgeGraph | null,
-    activeTab: "repo" | "memory" | "hygiene",
-    showMemoryLayer: boolean,
-    memorySessionFilter: string,
-    memoryOnlyPinned: boolean,
-    includeLessons: boolean,
-    flowMode: "flow" | "default" = "flow",
-    topicFilter = ""
-) {
+type UseBrainGraphLogicParams = {
+    initialKnowledge: KnowledgeGraph | null;
+    activeTab: "repo" | "memory" | "hygiene";
+    showMemoryLayer: boolean;
+    memorySessionFilter: string;
+    memoryOnlyPinned: boolean;
+    includeLessons: boolean;
+    flowMode?: "flow" | "default";
+    topicFilter?: string;
+};
+
+export function useBrainGraphLogic({
+    initialKnowledge,
+    activeTab,
+    showMemoryLayer,
+    memorySessionFilter,
+    memoryOnlyPinned,
+    includeLessons,
+    flowMode = "flow",
+    topicFilter = "",
+}: UseBrainGraphLogicParams) {
     const {
         data: liveGraph,
         loading: liveGraphLoading,

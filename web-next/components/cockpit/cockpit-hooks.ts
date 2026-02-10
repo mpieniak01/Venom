@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LogEntryType } from "@/lib/logs";
-import type { ServiceStatus, Task, GenerationParams, ContextUsed } from "@/lib/types";
+import type { ServiceStatus, Task, ContextUsed } from "@/lib/types";
 import type { TokenSample } from "@/components/cockpit/token-types";
 import {
   isTelemetryEventPayload,
@@ -14,7 +14,7 @@ import {
   type TelemetryEventPayload,
 } from "@/components/cockpit/cockpit-utils";
 import type { HiddenPromptEntry } from "@/lib/types";
-import type { TaskExtraContext, ForcedRoute } from "@/hooks/use-api";
+import type { SendTaskInput } from "@/hooks/use-api";
 
 const MAX_SESSION_HISTORY_ENTRIES = 500;
 
@@ -454,18 +454,7 @@ type MacroRunContext = {
   enqueueOptimisticRequest: (prompt: string) => string;
   linkOptimisticRequest: (clientId: string, requestId: string | null) => void;
   dropOptimisticRequest: (clientId: string) => void;
-  sendTask: (
-    content: string,
-    storeKnowledge?: boolean,
-    generationParams?: GenerationParams | null,
-    runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null,
-    extraContext?: TaskExtraContext | null,
-    forcedRoute?: ForcedRoute | null,
-    forcedIntent?: string | null,
-    preferredLanguage?: "pl" | "en" | "de" | null,
-    sessionId?: string | null,
-    preferenceScope?: "session" | "global" | null,
-  ) => Promise<{ task_id?: string | null }>;
+  sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
   refreshTasks: () => Promise<unknown>;
   refreshQueue: () => Promise<unknown>;
   refreshHistory: () => Promise<unknown>;
@@ -562,21 +551,21 @@ export function useMacroActions({
       setMessage(null);
       const clientId = enqueueOptimisticRequest(macro.content);
       try {
-        const res = await sendTask(
-          macro.content,
-          !labMode,
-          null,
-          {
+        const res = await sendTask({
+          content: macro.content,
+          storeKnowledge: !labMode,
+          generationParams: null,
+          runtimeMeta: {
             configHash: activeConfigHash ?? null,
             runtimeId: activeRuntimeId ?? null,
           },
-          null,
-          null,
-          null,
-          language as ("pl" | "en" | "de" | null),
+          extraContext: null,
+          forcedRoute: null,
+          forcedIntent: null,
+          preferredLanguage: language as ("pl" | "en" | "de" | null),
           sessionId,
-          "session",
-        );
+          preferenceScope: "session",
+        });
         linkOptimisticRequest(clientId, res.task_id ?? null);
         setMessage(`Makro ${macro.label} wysłane: ${res.task_id ?? "w toku…"}`);
         await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);

@@ -527,6 +527,11 @@ export const en = {
     },
   },
   cockpit: {
+    runtime: {
+      switchConfirm: "Directive requires switching runtime to {{label}}. Switch now?",
+      switchCancelled: "Runtime switch cancelled.",
+      switchError: "Failed to switch runtime.",
+    },
     inputPlaceholder: "Describe a task for Venom...",
     newChat: "New chat",
     status: {
@@ -797,6 +802,19 @@ export const en = {
     emptyDescription: "Send a new command to see it here.",
   },
   brain: {
+    details: {
+      selectNode: "Click a node to see details.",
+      properties: "Properties",
+      relations: "Relations",
+      noRelations: "No relations.",
+      clearSession: "Clear session",
+      clearing: "Clearing...",
+      actions: {
+        pin: "Pin",
+        unpin: "Unpin",
+        delete: "Delete",
+      },
+    },
     title: "Knowledge Graph",
     description: "Visualization of memory and repository dependencies",
     stats: {

@@ -225,11 +225,10 @@ class ForemanAgent(BaseAgent):
     def _safe_node_metrics_from_info(self, node_id: str, node_info) -> NodeMetrics:
         capabilities_obj = getattr(node_info, "capabilities", None)
         gpu_available = bool(getattr(capabilities_obj, "has_gpu", False))
-        capabilities = (
-            capabilities_obj.model_dump()
-            if hasattr(capabilities_obj, "model_dump")
-            else {}
-        )
+        if capabilities_obj and hasattr(capabilities_obj, "model_dump"):
+            capabilities = capabilities_obj.model_dump()
+        else:
+            capabilities = {}
         return NodeMetrics(
             node_id=node_id,
             node_name=getattr(node_info, "node_name", node_id),

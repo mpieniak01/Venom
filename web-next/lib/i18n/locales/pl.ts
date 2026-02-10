@@ -535,6 +535,11 @@ export const pl = {
       submitting: "Wysyłam...",
       placeholder: "Opisz krótko, co było nie tak i czego oczekujesz.",
     },
+    runtime: {
+      switchConfirm: "Dyrektywa wymaga przełączenia runtime na {{label}}. Przełączyć teraz?",
+      switchCancelled: "Anulowano przełączenie runtime.",
+      switchError: "Nie udało się przełączyć runtime.",
+    },
     inputPlaceholder: "Wpisz wiadomość...",
     newChat: "Nowy czat",
     status: {
@@ -840,6 +845,19 @@ export const pl = {
     },
   },
   brain: {
+    details: {
+      selectNode: "Kliknij węzeł, by zobaczyć szczegóły.",
+      properties: "Właściwości",
+      relations: "Relacje",
+      noRelations: "Brak relacji.",
+      clearSession: "Wyczyść całą sesję",
+      clearing: "Czyszczenie...",
+      actions: {
+        pin: "Przypnij",
+        unpin: "Odepnij",
+        delete: "Usuń",
+      },
+    },
     title: "Graf Wiedzy",
     description: "Wizualizacja zależności w pamięci i repozytorium",
     stats: {

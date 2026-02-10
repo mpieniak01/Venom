@@ -88,6 +88,10 @@ jobs:
         timeout-minutes: 5
         run: npm --prefix web-next run lint
 
+      - name: Unit Tests
+        timeout-minutes: 5
+        run: npm --prefix web-next run test:unit
+
   sonar:
     name: SonarCloud Scan
     runs-on: ubuntu-latest

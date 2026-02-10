@@ -85,6 +85,7 @@ class TestWebSearchSkill:
         self, mock_trafilatura, mock_httpx, web_skill
     ):
         """Test fallbacku do BeautifulSoup gdy trafilatura zawodzi."""
+        pytest.importorskip("bs4")
         # Trafilatura zwraca None
         mock_trafilatura.fetch_url.return_value = None
 
@@ -101,6 +102,7 @@ class TestWebSearchSkill:
     @patch("venom_core.execution.skills.web_skill.httpx")
     def test_scrape_text_timeout(self, mock_httpx, mock_trafilatura, web_skill):
         """Test obsługi timeoutu."""
+        pytest.importorskip("bs4")
         mock_trafilatura.fetch_url.return_value = None
 
         # Mock httpx.TimeoutException

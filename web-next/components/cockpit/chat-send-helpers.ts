@@ -1,7 +1,7 @@
 import { createParser } from "eventsource-parser";
 import { type GenerationParams, type HistoryRequestDetail } from "@/lib/types";
 import { parseSlashCommand } from "@/lib/slash-commands";
-import { type TaskExtraContext, type ForcedRoute } from "@/hooks/use-api";
+import { type SendTaskInput } from "@/hooks/use-api";
 
 export type ActiveServerInfo = {
     active_server?: string | null;
@@ -45,18 +45,7 @@ export type ChatSendParams = {
         temperature: number | null;
         sessionId: string | null;
     }) => Promise<Response>;
-    sendTask: (
-        content: string,
-        storeKnowledge?: boolean,
-        generationParams?: GenerationParams | null,
-        runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null,
-        extraContext?: TaskExtraContext | null,
-        forcedRoute?: ForcedRoute | null,
-        forcedIntent?: string | null,
-        preferredLanguage?: "pl" | "en" | "de" | null,
-        sessionId?: string | null,
-        preferenceScope?: "session" | "global" | null,
-    ) => Promise<{ task_id?: string | null }>;
+    sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
     ingestMemoryEntry: (payload: {
         text: string;
         category: string;
@@ -488,21 +477,21 @@ export async function handleStandardTaskSend(params: {
         t,
     } = params;
     try {
-        const res = await sendTask(
-            trimmed,
-            !labMode,
+        const res = await sendTask({
+            content: trimmed,
+            storeKnowledge: !labMode,
             generationParams,
-            buildRuntimeMeta(runtimeOverride, activeServerInfo),
-            null,
-            {
+            runtimeMeta: buildRuntimeMeta(runtimeOverride, activeServerInfo),
+            extraContext: null,
+            forcedRoute: {
                 tool: parsed.forcedTool,
                 provider: parsed.forcedProvider,
             },
             forcedIntent,
-            language as ("pl" | "en" | "de" | null),
-            resolvedSession,
-            "session",
-        );
+            preferredLanguage: language as ("pl" | "en" | "de" | null),
+            sessionId: resolvedSession,
+            preferenceScope: "session",
+        });
         const resolvedId = res.task_id ?? null;
         linkOptimisticRequest(clientId, resolvedId);
         if (resolvedId) {

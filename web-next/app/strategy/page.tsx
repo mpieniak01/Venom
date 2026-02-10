@@ -234,11 +234,11 @@ export default function StrategyPage() {
   const kpis = roadmapData?.kpis;
   const visionProgress = roadmapData?.vision?.progress ?? 0;
   const milestonesRaw =
-    kpis && kpis.milestones_total
+    kpis?.milestones_total
       ? ((kpis.milestones_completed ?? 0) / Math.max(kpis.milestones_total, 1)) * 100
       : 0;
   const tasksRaw =
-    kpis && kpis.tasks_total
+    kpis?.tasks_total
       ? ((kpis.tasks_completed ?? 0) / Math.max(kpis.tasks_total, 1)) * 100
       : 0;
   const milestones = useMemo(

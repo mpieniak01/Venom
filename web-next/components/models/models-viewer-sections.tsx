@@ -18,6 +18,10 @@ import { useModelsViewerLogic } from "./use-models-viewer-logic";
 
 type ModelsViewerLogic = ReturnType<typeof useModelsViewerLogic>;
 
+function buildNewsItemKey(item: NewsItem, fallbackPrefix: string) {
+    return item.url || `${fallbackPrefix}-${item.published_at || "no-date"}-${item.title || "untitled"}`;
+}
+
 interface RuntimeSectionProps {
     selectedServer: ModelsViewerLogic["selectedServer"];
     setSelectedServer: ModelsViewerLogic["setSelectedServer"];
@@ -230,6 +234,53 @@ export function NewsSection({
     const sortedNews = newsSort === "oldest" ? [...newsHf.items].reverse() : newsHf.items;
     const sortedPapers = newsSort === "oldest" ? [...papersHf.items].reverse() : papersHf.items;
 
+    const renderNewsBody = () => {
+        if (newsHf.loading) {
+            return <p className="text-xs text-slate-500">{t("models.ui.loading")}</p>;
+        }
+        if (newsHf.error) {
+            return <p className="text-xs text-amber-200/70">{newsHf.error}</p>;
+        }
+        if (newsHf.items.length === 0) {
+            return <p className="text-xs text-slate-500">{t("models.ui.noData")}</p>;
+        }
+        return (
+            <div className="flex flex-col">
+                {sortedNews.slice(0, 5).map((item: NewsItem) => (
+                    <div key={buildNewsItemKey(item, "news")} className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 py-2.5 last:border-b-0 last:pb-0 first:pt-0">
+                        <p className="min-w-0 flex-1 text-sm font-medium text-slate-200 line-clamp-1">{item.title || "Nowa publikacja"}</p>
+                        <div className="flex items-center gap-4">
+                            <span className="text-[10px] tabular-nums text-slate-500 whitespace-nowrap">{formatDateTime(item.published_at, language, "news")}</span>
+                            {item.url && <a className="rounded-full border border-white/10 px-2.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-slate-400 hover:border-white/30 hover:text-white" href={item.url} target="_blank" rel="noreferrer">{t("models.ui.view")}</a>}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
+    const renderPapersBody = () => {
+        if (papersHf.loading) {
+            return <p className="col-span-full text-xs text-slate-500">{t("models.ui.loading")}</p>;
+        }
+        if (papersHf.error) {
+            return <p className="col-span-full text-xs text-amber-200/70">{papersHf.error}</p>;
+        }
+        if (papersHf.items.length === 0) {
+            return <p className="col-span-full text-xs text-slate-500">{t("models.ui.noData")}</p>;
+        }
+        return sortedPapers.slice(0, 3).map((item: NewsItem) => (
+            <div key={buildNewsItemKey(item, "paper")} className="flex h-full flex-col rounded-2xl border border-white/10 bg-black/30 p-4 text-sm">
+                <p className="text-sm font-semibold text-slate-100 line-clamp-2">{item.title || t("models.sections.papers.defaultTitle")}</p>
+                <p className="mt-2 text-[11px] text-slate-400 line-clamp-3 leading-relaxed">{item.summary || t("models.sections.papers.noPreview")}</p>
+                <div className="mt-auto pt-4 flex items-center justify-between text-[10px] text-slate-500">
+                    <span>{formatDateTime(item.published_at, language, "news")}</span>
+                    {item.url && <a className="rounded-full border border-white/10 px-3 py-1 text-[9px] uppercase tracking-[0.1em] text-slate-400 hover:border-white/30 hover:text-white" href={item.url} target="_blank" rel="noreferrer">{t("models.ui.view")}</a>}
+                </div>
+            </div>
+        ));
+    };
+
     return (
         <section className="grid gap-10">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -258,21 +309,7 @@ export function NewsSection({
                 />
                 {!newsCollapsed && (
                     <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4">
-                        {newsHf.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> :
-                            newsHf.error ? <p className="text-xs text-amber-200/70">{newsHf.error}</p> :
-                                newsHf.items.length === 0 ? <p className="text-xs text-slate-500">{t("models.ui.noData")}</p> : (
-                                    <div className="flex flex-col">
-                                        {sortedNews.slice(0, 5).map((item: NewsItem, idx: number) => (
-                                            <div key={idx} className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 py-2.5 last:border-b-0 last:pb-0 first:pt-0">
-                                                <p className="min-w-0 flex-1 text-sm font-medium text-slate-200 line-clamp-1">{item.title || "Nowa publikacja"}</p>
-                                                <div className="flex items-center gap-4">
-                                                    <span className="text-[10px] tabular-nums text-slate-500 whitespace-nowrap">{formatDateTime(item.published_at, language, "news")}</span>
-                                                    {item.url && <a className="rounded-full border border-white/10 px-2.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-slate-400 hover:border-white/30 hover:text-white" href={item.url} target="_blank" rel="noreferrer">{t("models.ui.view")}</a>}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                        {renderNewsBody()}
                     </div>
                 )}
             </div>
@@ -290,20 +327,7 @@ export function NewsSection({
                 />
                 {!papersCollapsed && (
                     <div className="mt-5 grid gap-4 lg:grid-cols-3">
-                        {papersHf.loading ? <p className="col-span-full text-xs text-slate-500">{t("models.ui.loading")}</p> :
-                            papersHf.error ? <p className="col-span-full text-xs text-amber-200/70">{papersHf.error}</p> :
-                                papersHf.items.length === 0 ? <p className="col-span-full text-xs text-slate-500">{t("models.ui.noData")}</p> :
-                                    sortedPapers.slice(0, 3).map((item: NewsItem, idx: number) => (
-                                        <div key={idx} className="flex h-full flex-col rounded-2xl border border-white/10 bg-black/30 p-4 text-sm">
-                                            <p className="text-sm font-semibold text-slate-100 line-clamp-2">{item.title || t("models.sections.papers.defaultTitle")}</p>
-                                            <p className="mt-2 text-[11px] text-slate-400 line-clamp-3 leading-relaxed">{item.summary || t("models.sections.papers.noPreview")}</p>
-                                            <div className="mt-auto pt-4 flex items-center justify-between text-[10px] text-slate-500">
-                                                <span>{formatDateTime(item.published_at, language, "news")}</span>
-                                                {item.url && <a className="rounded-full border border-white/10 px-3 py-1 text-[9px] uppercase tracking-[0.1em] text-slate-400 hover:border-white/30 hover:text-white" href={item.url} target="_blank" rel="noreferrer">{t("models.ui.view")}</a>}
-                                            </div>
-                                        </div>
-                                    ))
-                        }
+                        {renderPapersBody()}
                     </div>
                 )}
             </div>
@@ -419,6 +443,23 @@ export function InstalledAndOperations({
     t
 }: InstalledAndOperationsProps) {
     const allowRemoveProviders = new Set(["ollama", "huggingface"]);
+    let installedBadge = t("models.sections.installed.noModels");
+    if (installedModels.length) {
+        const suffix = installedModels.length > 1 ? "s" : "";
+        installedBadge = `${installedModels.length} ${t("models.runtime.model").toLowerCase()}${suffix}`;
+    }
+
+    const renderOperationsBody = () => {
+        if (operations.loading) {
+            return <p className="text-xs text-slate-500">{t("models.ui.loading")}</p>;
+        }
+        if (operations.data?.operations?.length) {
+            return operations.data.operations.map((op: ModelOperation) => (
+                <OperationRow key={op.operation_id} op={op} />
+            ));
+        }
+        return <p className="text-xs text-slate-500">{t("models.sections.operations.noOperations")}</p>;
+    };
 
     return (
         <div className="flex flex-col gap-10">
@@ -426,7 +467,7 @@ export function InstalledAndOperations({
                 <SectionHeader
                     title={t("models.sections.installed.title")}
                     subtitle={t("models.sections.installed.subtitle")}
-                    badge={installedModels.length ? `${installedModels.length} ${t("models.runtime.model").toLowerCase()}${installedModels.length > 1 ? "s" : ""}` : t("models.sections.installed.noModels")}
+                    badge={installedBadge}
                     actionLabel={t("models.ui.refresh")}
                     actionDisabled={installed.loading}
                     onAction={installed.refresh}
@@ -475,10 +516,7 @@ export function InstalledAndOperations({
                 />
                 {!operationsCollapsed && (
                     <div className="mt-5 flex flex-col gap-3">
-                        {operations.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> :
-                            operations.data?.operations?.length ? operations.data.operations.map((op: ModelOperation) => <OperationRow key={op.operation_id} op={op} />) :
-                                <p className="text-xs text-slate-500">{t("models.sections.operations.noOperations")}</p>
-                        }
+                        {renderOperationsBody()}
                     </div>
                 )}
             </div>

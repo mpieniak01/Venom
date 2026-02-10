@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { GenerationParams, HistoryRequestDetail, GenerationSchema } from "@/lib/types";
-import type { TaskExtraContext, ForcedRoute } from "@/hooks/use-api";
+import type { SendTaskInput } from "@/hooks/use-api";
 import type { ChatMessage, ChatComposerHandle } from "@/components/cockpit/cockpit-chat-thread";
 import { useChatSend } from "@/components/cockpit/cockpit-chat-send";
 import { useTranslation } from "@/lib/i18n";
@@ -56,18 +56,7 @@ type CockpitChatUiParams = {
     temperature: number | null;
     sessionId: string | null;
   }) => Promise<Response>;
-  sendTask: (
-    content: string,
-    storeKnowledge?: boolean,
-    generationParams?: GenerationParams | null,
-    runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null,
-    extraContext?: TaskExtraContext | null,
-    forcedRoute?: ForcedRoute | null,
-    forcedIntent?: string | null,
-    preferredLanguage?: "pl" | "en" | "de" | null,
-    sessionId?: string | null,
-    preferenceScope?: "session" | "global" | null,
-  ) => Promise<{ task_id?: string | null }>;
+  sendTask: (payload: SendTaskInput) => Promise<{ task_id?: string | null }>;
   ingestMemoryEntry: (payload: {
     text: string;
     category: string;

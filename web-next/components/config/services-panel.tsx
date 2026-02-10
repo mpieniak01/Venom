@@ -714,9 +714,9 @@ export function ServicesPanel() {
           {history.length === 0 ? (
             <p className="text-sm text-zinc-500">{t("config.services.history.empty")}</p>
           ) : (
-            history.map((entry, idx) => (
+            history.map((entry) => (
               <div
-                key={idx}
+                key={`${entry.timestamp}-${entry.service}-${entry.action}-${entry.message}`}
                 className="flex items-center justify-between rounded-lg border border-white/5 bg-black/20 p-3"
               >
                 <div className="flex items-center gap-3">

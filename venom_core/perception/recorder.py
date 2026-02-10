@@ -224,22 +224,23 @@ class DemonstrationRecorder:
 
     def _start_listeners(self):
         """Uruchamia listenery myszy i klawiatury."""
-        if not PYNPUT_AVAILABLE:
-            logger.error("pynput nie jest dostępny - pomijam start listenerów")
-            return
-        # Listener myszy
-        self.mouse_listener = mouse.Listener(
-            on_click=self._on_mouse_click, on_move=self._on_mouse_move
-        )
-        self.mouse_listener.start()
+        try:
+            # Listener myszy
+            self.mouse_listener = mouse.Listener(
+                on_click=self._on_mouse_click, on_move=self._on_mouse_move
+            )
+            self.mouse_listener.start()
 
-        # Listener klawiatury
-        self.keyboard_listener = keyboard.Listener(
-            on_press=self._on_key_press, on_release=self._on_key_release
-        )
-        self.keyboard_listener.start()
-
-        logger.debug("Listenery wejścia uruchomione")
+            # Listener klawiatury
+            self.keyboard_listener = keyboard.Listener(
+                on_press=self._on_key_press, on_release=self._on_key_release
+            )
+            self.keyboard_listener.start()
+            logger.debug("Listenery wejścia uruchomione")
+        except Exception as e:
+            logger.error(f"pynput nie jest dostępny - pomijam start listenerów: {e}")
+            self.mouse_listener = None
+            self.keyboard_listener = None
 
     def _stop_listeners(self):
         """Zatrzymuje listenery."""
@@ -359,12 +360,6 @@ class DemonstrationRecorder:
             timestamp: Czas zdarzenia
         """
         try:
-            if not MSS_AVAILABLE:
-                logger.warning(
-                    "Biblioteka mss nie jest dostępna - pomijam zrzut ekranu"
-                )
-                return
-
             mss_factory = getattr(mss, "mss", None)
             if mss_factory is None:
                 logger.warning(

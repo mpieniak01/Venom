@@ -351,7 +351,7 @@ class StateManager:
 
     def update_context(self, task_id: UUID, updates: Dict[str, Any]) -> None:
         """
-        Aktualizuje słownik context_history zadania (shallow merge).
+        Aktualizuje słownik context_history zadania (1-poziomowe scalanie dict).
 
         Args:
             task_id: ID zadania
@@ -373,7 +373,7 @@ class StateManager:
     def _merge_context_value(
         context_history: Dict[str, Any], key: str, value: Any
     ) -> None:
-        """Scala pojedynczy wpis kontekstu (obsługuje usunięcia przez None)."""
+        """Scala wpis kontekstu; dla dict wykonuje merge 1-poziomowy i usuwa przez None."""
         if value is None:
             context_history.pop(key, None)
             return
@@ -388,7 +388,6 @@ class StateManager:
                 existing.pop(nested_key, None)
             else:
                 existing[nested_key] = nested_value
-        context_history[key] = existing
 
     def set_paid_mode(self, enabled: bool) -> None:
         """

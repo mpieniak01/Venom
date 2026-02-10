@@ -699,20 +699,36 @@ class BenchmarkService:
             TimeoutError: Jeśli serwis nie odpowiada w czasie
         """
         start_time = time.time()
+        deadline = start_time + DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS
+        ready_event = asyncio.Event()
         logger.info(f"Oczekiwanie na healthcheck: {endpoint}")
 
-        while time.time() - start_time < DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS:
+        while not ready_event.is_set():
+            if time.time() >= deadline:
+                break
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     response = await client.get(f"{endpoint}/models")
                     if response.status_code == 200:
                         logger.info("Healthcheck OK - serwis gotowy")
-                        return
+                        ready_event.set()
+                        break
             except Exception:
                 # Ignoruj błędy połączenia - będziemy próbować ponownie
                 pass
 
-            await asyncio.sleep(2)
+            remaining_time = max(0.0, deadline - time.time())
+            if remaining_time == 0:
+                break
+            try:
+                await asyncio.wait_for(
+                    ready_event.wait(), timeout=min(2.0, remaining_time)
+                )
+            except TimeoutError:
+                continue
+
+        if ready_event.is_set():
+            return
 
         raise TimeoutError(
             "Serwis LLM nie odpowiada po "

@@ -245,7 +245,7 @@ class IntentManager:
         intents = lexicon.get("intents", {})
         best_intent = ""
         best_score = 0.0
-        scored = []
+        scored: List[Tuple[str, float]] = []
 
         for intent, config in intents.items():
             threshold = config.get("threshold", 0.9)

@@ -5,7 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from "next/navigation";
 import { Command, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { navItems } from "./sidebar";
+import { navItems } from "./sidebar-helpers";
 import { useTranslation } from "@/lib/i18n";
 
 type CommandPaletteProps = Readonly<{

@@ -3,7 +3,7 @@
 Ten plik zawiera **instrukcje dla agentów kodowania** pracujących w tym repozytorium.
 
 Jeśli szukasz listy agentów systemu Venom, użyj:
-- [KATALOG_AGENTOW_SYSTEMU.md](KATALOG_AGENTOW_SYSTEMU.md)
+- [SYSTEM_AGENTS_CATALOG.md](SYSTEM_AGENTS_CATALOG.md)
 
 ## Zasady Bazowe
 
@@ -56,5 +56,5 @@ pytest -q
 
 ## Zasada Dokumentacyjna
 
-- Katalog funkcjonalny agentów runtime Venom jest w `KATALOG_AGENTOW_SYSTEMU.md`.
+- Katalog funkcjonalny agentów runtime Venom jest w `SYSTEM_AGENTS_CATALOG.md`.
 - Instrukcje implementacyjne/procesowe dla agentów kodowania są w tym pliku.

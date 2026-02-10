@@ -167,132 +167,96 @@ class KernelBuilder:
         service_id = service_id or service_type
         model_name = model_name or self.settings.LLM_MODEL_NAME
 
-        if service_type == "local":
-            # Konfiguracja dla lokalnego LLM (Ollama/vLLM/LocalAI)
-            logger.debug(
-                f"Konfiguracja lokalnego LLM: endpoint={self.settings.LLM_LOCAL_ENDPOINT}, model={model_name}"
-            )
-
-            # Utwórz klienta OpenAI z customowym endpoint
-            async_client = AsyncOpenAI(
-                api_key=self.settings.LLM_LOCAL_API_KEY,  # Konfigurowalny dummy key
-                base_url=self.settings.LLM_LOCAL_ENDPOINT,
-            )
-
-            chat_service = OpenAIChatCompletion(
-                service_id=service_id,
-                ai_model_id=model_name,
-                async_client=async_client,
-            )
-
-            kernel.add_service(chat_service)
-
-        elif service_type == "openai":
-            # Konfiguracja dla OpenAI Cloud
-            if not self.settings.OPENAI_API_KEY:
-                raise ValueError(
-                    "OPENAI_API_KEY jest wymagany dla LLM_SERVICE_TYPE='openai'"
-                )
-
-            logger.debug(f"Konfiguracja OpenAI Cloud: model={model_name}")
-
-            chat_service = OpenAIChatCompletion(
-                service_id=service_id,
-                ai_model_id=model_name,
-                api_key=self.settings.OPENAI_API_KEY,
-            )
-
-            kernel.add_service(chat_service)
-
-        elif service_type == "google":
-            # Konfiguracja dla Google Gemini
-            if not GOOGLE_AVAILABLE:
-                raise ValueError(
-                    "google-generativeai nie jest zainstalowany. "
-                    "Zainstaluj: pip install google-generativeai"
-                )
-
-            if not self.settings.GOOGLE_API_KEY:
-                raise ValueError(
-                    "GOOGLE_API_KEY jest wymagany dla LLM_SERVICE_TYPE='google'"
-                )
-
-            logger.debug(
-                f"Konfiguracja Google Gemini: model={model_name}, grounding={enable_grounding}"
-            )
-
-            # UWAGA: Semantic Kernel obecnie nie ma natywnego connectora dla Gemini
-            # z Google Search Grounding. Kod poniżej pokazuje jak będzie wyglądać
-            # konfiguracja gdy wrapper będzie gotowy.
-            #
-            # STATUS IMPLEMENTACJI:
-            # ✅ Parametr enable_grounding - zaimplementowany
-            # ✅ Logika routingu RESEARCH - zaimplementowana
-            # ✅ Formatowanie źródeł grounding - zaimplementowane
-            # ⏳ Dedykowany Semantic Kernel connector - WYMAGA IMPLEMENTACJI
-            #
-            # Przykładowa konfiguracja (gdy wrapper będzie gotowy):
-            # import google.generativeai as genai
-            # genai.configure(api_key=self.settings.GOOGLE_API_KEY)
-            #
-            # if enable_grounding:
-            #     # Konfiguracja z Google Search Grounding
-            #     tools = [{"google_search": {}}]
-            #     model = genai.GenerativeModel(
-            #         model_name=model_name or "gemini-1.5-pro",
-            #         tools=tools
-            #     )
-            # else:
-            #     model = genai.GenerativeModel(model_name=model_name)
-
-            raise NotImplementedError(
-                "Obsługa Google Gemini w Semantic Kernel nie jest jeszcze dostępna. "
-                "Wymagana jest implementacja dedykowanego connectora/wrappera. "
-                "Infrastruktura (enable_grounding, routing, formatowanie) jest GOTOWA. "
-                "Na razie użyj 'local' lub 'openai'. "
-                "Gemini może być używany poprzez bezpośrednie wywołania google.generativeai API."
-            )
-
-        elif service_type == "azure":
-            # Konfiguracja dla Azure OpenAI (opcja zapasowa)
-            # Sprawdź czy mamy wymagane parametry Azure
-            azure_endpoint = getattr(self.settings, "AZURE_OPENAI_ENDPOINT", None)
-            azure_key = getattr(self.settings, "AZURE_OPENAI_KEY", None)
-
-            if not azure_endpoint or not azure_key:
-                # Brak konfiguracji Azure - rzuć błąd informujący użytkownika
-                raise NotImplementedError(
-                    "Azure OpenAI wymaga konfiguracji AZURE_OPENAI_ENDPOINT i AZURE_OPENAI_KEY. "
-                    "Obecnie wspierane: 'local', 'openai'. "
-                    "Azure jest dostępny jako opcja zapasowa po skonfigurowaniu credentials."
-                )
-
-            # Jeśli mamy parametry, możemy zarejestrować Azure
-            logger.info(
-                f"Konfiguracja Azure OpenAI: endpoint={azure_endpoint}, model={model_name}"
-            )
-
-            # Faktyczna implementacja Azure connector
-            # TODO: Implementacja Azure OpenAI connector
-            # from semantic_kernel.connectors.ai.open_ai import AzureOpenAIChatCompletion
-            # chat_service = AzureOpenAIChatCompletion(
-            #     service_id=service_id,
-            #     deployment_name=model_name,
-            #     endpoint=azure_endpoint,
-            #     api_key=azure_key,
-            # )
-            # kernel.add_service(chat_service)
-
-            raise NotImplementedError(
-                "Azure OpenAI connector jest w trakcie implementacji. "
-                "Credentials zostały wykryte, ale faktyczny serwis nie jest jeszcze zarejestrowany. "
-                "Użyj 'local' lub 'openai'."
-            )
-
-        else:
+        handlers = {
+            "local": self._register_local_service,
+            "openai": self._register_openai_service,
+            "google": self._register_google_service,
+            "azure": self._register_azure_service,
+        }
+        handler = handlers.get(service_type)
+        if handler is None:
             raise ValueError(
                 f"Nieznany typ serwisu LLM: {service_type}. Dostępne: local, openai, google, azure"
             )
+        handler(kernel, service_id, model_name, enable_grounding)
+
+    def _register_local_service(
+        self, kernel: Kernel, service_id: str, model_name: str, _enable_grounding: bool
+    ) -> None:
+        logger.debug(
+            f"Konfiguracja lokalnego LLM: endpoint={self.settings.LLM_LOCAL_ENDPOINT}, model={model_name}"
+        )
+        async_client = AsyncOpenAI(
+            api_key=self.settings.LLM_LOCAL_API_KEY,
+            base_url=self.settings.LLM_LOCAL_ENDPOINT,
+        )
+        chat_service = OpenAIChatCompletion(
+            service_id=service_id,
+            ai_model_id=model_name,
+            async_client=async_client,
+        )
+        kernel.add_service(chat_service)
+
+    def _register_openai_service(
+        self, kernel: Kernel, service_id: str, model_name: str, _enable_grounding: bool
+    ) -> None:
+        if not self.settings.OPENAI_API_KEY:
+            raise ValueError(
+                "OPENAI_API_KEY jest wymagany dla LLM_SERVICE_TYPE='openai'"
+            )
+        logger.debug(f"Konfiguracja OpenAI Cloud: model={model_name}")
+        chat_service = OpenAIChatCompletion(
+            service_id=service_id,
+            ai_model_id=model_name,
+            api_key=self.settings.OPENAI_API_KEY,
+        )
+        kernel.add_service(chat_service)
+
+    def _register_google_service(
+        self, _kernel: Kernel, _service_id: str, model_name: str, enable_grounding: bool
+    ) -> None:
+        if not GOOGLE_AVAILABLE:
+            raise ValueError(
+                "google-generativeai nie jest zainstalowany. Zainstaluj: pip install google-generativeai"
+            )
+        if not self.settings.GOOGLE_API_KEY:
+            raise ValueError(
+                "GOOGLE_API_KEY jest wymagany dla LLM_SERVICE_TYPE='google'"
+            )
+        logger.debug(
+            f"Konfiguracja Google Gemini: model={model_name}, grounding={enable_grounding}"
+        )
+        raise NotImplementedError(
+            "Obsługa Google Gemini w Semantic Kernel nie jest jeszcze dostępna. "
+            "Wymagana jest implementacja dedykowanego connectora/wrappera. "
+            "Infrastruktura (enable_grounding, routing, formatowanie) jest GOTOWA. "
+            "Na razie użyj 'local' lub 'openai'. "
+            "Gemini może być używany poprzez bezpośrednie wywołania google.generativeai API."
+        )
+
+    def _register_azure_service(
+        self,
+        _kernel: Kernel,
+        _service_id: str,
+        model_name: str,
+        _enable_grounding: bool,
+    ) -> None:
+        azure_endpoint = getattr(self.settings, "AZURE_OPENAI_ENDPOINT", None)
+        azure_key = getattr(self.settings, "AZURE_OPENAI_KEY", None)
+        if not azure_endpoint or not azure_key:
+            raise NotImplementedError(
+                "Azure OpenAI wymaga konfiguracji AZURE_OPENAI_ENDPOINT i AZURE_OPENAI_KEY. "
+                "Obecnie wspierane: 'local', 'openai'. "
+                "Azure jest dostępny jako opcja zapasowa po skonfigurowaniu credentials."
+            )
+        logger.info(
+            f"Konfiguracja Azure OpenAI: endpoint={azure_endpoint}, model={model_name}"
+        )
+        raise NotImplementedError(
+            "Azure OpenAI connector jest w trakcie implementacji. "
+            "Credentials zostały wykryte, ale faktyczny serwis nie jest jeszcze zarejestrowany. "
+            "Użyj 'local' lub 'openai'."
+        )
 
     def get_model_router(self) -> ModelRouter:
         """

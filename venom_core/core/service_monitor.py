@@ -590,25 +590,7 @@ class ServiceHealthMonitor:
                 timeout=5,
             )
             if result.returncode == 0:
-                lines = [
-                    line.strip()
-                    for line in result.stdout.strip().split("\n")
-                    if line.strip()
-                ]
-
-                # Zbierz dane VRAM dla wszystkich GPU i znajdź GPU z największym użyciem
-                gpu_data = []
-                for line in lines:
-                    parts = [p.strip() for p in line.split(",")]
-                    if len(parts) < 2:
-                        continue
-                    try:
-                        used = float(parts[0])
-                        total = float(parts[1])
-                        gpu_data.append((used, total))
-                    except ValueError:
-                        continue
-
+                gpu_data = self._parse_nvidia_smi_output(result.stdout)
                 if gpu_data:
                     # Znajdź GPU z największym użyciem pamięci
                     vram_used_mb, vram_total_mb = max(gpu_data, key=lambda x: x[0])
@@ -627,6 +609,21 @@ class ServiceHealthMonitor:
             pass
 
         return metrics
+
+    @staticmethod
+    def _parse_nvidia_smi_output(stdout: str) -> List[tuple[float, float]]:
+        """Parsuje wyjście nvidia-smi do listy (used_mb, total_mb)."""
+        parsed: List[tuple[float, float]] = []
+        lines = [line.strip() for line in stdout.strip().split("\n") if line.strip()]
+        for line in lines:
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) < 2:
+                continue
+            try:
+                parsed.append((float(parts[0]), float(parts[1])))
+            except ValueError:
+                continue
+        return parsed
 
     def get_gpu_memory_usage(self) -> Optional[float]:
         """

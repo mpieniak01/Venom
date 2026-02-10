@@ -130,48 +130,55 @@ class GoogleCalendarSkill:
                 f"Credentials file not found: {self.credentials_path}"
             )
 
-        creds = None
-
-        # Załaduj token jeśli istnieje
-        if Path(self.token_path).exists():
-            try:
-                with open(self.token_path, "rb") as token_file:
-                    creds = pickle.load(token_file)
-                logger.info("Załadowano istniejący token OAuth2")
-            except Exception as e:
-                logger.warning(f"Nie udało się załadować tokenu: {e}")
-
-        # Jeśli brak ważnych credentials, wykonaj OAuth flow
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(Request())
-                    logger.info("Odświeżono token OAuth2")
-                except Exception as e:
-                    logger.warning(f"Nie udało się odświeżyć tokenu: {e}")
-                    creds = None
-
-            if not creds:
-                # Rozpocznij OAuth flow
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.credentials_path, SCOPES
-                )
-                creds = flow.run_local_server(port=0)
-                logger.info("Przeprowadzono autoryzację OAuth2")
-
-            # Zapisz token dla następnych uruchomień
-            try:
-                # Upewnij się że katalog istnieje
-                Path(self.token_path).parent.mkdir(parents=True, exist_ok=True)
-                with open(self.token_path, "wb") as token_file:
-                    pickle.dump(creds, token_file)
-                logger.info(f"Zapisano token OAuth2 do {self.token_path}")
-            except Exception as e:
-                logger.warning(f"Nie udało się zapisać tokenu: {e}")
+        creds = self._load_token_credentials()
+        creds = self._ensure_valid_credentials(creds)
+        self._save_token_credentials(creds)
 
         # Stwórz serwis Google Calendar API
         self.service = build("calendar", "v3", credentials=creds)
         logger.info("Połączono z Google Calendar API")
+
+    def _load_token_credentials(self):
+        if not Path(self.token_path).exists():
+            return None
+        try:
+            with open(self.token_path, "rb") as token_file:
+                creds = pickle.load(token_file)
+            logger.info("Załadowano istniejący token OAuth2")
+            return creds
+        except Exception as e:
+            logger.warning(f"Nie udało się załadować tokenu: {e}")
+            return None
+
+    def _ensure_valid_credentials(self, creds):
+        if creds and getattr(creds, "valid", False):
+            return creds
+
+        if (
+            creds
+            and getattr(creds, "expired", False)
+            and getattr(creds, "refresh_token", None)
+        ):
+            try:
+                creds.refresh(Request())
+                logger.info("Odświeżono token OAuth2")
+                return creds
+            except Exception as e:
+                logger.warning(f"Nie udało się odświeżyć tokenu: {e}")
+
+        flow = InstalledAppFlow.from_client_secrets_file(self.credentials_path, SCOPES)
+        creds = flow.run_local_server(port=0)
+        logger.info("Przeprowadzono autoryzację OAuth2")
+        return creds
+
+    def _save_token_credentials(self, creds) -> None:
+        try:
+            Path(self.token_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(self.token_path, "wb") as token_file:
+                pickle.dump(creds, token_file)
+            logger.info(f"Zapisano token OAuth2 do {self.token_path}")
+        except Exception as e:
+            logger.warning(f"Nie udało się zapisać tokenu: {e}")
 
     @kernel_function(
         name="read_agenda",

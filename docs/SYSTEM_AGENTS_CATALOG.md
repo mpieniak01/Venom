@@ -2,7 +2,7 @@
 
 ## Overview
 
-> **[Polska Wersja](PL/KATALOG_AGENTOW_SYSTEMU.md)**
+> **[Polska Wersja](PL/SYSTEM_AGENTS_CATALOG.md)**
 >
 > Looking for coding-agent instructions? See **[AGENTS.md](AGENTS.md)**.
 

@@ -434,35 +434,44 @@ PARAMETER top_k 40
         }
 
         # Porównaj metryki
-        for key in set(v1.performance_metrics.keys()) | set(
+        metric_keys = set(v1.performance_metrics.keys()) | set(
             v2.performance_metrics.keys()
-        ):
-            val1 = v1.performance_metrics.get(key)
-            val2 = v2.performance_metrics.get(key)
-
-            if val1 is not None and val2 is not None:
-                try:
-                    diff = val2 - val1
-                    if val1 != 0:
-                        diff_pct = (diff / val1) * 100
-                    else:
-                        # Jeśli val1 == 0, procentowa zmiana jest nieskończona (lub "N/A"), chyba że oba są zerowe
-                        diff_pct = float("inf") if val2 != 0 else 0
-                    comparison["metrics_diff"][key] = {
-                        "v1": val1,
-                        "v2": val2,
-                        "diff": diff,
-                        "diff_pct": diff_pct,
-                    }
-                except (TypeError, ValueError):
-                    # Metryki niearytmetyczne
-                    comparison["metrics_diff"][key] = {
-                        "v1": val1,
-                        "v2": val2,
-                        "diff": "N/A",
-                    }
+        )
+        for key in metric_keys:
+            metric_diff = self._compute_metric_diff(
+                v1.performance_metrics.get(key),
+                v2.performance_metrics.get(key),
+            )
+            if metric_diff is not None:
+                comparison["metrics_diff"][key] = metric_diff
 
         return comparison
+
+    @staticmethod
+    def _compute_metric_diff(val1: Any, val2: Any) -> Optional[Dict[str, Any]]:
+        """Wylicza różnicę metryk między dwiema wersjami."""
+        if val1 is None or val2 is None:
+            return None
+
+        try:
+            diff = val2 - val1
+            if val1 != 0:
+                diff_pct = (diff / val1) * 100
+            else:
+                # Gdy baza jest zerowa, zmiana procentowa jest nieskończona (o ile val2 != 0).
+                diff_pct = float("inf") if val2 != 0 else 0
+            return {
+                "v1": val1,
+                "v2": val2,
+                "diff": diff,
+                "diff_pct": diff_pct,
+            }
+        except (TypeError, ValueError):
+            return {
+                "v1": val1,
+                "v2": val2,
+                "diff": "N/A",
+            }
 
     def get_models_size_gb(self) -> float:
         """

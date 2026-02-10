@@ -307,3 +307,17 @@ class TestChronosRestoreHelpers:
             chronos_engine._restore_with_temp_backup(memory_backup, temp_backup)
 
         assert (chronos_engine.memory_root / "rollback.txt").exists()
+
+
+def test_safe_checkpoint_sort_key_with_invalid_timestamp(chronos_engine):
+    parsed, mtime = chronos_engine._safe_checkpoint_sort_key("not-a-date", 42)
+    assert parsed.year == 1
+    assert mtime == 42
+
+
+def test_load_checkpoint_entry_returns_none_for_missing_metadata(
+    chronos_engine, tmp_path
+):
+    checkpoint_dir = tmp_path / "cp-no-meta"
+    checkpoint_dir.mkdir()
+    assert chronos_engine._load_checkpoint_entry(checkpoint_dir) is None

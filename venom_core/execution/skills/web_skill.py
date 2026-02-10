@@ -186,86 +186,81 @@ class WebSearchSkill:
         )
 
         try:
-            # LOW-COST ROUTING: W trybie LOCAL/ECO zawsze wymuszamy darmowe
-            # źródła (DuckDuckGo) aby uniknąć płatnych zapytań.
-            force_free = getattr(SETTINGS, "LOW_COST_FORCE_DDG", True)
-            use_free_search = force_free and self.ai_mode in ("LOCAL", "ECO")
+            use_free_search = self._should_use_free_search()
+            fallback_note = ""
 
-            # Użyj Tavily jeśli dostępny i nie jesteśmy w trybie LOCAL/ECO
             if self.tavily_client and not use_free_search:
-                try:
-                    response = self.tavily_client.search(
-                        query=query,
-                        max_results=max_results,
-                        include_answer=True,
-                        include_raw_content=False,
-                    )
+                tavily_result = self._search_with_tavily(query, max_results)
+                if tavily_result is not None:
+                    return tavily_result
+                fallback_note = "⚠️ Tavily niedostępny, użyto DuckDuckGo\n\n"
 
-                    # Formatuj wyniki Tavily
-                    output = f"Znaleziono wyniki dla zapytania: '{query}'\n"
-                    output += "(źródło: Tavily AI Search)\n\n"
-
-                    # Dodaj AI-generated answer jeśli dostępny
-                    if response.get("answer"):
-                        output += f"📋 Podsumowanie AI:\n{response['answer']}\n\n"
-
-                    results = response.get("results", [])
-                    if not results:
-                        return f"Nie znaleziono wyników dla zapytania: {query}"
-
-                    output += f"🔍 Źródła ({len(results)}):\n\n"
-                    for i, result in enumerate(results[:max_results], 1):
-                        title = result.get("title", NO_TITLE_TEXT)
-                        url = result.get("url", "Brak URL")
-                        content = result.get("content", "Brak opisu")
-
-                        output += f"[{i}] {title}\n"
-                        output += f"URL: {url}\n"
-                        # Użyj stałej zamiast hardcoded wartości
-                        output += f"Opis: {content[:MAX_CONTENT_PREVIEW_LENGTH]}...\n\n"
-
-                    logger.info(
-                        f"WebSearch (Tavily): znaleziono {len(results)} wyników"
-                    )
-                    return output.strip()
-
-                except Exception as tavily_error:
-                    logger.warning(
-                        f"Błąd Tavily: {tavily_error}. Przełączam na DuckDuckGo."
-                    )
-                    # Informuj agenta o fallback
-                    fallback_note = "⚠️ Tavily niedostępny, użyto DuckDuckGo\n\n"
-                    # Fallback do DuckDuckGo poniżej
-
-            # Fallback: Użyj DuckDuckGo
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=max_results))
-
-            if not results:
-                return f"Nie znaleziono wyników dla zapytania: {query}"
-
-            # Formatuj wyniki DuckDuckGo
-            output = ""
-            # Dodaj notatkę o fallback jeśli była próba użycia Tavily
-            if self.tavily_client and "fallback_note" in locals():
-                output += fallback_note
-            output += f"Znaleziono {len(results)} wyników dla zapytania: '{query}'\n"
-            output += "(źródło: DuckDuckGo)\n\n"
-            for i, result in enumerate(results, 1):
-                title = result.get("title", NO_TITLE_TEXT)
-                url = result.get("href", "Brak URL")
-                snippet = result.get("body", "Brak opisu")
-
-                output += f"[{i}] {title}\n"
-                output += f"URL: {url}\n"
-                output += f"Opis: {snippet}\n\n"
-
-            logger.info(f"WebSearch (DuckDuckGo): znaleziono {len(results)} wyników")
-            return output.strip()
-
+            return self._search_with_duckduckgo(query, max_results, fallback_note)
         except Exception as e:
             logger.error(f"Błąd podczas wyszukiwania: {e}")
             return f"Wystąpił błąd podczas wyszukiwania: {str(e)}"
+
+    def _should_use_free_search(self) -> bool:
+        force_free = getattr(SETTINGS, "LOW_COST_FORCE_DDG", True)
+        return force_free and self.ai_mode in ("LOCAL", "ECO")
+
+    def _search_with_tavily(self, query: str, max_results: int) -> str | None:
+        try:
+            assert self.tavily_client is not None
+            response = self.tavily_client.search(
+                query=query,
+                max_results=max_results,
+                include_answer=True,
+                include_raw_content=False,
+            )
+        except Exception as tavily_error:
+            logger.warning(f"Błąd Tavily: {tavily_error}. Przełączam na DuckDuckGo.")
+            return None
+
+        return self._format_tavily_response(query, response, max_results)
+
+    def _format_tavily_response(
+        self, query: str, response: dict[str, Any], max_results: int
+    ) -> str:
+        output = f"Znaleziono wyniki dla zapytania: '{query}'\n(źródło: Tavily AI Search)\n\n"
+        if response.get("answer"):
+            output += f"📋 Podsumowanie AI:\n{response['answer']}\n\n"
+
+        results = response.get("results", [])
+        if not results:
+            return f"Nie znaleziono wyników dla zapytania: {query}"
+
+        output += f"🔍 Źródła ({len(results)}):\n\n"
+        for i, result in enumerate(results[:max_results], 1):
+            title = result.get("title", NO_TITLE_TEXT)
+            url = result.get("url", "Brak URL")
+            content = result.get("content", "Brak opisu")
+            output += f"[{i}] {title}\nURL: {url}\n"
+            output += f"Opis: {content[:MAX_CONTENT_PREVIEW_LENGTH]}...\n\n"
+
+        logger.info(f"WebSearch (Tavily): znaleziono {len(results)} wyników")
+        return output.strip()
+
+    def _search_with_duckduckgo(
+        self, query: str, max_results: int, fallback_note: str = ""
+    ) -> str:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+
+        if not results:
+            return f"Nie znaleziono wyników dla zapytania: {query}"
+
+        output = fallback_note
+        output += f"Znaleziono {len(results)} wyników dla zapytania: '{query}'\n"
+        output += "(źródło: DuckDuckGo)\n\n"
+        for i, result in enumerate(results, 1):
+            title = result.get("title", NO_TITLE_TEXT)
+            url = result.get("href", "Brak URL")
+            snippet = result.get("body", "Brak opisu")
+            output += f"[{i}] {title}\nURL: {url}\nOpis: {snippet}\n\n"
+
+        logger.info(f"WebSearch (DuckDuckGo): znaleziono {len(results)} wyników")
+        return output.strip()
 
     @kernel_function(
         name="scrape_text",

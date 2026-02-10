@@ -218,35 +218,52 @@ class ChronosEngine:
 
         checkpoints: List[Tuple[Checkpoint, int]] = []
         for checkpoint_dir in timeline_path.iterdir():
-            if checkpoint_dir.is_dir():
-                metadata_file = checkpoint_dir / "checkpoint.json"
-                if metadata_file.exists():
-                    try:
-                        with open(metadata_file, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                            checkpoint = Checkpoint.from_dict(data)
-                            try:
-                                mtime_ns = checkpoint_dir.stat().st_mtime_ns
-                            except OSError:
-                                mtime_ns = 0
-                            checkpoints.append((checkpoint, mtime_ns))
-                    except Exception as e:
-                        logger.warning(
-                            f"Błąd odczytu metadanych checkpointu {checkpoint_dir.name}: {e}"
-                        )
-
-        def _parse_timestamp(value: str) -> datetime:
-            try:
-                return datetime.fromisoformat(value)
-            except ValueError:
-                return datetime.min
+            if not checkpoint_dir.is_dir():
+                continue
+            checkpoint_entry = self._load_checkpoint_entry(checkpoint_dir)
+            if checkpoint_entry is not None:
+                checkpoints.append(checkpoint_entry)
 
         # Sortuj po timestamp (od najnowszych), z fallbackiem na mtime
         checkpoints.sort(
-            key=lambda item: (_parse_timestamp(item[0].timestamp), item[1]),
+            key=lambda item: self._safe_checkpoint_sort_key(item[0].timestamp, item[1]),
             reverse=True,
         )
         return [checkpoint for checkpoint, _ in checkpoints]
+
+    def _load_checkpoint_entry(
+        self, checkpoint_dir: Path
+    ) -> Optional[Tuple[Checkpoint, int]]:
+        """Ładuje pojedynczy wpis checkpointu i mtime katalogu."""
+        metadata_file = checkpoint_dir / "checkpoint.json"
+        if not metadata_file.exists():
+            return None
+
+        try:
+            with open(metadata_file, "r", encoding="utf-8") as handle:
+                checkpoint = Checkpoint.from_dict(json.load(handle))
+        except Exception as error:
+            logger.warning(
+                f"Błąd odczytu metadanych checkpointu {checkpoint_dir.name}: {error}"
+            )
+            return None
+
+        try:
+            mtime_ns = checkpoint_dir.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        return checkpoint, mtime_ns
+
+    @staticmethod
+    def _safe_checkpoint_sort_key(
+        timestamp: str, mtime_ns: int
+    ) -> Tuple[datetime, int]:
+        """Buduje stabilny klucz sortowania checkpointu."""
+        try:
+            parsed = datetime.fromisoformat(timestamp)
+        except ValueError:
+            parsed = datetime.min
+        return parsed, mtime_ns
 
     def delete_checkpoint(self, checkpoint_id: str, timeline: str = "main") -> bool:
         """

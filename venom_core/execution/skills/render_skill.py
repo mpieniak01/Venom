@@ -333,32 +333,7 @@ class RenderSkill:
             ID widgetu lub komunikat o błędzie
         """
         try:
-            # Parsowanie pól
-            properties = {}
-            required = []
-
-            for field_str in fields.split(";"):
-                if field_str.strip():
-                    parts = field_str.split(":")
-                    if len(parts) >= 3:
-                        name, field_type, label = (
-                            parts[0].strip(),
-                            parts[1].strip(),
-                            parts[2].strip(),
-                        )
-
-                        clean_name = name.rstrip("*")
-
-                        # Mapowanie typów
-                        json_type = "string"
-                        if field_type in ["number", "integer"]:
-                            json_type = "number"
-
-                        properties[clean_name] = {"type": json_type, "title": label}
-
-                        # Jeśli pole kończy się *, jest wymagane
-                        if name.endswith("*"):
-                            required.append(clean_name)
+            properties, required = self._parse_form_fields(fields)
 
             # Tworzenie JSON Schema
             schema = {
@@ -378,6 +353,36 @@ class RenderSkill:
         except Exception as e:
             logger.error(f"Błąd podczas tworzenia formularza: {e}")
             return f"Błąd tworzenia formularza: {str(e)}"
+
+    @staticmethod
+    def _field_to_schema_type(field_type: str) -> str:
+        return "number" if field_type in {"number", "integer"} else "string"
+
+    def _parse_form_fields(self, fields: str) -> tuple[dict[str, Any], list[str]]:
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+
+        for field_str in fields.split(";"):
+            if not field_str.strip():
+                continue
+            parts = field_str.split(":")
+            if len(parts) < 3:
+                continue
+
+            name, field_type, label = (
+                parts[0].strip(),
+                parts[1].strip(),
+                parts[2].strip(),
+            )
+            clean_name = name.rstrip("*")
+            properties[clean_name] = {
+                "type": self._field_to_schema_type(field_type),
+                "title": label,
+            }
+            if name.endswith("*"):
+                required.append(clean_name)
+
+        return properties, required
 
     @kernel_function(
         name="render_markdown",

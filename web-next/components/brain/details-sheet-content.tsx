@@ -33,7 +33,7 @@ export function BrainDetailsSheetContent({
             <SheetHeader>
                 <SheetTitle>{String(selected.label || selected.id || "Node")}</SheetTitle>
                 <SheetDescription>
-                    Typ: {String(selected.type || "n/a")}
+                    {t("brain.details.type")}: {String(selected.type || "n/a")}
                 </SheetDescription>
             </SheetHeader>
             <div className="space-y-4 text-sm text-zinc-300 mt-6">

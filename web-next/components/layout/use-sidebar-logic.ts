@@ -13,7 +13,7 @@ import {
     AutonomySnapshot
 } from "./sidebar-helpers";
 
-export function useSidebarLogic(t: (key: string, options?: Record<string, unknown>) => string) {
+export function useSidebarLogic(t: (key: string, options?: Record<string, string | number>) => string) {
     const { data: costMode, refresh: refreshCost } = useCostMode(15000);
     const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel(20000);
 
@@ -91,6 +91,8 @@ export function useSidebarLogic(t: (key: string, options?: Record<string, unknow
 
     const handleAutonomyChange = async (level: number) => {
         if (autonomy?.current_level === level) return;
+        const prevLevel = selectedAutonomy;
+        setSelectedAutonomy(String(level));
         setAutonomyLoading(level);
         setStatusMessage(null);
         try {
@@ -98,6 +100,7 @@ export function useSidebarLogic(t: (key: string, options?: Record<string, unknow
             refreshAutonomy();
             setStatusMessage(t("sidebar.messages.autonomySuccess", { level }));
         } catch (error) {
+            setSelectedAutonomy(prevLevel);
             const fallback = resolveAutonomyDetails(level);
             if (fallback) {
                 setLocalAutonomy(fallback);

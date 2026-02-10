@@ -1,3 +1,5 @@
+"use client";
+
 import { Brain, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type cytoscapeType from "cytoscape";

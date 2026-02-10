@@ -18,6 +18,22 @@ import { useModelsViewerLogic } from "./use-models-viewer-logic";
 
 type ModelsViewerLogic = ReturnType<typeof useModelsViewerLogic>;
 
+interface RuntimeSectionProps {
+    selectedServer: ModelsViewerLogic["selectedServer"];
+    setSelectedServer: ModelsViewerLogic["setSelectedServer"];
+    serverOptions: ModelsViewerLogic["serverOptions"];
+    selectedModel: ModelsViewerLogic["selectedModel"];
+    setSelectedModel: ModelsViewerLogic["setSelectedModel"];
+    modelOptions: ModelsViewerLogic["modelOptions"];
+    activeRuntime: ModelsViewerLogic["activeRuntime"];
+    activeServer: ModelsViewerLogic["activeServer"];
+    installed: ModelsViewerLogic["installed"];
+    setActiveLlmServer: ModelsViewerLogic["setActiveLlmServer"];
+    switchModel: ModelsViewerLogic["switchModel"];
+    pushToast: ModelsViewerLogic["pushToast"];
+    t: ModelsViewerLogic["t"];
+}
+
 export function RuntimeSection({
     selectedServer,
     setSelectedServer,
@@ -32,7 +48,7 @@ export function RuntimeSection({
     switchModel,
     pushToast,
     t
-}: ModelsViewerLogic) {
+}: RuntimeSectionProps) {
     return (
         <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -100,6 +116,20 @@ export function RuntimeSection({
     );
 }
 
+interface SearchSectionProps {
+    searchCollapsed: ModelsViewerLogic["searchCollapsed"];
+    setSearchCollapsed: ModelsViewerLogic["setSearchCollapsed"];
+    searchQuery: ModelsViewerLogic["searchQuery"];
+    setSearchQuery: ModelsViewerLogic["setSearchQuery"];
+    searchProvider: ModelsViewerLogic["searchProvider"];
+    setSearchProvider: ModelsViewerLogic["setSearchProvider"];
+    searchResults: ModelsViewerLogic["searchResults"];
+    handleSearch: ModelsViewerLogic["handleSearch"];
+    handleInstall: ModelsViewerLogic["handleInstall"];
+    pendingActions: ModelsViewerLogic["pendingActions"];
+    t: ModelsViewerLogic["t"];
+}
+
 export function SearchSection({
     searchCollapsed,
     setSearchCollapsed,
@@ -112,7 +142,7 @@ export function SearchSection({
     handleInstall,
     pendingActions,
     t
-}: ModelsViewerLogic) {
+}: SearchSectionProps) {
     return (
         <section className="grid gap-10">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -177,11 +207,26 @@ export function SearchSection({
     );
 }
 
+interface NewsSectionProps {
+    newsCollapsed: ModelsViewerLogic["newsCollapsed"];
+    setNewsCollapsed: ModelsViewerLogic["setNewsCollapsed"];
+    newsHf: ModelsViewerLogic["newsHf"];
+    refreshNews: ModelsViewerLogic["refreshNews"];
+    newsSort: ModelsViewerLogic["newsSort"];
+    setNewsSort: ModelsViewerLogic["setNewsSort"];
+    language: ModelsViewerLogic["language"];
+    papersCollapsed: ModelsViewerLogic["papersCollapsed"];
+    setPapersCollapsed: ModelsViewerLogic["setPapersCollapsed"];
+    papersHf: ModelsViewerLogic["papersHf"];
+    refreshPapers: ModelsViewerLogic["refreshPapers"];
+    t: ModelsViewerLogic["t"];
+}
+
 export function NewsSection({
     newsCollapsed, setNewsCollapsed, newsHf, refreshNews, newsSort, setNewsSort, language,
     papersCollapsed, setPapersCollapsed, papersHf, refreshPapers,
     t
-}: ModelsViewerLogic) {
+}: NewsSectionProps) {
     const sortedNews = newsSort === "oldest" ? [...newsHf.items].reverse() : newsHf.items;
     const sortedPapers = newsSort === "oldest" ? [...papersHf.items].reverse() : papersHf.items;
 
@@ -266,12 +311,28 @@ export function NewsSection({
     );
 }
 
+interface RecommendedAndCatalogProps {
+    trendingCollapsed: ModelsViewerLogic["trendingCollapsed"];
+    setTrendingCollapsed: ModelsViewerLogic["setTrendingCollapsed"];
+    trendingHf: ModelsViewerLogic["trendingHf"];
+    trendingOllama: ModelsViewerLogic["trendingOllama"];
+    refreshTrending: ModelsViewerLogic["refreshTrending"];
+    catalogCollapsed: ModelsViewerLogic["catalogCollapsed"];
+    setCatalogCollapsed: ModelsViewerLogic["setCatalogCollapsed"];
+    catalogHf: ModelsViewerLogic["catalogHf"];
+    catalogOllama: ModelsViewerLogic["catalogOllama"];
+    refreshCatalog: ModelsViewerLogic["refreshCatalog"];
+    handleInstall: ModelsViewerLogic["handleInstall"];
+    pendingActions: ModelsViewerLogic["pendingActions"];
+    t: ModelsViewerLogic["t"];
+}
+
 export function RecommendedAndCatalog({
     trendingCollapsed, setTrendingCollapsed, trendingHf, trendingOllama, refreshTrending,
     catalogCollapsed, setCatalogCollapsed, catalogHf, catalogOllama, refreshCatalog,
     handleInstall, pendingActions,
     t
-}: ModelsViewerLogic) {
+}: RecommendedAndCatalogProps) {
     return (
         <div className="flex flex-col gap-10">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -336,12 +397,27 @@ export function RecommendedAndCatalog({
     );
 }
 
+interface InstalledAndOperationsProps {
+    installedCollapsed: ModelsViewerLogic["installedCollapsed"];
+    setInstalledCollapsed: ModelsViewerLogic["setInstalledCollapsed"];
+    installed: ModelsViewerLogic["installed"];
+    installedBuckets: ModelsViewerLogic["installedBuckets"];
+    installedModels: ModelsViewerLogic["installedModels"];
+    handleActivate: ModelsViewerLogic["handleActivate"];
+    handleRemove: ModelsViewerLogic["handleRemove"];
+    pendingActions: ModelsViewerLogic["pendingActions"];
+    operationsCollapsed: ModelsViewerLogic["operationsCollapsed"];
+    setOperationsCollapsed: ModelsViewerLogic["setOperationsCollapsed"];
+    operations: ModelsViewerLogic["operations"];
+    t: ModelsViewerLogic["t"];
+}
+
 export function InstalledAndOperations({
     installedCollapsed, setInstalledCollapsed, installed, installedBuckets, installedModels,
     handleActivate, handleRemove, pendingActions,
     operationsCollapsed, setOperationsCollapsed, operations,
     t
-}: ModelsViewerLogic) {
+}: InstalledAndOperationsProps) {
     const allowRemoveProviders = new Set(["ollama", "huggingface"]);
 
     return (

@@ -70,12 +70,12 @@ export function parseRuntimeErrorDetails(errorDetails: Record<string, unknown>):
     const expectedHash = errorDetails["expected_hash"];
     const actualHash = errorDetails["actual_hash"];
     if (typeof expectedHash === "string") details.push(`expected_hash: ${expectedHash.slice(0, 8)}`);
-    if (typeof actualHash === "string") details.push(`active_hash: ${actualHash.slice(0, 8)}`);
+    if (typeof actualHash === "string") details.push(`actual_hash: ${actualHash.slice(0, 8)}`);
 
     const expectedRuntime = errorDetails["expected_runtime"];
     const actualRuntime = errorDetails["actual_runtime"];
     if (typeof expectedRuntime === "string") details.push(`expected_runtime: ${expectedRuntime}`);
-    if (typeof actualRuntime === "string") details.push(`active_runtime: ${actualRuntime}`);
+    if (typeof actualRuntime === "string") details.push(`actual_runtime: ${actualRuntime}`);
 
     return details;
 }

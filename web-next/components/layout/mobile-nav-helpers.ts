@@ -26,12 +26,12 @@ export const getTelemetryContent = ({
     t
 }: {
     telemetryTab: TelemetryTab;
-    queue: QueueStatus;
-    metrics: Metrics;
+    queue: QueueStatus | null;
+    metrics: Metrics | null;
     connected: boolean;
     entriesCount: number;
     latestLogsTs: string | null;
-    t: (key: string, options?: Record<string, unknown>) => string;
+    t: (key: string, options?: Record<string, string | number>) => string;
 }) => {
     if (telemetryTab === "queue") {
         return {

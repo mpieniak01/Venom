@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarkdownPreview } from "@/components/ui/markdown";
 import { statusTone } from "@/lib/status";
-import type { HistoryRequestDetail, FlowStep } from "@/lib/types";
+import type { HistoryRequestDetail, HistoryStep } from "@/lib/types";
 import {
     formatDateTime,
     formatDurationSeconds,
@@ -12,7 +12,7 @@ import {
     FeedbackState
 } from "./drawer-helpers";
 
-export function PromptSection({ prompt, t }: { prompt: string; t: (key: string, options?: Record<string, unknown>) => string }) {
+export function PromptSection({ prompt, t }: { prompt: string; t: (key: string, options?: Record<string, string | number>) => string }) {
     return (
         <div className="mt-4 rounded-2xl box-base p-4">
             <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
@@ -41,7 +41,7 @@ export function PayloadSection({
     payloadGenerationParams?: Record<string, unknown>;
     payloadContextUsed?: Record<string, unknown>;
     contextPreviewMeta?: ContextPreviewMeta | null;
-    t: (key: string, options?: Record<string, unknown>) => string;
+    t: (key: string, options?: Record<string, string | number>) => string;
 }) {
     if (!contextPreviewMeta && !payloadGenerationParams && !payloadSessionMeta && !payloadForcedRoute && !payloadContextUsed) return null;
 
@@ -126,7 +126,7 @@ export function DiagnosticsSection({
     requestModeLabel?: string | null;
     simpleResponse?: SimpleResponse | null;
     runtimeErrorMeta?: RuntimeErrorMeta | null;
-    t: (key: string, options?: Record<string, unknown>) => string;
+    t: (key: string, options?: Record<string, string | number>) => string;
 }) {
     if (!requestModeLabel && !simpleResponse && !runtimeErrorMeta) return null;
 
@@ -186,7 +186,7 @@ export function DiagnosticsSection({
     );
 }
 
-export function ModelInfoSection({ historyDetail, t }: { historyDetail: HistoryRequestDetail; t: (key: string, options?: Record<string, unknown>) => string }) {
+export function ModelInfoSection({ historyDetail, t }: { historyDetail: HistoryRequestDetail; t: (key: string, options?: Record<string, string | number>) => string }) {
     if (!historyDetail.model && !historyDetail.llm_provider && !historyDetail.llm_endpoint && !historyDetail.llm_runtime_id) return null;
 
     return (
@@ -241,7 +241,7 @@ export function TimingSection({
     uiTimingEntry?: { historyMs?: number; ttftMs?: number } | null;
     historyDetail: HistoryRequestDetail;
     llmStartAt?: string | null;
-    t: (key: string, options?: Record<string, unknown>) => string;
+    t: (key: string, options?: Record<string, string | number>) => string;
 }) {
     return (
         <>
@@ -332,7 +332,7 @@ export function FeedbackSection({
     feedbackSubmittingId: string | null;
     onFeedbackSubmit: (requestId: string, payload?: { rating?: "up" | "down"; comment?: string }) => void;
     onUpdateFeedbackState: (requestId: string, patch: Partial<FeedbackState>) => void;
-    t: (key: string, options?: Record<string, unknown>) => string;
+    t: (key: string, options?: Record<string, string | number>) => string;
 }) {
     const currentFeedback = feedbackByRequest[selectedRequestId];
     return (
@@ -389,7 +389,7 @@ export function FeedbackSection({
     );
 }
 
-export function LogsSection({ logs, t }: { logs: string[]; t: (key: string, options?: Record<string, unknown>) => string }) {
+export function LogsSection({ logs, t }: { logs: string[]; t: (key: string, options?: Record<string, string | number>) => string }) {
     if (!logs || logs.length === 0) return null;
     return (
         <div className="mt-4 rounded-2xl box-muted p-4">
@@ -414,11 +414,11 @@ export function StepsSection({
     onCopyDetailSteps,
     t
 }: {
-    steps: FlowStep[];
+    steps: HistoryStep[];
     requestId?: string;
     copyStepsMessage: string | null;
     onCopyDetailSteps: () => void;
-    t: (key: string, options?: Record<string, unknown>) => string;
+    t: (key: string, options?: Record<string, string | number>) => string;
 }) {
     return (
         <div className="mt-4 space-y-2 rounded-2xl box-muted p-4">

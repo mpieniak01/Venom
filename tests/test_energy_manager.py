@@ -179,6 +179,29 @@ class TestEnergyManager:
         # Callback powinien zostać wywołany (system jest "zajęty" z progami 0%)
         assert len(callback_called) > 0
 
+    @pytest.mark.asyncio
+    async def test_run_alert_callbacks_handles_sync_async_and_errors(self):
+        em = EnergyManager()
+        called = {"sync": 0, "async": 0}
+
+        def sync_cb():
+            called["sync"] += 1
+
+        async def async_cb():
+            called["async"] += 1
+
+        def failing_cb():
+            raise RuntimeError("boom")
+
+        em.register_alert_callback(sync_cb)
+        em.register_alert_callback(async_cb)
+        em.register_alert_callback(failing_cb)
+
+        await em._run_alert_callbacks()
+
+        assert called["sync"] == 1
+        assert called["async"] == 1
+
     def test_get_status(self):
         """Test pobierania statusu EnergyManager."""
         em = EnergyManager(cpu_threshold=0.7, memory_threshold=0.8)

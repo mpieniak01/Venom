@@ -190,7 +190,7 @@ def test_schedule_task_invalid_time_format(calendar_skill_with_mock_service):
 
 def test_read_agenda_api_error(calendar_skill_with_mock_service):
     """Test read_agenda z błędem API."""
-    from googleapiclient.errors import HttpError
+    from venom_core.execution.skills.google_calendar_skill import HttpError
 
     # Mock błędu API
     mock_events = Mock()
@@ -205,7 +205,7 @@ def test_read_agenda_api_error(calendar_skill_with_mock_service):
 
 def test_schedule_task_api_error(calendar_skill_with_mock_service):
     """Test schedule_task z błędem API."""
-    from googleapiclient.errors import HttpError
+    from venom_core.execution.skills.google_calendar_skill import HttpError
 
     # Mock błędu API
     mock_events = Mock()

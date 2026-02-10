@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytest.importorskip("github")
+
 from venom_core.execution.skills.github_skill import GitHubSkill
 from venom_core.execution.skills.huggingface_skill import HuggingFaceSkill
 

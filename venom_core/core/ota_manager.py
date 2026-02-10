@@ -115,39 +115,16 @@ class OTAManager:
             OTAPackage lub None w przypadku błędu
         """
         try:
-            # Nazwa pliku paczki
-            package_filename = (
-                f"venom_ota_{version}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-            )
-            package_path = self.ota_dir / package_filename
+            package_path = self._build_package_path(version)
+            package_filename = package_path.name
 
             logger.info(f"Tworzenie paczki OTA: {package_filename}")
 
             # Utwórz ZIP
             with zipfile.ZipFile(package_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-                # Dodaj źródła
                 for source_path in source_paths:
-                    if not source_path.exists():
-                        logger.warning(f"Ścieżka nie istnieje: {source_path}, pomijam")
-                        continue
-
-                    if source_path.is_file():
-                        # Pojedynczy plik
-                        zipf.write(source_path, source_path.name)
-                    elif source_path.is_dir():
-                        # Katalog - dodaj rekursywnie
-                        for file_path in source_path.rglob("*"):
-                            if file_path.is_file():
-                                # Relatywna ścieżka w ZIP
-                                arcname = file_path.relative_to(source_path.parent)
-                                zipf.write(file_path, arcname)
-
-                # Dodaj plik zależności jeśli wymagane
-                if include_dependencies:
-                    req_path = Path(REQUIREMENTS_FILENAME)
-                    if req_path.exists():
-                        zipf.write(req_path, REQUIREMENTS_FILENAME)
-                        logger.info(f"Dodano {REQUIREMENTS_FILENAME} do paczki")
+                    self._add_source_path_to_zip(zipf, source_path)
+                self._add_dependencies_to_zip(zipf, include_dependencies)
 
             # Oblicz checksum
             checksum = await self._calculate_checksum(package_path)
@@ -169,6 +146,36 @@ class OTAManager:
         except Exception as e:
             logger.error(f"Błąd podczas tworzenia paczki OTA: {e}")
             return None
+
+    def _build_package_path(self, version: str) -> Path:
+        package_filename = (
+            f"venom_ota_{version}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        )
+        return self.ota_dir / package_filename
+
+    def _add_source_path_to_zip(self, zipf: zipfile.ZipFile, source_path: Path) -> None:
+        if not source_path.exists():
+            logger.warning(f"Ścieżka nie istnieje: {source_path}, pomijam")
+            return
+        if source_path.is_file():
+            zipf.write(source_path, source_path.name)
+            return
+        if source_path.is_dir():
+            for file_path in source_path.rglob("*"):
+                if file_path.is_file():
+                    arcname = file_path.relative_to(source_path.parent)
+                    zipf.write(file_path, arcname)
+
+    def _add_dependencies_to_zip(
+        self, zipf: zipfile.ZipFile, include_dependencies: bool
+    ) -> None:
+        if not include_dependencies:
+            return
+        req_path = Path(REQUIREMENTS_FILENAME)
+        if not req_path.exists():
+            return
+        zipf.write(req_path, REQUIREMENTS_FILENAME)
+        logger.info(f"Dodano {REQUIREMENTS_FILENAME} do paczki")
 
     async def _calculate_checksum(self, file_path: Path) -> str:
         """

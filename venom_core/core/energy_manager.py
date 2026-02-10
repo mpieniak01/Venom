@@ -215,16 +215,7 @@ class EnergyManager:
             try:
                 if self.is_system_busy():
                     logger.warning("System zajęty - wywoływanie callbacków")
-
-                    # Wywołaj wszystkie zarejestrowane callbacki
-                    for callback in self._alert_callbacks:
-                        try:
-                            if asyncio.iscoroutinefunction(callback):
-                                await callback()
-                            else:
-                                callback()
-                        except Exception as e:
-                            logger.error(f"Błąd w alert callback: {e}", exc_info=True)
+                    await self._run_alert_callbacks()
 
                 # Czekaj przed następnym sprawdzeniem
                 await asyncio.sleep(self.check_interval)
@@ -235,6 +226,17 @@ class EnergyManager:
             except Exception as e:
                 logger.error(f"Błąd w monitoring loop: {e}", exc_info=True)
                 await asyncio.sleep(self.check_interval)
+
+    async def _run_alert_callbacks(self) -> None:
+        """Uruchamia callbacki alarmowe z izolacją błędów."""
+        for callback in self._alert_callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback()
+                else:
+                    callback()
+            except Exception as error:
+                logger.error(f"Błąd w alert callback: {error}", exc_info=True)
 
     def get_idle_time(self) -> float:
         """

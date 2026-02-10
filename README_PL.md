@@ -641,7 +641,7 @@ make run
 - [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md)
 
 ### Agenci
-- [**Katalog agentów systemu** (34 agenty)](docs/PL/KATALOG_AGENTOW_SYSTEMU.md) 📋
+- [**Katalog agentów systemu** (34 agenty)](docs/PL/SYSTEM_AGENTS_CATALOG.md) 📋
 - [**Wytyczne dla agentów kodowania**](docs/PL/AGENTS.md) 🧭
 - [The Architect - Planowanie](docs/PL/THE_ARCHITECT.md)
 - [The Coder - Generowanie kodu](docs/PL/THE_CODER.md)
@@ -678,14 +678,14 @@ make run
 
 ### Współpraca
 - [Przewodnik współpracy](docs/PL/CONTRIBUTING.md)
-- [Polityka testów](docs/PL/POLITYKA_TESTOW.md)
+- [Polityka testów](docs/PL/TESTING_POLICY.md)
 - [Testowanie i wydajność](docs/PL/TESTING_CHAT_LATENCY.md)
 
 ## 🧪 Testy
 
 Polityka testów i komendy są scentralizowane w:
 
-- [`docs/PL/POLITYKA_TESTOW.md`](docs/PL/POLITYKA_TESTOW.md)
+- [`docs/PL/TESTING_POLICY.md`](docs/PL/TESTING_POLICY.md)
 - [`docs/PL/TESTING_CHAT_LATENCY.md`](docs/PL/TESTING_CHAT_LATENCY.md) (szczegóły performance/latency)
 
 Szybka ścieżka lokalna przed PR:

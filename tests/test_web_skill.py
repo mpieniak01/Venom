@@ -85,6 +85,7 @@ class TestWebSearchSkill:
         self, mock_trafilatura, mock_httpx, web_skill
     ):
         """Test fallbacku do BeautifulSoup gdy trafilatura zawodzi."""
+        pytest.importorskip("bs4")
         # Trafilatura zwraca None
         mock_trafilatura.fetch_url.return_value = None
 
@@ -101,6 +102,7 @@ class TestWebSearchSkill:
     @patch("venom_core.execution.skills.web_skill.httpx")
     def test_scrape_text_timeout(self, mock_httpx, mock_trafilatura, web_skill):
         """Test obsługi timeoutu."""
+        pytest.importorskip("bs4")
         mock_trafilatura.fetch_url.return_value = None
 
         # Mock httpx.TimeoutException
@@ -248,3 +250,8 @@ class TestWebSearchSkill:
                 mock_ddgs_instance.text.assert_called_once()
                 # Tavily nie powinien być wywołany
                 mock_tavily_instance.search.assert_not_called()
+
+    def test_format_tavily_response_no_results(self, web_skill):
+        response = {"answer": "none", "results": []}
+        result = web_skill._format_tavily_response("q", response, 5)
+        assert "Nie znaleziono wyników" in result

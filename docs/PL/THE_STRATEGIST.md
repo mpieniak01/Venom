@@ -225,4 +225,4 @@ OPENAI_DAILY_TOKENS_LIMIT=500000
 - [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planowanie zadań
 - [THE_HIVE.md](THE_HIVE.md) - Rozproszone wykonanie zadań
 - [COST_GUARD.md](COST_GUARD.md) - Ochrona budżetu API
-- [KATALOG_AGENTOW_SYSTEMU.md](KATALOG_AGENTOW_SYSTEMU.md) - Pełny katalog agentów systemu
+- [SYSTEM_AGENTS_CATALOG.md](SYSTEM_AGENTS_CATALOG.md) - Pełny katalog agentów systemu

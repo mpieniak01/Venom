@@ -358,3 +358,10 @@ def test_get_memory_metrics_with_gpu(service_monitor):
                 assert metrics["vram_usage_mb"] == pytest.approx(2048.0)
                 assert metrics["vram_total_mb"] == pytest.approx(8192.0)
                 assert metrics["vram_usage_percent"] == pytest.approx(25.0)
+
+
+def test_parse_nvidia_smi_output_filters_invalid_rows(service_monitor):
+    parsed = service_monitor._parse_nvidia_smi_output(
+        "2048, 8192\ninvalid\n1000, xyz\n4096, 8192\n"
+    )
+    assert parsed == [(2048.0, 8192.0), (4096.0, 8192.0)]

@@ -56,27 +56,11 @@ class StreamingHandler:
             chunk_count += 1
             now = time.perf_counter()
 
-            # Emituj częściowe wyniki z określonym interwałem
-            should_emit_partial = (
-                not first_chunk_sent
-                or (now - last_partial_emit) >= self.partial_emit_interval
-            )
-
-            if should_emit_partial:
-                self.state_manager.update_partial_result(
-                    task_id, "".join(stream_buffer)
+            if self._should_emit_partial(first_chunk_sent, now, last_partial_emit):
+                self._emit_partial_update(
+                    task_id, stream_buffer, now, stream_start, chunk_count
                 )
                 last_partial_emit = now
-                elapsed_ms = int((now - stream_start) * 1000)
-                self.state_manager.update_context(
-                    task_id,
-                    {
-                        "streaming": {
-                            "chunk_count": chunk_count,
-                            "last_emit_ms": elapsed_ms,
-                        }
-                    },
-                )
 
             # Obsługa pierwszego fragmentu (first token latency)
             if first_chunk_sent:
@@ -87,45 +71,75 @@ class StreamingHandler:
                 return
 
             first_chunk_sent = True
-            elapsed_ms = int((now - stream_start) * 1000)
-            preview_trimmed = preview[:200] + "..." if len(preview) > 200 else preview
-
-            # Zaloguj pierwszy fragment
-            self.state_manager.add_log(
-                task_id, f"Pierwszy fragment odpowiedzi: {preview_trimmed}"
+            self._handle_first_chunk(
+                task_id=task_id,
+                preview=preview,
+                now=now,
+                stream_start=stream_start,
+                chunk_count=chunk_count,
+                collector=collector,
             )
-
-            # Zaktualizuj kontekst z informacją o pierwszym tokenie
-            task = self.state_manager.get_task(task_id)
-            context_used_dict = None
-            if task:
-                context_used_dict = getattr(task, "context_used", None)
-                if context_used_dict:
-                    context_used_dict = context_used_dict.model_dump()
-
-            self.state_manager.update_context(
-                task_id,
-                {
-                    "first_token": {
-                        "at": get_utc_now_iso(),
-                        "elapsed_ms": elapsed_ms,
-                        "preview": preview_trimmed,
-                    },
-                    "context_used": context_used_dict,
-                },
-            )
-            self.state_manager.update_context(
-                task_id,
-                {
-                    "streaming": {
-                        "chunk_count": chunk_count,
-                        "first_chunk_ms": elapsed_ms,
-                    }
-                },
-            )
-
-            # Dodaj metrykę first token latency
-            if collector:
-                collector.add_llm_first_token_sample(elapsed_ms)
 
         return _handle_stream_chunk
+
+    def _should_emit_partial(
+        self, first_chunk_sent: bool, now: float, last_partial_emit: float
+    ) -> bool:
+        return (not first_chunk_sent) or (
+            (now - last_partial_emit) >= self.partial_emit_interval
+        )
+
+    def _emit_partial_update(
+        self,
+        task_id: UUID,
+        stream_buffer: list[str],
+        now: float,
+        stream_start: float,
+        chunk_count: int,
+    ) -> None:
+        self.state_manager.update_partial_result(task_id, "".join(stream_buffer))
+        elapsed_ms = int((now - stream_start) * 1000)
+        self.state_manager.update_context(
+            task_id,
+            {"streaming": {"chunk_count": chunk_count, "last_emit_ms": elapsed_ms}},
+        )
+
+    def _handle_first_chunk(
+        self,
+        task_id: UUID,
+        preview: str,
+        now: float,
+        stream_start: float,
+        chunk_count: int,
+        collector,
+    ) -> None:
+        elapsed_ms = int((now - stream_start) * 1000)
+        preview_trimmed = preview[:200] + "..." if len(preview) > 200 else preview
+        self.state_manager.add_log(
+            task_id, f"Pierwszy fragment odpowiedzi: {preview_trimmed}"
+        )
+
+        task = self.state_manager.get_task(task_id)
+        context_used_dict = None
+        if task:
+            context_used_dict = getattr(task, "context_used", None)
+            if context_used_dict:
+                context_used_dict = context_used_dict.model_dump()
+
+        self.state_manager.update_context(
+            task_id,
+            {
+                "first_token": {
+                    "at": get_utc_now_iso(),
+                    "elapsed_ms": elapsed_ms,
+                    "preview": preview_trimmed,
+                },
+                "context_used": context_used_dict,
+            },
+        )
+        self.state_manager.update_context(
+            task_id,
+            {"streaming": {"chunk_count": chunk_count, "first_chunk_ms": elapsed_ms}},
+        )
+        if collector:
+            collector.add_llm_first_token_sample(elapsed_ms)

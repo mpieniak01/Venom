@@ -186,6 +186,26 @@ def test_model_manager_compare_nonexistent_versions(tmp_path):
     assert comparison is None
 
 
+def test_compute_metric_diff_with_zero_base(tmp_path):
+    manager = ModelManager(models_dir=str(tmp_path))
+    result = manager._compute_metric_diff(0, 5)
+    assert result is not None
+    assert result["diff"] == 5
+    assert result["diff_pct"] == float("inf")
+
+
+def test_compute_metric_diff_with_non_numeric_values(tmp_path):
+    manager = ModelManager(models_dir=str(tmp_path))
+    result = manager._compute_metric_diff("low", "high")
+    assert result is not None
+    assert result["diff"] == "N/A"
+
+
+def test_compute_metric_diff_with_missing_value_returns_none(tmp_path):
+    manager = ModelManager(models_dir=str(tmp_path))
+    assert manager._compute_metric_diff(None, 1) is None
+
+
 def test_model_manager_is_lora_adapter_nonexistent(tmp_path):
     """Test sprawdzania nieistniejącego adaptera."""
     manager = ModelManager(models_dir=str(tmp_path))

@@ -84,8 +84,7 @@ make pytest
 Frontend:
 
 ```bash
-npm --prefix web-next run build
-npm --prefix web-next run test:e2e
+
 ```
 
 Pakiet raportów Sonar:

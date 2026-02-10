@@ -167,3 +167,4 @@ tests/test_evolution_coordinator_flow.py
 tests/test_flow_inspector_api.py
 tests/test_flow_mermaid_generation.py
 tests/test_ghost_agent.py
+tests/test_audit_lite_deps.py

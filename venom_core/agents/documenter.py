@@ -126,7 +126,7 @@ class DocumenterAgent:
                 logger.debug(f"Brak zmian w git dla {file_path}")
                 return
 
-            needs_update = self._analyze_changes(file_path, diff)
+            needs_update = self._analyze_changes(diff)
             if needs_update:
                 await self._apply_documentation_update(
                     file_path, file_path_obj.name, diff
@@ -229,12 +229,11 @@ class DocumenterAgent:
             logger.debug(f"Nie można pobrać autora ostatniego commita: {e}")
         return None
 
-    def _analyze_changes(self, file_path: str, diff: str) -> bool:
+    def _analyze_changes(self, diff: str) -> bool:
         """
         Analizuje czy zmiany wymagają aktualizacji dokumentacji.
 
         Args:
-            file_path: Ścieżka do pliku
             diff: Diff zmian
 
         Returns:

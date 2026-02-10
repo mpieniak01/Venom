@@ -19,9 +19,22 @@ try:  # pragma: no cover - zależne od środowiska testowego
     pynput_module = importlib.import_module("pynput")
     keyboard = pynput_module.keyboard
     mouse = pynput_module.mouse
+    PYNPUT_AVAILABLE = True
 except Exception:  # pragma: no cover
-    keyboard = None
-    mouse = None
+    PYNPUT_AVAILABLE = False
+
+    class _KeyboardStub:
+        class Listener:
+            def __init__(self, *_, **__):
+                raise RuntimeError("Biblioteka pynput nie jest zainstalowana")
+
+    class _MouseStub:
+        class Listener:
+            def __init__(self, *_, **__):
+                raise RuntimeError("Biblioteka pynput nie jest zainstalowana")
+
+    keyboard = _KeyboardStub
+    mouse = _MouseStub
 
 from venom_core.config import SETTINGS
 from venom_core.utils import helpers
@@ -216,22 +229,23 @@ class DemonstrationRecorder:
 
     def _start_listeners(self):
         """Uruchamia listenery myszy i klawiatury."""
-        if mouse is None or keyboard is None:
-            logger.error("pynput nie jest dostępny - pomijam start listenerów")
-            return
-        # Listener myszy
-        self.mouse_listener = mouse.Listener(
-            on_click=self._on_mouse_click, on_move=self._on_mouse_move
-        )
-        self.mouse_listener.start()
+        try:
+            # Listener myszy
+            self.mouse_listener = mouse.Listener(
+                on_click=self._on_mouse_click, on_move=self._on_mouse_move
+            )
+            self.mouse_listener.start()
 
-        # Listener klawiatury
-        self.keyboard_listener = keyboard.Listener(
-            on_press=self._on_key_press, on_release=self._on_key_release
-        )
-        self.keyboard_listener.start()
-
-        logger.debug("Listenery wejścia uruchomione")
+            # Listener klawiatury
+            self.keyboard_listener = keyboard.Listener(
+                on_press=self._on_key_press, on_release=self._on_key_release
+            )
+            self.keyboard_listener.start()
+            logger.debug("Listenery wejścia uruchomione")
+        except Exception as e:
+            logger.error(f"pynput nie jest dostępny - pomijam start listenerów: {e}")
+            self.mouse_listener = None
+            self.keyboard_listener = None
 
     def _stop_listeners(self):
         """Zatrzymuje listenery."""
@@ -279,7 +293,7 @@ class DemonstrationRecorder:
             pressed
             and (current_time - self.last_screenshot_time) > self.screenshot_cooldown
         ):
-            self._capture_screenshot(current_time, f"click_{x}_{y}")
+            self._capture_screenshot(current_time)
 
         logger.debug(f"Mouse click: {button_name} at ({x}, {y}) pressed={pressed}")
 
@@ -343,21 +357,14 @@ class DemonstrationRecorder:
         )
         self.current_session.events.append(event)
 
-    def _capture_screenshot(self, timestamp: float, label: str = ""):
+    def _capture_screenshot(self, timestamp: float):
         """
         Wykonuje zrzut ekranu i dodaje do bufora.
 
         Args:
             timestamp: Czas zdarzenia
-            label: Opcjonalna etykieta dla zrzutu
         """
         try:
-            if not MSS_AVAILABLE:
-                logger.warning(
-                    "Biblioteka mss nie jest dostępna - pomijam zrzut ekranu"
-                )
-                return
-
             mss_factory = getattr(mss, "mss", None)
             if mss_factory is None:
                 logger.warning(

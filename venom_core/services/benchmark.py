@@ -30,6 +30,7 @@ from venom_core.core.service_monitor import ServiceHealthMonitor
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS = 60
 
 
 def _is_valid_benchmark_id(value: str) -> bool:
@@ -529,7 +530,7 @@ class BenchmarkService:
             )
 
             # Czekaj na healthcheck
-            await self._wait_for_healthcheck(endpoint=endpoint, timeout=60)
+            await self._wait_for_healthcheck(endpoint=endpoint)
             if t_startup is not None:
                 result.startup_latency_ms = round((time.time() - t_startup) * 1000, 2)
 
@@ -687,13 +688,12 @@ class BenchmarkService:
         result.status = "completed"
         result.completed_at = datetime.now().isoformat()
 
-    async def _wait_for_healthcheck(self, endpoint: str, timeout: int = 60):
+    async def _wait_for_healthcheck(self, endpoint: str):
         """
         Czeka aż serwis LLM będzie gotowy (healthcheck).
 
         Args:
             endpoint: Endpoint serwisu (bez trailing slash)
-            timeout: Maksymalny czas oczekiwania w sekundach
 
         Raises:
             TimeoutError: Jeśli serwis nie odpowiada w czasie
@@ -701,7 +701,7 @@ class BenchmarkService:
         start_time = time.time()
         logger.info(f"Oczekiwanie na healthcheck: {endpoint}")
 
-        while time.time() - start_time < timeout:
+        while time.time() - start_time < DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS:
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     response = await client.get(f"{endpoint}/models")
@@ -715,7 +715,8 @@ class BenchmarkService:
             await asyncio.sleep(2)
 
         raise TimeoutError(
-            f"Serwis LLM nie odpowiada po {timeout}s - healthcheck failed"
+            "Serwis LLM nie odpowiada po "
+            f"{DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS}s - healthcheck failed"
         )
 
     async def _query_model_with_metrics(

@@ -288,14 +288,12 @@ Przykład: "feat(git): add GitSkill implementation"
 
         return issues
 
-    async def handle_issue(self, issue_number: int, architect_agent=None) -> str:
+    async def handle_issue(self, issue_number: int) -> str:
         """
         Obsługuje konkretne Issue: pobiera szczegóły, tworzy branch, deleguje do Architekta.
 
         Args:
             issue_number: Numer Issue do obsłużenia
-            architect_agent: Opcjonalny agent Architekta (do stworzenia planu)
-
         Returns:
             Status obsługi Issue
         """

@@ -4,6 +4,7 @@ import asyncio
 import json
 from typing import Annotated, Any, Dict, List
 
+from anyio import fail_after
 from semantic_kernel.functions import kernel_function
 
 from venom_core.infrastructure.message_broker import MessageBroker
@@ -113,7 +114,7 @@ class ParallelSkill:
             logger.info(f"Utworzono {len(task_ids)} zadań Map: {task_ids[:3]}...")
 
             # FAZA WAIT: Czekaj na ukończenie wszystkich zadań
-            results = await self._wait_for_results(task_ids, wait_timeout)
+            results = await self._wait_for_results_with_timeout(task_ids, wait_timeout)
 
             # FAZA REDUCE: Agreguj wyniki
             completed = sum(1 for r in results if r["status"] == "completed")
@@ -141,22 +142,17 @@ class ParallelSkill:
             logger.error(f"Błąd w map_reduce: {e}")
             return f"❌ Błąd podczas wykonywania Map-Reduce: {e}"
 
-    async def _wait_for_results(
-        self, task_ids: List[str], timeout: int
-    ) -> List[Dict[str, Any]]:
+    async def _wait_for_results(self, task_ids: List[str]) -> List[Dict[str, Any]]:
         """
         Czeka na wyniki zadań z timeoutem.
 
         Args:
             task_ids: Lista ID zadań
-            timeout: Timeout w sekundach
-
         Returns:
             Lista wyników zadań
         """
         results: List[Dict[str, Any]] = []
         result_ids: set[str] = set()
-        start_time = asyncio.get_event_loop().time()
 
         while True:
             all_done = await self._collect_terminal_results(
@@ -164,14 +160,6 @@ class ParallelSkill:
                 results=results,
                 result_ids=result_ids,
             )
-
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed > timeout:
-                logger.warning(
-                    f"Timeout waiting for results ({timeout}s), returning partial results"
-                )
-                self._append_pending_results(task_ids, results, result_ids)
-                break
 
             if all_done:
                 break
@@ -184,6 +172,39 @@ class ParallelSkill:
             )
         )
 
+        return results
+
+    async def _wait_for_results_with_timeout(
+        self, task_ids: List[str], wait_timeout: int
+    ) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        result_ids: set[str] = set()
+        try:
+            with fail_after(wait_timeout):
+                while True:
+                    all_done = await self._collect_terminal_results(
+                        task_ids=task_ids,
+                        results=results,
+                        result_ids=result_ids,
+                    )
+                    if all_done:
+                        break
+                    await asyncio.sleep(POLLING_INTERVAL_SECONDS)
+        except TimeoutError:
+            logger.warning(
+                f"Timeout waiting for results ({wait_timeout}s), returning partial results"
+            )
+            await self._collect_terminal_results(
+                task_ids=task_ids,
+                results=results,
+                result_ids=result_ids,
+            )
+        self._append_pending_results(task_ids, results, result_ids)
+        results.sort(
+            key=lambda r: (
+                r["item_index"] if r["item_index"] is not None else DEFAULT_SORT_INDEX
+            )
+        )
         return results
 
     async def _collect_terminal_results(
@@ -314,7 +335,7 @@ class ParallelSkill:
             logger.info(f"Utworzono {len(task_ids)} zadań równoległych")
 
             # Czekaj na wyniki
-            results = await self._wait_for_results(task_ids, wait_timeout)
+            results = await self._wait_for_results_with_timeout(task_ids, wait_timeout)
 
             # Agreguj
             completed = sum(1 for r in results if r["status"] == "completed")

@@ -6,6 +6,11 @@ export type FeedbackState = {
     message?: string | null;
 };
 
+export type SimpleResponse = {
+    text: string;
+    truncated: boolean;
+};
+
 export type ContextPreviewMeta = {
     preview?: string | null;
     truncated?: boolean | null;

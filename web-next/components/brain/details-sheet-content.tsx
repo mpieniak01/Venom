@@ -9,6 +9,8 @@ interface BrainDetailsSheetContentProps {
     memoryActionPending: string | null;
     onPin: (id: string, pinned: boolean) => void;
     onDelete: (id: string) => void;
+    memoryWipePending?: boolean;
+    onClearSession?: () => void;
 }
 
 export function BrainDetailsSheetContent({
@@ -17,11 +19,13 @@ export function BrainDetailsSheetContent({
     memoryActionPending,
     onPin,
     onDelete,
+    memoryWipePending,
+    onClearSession,
 }: BrainDetailsSheetContentProps) {
     const t = useTranslation();
 
     if (!selected) {
-        return <p className="text-hint p-6">Kliknij węzeł, by zobaczyć szczegóły.</p>;
+        return <p className="text-hint p-6">{t("brain.details.selectNode")}</p>;
     }
 
     return (
@@ -34,37 +38,50 @@ export function BrainDetailsSheetContent({
             </SheetHeader>
             <div className="space-y-4 text-sm text-zinc-300 mt-6">
                 <div>
-                    <p className="text-xs uppercase tracking-wide text-zinc-500">Właściwości</p>
+                    <p className="text-xs uppercase tracking-wide text-zinc-500">{t("brain.details.properties")}</p>
                     <pre className="mt-2 max-h-60 overflow-auto rounded-xl box-muted p-3 text-xs text-zinc-100">
                         {JSON.stringify(selected, null, 2)}
                     </pre>
                 </div>
 
-                {selected.type === "memory" && selected.id && (
-                    <div className="flex flex-wrap gap-2">
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={memoryActionPending === selected.id}
-                            onClick={() => onPin(String(selected.id), !selected.pinned)}
-                        >
-                            {selected.pinned ? t("brain.actions.unpin") : t("brain.actions.pin")}
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="danger"
-                            disabled={memoryActionPending === selected.id}
-                            onClick={() => onDelete(String(selected.id))}
-                        >
-                            {t("brain.actions.delete")}
-                        </Button>
+                {String(selected.type) === "memory" && !!selected.id && (
+                    <div className="flex flex-col gap-2">
+                        <div className="flex flex-wrap gap-2">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={memoryActionPending === selected.id}
+                                onClick={() => onPin(String(selected.id), !selected.pinned)}
+                            >
+                                {selected.pinned ? t("brain.actions.unpin") : t("brain.actions.pin")}
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="danger"
+                                disabled={memoryActionPending === selected.id}
+                                onClick={() => onDelete(String(selected.id))}
+                            >
+                                {t("brain.actions.delete")}
+                            </Button>
+                        </div>
+                        {onClearSession && (
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-zinc-500 hover:text-red-400 justify-start px-0"
+                                disabled={memoryWipePending}
+                                onClick={onClearSession}
+                            >
+                                {memoryWipePending ? t("brain.details.clearing") : t("brain.details.clearSession")}
+                            </Button>
+                        )}
                     </div>
                 )}
 
                 <div>
-                    <p className="text-xs uppercase tracking-wide text-zinc-500">Relacje</p>
+                    <p className="text-xs uppercase tracking-wide text-zinc-500">{t("brain.details.relations")}</p>
                     {relations.length === 0 ? (
-                        <p className="text-hint">Brak relacji.</p>
+                        <p className="text-hint">{t("brain.details.noRelations")}</p>
                     ) : (
                         <ul className="mt-2 space-y-2 text-xs">
                             {relations.map((rel) => (

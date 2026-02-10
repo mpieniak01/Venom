@@ -526,20 +526,22 @@ export async function handleRuntimeSwitch(params: {
     setActiveLlmRuntime: ChatSendParams["setActiveLlmRuntime"];
     refreshActiveServer: () => void;
     setMessage: (message: string | null) => void;
+    confirm: (message: string) => boolean;
+    t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
-    const { parsed, activeServerInfo, selectedLlmModel, setActiveLlmRuntime, refreshActiveServer, setMessage } = params;
+    const { parsed, activeServerInfo, selectedLlmModel, setActiveLlmRuntime, refreshActiveServer, setMessage, confirm, t } = params;
 
     const forcedRuntimeProvider = resolveForcedRuntimeProvider(parsed.forcedProvider);
     const activeRuntime = activeServerInfo?.active_server ?? null;
 
     if (forcedRuntimeProvider && activeRuntime !== forcedRuntimeProvider) {
         const label = forcedRuntimeProvider === "openai" ? "OpenAI" : "Gemini";
-        const confirmed = globalThis.window.confirm(
-            `Dyrektywa wymaga przełączenia runtime na ${label}. Przełączyć teraz?`,
+        const confirmed = confirm(
+            t("cockpit.runtime.switchConfirm", { label })
         );
         if (!confirmed) {
-            setMessage("Anulowano przełączenie runtime.");
-            return { success: false };
+            setMessage(t("cockpit.runtime.switchCancelled"));
+            return { success: false, runtimeOverride: null };
         }
         try {
             const runtime = await setActiveLlmRuntime(forcedRuntimeProvider as "openai" | "google", selectedLlmModel);
@@ -552,8 +554,8 @@ export async function handleRuntimeSwitch(params: {
                 }
             };
         } catch (err) {
-            setMessage(err instanceof Error ? err.message : "Nie udało się przełączyć runtime.");
-            return { success: false };
+            setMessage(err instanceof Error ? err.message : t("cockpit.runtime.switchError"));
+            return { success: false, runtimeOverride: null };
         }
     }
     return { success: true, runtimeOverride: null };

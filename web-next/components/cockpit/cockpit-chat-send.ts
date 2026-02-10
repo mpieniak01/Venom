@@ -66,6 +66,8 @@ export function useChatSend(params: ChatSendParams) {
       setActiveLlmRuntime,
       refreshActiveServer,
       setMessage,
+      confirm: (msg) => globalThis.window.confirm(msg),
+      t,
     });
 
     if (!switchResult.success) return false;

@@ -11,6 +11,17 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
 
+def require_localhost_request(req: Request) -> None:
+    """Dopuszcza wyłącznie żądania administracyjne z localhosta."""
+    client_host = req.client.host if req.client else "unknown"
+    if client_host not in ["127.0.0.1", "::1", "localhost"]:
+        logger.warning(
+            "Próba dostępu do endpointu administracyjnego z nieautoryzowanego hosta: %s",
+            client_host,
+        )
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
 @router.get(
     "/config/runtime",
     responses={
@@ -51,15 +62,9 @@ def update_runtime_config(request: ConfigUpdateRequest, req: Request):
     """
     Aktualizuje konfigurację runtime (zapis do .env z backupem).
     Dostępne tylko z localhost.
-    Blokuje zmianę kluczowych parametrów bezpieczeństwa.
+    Lokalny administrator ma pełną kontrolę nad parametrami.
     """
-    # Security: Allow only local requests
-    client_host = req.client.host if req.client else "unknown"
-    if client_host not in ["127.0.0.1", "::1", "localhost"]:
-        logger.warning(
-            f"Próba zmiany konfiguracji z nieautoryzowanego hosta: {client_host}"
-        )
-        raise HTTPException(status_code=403, detail="Access denied")
+    require_localhost_request(req)
 
     try:
         # User is Admin on Localhost - Allow full configuration
@@ -81,10 +86,12 @@ def update_runtime_config(request: ConfigUpdateRequest, req: Request):
         },
     },
 )
-def get_config_backups(limit: int = 20):
+def get_config_backups(req: Request, limit: int = 20):
     """
     Zwraca listę backupów .env.
     """
+    require_localhost_request(req)
+
     try:
         backups = config_manager.get_backup_list(limit=limit)
         return {"status": "success", "backups": backups, "count": len(backups)}
@@ -108,10 +115,12 @@ class RestoreBackupRequest(BaseModel):
         },
     },
 )
-def restore_config_backup(request: RestoreBackupRequest):
+def restore_config_backup(request: RestoreBackupRequest, req: Request):
     """
     Przywraca .env z backupu.
     """
+    require_localhost_request(req)
+
     try:
         result = config_manager.restore_backup(request.backup_filename)
         return result

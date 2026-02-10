@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
+from venom_core.core.autonomy_enforcement import require_shell_permission
 from venom_core.execution.skills.base_skill import BaseSkill, async_safe_action
 from venom_core.skills.mcp.proxy_generator import McpProxyGenerator, McpToolMetadata
 
@@ -71,6 +72,8 @@ class McpManagerSkill(BaseSkill):
             install_command: Komenda instalacji (uruchamiana w venv)
             server_entrypoint: Komenda uruchomienia serwera (względna do root repo)
         """
+        require_shell_permission()
+
         self.logger.info(f"Rozpoczynam import MCP: {tool_name} z {repo_url}")
 
         repo_dir = self.repos_root / tool_name
@@ -171,6 +174,8 @@ class McpManagerSkill(BaseSkill):
 
     async def _run_shell(self, cmd: str, cwd: Optional[Path] = None) -> str:
         """Uruchamia komendę powłoki asynchronicznie."""
+        require_shell_permission()
+
         process = await asyncio.create_subprocess_shell(
             cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=cwd
         )

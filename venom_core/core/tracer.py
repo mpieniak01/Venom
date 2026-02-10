@@ -260,11 +260,9 @@ class RequestTracer:
         """Pętla przetwarzająca żądania zapisu."""
         await asyncio.sleep(1.0)  # Debounce 1s (dłuższy dla tracerów)
 
-        while True:
+        while self._save_requested:
             self._save_requested = False
             await self._save_traces_async()
-            if not self._save_requested:
-                break
 
     async def shutdown(self) -> None:
         """Czeka na zakończenie pętli zapisu."""

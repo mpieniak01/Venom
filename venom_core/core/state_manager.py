@@ -192,11 +192,9 @@ class StateManager:
         # Krótkie opóźnienie dla grupowania zmian (burst handling)
         await asyncio.sleep(0.2)
 
-        while True:
+        while self._save_requested:
             self._save_requested = False
             await self._save()
-            if not self._save_requested:
-                break
 
     def _prune_tasks_if_needed(self) -> None:
         """Usuwa najstarsze zadania jeśli przekroczono limity."""

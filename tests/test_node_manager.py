@@ -156,7 +156,7 @@ async def test_execute_skill_on_node_success():
     await manager.register_node(handshake, cast(WebSocket, websocket))
 
     task = asyncio.create_task(
-        manager.execute_skill_on_node("node-1", "alpha", "run", {"value": 1}, timeout=1)
+        manager.execute_skill_on_node("node-1", "alpha", "run", {"value": 1})
     )
 
     for _ in range(10):
@@ -184,7 +184,7 @@ async def test_execute_skill_on_node_errors():
     manager = NodeManager(shared_token="secret")
 
     with pytest.raises(ValueError):
-        await manager.execute_skill_on_node("missing", "alpha", "run", {}, timeout=1)
+        await manager.execute_skill_on_node("missing", "alpha", "run", {})
 
     handshake = NodeHandshake(
         node_id="node-1",
@@ -196,4 +196,4 @@ async def test_execute_skill_on_node_errors():
     manager.nodes["node-1"].is_online = False
 
     with pytest.raises(ValueError):
-        await manager.execute_skill_on_node("node-1", "alpha", "run", {}, timeout=1)
+        await manager.execute_skill_on_node("node-1", "alpha", "run", {})

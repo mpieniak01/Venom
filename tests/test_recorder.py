@@ -130,9 +130,9 @@ class TestDemonstrationRecorder:
             recorder.start_recording(session_name="test_session")
 
             # Symuluj kliknięcie
-            from pynput import mouse
-
-            recorder._on_mouse_click(100, 200, mouse.Button.left, True)
+            button = MagicMock()
+            button.name = "left"
+            recorder._on_mouse_click(100, 200, button, True)
 
             # Sprawdź czy zdarzenie zostało zarejestrowane
             assert len(recorder.current_session.events) == 1
@@ -148,9 +148,8 @@ class TestDemonstrationRecorder:
         recorder.start_recording(session_name="test_session")
 
         # Symuluj wciśnięcie klawisza
-        from pynput.keyboard import KeyCode
-
-        key = KeyCode.from_char("a")
+        key = MagicMock()
+        key.char = "a"
         recorder._on_key_press(key)
 
         # Sprawdź czy zdarzenie zostało zarejestrowane
@@ -174,7 +173,7 @@ class TestDemonstrationRecorder:
         mock_sct.monitors = [None, {"top": 0, "left": 0, "width": 1920, "height": 1080}]
 
         recorder.start_recording(session_name="test_session")
-        recorder._capture_screenshot(time.time(), "test")
+        recorder._capture_screenshot(time.time())
 
         # Sprawdź czy zrzut został dodany do bufora
         assert len(recorder.screenshot_buffer) == 1

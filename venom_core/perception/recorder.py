@@ -19,9 +19,17 @@ try:  # pragma: no cover - zależne od środowiska testowego
     pynput_module = importlib.import_module("pynput")
     keyboard = pynput_module.keyboard
     mouse = pynput_module.mouse
+    PYNPUT_AVAILABLE = True
 except Exception:  # pragma: no cover
-    keyboard = None
-    mouse = None
+    PYNPUT_AVAILABLE = False
+
+    class _PynputStub:
+        class Listener:
+            def __init__(self, *_, **__):
+                raise RuntimeError("Biblioteka pynput nie jest zainstalowana")
+
+    keyboard = _PynputStub
+    mouse = _PynputStub
 
 from venom_core.config import SETTINGS
 from venom_core.utils import helpers
@@ -216,7 +224,7 @@ class DemonstrationRecorder:
 
     def _start_listeners(self):
         """Uruchamia listenery myszy i klawiatury."""
-        if mouse is None or keyboard is None:
+        if not PYNPUT_AVAILABLE:
             logger.error("pynput nie jest dostępny - pomijam start listenerów")
             return
         # Listener myszy

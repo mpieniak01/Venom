@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import { CockpitContext } from "./cockpit-context";
 export { useCockpitContext } from "./cockpit-context";
@@ -32,8 +32,13 @@ export function CockpitProvider({ initialData, variant = "reference", children }
     const logic = useCockpitLogic({ data, interactive, layout, chatScrollRef });
 
 
+    const contextValue = useMemo(
+        () => ({ data, layout, interactive, logic, chatScrollRef }),
+        [data, layout, interactive, logic, chatScrollRef],
+    );
+
     return (
-        <CockpitContext.Provider value={{ data, layout, interactive, logic, chatScrollRef }}>
+        <CockpitContext.Provider value={contextValue}>
             {children}
         </CockpitContext.Provider>
     );

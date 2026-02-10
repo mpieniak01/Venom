@@ -53,12 +53,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       "border border-rose-500/40 bg-rose-500/10 text-rose-100 hover:border-rose-500/60",
   }[variant];
 
-  const sizeClass =
-    size === "xs"
-      ? "px-2.5 py-1 text-[11px]"
-      : size === "sm"
-        ? "px-3.5 py-2 text-xs"
-        : "px-4 py-2.5 text-sm";
+  const sizeClassBySize: Record<ButtonSize, string> = {
+    xs: "px-2.5 py-1 text-[11px]",
+    sm: "px-3.5 py-2 text-xs",
+    md: "px-4 py-2.5 text-sm",
+  };
+  const sizeClass = sizeClassBySize[size];
 
   const Comp = asChild ? Slot : "button";
 

@@ -65,10 +65,8 @@ export function SelectMenu({
       const target = event.target as Node;
       if (!triggerRef.current) return;
       if (triggerRef.current.contains(target)) return;
-      if (menuRef.current && menuRef.current.contains(target)) return;
-      {
-        setOpen(false);
-      }
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);

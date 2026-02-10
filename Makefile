@@ -62,7 +62,7 @@ test-all: test test-web-unit test-web-e2e
 
 sonar-reports-backend:
 	@mkdir -p test-results/sonar
-	pytest --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
+	pytest -o junit_family=xunit1 --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
 
 NEW_CODE_COVERAGE_MIN ?= 0
 NEW_CODE_TEST_GROUP ?= config/pytest-groups/sonar-new-code.txt
@@ -111,6 +111,7 @@ test-light-coverage:
 	echo "ℹ️ Final test list for test-light-coverage:"; \
 	printf '  %s\n' $$TESTS_TO_RUN; \
 	$$PYTEST_BIN -n 4 $$TESTS_TO_RUN \
+		-o junit_family=xunit1 \
 		-m "$(NEW_CODE_PYTEST_MARK_EXPR)" \
 		--cov=$(NEW_CODE_COV_TARGET) \
 		--cov-report=term-missing:skip-covered \

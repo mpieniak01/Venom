@@ -69,7 +69,7 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
       document.body.appendChild(textarea);
       textarea.select();
       document.execCommand("copy");
-      document.body.removeChild(textarea);
+      textarea.remove();
       markCopied();
     } catch {
       setCommitCopied(false);
@@ -85,12 +85,12 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
   }, []);
 
   const costValue = formatUsd(tokenMetrics?.session_cost_usd);
-  const gpuValue =
-    usage?.gpu_usage_percent !== undefined
-      ? formatPercentMetric(usage.gpu_usage_percent)
-      : usage?.vram_usage_mb && usage.vram_usage_mb > 0
-        ? t("statusBar.labels.gpuActive")
-        : "—";
+  let gpuValue = "—";
+  if (usage?.gpu_usage_percent !== undefined) {
+    gpuValue = formatPercentMetric(usage.gpu_usage_percent);
+  } else if (usage?.vram_usage_mb && usage.vram_usage_mb > 0) {
+    gpuValue = t("statusBar.labels.gpuActive");
+  }
 
   const resourceItems = useMemo(
     () => [

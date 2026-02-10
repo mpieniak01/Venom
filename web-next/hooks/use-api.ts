@@ -205,11 +205,7 @@ function usePolling<T>(
     }
   }, [fetcher, pollingDisabled]);
 
-  const entry = pollingDisabled
-    ? fallbackEntry
-    : ready
-      ? entryRef.current
-      : fallbackEntry;
+  const entry = pollingDisabled || !ready ? fallbackEntry : entryRef.current;
 
   const subscribe = useCallback(
     (listener: () => void) => {
@@ -633,6 +629,19 @@ export type ForcedRoute = {
   provider?: string;
 };
 
+export type SendTaskInput = {
+  content: string;
+  storeKnowledge?: boolean;
+  generationParams?: GenerationParams | null;
+  runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null;
+  extraContext?: TaskExtraContext | null;
+  forcedRoute?: ForcedRoute | null;
+  forcedIntent?: string | null;
+  preferredLanguage?: "pl" | "en" | "de" | null;
+  sessionId?: string | null;
+  preferenceScope?: "session" | "global" | null;
+};
+
 export type SimpleChatStreamRequest = {
   content: string;
   model?: string | null;
@@ -686,18 +695,18 @@ export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
   return response;
 }
 
-export async function sendTask(
-  content: string,
+export async function sendTask({
+  content,
   storeKnowledge = true,
-  generationParams?: GenerationParams | null,
-  runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null,
-  extraContext?: TaskExtraContext | null,
-  forcedRoute?: ForcedRoute | null,
-  forcedIntent?: string | null,
-  preferredLanguage?: "pl" | "en" | "de" | null,
-  sessionId?: string | null,
-  preferenceScope?: "session" | "global" | null,
-) {
+  generationParams,
+  runtimeMeta,
+  extraContext,
+  forcedRoute,
+  forcedIntent,
+  preferredLanguage,
+  sessionId,
+  preferenceScope,
+}: SendTaskInput) {
   const body: {
     content: string;
     store_knowledge: boolean;

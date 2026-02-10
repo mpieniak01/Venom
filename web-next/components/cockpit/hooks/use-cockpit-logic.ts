@@ -534,7 +534,7 @@ export function useCockpitLogic({
             interactive.setters.setHistoryError(null);
             hydratedRefs.current.clear();
             try {
-                if (typeof globalThis.window !== "undefined" && globalThis.window.sessionStorage) {
+                if (globalThis.window?.sessionStorage) {
                     const keys = Object.keys(globalThis.window.sessionStorage);
                     keys.forEach((key) => {
                         if (key.startsWith("venom-session-history:")) {

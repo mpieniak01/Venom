@@ -21,19 +21,14 @@ import {
   useQueueStatus,
 } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
-import { navItems } from "./sidebar";
 import { LanguageSwitcher } from "./language-switcher";
 import { useTranslation } from "@/lib/i18n";
-
-type TelemetryTab = "queue" | "tasks" | "ws";
-
-const AUTONOMY_LEVELS = [
-  { value: 0, label: "Start" },
-  { value: 10, label: "Monitor" },
-  { value: 20, label: "Asystent" },
-  { value: 30, label: "Hybryda" },
-  { value: 40, label: "Pełny" },
-];
+import { navItems } from "./sidebar-helpers";
+import {
+  TelemetryTab,
+  AUTONOMY_LEVELS,
+  getTelemetryContent
+} from "./mobile-nav-helpers";
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
@@ -49,43 +44,18 @@ export function MobileNav() {
   const t = useTranslation();
 
   const latestLogs = useMemo(() => entries.slice(0, 5), [entries]);
-  const telemetryContent = useMemo(() => {
-    if (telemetryTab === "queue") {
-      return {
-        title: t("mobileNav.telemetry.queue"),
-        rows: [
-          { label: t("mobileNav.telemetry.rows.active"), value: queue?.active ?? "—" },
-          { label: t("mobileNav.telemetry.rows.pending"), value: queue?.pending ?? "—" },
-          { label: t("mobileNav.telemetry.rows.limit"), value: queue?.limit ?? "∞" },
-        ],
-        badge: queue?.paused
-          ? { tone: "warning" as const, text: t("mobileNav.telemetry.status.paused") }
-          : { tone: "success" as const, text: t("mobileNav.telemetry.status.active") },
-      };
-    }
-    if (telemetryTab === "tasks") {
-      return {
-        title: t("mobileNav.telemetry.tasks"),
-        rows: [
-          { label: t("mobileNav.telemetry.rows.new"), value: metrics?.tasks?.created ?? 0 },
-          { label: t("mobileNav.telemetry.rows.success"), value: metrics?.tasks?.success_rate ?? "—" },
-          { label: t("mobileNav.telemetry.rows.uptime"), value: metrics?.uptime_seconds ? formatUptime(metrics.uptime_seconds) : "—" },
-        ],
-        badge: { tone: "neutral" as const, text: t("mobileNav.telemetry.status.preview") },
-      };
-    }
-    return {
-      title: t("mobileNav.telemetry.ws"),
-      rows: [
-        { label: t("mobileNav.telemetry.rows.status"), value: connected ? t("mobileNav.telemetry.status.connected") : t("mobileNav.telemetry.status.disconnected") },
-        { label: t("mobileNav.telemetry.rows.logs"), value: `${entries.length}` },
-        { label: t("mobileNav.telemetry.rows.last"), value: latestLogs[0] ? new Date(latestLogs[0].ts).toLocaleTimeString() : "—" },
-      ],
-      badge: connected
-        ? { tone: "success" as const, text: t("mobileNav.telemetry.status.live") }
-        : { tone: "danger" as const, text: t("mobileNav.telemetry.status.none") },
-    };
-  }, [telemetryTab, queue, metrics, connected, entries.length, latestLogs, t]);
+  const telemetryContent = useMemo(() =>
+    getTelemetryContent({
+      telemetryTab,
+      queue,
+      metrics,
+      connected,
+      entriesCount: entries.length,
+      latestLogsTs: latestLogs[0] ? new Date(latestLogs[0].ts).toLocaleTimeString() : null,
+      t
+    }),
+    [telemetryTab, queue, metrics, connected, entries.length, latestLogs, t]
+  );
 
   const handleCostToggle = async () => {
     setCostLoading(true);

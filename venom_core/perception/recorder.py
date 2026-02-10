@@ -279,7 +279,7 @@ class DemonstrationRecorder:
             pressed
             and (current_time - self.last_screenshot_time) > self.screenshot_cooldown
         ):
-            self._capture_screenshot(current_time, f"click_{x}_{y}")
+            self._capture_screenshot(current_time)
 
         logger.debug(f"Mouse click: {button_name} at ({x}, {y}) pressed={pressed}")
 
@@ -343,13 +343,12 @@ class DemonstrationRecorder:
         )
         self.current_session.events.append(event)
 
-    def _capture_screenshot(self, timestamp: float, label: str = ""):
+    def _capture_screenshot(self, timestamp: float):
         """
         Wykonuje zrzut ekranu i dodaje do bufora.
 
         Args:
             timestamp: Czas zdarzenia
-            label: Opcjonalna etykieta dla zrzutu
         """
         try:
             if not MSS_AVAILABLE:

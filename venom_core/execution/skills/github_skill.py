@@ -4,12 +4,24 @@ import os
 from datetime import datetime, timedelta
 from typing import Annotated, Any, Optional
 
-from github import Auth, Github, GithubException
 from semantic_kernel.functions import kernel_function
 
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+try:
+    from github import Auth, Github, GithubException
+
+    _GITHUB_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency w CI-lite
+    Auth = None  # type: ignore[assignment]
+    Github = None  # type: ignore[assignment]
+
+    class GithubException(Exception):
+        """Fallback exception when PyGithub is unavailable."""
+
+    _GITHUB_AVAILABLE = False
 
 # Limity dla bezpieczeństwa i wydajności
 MAX_REPOS_RESULTS = 5
@@ -30,6 +42,15 @@ class GitHubSkill:
             github_token: Token GitHub API (opcjonalny, ale zalecany dla wyższych limitów).
                          Jeśli None, używa zmiennej środowiskowej GITHUB_TOKEN.
         """
+        # Tryb degradacji: brak optional dependency PyGithub.
+        if not _GITHUB_AVAILABLE:
+            self.github = None
+            logger.warning(
+                "GitHubSkill: biblioteka 'PyGithub' nie jest zainstalowana. "
+                "Funkcje GitHub są niedostępne w tym środowisku."
+            )
+            return
+
         # Spróbuj pobrać token z parametru lub zmiennej środowiskowej
         token = github_token or os.getenv("GITHUB_TOKEN")
 
@@ -68,6 +89,12 @@ class GitHubSkill:
         Returns:
             Sformatowana lista TOP 5 repozytoriów
         """
+        if self.github is None:
+            return (
+                "❌ Biblioteka 'PyGithub' nie jest zainstalowana. "
+                "Doinstaluj dependency, aby użyć GitHubSkill."
+            )
+
         logger.info(
             f"GitHubSkill: search_repos dla '{query}' (language={language}, sort={sort})"
         )
@@ -140,6 +167,12 @@ class GitHubSkill:
         Returns:
             Treść README.md lub komunikat o błędzie
         """
+        if self.github is None:
+            return (
+                "❌ Biblioteka 'PyGithub' nie jest zainstalowana. "
+                "Doinstaluj dependency, aby użyć GitHubSkill."
+            )
+
         logger.info(f"GitHubSkill: get_readme dla {repo_url}")
 
         try:
@@ -193,6 +226,12 @@ class GitHubSkill:
         Returns:
             Lista popularnych projektów
         """
+        if self.github is None:
+            return (
+                "❌ Biblioteka 'PyGithub' nie jest zainstalowana. "
+                "Doinstaluj dependency, aby użyć GitHubSkill."
+            )
+
         logger.info(f"GitHubSkill: get_trending dla topic='{topic}'")
 
         try:

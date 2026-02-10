@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from venom_core.execution.skills import test_skill as test_skill_module
 from venom_core.execution.skills.test_skill import TestSkill
 
 
@@ -114,11 +115,11 @@ async def test_run_local_linter_binary_timeout_kills_process(local_test_skill):
 
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_create_subprocess_exec)
+    timeout_token = test_skill_module._LOCAL_LINTER_TIMEOUT_SECONDS.set(0.01)
     try:
-        result = await local_test_skill._run_local_linter_binary(
-            "ruff", ".", timeout=0.01
-        )
+        result = await local_test_skill._run_local_linter_binary("ruff", ".")
     finally:
+        test_skill_module._LOCAL_LINTER_TIMEOUT_SECONDS.reset(timeout_token)
         monkeypatch.undo()
 
     assert result is None

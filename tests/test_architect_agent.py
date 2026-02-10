@@ -281,3 +281,37 @@ class TestArchitectAgent:
         assert "WYKONANIE PLANU" in result
         assert "Create a project" in result
         assert mock_dispatcher.dispatch.called
+
+    def test_build_step_context_truncates_dependency(self, architect_agent):
+        long_result = "A" * 1500
+        step = ExecutionStep(
+            step_number=2, agent_type="CODER", instruction="Do next", depends_on=1
+        )
+
+        context = architect_agent._build_step_context(step, {1: long_result})
+
+        assert "KONTEKST Z POPRZEDNIEGO KROKU (1)" in context
+        assert "[...kontekst obcięty po 1000 znakach...]" in context
+        assert "AKTUALNE ZADANIE" in context
+
+    @pytest.mark.asyncio
+    async def test_execute_plan_uses_default_intent_for_unknown_agent(
+        self, architect_agent, mock_dispatcher
+    ):
+        architect_agent.set_dispatcher(mock_dispatcher)
+        mock_dispatcher.dispatch.return_value = "ok"
+        plan = ExecutionPlan(
+            goal="unknown",
+            steps=[
+                ExecutionStep(
+                    step_number=1,
+                    agent_type="UNKNOWN_AGENT",
+                    instruction="task",
+                )
+            ],
+        )
+
+        await architect_agent.execute_plan(plan)
+
+        assert mock_dispatcher.dispatch.call_count == 1
+        assert mock_dispatcher.dispatch.call_args[0][0] == "CODE_GENERATION"

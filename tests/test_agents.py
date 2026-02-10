@@ -4,6 +4,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
+from semantic_kernel.contents import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.agents.chat import ChatAgent
@@ -354,3 +358,52 @@ async def test_chat_agent_separate_prompt_for_standard_models(
     assert "Venom" in str(chat_history.messages[0].content)
     # User message powinno zawierać tylko pytanie
     assert str(chat_history.messages[1].content) == "Test question"
+
+
+@pytest.mark.asyncio
+async def test_base_agent_handle_chat_api_error_applies_system_fallback(mock_kernel):
+    agent = ConcreteAgent(mock_kernel)
+    chat_history = ChatHistory()
+    chat_history.add_message(ChatMessageContent(role=AuthorRole.SYSTEM, content="S"))
+    chat_history.add_message(ChatMessageContent(role=AuthorRole.USER, content="Q"))
+    settings = OpenAIChatPromptExecutionSettings()
+
+    handled, new_history, functions_enabled, system_fallback_used = (
+        agent._handle_chat_api_error(
+            api_error=Exception("system role not supported"),
+            chat_history=chat_history,
+            settings=settings,
+            functions_enabled=False,
+            system_fallback_used=False,
+        )
+    )
+
+    assert handled is True
+    assert functions_enabled is False
+    assert system_fallback_used is True
+    assert len(new_history.messages) == 1
+    assert new_history.messages[0].role == AuthorRole.USER
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_invoke_with_tool_fallback_disables_functions(
+    mock_kernel, mock_chat_service
+):
+    mock_kernel.get_service.return_value = mock_chat_service
+    agent = ChatAgent(mock_kernel)
+    agent._invoke_chat_service = AsyncMock(
+        side_effect=[Exception("does not support tools"), "fallback response"]
+    )
+
+    response = await agent._invoke_with_tool_fallback(
+        chat_service=mock_chat_service,
+        chat_history=ChatHistory(),
+        allow_functions=True,
+        generation_params=None,
+    )
+
+    assert response == "fallback response"
+    assert agent._invoke_chat_service.call_count == 2
+    assert (
+        agent._invoke_chat_service.call_args_list[1].kwargs["enable_functions"] is False
+    )

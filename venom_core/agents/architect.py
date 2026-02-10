@@ -22,6 +22,13 @@ logger = get_logger(__name__)
 class ArchitectAgent(BaseAgent):
     """Agent architekta - kierownik projektu, planuje i zarządza złożonymi zadaniami."""
 
+    AGENT_INTENT_MAP = {
+        "RESEARCHER": "RESEARCH",
+        "CODER": "CODE_GENERATION",
+        "LIBRARIAN": "KNOWLEDGE_SEARCH",
+        "TOOLMAKER": "TOOL_CREATION",
+    }
+
     PLANNING_PROMPT = """Jesteś głównym architektem projektu (Strategic Architect). Twoim zadaniem jest rozłożenie złożonego celu użytkownika na konkretne kroki wykonawcze.
 
 DOSTĘPNI AGENCI (WYKONAWCY):
@@ -336,89 +343,101 @@ WAŻNE:
                 f"Wykonywanie kroku {step.step_number}: {step.agent_type} - {step.instruction[:50]}..."
             )
 
-            # Broadcast rozpoczęcia kroku
-            if self.event_broadcaster:
-                await self.event_broadcaster.broadcast_event(
-                    event_type="PLAN_STEP_STARTED",
-                    message=f"Krok {step.step_number}/{len(plan.steps)}: {step.agent_type}",
-                    agent="Architect",
-                    data={
-                        "step_number": step.step_number,
-                        "agent_type": step.agent_type,
-                        "instruction": step.instruction[:100],
-                    },
-                )
-
-            # Przygotuj kontekst dla kroku (wyniki poprzednich kroków)
-            step_context = step.instruction
-
-            if step.depends_on and step.depends_on in context_history:
-                dependent_result = context_history[step.depends_on]
-                # Ogranicz kontekst do 1000 znaków, dodając informację o obcięciu
-                if len(dependent_result) > 1000:
-                    truncated_result = dependent_result[:1000]
-                    step_context = f"""KONTEKST Z POPRZEDNIEGO KROKU ({step.depends_on}):
-{truncated_result}
-[...kontekst obcięty po 1000 znakach...]
-
-AKTUALNE ZADANIE:
-{step.instruction}"""
-                else:
-                    step_context = f"""KONTEKST Z POPRZEDNIEGO KROKU ({step.depends_on}):
-{dependent_result}
-
-AKTUALNE ZADANIE:
-{step.instruction}"""
+            await self._broadcast_plan_step_started(step, len(plan.steps))
+            step_context = self._build_step_context(step, context_history)
 
             # Wykonaj krok przez dispatcher
             try:
-                # Mapowanie typu agenta na intencję
-                agent_type_to_intent = {
-                    "RESEARCHER": "RESEARCH",
-                    "CODER": "CODE_GENERATION",
-                    "LIBRARIAN": "KNOWLEDGE_SEARCH",
-                    "TOOLMAKER": "TOOL_CREATION",
-                }
-
-                intent = agent_type_to_intent.get(step.agent_type, "CODE_GENERATION")
+                intent = self.AGENT_INTENT_MAP.get(step.agent_type, "CODE_GENERATION")
                 result = await self.task_dispatcher.dispatch(intent, step_context)
-
-                # Zapisz wynik
-                step.result = result
-                context_history[step.step_number] = result
-
-                final_result += (
-                    f"\n--- Krok {step.step_number}: {step.agent_type} ---\n"
+                final_result = await self._handle_step_result(
+                    step=step,
+                    result=result,
+                    final_result=final_result,
+                    context_history=context_history,
+                    total_steps=len(plan.steps),
                 )
-                final_result += f"Zadanie: {step.instruction}\n"
-                # Ogranicz wynik do 500 znaków dla czytelności logu
-                if len(result) > 500:
-                    final_result += f"Wynik: {result[:500]}...\n[wynik obcięty, pełna wersja w context_history]\n\n"
-                else:
-                    final_result += f"Wynik: {result}\n\n"
-
-                logger.info(f"Krok {step.step_number} zakończony sukcesem")
-
-                # Broadcast ukończenia kroku
-                if self.event_broadcaster:
-                    await self.event_broadcaster.broadcast_event(
-                        event_type="PLAN_STEP_COMPLETED",
-                        message=f"Krok {step.step_number}/{len(plan.steps)} ukończony",
-                        agent="Architect",
-                        data={
-                            "step_number": step.step_number,
-                            "result_length": len(result),
-                        },
-                    )
 
             except Exception as e:
-                logger.error(f"Błąd podczas wykonywania kroku {step.step_number}: {e}")
-                final_result += f"\n--- Krok {step.step_number}: BŁĄD ---\n"
-                final_result += f"Zadanie: {step.instruction}\n"
-                final_result += f"Błąd: {str(e)}\n\n"
+                final_result = self._handle_step_error(step, e, final_result)
 
         final_result += "\n=== PLAN ZAKOŃCZONY ==="
         logger.info("ArchitectAgent zakończył wykonywanie planu")
+        return final_result
+
+    async def _broadcast_plan_step_started(
+        self, step: ExecutionStep, total_steps: int
+    ) -> None:
+        if not self.event_broadcaster:
+            return
+        await self.event_broadcaster.broadcast_event(
+            event_type="PLAN_STEP_STARTED",
+            message=f"Krok {step.step_number}/{total_steps}: {step.agent_type}",
+            agent="Architect",
+            data={
+                "step_number": step.step_number,
+                "agent_type": step.agent_type,
+                "instruction": step.instruction[:100],
+            },
+        )
+
+    def _build_step_context(
+        self, step: ExecutionStep, context_history: dict[int, str]
+    ) -> str:
+        if not step.depends_on or step.depends_on not in context_history:
+            return step.instruction
+
+        dependent_result = context_history[step.depends_on]
+        if len(dependent_result) > 1000:
+            dependent_result = (
+                f"{dependent_result[:1000]}\n[...kontekst obcięty po 1000 znakach...]"
+            )
+
+        return (
+            f"KONTEKST Z POPRZEDNIEGO KROKU ({step.depends_on}):\n"
+            f"{dependent_result}\n\n"
+            f"AKTUALNE ZADANIE:\n{step.instruction}"
+        )
+
+    async def _handle_step_result(
+        self,
+        *,
+        step: ExecutionStep,
+        result: str,
+        final_result: str,
+        context_history: dict[int, str],
+        total_steps: int,
+    ) -> str:
+        step.result = result
+        context_history[step.step_number] = result
+
+        final_result += f"\n--- Krok {step.step_number}: {step.agent_type} ---\n"
+        final_result += f"Zadanie: {step.instruction}\n"
+        if len(result) > 500:
+            final_result += (
+                f"Wynik: {result[:500]}...\n"
+                "[wynik obcięty, pełna wersja w context_history]\n\n"
+            )
+        else:
+            final_result += f"Wynik: {result}\n\n"
+
+        logger.info(f"Krok {step.step_number} zakończony sukcesem")
+        if self.event_broadcaster:
+            await self.event_broadcaster.broadcast_event(
+                event_type="PLAN_STEP_COMPLETED",
+                message=f"Krok {step.step_number}/{total_steps} ukończony",
+                agent="Architect",
+                data={"step_number": step.step_number, "result_length": len(result)},
+            )
+        return final_result
+
+    def _handle_step_error(
+        self, step: ExecutionStep, error: Exception, final_result: str
+    ) -> str:
+        logger.error(f"Błąd podczas wykonywania kroku {step.step_number}: {error}")
+        final_result += f"\n--- Krok {step.step_number}: BŁĄD ---\n"
+        final_result += f"Zadanie: {step.instruction}\n"
+        final_result += f"Błąd: {error}\n\n"
         return final_result
 
     async def process(self, input_text: str) -> str:

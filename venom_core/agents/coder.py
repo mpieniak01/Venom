@@ -205,121 +205,58 @@ def hello_world():
         if not self.enable_self_repair:
             # Bez weryfikacji - tylko generuj kod
             response = await self.process(input_text)
-            return {
-                "success": True,
-                "output": response,
-                "attempts": 1,
-                "final_code": None,
-            }
+            return self._build_final_verification_result(
+                success=True, output=response, attempts=1, final_code=None
+            )
 
         logger.info(f"Rozpoczynam weryfikowane generowanie kodu: {script_name}")
 
-        # Przygotuj historię rozmowy
-        chat_history = ChatHistory()
-        chat_history.add_message(
-            ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
-        )
-
-        # Dodaj instrukcję do zapisania kodu
-        enhanced_input = (
-            f"{input_text}\n\nZapisz wygenerowany kod do pliku '{script_name}'."
-        )
-        chat_history.add_message(
-            ChatMessageContent(role=AuthorRole.USER, content=enhanced_input)
-        )
+        chat_history = self._build_verification_chat_history(input_text, script_name)
 
         for attempt in range(1, max_retries + 1):
             logger.info(f"Próba {attempt}/{max_retries}")
 
             try:
-                # Pobierz serwis chat completion
-                chat_service: Any = self.kernel.get_service()
-                settings = OpenAIChatPromptExecutionSettings(
-                    function_choice_behavior=FunctionChoiceBehavior.Auto()
-                )
-
-                # Wywołaj model
-                response = await self._invoke_chat_with_fallbacks(
-                    chat_service=chat_service,
+                attempt_result = await self._run_single_verification_attempt(
                     chat_history=chat_history,
-                    settings=settings,
-                    enable_functions=True,
+                    script_name=script_name,
                 )
+                if attempt_result["retry"]:
+                    continue
 
-                logger.info(f"Model wygenerował odpowiedź (próba {attempt})")
-
-                # Dodaj odpowiedź modelu do historii konwersacji
-                chat_history.add_message(
-                    ChatMessageContent(role=AuthorRole.ASSISTANT, content=str(response))
-                )
-
-                # Sprawdź czy plik został utworzony
-                try:
-                    code_content = await self.file_skill.read_file(script_name)
-                    logger.info(
-                        f"Kod zapisany do {script_name} ({len(code_content)} znaków)"
+                if attempt_result["exit_code"] == 0:
+                    logger.info(f"Kod działa poprawnie po {attempt} próbach")
+                    return self._build_final_verification_result(
+                        success=True,
+                        output=attempt_result["shell_result"],
+                        attempts=attempt,
+                        final_code=attempt_result["code_content"],
                     )
-                except FileNotFoundError:
-                    logger.warning(
-                        f"Plik {script_name} nie został utworzony, generuję ponownie"
-                    )
-                    chat_history.add_message(
-                        ChatMessageContent(
-                            role=AuthorRole.USER,
-                            content=f"Plik {script_name} nie został utworzony. Proszę zapisać kod używając write_file('{script_name}', kod).",
-                        )
+
+                logger.warning(f"Kod zawiera błędy (próba {attempt})")
+                if attempt < max_retries:
+                    self._append_repair_feedback_to_history(
+                        chat_history, attempt_result["shell_result"], script_name
                     )
                     continue
 
-                # Uruchom kod w sandboxie
-                logger.info(f"Uruchamianie kodu: python {script_name}")
-                shell_result = self.shell_skill.run_shell(
-                    f"python {script_name}", timeout=30
+                logger.error(f"Nie udało się naprawić kodu po {max_retries} próbach")
+                return self._build_final_verification_result(
+                    success=False,
+                    output=attempt_result["shell_result"],
+                    attempts=attempt,
+                    final_code=attempt_result["code_content"],
                 )
-                exit_code = self.shell_skill.get_exit_code_from_output(shell_result)
-
-                logger.info(f"Wykonanie zakończone z exit_code={exit_code}")
-
-                if exit_code == 0:
-                    # Sukces!
-                    logger.info(f"Kod działa poprawnie po {attempt} próbach")
-                    return {
-                        "success": True,
-                        "output": shell_result,
-                        "attempts": attempt,
-                        "final_code": code_content,
-                    }
-                else:
-                    # Błąd - poproś o naprawę
-                    logger.warning(f"Kod zawiera błędy (próba {attempt})")
-
-                    if attempt < max_retries:
-                        # Dodaj feedback do historii
-                        feedback = f"Otrzymałem błąd podczas wykonywania kodu:\n\n{shell_result}\n\nProszę poprawić kod i zapisać go ponownie do pliku '{script_name}'."
-                        chat_history.add_message(
-                            ChatMessageContent(role=AuthorRole.USER, content=feedback)
-                        )
-                    else:
-                        # Osiągnięto limit prób
-                        logger.error(
-                            f"Nie udało się naprawić kodu po {max_retries} próbach"
-                        )
-                        return {
-                            "success": False,
-                            "output": shell_result,
-                            "attempts": attempt,
-                            "final_code": code_content,
-                        }
 
             except Exception as e:
                 logger.error(f"Błąd w próbie {attempt}: {e}")
                 if attempt >= max_retries:
-                    return {
-                        "success": False,
-                        "output": f"Błąd: {e}",
-                        "attempts": attempt,
-                        "final_code": None,
-                    }
+                    return self._build_final_verification_result(
+                        success=False,
+                        output=f"Błąd: {e}",
+                        attempts=attempt,
+                        final_code=None,
+                    )
 
                 # Poproś o naprawę
                 chat_history.add_message(
@@ -335,4 +272,96 @@ def hello_world():
             "output": "Przekroczono maksymalną liczbę prób",
             "attempts": max_retries,
             "final_code": None,
+        }
+
+    def _build_verification_chat_history(
+        self, input_text: str, script_name: str
+    ) -> ChatHistory:
+        chat_history = ChatHistory()
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
+        )
+        enhanced_input = (
+            f"{input_text}\n\nZapisz wygenerowany kod do pliku '{script_name}'."
+        )
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.USER, content=enhanced_input)
+        )
+        return chat_history
+
+    async def _run_single_verification_attempt(
+        self, *, chat_history: ChatHistory, script_name: str
+    ) -> dict[str, Any]:
+        chat_service: Any = self.kernel.get_service()
+        settings = OpenAIChatPromptExecutionSettings(
+            function_choice_behavior=FunctionChoiceBehavior.Auto()
+        )
+        response = await self._invoke_chat_with_fallbacks(
+            chat_service=chat_service,
+            chat_history=chat_history,
+            settings=settings,
+            enable_functions=True,
+        )
+
+        logger.info("Model wygenerował odpowiedź")
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.ASSISTANT, content=str(response))
+        )
+
+        try:
+            code_content = await self.file_skill.read_file(script_name)
+            logger.info(f"Kod zapisany do {script_name} ({len(code_content)} znaków)")
+        except FileNotFoundError:
+            logger.warning(
+                f"Plik {script_name} nie został utworzony, generuję ponownie"
+            )
+            chat_history.add_message(
+                ChatMessageContent(
+                    role=AuthorRole.USER,
+                    content=(
+                        f"Plik {script_name} nie został utworzony. Proszę zapisać kod "
+                        f"używając write_file('{script_name}', kod)."
+                    ),
+                )
+            )
+            return {
+                "retry": True,
+                "shell_result": "",
+                "exit_code": 1,
+                "code_content": None,
+            }
+
+        logger.info(f"Uruchamianie kodu: python {script_name}")
+        shell_result = self.shell_skill.run_shell(f"python {script_name}", timeout=30)
+        exit_code = self.shell_skill.get_exit_code_from_output(shell_result)
+        logger.info(f"Wykonanie zakończone z exit_code={exit_code}")
+        return {
+            "retry": False,
+            "shell_result": shell_result,
+            "exit_code": exit_code,
+            "code_content": code_content,
+        }
+
+    def _append_repair_feedback_to_history(
+        self, chat_history: ChatHistory, shell_result: str, script_name: str
+    ) -> None:
+        feedback = (
+            "Otrzymałem błąd podczas wykonywania kodu:\n\n"
+            f"{shell_result}\n\n"
+            "Proszę poprawić kod i zapisać go ponownie do pliku "
+            f"'{script_name}'."
+        )
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.USER, content=feedback)
+        )
+
+    @staticmethod
+    def _build_final_verification_result(
+        *, success: bool, output: str, attempts: int, final_code: Any
+    ) -> dict[str, Any]:
+        return {
+            "success": success,
+            "output": output,
+            "attempts": attempts,
+            "final_code": final_code,
         }

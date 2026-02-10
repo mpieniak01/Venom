@@ -391,15 +391,25 @@ export function FeedbackSection({
 
 export function LogsSection({ logs, t }: { logs: string[]; t: (key: string, options?: Record<string, string | number>) => string }) {
     if (!logs || logs.length === 0) return null;
+    const logOccurrence = new Map<string, number>();
+    const keyedLogs = logs.map((log) => {
+        const occurrence = (logOccurrence.get(log) ?? 0) + 1;
+        logOccurrence.set(log, occurrence);
+        return {
+            key: `task-log-${log}-${occurrence}`,
+            value: log,
+        };
+    });
+
     return (
         <div className="mt-4 rounded-2xl box-muted p-4">
             <div className="flex items-center justify-between">
                 <h4 className="heading-h4">{t("cockpit.requestDetails.taskLogsTitle", { count: logs.length })}</h4>
             </div>
             <div className="mt-3 max-h-[180px] space-y-2 overflow-y-auto pr-2 text-xs text-zinc-300">
-                {logs.map((log) => (
-                    <p key={`task-log-${log}`} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                        {log}
+                {keyedLogs.map((entry) => (
+                    <p key={entry.key} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                        {entry.value}
                     </p>
                 ))}
             </div>

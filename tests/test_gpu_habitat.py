@@ -1,15 +1,25 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-pytest.importorskip("docker")
-
 import venom_core.infrastructure.gpu_habitat as gpu_habitat_mod
 
-pytestmark = pytest.mark.skipif(
-    gpu_habitat_mod.docker is None,
-    reason="Docker SDK runtime bindings are not available in this environment",
-)
+
+@pytest.fixture(autouse=True)
+def ensure_docker_stub(monkeypatch):
+    """Zapewnia stub Docker SDK, gdy pakiet docker nie jest zainstalowany."""
+    if gpu_habitat_mod.docker is None:
+        docker_stub = SimpleNamespace(
+            from_env=lambda: None,
+            types=SimpleNamespace(
+                DeviceRequest=lambda **kwargs: {
+                    "count": kwargs.get("count"),
+                    "capabilities": kwargs.get("capabilities"),
+                }
+            ),
+        )
+        monkeypatch.setattr(gpu_habitat_mod, "docker", docker_stub)
 
 
 class DummyImages:

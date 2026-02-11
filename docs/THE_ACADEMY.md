@@ -569,6 +569,31 @@ Deactivate current adapter (rollback to base model).
 }
 ```
 
+#### **GET /api/v1/academy/train/{job_id}/logs/stream**
+Stream training logs in real-time (SSE).
+
+**Response:** Server-Sent Events stream
+
+**Event Types:**
+```json
+// Connection established
+{"type": "connected", "job_id": "training_20240101_120000"}
+
+// Log line
+{"type": "log", "line": 42, "message": "Epoch 1/3...", "timestamp": "2024-01-01T10:00:00Z"}
+
+// Status change
+{"type": "status", "status": "completed"}
+
+// Error
+{"type": "error", "message": "Container not found"}
+```
+
+**Headers:**
+- `Content-Type: text/event-stream`
+- `Cache-Control: no-cache`
+- `Connection: keep-alive`
+
 #### **DELETE /api/v1/academy/train/{job_id}**
 Cancel a running training job.
 
@@ -603,11 +628,15 @@ Academy dashboard is available at **http://localhost:3000/academy**
    - Dataset path display
 
 3. **Training Panel**
-   - Training parameter configuration
-   - Start training jobs
-   - Job history with status
-   - Auto-refresh for running jobs
+   - Training parameter configuration (LoRA rank, learning rate, epochs, batch size)
+   - Start training jobs with validation
+   - Job history with status indicators
+   - Auto-refresh for running jobs (10s interval)
    - Cancel running jobs with automatic container cleanup
+   - **Real-time log viewer** - View live training logs via SSE
+   - Pause/resume log streaming
+   - Auto-scroll with manual override
+   - Line numbers and timestamps in logs
 
 4. **Adapters Panel**
    - List all trained adapters with active state highlighting
@@ -620,11 +649,13 @@ Academy dashboard is available at **http://localhost:3000/academy**
 
 - [x] REST API endpoints (v2.0)
 - [x] Web UI Dashboard (v2.0)
-- [x] Job persistence and history
+- [x] Job persistence and history (v2.0)
 - [x] Adapter activation/deactivation (v2.1)
 - [x] Container management and cleanup (v2.1)
 - [x] GPU monitoring (v2.1)
-- [ ] Real-time log streaming (SSE)
+- [x] **Real-time log streaming (SSE)** (v2.2)
+- [ ] Training metrics parsing (epoch/loss extraction)
+- [ ] Progress indicators and ETA
 - [ ] Full Arena implementation (automated evaluation)
 - [ ] PEFT integration for KernelBuilder
 - [ ] Multi-modal learning (images, audio)
@@ -639,11 +670,21 @@ Academy dashboard is available at **http://localhost:3000/academy**
 
 ---
 
-**Status:** ✅ Core features + API + UI + ModelManager integration implemented  
-**Version:** 2.1 (PR 090 Phase 2)  
+**Status:** ✅ Core features + API + UI + ModelManager + Log Streaming implemented  
+**Version:** 2.2 (PR 090 Phase 3)  
 **Author:** Venom Team
 
 ## Changelog
+
+### v2.2 (Phase 3 - Current)
+- ✅ Real-time log streaming via SSE
+- ✅ Live log viewer component with auto-scroll
+- ✅ Pause/resume log streaming
+- ✅ Connection status indicators
+- ✅ Timestamped log lines
+- ✅ Graceful error handling
+
+### v2.1 (Phase 2)
 
 ### v2.1 (Phase 2 - Current)
 - ✅ ModelManager adapter integration (activate/deactivate)

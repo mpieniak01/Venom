@@ -1099,3 +1099,94 @@ PARAMETER top_k 40
         metrics.update(await self._collect_gpu_metrics())
 
         return metrics
+
+    def activate_adapter(
+        self, adapter_id: str, adapter_path: str, base_model: Optional[str] = None
+    ) -> bool:
+        """
+        Aktywuje adapter LoRA z Academy.
+
+        Args:
+            adapter_id: ID adaptera (np. training_20240101_120000)
+            adapter_path: Ścieżka do adaptera
+            base_model: Opcjonalnie nazwa bazowego modelu
+
+        Returns:
+            True jeśli sukces, False w przeciwnym razie
+        """
+        from datetime import datetime
+
+        logger.info(f"Aktywacja adaptera Academy: {adapter_id} z {adapter_path}")
+
+        # Sprawdź czy adapter istnieje
+        if not Path(adapter_path).exists():
+            logger.error(f"Adapter nie istnieje: {adapter_path}")
+            return False
+
+        # Jeśli adapter już jest zarejestrowany, aktywuj go
+        if adapter_id in self.versions:
+            return self.activate_version(adapter_id)
+
+        # Zarejestruj nowy adapter jako wersję
+        base = base_model or "academy-base"
+        version = self.register_version(
+            version_id=adapter_id,
+            base_model=base,
+            adapter_path=adapter_path,
+            performance_metrics={"source": "academy", "created_at": datetime.now().isoformat()},
+        )
+
+        # Aktywuj nową wersję
+        success = self.activate_version(adapter_id)
+
+        if success:
+            logger.info(f"✅ Adapter {adapter_id} aktywowany pomyślnie")
+        else:
+            logger.error(f"❌ Nie udało się aktywować adaptera {adapter_id}")
+
+        return success
+
+    def deactivate_adapter(self) -> bool:
+        """
+        Dezaktywuje aktualny adapter (rollback do bazowego modelu).
+
+        Returns:
+            True jeśli sukces, False w przeciwnym razie
+        """
+        if not self.active_version:
+            logger.warning("Brak aktywnego adaptera do dezaktywacji")
+            return False
+
+        logger.info(f"Dezaktywacja adaptera: {self.active_version}")
+
+        # Oznacz jako nieaktywny
+        if self.active_version in self.versions:
+            self.versions[self.active_version].is_active = False
+
+        self.active_version = None
+        logger.info("✅ Adapter zdezaktywowany - powrót do modelu bazowego")
+
+        return True
+
+    def get_active_adapter_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Zwraca informacje o aktywnym adapterze.
+
+        Returns:
+            Słownik z informacjami lub None jeśli brak aktywnego
+        """
+        if not self.active_version:
+            return None
+
+        version = self.get_active_version()
+        if not version:
+            return None
+
+        return {
+            "adapter_id": version.version_id,
+            "adapter_path": version.adapter_path,
+            "base_model": version.base_model,
+            "created_at": version.created_at,
+            "performance_metrics": version.performance_metrics,
+            "is_active": version.is_active,
+        }

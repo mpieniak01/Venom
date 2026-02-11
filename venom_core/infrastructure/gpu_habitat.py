@@ -481,3 +481,62 @@ print("=" * 60)
 
         except Exception as e:
             logger.error(f"Błąd podczas czyszczenia joba: {e}")
+
+    def get_gpu_info(self) -> Dict[str, Any]:
+        """
+        Pobiera informacje o GPU (nvidia-smi).
+
+        Returns:
+            Słownik z informacjami o GPU
+        """
+        if not self.enable_gpu:
+            return {
+                "available": False,
+                "message": "GPU disabled in configuration",
+            }
+
+        try:
+            # Uruchom nvidia-smi w kontenerze
+            result = self.client.containers.run(
+                image=SETTINGS.DOCKER_CUDA_IMAGE,
+                command="nvidia-smi --query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu --format=csv,noheader,nounits",
+                device_requests=[
+                    docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
+                ],
+                remove=True,
+                detach=False,
+            )
+
+            # Parse output
+            output = result.decode("utf-8").strip()
+            if not output:
+                return {
+                    "available": True,
+                    "gpus": [],
+                    "message": "No GPU info available",
+                }
+
+            gpus = []
+            for line in output.split("\n"):
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) >= 5:
+                    gpus.append({
+                        "name": parts[0],
+                        "memory_total_mb": float(parts[1]),
+                        "memory_used_mb": float(parts[2]),
+                        "memory_free_mb": float(parts[3]),
+                        "utilization_percent": float(parts[4]),
+                    })
+
+            return {
+                "available": True,
+                "count": len(gpus),
+                "gpus": gpus,
+            }
+
+        except Exception as e:
+            logger.warning(f"Failed to get GPU info: {e}")
+            return {
+                "available": self.is_gpu_available(),
+                "message": f"Failed to get GPU details: {str(e)}",
+            }

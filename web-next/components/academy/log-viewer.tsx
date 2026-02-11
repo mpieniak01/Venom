@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal, X, Pause, Play, TrendingDown, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { TrainingJobStatus } from "@/lib/academy-api";
 
 interface LogViewerProps {
   jobId: string;
@@ -83,7 +84,11 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
 
           case "status":
             setStatus(data.status);
-            if (data.status === "completed" || data.status === "failed") {
+            if (
+              data.status === "finished" ||
+              data.status === "failed" ||
+              data.status === "cancelled"
+            ) {
               eventSource.close();
               setIsConnected(false);
             }
@@ -136,12 +141,14 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
   };
 
   const getStatusColor = () => {
-    switch (status) {
+    switch (status as TrainingJobStatus | string) {
       case "connected":
       case "streaming":
         return "text-emerald-400";
-      case "completed":
+      case "finished":
         return "text-blue-400";
+      case "cancelled":
+        return "text-orange-300";
       case "failed":
       case "error":
         return "text-red-400";

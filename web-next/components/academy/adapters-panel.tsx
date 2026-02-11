@@ -175,7 +175,7 @@ export function AdaptersPanel() {
                 <Button
                   onClick={() => handleActivate(adapter)}
                   disabled={adapter.is_active || activating === adapter.adapter_id}
-                  variant={adapter.is_active ? "outline" : "default"}
+                  variant={adapter.is_active ? "outline" : "primary"}
                   size="sm"
                   className="ml-4 gap-2"
                 >

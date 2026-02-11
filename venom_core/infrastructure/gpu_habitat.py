@@ -68,10 +68,19 @@ class GPUHabitat(DockerHabitat):
         self.enable_gpu = enable_gpu
         self.training_image = training_image or self.DEFAULT_TRAINING_IMAGE
         self.training_containers: dict[str, Any] = {}
+        # Backward-compat: część testów i starszy kod używa `job_registry`.
+        self.job_registry = self.training_containers
+        self._gpu_available = bool(enable_gpu)
 
         # Sprawdź dostępność GPU
         if self.enable_gpu:
-            self._check_gpu_availability()
+            self._gpu_available = self._check_gpu_availability()
+            if not self._gpu_available:
+                # Deterministyczny fallback CPU: nie próbujemy już wymuszać GPU.
+                self.enable_gpu = False
+                logger.warning(
+                    "GPU fallback aktywny: trening zostanie uruchomiony na CPU."
+                )
 
         logger.info(
             f"GPUHabitat zainicjalizowany (GPU={'enabled' if enable_gpu else 'disabled'}, "
@@ -116,13 +125,38 @@ class GPUHabitat(DockerHabitat):
         except APIError as e:
             logger.warning(f"GPU lub nvidia-container-toolkit nie są dostępne: {e}")
             logger.warning("Trening będzie dostępny tylko na CPU")
-            self.enable_gpu = False
             return False
 
         except Exception as e:
             logger.error(f"Nieoczekiwany błąd podczas sprawdzania GPU: {e}")
-            self.enable_gpu = False
             return False
+
+    def is_gpu_available(self) -> bool:
+        """Zwraca czy GPU jest dostępne do użycia."""
+        return bool(self.enable_gpu and self._gpu_available)
+
+    def _get_job_container(self, job_name: str):
+        """Pobiera obiekt kontenera dla joba z nowego i legacy rejestru."""
+        if job_name not in self.training_containers:
+            raise KeyError(f"Job {job_name} nie istnieje")
+
+        job_info = self.training_containers[job_name]
+        container = job_info.get("container")
+        if container is not None:
+            return container
+
+        container_id = job_info.get("container_id")
+        if container_id:
+            try:
+                container = self.client.containers.get(container_id)
+                job_info["container"] = container
+                return container
+            except Exception as e:
+                raise KeyError(
+                    f"Container for job {job_name} not found: {container_id}"
+                ) from e
+
+        raise KeyError(f"Job {job_name} nie ma przypisanego kontenera")
 
     def run_training_job(
         self,
@@ -280,11 +314,8 @@ class GPUHabitat(DockerHabitat):
         Raises:
             KeyError: Jeśli job nie istnieje
         """
-        if job_name not in self.training_containers:
-            raise KeyError(f"Job {job_name} nie istnieje")
-
         job_info = self.training_containers[job_name]
-        container = job_info["container"]
+        container = self._get_job_container(job_name)
 
         try:
             container.reload()
@@ -293,11 +324,15 @@ class GPUHabitat(DockerHabitat):
             # Mapuj status Dockera na nasz format
             if status == "running":
                 job_status = "running"
+            elif status in {"created", "restarting"}:
+                job_status = "preparing"
             elif status == "exited":
                 exit_code = container.attrs["State"]["ExitCode"]
-                job_status = "completed" if exit_code == 0 else "failed"
+                job_status = "finished" if exit_code == 0 else "failed"
+            elif status in {"dead", "removing"}:
+                job_status = "failed"
             else:
-                job_status = "unknown"
+                job_status = "failed"
 
             # Pobierz ostatnie linie logów
             logs = container.logs(tail=50).decode("utf-8")
@@ -314,7 +349,7 @@ class GPUHabitat(DockerHabitat):
         except Exception as e:
             logger.error(f"Błąd podczas pobierania statusu: {e}")
             return {
-                "status": "error",
+                "status": "failed",
                 "error": str(e),
                 "container_id": container.id if hasattr(container, "id") else None,
             }
@@ -467,12 +502,17 @@ print("=" * 60)
             return
 
         try:
-            job_info = self.training_containers[job_name]
-            container = job_info["container"]
+            container = self._get_job_container(job_name)
 
             # Zatrzymaj i usuń kontener
-            container.stop()
-            container.remove()
+            try:
+                container.stop(timeout=10)
+            except TypeError:
+                container.stop()
+            try:
+                container.remove(force=True)
+            except TypeError:
+                container.remove()
 
             # Usuń z rejestru
             del self.training_containers[job_name]
@@ -481,6 +521,9 @@ print("=" * 60)
 
         except Exception as e:
             logger.error(f"Błąd podczas czyszczenia joba: {e}")
+        finally:
+            # Legacy i obecna ścieżka oczekują usunięcia wpisu nawet przy błędzie.
+            self.training_containers.pop(job_name, None)
 
     def get_gpu_info(self) -> Dict[str, Any]:
         """
@@ -520,13 +563,15 @@ print("=" * 60)
             for line in output.split("\n"):
                 parts = [p.strip() for p in line.split(",")]
                 if len(parts) >= 5:
-                    gpus.append({
-                        "name": parts[0],
-                        "memory_total_mb": float(parts[1]),
-                        "memory_used_mb": float(parts[2]),
-                        "memory_free_mb": float(parts[3]),
-                        "utilization_percent": float(parts[4]),
-                    })
+                    gpus.append(
+                        {
+                            "name": parts[0],
+                            "memory_total_mb": float(parts[1]),
+                            "memory_used_mb": float(parts[2]),
+                            "memory_free_mb": float(parts[3]),
+                            "utilization_percent": float(parts[4]),
+                        }
+                    )
 
             return {
                 "available": True,
@@ -555,11 +600,7 @@ print("=" * 60)
         Raises:
             KeyError: Jeśli job nie istnieje
         """
-        if job_name not in self.training_containers:
-            raise KeyError(f"Job {job_name} nie istnieje")
-
-        job_info = self.training_containers[job_name]
-        container = job_info["container"]
+        container = self._get_job_container(job_name)
 
         try:
             # Stream logów z kontenera

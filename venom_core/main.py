@@ -462,6 +462,20 @@ def _initialize_academy() -> None:
                 "zainicjalizowany później"
             )
 
+        # Restore aktywnego adaptera po restarcie (strict + fallback do modelu bazowego).
+        if model_manager:
+            try:
+                restored = model_manager.restore_active_adapter()
+                if restored:
+                    logger.info("✅ Odtworzono aktywny adapter Academy po starcie")
+                else:
+                    logger.info("Brak aktywnego adaptera do odtworzenia po starcie")
+            except Exception as exc:
+                logger.warning(
+                    "Nie udało się odtworzyć aktywnego adaptera Academy: %s",
+                    exc,
+                )
+
         logger.info("✅ THE_ACADEMY zainicjalizowane pomyślnie")
 
     except ImportError as exc:

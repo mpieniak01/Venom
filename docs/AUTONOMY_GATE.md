@@ -1,5 +1,7 @@
 # AutonomyGate - Permission Control System
 
+Policy baseline and security requirements for autonomy enforcement are defined in `docs/SECURITY_POLICY.md`.
+
 ## 📋 Introduction
 
 AutonomyGate is a 5-level agent permission control system that replaces the binary "Cost Mode". The system manages network access, budget, and file/operating system modification rights.

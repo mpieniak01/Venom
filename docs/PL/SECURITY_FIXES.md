@@ -4,6 +4,8 @@ Plik dokumentuje zmiany i decyzje dotyczące bezpieczeństwa oraz higieny
 zależności (aktualizacje wersji, akceptacja ryzyk, ograniczenia projektu).
 Ma charakter notatki utrzymaniowej dla projektu eksperymentalnego.
 
+Oficjalna polityka bezpieczeństwa runtime i autonomii znajduje się w `docs/PL/SECURITY_POLICY.md`.
+
 ## Ostatnie działania (18.01.2025)
 
 Na podstawie sygnałów z narzędzia **Snyk** podniesiono wersje zależności

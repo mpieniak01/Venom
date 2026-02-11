@@ -1,5 +1,7 @@
 # AutonomyGate - System Kontroli Uprawnień
 
+Bazowe wymagania polityki bezpieczeństwa dla egzekwowania autonomii są opisane w `docs/PL/SECURITY_POLICY.md`.
+
 ## 📋 Wprowadzenie
 
 AutonomyGate to 5-stopniowy system kontroli uprawnień agenta, który zastępuje binarny "Cost Mode". System zarządza dostępem do sieci, budżetem oraz prawami do modyfikacji plików i systemu operacyjnego.

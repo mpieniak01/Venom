@@ -7,6 +7,7 @@
 ├── docs/                        # documentation (English, default)
 │   ├── PL/                      # Polish documentation
 │   ├── PROCESS_ENGINE_CONCEPT.md # [v2.0] Process Engine (concept)
+│   ├── SECURITY_POLICY.md       # official runtime and autonomy security policy
 │   ├── VENOM_DIAGRAM.md
 │   └── VENOM_MASTER_VISION_V1.md
 ├── docs_dev/                    # local dev docs (ignored)

@@ -459,7 +459,9 @@ def test_cancel_job_with_cleanup(
     mock_gpu_habitat.cleanup_job.assert_called_once_with("training_test")
 
 
+@patch("pathlib.Path.exists", return_value=True)
 def test_activate_adapter_with_model_manager(
+    mock_path_exists,
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
     client
 ):

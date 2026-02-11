@@ -753,6 +753,78 @@ mypy venom_core
 Tools use the repo configuration (`pyproject.toml`) and skip data directories
 such as `models/` and `models_cache/`.
 
+## 🎓 THE ACADEMY - Model Training & Fine-tuning (Optional)
+
+Venom can autonomously improve through fine-tuning models with LoRA/QLoRA adapters based on collected experience (LessonsStore, task history, Git commits).
+
+### Quick Start
+
+1. **Install Academy dependencies:**
+   ```bash
+   pip install -r requirements-academy.txt
+   ```
+
+2. **GPU Setup (Recommended):**
+   ```bash
+   # Install nvidia-container-toolkit (Ubuntu/Debian)
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+     sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+   sudo systemctl restart docker
+   
+   # Verify GPU access
+   docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+   ```
+
+3. **Enable Academy in `.env`:**
+   ```bash
+   ENABLE_ACADEMY=true
+   ACADEMY_ENABLE_GPU=true
+   ACADEMY_MIN_LESSONS=100
+   ```
+
+4. **Access Academy UI:**
+   - Navigate to `http://localhost:3000/academy`
+   - View dataset statistics from LessonsStore
+   - Start training with custom parameters
+   - Monitor training progress and logs
+   - Activate trained adapters (hot-swap without restart)
+
+### Features
+
+- **Dataset Curation:** Automatic collection from LessonsStore, Git history, task completions
+- **LoRA Fine-tuning:** Fast, memory-efficient training with Unsloth
+- **GPU Acceleration:** Docker-based training with NVIDIA GPU support (CPU fallback available)
+- **Hot Swap:** Activate new adapters without restarting backend
+- **Model Genealogy:** Track model evolution and performance improvements
+- **Web UI:** Complete training management from dashboard
+
+### API Endpoints
+
+```bash
+# Curate dataset
+POST /api/v1/academy/dataset
+
+# Start training
+POST /api/v1/academy/train
+
+# Check training status
+GET /api/v1/academy/train/{job_id}/status
+
+# List all jobs
+GET /api/v1/academy/jobs
+
+# List adapters
+GET /api/v1/academy/adapters
+
+# Activate adapter
+POST /api/v1/academy/adapters/activate
+```
+
+See [`docs/THE_ACADEMY.md`](docs/THE_ACADEMY.md) for detailed documentation, architecture, and best practices.
+
 ## 📊 Project Statistics
 
 - **Lines of code:** 118,555 (non-empty lines; excluding `docs/`, `node_modules/`, `logs/`, `data/`)

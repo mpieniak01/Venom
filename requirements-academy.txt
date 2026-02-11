@@ -1,0 +1,43 @@
+# VENOM ACADEMY - Opcjonalne zależności do trenowania/fine-tuningu modeli
+# Instalacja: pip install -r requirements-academy.txt
+# 
+# UWAGA: Wymaga CUDA 12.0+ i nvidia-container-toolkit dla GPU.
+# Możliwe jest użycie CPU, ale będzie znacznie wolniejsze.
+
+# === LoRA/QLoRA Fine-tuning Framework ===
+unsloth[colab-new]>=2024.12  # Ultra-szybki fine-tuning z LoRA/QLoRA
+peft>=0.13.2                  # Parameter-Efficient Fine-Tuning (LoRA, Adapters)
+trl>=0.12.1                   # Transformer Reinforcement Learning (SFTTrainer)
+
+# === Dataset Processing ===
+datasets>=3.2.0               # Hugging Face Datasets library
+
+# === Quantization & Memory Optimization ===
+bitsandbytes>=0.45.0          # 4-bit/8-bit quantization dla GPU
+xformers>=0.0.28.post3; platform_system == "Linux"  # Memory-efficient attention (tylko Linux)
+
+# === Docker SDK ===
+docker>=7.1.0                 # Docker Python SDK dla GPUHabitat
+
+# === Progress & Monitoring ===
+wandb>=0.19.1                 # Weights & Biases integration (opcjonalne)
+tensorboard>=2.18.0           # TensorBoard logging (opcjonalne)
+
+# UWAGI INSTALACYJNE:
+# 1. Dla GPU (NVIDIA):
+#    - Zainstaluj CUDA Toolkit 12.0+
+#    - Zainstaluj nvidia-container-toolkit:
+#      curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+#      curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+#        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+#        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+#      sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+#      sudo systemctl restart docker
+#
+# 2. Dla CPU (fallback):
+#    - Wszystkie pakiety zadziałają, ale trening będzie wolny
+#    - Ustaw ACADEMY_ENABLE_GPU=false w .env
+#
+# 3. Weryfikacja instalacji:
+#    - docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+#    - python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"

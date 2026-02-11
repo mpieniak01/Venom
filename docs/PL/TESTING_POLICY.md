@@ -31,6 +31,12 @@ Uruchom jedną komendę:
 make pr-fast
 ```
 
+Upewnij się, że hooki są zainstalowane dla `pre-commit` i `pre-push`:
+
+```bash
+make install-hooks
+```
+
 Zakres:
 
 - wykrywanie zmienionych plików względem `origin/main` (lub `PR_BASE_REF`)

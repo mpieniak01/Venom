@@ -59,6 +59,7 @@ jobs:
       - name: Run backend lite hard gate + Sonar new-code coverage
         timeout-minutes: 10
         run: |
+          set -o pipefail
           python -m pip install pytest-cov
           make audit-ci-lite
           mkdir -p test-results/sonar

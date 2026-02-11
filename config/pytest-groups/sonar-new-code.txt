@@ -24,6 +24,10 @@ tests/test_assistant_skill.py
 tests/test_file_skill.py
 tests/test_git_skill_roi.py
 tests/test_test_skill_local.py
+tests/test_academy_api_coverage.py
+tests/test_academy_api_new_code_edges.py
+tests/test_gpu_habitat_new_code_edges.py
+tests/test_intent_embedding_router_edges.py
 tests/test_config_manager.py
 tests/test_complexity_skill.py
 tests/test_intent_manager_new_code_coverage.py

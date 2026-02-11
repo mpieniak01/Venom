@@ -12,11 +12,6 @@ import {
   type TrainingJob,
 } from "@/lib/academy-api";
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface TrainingPanelProps {
-  // Empty for now - reserved for future use
-}
-
 export function TrainingPanel() {
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);

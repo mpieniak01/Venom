@@ -10,11 +10,6 @@ import {
   type AdapterInfo,
 } from "@/lib/academy-api";
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface AdaptersPanelProps {
-  // Empty for now - reserved for future use
-}
-
 export function AdaptersPanel() {
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
   const [loading, setLoading] = useState(false);

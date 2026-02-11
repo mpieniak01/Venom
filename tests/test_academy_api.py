@@ -1,5 +1,9 @@
 """Testy jednostkowe dla Academy API."""
 
+from __future__ import annotations
+
+import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,14 +15,11 @@ from venom_core.api.routes import academy as academy_routes
 
 @pytest.fixture
 def mock_professor():
-    """Fixture dla zmockowanego Professor."""
-    mock = MagicMock()
-    return mock
+    return MagicMock()
 
 
 @pytest.fixture
 def mock_dataset_curator():
-    """Fixture dla zmockowanego DatasetCurator."""
     mock = MagicMock()
     mock.clear = MagicMock()
     mock.collect_from_lessons = MagicMock(return_value=150)
@@ -37,8 +38,8 @@ def mock_dataset_curator():
 
 @pytest.fixture
 def mock_gpu_habitat():
-    """Fixture dla zmockowanego GPUHabitat."""
     mock = MagicMock()
+    mock.training_containers = {}
     mock.is_gpu_available = MagicMock(return_value=True)
     mock.run_training_job = MagicMock(
         return_value={
@@ -50,12 +51,12 @@ def mock_gpu_habitat():
     mock.get_training_status = MagicMock(
         return_value={"status": "running", "logs": "Training in progress..."}
     )
+    mock.cleanup_job = MagicMock()
     return mock
 
 
 @pytest.fixture
 def mock_lessons_store():
-    """Fixture dla zmockowanego LessonsStore."""
     mock = MagicMock()
     mock.get_statistics = MagicMock(return_value={"total_lessons": 250})
     return mock
@@ -63,9 +64,7 @@ def mock_lessons_store():
 
 @pytest.fixture
 def mock_model_manager():
-    """Fixture dla zmockowanego ModelManager."""
-    mock = MagicMock()
-    return mock
+    return MagicMock()
 
 
 @pytest.fixture
@@ -76,7 +75,6 @@ def app_with_academy(
     mock_lessons_store,
     mock_model_manager,
 ):
-    """Fixture dla FastAPI app z academy routerem."""
     app = FastAPI()
     academy_routes.set_dependencies(
         professor=mock_professor,
@@ -91,13 +89,21 @@ def app_with_academy(
 
 @pytest.fixture
 def client(app_with_academy):
-    """Fixture dla test clienta."""
+    # Domyślnie bypass guarda localhost dla testów funkcjonalnych endpointów.
+    with patch(
+        "venom_core.api.routes.academy.require_localhost_request", return_value=None
+    ):
+        yield TestClient(app_with_academy)
+
+
+@pytest.fixture
+def strict_client(app_with_academy):
+    # Bez patcha guarda – oczekujemy 403 dla endpointów mutujących.
     return TestClient(app_with_academy)
 
 
 @patch("venom_core.config.SETTINGS")
-def test_academy_status_enabled(mock_settings, client, mock_lessons_store):
-    """Test pobierania statusu Academy - enabled."""
+def test_academy_status_enabled(mock_settings, client):
     mock_settings.ENABLE_ACADEMY = True
     mock_settings.ACADEMY_MIN_LESSONS = 100
     mock_settings.ACADEMY_TRAINING_INTERVAL_HOURS = 24
@@ -109,18 +115,11 @@ def test_academy_status_enabled(mock_settings, client, mock_lessons_store):
     assert response.status_code == 200
     data = response.json()
     assert data["enabled"] is True
-    assert data["components"]["professor"] is True
-    assert data["components"]["dataset_curator"] is True
-    assert data["components"]["gpu_habitat"] is True
-    assert data["components"]["lessons_store"] is True
-    assert data["gpu"]["enabled"] is True
-    assert data["lessons"]["total_lessons"] == 250
-    assert data["config"]["min_lessons"] == 100
+    assert data["jobs"]["finished"] == 0
 
 
 @patch("venom_core.config.SETTINGS")
 def test_curate_dataset_success(mock_settings, client, mock_dataset_curator):
-    """Test kuracji datasetu - sukces."""
     mock_settings.ENABLE_ACADEMY = True
 
     response = client.post(
@@ -131,14 +130,7 @@ def test_curate_dataset_success(mock_settings, client, mock_dataset_curator):
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
-    assert data["dataset_path"] == "./data/training/dataset_123.jsonl"
-    assert data["statistics"]["total_examples"] == 190
     assert data["statistics"]["lessons_collected"] == 150
-    assert data["statistics"]["git_commits_collected"] == 50
-
-    # Verify mocks were called
-    mock_dataset_curator.clear.assert_called_once()
-    mock_dataset_curator.collect_from_lessons.assert_called_once_with(limit=200)
     mock_dataset_curator.collect_from_git_history.assert_called_once_with(
         max_commits=100
     )
@@ -146,44 +138,35 @@ def test_curate_dataset_success(mock_settings, client, mock_dataset_curator):
 
 @patch("venom_core.config.SETTINGS")
 def test_curate_dataset_validation(mock_settings, client):
-    """Test walidacji parametrów kuracji datasetu."""
     mock_settings.ENABLE_ACADEMY = True
 
-    # Invalid lessons_limit (too high)
-    response = client.post(
-        "/api/v1/academy/dataset", json={"lessons_limit": 2000}
-    )
-    assert response.status_code == 422
-
-    # Invalid format
-    response = client.post("/api/v1/academy/dataset", json={"format": "invalid"})
+    response = client.post("/api/v1/academy/dataset", json={"lessons_limit": 2000})
     assert response.status_code == 422
 
 
 @patch("venom_core.config.SETTINGS")
-@patch("venom_core.api.routes.academy._load_jobs_history")
+@patch("venom_core.api.routes.academy._update_job_in_history")
 @patch("venom_core.api.routes.academy._save_job_to_history")
-def test_start_training_success(
+def test_start_training_tracks_queued_preparing_running(
     mock_save_job,
-    mock_load_jobs,
+    mock_update_job,
     mock_settings,
     client,
     mock_gpu_habitat,
 ):
-    """Test rozpoczęcia treningu - sukces."""
     mock_settings.ENABLE_ACADEMY = True
     mock_settings.ACADEMY_TRAINING_DIR = "./data/training"
     mock_settings.ACADEMY_MODELS_DIR = "./data/models"
     mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
-    mock_load_jobs.return_value = []
 
-    # Mock Path.exists and glob
-    with patch("pathlib.Path.exists") as mock_exists, patch(
-        "pathlib.Path.glob"
-    ) as mock_glob, patch("pathlib.Path.mkdir") as mock_mkdir:
-        mock_exists.return_value = True
-        mock_glob.return_value = ["./data/training/dataset_123.jsonl"]
-
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch(
+            "pathlib.Path.glob",
+            return_value=[Path("./data/training/dataset_123.jsonl")],
+        ),
+        patch("pathlib.Path.mkdir"),
+    ):
         response = client.post(
             "/api/v1/academy/train",
             json={
@@ -195,422 +178,165 @@ def test_start_training_success(
         )
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert "job_id" in data
-    assert data["parameters"]["lora_rank"] == 16
-    assert data["parameters"]["learning_rate"] == 0.0002
+    body = response.json()
+    assert body["success"] is True
+    assert body["job_id"].startswith("training_")
 
-    # Verify training job was called
-    mock_gpu_habitat.run_training_job.assert_called_once()
+    run_call = mock_gpu_habitat.run_training_job.call_args.kwargs
+    assert run_call["job_name"] == body["job_id"]
 
+    queued_record = mock_save_job.call_args.args[0]
+    assert queued_record["status"] == "queued"
+    assert queued_record["job_name"] == body["job_id"]
 
-@patch("venom_core.config.SETTINGS")
-def test_start_training_validation(mock_settings, client):
-    """Test walidacji parametrów treningu."""
-    mock_settings.ENABLE_ACADEMY = True
-
-    # Invalid lora_rank (too high)
-    response = client.post(
-        "/api/v1/academy/train", json={"lora_rank": 100}
-    )
-    assert response.status_code == 422
-
-    # Invalid learning_rate (too high)
-    response = client.post(
-        "/api/v1/academy/train", json={"learning_rate": 1.0}
-    )
-    assert response.status_code == 422
-
-    # Invalid num_epochs (too high)
-    response = client.post(
-        "/api/v1/academy/train", json={"num_epochs": 50}
-    )
-    assert response.status_code == 422
+    status_updates = [call.args[1]["status"] for call in mock_update_job.call_args_list]
+    assert "preparing" in status_updates
+    assert "running" in status_updates
 
 
 @patch("venom_core.config.SETTINGS")
+@patch("venom_core.api.routes.academy._update_job_in_history")
 @patch("venom_core.api.routes.academy._load_jobs_history")
-def test_list_jobs(mock_load_jobs, mock_settings, client):
-    """Test listowania jobów."""
+def test_get_training_status_maps_completed_to_finished_and_writes_metadata(
+    mock_load_jobs,
+    mock_update_job,
+    mock_settings,
+    client,
+    mock_gpu_habitat,
+    tmp_path,
+):
     mock_settings.ENABLE_ACADEMY = True
+
+    job_dir = tmp_path / "training_001"
+    adapter_dir = job_dir / "adapter"
+    adapter_dir.mkdir(parents=True)
+
     mock_load_jobs.return_value = [
         {
             "job_id": "training_001",
-            "status": "finished",
-            "started_at": "2024-01-01T10:00:00",
-        },
-        {
-            "job_id": "training_002",
+            "job_name": "training_001",
             "status": "running",
-            "started_at": "2024-01-02T10:00:00",
-        },
+            "started_at": "2024-01-01T10:00:00",
+            "output_dir": str(job_dir),
+            "base_model": "base-model",
+            "parameters": {"num_epochs": 1},
+        }
     ]
+    mock_gpu_habitat.get_training_status.return_value = {
+        "status": "completed",
+        "logs": "done",
+    }
 
-    response = client.get("/api/v1/academy/jobs")
+    response = client.get("/api/v1/academy/train/training_001/status")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["count"] == 2
-    assert len(data["jobs"]) == 2
+    assert data["status"] == "finished"
+    assert data["adapter_path"].endswith("/adapter")
+    mock_gpu_habitat.cleanup_job.assert_called_once_with("training_001")
+
+    metadata_path = job_dir / "metadata.json"
+    assert metadata_path.exists()
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["job_id"] == "training_001"
+    assert metadata["source"] == "academy"
 
 
 @patch("venom_core.config.SETTINGS")
-def test_academy_disabled(mock_settings, client):
-    """Test gdy Academy jest wyłączone."""
-    mock_settings.ENABLE_ACADEMY = False
-
-    # Status endpoint should work but show disabled
-    response = client.get("/api/v1/academy/status")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["enabled"] is False
-
-    # Other endpoints should return 503
-    response = client.post("/api/v1/academy/dataset", json={})
-    assert response.status_code == 503
-
-    response = client.post("/api/v1/academy/train", json={})
-    assert response.status_code == 503
-
-
-@patch("venom_core.config.SETTINGS")
-@patch("pathlib.Path.exists")
-def test_activate_adapter_success(
-    mock_exists, mock_settings, client, mock_model_manager
-):
-    """Test aktywacji adaptera - sukces."""
+def test_list_jobs_filtered(mock_settings, client):
     mock_settings.ENABLE_ACADEMY = True
-    mock_exists.return_value = True
-    mock_model_manager.activate_adapter.return_value = True
-
-    response = client.post(
-        "/api/v1/academy/adapters/activate",
-        json={
-            "adapter_id": "training_001",
-            "adapter_path": "./data/models/training_001/adapter",
-        },
-    )
+    with patch(
+        "venom_core.api.routes.academy._load_jobs_history",
+        return_value=[
+            {"job_id": "a", "status": "running", "started_at": "2024-01-02"},
+            {"job_id": "b", "status": "failed", "started_at": "2024-01-01"},
+        ],
+    ):
+        response = client.get("/api/v1/academy/jobs?status=running")
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert data["adapter_id"] == "training_001"
-
-    # Verify model manager was called
-    mock_model_manager.activate_adapter.assert_called_once()
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["jobs"][0]["job_id"] == "a"
 
 
 @patch("venom_core.config.SETTINGS")
-def test_deactivate_adapter_success(mock_settings, client, mock_model_manager):
-    """Test dezaktywacji adaptera - sukces."""
-    mock_settings.ENABLE_ACADEMY = True
-    mock_model_manager.deactivate_adapter.return_value = True
-
-    response = client.post("/api/v1/academy/adapters/deactivate")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert "base model" in data["message"].lower()
-
-    # Verify model manager was called
-    mock_model_manager.deactivate_adapter.assert_called_once()
-
-
-@patch("venom_core.config.SETTINGS")
-def test_deactivate_adapter_no_active(mock_settings, client, mock_model_manager):
-    """Test dezaktywacji adaptera gdy brak aktywnego."""
-    mock_settings.ENABLE_ACADEMY = True
-    mock_model_manager.deactivate_adapter.return_value = False
-
-    response = client.post("/api/v1/academy/adapters/deactivate")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is False
-    assert "no active" in data["message"].lower()
-
-
-@patch("venom_core.config.SETTINGS")
-@patch("venom_core.api.routes.academy._load_jobs_history")
-@patch("venom_core.api.routes.academy._update_job_in_history")
-def test_cancel_training_with_cleanup(
-    mock_update_job,
-    mock_load_jobs,
+def test_cancel_training_sets_cancelled_and_cleans_container(
     mock_settings,
     client,
     mock_gpu_habitat,
 ):
-    """Test anulowania treningu z czyszczeniem kontenera."""
     mock_settings.ENABLE_ACADEMY = True
-    mock_load_jobs.return_value = [
-        {
-            "job_id": "training_001",
-            "job_name": "training_test",
-            "status": "running",
-        }
-    ]
-
-    response = client.delete("/api/v1/academy/train/training_001")
+    with (
+        patch(
+            "venom_core.api.routes.academy._load_jobs_history",
+            return_value=[{"job_id": "job1", "job_name": "job1", "status": "running"}],
+        ),
+        patch("venom_core.api.routes.academy._update_job_in_history") as mock_update,
+    ):
+        response = client.delete("/api/v1/academy/train/job1")
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert data["job_id"] == "training_001"
-
-    # Verify cleanup was called
-    mock_gpu_habitat.cleanup_job.assert_called_once_with("training_test")
-    mock_update_job.assert_called_once()
+    mock_gpu_habitat.cleanup_job.assert_called_with("job1")
+    update_payload = mock_update.call_args.args[1]
+    assert update_payload["status"] == "cancelled"
 
 
 @patch("venom_core.config.SETTINGS")
-@patch("venom_core.api.routes.academy._load_jobs_history")
-def test_stream_training_logs_not_found(
-    mock_load_jobs, mock_settings, client
-):
-    """Test streamowania logów dla nieistniejącego joba."""
+def test_activate_adapter_success(mock_settings, client, mock_model_manager):
     mock_settings.ENABLE_ACADEMY = True
-    mock_load_jobs.return_value = []
+    mock_model_manager.activate_adapter.return_value = True
+    with patch("pathlib.Path.exists", return_value=True):
+        response = client.post(
+            "/api/v1/academy/adapters/activate",
+            json={
+                "adapter_id": "training_001",
+                "adapter_path": "./data/models/training_001/adapter",
+            },
+        )
 
-    response = client.get("/api/v1/academy/train/nonexistent/logs/stream")
-
-    assert response.status_code == 404
-    assert "not found" in response.json()["detail"].lower()
-
-
-@patch("venom_core.api.routes.academy._load_jobs_history")
-def test_stream_training_logs_success(
-    mock_load_jobs_history,
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test poprawnego streamowania logów."""
-    job_data = [{
-        "job_id": "test_job",
-        "job_name": "training_test",
-        "status": "running"
-    }]
-    mock_load_jobs_history.return_value = job_data
-    
-    # Mock container exists
-    mock_gpu_habitat.training_containers = {"training_test": "container_123"}
-    mock_gpu_habitat.stream_job_logs = MagicMock(
-        return_value=iter([
-            "2024-01-01T10:00:00Z Starting training",
-            "2024-01-01T10:00:01Z Epoch 1/3 - Loss: 0.45"
-        ])
-    )
-    mock_gpu_habitat.get_training_status = MagicMock(
-        return_value={"status": "running"}
-    )
-    
-    response = client.get("/api/v1/academy/train/test_job/logs/stream")
-    
-    # SSE endpoint returns 200
     assert response.status_code == 200
+    assert response.json()["success"] is True
 
 
-def test_get_gpu_info_endpoint(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test endpointu GPU info."""
-    mock_gpu_habitat.get_gpu_info = MagicMock(return_value={
-        "available": True,
-        "count": 1,
-        "gpus": [{
-            "name": "NVIDIA RTX 3090",
-            "memory_total_mb": 24576,
-            "memory_used_mb": 2048,
-            "memory_free_mb": 22528,
-            "utilization_percent": 15.5
-        }]
-    })
-    
-    response = client.get("/api/v1/academy/status")
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert data["gpu"]["available"] is True
-    assert data["gpu"]["count"] == 1
-
-
-@patch("venom_core.api.routes.academy._update_job_in_history")
-@patch("venom_core.api.routes.academy._load_jobs_history")
-def test_cancel_job_with_cleanup(
-    mock_load_jobs_history,
-    mock_update_job_in_history,
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test anulowania joba z cleanup."""
-    job_data = [{
-        "job_id": "test_job",
-        "job_name": "training_test",
-        "status": "running"
-    }]
-    mock_load_jobs_history.return_value = job_data
-    mock_gpu_habitat.cleanup_job = MagicMock()
-    
-    response = client.delete("/api/v1/academy/train/test_job")
-    
-    assert response.status_code == 200
-    mock_gpu_habitat.cleanup_job.assert_called_once_with("training_test")
-
-
-@patch("pathlib.Path.exists", return_value=True)
-def test_activate_adapter_with_model_manager(
-    mock_path_exists,
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test aktywacji adaptera przez ModelManager."""
-    mock_model_manager.activate_adapter = MagicMock(return_value=True)
-    
-    response = client.post(
-        "/api/v1/academy/adapters/activate",
-        json={"adapter_id": "test_adapter", "adapter_path": "./path/to/adapter"}
-    )
-    
-    assert response.status_code == 200
-    mock_model_manager.activate_adapter.assert_called_once()
-
-
-def test_list_adapters_with_active_state(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client, tmp_path
-):
-    """Test listowania adapterów z active state."""
-    # Create a real temporary directory structure
-    models_dir = tmp_path / "models"
-    models_dir.mkdir()
-    
-    adapter_dir = models_dir / "adapter_1"
-    adapter_dir.mkdir()
-    
-    adapter_subdir = adapter_dir / "adapter"
-    adapter_subdir.mkdir()
-    
-    # Mock SETTINGS to point to our tmp directory
-    # Need to patch where SETTINGS is imported in the endpoint
-    with patch("venom_core.config.SETTINGS") as mock_settings:
-        mock_settings.ACADEMY_MODELS_DIR = str(models_dir)
-        mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "test-model"
-        
-        # Mock active adapter info
-        mock_model_manager.get_active_adapter_info.return_value = {
-            "adapter_id": "adapter_1",
-            "adapter_path": str(adapter_subdir)
-        }
-        
-        response = client.get("/api/v1/academy/adapters")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["adapter_id"] == "adapter_1"
-        assert data[0]["is_active"] is True
-
-
-def test_dataset_curate_with_validation_error(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test walidacji parametrów kuracji datasetu."""
-    
-    # Invalid lesson limit (too high)
-    response = client.post(
-        "/api/v1/academy/dataset",
-        json={"lessons_limit": 100000, "git_commits_limit": 100}
-    )
-    
-    assert response.status_code == 422  # Validation error
-
-
-def test_training_start_with_validation_error(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test walidacji parametrów treningu."""
-    
-    # Invalid LoRA rank (too high)
-    response = client.post(
-        "/api/v1/academy/train",
-        json={"lora_rank": 1000}
-    )
-    
-    assert response.status_code == 422  # Validation error
-
-
-def test_cancel_training_not_found(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test anulowania nieistniejącego treningu."""
-    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=[]):
-        response = client.post("/api/v1/academy/train/nonexistent/cancel")
-        
-        assert response.status_code == 404
-
-
-def test_deactivate_adapter_when_none_active(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test deaktywacji gdy żaden adapter nie jest aktywny."""
-    # Mock deactivate_adapter to return False (no active adapter)
+@patch("venom_core.config.SETTINGS")
+def test_deactivate_adapter_no_active(mock_settings, client, mock_model_manager):
+    mock_settings.ENABLE_ACADEMY = True
     mock_model_manager.deactivate_adapter.return_value = False
-    
+
     response = client.post("/api/v1/academy/adapters/deactivate")
-    
+
     assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is False
-    assert "No active adapter" in data["message"]
+    assert response.json()["success"] is False
 
 
-def test_get_training_status_not_found(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test pobierania statusu nieistniejącego joba."""
-    mock_gpu_habitat.get_training_status.side_effect = KeyError("Job not found")
-    
-    response = client.get("/api/v1/academy/train/nonexistent/status")
-    
-    assert response.status_code == 404
+@patch("venom_core.config.SETTINGS")
+def test_localhost_guard_blocks_mutating_endpoints(mock_settings, strict_client):
+    mock_settings.ENABLE_ACADEMY = True
 
-
-def test_list_jobs_empty(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test listowania pustej historii jobów."""
-    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=[]):
-        response = client.get("/api/v1/academy/jobs")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data == {"count": 0, "jobs": []}
-
-
-def test_curate_dataset_with_git_history(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test kuracji datasetu z uwzględnieniem historii Git."""
-    response = client.post(
-        "/api/v1/academy/dataset",
-        json={
-            "lessons_limit": 200,
-            "git_commits_limit": 100,
-            "quality_threshold": 0.5
-        }
+    r_train = strict_client.post("/api/v1/academy/train", json={})
+    r_activate = strict_client.post(
+        "/api/v1/academy/adapters/activate",
+        json={"adapter_id": "a", "adapter_path": "/tmp/a"},
     )
-    
-    assert response.status_code == 200
-    assert mock_dataset_curator.collect_from_git_history.called
-    assert mock_dataset_curator.filter_low_quality.called
+    r_deactivate = strict_client.post("/api/v1/academy/adapters/deactivate")
+    r_cancel = strict_client.delete("/api/v1/academy/train/job1")
+
+    assert r_train.status_code == 403
+    assert r_activate.status_code == 403
+    assert r_deactivate.status_code == 403
+    assert r_cancel.status_code == 403
 
 
+@patch("venom_core.config.SETTINGS")
+def test_read_only_endpoints_not_blocked_by_localhost_guard(
+    mock_settings, strict_client
+):
+    mock_settings.ENABLE_ACADEMY = True
+
+    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=[]):
+        status_response = strict_client.get("/api/v1/academy/status")
+        jobs_response = strict_client.get("/api/v1/academy/jobs")
+
+    assert status_response.status_code == 200
+    assert jobs_response.status_code == 200

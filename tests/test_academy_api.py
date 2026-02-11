@@ -499,35 +499,41 @@ def test_list_adapters_with_active_state(
     client
 ):
     """Test listowania adapterów z active state."""
-    # Mock the models directory structure
-    mock_models_dir = MagicMock()
-    mock_models_dir.exists.return_value = True
-    
     # Mock a training directory
     mock_training_dir = MagicMock()
     mock_training_dir.is_dir.return_value = True
     mock_training_dir.name = "adapter_1"
     
-    # Mock adapter path
+    # Mock adapter path - when training_dir / "adapter" is called
     mock_adapter_path = MagicMock()
     mock_adapter_path.exists.return_value = True
-    mock_training_dir.__truediv__ = lambda self, other: mock_adapter_path if other == "adapter" else MagicMock()
     
-    # Mock metadata file (doesn't exist for simplicity)
+    # Mock metadata file - when training_dir / "metadata.json" is called
     mock_metadata_file = MagicMock()
     mock_metadata_file.exists.return_value = False
     
-    # Setup iterdir to return our mock directory
+    def truediv_side_effect(other):
+        if other == "adapter":
+            return mock_adapter_path
+        elif other == "metadata.json":
+            return mock_metadata_file
+        return MagicMock()
+    
+    mock_training_dir.__truediv__ = truediv_side_effect
+    
+    # Mock the models directory structure
+    mock_models_dir = MagicMock()
+    mock_models_dir.exists.return_value = True
     mock_models_dir.iterdir.return_value = [mock_training_dir]
     
-    # Setup Path to return our mock_models_dir
+    # Setup Path() to return our mock_models_dir when called with ACADEMY_MODELS_DIR
     mock_path_class.return_value = mock_models_dir
     
     # Mock active adapter info
-    mock_model_manager.get_active_adapter_info = MagicMock(return_value={
+    mock_model_manager.get_active_adapter_info.return_value = {
         "adapter_id": "adapter_1",
         "adapter_path": "./path/1"
-    })
+    }
     
     response = client.get("/api/v1/academy/adapters")
     

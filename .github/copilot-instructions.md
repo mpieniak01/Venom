@@ -1,36 +1,43 @@
-## Zasady pracy z kodem — Venom v2
+## Copilot Coding Agent — Hard Gate Operating Rules
 
-1. Komunikacja:
-   - Kod i komentarze po polsku (chyba że to specyficzny kod zewnętrzny).
-   - Komentarze tylko jeśli logika jest złożona — nie nadpisujemy „komentarzami-śmieciami”.
+Ten plik definiuje minimalny kontrakt wykonania dla GitHub Coding Agent w tym repo.
 
-2. Format / styl / lint / pre-commit:
-   - Używamy pre-commit + Black + Ruff + isort / inne, aby kod wyglądał spójnie.
-   - Nie ładujemy ciężkich zależności ani modeli w hookach. Hooki mają być szybkie.
+### 1) Sekwencja obowiązkowa (nie pomijaj)
 
-3. Testy:
-   - Testy jednostkowe / logiczne: `pytest`, możliwie z mockami gdzie sens — szybkie i deterministyczne. Nie zależne od GPU / modeli.
-   - Testy integracyjne, inference, ML — tylko na żądanie / przy odpowiedniej konfiguracji (GPU, onnx). W CI / workflow osobna ścieżka.
+Po zmianach w kodzie agent zawsze wykonuje:
 
-4. Konfiguracja / dane wrażliwe:
-   - `.env` nie do repo. Konfiguracja — `config.py` + `Settings`, z domyślnymi wartościami i fallbackami.
-   - Sekrety, klucze, ścieżki do modeli — przez env lub konfigurację, nigdy twardo wpisane.
+1. `make pr-fast`
+2. `make check-new-code-coverage`
 
-5. Praca z agentami / Copilot:
-   - Jeśli używasz Copilot / AI do generacji kodu — traktuj wygenerowany kod jak patch:
-       - ręcznie przeglądnij, popraw styl, przetestuj logicznie, dodaj testy.
-       - nie commituj „na ślepo” — review nadal obowiązkowe.
-   - Używaj mocków / stubów przy testach generowanego kodu, jeśli integracje zewnętrzne / modelem są ciężkie.
+### 2) Pętla naprawcza (obowiązkowa)
 
-6. Dokumentacja zadań i planowanie:
-   - Każde zadanie opisywane w `docs/_to_do`, z numerem, celem, DoD, notatkami.
-   - Po wykonaniu → przeniesione do `docs/_done`.
+Jeśli którykolwiek gate zakończy się błędem:
 
-7. Workflow git / PR / commit:
-   - Commit message: `type(scope): krótki opis` (`feat`, `fix`, `docs`, `test`, …).
-   - Przed commitem: `pre-commit run`.
-   - PR musi mieć opis zmiany, uzasadnienie, kroki testów / regresji (jeśli dotyczy).
-   - Po mergu: usuń branch, zaktualizuj `CHANGELOG.md` (jeśli wprowadzony).
+1. agent nie kończy zadania,
+2. naprawia problem,
+3. ponownie uruchamia oba gate'y,
+4. powtarza pętlę do uzyskania zielonego wyniku lub potwierdzonego blokera środowiskowego.
 
-8. CI / automatyzacja:
-   - CI pipeline (np. w `.github/workflows`) uruchamia lint + testy lekkie. Cięższe joby (GPU, onnx) opcjonalne — osobne joby lub marker „heavy”.
+Tryb "partial done" przy czerwonych gate'ach jest zabroniony.
+
+Ścieżka blokera środowiskowego:
+
+1. ustaw `HARD_GATE_ENV_BLOCKER=1` dla hooka,
+2. obowiązkowo opisz bloker i impact w sekcji ryzyk PR.
+
+### 3) Kontrakt raportu końcowego (PR/summary)
+
+Raport musi zawierać:
+
+1. listę wykonanych komend walidacyjnych,
+2. wynik pass/fail dla każdej komendy,
+3. changed-lines coverage z `make check-new-code-coverage`,
+4. znane ryzyka/skipy wraz z uzasadnieniem.
+
+Format sekcji raportowych: `.github/pull_request_template.md`.
+
+### 4) Zasady jakości i CI-lite
+
+1. Pilnuj zgodności z `docs/TESTING_POLICY.md` i `docs/AGENTS.md`.
+2. Dla testów optional dependency stosuj `pytest.importorskip(...)`, gdy dependency nie jest gwarantowane w CI-lite.
+3. Nie zgłaszaj zadania jako ukończonego, jeśli wymagane status checks pozostają czerwone.

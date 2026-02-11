@@ -63,6 +63,13 @@ jobs:
           python -m pip install pytest-cov
           make audit-ci-lite
           mkdir -p test-results/sonar
+          DIFF_BASE="origin/main"
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            DIFF_BASE="${{ github.event.before }}"
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${{ github.base_ref }}" ]; then
+            DIFF_BASE="origin/${{ github.base_ref }}"
+          fi
+          echo "Using NEW_CODE_DIFF_BASE=${DIFF_BASE}"
           make check-new-code-coverage \
             NEW_CODE_INCLUDE_BASELINE=1 \
             NEW_CODE_AUTO_INCLUDE_CHANGED=1 \
@@ -71,6 +78,7 @@ jobs:
             NEW_CODE_COV_TARGET=venom_core \
             NEW_CODE_COVERAGE_MIN=0 \
             NEW_CODE_CHANGED_LINES_MIN=80 \
+            NEW_CODE_DIFF_BASE="${DIFF_BASE}" \
           | tee test-results/sonar/backend-lite.log
 
       - name: Upload backend Sonar artifacts

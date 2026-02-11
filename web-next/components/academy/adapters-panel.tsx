@@ -7,15 +7,15 @@ import {
   listAdapters,
   activateAdapter,
   deactivateAdapter,
-  type AcademyStatus,
   type AdapterInfo,
 } from "@/lib/academy-api";
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface AdaptersPanelProps {
-  status: AcademyStatus;
+  // Empty for now - reserved for future use
 }
 
-export function AdaptersPanel(_status: AdaptersPanelProps) {
+export function AdaptersPanel() {
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);

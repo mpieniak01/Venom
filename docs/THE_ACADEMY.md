@@ -633,10 +633,13 @@ Academy dashboard is available at **http://localhost:3000/academy**
    - Job history with status indicators
    - Auto-refresh for running jobs (10s interval)
    - Cancel running jobs with automatic container cleanup
-   - **Real-time log viewer** - View live training logs via SSE
+   - **Real-time log viewer** with SSE streaming
+   - **Live metrics display** - Epoch progress, loss tracking
+   - **Progress indicators** - Visual bars and percentages
    - Pause/resume log streaming
    - Auto-scroll with manual override
    - Line numbers and timestamps in logs
+   - Best/current/average loss tracking
 
 4. **Adapters Panel**
    - List all trained adapters with active state highlighting
@@ -654,8 +657,9 @@ Academy dashboard is available at **http://localhost:3000/academy**
 - [x] Container management and cleanup (v2.1)
 - [x] GPU monitoring (v2.1)
 - [x] **Real-time log streaming (SSE)** (v2.2)
-- [ ] Training metrics parsing (epoch/loss extraction)
-- [ ] Progress indicators and ETA
+- [x] **Training metrics parsing** (v2.3)
+- [x] **Progress indicators** (v2.3)
+- [ ] ETA calculation
 - [ ] Full Arena implementation (automated evaluation)
 - [ ] PEFT integration for KernelBuilder
 - [ ] Multi-modal learning (images, audio)
@@ -670,13 +674,22 @@ Academy dashboard is available at **http://localhost:3000/academy**
 
 ---
 
-**Status:** ✅ Core features + API + UI + ModelManager + Log Streaming implemented  
-**Version:** 2.2 (PR 090 Phase 3)  
+**Status:** ✅ Full monitoring stack with metrics parsing and progress tracking  
+**Version:** 2.3 (PR 090 Phase 4)  
 **Author:** Venom Team
 
 ## Changelog
 
-### v2.2 (Phase 3 - Current)
+### v2.3 (Phase 4 - Current)
+- ✅ Training metrics parser (epoch, loss, lr, accuracy)
+- ✅ Real-time metrics extraction from logs
+- ✅ Progress indicators with visual bars
+- ✅ Loss tracking (current, best, average)
+- ✅ Metrics display in LogViewer
+- ✅ Support for multiple log formats
+- ✅ 17 comprehensive test cases for parser
+
+### v2.2 (Phase 3)
 - ✅ Real-time log streaming via SSE
 - ✅ Live log viewer component with auto-scroll
 - ✅ Pause/resume log streaming
@@ -685,8 +698,6 @@ Academy dashboard is available at **http://localhost:3000/academy**
 - ✅ Graceful error handling
 
 ### v2.1 (Phase 2)
-
-### v2.1 (Phase 2 - Current)
 - ✅ ModelManager adapter integration (activate/deactivate)
 - ✅ Container cleanup on job cancellation
 - ✅ GPU detailed monitoring (nvidia-smi)

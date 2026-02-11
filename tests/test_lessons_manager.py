@@ -159,3 +159,94 @@ def test_append_learning_log_writes_jsonl_and_updates_metrics(tmp_path, monkeypa
     assert learning_path.exists()
     assert "GENERAL_CHAT" in learning_path.read_text(encoding="utf-8")
     assert collector.calls == 1
+
+
+# ===== Phase B: RAG Retrieval Boost Integration Tests =====
+
+
+@pytest.mark.asyncio
+async def test_add_lessons_with_custom_limit(monkeypatch):
+    """Test that add_lessons_to_context respects custom limit parameter."""
+    state = DummyStateManager()
+    
+    # Mock store that returns more lessons than default limit
+    class CustomStore:
+        def search_lessons(self, query, limit, tags=None):
+            # Return as many lessons as requested
+            return [
+                SimpleNamespace(
+                    lesson_id=f"l{i}",
+                    situation=f"situation {i}",
+                    result=f"result {i}",
+                    feedback=f"feedback {i}",
+                )
+                for i in range(limit)
+            ]
+    
+    store = CustomStore()
+    manager = LessonsManager(state_manager=state, lessons_store=store)
+    
+    monkeypatch.setattr(
+        "venom_core.core.lessons_manager.SETTINGS.ENABLE_META_LEARNING", True
+    )
+    
+    task_id = uuid4()
+    
+    # Test with default limit (should be 3)
+    output_default = await manager.add_lessons_to_context(task_id, "context")
+    # Count lesson blocks in output
+    default_count = output_default.count("[Lekcja ")
+    assert default_count == 3  # MAX_LESSONS_IN_CONTEXT
+    
+    # Test with custom limit = 5
+    output_custom = await manager.add_lessons_to_context(task_id, "context", limit=5)
+    custom_count = output_custom.count("[Lekcja ")
+    assert custom_count == 5
+    
+    # Test with custom limit = 1
+    output_single = await manager.add_lessons_to_context(task_id, "context", limit=1)
+    single_count = output_single.count("[Lekcja ")
+    assert single_count == 1
+
+
+@pytest.mark.asyncio
+async def test_add_lessons_with_zero_limit(monkeypatch):
+    """Test that limit=0 results in no lessons being added."""
+    state = DummyStateManager()
+    store = DummyLessonsStore()
+    manager = LessonsManager(state_manager=state, lessons_store=store)
+    
+    monkeypatch.setattr(
+        "venom_core.core.lessons_manager.SETTINGS.ENABLE_META_LEARNING", True
+    )
+    
+    task_id = uuid4()
+    
+    # Test with limit=0
+    output = await manager.add_lessons_to_context(task_id, "context", limit=0)
+    # With limit=0, search_lessons should return empty list
+    assert "[Lekcja " not in output or output.count("[Lekcja ") == 0
+
+
+@pytest.mark.asyncio
+async def test_add_lessons_limit_none_uses_default(monkeypatch):
+    """Test that limit=None uses the default MAX_LESSONS_IN_CONTEXT."""
+    state = DummyStateManager()
+    store = DummyLessonsStore()
+    manager = LessonsManager(state_manager=state, lessons_store=store)
+    
+    monkeypatch.setattr(
+        "venom_core.core.lessons_manager.SETTINGS.ENABLE_META_LEARNING", True
+    )
+    
+    task_id = uuid4()
+    
+    # Test with explicit None (should use default)
+    output_none = await manager.add_lessons_to_context(task_id, "context", limit=None)
+    
+    # Test without passing limit (should also use default)
+    output_default = await manager.add_lessons_to_context(task_id, "context")
+    
+    # Both should have same number of lessons
+    assert output_none.count("[Lekcja ") == output_default.count("[Lekcja ")
+

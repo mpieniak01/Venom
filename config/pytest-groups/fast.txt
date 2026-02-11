@@ -78,6 +78,8 @@ tests/test_helpers.py
 tests/test_hidden_prompts_cache.py
 tests/test_hidden_prompts_semantic.py
 tests/test_historian_agent.py
+tests/test_rag_boost_integration.py
+tests/test_retrieval_policy.py
 tests/test_history_api.py
 tests/test_huggingface_skill.py
 tests/test_hybrid_model_router.py

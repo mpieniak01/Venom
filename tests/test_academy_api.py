@@ -379,7 +379,9 @@ def test_stream_training_logs_not_found(
     assert "not found" in response.json()["detail"].lower()
 
 
+@patch("venom_core.api.routes.academy._load_jobs_history")
 def test_stream_training_logs_success(
+    mock_load_jobs_history,
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
     client
 ):
@@ -389,6 +391,7 @@ def test_stream_training_logs_success(
         "job_name": "training_test",
         "status": "running"
     }]
+    mock_load_jobs_history.return_value = job_data
     
     # Mock container exists
     mock_gpu_habitat.training_containers = {"training_test": "container_123"}
@@ -402,9 +405,7 @@ def test_stream_training_logs_success(
         return_value={"status": "running"}
     )
     
-    # Mock _load_jobs_history to return the job
-    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=job_data):
-        response = client.get("/api/v1/academy/train/test_job/logs/stream")
+    response = client.get("/api/v1/academy/train/test_job/logs/stream")
     
     # SSE endpoint returns 200
     assert response.status_code == 200
@@ -435,7 +436,11 @@ def test_get_gpu_info_endpoint(
     assert data["gpu"]["count"] == 1
 
 
+@patch("venom_core.api.routes.academy._update_job_status")
+@patch("venom_core.api.routes.academy._load_jobs_history")
 def test_cancel_job_with_cleanup(
+    mock_load_jobs_history,
+    mock_update_status,
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
     client
 ):
@@ -445,12 +450,10 @@ def test_cancel_job_with_cleanup(
         "job_name": "training_test",
         "status": "running"
     }]
+    mock_load_jobs_history.return_value = job_data
     mock_gpu_habitat.cleanup_job = MagicMock()
     
-    # Mock both _load_jobs_history and _update_job_status
-    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=job_data), \
-         patch("venom_core.api.routes.academy._update_job_status") as mock_update:
-        response = client.delete("/api/v1/academy/train/test_job")
+    response = client.delete("/api/v1/academy/train/test_job")
     
     assert response.status_code == 200
     mock_gpu_habitat.cleanup_job.assert_called_once_with("training_test")

@@ -7,11 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { curateDataset, type DatasetResponse } from "@/lib/academy-api";
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface DatasetPanelProps {
-  // Empty for now - reserved for future use
-}
-
 export function DatasetPanel() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DatasetResponse | null>(null);

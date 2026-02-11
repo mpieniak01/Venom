@@ -1,6 +1,7 @@
 """Testy jednostkowe dla IntentEmbeddingRouter."""
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +9,10 @@ import numpy as np
 import pytest
 
 from venom_core.config import SETTINGS
+
+
+# Mock sentence_transformers module before imports
+sys.modules['sentence_transformers'] = MagicMock()
 
 
 @pytest.fixture
@@ -110,7 +115,7 @@ class TestIntentEmbeddingRouter:
         """Test inicjalizacji routera z mockowanym modelem."""
         with patch.object(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", True):
             with patch(
-                "venom_core.core.intent_embedding_router.SentenceTransformer",
+                "sentence_transformers.SentenceTransformer",
                 return_value=mock_sentence_transformer
             ):
                 from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
@@ -129,7 +134,7 @@ class TestIntentEmbeddingRouter:
             with patch.object(SETTINGS, "INTENT_EMBED_MIN_SCORE", 0.5):
                 with patch.object(SETTINGS, "INTENT_EMBED_MARGIN", 0.1):
                     with patch(
-                        "venom_core.core.intent_embedding_router.SentenceTransformer",
+                        "sentence_transformers.SentenceTransformer",
                         return_value=mock_sentence_transformer
                     ):
                         from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
@@ -149,7 +154,7 @@ class TestIntentEmbeddingRouter:
             with patch.object(SETTINGS, "INTENT_EMBED_MIN_SCORE", 0.5):
                 with patch.object(SETTINGS, "INTENT_EMBED_MARGIN", 0.1):
                     with patch(
-                        "venom_core.core.intent_embedding_router.SentenceTransformer",
+                        "sentence_transformers.SentenceTransformer",
                         return_value=mock_sentence_transformer
                     ):
                         from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
@@ -168,7 +173,7 @@ class TestIntentEmbeddingRouter:
             with patch.object(SETTINGS, "INTENT_EMBED_MIN_SCORE", 0.99):  # Bardzo wysoki próg
                 with patch.object(SETTINGS, "INTENT_EMBED_MARGIN", 0.01):
                     with patch(
-                        "venom_core.core.intent_embedding_router.SentenceTransformer",
+                        "sentence_transformers.SentenceTransformer",
                         return_value=mock_sentence_transformer
                     ):
                         from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
@@ -199,7 +204,7 @@ class TestIntentEmbeddingRouter:
             with patch.object(SETTINGS, "INTENT_EMBED_MIN_SCORE", 0.5):
                 with patch.object(SETTINGS, "INTENT_EMBED_MARGIN", 0.3):  # Wysoki wymagany margines
                     with patch(
-                        "venom_core.core.intent_embedding_router.SentenceTransformer",
+                        "sentence_transformers.SentenceTransformer",
                         return_value=mock_model
                     ):
                         from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
@@ -215,7 +220,7 @@ class TestIntentEmbeddingRouter:
         with patch.object(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", True):
             # Symuluj brak biblioteki
             with patch(
-                "venom_core.core.intent_embedding_router.SentenceTransformer",
+                "sentence_transformers.SentenceTransformer",
                 side_effect=ImportError("No module named 'sentence_transformers'")
             ):
                 from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
@@ -253,7 +258,7 @@ class TestIntentEmbeddingRouter:
         """Test ładowania fraz z wielu języków."""
         with patch.object(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", True):
             with patch(
-                "venom_core.core.intent_embedding_router.SentenceTransformer"
+                "sentence_transformers.SentenceTransformer"
             ) as mock_st:
                 mock_model = MagicMock()
                 mock_model.encode = MagicMock(return_value=np.array([[1.0, 0.0, 0.0]]))
@@ -275,7 +280,7 @@ class TestIntentEmbeddingRouter:
         """Test zachowania gdy katalog lexicon jest pusty."""
         with patch.object(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", True):
             with patch(
-                "venom_core.core.intent_embedding_router.SentenceTransformer"
+                "sentence_transformers.SentenceTransformer"
             ) as mock_st:
                 mock_model = MagicMock()
                 mock_model.encode = MagicMock(return_value=np.array([[1.0, 0.0, 0.0]]))
@@ -302,7 +307,7 @@ async def test_intent_manager_with_embedding_router(temp_lexicon_dir, mock_sente
         with patch.object(SETTINGS, "INTENT_EMBED_MIN_SCORE", 0.5):
             with patch.object(SETTINGS, "INTENT_EMBED_MARGIN", 0.1):
                 with patch(
-                    "venom_core.core.intent_embedding_router.SentenceTransformer",
+                    "sentence_transformers.SentenceTransformer",
                     return_value=mock_sentence_transformer
                 ):
                     # Mock lexicon dir w IntentManager

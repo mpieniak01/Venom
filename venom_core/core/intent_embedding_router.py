@@ -67,7 +67,7 @@ class IntentEmbeddingRouter:
             
         try:
             # Lazy import - nie chcemy blokować startu jeśli biblioteki nie ma
-            from sentence_transformers import SentenceTransformer
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
             
             logger.info("Ładowanie modelu embeddingów: %s", self.model_name)
             self.model = SentenceTransformer(self.model_name)

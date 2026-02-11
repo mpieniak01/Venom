@@ -6,7 +6,7 @@
         "type": "command",
         "bash": "bash scripts/agent_hard_gate.sh",
         "cwd": ".",
-        "timeoutSec": 7200
+        "timeoutSec": 1800
       },
       {
         "type": "command",

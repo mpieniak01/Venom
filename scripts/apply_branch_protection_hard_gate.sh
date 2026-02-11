@@ -33,6 +33,8 @@ gh api \
   -f enforce_admins=true \
   -f required_pull_request_reviews.dismiss_stale_reviews=true \
   -f required_pull_request_reviews.required_approving_review_count=1 \
+  # Keep restrictions unset intentionally: repo-level contributor permissions
+  # and PR requirement are the primary controls in this policy.
   -F restrictions= \
   -f allow_force_pushes=false \
   -f allow_deletions=false \

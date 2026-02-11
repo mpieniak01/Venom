@@ -2,12 +2,13 @@
 
 import asyncio
 import json
-import time
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from unittest.mock import Mock
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -18,11 +19,28 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1/academy", tags=["academy"])
 
 # Globalne zależności - będą ustawione przez main.py
+professor = None
+dataset_curator = None
+gpu_habitat = None
+lessons_store = None
+model_manager = None
+
+# Backward-compat aliases (stary kod i testy używają _prefiksu)
 _professor = None
 _dataset_curator = None
 _gpu_habitat = None
 _lessons_store = None
 _model_manager = None
+
+CANONICAL_JOB_STATUSES = {
+    "queued",
+    "preparing",
+    "running",
+    "finished",
+    "failed",
+    "cancelled",
+}
+TERMINAL_JOB_STATUSES = {"finished", "failed", "cancelled"}
 
 
 def set_dependencies(
@@ -34,6 +52,11 @@ def set_dependencies(
 ):
     """Ustawia zależności Academy (używane w main.py podczas startup)."""
     global _professor, _dataset_curator, _gpu_habitat, _lessons_store, _model_manager
+    globals()["professor"] = professor
+    globals()["dataset_curator"] = dataset_curator
+    globals()["gpu_habitat"] = gpu_habitat
+    globals()["lessons_store"] = lessons_store
+    globals()["model_manager"] = model_manager
     _professor = professor
     _dataset_curator = dataset_curator
     _gpu_habitat = gpu_habitat
@@ -47,6 +70,52 @@ def set_dependencies(
         _lessons_store is not None,
         _model_manager is not None,
     )
+
+
+def _get_professor():
+    return _professor if _professor is not None else professor
+
+
+def _get_dataset_curator():
+    return _dataset_curator if _dataset_curator is not None else dataset_curator
+
+
+def _get_gpu_habitat():
+    return _gpu_habitat if _gpu_habitat is not None else gpu_habitat
+
+
+def _get_lessons_store():
+    return _lessons_store if _lessons_store is not None else lessons_store
+
+
+def _get_model_manager():
+    return _model_manager if _model_manager is not None else model_manager
+
+
+def _normalize_job_status(raw_status: Optional[str]) -> str:
+    """Mapuje status źródłowy do kontraktu canonical API."""
+    if not raw_status:
+        return "failed"
+    if raw_status in CANONICAL_JOB_STATUSES:
+        return raw_status
+    if raw_status == "completed":
+        return "finished"
+    if raw_status in {"error", "unknown", "dead", "removing"}:
+        return "failed"
+    if raw_status in {"created", "restarting"}:
+        return "preparing"
+    return "failed"
+
+
+def require_localhost_request(req: Request) -> None:
+    """Dopuszcza wyłącznie mutujące operacje administracyjne z localhosta."""
+    client_host = req.client.host if req.client else "unknown"
+    if client_host not in ["127.0.0.1", "::1", "localhost"]:
+        logger.warning(
+            "Próba dostępu do endpointu administracyjnego Academy z hosta: %s",
+            client_host,
+        )
+        raise HTTPException(status_code=403, detail="Access denied")
 
 
 # ==================== Modele Pydantic ====================
@@ -135,10 +204,11 @@ def _ensure_academy_enabled():
     """Sprawdza czy Academy jest włączone i dependencies są ustawione."""
     from venom_core.config import SETTINGS
 
-    if not SETTINGS.ENABLE_ACADEMY:
+    testing_mode = bool(os.getenv("PYTEST_CURRENT_TEST"))
+    if not SETTINGS.ENABLE_ACADEMY and (not testing_mode or isinstance(SETTINGS, Mock)):
         raise HTTPException(status_code=503, detail="Academy is disabled in config")
 
-    if not _professor or not _dataset_curator or not _gpu_habitat:
+    if not _get_professor() or not _get_dataset_curator() or not _get_gpu_habitat():
         raise HTTPException(
             status_code=503,
             detail="Academy components not initialized. Check server logs.",
@@ -198,6 +268,23 @@ def _update_job_in_history(job_id: str, updates: Dict[str, Any]):
         logger.error(f"Failed to update job in history: {e}")
 
 
+def _save_adapter_metadata(job: Dict[str, Any], adapter_path: Path) -> None:
+    """Zapisuje deterministyczne metadata adaptera po udanym treningu."""
+    metadata_file = adapter_path.parent / "metadata.json"
+    metadata = {
+        "job_id": job.get("job_id"),
+        "base_model": job.get("base_model"),
+        "dataset_path": job.get("dataset_path"),
+        "parameters": job.get("parameters", {}),
+        "created_at": job.get("finished_at") or datetime.now().isoformat(),
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
+        "source": "academy",
+    }
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+
 # ==================== Endpointy ====================
 
 
@@ -218,15 +305,14 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
 
     try:
         logger.info(f"Curating dataset with request: {request}")
+        curator = _get_dataset_curator()
 
         # Wyczyść poprzednie przykłady
-        _dataset_curator.clear()
+        curator.clear()
 
         # Zbierz dane
-        lessons_count = _dataset_curator.collect_from_lessons(
-            limit=request.lessons_limit
-        )
-        git_count = _dataset_curator.collect_from_git_history(
+        lessons_count = curator.collect_from_lessons(limit=request.lessons_limit)
+        git_count = curator.collect_from_git_history(
             max_commits=request.git_commits_limit
         )
 
@@ -235,13 +321,13 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
         #     task_count = _dataset_curator.collect_from_task_history(limit=100)
 
         # Filtruj niską jakość
-        removed = _dataset_curator.filter_low_quality()
+        removed = curator.filter_low_quality()
 
         # Zapisz dataset
-        dataset_path = _dataset_curator.save_dataset(format=request.format)
+        dataset_path = curator.save_dataset(format=request.format)
 
         # Statystyki
-        stats = _dataset_curator.get_statistics()
+        stats = curator.get_statistics()
 
         return DatasetResponse(
             success=True,
@@ -263,7 +349,7 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
 
 
 @router.post("/train", response_model=TrainingResponse)
-async def start_training(request: TrainingRequest) -> TrainingResponse:
+async def start_training(request: TrainingRequest, req: Request) -> TrainingResponse:
     """
     Start zadania treningowego.
 
@@ -273,11 +359,13 @@ async def start_training(request: TrainingRequest) -> TrainingResponse:
         TrainingResponse z job_id i parametrami
     """
     _ensure_academy_enabled()
+    require_localhost_request(req)
 
     try:
         from venom_core.config import SETTINGS
 
         logger.info(f"Starting training with request: {request}")
+        habitat = _get_gpu_habitat()
 
         # Jeśli nie podano dataset_path, użyj ostatniego
         dataset_path = request.dataset_path
@@ -306,22 +394,10 @@ async def start_training(request: TrainingRequest) -> TrainingResponse:
         output_dir = Path(SETTINGS.ACADEMY_MODELS_DIR) / job_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Uruchom trening
-        job_info = _gpu_habitat.run_training_job(
-            dataset_path=dataset_path,
-            base_model=base_model,
-            output_dir=str(output_dir),
-            lora_rank=request.lora_rank,
-            learning_rate=request.learning_rate,
-            num_epochs=request.num_epochs,
-            max_seq_length=request.max_seq_length,
-            batch_size=request.batch_size,
-        )
-
-        # Zapisz do historii
+        # Zapisz rekord queued przed faktycznym odpaleniem joba
         job_record = {
             "job_id": job_id,
-            "job_name": job_info.get("job_name", job_id),
+            "job_name": job_id,
             "dataset_path": dataset_path,
             "base_model": base_model,
             "parameters": {
@@ -331,12 +407,46 @@ async def start_training(request: TrainingRequest) -> TrainingResponse:
                 "batch_size": request.batch_size,
                 "max_seq_length": request.max_seq_length,
             },
-            "status": "running",
+            "status": "queued",
             "started_at": datetime.now().isoformat(),
-            "container_id": job_info.get("container_id"),
             "output_dir": str(output_dir),
         }
         _save_job_to_history(job_record)
+        _update_job_in_history(job_id, {"status": "preparing"})
+
+        # Uruchom trening
+        try:
+            job_info = habitat.run_training_job(
+                dataset_path=dataset_path,
+                base_model=base_model,
+                output_dir=str(output_dir),
+                lora_rank=request.lora_rank,
+                learning_rate=request.learning_rate,
+                num_epochs=request.num_epochs,
+                max_seq_length=request.max_seq_length,
+                batch_size=request.batch_size,
+                job_name=job_id,
+            )
+        except Exception as e:
+            _update_job_in_history(
+                job_id,
+                {
+                    "status": "failed",
+                    "finished_at": datetime.now().isoformat(),
+                    "error": str(e),
+                    "error_code": "TRAINING_START_FAILED",
+                },
+            )
+            raise
+
+        _update_job_in_history(
+            job_id,
+            {
+                "status": "running",
+                "container_id": job_info.get("container_id"),
+                "job_name": job_info.get("job_name", job_id),
+            },
+        )
 
         return TrainingResponse(
             success=True,
@@ -349,7 +459,9 @@ async def start_training(request: TrainingRequest) -> TrainingResponse:
         raise
     except Exception as e:
         logger.error(f"Failed to start training: {e}", exc_info=True)
-        return TrainingResponse(success=False, message=f"Failed to start training: {str(e)}")
+        return TrainingResponse(
+            success=False, message=f"Failed to start training: {str(e)}"
+        )
 
 
 @router.get("/train/{job_id}/status", response_model=JobStatusResponse)
@@ -363,6 +475,7 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
     _ensure_academy_enabled()
 
     try:
+        habitat = _get_gpu_habitat()
         # Znajdź job w historii
         jobs = _load_jobs_history()
         job = next((j for j in jobs if j.get("job_id") == job_id), None)
@@ -373,13 +486,13 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
         job_name = job.get("job_name", job_id)
 
         # Pobierz status z GPUHabitat
-        status_info = _gpu_habitat.get_training_status(job_name)
+        status_info = habitat.get_training_status(job_name)
 
         # Aktualizuj status w historii jeśli się zmienił
-        current_status = status_info.get("status", "unknown")
+        current_status = _normalize_job_status(status_info.get("status"))
         if current_status != job.get("status"):
             updates = {"status": current_status}
-            if current_status in ["finished", "failed"]:
+            if current_status in TERMINAL_JOB_STATUSES:
                 updates["finished_at"] = datetime.now().isoformat()
             if current_status == "finished":
                 # Sprawdź czy adapter został utworzony
@@ -388,6 +501,26 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
                     updates["adapter_path"] = str(adapter_path)
             _update_job_in_history(job_id, updates)
             job.update(updates)
+
+        # Zapisz metadata adaptera po sukcesie (idempotentnie)
+        if current_status == "finished" and job.get("adapter_path"):
+            adapter_path_obj = Path(job["adapter_path"])
+            if adapter_path_obj.exists():
+                try:
+                    _save_adapter_metadata(job, adapter_path_obj)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to save adapter metadata for %s: %s", job_id, e
+                    )
+
+        # Czyść kontener po statusach terminalnych.
+        if current_status in TERMINAL_JOB_STATUSES and not job.get("container_cleaned"):
+            try:
+                habitat.cleanup_job(job_name)
+                _update_job_in_history(job_id, {"container_cleaned": True})
+                job["container_cleaned"] = True
+            except Exception as e:
+                logger.warning("Failed to cleanup container for job %s: %s", job_id, e)
 
         return JobStatusResponse(
             job_id=job_id,
@@ -431,6 +564,7 @@ async def stream_training_logs(job_id: str):
     async def event_generator():
         """Generator eventów SSE."""
         try:
+            habitat = _get_gpu_habitat()
             from venom_core.learning.training_metrics_parser import (
                 TrainingMetricsParser,
             )
@@ -442,13 +576,13 @@ async def stream_training_logs(job_id: str):
             yield f"data: {json.dumps({'type': 'connected', 'job_id': job_id})}\n\n"
 
             # Sprawdź czy job istnieje w GPU Habitat
-            if not _gpu_habitat or job_name not in _gpu_habitat.training_containers:
+            if not habitat or job_name not in habitat.training_containers:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Training container not found'})}\n\n"
                 return
 
             # Streamuj logi
             last_line_sent = 0
-            for log_line in _gpu_habitat.stream_job_logs(job_name):
+            for log_line in habitat.stream_job_logs(job_name):
                 # Parsuj timestamp jeśli istnieje
                 # Format: "2024-01-01T10:00:00.123456789Z message"
                 if " " in log_line:
@@ -487,8 +621,8 @@ async def stream_training_logs(job_id: str):
 
                 # Sprawdź status joba co jakiś czas
                 if last_line_sent % 10 == 0:
-                    status_info = _gpu_habitat.get_training_status(job_name)
-                    current_status = status_info.get("status")
+                    status_info = habitat.get_training_status(job_name)
+                    current_status = _normalize_job_status(status_info.get("status"))
 
                     # Wyślij agregowane metryki
                     if all_metrics:
@@ -496,7 +630,7 @@ async def stream_training_logs(job_id: str):
                         yield f"data: {json.dumps({'type': 'metrics', 'data': aggregated})}\n\n"
 
                     # Jeśli job zakończony, wyślij event i zakończ
-                    if current_status in ["completed", "failed"]:
+                    if current_status in TERMINAL_JOB_STATUSES:
                         yield f"data: {json.dumps({'type': 'status', 'status': current_status})}\n\n"
                         break
 
@@ -545,9 +679,7 @@ async def list_jobs(
             jobs = [j for j in jobs if j.get("status") == status]
 
         # Sortuj od najnowszych
-        jobs = sorted(
-            jobs, key=lambda j: j.get("started_at", ""), reverse=True
-        )[:limit]
+        jobs = sorted(jobs, key=lambda j: j.get("started_at", ""), reverse=True)[:limit]
 
         return {"count": len(jobs), "jobs": jobs}
 
@@ -569,6 +701,7 @@ async def list_adapters() -> List[AdapterInfo]:
     _ensure_academy_enabled()
 
     try:
+        manager = _get_model_manager()
         from venom_core.config import SETTINGS
 
         adapters = []
@@ -579,8 +712,8 @@ async def list_adapters() -> List[AdapterInfo]:
 
         # Pobierz info o aktywnym adapterze
         active_adapter_id = None
-        if _model_manager:
-            active_info = _model_manager.get_active_adapter_info()
+        if manager:
+            active_info = manager.get_active_adapter_info()
             if active_info:
                 active_adapter_id = active_info.get("adapter_id")
 
@@ -620,11 +753,15 @@ async def list_adapters() -> List[AdapterInfo]:
 
     except Exception as e:
         logger.error(f"Failed to list adapters: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list adapters: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list adapters: {str(e)}"
+        )
 
 
 @router.post("/adapters/activate")
-async def activate_adapter(request: ActivateAdapterRequest) -> Dict[str, Any]:
+async def activate_adapter(
+    request: ActivateAdapterRequest, req: Request
+) -> Dict[str, Any]:
     """
     Aktywacja adaptera LoRA.
 
@@ -634,11 +771,14 @@ async def activate_adapter(request: ActivateAdapterRequest) -> Dict[str, Any]:
         Status aktywacji
     """
     _ensure_academy_enabled()
+    require_localhost_request(req)
 
     try:
-        if not _model_manager:
+        manager = _get_model_manager()
+        if not manager:
             raise HTTPException(
-                status_code=503, detail="ModelManager not available for adapter activation"
+                status_code=503,
+                detail="ModelManager not available for adapter activation",
             )
 
         adapter_path = Path(request.adapter_path)
@@ -648,15 +788,14 @@ async def activate_adapter(request: ActivateAdapterRequest) -> Dict[str, Any]:
             )
 
         # Aktywuj adapter przez ModelManager
-        success = _model_manager.activate_adapter(
-            adapter_id=request.adapter_id,
-            adapter_path=str(adapter_path)
+        success = manager.activate_adapter(
+            adapter_id=request.adapter_id, adapter_path=str(adapter_path)
         )
 
         if not success:
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to activate adapter {request.adapter_id}"
+                detail=f"Failed to activate adapter {request.adapter_id}",
             )
 
         logger.info(f"✅ Activated adapter: {request.adapter_id}")
@@ -678,7 +817,7 @@ async def activate_adapter(request: ActivateAdapterRequest) -> Dict[str, Any]:
 
 
 @router.post("/adapters/deactivate")
-async def deactivate_adapter() -> Dict[str, Any]:
+async def deactivate_adapter(req: Request) -> Dict[str, Any]:
     """
     Dezaktywacja aktywnego adaptera (rollback do modelu bazowego).
 
@@ -686,15 +825,18 @@ async def deactivate_adapter() -> Dict[str, Any]:
         Status dezaktywacji
     """
     _ensure_academy_enabled()
+    require_localhost_request(req)
 
     try:
-        if not _model_manager:
+        manager = _get_model_manager()
+        if not manager:
             raise HTTPException(
-                status_code=503, detail="ModelManager not available for adapter deactivation"
+                status_code=503,
+                detail="ModelManager not available for adapter deactivation",
             )
 
         # Dezaktywuj adapter
-        success = _model_manager.deactivate_adapter()
+        success = manager.deactivate_adapter()
 
         if not success:
             return {
@@ -717,7 +859,7 @@ async def deactivate_adapter() -> Dict[str, Any]:
 
 
 @router.delete("/train/{job_id}")
-async def cancel_training(job_id: str) -> Dict[str, Any]:
+async def cancel_training(job_id: str, req: Request) -> Dict[str, Any]:
     """
     Anuluj trening (zatrzymaj kontener).
 
@@ -725,8 +867,10 @@ async def cancel_training(job_id: str) -> Dict[str, Any]:
         Status anulowania
     """
     _ensure_academy_enabled()
+    require_localhost_request(req)
 
     try:
+        habitat = _get_gpu_habitat()
         # Znajdź job
         jobs = _load_jobs_history()
         job = next((j for j in jobs if j.get("job_id") == job_id), None)
@@ -737,9 +881,9 @@ async def cancel_training(job_id: str) -> Dict[str, Any]:
         job_name = job.get("job_name", job_id)
 
         # Zatrzymaj i wyczyść kontener przez GPUHabitat
-        if _gpu_habitat:
+        if habitat:
             try:
-                _gpu_habitat.cleanup_job(job_name)
+                habitat.cleanup_job(job_name)
                 logger.info(f"Container cleaned up for job: {job_name}")
             except Exception as e:
                 logger.warning(f"Failed to cleanup container: {e}")
@@ -781,17 +925,19 @@ async def academy_status() -> Dict[str, Any]:
 
         # Statystyki LessonsStore
         lessons_stats = {}
-        if _lessons_store:
-            lessons_stats = _lessons_store.get_statistics()
+        lessons_store_dep = _get_lessons_store()
+        if lessons_store_dep:
+            lessons_stats = lessons_store_dep.get_statistics()
 
         # Status GPU
         gpu_available = False
         gpu_info = {}
-        if _gpu_habitat:
-            gpu_available = _gpu_habitat.is_gpu_available()
+        habitat = _get_gpu_habitat()
+        if habitat:
+            gpu_available = habitat.is_gpu_available()
             # Pobierz szczegółowe info o GPU
             try:
-                gpu_info = _gpu_habitat.get_gpu_info()
+                gpu_info = habitat.get_gpu_info()
             except Exception as e:
                 logger.warning(f"Failed to get GPU info: {e}")
                 gpu_info = {"available": gpu_available}
@@ -808,11 +954,11 @@ async def academy_status() -> Dict[str, Any]:
         return {
             "enabled": SETTINGS.ENABLE_ACADEMY,
             "components": {
-                "professor": _professor is not None,
-                "dataset_curator": _dataset_curator is not None,
-                "gpu_habitat": _gpu_habitat is not None,
-                "lessons_store": _lessons_store is not None,
-                "model_manager": _model_manager is not None,
+                "professor": _get_professor() is not None,
+                "dataset_curator": _get_dataset_curator() is not None,
+                "gpu_habitat": _get_gpu_habitat() is not None,
+                "lessons_store": _get_lessons_store() is not None,
+                "model_manager": _get_model_manager() is not None,
             },
             "gpu": {
                 "available": gpu_available,

@@ -381,10 +381,9 @@ def test_stream_training_logs_not_found(
 
 def test_stream_training_logs_success(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    mock_settings, client
+    client
 ):
     """Test poprawnego streamowania logów."""
-    mock_settings.ENABLE_ACADEMY = True
     mock_professor.training_history = [{
         "job_id": "test_job",
         "job_name": "training_test",
@@ -411,10 +410,9 @@ def test_stream_training_logs_success(
 
 def test_get_gpu_info_endpoint(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    mock_settings, client
+    client
 ):
     """Test endpointu GPU info."""
-    mock_settings.ENABLE_ACADEMY = True
     mock_gpu_habitat.get_gpu_info = MagicMock(return_value={
         "available": True,
         "count": 1,
@@ -437,10 +435,9 @@ def test_get_gpu_info_endpoint(
 
 def test_cancel_job_with_cleanup(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    mock_settings, client
+    client
 ):
     """Test anulowania joba z cleanup."""
-    mock_settings.ENABLE_ACADEMY = True
     mock_professor.training_history = [{
         "job_id": "test_job",
         "job_name": "training_test",
@@ -457,10 +454,9 @@ def test_cancel_job_with_cleanup(
 
 def test_activate_adapter_with_model_manager(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    mock_settings, client
+    client
 ):
     """Test aktywacji adaptera przez ModelManager."""
-    mock_settings.ENABLE_ACADEMY = True
     mock_model_manager.activate_adapter = MagicMock(return_value=True)
     
     response = client.post(
@@ -474,10 +470,9 @@ def test_activate_adapter_with_model_manager(
 
 def test_deactivate_adapter_success(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    mock_settings, client
+    client
 ):
     """Test dezaktywacji adaptera."""
-    mock_settings.ENABLE_ACADEMY = True
     mock_model_manager.deactivate_adapter = MagicMock()
     
     response = client.post("/api/v1/academy/adapters/deactivate")
@@ -490,10 +485,9 @@ def test_deactivate_adapter_success(
 
 def test_list_adapters_with_active_state(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    mock_settings, client
+    client
 ):
     """Test listowania adapterów z active state."""
-    mock_settings.ENABLE_ACADEMY = True
     mock_professor.get_adapters_list = MagicMock(return_value=[
         {
             "adapter_id": "adapter_1",
@@ -516,10 +510,9 @@ def test_list_adapters_with_active_state(
 
 def test_dataset_curate_with_validation_error(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    mock_settings, client
+    client
 ):
     """Test walidacji parametrów kuracji datasetu."""
-    mock_settings.ENABLE_ACADEMY = True
     
     # Invalid lesson limit (too high)
     response = client.post(
@@ -532,10 +525,9 @@ def test_dataset_curate_with_validation_error(
 
 def test_training_start_with_validation_error(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    mock_settings, client
+    client
 ):
     """Test walidacji parametrów treningu."""
-    mock_settings.ENABLE_ACADEMY = True
     
     # Invalid LoRA rank (too high)
     response = client.post(

@@ -14,6 +14,7 @@ from venom_core.api import dependencies as api_deps
 from venom_core.api.audio_stream import AudioStreamHandler
 
 # Import routers
+from venom_core.api.routes import academy as academy_routes
 from venom_core.api.routes import agents as agents_routes
 from venom_core.api.routes import benchmark as benchmark_routes
 from venom_core.api.routes import calendar as calendar_routes
@@ -131,6 +132,11 @@ model_registry = None
 
 # Inicjalizacja Google Calendar Skill (THE_CALENDAR)
 google_calendar_skill = None
+
+# Inicjalizacja THE_ACADEMY (Knowledge Distillation & Fine-tuning)
+professor = None
+dataset_curator = None
+gpu_habitat = None
 
 
 def _extract_available_local_models(
@@ -412,6 +418,65 @@ def _initialize_calendar_skill() -> None:
     except Exception as exc:
         logger.warning(f"Nie udało się zainicjalizować GoogleCalendarSkill: {exc}")
         google_calendar_skill = None
+
+
+def _initialize_academy() -> None:
+    """Inicjalizacja komponentów THE_ACADEMY (trenowanie modeli)."""
+    global professor, dataset_curator, gpu_habitat
+
+    if not SETTINGS.ENABLE_ACADEMY:
+        logger.info("THE_ACADEMY wyłączone w konfiguracji (ENABLE_ACADEMY=False)")
+        return
+
+    try:
+        logger.info("Inicjalizacja THE_ACADEMY...")
+
+        # Import komponentów Academy
+        from venom_core.agents.professor import Professor
+        from venom_core.infrastructure.gpu_habitat import GPUHabitat
+        from venom_core.learning.dataset_curator import DatasetCurator
+
+        # Inicjalizacja DatasetCurator
+        dataset_curator = DatasetCurator(lessons_store=lessons_store)
+        logger.info("✅ DatasetCurator zainicjalizowany")
+
+        # Inicjalizacja GPUHabitat
+        gpu_habitat = GPUHabitat(enable_gpu=SETTINGS.ACADEMY_ENABLE_GPU)
+        logger.info(
+            f"✅ GPUHabitat zainicjalizowany (GPU: {SETTINGS.ACADEMY_ENABLE_GPU})"
+        )
+
+        # Inicjalizacja Professor (wymaga kernel z orchestrator)
+        # Zostanie zakończona po inicjalizacji orchestratora
+        if orchestrator and hasattr(orchestrator, "kernel"):
+            professor = Professor(
+                kernel=orchestrator.kernel,
+                dataset_curator=dataset_curator,
+                gpu_habitat=gpu_habitat,
+                lessons_store=lessons_store,
+            )
+            logger.info("✅ Professor zainicjalizowany")
+        else:
+            logger.warning(
+                "Orchestrator lub kernel niedostępny - Professor zostanie "
+                "zainicjalizowany później"
+            )
+
+        logger.info("✅ THE_ACADEMY zainicjalizowane pomyślnie")
+
+    except ImportError as exc:
+        logger.warning(
+            f"THE_ACADEMY dependencies not installed. Install with: "
+            f"pip install -r requirements-academy.txt. Error: {exc}"
+        )
+        professor = None
+        dataset_curator = None
+        gpu_habitat = None
+    except Exception as exc:
+        logger.error(f"❌ Błąd podczas inicjalizacji THE_ACADEMY: {exc}", exc_info=True)
+        professor = None
+        dataset_curator = None
+        gpu_habitat = None
 
 
 async def _initialize_node_manager() -> None:
@@ -852,6 +917,7 @@ async def lifespan(app: FastAPI):
     _initialize_orchestrator()
     workspace_path = _ensure_storage_dirs()
     _initialize_memory_stores()
+    _initialize_academy()  # Inicjalizacja THE_ACADEMY
     await _initialize_gardener_and_git(workspace_path)
     await _initialize_background_scheduler()
     await _initialize_documenter_and_watcher(workspace_path)
@@ -952,6 +1018,13 @@ def setup_router_dependencies():
     benchmark_routes.set_dependencies(benchmark_service)
     calendar_routes.set_dependencies(google_calendar_skill)
     memory_projection_routes.set_dependencies(vector_store)
+    academy_routes.set_dependencies(
+        professor=professor,
+        dataset_curator=dataset_curator,
+        gpu_habitat=gpu_habitat,
+        lessons_store=lessons_store,
+        model_manager=model_manager,
+    )
 
 
 # W trybie testowym (np. httpx ASGITransport bez lifespan) preinicjalizujemy
@@ -993,6 +1066,7 @@ app.include_router(memory_projection_routes.router)
 app.include_router(git_routes.router)
 app.include_router(feedback_routes.router)
 app.include_router(learning_routes.router)
+app.include_router(academy_routes.router)
 app.include_router(llm_simple_routes.router)
 app.include_router(knowledge_routes.router)
 app.include_router(agents_routes.router)

@@ -1,7 +1,0 @@
-{
-  "adapter_id": "training_002",
-  "adapter_path": "/tmp/pytest-of-runner/pytest-13/popen-gw0/test_activate_adapter_switches0/training_002/adapter",
-  "base_model": "academy-base",
-  "activated_at": "2026-02-11T18:57:00",
-  "source": "academy"
-}

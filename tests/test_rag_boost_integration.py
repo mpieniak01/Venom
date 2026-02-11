@@ -1,7 +1,7 @@
 """Integration tests for Phase B: RAG Retrieval Boost end-to-end flow."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from venom_core.core.retrieval_policy import RetrievalPolicyManager
@@ -103,10 +103,11 @@ class TestRAGBoostIntegration:
     async def test_context_builder_integration_with_policy(self, mock_settings_enabled):
         """Test that context_builder correctly applies retrieval policy."""
         from types import SimpleNamespace
-        import venom_core.core.retrieval_policy as rp_module
         
-        # Reset singleton to ensure fresh instance with mocked settings
-        rp_module._policy_manager = None
+        # Reset singleton cache to ensure fresh instance with mocked settings
+        from venom_core.core import retrieval_policy as rp_module
+        if hasattr(rp_module._get_policy_manager_impl, 'cache_clear'):
+            rp_module._get_policy_manager_impl.cache_clear()
         
         # Mock orchestrator and its components
         mock_orch = MagicMock()
@@ -133,7 +134,7 @@ class TestRAGBoostIntegration:
             task_id = uuid4()
             
             # Test with RESEARCH intent (should apply boost)
-            result = await builder.enrich_context_with_lessons(
+            await builder.enrich_context_with_lessons(
                 task_id, "test context", intent="RESEARCH"
             )
             
@@ -155,10 +156,11 @@ class TestRAGBoostIntegration:
     async def test_context_builder_no_boost_for_general_chat(self, mock_settings_enabled):
         """Test that GENERAL_CHAT doesn't get boost even when enabled."""
         from types import SimpleNamespace
-        import venom_core.core.retrieval_policy as rp_module
         
-        # Reset singleton to ensure fresh instance with mocked settings
-        rp_module._policy_manager = None
+        # Reset singleton cache to ensure fresh instance with mocked settings
+        from venom_core.core import retrieval_policy as rp_module
+        if hasattr(rp_module._get_policy_manager_impl, 'cache_clear'):
+            rp_module._get_policy_manager_impl.cache_clear()
         
         mock_orch = MagicMock()
         mock_orch.state_manager = MagicMock()
@@ -179,7 +181,7 @@ class TestRAGBoostIntegration:
             task_id = uuid4()
             
             # Test with GENERAL_CHAT intent (should NOT apply boost)
-            result = await builder.enrich_context_with_lessons(
+            await builder.enrich_context_with_lessons(
                 task_id, "test context", intent="GENERAL_CHAT"
             )
             
@@ -214,7 +216,7 @@ class TestRAGBoostIntegration:
             side_effect=Exception("Test error")
         ):
             # Should not raise, should fall back gracefully
-            result = await builder.enrich_context_with_lessons(
+            await builder.enrich_context_with_lessons(
                 task_id, "test context", intent="RESEARCH"
             )
             

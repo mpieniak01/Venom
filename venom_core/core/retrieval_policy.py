@@ -6,6 +6,7 @@ for knowledge-intensive intents (RESEARCH, KNOWLEDGE_SEARCH, COMPLEX_PLANNING).
 """
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Optional
 
 from venom_core.config import SETTINGS
@@ -65,6 +66,10 @@ class RetrievalPolicyManager:
 
     def _load_boost_settings(self) -> None:
         """Load boost settings from SETTINGS, falling back to defaults."""
+        # Note: Configuration uses RAG_BOOST_TOP_K_* naming (common ML/retrieval term)
+        # while code uses vector_limit for clarity. Both refer to the same concept:
+        # the number of top results to retrieve from vector search.
+        
         # Default boost settings
         self.boost_top_k_default = getattr(SETTINGS, "RAG_BOOST_TOP_K_DEFAULT", 5)
         self.boost_top_k_research = getattr(SETTINGS, "RAG_BOOST_TOP_K_RESEARCH", 8)
@@ -90,11 +95,16 @@ class RetrievalPolicyManager:
 
         Args:
             intent: The classified intent
-            intent_source: Source of intent classification (lexicon/embedding/llm)
-            forced_intent: Whether intent was forced by user
+            intent_source: (Reserved for Phase C) Source of intent classification
+            forced_intent: (Reserved for Phase C) Whether intent was forced by user
 
         Returns:
             RetrievalPolicy with appropriate parameters
+            
+        Note:
+            Currently only `intent` is used to determine the policy.
+            `intent_source` and `forced_intent` are reserved for future
+            enhancements in Phase C (e.g., adjusting confidence based on source).
         """
         # If boost disabled, always return baseline
         if not self.enabled:
@@ -169,13 +179,16 @@ class RetrievalPolicyManager:
             )
 
 
-# Singleton instance
-_policy_manager: Optional[RetrievalPolicyManager] = None
-
-
 def get_policy_manager() -> RetrievalPolicyManager:
-    """Get or create the singleton policy manager instance."""
-    global _policy_manager
-    if _policy_manager is None:
-        _policy_manager = RetrievalPolicyManager()
-    return _policy_manager
+    """
+    Get or create the singleton policy manager instance.
+    
+    Uses functools.lru_cache for thread-safe singleton initialization.
+    """
+    return _get_policy_manager_impl()
+
+
+@lru_cache(maxsize=1)
+def _get_policy_manager_impl() -> RetrievalPolicyManager:
+    """Thread-safe singleton implementation using lru_cache."""
+    return RetrievalPolicyManager()

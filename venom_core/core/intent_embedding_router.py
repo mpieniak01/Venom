@@ -58,6 +58,10 @@ class IntentEmbeddingRouter:
                 exc
             )
             self._initialized = False
+            # Wyczyść zasoby aby uniknąć trzymania ciężkich obiektów w pamięci
+            self.model = None
+            self.intent_embeddings = {}
+            self.intent_phrases = {}
 
     def _initialize(self) -> None:
         """Inicjalizuje model i buduje cache embeddingów intencji."""
@@ -159,7 +163,7 @@ class IntentEmbeddingRouter:
                     exc
                 )
 
-    def classify(
+    async def classify(
         self, user_input: str
     ) -> Tuple[Optional[str], float, List[Tuple[str, float]]]:
         """Klasyfikuje intencję na podstawie podobieństwa embeddingów.
@@ -178,12 +182,17 @@ class IntentEmbeddingRouter:
             return None, 0.0, []
             
         try:
-            # Oblicz embedding dla wejścia
-            input_embedding = self.model.encode(
-                [user_input],
-                convert_to_numpy=True,
-                show_progress_bar=False
-            )[0]
+            # Import anyio for thread pool execution
+            from anyio import to_thread
+            
+            # Oblicz embedding dla wejścia w thread pool aby nie blokować event loop
+            input_embedding = await to_thread.run_sync(
+                lambda: self.model.encode(
+                    [user_input],
+                    convert_to_numpy=True,
+                    show_progress_bar=False
+                )[0]
+            )
             
             # Oblicz podobieństwo cosinusowe z każdym centroidem intencji
             similarities = []

@@ -11,8 +11,10 @@ import pytest
 from venom_core.config import SETTINGS
 
 
-# Mock sentence_transformers module before imports
-sys.modules['sentence_transformers'] = MagicMock()
+@pytest.fixture(autouse=True)
+def mock_sentence_transformers_module(monkeypatch):
+    """Mockuje moduł sentence_transformers w sposób ograniczony do tego modułu testowego."""
+    monkeypatch.setitem(sys.modules, "sentence_transformers", MagicMock())
 
 
 @pytest.fixture
@@ -126,7 +128,8 @@ class TestIntentEmbeddingRouter:
                 assert "CODE_GENERATION" in router.intent_embeddings
                 assert "KNOWLEDGE_SEARCH" in router.intent_embeddings
 
-    def test_classify_code_generation(
+    @pytest.mark.asyncio
+    async def test_classify_code_generation(
         self, temp_lexicon_dir, mock_sentence_transformer
     ):
         """Test klasyfikacji dla CODE_GENERATION."""
@@ -140,13 +143,14 @@ class TestIntentEmbeddingRouter:
                         from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
                         
                         router = IntentEmbeddingRouter(temp_lexicon_dir)
-                        intent, score, top2 = router.classify("write a function in Python")
+                        intent, score, top2 = await router.classify("write a function in Python")
                         
                         assert intent == "CODE_GENERATION"
                         assert score > 0.5
                         assert len(top2) >= 1
 
-    def test_classify_knowledge_search(
+    @pytest.mark.asyncio
+    async def test_classify_knowledge_search(
         self, temp_lexicon_dir, mock_sentence_transformer
     ):
         """Test klasyfikacji dla KNOWLEDGE_SEARCH."""
@@ -160,12 +164,13 @@ class TestIntentEmbeddingRouter:
                         from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
                         
                         router = IntentEmbeddingRouter(temp_lexicon_dir)
-                        intent, score, top2 = router.classify("what is GraphRAG?")
+                        intent, score, top2 = await router.classify("what is GraphRAG?")
                         
                         assert intent == "KNOWLEDGE_SEARCH"
                         assert score > 0.5
 
-    def test_classify_below_threshold(
+    @pytest.mark.asyncio
+    async def test_classify_below_threshold(
         self, temp_lexicon_dir, mock_sentence_transformer
     ):
         """Test że klasyfikacja zwraca None gdy score poniżej progu."""
@@ -179,13 +184,14 @@ class TestIntentEmbeddingRouter:
                         from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
                         
                         router = IntentEmbeddingRouter(temp_lexicon_dir)
-                        intent, score, top2 = router.classify("some random text")
+                        intent, score, top2 = await router.classify("some random text")
                         
                         # Powinno zwrócić None bo score nie osiągnął progu
                         assert intent is None
                         assert len(top2) >= 0
 
-    def test_classify_insufficient_margin(
+    @pytest.mark.asyncio
+    async def test_classify_insufficient_margin(
         self, temp_lexicon_dir, mock_sentence_transformer
     ):
         """Test że klasyfikacja zwraca None gdy margines między top1 a top2 jest za mały."""
@@ -210,12 +216,13 @@ class TestIntentEmbeddingRouter:
                         from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
                         
                         router = IntentEmbeddingRouter(temp_lexicon_dir)
-                        intent, score, top2 = router.classify("some text")
+                        intent, score, top2 = await router.classify("some text")
                         
                         # Powinno zwrócić None bo margines jest za mały
                         assert intent is None
 
-    def test_graceful_fallback_on_import_error(self, temp_lexicon_dir):
+    @pytest.mark.asyncio
+    async def test_graceful_fallback_on_import_error(self, temp_lexicon_dir):
         """Test że router gracefully fallbackuje gdy brak biblioteki sentence-transformers."""
         with patch.object(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", True):
             # Symuluj brak biblioteki
@@ -229,7 +236,7 @@ class TestIntentEmbeddingRouter:
                 assert not router.is_enabled()
                 
                 # Classify powinno zwrócić None (fallback)
-                intent, score, top2 = router.classify("test")
+                intent, score, top2 = await router.classify("test")
                 assert intent is None
 
     def test_cosine_similarity(self):
@@ -276,7 +283,8 @@ class TestIntentEmbeddingRouter:
                 assert any("write" in p for p in phrases)
                 assert any("napisz" in p for p in phrases)
 
-    def test_empty_lexicon_directory(self):
+    @pytest.mark.asyncio
+    async def test_empty_lexicon_directory(self):
         """Test zachowania gdy katalog lexicon jest pusty."""
         with patch.object(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", True):
             with patch(
@@ -296,7 +304,7 @@ class TestIntentEmbeddingRouter:
                 assert router.model is not None
                 
                 # Classify na pustych embeddingach powinno zwrócić None
-                intent, score, top2 = router.classify("test")
+                intent, score, top2 = await router.classify("test")
                 assert intent is None
 
 
@@ -323,8 +331,11 @@ async def test_intent_manager_with_embedding_router(temp_lexicon_dir, mock_sente
                         
                         # Powinien użyć embedding routera lub lexicon - oba są OK
                         assert intent == "CODE_GENERATION"
-                        # Jeśli lexicon nie dopasował, powinien być embedding
-                        if manager.last_intent_debug["source"] not in ["lexicon", "embedding"]:
-                            # Fallback do LLM lub inne - test nie powinien failować
+                        # Sprawdź score tylko gdy źródło to lexicon lub embedding
+                        if manager.last_intent_debug["source"] in ["lexicon", "embedding"]:
+                            # W tych przypadkach score powinien być ustawiony i wystarczająco wysoki
+                            assert manager.last_intent_debug["score"] is not None
+                            assert manager.last_intent_debug["score"] > 0.5
+                        else:
+                            # Fallback do LLM lub inne - test nie powinien failować na braku score
                             pass
-                        assert manager.last_intent_debug["score"] > 0.5

@@ -384,7 +384,7 @@ def test_stream_training_logs_success(
     client
 ):
     """Test poprawnego streamowania logów."""
-    mock_professor.training_history = [{
+    job_data = [{
         "job_id": "test_job",
         "job_name": "training_test",
         "status": "running"
@@ -402,7 +402,9 @@ def test_stream_training_logs_success(
         return_value={"status": "running"}
     )
     
-    response = client.get("/api/v1/academy/train/test_job/logs/stream")
+    # Mock _load_jobs_history to return the job
+    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=job_data):
+        response = client.get("/api/v1/academy/train/test_job/logs/stream")
     
     # SSE endpoint returns 200
     assert response.status_code == 200
@@ -438,14 +440,16 @@ def test_cancel_job_with_cleanup(
     client
 ):
     """Test anulowania joba z cleanup."""
-    mock_professor.training_history = [{
+    job_data = [{
         "job_id": "test_job",
         "job_name": "training_test",
         "status": "running"
     }]
     mock_gpu_habitat.cleanup_job = MagicMock()
     
-    with patch("venom_core.api.routes.academy._update_job_status") as mock_update:
+    # Mock both _load_jobs_history and _update_job_status
+    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=job_data), \
+         patch("venom_core.api.routes.academy._update_job_status") as mock_update:
         response = client.delete("/api/v1/academy/train/test_job")
     
     assert response.status_code == 200

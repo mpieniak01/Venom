@@ -422,7 +422,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       ) : (
         <>
           <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card">
-            <div ref={cyRef} className="relative h-[70vh] w-full" />
+            <div ref={cyRef} data-testid="graph-container" className="relative h-[70vh] w-full" />
             {isMemoryEmpty && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/70 text-center">
                 <p className="text-sm text-zinc-400">{t("brain.file.noData")}</p>

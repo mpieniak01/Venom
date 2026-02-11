@@ -179,6 +179,15 @@ export async function activateAdapter(params: {
 }
 
 /**
+ * Dezaktywacja adaptera (rollback do modelu bazowego)
+ */
+export async function deactivateAdapter(): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>("/api/v1/academy/adapters/deactivate", {
+    method: "POST",
+  });
+}
+
+/**
  * Anuluj trening
  */
 export async function cancelTraining(jobId: string): Promise<{ success: boolean; message: string }> {

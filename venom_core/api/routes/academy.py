@@ -461,6 +461,13 @@ async def list_adapters() -> List[AdapterInfo]:
         if not models_dir.exists():
             return []
 
+        # Pobierz info o aktywnym adapterze
+        active_adapter_id = None
+        if _model_manager:
+            active_info = _model_manager.get_active_adapter_info()
+            if active_info:
+                active_adapter_id = active_info.get("adapter_id")
+
         # Przejrzyj katalogi treningowe
         for training_dir in models_dir.iterdir():
             if not training_dir.is_dir():
@@ -477,6 +484,9 @@ async def list_adapters() -> List[AdapterInfo]:
                 with open(metadata_file, "r") as f:
                     metadata = json.load(f)
 
+            # Sprawdź czy to aktywny adapter
+            is_active = training_dir.name == active_adapter_id
+
             adapters.append(
                 AdapterInfo(
                     adapter_id=training_dir.name,
@@ -486,7 +496,7 @@ async def list_adapters() -> List[AdapterInfo]:
                     ),
                     created_at=metadata.get("created_at", "unknown"),
                     training_params=metadata.get("parameters", {}),
-                    is_active=False,  # TODO: Check with ModelManager
+                    is_active=is_active,
                 )
             )
 
@@ -521,10 +531,19 @@ async def activate_adapter(request: ActivateAdapterRequest) -> Dict[str, Any]:
                 status_code=404, detail=f"Adapter not found: {request.adapter_path}"
             )
 
-        # TODO: Implementacja aktywacji adaptera przez ModelManager
-        # _model_manager.activate_adapter(request.adapter_id, str(adapter_path))
+        # Aktywuj adapter przez ModelManager
+        success = _model_manager.activate_adapter(
+            adapter_id=request.adapter_id,
+            adapter_path=str(adapter_path)
+        )
 
-        logger.info(f"Activated adapter: {request.adapter_id}")
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to activate adapter {request.adapter_id}"
+            )
+
+        logger.info(f"✅ Activated adapter: {request.adapter_id}")
 
         return {
             "success": True,
@@ -539,6 +558,45 @@ async def activate_adapter(request: ActivateAdapterRequest) -> Dict[str, Any]:
         logger.error(f"Failed to activate adapter: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to activate adapter: {str(e)}"
+        )
+
+
+@router.post("/adapters/deactivate")
+async def deactivate_adapter() -> Dict[str, Any]:
+    """
+    Dezaktywacja aktywnego adaptera (rollback do modelu bazowego).
+
+    Returns:
+        Status dezaktywacji
+    """
+    _ensure_academy_enabled()
+
+    try:
+        if not _model_manager:
+            raise HTTPException(
+                status_code=503, detail="ModelManager not available for adapter deactivation"
+            )
+
+        # Dezaktywuj adapter
+        success = _model_manager.deactivate_adapter()
+
+        if not success:
+            return {
+                "success": False,
+                "message": "No active adapter to deactivate",
+            }
+
+        logger.info("✅ Adapter deactivated - rolled back to base model")
+
+        return {
+            "success": True,
+            "message": "Adapter deactivated successfully - using base model",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to deactivate adapter: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to deactivate adapter: {str(e)}"
         )
 
 
@@ -561,13 +619,14 @@ async def cancel_training(job_id: str) -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
         job_name = job.get("job_name", job_id)
-        container_id = job.get("container_id")
 
-        if not container_id:
-            raise HTTPException(status_code=400, detail="Job has no container_id")
-
-        # TODO: Implementacja zatrzymania kontenera
-        # _gpu_habitat.stop_container(container_id)
+        # Zatrzymaj i wyczyść kontener przez GPUHabitat
+        if _gpu_habitat:
+            try:
+                _gpu_habitat.cleanup_job(job_name)
+                logger.info(f"Container cleaned up for job: {job_name}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup container: {e}")
 
         # Aktualizuj status
         _update_job_in_history(
@@ -614,7 +673,12 @@ async def academy_status() -> Dict[str, Any]:
         gpu_info = {}
         if _gpu_habitat:
             gpu_available = _gpu_habitat.is_gpu_available()
-            # TODO: Pobierz więcej info o GPU
+            # Pobierz szczegółowe info o GPU
+            try:
+                gpu_info = _gpu_habitat.get_gpu_info()
+            except Exception as e:
+                logger.warning(f"Failed to get GPU info: {e}")
+                gpu_info = {"available": gpu_available}
 
         # Statystyki jobów
         jobs = _load_jobs_history()

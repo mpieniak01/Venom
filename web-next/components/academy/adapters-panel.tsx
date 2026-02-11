@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Zap, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
+import { Zap, RefreshCw, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   listAdapters,
   activateAdapter,
+  deactivateAdapter,
   type AcademyStatus,
   type AdapterInfo,
 } from "@/lib/academy-api";
@@ -18,6 +19,7 @@ export function AdaptersPanel({ status }: AdaptersPanelProps) {
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
 
   useEffect(() => {
     loadAdapters();
@@ -50,6 +52,20 @@ export function AdaptersPanel({ status }: AdaptersPanelProps) {
     }
   }
 
+  async function handleDeactivate() {
+    try {
+      setDeactivating(true);
+      await deactivateAdapter();
+      await loadAdapters();
+    } catch (err) {
+      console.error("Failed to deactivate adapter:", err);
+    } finally {
+      setDeactivating(false);
+    }
+  }
+
+  const hasActiveAdapter = adapters.some(a => a.is_active);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -59,15 +75,32 @@ export function AdaptersPanel({ status }: AdaptersPanelProps) {
             Zarządzaj wytrenowanymi adapterami i aktywuj je hot-swap
           </p>
         </div>
-        <Button
-          onClick={loadAdapters}
-          disabled={loading}
-          variant="outline"
-          size="sm"
-          className="gap-2"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+        <div className="flex gap-2">
+          {hasActiveAdapter && (
+            <Button
+              onClick={handleDeactivate}
+              disabled={deactivating}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              {deactivating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <XCircle className="h-4 w-4" />
+              )}
+              Rollback
+            </Button>
+          )}
+          <Button
+            onClick={loadAdapters}
+            disabled={loading}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}

@@ -492,18 +492,38 @@ def test_deactivate_adapter_success(
     mock_model_manager.deactivate_adapter.assert_called_once()
 
 
+@patch("venom_core.api.routes.academy.Path")
 def test_list_adapters_with_active_state(
+    mock_path_class,
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
     client
 ):
     """Test listowania adapterów z active state."""
-    mock_professor.get_adapters_list = MagicMock(return_value=[
-        {
-            "adapter_id": "adapter_1",
-            "adapter_path": "./path/1",
-            "created_at": "2024-01-01T10:00:00"
-        }
-    ])
+    # Mock the models directory structure
+    mock_models_dir = MagicMock()
+    mock_models_dir.exists.return_value = True
+    
+    # Mock a training directory
+    mock_training_dir = MagicMock()
+    mock_training_dir.is_dir.return_value = True
+    mock_training_dir.name = "adapter_1"
+    
+    # Mock adapter path
+    mock_adapter_path = MagicMock()
+    mock_adapter_path.exists.return_value = True
+    mock_training_dir.__truediv__ = lambda self, other: mock_adapter_path if other == "adapter" else MagicMock()
+    
+    # Mock metadata file (doesn't exist for simplicity)
+    mock_metadata_file = MagicMock()
+    mock_metadata_file.exists.return_value = False
+    
+    # Setup iterdir to return our mock directory
+    mock_models_dir.iterdir.return_value = [mock_training_dir]
+    
+    # Setup Path to return our mock_models_dir
+    mock_path_class.return_value = mock_models_dir
+    
+    # Mock active adapter info
     mock_model_manager.get_active_adapter_info = MagicMock(return_value={
         "adapter_id": "adapter_1",
         "adapter_path": "./path/1"
@@ -513,8 +533,9 @@ def test_list_adapters_with_active_state(
     
     assert response.status_code == 200
     data = response.json()
-    assert len(data["adapters"]) == 1
-    assert data["adapters"][0]["is_active"] is True
+    assert len(data) == 1
+    assert data[0]["adapter_id"] == "adapter_1"
+    assert data[0]["is_active"] is True
 
 
 def test_dataset_curate_with_validation_error(

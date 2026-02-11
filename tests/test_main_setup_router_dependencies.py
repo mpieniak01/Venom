@@ -1,4 +1,6 @@
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
+from unittest.mock import MagicMock
 
 import venom_core.main as main_module
 
@@ -59,3 +61,72 @@ def test_setup_router_dependencies_wires_globals(monkeypatch):
     assert calls["system_deps"]["args"][0] is main_module.background_scheduler
     assert calls["system_deps"]["args"][1] is main_module.service_monitor
     assert calls["models"]["kwargs"]["model_registry"] is main_module.model_registry
+
+
+def _install_academy_dummy_modules(monkeypatch):
+    professor_mod = ModuleType("venom_core.agents.professor")
+    dataset_mod = ModuleType("venom_core.learning.dataset_curator")
+    habitat_mod = ModuleType("venom_core.infrastructure.gpu_habitat")
+
+    class DummyProfessor:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class DummyDatasetCurator:
+        def __init__(self, lessons_store):
+            self.lessons_store = lessons_store
+
+    class DummyGPUHabitat:
+        def __init__(self, enable_gpu):
+            self.enable_gpu = enable_gpu
+
+    professor_mod.Professor = DummyProfessor
+    dataset_mod.DatasetCurator = DummyDatasetCurator
+    habitat_mod.GPUHabitat = DummyGPUHabitat
+
+    monkeypatch.setitem(sys.modules, "venom_core.agents.professor", professor_mod)
+    monkeypatch.setitem(sys.modules, "venom_core.learning.dataset_curator", dataset_mod)
+    monkeypatch.setitem(
+        sys.modules, "venom_core.infrastructure.gpu_habitat", habitat_mod
+    )
+
+
+def test_initialize_academy_restores_active_adapter(monkeypatch):
+    _install_academy_dummy_modules(monkeypatch)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", True, raising=False)
+    monkeypatch.setattr(
+        main_module.SETTINGS, "ACADEMY_ENABLE_GPU", False, raising=False
+    )
+    monkeypatch.setattr(main_module, "lessons_store", object())
+    monkeypatch.setattr(main_module, "orchestrator", SimpleNamespace(kernel=object()))
+    model_manager = MagicMock()
+    model_manager.restore_active_adapter.return_value = True
+    monkeypatch.setattr(main_module, "model_manager", model_manager)
+
+    main_module._initialize_academy()
+
+    assert main_module.dataset_curator is not None
+    assert main_module.gpu_habitat is not None
+    assert main_module.professor is not None
+    model_manager.restore_active_adapter.assert_called_once()
+
+
+def test_initialize_academy_restore_error_falls_back(monkeypatch):
+    _install_academy_dummy_modules(monkeypatch)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", True, raising=False)
+    monkeypatch.setattr(main_module.SETTINGS, "ACADEMY_ENABLE_GPU", True, raising=False)
+    monkeypatch.setattr(main_module, "lessons_store", object())
+    monkeypatch.setattr(main_module, "orchestrator", SimpleNamespace(kernel=object()))
+    model_manager = MagicMock()
+    model_manager.restore_active_adapter.side_effect = RuntimeError("restore failed")
+    monkeypatch.setattr(main_module, "model_manager", model_manager)
+
+    main_module._initialize_academy()
+
+    assert main_module.professor is not None
+    model_manager.restore_active_adapter.assert_called_once()
+
+
+def test_initialize_academy_disabled_returns_early(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", False, raising=False)
+    main_module._initialize_academy()

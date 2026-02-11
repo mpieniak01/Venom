@@ -1,13 +1,25 @@
-import pytest
+from types import SimpleNamespace
+from unittest.mock import patch
 
-pytest.importorskip("docker")
+import pytest
 
 import venom_core.infrastructure.gpu_habitat as gpu_habitat_mod
 
-pytestmark = pytest.mark.skipif(
-    gpu_habitat_mod.docker is None,
-    reason="Docker SDK runtime bindings are not available in this environment",
-)
+
+@pytest.fixture(autouse=True)
+def ensure_docker_stub(monkeypatch):
+    """Zapewnia stub Docker SDK, gdy pakiet docker nie jest zainstalowany."""
+    if gpu_habitat_mod.docker is None:
+        docker_stub = SimpleNamespace(
+            from_env=lambda: None,
+            types=SimpleNamespace(
+                DeviceRequest=lambda **kwargs: {
+                    "count": kwargs.get("count"),
+                    "capabilities": kwargs.get("capabilities"),
+                }
+            ),
+        )
+        monkeypatch.setattr(gpu_habitat_mod, "docker", docker_stub)
 
 
 class DummyImages:
@@ -95,10 +107,23 @@ def test_run_training_job_rejects_missing_dataset(tmp_path, monkeypatch):
 
 def test_run_training_job_success(tmp_path, monkeypatch):
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS,
+        "ACADEMY_TRAINING_DIR",
+        str(training_dir),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS, "ACADEMY_MODELS_DIR", str(models_dir), raising=False
+    )
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
-    dataset = tmp_path / "data.jsonl"
+    dataset = training_dir / "data.jsonl"
     dataset.write_text('{"instruction": "hi"}\n', encoding="utf-8")
-    output_dir = tmp_path / "out"
+    output_dir = models_dir / "out"
 
     result = habitat.run_training_job(
         dataset_path=str(dataset),
@@ -118,10 +143,23 @@ def test_run_training_job_pulls_image_when_missing(tmp_path, monkeypatch):
         return client
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _make_client)
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS,
+        "ACADEMY_TRAINING_DIR",
+        str(training_dir),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS, "ACADEMY_MODELS_DIR", str(models_dir), raising=False
+    )
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
-    dataset = tmp_path / "data.jsonl"
+    dataset = training_dir / "data.jsonl"
     dataset.write_text('{"instruction": "hi"}\n', encoding="utf-8")
-    output_dir = tmp_path / "out"
+    output_dir = models_dir / "out"
 
     habitat.run_training_job(
         dataset_path=str(dataset),
@@ -156,6 +194,20 @@ def test_get_job_status_failed(monkeypatch):
     assert result["status"] == "failed"
 
 
+def test_get_job_status_finished(monkeypatch):
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    container = DummyContainer(status="exited", exit_code=0)
+    habitat.training_containers["job-finished"] = {
+        "container": container,
+        "status": "running",
+    }
+
+    result = habitat.get_training_status("job-finished")
+
+    assert result["status"] == "finished"
+
+
 def test_cleanup_job(monkeypatch):
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
@@ -167,3 +219,167 @@ def test_cleanup_job(monkeypatch):
     assert container.stopped is True
     assert container.removed is True
     assert "job-3" not in habitat.training_containers
+
+
+def test_stream_job_logs(monkeypatch):
+    """Test streamowania logów z kontenera."""
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+
+    class StreamingContainer:
+        def __init__(self):
+            self.status = "running"
+            self.id = "container-stream"
+
+        def logs(self, stream=False, follow=False, timestamps=False, since=None):
+            if stream:
+                return iter(
+                    [b"2024-01-01T10:00:00Z Line 1\n", b"2024-01-01T10:00:01Z Line 2\n"]
+                )
+            return b"Line 1\nLine 2"
+
+        def reload(self):
+            pass
+
+    container = StreamingContainer()
+    habitat.training_containers["stream-job"] = {
+        "container": container,
+        "status": "running",
+    }
+
+    logs = list(habitat.stream_job_logs("stream-job"))
+
+    assert len(logs) == 2
+    assert "Line 1" in logs[0]
+    assert "Line 2" in logs[1]
+
+
+def test_stream_job_logs_nonexistent(monkeypatch):
+    """Test streamowania logów dla nieistniejącego joba."""
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+
+    # For nonexistent jobs, stream_job_logs should raise KeyError
+    with pytest.raises(KeyError):
+        list(habitat.stream_job_logs("nonexistent"))
+
+
+def test_get_gpu_info_no_gpu(monkeypatch):
+    """Test pobierania info o GPU gdy GPU niedostępne."""
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+
+    info = habitat.get_gpu_info()
+
+    assert info["available"] is False
+    assert "message" in info
+    assert isinstance(info["message"], str) and info["message"]
+
+
+def test_get_gpu_info_with_gpu(monkeypatch):
+    """Test pobierania info o GPU gdy GPU dostępne."""
+
+    class GPUContainers:
+        def run(self, **kwargs):
+            # Simulate nvidia-smi output
+            return b"NVIDIA RTX 3090, 24576, 2048, 22528, 15\n"
+
+    class GPUDockerClient:
+        def __init__(self):
+            self.containers = GPUContainers()
+            self.images = DummyImages()
+
+    def _make_client():
+        return GPUDockerClient()
+
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _make_client)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+
+    info = habitat.get_gpu_info()
+
+    assert info["available"] is True
+    assert info["count"] == 1
+    assert len(info["gpus"]) == 1
+    assert info["gpus"][0]["name"] == "NVIDIA RTX 3090"
+    assert info["gpus"][0]["memory_total_mb"] == 24576.0
+
+
+def test_get_gpu_info_nvidia_smi_error(monkeypatch):
+    """Test obsługi błędu nvidia-smi."""
+
+    class ErrorContainers:
+        def run(self, **kwargs):
+            raise Exception("nvidia-smi not found")
+
+    class ErrorDockerClient:
+        def __init__(self):
+            self.containers = ErrorContainers()
+            self.images = DummyImages()
+
+    def _make_client():
+        return ErrorDockerClient()
+
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _make_client)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+
+    info = habitat.get_gpu_info()
+
+    # Should gracefully handle error
+    assert info["available"] in [
+        True,
+        False,
+    ]  # Can be either depending on is_gpu_available()
+    assert "message" in info
+    assert (
+        "Failed to get GPU details" in info["message"]
+        or info["message"] == "GPU disabled in configuration"
+    )
+
+
+def test_gpu_fallback_disables_gpu_requests(tmp_path, monkeypatch):
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS,
+        "ACADEMY_TRAINING_DIR",
+        str(training_dir),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS, "ACADEMY_MODELS_DIR", str(models_dir), raising=False
+    )
+    with patch.object(
+        gpu_habitat_mod.GPUHabitat, "_check_gpu_availability", return_value=False
+    ):
+        habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+
+    assert habitat.enable_gpu is False
+    assert habitat.is_gpu_available() is False
+
+    dataset = training_dir / "data.jsonl"
+    dataset.write_text('{"instruction": "hi"}\\n', encoding="utf-8")
+    output_dir = models_dir / "out"
+    habitat.run_training_job(
+        dataset_path=str(dataset),
+        base_model="model-x",
+        output_dir=str(output_dir),
+        job_name="cpu-job",
+    )
+
+    run_call = habitat.client.containers.run_calls[-1]
+    assert run_call["device_requests"] is None
+    assert run_call["environment"]["CUDA_VISIBLE_DEVICES"] == ""
+
+
+def test_cleanup_job_nonexistent(monkeypatch):
+    """Test cleanup nieistniejącego joba."""
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+
+    # Should not raise error for nonexistent job
+    habitat.cleanup_job("nonexistent-job")
+
+    # No assertion needed - just verify no exception

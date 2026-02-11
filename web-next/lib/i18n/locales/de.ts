@@ -40,6 +40,7 @@ export const de = {
       inspector: "Inspektor",
       strategy: "Strategie",
       models: "Modelle",
+      academy: "Akademie",
       calendar: "Kalender",
       benchmark: "Benchmark",
       config: "Konfiguration",

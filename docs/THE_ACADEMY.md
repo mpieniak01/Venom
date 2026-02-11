@@ -357,10 +357,310 @@ scheduler.add_interval_job(
   - Check dataset quality (are there errors?)
   - Use higher `learning_rate` (e.g., 3e-4)
 
+## API Reference (v2.0 - FastAPI)
+
+The Academy is now fully integrated with the FastAPI backend and web UI.
+
+### Installation
+
+```bash
+# Install Academy dependencies
+pip install -r requirements-academy.txt
+
+# Enable in .env
+ENABLE_ACADEMY=true
+ACADEMY_ENABLE_GPU=true
+```
+
+### REST API Endpoints
+
+All endpoints are available at `/api/v1/academy/`:
+
+#### **GET /api/v1/academy/status**
+Get Academy system status.
+
+**Response:**
+```json
+{
+  "enabled": true,
+  "components": {
+    "professor": true,
+    "dataset_curator": true,
+    "gpu_habitat": true,
+    "lessons_store": true,
+    "model_manager": true
+  },
+  "gpu": {
+    "available": true,
+    "enabled": true
+  },
+  "lessons": {
+    "total_lessons": 250
+  },
+  "jobs": {
+    "total": 5,
+    "running": 1,
+    "finished": 3,
+    "failed": 1
+  },
+  "config": {
+    "min_lessons": 100,
+    "training_interval_hours": 24,
+    "default_base_model": "unsloth/Phi-3-mini-4k-instruct"
+  }
+}
+```
+
+#### **POST /api/v1/academy/dataset**
+Curate training dataset from LessonsStore and Git history.
+
+**Request:**
+```json
+{
+  "lessons_limit": 200,
+  "git_commits_limit": 100,
+  "format": "alpaca"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "dataset_path": "./data/training/dataset_20240101_120000.jsonl",
+  "statistics": {
+    "total_examples": 190,
+    "lessons_collected": 150,
+    "git_commits_collected": 50,
+    "removed_low_quality": 10,
+    "avg_input_length": 250,
+    "avg_output_length": 180
+  },
+  "message": "Dataset curated successfully: 190 examples"
+}
+```
+
+#### **POST /api/v1/academy/train**
+Start a new training job.
+
+**Request:**
+```json
+{
+  "lora_rank": 16,
+  "learning_rate": 0.0002,
+  "num_epochs": 3,
+  "batch_size": 4,
+  "max_seq_length": 2048
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "job_id": "training_20240101_120000",
+  "message": "Training started successfully",
+  "parameters": {
+    "lora_rank": 16,
+    "learning_rate": 0.0002,
+    "num_epochs": 3,
+    "batch_size": 4
+  }
+}
+```
+
+#### **GET /api/v1/academy/train/{job_id}/status**
+Get training job status and logs.
+
+**Response:**
+```json
+{
+  "job_id": "training_20240101_120000",
+  "status": "running",
+  "logs": "Epoch 1/3...\nTraining loss: 0.45...",
+  "started_at": "2024-01-01T12:00:00",
+  "finished_at": null,
+  "adapter_path": null
+}
+```
+
+Status values: `queued`, `preparing`, `running`, `finished`, `failed`, `cancelled`
+
+#### **GET /api/v1/academy/jobs**
+List all training jobs.
+
+**Query parameters:**
+- `limit` (int): Maximum jobs to return (1-500, default: 50)
+- `status` (str): Filter by status
+
+**Response:**
+```json
+{
+  "count": 2,
+  "jobs": [
+    {
+      "job_id": "training_002",
+      "status": "running",
+      "started_at": "2024-01-02T10:00:00",
+      "parameters": {
+        "lora_rank": 16,
+        "num_epochs": 3
+      }
+    },
+    {
+      "job_id": "training_001",
+      "status": "finished",
+      "started_at": "2024-01-01T10:00:00",
+      "finished_at": "2024-01-01T11:30:00",
+      "adapter_path": "./data/models/training_001/adapter"
+    }
+  ]
+}
+```
+
+#### **GET /api/v1/academy/adapters**
+List available trained adapters.
+
+**Response:**
+```json
+[
+  {
+    "adapter_id": "training_20240101_120000",
+    "adapter_path": "./data/models/training_20240101_120000/adapter",
+    "base_model": "unsloth/Phi-3-mini-4k-instruct",
+    "created_at": "2024-01-01T12:00:00",
+    "training_params": {
+      "lora_rank": 16,
+      "num_epochs": 3
+    },
+    "is_active": false
+  }
+]
+```
+
+#### **POST /api/v1/academy/adapters/activate**
+Activate a LoRA adapter (hot-swap).
+
+**Request:**
+```json
+{
+  "adapter_id": "training_20240101_120000",
+  "adapter_path": "./data/models/training_20240101_120000/adapter"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Adapter activated successfully",
+  "adapter_id": "training_20240101_120000"
+}
+```
+
+#### **POST /api/v1/academy/adapters/deactivate**
+Deactivate current adapter (rollback to base model).
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Adapter deactivated successfully - using base model"
+}
+```
+
+#### **GET /api/v1/academy/train/{job_id}/logs/stream**
+Stream training logs in real-time (SSE).
+
+**Response:** Server-Sent Events stream
+
+**Event Types:**
+```json
+// Connection established
+{"type": "connected", "job_id": "training_20240101_120000"}
+
+// Log line
+{"type": "log", "line": 42, "message": "Epoch 1/3...", "timestamp": "2024-01-01T10:00:00Z"}
+
+// Status change
+{"type": "status", "status": "completed"}
+
+// Error
+{"type": "error", "message": "Container not found"}
+```
+
+**Headers:**
+- `Content-Type: text/event-stream`
+- `Cache-Control: no-cache`
+- `Connection: keep-alive`
+
+#### **DELETE /api/v1/academy/train/{job_id}**
+Cancel a running training job.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Training job cancelled",
+  "job_id": "training_20240101_120000"
+}
+```
+
+**Note:** Cancelling a job automatically stops and removes the Docker container.
+
+## Web UI
+
+Academy dashboard is available at **http://localhost:3000/academy**
+
+### Features:
+
+1. **Overview Panel**
+   - System status and component health
+   - GPU availability and detailed info (VRAM, utilization)
+   - LessonsStore statistics
+   - Job statistics (total, running, finished, failed)
+   - Configuration display
+
+2. **Dataset Panel**
+   - Dataset curation interface
+   - Configure lessons and git commits limits
+   - View statistics (examples collected, removed, avg lengths)
+   - Dataset path display
+
+3. **Training Panel**
+   - Training parameter configuration (LoRA rank, learning rate, epochs, batch size)
+   - Start training jobs with validation
+   - Job history with status indicators
+   - Auto-refresh for running jobs (10s interval)
+   - Cancel running jobs with automatic container cleanup
+   - **Real-time log viewer** with SSE streaming
+   - **Live metrics display** - Epoch progress, loss tracking
+   - **Progress indicators** - Visual bars and percentages
+   - Pause/resume log streaming
+   - Auto-scroll with manual override
+   - Line numbers and timestamps in logs
+   - Best/current/average loss tracking
+
+4. **Adapters Panel**
+   - List all trained adapters with active state highlighting
+   - View adapter metadata (parameters, creation date)
+   - Activate adapters (hot-swap without backend restart)
+   - Deactivate/rollback to base model
+   - Active adapter indicator
+
 ## Roadmap
 
+- [x] REST API endpoints (v2.0)
+- [x] Web UI Dashboard (v2.0)
+- [x] Job persistence and history (v2.0)
+- [x] Adapter activation/deactivation (v2.1)
+- [x] Container management and cleanup (v2.1)
+- [x] GPU monitoring (v2.1)
+- [x] **Real-time log streaming (SSE)** (v2.2)
+- [x] **Training metrics parsing** (v2.3)
+- [x] **Progress indicators** (v2.3)
+- [ ] ETA calculation
 - [ ] Full Arena implementation (automated evaluation)
-- [ ] Dashboard - real-time visualization
 - [ ] PEFT integration for KernelBuilder
 - [ ] Multi-modal learning (images, audio)
 - [ ] Distributed training (multiple GPUs)
@@ -374,6 +674,40 @@ scheduler.add_interval_job(
 
 ---
 
-**Status:** ✅ Core features implemented
-**Version:** 1.0 (PR 022)
+**Status:** ✅ Full monitoring stack with metrics parsing and progress tracking  
+**Version:** 2.3 (PR 090 Phase 4)  
 **Author:** Venom Team
+
+## Changelog
+
+### v2.3 (Phase 4 - Current)
+- ✅ Training metrics parser (epoch, loss, lr, accuracy)
+- ✅ Real-time metrics extraction from logs
+- ✅ Progress indicators with visual bars
+- ✅ Loss tracking (current, best, average)
+- ✅ Metrics display in LogViewer
+- ✅ Support for multiple log formats
+- ✅ 17 comprehensive test cases for parser
+
+### v2.2 (Phase 3)
+- ✅ Real-time log streaming via SSE
+- ✅ Live log viewer component with auto-scroll
+- ✅ Pause/resume log streaming
+- ✅ Connection status indicators
+- ✅ Timestamped log lines
+- ✅ Graceful error handling
+
+### v2.1 (Phase 2)
+- ✅ ModelManager adapter integration (activate/deactivate)
+- ✅ Container cleanup on job cancellation
+- ✅ GPU detailed monitoring (nvidia-smi)
+- ✅ Adapter rollback functionality
+- ✅ Active adapter state tracking
+- ✅ Comprehensive test coverage (18 test cases)
+
+### v2.0 (Phase 1 - MVP)
+- ✅ REST API endpoints (11 endpoints)
+- ✅ Web UI Dashboard (4 panels)
+- ✅ Job persistence and history
+- ✅ Dataset curation
+- ✅ Training job management

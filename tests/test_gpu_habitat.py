@@ -202,10 +202,9 @@ def test_stream_job_logs_nonexistent(monkeypatch):
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
     
-    logs = list(habitat.stream_job_logs("nonexistent"))
-    
-    # Should return empty iterator for nonexistent job
-    assert logs == []
+    # For nonexistent jobs, stream_job_logs should raise KeyError
+    with pytest.raises(KeyError):
+        list(habitat.stream_job_logs("nonexistent"))
 
 
 def test_get_gpu_info_no_gpu(monkeypatch):

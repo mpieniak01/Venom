@@ -67,7 +67,7 @@ class TaskDispatcher:
 
     # Wzorzec regex dla ścieżek plików - skompilowany raz dla wydajności
     FILE_PATH_PATTERN = re.compile(
-        r"[A-Za-z\d_/-]+(?:\.[A-Za-z\d_-]+)*\.[A-Za-z\d]+(?=$|\W)",
+        r"[A-Za-z0-9_/-]+(?:\.[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+(?=$|\W)",
         re.IGNORECASE,
     )
     ALLOWED_FILE_EXTENSIONS = {

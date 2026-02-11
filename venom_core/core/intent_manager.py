@@ -512,7 +512,7 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
 
         # Embedding-based classification (if enabled)
         if self.embedding_router and self.embedding_router.is_enabled():
-            embedding_intent, score, top2 = self.embedding_router.classify(user_input)
+            embedding_intent, score, top2 = await self.embedding_router.classify(user_input)
             if embedding_intent:
                 self.last_intent_debug["source"] = "embedding"
                 self.last_intent_debug["score"] = score

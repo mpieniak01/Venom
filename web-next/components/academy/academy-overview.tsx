@@ -150,7 +150,7 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
             <AlertCircle className="h-5 w-5 text-red-400" />
             <p className="text-sm text-red-300">
               {status.jobs.failed} {status.jobs.failed === 1 ? "job zakończył" : "joby zakończyły"} się błędem.
-              Sprawdź logi w zakładce "Trening".
+              Sprawdź logi w zakładce &quot;Trening&quot;.
             </p>
           </div>
         </div>

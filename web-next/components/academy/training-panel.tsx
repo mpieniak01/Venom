@@ -241,8 +241,6 @@ export function TrainingPanel({ status }: TrainingPanelProps) {
           />
         </div>
       )}
-        </div>
-      </div>
     </div>
   );
 }

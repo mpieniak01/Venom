@@ -11,7 +11,7 @@ interface DatasetPanelProps {
   status: AcademyStatus;
 }
 
-export function DatasetPanel({ status }: DatasetPanelProps) {
+export function DatasetPanel({ }: DatasetPanelProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DatasetResponse | null>(null);
   const [lessonsLimit, setLessonsLimit] = useState(200);
@@ -31,7 +31,14 @@ export function DatasetPanel({ status }: DatasetPanelProps) {
       console.error("Failed to curate dataset:", err);
       setResult({
         success: false,
-        statistics: {} as any,
+        statistics: {
+          total_examples: 0,
+          lessons_collected: 0,
+          git_commits_collected: 0,
+          removed_low_quality: 0,
+          avg_input_length: 0,
+          avg_output_length: 0,
+        },
         message: err instanceof Error ? err.message : "Failed to curate dataset",
       });
     } finally {

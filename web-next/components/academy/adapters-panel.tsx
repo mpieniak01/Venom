@@ -209,7 +209,7 @@ export function AdaptersPanel({ status }: AdaptersPanelProps) {
       {/* Informacje */}
       <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
         <p className="text-sm text-blue-300">
-          ℹ️ Aktywacja adaptera to hot-swap - model zostanie zamieniony bez restartu backendu
+          ℹ Aktywacja adaptera to hot-swap - model zostanie zamieniony bez restartu backendu
         </p>
         <p className="mt-2 text-xs text-zinc-400">
           Adapter LoRA modyfikuje tylko niewielką część parametrów bazowego modelu,

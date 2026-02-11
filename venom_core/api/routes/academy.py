@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 from unittest.mock import Mock
 
 import anyio
@@ -298,7 +298,7 @@ def _is_path_within_base(path: Path, base: Path) -> bool:
 # ==================== Endpointy ====================
 
 
-@router.post("/dataset", response_model=DatasetResponse)
+@router.post("/dataset")
 async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
     """
     Kuracja datasetu ze statystykami.
@@ -358,7 +358,7 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
         )
 
 
-@router.post("/train", response_model=TrainingResponse)
+@router.post("/train")
 async def start_training(request: TrainingRequest, req: Request) -> TrainingResponse:
     """
     Start zadania treningowego.
@@ -474,7 +474,7 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
         )
 
 
-@router.get("/train/{job_id}/status", response_model=JobStatusResponse)
+@router.get("/train/{job_id}/status")
 async def get_training_status(job_id: str) -> JobStatusResponse:
     """
     Pobiera status i logi zadania treningowego.
@@ -666,8 +666,8 @@ async def stream_training_logs(job_id: str):
 
 @router.get("/jobs")
 async def list_jobs(
-    limit: int = Query(default=50, ge=1, le=500),
-    status: Optional[str] = Query(default=None),
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    status: Annotated[Optional[str], Query()] = None,
 ) -> Dict[str, Any]:
     """
     Lista wszystkich jobów treningowych.
@@ -698,7 +698,7 @@ async def list_jobs(
         raise HTTPException(status_code=500, detail=f"Failed to list jobs: {str(e)}")
 
 
-@router.get("/adapters", response_model=List[AdapterInfo])
+@router.get("/adapters")
 async def list_adapters() -> List[AdapterInfo]:
     """
     Lista dostępnych adapterów.
@@ -796,13 +796,7 @@ async def activate_adapter(
         from venom_core.config import SETTINGS
 
         models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
-        expected_adapter_path = (models_dir / request.adapter_id / "adapter").resolve()
-        if (
-            request.adapter_path
-            and Path(request.adapter_path).resolve() != expected_adapter_path
-        ):
-            raise HTTPException(status_code=400, detail="Invalid adapter path")
-        adapter_path = expected_adapter_path
+        adapter_path = (models_dir / request.adapter_id / "adapter").resolve()
 
         if not adapter_path.exists():
             raise HTTPException(status_code=404, detail="Adapter not found")

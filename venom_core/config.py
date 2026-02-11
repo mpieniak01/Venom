@@ -109,6 +109,20 @@ class Settings(BaseSettings):
     INTENT_EMBED_MARGIN: float = 0.05  # Minimalny margines między top1 a top2
     ENABLE_META_LEARNING: bool = True  # Globalny przełącznik zapisu lekcji
     LESSONS_TTL_DAYS: int = 0  # Retencja lekcji (0 = wyłączona)
+    
+    # RAG Retrieval Boost (Phase B) - Intent-based context optimization
+    ENABLE_RAG_RETRIEVAL_BOOST: bool = False  # Włącz boost retrieval dla intencji wiedzo-zależnych
+    RAG_BOOST_TOP_K_DEFAULT: int = 5  # Domyślny limit wyników wyszukiwania wektorowego
+    RAG_BOOST_TOP_K_RESEARCH: int = 8  # Limit dla intencji RESEARCH
+    RAG_BOOST_TOP_K_KNOWLEDGE: int = 8  # Limit dla intencji KNOWLEDGE_SEARCH
+    RAG_BOOST_TOP_K_COMPLEX: int = 6  # Limit dla intencji COMPLEX_PLANNING
+    RAG_BOOST_MAX_HOPS_DEFAULT: int = 2  # Domyślna liczba skoków w grafie wiedzy
+    RAG_BOOST_MAX_HOPS_RESEARCH: int = 3  # Liczba skoków dla RESEARCH
+    RAG_BOOST_MAX_HOPS_KNOWLEDGE: int = 3  # Liczba skoków dla KNOWLEDGE_SEARCH
+    RAG_BOOST_LESSONS_LIMIT_DEFAULT: int = 3  # Domyślny limit lekcji w kontekście
+    RAG_BOOST_LESSONS_LIMIT_RESEARCH: int = 5  # Limit lekcji dla RESEARCH
+    RAG_BOOST_LESSONS_LIMIT_KNOWLEDGE: int = 5  # Limit lekcji dla KNOWLEDGE_SEARCH
+    
     LAST_MODEL_OLLAMA: str = ""  # Ostatnio wybrany model Ollama
     LAST_MODEL_VLLM: str = ""  # Ostatnio wybrany model vLLM
     PREVIOUS_MODEL_OLLAMA: str = ""  # Poprzedni model Ollama (fallback)

@@ -131,13 +131,16 @@ class LessonsManager:
             return False
         return True
 
-    async def add_lessons_to_context(self, task_id: UUID, context: str) -> str:
+    async def add_lessons_to_context(
+        self, task_id: UUID, context: str, limit: Optional[int] = None
+    ) -> str:
         """
         Pre-flight check: Dodaje relevantne lekcje z przeszłości do kontekstu.
 
         Args:
             task_id: ID zadania
             context: Oryginalny kontekst
+            limit: Opcjonalny limit lekcji (jeśli None, użyje MAX_LESSONS_IN_CONTEXT)
 
         Returns:
             Kontekst wzbogacony o lekcje
@@ -145,11 +148,14 @@ class LessonsManager:
         if not SETTINGS.ENABLE_META_LEARNING or not self.lessons_store:
             return context
 
+        # Use provided limit or fall back to default
+        effective_limit = limit if limit is not None else MAX_LESSONS_IN_CONTEXT
+
         try:
             # Wyszukaj relevantne lekcje
             lessons = self.lessons_store.search_lessons(
                 query=context[:500],  # Użyj fragmentu kontekstu do wyszukania
-                limit=MAX_LESSONS_IN_CONTEXT,
+                limit=effective_limit,
             )
 
             if not lessons:

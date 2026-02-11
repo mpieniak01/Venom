@@ -508,8 +508,10 @@ def test_list_adapters_with_active_state(
     adapter_subdir.mkdir()
     
     # Mock SETTINGS to point to our tmp directory
-    with patch("venom_core.api.routes.academy.SETTINGS") as mock_settings:
+    # Need to patch where SETTINGS is imported in the endpoint
+    with patch("venom_core.config.SETTINGS") as mock_settings:
         mock_settings.ACADEMY_MODELS_DIR = str(models_dir)
+        mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "test-model"
         
         # Mock active adapter info
         mock_model_manager.get_active_adapter_info.return_value = {

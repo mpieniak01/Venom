@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unittest.mock import Mock
 
+import anyio
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
@@ -730,8 +731,10 @@ async def list_adapters() -> List[AdapterInfo]:
             metadata_file = training_dir / "metadata.json"
             metadata = {}
             if metadata_file.exists():
-                with open(metadata_file, "r") as f:
-                    metadata = json.load(f)
+                metadata_raw = await anyio.Path(metadata_file).read_text(
+                    encoding="utf-8"
+                )
+                metadata = json.loads(metadata_raw)
 
             # Sprawdź czy to aktywny adapter
             is_active = training_dir.name == active_adapter_id

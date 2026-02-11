@@ -404,7 +404,11 @@ Odpowiedź (JSON):"""
             return f"Wystąpił błąd: {str(e)}\n\nDostępny kontekst:\n{context}"
 
     async def local_search(
-        self, query: str, max_hops: int = 2, llm_service: Optional[LLMService] = None
+        self,
+        query: str,
+        max_hops: int = 2,
+        llm_service: Optional[LLMService] = None,
+        limit: int = 5,
     ) -> str:
         """
         Wyszukiwanie lokalne oparte na sąsiedztwie węzłów (multi-hop reasoning).
@@ -414,14 +418,15 @@ Odpowiedź (JSON):"""
             query: Zapytanie użytkownika
             max_hops: Maksymalna liczba "skoków" w grafie
             llm_service: Serwis LLM do syntezy odpowiedzi
+            limit: Liczba wyników wyszukiwania wektorowego (domyślnie 5)
 
         Returns:
             Odpowiedź na zapytanie
         """
-        logger.info(f"Local search: {query[:100]}... (max_hops={max_hops})")
+        logger.info(f"Local search: {query[:100]}... (max_hops={max_hops}, limit={limit})")
 
         try:
-            search_results = self.vector_store.search(query, limit=5)
+            search_results = self.vector_store.search(query, limit=limit)
             if not search_results:
                 return "Nie znaleziono relevantnych informacji w grafie wiedzy."
 

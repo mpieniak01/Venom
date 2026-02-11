@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID, uuid4
 
@@ -11,6 +12,7 @@ from venom_core.core.orchestrator.constants import (
     MAX_CONTEXT_CHARS,
     MAX_HIDDEN_PROMPTS_IN_CONTEXT,
 )
+from venom_core.core.retrieval_policy import get_policy_manager
 from venom_core.core.slash_commands import parse_slash_command, resolve_forced_intent
 from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
@@ -205,9 +207,70 @@ class ContextBuilder:
 
         return context
 
-    async def enrich_context_with_lessons(self, task_id: UUID, context: str) -> str:
-        """Dodaje lekcje (Lessons) do kontekstu."""
-        return await self.orch.lessons_manager.add_lessons_to_context(task_id, context)
+    async def enrich_context_with_lessons(
+        self, task_id: UUID, context: str, intent: Optional[str] = None
+    ) -> str:
+        """
+        Dodaje lekcje (Lessons) do kontekstu.
+        
+        Args:
+            task_id: ID zadania
+            context: Kontekst do wzbogacenia
+            intent: Opcjonalnie intencja dla RAG Boost (Phase B)
+        
+        Returns:
+            Wzbogacony kontekst
+            
+        Note:
+            Phase B currently applies only lessons_limit dynamically.
+            vector_limit and max_hops are recorded in telemetry but not
+            functionally applied (reserved for Phase C when orchestrator-driven
+            GraphRAG searches are added).
+        """
+        # Determine lessons limit based on intent (Phase B: RAG Retrieval Boost)
+        limit = None
+        boost_metadata = {}
+        
+        if intent:
+            try:
+                policy_manager = get_policy_manager()
+                policy = policy_manager.get_policy(intent)
+                limit = policy.lessons_limit
+                
+                # Build telemetry metadata
+                boost_metadata = {
+                    "retrieval_boost.enabled": policy_manager.enabled,
+                    "retrieval_boost.mode": policy.mode,
+                    "retrieval_boost.intent": intent,
+                    "retrieval_boost.lessons_limit": policy.lessons_limit,
+                    "retrieval_boost.vector_limit": policy.vector_limit,
+                    "retrieval_boost.max_hops": policy.max_hops,
+                }
+                
+                # Log RAG boost telemetry if enabled
+                if policy.mode == "boost":
+                    self.orch.state_manager.add_log(
+                        task_id,
+                        f"📊 RAG Boost: aktywny dla {intent} (lessons_limit={limit})"
+                    )
+                    # Store telemetry in context
+                    self.orch.state_manager.update_context(task_id, boost_metadata)
+                    
+                    # Add to tracer if available
+                    if self.orch.request_tracer:
+                        self.orch.request_tracer.add_step(
+                            task_id,
+                            "RAGBoost",
+                            "policy_applied",
+                            status="ok",
+                            details=json.dumps(boost_metadata, ensure_ascii=False),
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to get retrieval policy for intent {intent}: {e}")
+        
+        return await self.orch.lessons_manager.add_lessons_to_context(
+            task_id, context, limit=limit
+        )
 
     def format_extra_context(self, extra_context: Any) -> str:
         """Formatuje dodatkowy kontekst do czytelnego bloku tekstu (delegacja)."""

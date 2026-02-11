@@ -377,3 +377,170 @@ def test_stream_training_logs_not_found(
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
+
+
+def test_stream_training_logs_success(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    mock_load_jobs, mock_settings, client
+):
+    """Test poprawnego streamowania logów."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_load_jobs.return_value = [{
+        "job_id": "test_job",
+        "job_name": "training_test",
+        "status": "running"
+    }]
+    
+    # Mock container exists
+    mock_gpu_habitat.training_containers = {"training_test": "container_123"}
+    mock_gpu_habitat.stream_job_logs = MagicMock(
+        return_value=iter([
+            "2024-01-01T10:00:00Z Starting training",
+            "2024-01-01T10:00:01Z Epoch 1/3 - Loss: 0.45"
+        ])
+    )
+    mock_gpu_habitat.get_training_status = MagicMock(
+        return_value={"status": "running"}
+    )
+    
+    response = client.get("/api/v1/academy/train/test_job/logs/stream")
+    
+    # SSE endpoint returns 200
+    assert response.status_code == 200
+
+
+def test_get_gpu_info_endpoint(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    mock_load_jobs, mock_settings, client
+):
+    """Test endpointu GPU info."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_gpu_habitat.get_gpu_info = MagicMock(return_value={
+        "available": True,
+        "count": 1,
+        "gpus": [{
+            "name": "NVIDIA RTX 3090",
+            "memory_total_mb": 24576,
+            "memory_used_mb": 2048,
+            "memory_free_mb": 22528,
+            "utilization_percent": 15.5
+        }]
+    })
+    
+    response = client.get("/api/v1/academy/status")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["gpu"]["available"] is True
+    assert data["gpu"]["count"] == 1
+
+
+def test_cancel_job_with_cleanup(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    mock_load_jobs, mock_settings, client
+):
+    """Test anulowania joba z cleanup."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_load_jobs.return_value = [{
+        "job_id": "test_job",
+        "job_name": "training_test",
+        "status": "running"
+    }]
+    mock_gpu_habitat.cleanup_job = MagicMock()
+    
+    with patch("venom_core.api.routes.academy._update_job_status") as mock_update:
+        response = client.delete("/api/v1/academy/train/test_job")
+    
+    assert response.status_code == 200
+    mock_gpu_habitat.cleanup_job.assert_called_once_with("training_test")
+
+
+def test_activate_adapter_with_model_manager(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    mock_load_jobs, mock_settings, client
+):
+    """Test aktywacji adaptera przez ModelManager."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_model_manager.activate_adapter = MagicMock(return_value=True)
+    
+    response = client.post(
+        "/api/v1/academy/adapters/activate",
+        json={"adapter_id": "test_adapter", "adapter_path": "./path/to/adapter"}
+    )
+    
+    assert response.status_code == 200
+    mock_model_manager.activate_adapter.assert_called_once()
+
+
+def test_deactivate_adapter_success(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    mock_load_jobs, mock_settings, client
+):
+    """Test dezaktywacji adaptera."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_model_manager.deactivate_adapter = MagicMock()
+    
+    response = client.post("/api/v1/academy/adapters/deactivate")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    mock_model_manager.deactivate_adapter.assert_called_once()
+
+
+def test_list_adapters_with_active_state(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    mock_load_jobs, mock_settings, client
+):
+    """Test listowania adapterów z active state."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_professor.get_adapters_list = MagicMock(return_value=[
+        {
+            "adapter_id": "adapter_1",
+            "adapter_path": "./path/1",
+            "created_at": "2024-01-01T10:00:00"
+        }
+    ])
+    mock_model_manager.get_active_adapter_info = MagicMock(return_value={
+        "adapter_id": "adapter_1",
+        "adapter_path": "./path/1"
+    })
+    
+    response = client.get("/api/v1/academy/adapters")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["adapters"]) == 1
+    assert data["adapters"][0]["is_active"] is True
+
+
+def test_dataset_curate_with_validation_error(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    mock_load_jobs, mock_settings, client
+):
+    """Test walidacji parametrów kuracji datasetu."""
+    mock_settings.ENABLE_ACADEMY = True
+    
+    # Invalid lesson limit (too high)
+    response = client.post(
+        "/api/v1/academy/dataset",
+        json={"lessons_limit": 100000, "git_commits_limit": 100}
+    )
+    
+    assert response.status_code == 422  # Validation error
+
+
+def test_training_start_with_validation_error(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    mock_load_jobs, mock_settings, client
+):
+    """Test walidacji parametrów treningu."""
+    mock_settings.ENABLE_ACADEMY = True
+    
+    # Invalid LoRA rank (too high)
+    response = client.post(
+        "/api/v1/academy/train",
+        json={"lora_rank": 1000}
+    )
+    
+    assert response.status_code == 422  # Validation error

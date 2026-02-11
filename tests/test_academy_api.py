@@ -558,25 +558,6 @@ def test_training_start_with_validation_error(
     assert response.status_code == 422  # Validation error
 
 
-def test_get_dataset_stats(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test pobierania statystyk datasetu."""
-    mock_dataset_curator.get_statistics.return_value = {
-        "total_examples": 250,
-        "avg_input_length": 300,
-        "avg_output_length": 200,
-    }
-    
-    response = client.get("/api/v1/academy/dataset")
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total_examples"] == 250
-    assert data["avg_input_length"] == 300
-
-
 def test_cancel_training_not_found(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
     client

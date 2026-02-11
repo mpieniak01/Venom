@@ -5,13 +5,13 @@ import { Database, Play, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { curateDataset, type AcademyStatus, type DatasetResponse } from "@/lib/academy-api";
+import { curateDataset, type DatasetResponse } from "@/lib/academy-api";
 
 interface DatasetPanelProps {
-  status: AcademyStatus;
+  // Empty for now - reserved for future use
 }
 
-export function DatasetPanel({ }: DatasetPanelProps) {
+export function DatasetPanel({}: DatasetPanelProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DatasetResponse | null>(null);
   const [lessonsLimit, setLessonsLimit] = useState(200);

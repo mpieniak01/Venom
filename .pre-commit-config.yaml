@@ -8,6 +8,13 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: block-docs-dev-tracked
+        name: Block docs_dev tracked files (pre-push)
+        entry: python3 scripts/block_docs_dev_tracked.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: update-sonar-new-code-group
         name: Update Sonar New-Code Test Group
         entry: python3 scripts/update_sonar_new_code_group.py

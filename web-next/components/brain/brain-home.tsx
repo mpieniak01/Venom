@@ -127,6 +127,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
 
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
+  const colaWarningShownRef = useRef(false);
 
   // Derived Values
   const summary = initialData.summary;
@@ -279,9 +280,40 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     const setup = async () => {
       if (!cyRef.current || !mergedGraph?.elements) return;
       const cytoscape = (await import("cytoscape")).default;
+      let resolvedLayoutName = layoutName;
+      const hasPresetPositions = (mergedGraph.elements.nodes as Array<{ position?: { x?: number; y?: number } }>)
+        .some((node) => {
+          const x = node.position?.x;
+          const y = node.position?.y;
+          return Number.isFinite(x) && Number.isFinite(y);
+        });
+
+      // `preset` needs coordinates in data. Without them Cytoscape stacks nodes.
+      if (layoutName === "preset" && !hasPresetPositions) {
+        resolvedLayoutName = "cose";
+      }
+
+      // `cola` is provided by an optional plugin. If unavailable, fall back to built-in layout.
+      if (layoutName === "cola") {
+        try {
+          const colaModuleName = "cytoscape-cola";
+          const colaPlugin = (await import(colaModuleName as string)).default;
+          cytoscape.use(colaPlugin);
+        } catch {
+          resolvedLayoutName = "cose";
+          if (!colaWarningShownRef.current) {
+            pushToast(
+              t("brain.toasts.layoutColaUnavailable"),
+              "warning",
+            );
+            colaWarningShownRef.current = true;
+          }
+        }
+      }
 
       cy = cytoscape({
         container: cyRef.current,
+        elements: mergedGraph.elements as cytoscapeType.ElementDefinition[],
         style: [
           {
             selector: "node",
@@ -296,9 +328,33 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
             }
           },
           { selector: "node.highlighted", style: { "border-width": 4, "border-color": "#c084fc" } },
-          { selector: "edge", style: { "curve-style": "bezier", "target-arrow-shape": "triangle", width: 2, "line-color": "#475569" } },
+          {
+            selector: "edge",
+            style: {
+              label: showEdgeLabels ? "data(label)" : "",
+              "font-size": 9,
+              color: "#cbd5e1",
+              "text-background-color": "#09090b",
+              "text-background-opacity": 0.8,
+              "text-background-padding": 2,
+              "curve-style": "bezier",
+              "target-arrow-shape": "triangle",
+              width: 2,
+              "line-color": "#475569",
+            }
+          },
         ],
-        layout: { name: layoutName, animate: true }
+        layout:
+          resolvedLayoutName === "cose"
+            ? {
+                name: "cose",
+                animate: true,
+                fit: true,
+                padding: 30,
+                nodeRepulsion: 7000,
+                idealEdgeLength: 90,
+              }
+            : { name: "preset", fit: true, padding: 30 }
       });
 
       cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
@@ -320,7 +376,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     return () => {
       if (cy) cy.destroy();
     };
-  }, [mergedGraph, handleClearSelection, showEdgeLabels, layoutName, colorFromTopic, mapRelationsForNode]);
+  }, [mergedGraph, handleClearSelection, showEdgeLabels, layoutName, colorFromTopic, mapRelationsForNode, pushToast, t]);
 
   return (
     <div className="space-y-6 pb-10">

@@ -162,6 +162,7 @@ audit-ci-lite:
 
 install-hooks:
 	pre-commit install
+	pre-commit install --hook-type pre-push
 
 sync-sonar-new-code-group:
 	pre-commit run --hook-stage manual update-sonar-new-code-group

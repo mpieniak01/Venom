@@ -886,6 +886,7 @@ export const en = {
       pinSuccess: "Memory entry pinned.",
       unpinSuccess: "Memory entry unpinned.",
       pinError: "Failed to change pinned status.",
+      layoutColaUnavailable: "Cola layout is unavailable in this build. Switched to Cose.",
       deleteConfirm: "Are you sure you want to delete this memory entry?",
       deleteSuccess: "Memory entry deleted.",
       deleteError: "Failed to delete memory entry.",

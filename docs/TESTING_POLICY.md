@@ -31,6 +31,12 @@ Run one command:
 make pr-fast
 ```
 
+Ensure hooks are installed for both `pre-commit` and `pre-push`:
+
+```bash
+make install-hooks
+```
+
 What it includes:
 
 - changed-file scope detection against `origin/main` (or `PR_BASE_REF`)

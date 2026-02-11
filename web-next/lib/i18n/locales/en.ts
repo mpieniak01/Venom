@@ -40,6 +40,7 @@ export const en = {
       inspector: "Inspector",
       strategy: "Strategy",
       models: "Models",
+      academy: "Academy",
       calendar: "Calendar",
       benchmark: "Benchmark",
       config: "Configuration",

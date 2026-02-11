@@ -40,6 +40,7 @@ export const pl = {
       inspector: "Inspektor",
       strategy: "Strategia",
       models: "Modele",
+      academy: "Academy",
       calendar: "Kalendarz",
       benchmark: "Benchmark",
       config: "Konfiguracja",

@@ -90,6 +90,7 @@ class ModelManager:
         """
         self.models_dir = Path(models_dir or "./data/models")
         self.models_dir.mkdir(parents=True, exist_ok=True)
+        self.active_adapter_state_path = Path("./data/training/active_adapter.json")
         self.ollama_cache_path = self.models_dir / "ollama_models_cache.json"
         self._last_ollama_warning = 0.0
 
@@ -100,6 +101,74 @@ class ModelManager:
         self.active_version: Optional[str] = None
 
         logger.info(f"ModelManager zainicjalizowany (models_dir={self.models_dir})")
+
+    def _save_active_adapter_state(
+        self, adapter_id: str, adapter_path: str, base_model: str
+    ) -> None:
+        """Persistuje aktualnie aktywny adapter dla restore po restarcie."""
+        self.active_adapter_state_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "adapter_id": adapter_id,
+            "adapter_path": adapter_path,
+            "base_model": base_model,
+            "activated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "source": "academy",
+        }
+        with open(self.active_adapter_state_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    def _load_active_adapter_state(self) -> Optional[Dict[str, Any]]:
+        """Wczytuje persistowany stan aktywnego adaptera."""
+        if not self.active_adapter_state_path.exists():
+            return None
+        try:
+            with open(self.active_adapter_state_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if not isinstance(data, dict):
+                    return None
+                return data
+        except Exception as e:
+            logger.warning(f"Nie udało się odczytać stanu aktywnego adaptera: {e}")
+            return None
+
+    def _clear_active_adapter_state(self) -> None:
+        """Czyści persistowany stan aktywnego adaptera."""
+        try:
+            self.active_adapter_state_path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.warning(f"Nie udało się usunąć stanu aktywnego adaptera: {e}")
+
+    def restore_active_adapter(self) -> bool:
+        """
+        Próbuje odtworzyć aktywny adapter z persistowanego stanu.
+
+        Returns:
+            True jeśli adapter został odtworzony i aktywowany, False w przeciwnym razie.
+        """
+        state = self._load_active_adapter_state()
+        if not state:
+            return False
+
+        adapter_id = str(state.get("adapter_id") or "").strip()
+        adapter_path = str(state.get("adapter_path") or "").strip()
+        base_model = str(state.get("base_model") or "academy-base").strip()
+        if not adapter_id or not adapter_path:
+            self._clear_active_adapter_state()
+            return False
+
+        if not Path(adapter_path).exists():
+            logger.warning("Persistowany adapter nie istnieje: %s", adapter_path)
+            self._clear_active_adapter_state()
+            return False
+
+        restored = self.activate_adapter(
+            adapter_id=adapter_id,
+            adapter_path=adapter_path,
+            base_model=base_model,
+        )
+        if not restored:
+            self._clear_active_adapter_state()
+        return restored
 
     def _resolve_ollama_tags_url(self) -> str:
         """
@@ -164,7 +233,7 @@ class ModelManager:
             True jeśli sukces, False w przeciwnym razie
         """
         if version_id not in self.versions:
-            logger.error(f"Wersja {version_id} nie istnieje")
+            logger.error("Wersja modelu nie istnieje")
             return False
 
         # Dezaktywuj poprzednią wersję
@@ -175,8 +244,16 @@ class ModelManager:
         self.versions[version_id].is_active = True
         self.active_version = version_id
 
-        logger.info(f"Aktywowano wersję modelu: {version_id}")
+        logger.info("Aktywowano wersję modelu")
         return True
+
+    def _is_path_within_models_dir(self, path: Path) -> bool:
+        """Sprawdza czy ścieżka mieści się w katalogu modeli Academy."""
+        try:
+            path.relative_to(self.models_dir.resolve())
+            return True
+        except ValueError:
+            return False
 
     def get_active_version(self) -> Optional[ModelVersion]:
         """
@@ -1099,3 +1176,119 @@ PARAMETER top_k 40
         metrics.update(await self._collect_gpu_metrics())
 
         return metrics
+
+    def activate_adapter(
+        self, adapter_id: str, adapter_path: str, base_model: Optional[str] = None
+    ) -> bool:
+        """
+        Aktywuje adapter LoRA z Academy.
+
+        Args:
+            adapter_id: ID adaptera (np. training_20240101_120000)
+            adapter_path: Ścieżka do adaptera
+            base_model: Opcjonalnie nazwa bazowego modelu
+
+        Returns:
+            True jeśli sukces, False w przeciwnym razie
+        """
+        from datetime import datetime
+
+        logger.info("Aktywacja adaptera Academy")
+
+        expected_adapter_path = (
+            self.models_dir.resolve() / adapter_id / "adapter"
+        ).resolve()
+
+        if adapter_path and Path(adapter_path).resolve() != expected_adapter_path:
+            logger.error("Adapter path niezgodny z katalogiem Academy")
+            return False
+
+        # Sprawdź czy adapter istnieje
+        if not expected_adapter_path.exists():
+            logger.error("Adapter nie istnieje")
+            return False
+
+        # Jeśli adapter już jest zarejestrowany, aktywuj go
+        if adapter_id in self.versions:
+            success = self.activate_version(adapter_id)
+            if success:
+                version = self.versions[adapter_id]
+                self._save_active_adapter_state(
+                    adapter_id=adapter_id,
+                    adapter_path=version.adapter_path or str(expected_adapter_path),
+                    base_model=version.base_model,
+                )
+            return success
+
+        # Zarejestruj nowy adapter jako wersję
+        base = base_model or "academy-base"
+        self.register_version(
+            version_id=adapter_id,
+            base_model=base,
+            adapter_path=str(expected_adapter_path),
+            performance_metrics={
+                "source": "academy",
+                "created_at": datetime.now().isoformat(),
+            },
+        )
+
+        # Aktywuj nową wersję
+        success = self.activate_version(adapter_id)
+
+        if success:
+            logger.info(f"✅ Adapter {adapter_id} aktywowany pomyślnie")
+            self._save_active_adapter_state(
+                adapter_id=adapter_id,
+                adapter_path=str(expected_adapter_path),
+                base_model=base,
+            )
+        else:
+            logger.error("❌ Nie udało się aktywować adaptera")
+
+        return success
+
+    def deactivate_adapter(self) -> bool:
+        """
+        Dezaktywuje aktualny adapter (rollback do bazowego modelu).
+
+        Returns:
+            True jeśli sukces, False w przeciwnym razie
+        """
+        if not self.active_version:
+            logger.warning("Brak aktywnego adaptera do dezaktywacji")
+            return False
+
+        logger.info(f"Dezaktywacja adaptera: {self.active_version}")
+
+        # Oznacz jako nieaktywny
+        if self.active_version in self.versions:
+            self.versions[self.active_version].is_active = False
+
+        self.active_version = None
+        self._clear_active_adapter_state()
+        logger.info("✅ Adapter zdezaktywowany - powrót do modelu bazowego")
+
+        return True
+
+    def get_active_adapter_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Zwraca informacje o aktywnym adapterze.
+
+        Returns:
+            Słownik z informacjami lub None jeśli brak aktywnego
+        """
+        if not self.active_version:
+            return None
+
+        version = self.get_active_version()
+        if not version:
+            return None
+
+        return {
+            "adapter_id": version.version_id,
+            "adapter_path": version.adapter_path,
+            "base_model": version.base_model,
+            "created_at": version.created_at,
+            "performance_metrics": version.performance_metrics,
+            "is_active": version.is_active,
+        }

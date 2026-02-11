@@ -5,6 +5,7 @@ import {
     Layers,
     Calendar,
     Gauge,
+    GraduationCap,
     Settings
 } from "lucide-react";
 
@@ -13,6 +14,7 @@ export const navItems = [
     { href: "/inspector", label: "Inspektor", labelKey: "sidebar.nav.inspector", icon: BugPlay },
     { href: "/brain", label: "Graf wiedzy", labelKey: "sidebar.nav.brain", icon: Brain },
     { href: "/models", label: "Przeglad modeli", labelKey: "sidebar.nav.models", icon: Layers },
+    { href: "/academy", label: "Academy", labelKey: "sidebar.nav.academy", icon: GraduationCap },
     { href: "/calendar", label: "Kalendarz", labelKey: "sidebar.nav.calendar", icon: Calendar },
     { href: "/benchmark", label: "Benchmark", labelKey: "sidebar.nav.benchmark", icon: Gauge },
     { href: "/config", label: "Konfiguracja", labelKey: "sidebar.nav.config", icon: Settings },

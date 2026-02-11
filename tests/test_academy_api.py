@@ -362,3 +362,18 @@ def test_cancel_training_with_cleanup(
     # Verify cleanup was called
     mock_gpu_habitat.cleanup_job.assert_called_once_with("training_test")
     mock_update_job.assert_called_once()
+
+
+@patch("venom_core.config.SETTINGS")
+@patch("venom_core.api.routes.academy._load_jobs_history")
+def test_stream_training_logs_not_found(
+    mock_load_jobs, mock_settings, client
+):
+    """Test streamowania logów dla nieistniejącego joba."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_load_jobs.return_value = []
+
+    response = client.get("/api/v1/academy/train/nonexistent/logs/stream")
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()

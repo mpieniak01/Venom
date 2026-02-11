@@ -76,6 +76,7 @@ pytest -q
 
 - Źródło prawdy dla bramek jakości/bezpieczeństwa: `README_PL.md` sekcja **"Bramy jakości i bezpieczeństwa"**.
 - Runbook branch protection i required checks: `.github/BRANCH_PROTECTION.md`.
+- Konfiguracja hooków agenta: `.github/hooks/hard-gate.json`.
 - Runbook access management: `.github/CODING_AGENT_ACCESS_MANAGEMENT.md`.
 - Polityka MCP: `.github/CODING_AGENT_MCP_POLICY.md`.
 - Profile custom agents: `.github/agents/`.

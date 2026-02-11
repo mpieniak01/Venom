@@ -23,26 +23,37 @@ tmp_log="$(mktemp)"
 trap 'rm -f "$tmp_log"' EXIT
 
 run_gate() {
-  local cmd="$1"
-  echo "==> Running: ${cmd}" | tee -a "$tmp_log"
-  if eval "${cmd}" 2>&1 | tee -a "$tmp_log"; then
-    echo "RESULT: PASS :: ${cmd}" | tee -a "$tmp_log"
+  echo "==> Running: $*" | tee -a "$tmp_log"
+  if "$@" 2>&1 | tee -a "$tmp_log"; then
+    echo "RESULT: PASS :: $*" | tee -a "$tmp_log"
   else
-    echo "RESULT: FAIL :: ${cmd}" | tee -a "$tmp_log"
+    echo "RESULT: FAIL :: $*" | tee -a "$tmp_log"
     return 1
   fi
 }
 
-status=0
-run_gate "make pr-fast" || status=1
-run_gate "make check-new-code-coverage" || status=1
+status_pr_fast=0
+run_gate make pr-fast || status_pr_fast=1
+
+status_coverage=0
+run_gate make check-new-code-coverage || status_coverage=1
+
+status=$((status_pr_fast + status_coverage))
 
 coverage_line="$(grep -E 'Changed lines coverage:' "$tmp_log" | tail -n 1 || true)"
 
 echo
 echo "=== Coding Agent Hard Gate Report ==="
-echo "- make pr-fast: $([[ "$status" -eq 0 ]] && echo "PASS" || grep -q 'RESULT: FAIL :: make pr-fast' "$tmp_log" && echo "FAIL" || echo "PASS")"
-echo "- make check-new-code-coverage: $([[ "$status" -eq 0 ]] && echo "PASS" || grep -q 'RESULT: FAIL :: make check-new-code-coverage' "$tmp_log" && echo "FAIL" || echo "PASS")"
+if [[ "$status_pr_fast" -eq 0 ]]; then
+  echo "- make pr-fast: PASS"
+else
+  echo "- make pr-fast: FAIL"
+fi
+if [[ "$status_coverage" -eq 0 ]]; then
+  echo "- make check-new-code-coverage: PASS"
+else
+  echo "- make check-new-code-coverage: FAIL"
+fi
 if [[ -n "$coverage_line" ]]; then
   echo "- ${coverage_line}"
 fi

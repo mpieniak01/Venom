@@ -181,23 +181,24 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
               size="sm"
               className="gap-2"
             >
-            {isPaused ? (
-              <>
-                <Play className="h-4 w-4" />
-                Resume
-              </>
-            ) : (
-              <>
-                <Pause className="h-4 w-4" />
-                Pause
-              </>
-            )}
-          </Button>
-          {onClose && (
-            <Button onClick={onClose} variant="ghost" size="sm">
-              <X className="h-4 w-4" />
+              {isPaused ? (
+                <>
+                  <Play className="h-4 w-4" />
+                  Resume
+                </>
+              ) : (
+                <>
+                  <Pause className="h-4 w-4" />
+                  Pause
+                </>
+              )}
             </Button>
-          )}
+            {onClose && (
+              <Button onClick={onClose} variant="ghost" size="sm">
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

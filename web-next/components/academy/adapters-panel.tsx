@@ -15,7 +15,7 @@ interface AdaptersPanelProps {
   status: AcademyStatus;
 }
 
-export function AdaptersPanel({ status }: AdaptersPanelProps) {
+export function AdaptersPanel({}: AdaptersPanelProps) {
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);
@@ -101,11 +101,12 @@ export function AdaptersPanel({ status }: AdaptersPanelProps) {
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
+            ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-          Odśwież
-        </Button>
+            Odśwież
+          </Button>
+        </div>
       </div>
 
       {/* Lista adapterów */}

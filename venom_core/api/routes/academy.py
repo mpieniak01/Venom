@@ -431,6 +431,13 @@ async def stream_training_logs(job_id: str):
     async def event_generator():
         """Generator eventów SSE."""
         try:
+            from venom_core.learning.training_metrics_parser import (
+                TrainingMetricsParser,
+            )
+
+            parser = TrainingMetricsParser()
+            all_metrics = []
+
             # Wyślij początkowy event
             yield f"data: {json.dumps({'type': 'connected', 'job_id': job_id})}\n\n"
 
@@ -452,6 +459,18 @@ async def stream_training_logs(job_id: str):
                     timestamp = None
                     message = log_line
 
+                # Parsuj metryki z linii
+                metrics = parser.parse_line(message)
+                metrics_data = None
+                if metrics:
+                    all_metrics.append(metrics)
+                    metrics_data = {
+                        "epoch": metrics.epoch,
+                        "total_epochs": metrics.total_epochs,
+                        "loss": metrics.loss,
+                        "progress_percent": metrics.progress_percent,
+                    }
+
                 # Wyślij jako SSE event
                 event_data = {
                     "type": "log",
@@ -459,6 +478,9 @@ async def stream_training_logs(job_id: str):
                     "message": message,
                     "timestamp": timestamp,
                 }
+                if metrics_data:
+                    event_data["metrics"] = metrics_data
+
                 yield f"data: {json.dumps(event_data)}\n\n"
 
                 last_line_sent += 1
@@ -467,6 +489,11 @@ async def stream_training_logs(job_id: str):
                 if last_line_sent % 10 == 0:
                     status_info = _gpu_habitat.get_training_status(job_name)
                     current_status = status_info.get("status")
+
+                    # Wyślij agregowane metryki
+                    if all_metrics:
+                        aggregated = parser.aggregate_metrics(all_metrics)
+                        yield f"data: {json.dumps({'type': 'metrics', 'data': aggregated})}\n\n"
 
                     # Jeśli job zakończony, wyślij event i zakończ
                     if current_status in ["completed", "failed"]:

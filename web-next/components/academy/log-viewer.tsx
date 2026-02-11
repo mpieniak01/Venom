@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Terminal, X, Pause, Play } from "lucide-react";
+import { Terminal, X, Pause, Play, TrendingDown, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface LogViewerProps {
@@ -13,6 +13,21 @@ interface LogEntry {
   line: number;
   message: string;
   timestamp?: string;
+  metrics?: {
+    epoch?: number;
+    total_epochs?: number;
+    loss?: number;
+    progress_percent?: number;
+  };
+}
+
+interface AggregatedMetrics {
+  current_epoch?: number;
+  total_epochs?: number;
+  latest_loss?: number;
+  min_loss?: number;
+  avg_loss?: number;
+  progress_percent?: number;
 }
 
 export function LogViewer({ jobId, onClose }: LogViewerProps) {
@@ -21,6 +36,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("connecting");
+  const [metrics, setMetrics] = useState<AggregatedMetrics | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -56,8 +72,13 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
                 line: data.line,
                 message: data.message,
                 timestamp: data.timestamp,
+                metrics: data.metrics,
               },
             ]);
+            break;
+
+          case "metrics":
+            setMetrics(data.data);
             break;
 
           case "status":
@@ -132,31 +153,32 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
   return (
     <div className="rounded-xl border border-white/10 bg-zinc-900/50 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/10 bg-zinc-900 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Terminal className="h-5 w-5 text-emerald-400" />
-          <div>
-            <h3 className="text-sm font-semibold text-white">
-              Training Logs - {jobId}
-            </h3>
-            <p className={`text-xs ${getStatusColor()}`}>
-              {isConnected ? (
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                  {status}
-                </span>
-              ) : (
-                status
-              )}
-            </p>
+      <div className="border-b border-white/10 bg-zinc-900">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <Terminal className="h-5 w-5 text-emerald-400" />
+            <div>
+              <h3 className="text-sm font-semibold text-white">
+                Training Logs - {jobId}
+              </h3>
+              <p className={`text-xs ${getStatusColor()}`}>
+                {isConnected ? (
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                    {status}
+                  </span>
+                ) : (
+                  status
+                )}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={togglePause}
-            variant="ghost"
-            size="sm"
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={togglePause}
+              variant="ghost"
+              size="sm"
             className="gap-2"
           >
             {isPaused ? (
@@ -178,6 +200,45 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
           )}
         </div>
       </div>
+
+      {/* Metrics Bar */}
+      {metrics && (
+        <div className="border-b border-white/10 bg-zinc-900/70 px-4 py-2">
+          <div className="flex items-center gap-6 text-xs">
+            {metrics.current_epoch !== undefined && metrics.total_epochs && (
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-blue-400" />
+                <span className="text-zinc-400">Epoch:</span>
+                <span className="font-semibold text-white">
+                  {metrics.current_epoch}/{metrics.total_epochs}
+                </span>
+                {metrics.progress_percent !== undefined && (
+                  <div className="ml-2 h-1.5 w-24 rounded-full bg-zinc-700 overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${metrics.progress_percent}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {metrics.latest_loss !== undefined && (
+              <div className="flex items-center gap-2">
+                <TrendingDown className="h-4 w-4 text-emerald-400" />
+                <span className="text-zinc-400">Loss:</span>
+                <span className="font-semibold text-white">
+                  {metrics.latest_loss.toFixed(4)}
+                </span>
+                {metrics.min_loss !== undefined && (
+                  <span className="text-zinc-500 text-[10px]">
+                    (best: {metrics.min_loss.toFixed(4)})
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Logs */}
       <div

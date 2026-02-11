@@ -233,7 +233,7 @@ class ModelManager:
             True jeśli sukces, False w przeciwnym razie
         """
         if version_id not in self.versions:
-            logger.error(f"Wersja {version_id} nie istnieje")
+            logger.error("Wersja modelu nie istnieje")
             return False
 
         # Dezaktywuj poprzednią wersję
@@ -244,8 +244,16 @@ class ModelManager:
         self.versions[version_id].is_active = True
         self.active_version = version_id
 
-        logger.info(f"Aktywowano wersję modelu: {version_id}")
+        logger.info("Aktywowano wersję modelu")
         return True
+
+    def _is_path_within_models_dir(self, path: Path) -> bool:
+        """Sprawdza czy ścieżka mieści się w katalogu modeli Academy."""
+        try:
+            path.relative_to(self.models_dir.resolve())
+            return True
+        except ValueError:
+            return False
 
     def get_active_version(self) -> Optional[ModelVersion]:
         """
@@ -1185,11 +1193,19 @@ PARAMETER top_k 40
         """
         from datetime import datetime
 
-        logger.info(f"Aktywacja adaptera Academy: {adapter_id} z {adapter_path}")
+        logger.info("Aktywacja adaptera Academy")
+
+        expected_adapter_path = (
+            self.models_dir.resolve() / adapter_id / "adapter"
+        ).resolve()
+
+        if adapter_path and Path(adapter_path).resolve() != expected_adapter_path:
+            logger.error("Adapter path niezgodny z katalogiem Academy")
+            return False
 
         # Sprawdź czy adapter istnieje
-        if not Path(adapter_path).exists():
-            logger.error(f"Adapter nie istnieje: {adapter_path}")
+        if not expected_adapter_path.exists():
+            logger.error("Adapter nie istnieje")
             return False
 
         # Jeśli adapter już jest zarejestrowany, aktywuj go
@@ -1199,7 +1215,7 @@ PARAMETER top_k 40
                 version = self.versions[adapter_id]
                 self._save_active_adapter_state(
                     adapter_id=adapter_id,
-                    adapter_path=version.adapter_path or adapter_path,
+                    adapter_path=version.adapter_path or str(expected_adapter_path),
                     base_model=version.base_model,
                 )
             return success
@@ -1209,7 +1225,7 @@ PARAMETER top_k 40
         self.register_version(
             version_id=adapter_id,
             base_model=base,
-            adapter_path=adapter_path,
+            adapter_path=str(expected_adapter_path),
             performance_metrics={
                 "source": "academy",
                 "created_at": datetime.now().isoformat(),
@@ -1223,11 +1239,11 @@ PARAMETER top_k 40
             logger.info(f"✅ Adapter {adapter_id} aktywowany pomyślnie")
             self._save_active_adapter_state(
                 adapter_id=adapter_id,
-                adapter_path=adapter_path,
+                adapter_path=str(expected_adapter_path),
                 base_model=base,
             )
         else:
-            logger.error(f"❌ Nie udało się aktywować adaptera {adapter_id}")
+            logger.error("❌ Nie udało się aktywować adaptera")
 
         return success
 

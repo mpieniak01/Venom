@@ -286,6 +286,15 @@ def _save_adapter_metadata(job: Dict[str, Any], adapter_path: Path) -> None:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
 
 
+def _is_path_within_base(path: Path, base: Path) -> bool:
+    """Sprawdza czy `path` znajduje się w `base` (po resolve)."""
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
 # ==================== Endpointy ====================
 
 
@@ -784,11 +793,19 @@ async def activate_adapter(
                 detail="ModelManager not available for adapter activation",
             )
 
-        adapter_path = Path(request.adapter_path)
+        from venom_core.config import SETTINGS
+
+        models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
+        expected_adapter_path = (models_dir / request.adapter_id / "adapter").resolve()
+        if (
+            request.adapter_path
+            and Path(request.adapter_path).resolve() != expected_adapter_path
+        ):
+            raise HTTPException(status_code=400, detail="Invalid adapter path")
+        adapter_path = expected_adapter_path
+
         if not adapter_path.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Adapter not found: {request.adapter_path}"
-            )
+            raise HTTPException(status_code=404, detail="Adapter not found")
 
         # Aktywuj adapter przez ModelManager
         success = manager.activate_adapter(
@@ -807,7 +824,7 @@ async def activate_adapter(
             "success": True,
             "message": f"Adapter {request.adapter_id} activated successfully",
             "adapter_id": request.adapter_id,
-            "adapter_path": request.adapter_path,
+            "adapter_path": str(adapter_path),
         }
 
     except HTTPException:

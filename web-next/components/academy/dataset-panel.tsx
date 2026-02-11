@@ -62,7 +62,7 @@ export function DatasetPanel() {
               id="lessons-limit"
               type="number"
               value={lessonsLimit}
-              onChange={(e) => setLessonsLimit(parseInt(e.target.value) || 0)}
+              onChange={(e) => setLessonsLimit(Number.parseInt(e.target.value, 10) || 0)}
               min={10}
               max={1000}
               className="mt-2"
@@ -77,7 +77,7 @@ export function DatasetPanel() {
               id="git-limit"
               type="number"
               value={gitLimit}
-              onChange={(e) => setGitLimit(parseInt(e.target.value) || 0)}
+              onChange={(e) => setGitLimit(Number.parseInt(e.target.value, 10) || 0)}
               min={0}
               max={500}
               className="mt-2"
@@ -122,7 +122,7 @@ export function DatasetPanel() {
               }`}>
                 {result.message}
               </p>
-              
+
               {result.success && result.statistics && (
                 <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <div>

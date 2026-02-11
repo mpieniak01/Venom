@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Play, Loader2, RefreshCw } from "lucide-react";
+import { Play, Loader2, RefreshCw, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LogViewer } from "./log-viewer";
 import {
   startTraining,
   listJobs,
@@ -23,6 +24,7 @@ export function TrainingPanel({ status }: TrainingPanelProps) {
   const [learningRate, setLearningRate] = useState(0.0002);
   const [numEpochs, setNumEpochs] = useState(3);
   const [batchSize, setBatchSize] = useState(4);
+  const [viewingLogs, setViewingLogs] = useState<string | null>(null);
 
   useEffect(() => {
     loadJobs();
@@ -208,14 +210,37 @@ export function TrainingPanel({ status }: TrainingPanelProps) {
                       </p>
                     )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-zinc-400">Epochs: {job.parameters.num_epochs}</p>
-                    <p className="text-xs text-zinc-400">LoRA: {job.parameters.lora_rank}</p>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-xs text-zinc-400">Epochs: {job.parameters.num_epochs}</p>
+                      <p className="text-xs text-zinc-400">LoRA: {job.parameters.lora_rank}</p>
+                    </div>
+                    <Button
+                      onClick={() => setViewingLogs(job.job_id)}
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      <Terminal className="h-4 w-4" />
+                      Logs
+                    </Button>
                   </div>
                 </div>
               </div>
             ))
           )}
+        </div>
+      </div>
+
+      {/* Log Viewer */}
+      {viewingLogs && (
+        <div className="mt-6">
+          <LogViewer
+            jobId={viewingLogs}
+            onClose={() => setViewingLogs(null)}
+          />
+        </div>
+      )}
         </div>
       </div>
     </div>

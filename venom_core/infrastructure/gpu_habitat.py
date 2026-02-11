@@ -540,3 +540,49 @@ print("=" * 60)
                 "available": self.is_gpu_available(),
                 "message": f"Failed to get GPU details: {str(e)}",
             }
+
+    def stream_job_logs(self, job_name: str, since_timestamp: Optional[int] = None):
+        """
+        Generator do streamowania logów z zadania treningowego.
+
+        Args:
+            job_name: Nazwa joba
+            since_timestamp: Timestamp (Unix) od którego pobierać logi (opcjonalne)
+
+        Yields:
+            Linie logów jako stringi
+
+        Raises:
+            KeyError: Jeśli job nie istnieje
+        """
+        if job_name not in self.training_containers:
+            raise KeyError(f"Job {job_name} nie istnieje")
+
+        job_info = self.training_containers[job_name]
+        container = job_info["container"]
+
+        try:
+            # Stream logów z kontenera
+            # since: timestamps od kiedy pobierać logi
+            # follow: czy kontynuować czytanie nowych logów
+            # stream: zwróć generator zamiast całych logów
+            log_stream = container.logs(
+                stream=True,
+                follow=True,
+                timestamps=True,
+                since=since_timestamp,
+            )
+
+            for log_line in log_stream:
+                # Dekoduj i zwróć linię
+                try:
+                    line = log_line.decode("utf-8").strip()
+                    if line:
+                        yield line
+                except UnicodeDecodeError:
+                    # Pomiń linie które nie da się zdekodować
+                    continue
+
+        except Exception as e:
+            logger.error(f"Błąd podczas streamowania logów: {e}")
+            yield f"Error streaming logs: {str(e)}"

@@ -627,3 +627,214 @@ def test_curate_dataset_with_git_history(
     assert response.status_code == 200
     assert mock_dataset_curator.collect_from_git_history.called
     assert mock_dataset_curator.filter_low_quality.called
+
+
+# Additional comprehensive tests for coverage
+
+
+def test_start_training_with_all_parameters(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test rozpoczęcia treningu ze wszystkimi parametrami."""
+    with patch("venom_core.api.routes.academy._save_job_to_history"):
+        response = client.post(
+            "/api/v1/academy/train",
+            json={
+                "dataset_path": "./data/training/dataset_test.jsonl",
+                "adapter_name": "test_adapter",
+                "base_model": "test/model",
+                "epochs": 3,
+                "batch_size": 4,
+                "learning_rate": 0.0002,
+                "lora_r": 8,
+                "lora_alpha": 16
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "started"
+        assert "job_id" in data
+        assert mock_gpu_habitat.run_training_job.called
+
+
+def test_get_training_status_with_metrics(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test pobierania statusu treningu z metrykami."""
+    mock_gpu_habitat.get_training_status.return_value = {
+        "status": "running",
+        "progress": 0.5,
+        "current_epoch": 2,
+        "total_epochs": 4,
+        "loss": 0.45
+    }
+    
+    job_data = [{
+        "job_id": "test_job_metrics",
+        "status": "running",
+        "dataset_path": "./data/training/dataset.jsonl"
+    }]
+    
+    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=job_data):
+        response = client.get("/api/v1/academy/train/test_job_metrics/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "running"
+        assert data["progress"] == 0.5
+        assert data["current_epoch"] == 2
+
+
+def test_list_adapters_with_metadata(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client, tmp_path
+):
+    """Test listowania adapterów z metadanymi."""
+    # Create directory structure
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    adapter1 = models_dir / "adapter_1" / "adapter"
+    adapter1.mkdir(parents=True)
+    adapter2 = models_dir / "adapter_2" / "adapter"
+    adapter2.mkdir(parents=True)
+    
+    # Create metadata file for adapter_1
+    metadata1 = adapter1.parent / "metadata.json"
+    metadata1.write_text('{"base_model": "test/model", "created_at": "2024-01-01"}')
+    
+    mock_model_manager.get_active_adapter_info.return_value = {
+        "adapter_id": "adapter_1",
+        "adapter_path": str(adapter1)
+    }
+    
+    with patch("venom_core.config.SETTINGS") as mock_settings:
+        mock_settings.ACADEMY_MODELS_DIR = str(models_dir)
+        mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "default/model"
+        
+        response = client.get("/api/v1/academy/adapters")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) >= 2
+        # Check that adapter_1 is marked as active
+        adapter_1_data = [a for a in data if a["id"] == "adapter_1"][0]
+        assert adapter_1_data["active"] is True
+
+
+def test_activate_adapter_with_model_manager_integration(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test aktywacji adaptera z integracją ModelManager."""
+    mock_model_manager.activate_adapter.return_value = True
+    
+    with patch("pathlib.Path.exists", return_value=True):
+        response = client.post(
+            "/api/v1/academy/adapters/activate",
+            json={
+                "adapter_id": "test_adapter",
+                "adapter_path": "./data/models/test_adapter/adapter"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "activated successfully" in data["message"]
+        mock_model_manager.activate_adapter.assert_called_once()
+
+
+def test_deactivate_adapter_success(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test deaktywacji adaptera."""
+    mock_model_manager.deactivate_adapter.return_value = True
+    
+    response = client.post("/api/v1/academy/adapters/deactivate")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "deactivated successfully" in data["message"]
+
+
+def test_cancel_training_with_cleanup(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test anulowania treningu z czyszczeniem zasobów."""
+    job_data = [{
+        "job_id": "cancel_test",
+        "status": "running",
+        "container_id": "container123"
+    }]
+    
+    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=job_data), \
+         patch("venom_core.api.routes.academy._update_job_in_history"):
+        response = client.post("/api/v1/academy/train/cancel_test/cancel")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "cancelled"
+        mock_gpu_habitat.cleanup_job.assert_called_once_with("cancel_test")
+
+
+def test_stream_logs_with_metrics_extraction(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test streamowania logów z ekstrakcją metryk."""
+    job_data = [{
+        "job_id": "stream_test",
+        "status": "running"
+    }]
+    
+    mock_gpu_habitat.stream_job_logs.return_value = iter([
+        "Starting training...",
+        "Epoch 1/5 - Loss: 0.85 - lr: 0.0002",
+        "Epoch 2/5 - Loss: 0.65 - lr: 0.0002"
+    ])
+    
+    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=job_data):
+        response = client.get("/api/v1/academy/train/stream_test/logs/stream")
+        
+        assert response.status_code == 200
+        # SSE endpoint returns event stream
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+
+
+def test_dataset_curation_validation_errors(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test walidacji błędnych parametrów kuracji."""
+    response = client.post(
+        "/api/v1/academy/dataset",
+        json={
+            "lessons_limit": -10,  # Invalid: negative
+            "quality_threshold": 1.5  # Invalid: > 1.0
+        }
+    )
+    
+    assert response.status_code == 422  # Validation error
+
+
+def test_training_parameter_validation(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test walidacji błędnych parametrów treningu."""
+    response = client.post(
+        "/api/v1/academy/train",
+        json={
+            "dataset_path": "",  # Invalid: empty
+            "epochs": 0,  # Invalid: must be > 0
+            "batch_size": -1  # Invalid: negative
+        }
+    )
+    
+    assert response.status_code == 422  # Validation error

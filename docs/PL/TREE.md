@@ -7,6 +7,7 @@
 ├── docs/                        # dokumentacja (angielska, domyślna)
 │   ├── PL/                      # dokumentacja po polsku
 │   ├── PROCESS_ENGINE_CONCEPT.md # [v2.0] System procesowy (koncepcja)
+│   ├── SECURITY_POLICY.md       # oficjalna polityka bezpieczeństwa runtime i autonomii
 │   ├── VENOM_DIAGRAM.md
 │   └── VENOM_MASTER_VISION_V1.md
 ├── docs_dev/                    # dokumentacja deweloperska lokalnie (ignorowana)

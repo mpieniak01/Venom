@@ -2,6 +2,8 @@
 
 Ten dokument opisuje nową architekturę uruchomieniową Venoma: **FastAPI** działa jako samodzielne API/SSE/WS, a **Next.js (`web-next`)** serwuje interfejs użytkownika. Obie części są uruchamiane i monitorowane niezależnie.
 
+Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje `docs/PL/SECURITY_POLICY.md`.
+
 ## Składniki
 
 | Komponent | Rola | Domyślny port | Start/stop |

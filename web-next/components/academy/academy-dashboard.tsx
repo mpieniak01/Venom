@@ -172,9 +172,9 @@ export function AcademyDashboard() {
       {/* Content */}
       <div className="min-h-[500px]">
         {activeTab === "overview" && <AcademyOverview status={status} onRefresh={loadStatus} />}
-        {activeTab === "dataset" && <DatasetPanel status={status} />}
-        {activeTab === "training" && <TrainingPanel status={status} />}
-        {activeTab === "adapters" && <AdaptersPanel status={status} />}
+        {activeTab === "dataset" && <DatasetPanel />}
+        {activeTab === "training" && <TrainingPanel />}
+        {activeTab === "adapters" && <AdaptersPanel />}
       </div>
     </div>
   );

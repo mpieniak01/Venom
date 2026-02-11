@@ -313,7 +313,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
 
       cy = cytoscape({
         container: cyRef.current,
-        elements: mergedGraph.elements as cytoscapeType.ElementDefinition[],
+        elements: mergedGraph.elements as unknown as cytoscapeType.ElementDefinition[],
         style: [
           {
             selector: "node",
@@ -336,7 +336,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
               color: "#cbd5e1",
               "text-background-color": "#09090b",
               "text-background-opacity": 0.8,
-              "text-background-padding": 2,
+              "text-background-padding": "2px",
               "curve-style": "bezier",
               "target-arrow-shape": "triangle",
               width: 2,

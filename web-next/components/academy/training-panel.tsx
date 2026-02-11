@@ -10,6 +10,7 @@ import {
   startTraining,
   listJobs,
   type TrainingJob,
+  type TrainingJobStatus,
 } from "@/lib/academy-api";
 
 export function TrainingPanel() {
@@ -58,14 +59,20 @@ export function TrainingPanel() {
     }
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: TrainingJobStatus) => {
     switch (status) {
+      case "queued":
+        return "text-amber-300 bg-amber-500/10";
+      case "preparing":
+        return "text-indigo-300 bg-indigo-500/10";
       case "finished":
         return "text-emerald-400 bg-emerald-500/10";
       case "running":
         return "text-blue-400 bg-blue-500/10";
       case "failed":
         return "text-red-400 bg-red-500/10";
+      case "cancelled":
+        return "text-orange-300 bg-orange-500/10";
       default:
         return "text-zinc-400 bg-zinc-500/10";
     }

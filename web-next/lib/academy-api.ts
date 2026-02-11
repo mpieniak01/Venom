@@ -1,6 +1,6 @@
 /**
  * Academy API Client
- * 
+ *
  * API client dla endpointów THE_ACADEMY - trenowanie modeli.
  */
 
@@ -40,9 +40,17 @@ export interface TrainingResponse {
   parameters: Record<string, unknown>;
 }
 
+export type TrainingJobStatus =
+  | "queued"
+  | "preparing"
+  | "running"
+  | "finished"
+  | "failed"
+  | "cancelled";
+
 export interface JobStatus {
   job_id: string;
-  status: "queued" | "preparing" | "running" | "finished" | "failed" | "cancelled";
+  status: TrainingJobStatus;
   logs: string;
   started_at?: string;
   finished_at?: string;
@@ -56,7 +64,7 @@ export interface TrainingJob {
   dataset_path: string;
   base_model: string;
   parameters: TrainingParams;
-  status: string;
+  status: TrainingJobStatus;
   started_at: string;
   finished_at?: string;
   container_id?: string;
@@ -146,15 +154,15 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
  */
 export async function listJobs(params?: {
   limit?: number;
-  status?: string;
+  status?: TrainingJobStatus;
 }): Promise<{ count: number; jobs: TrainingJob[] }> {
   const query = new URLSearchParams();
   if (params?.limit) query.set("limit", params.limit.toString());
   if (params?.status) query.set("status", params.status);
-  
+
   const queryString = query.toString();
   const url = queryString ? `/api/v1/academy/jobs?${queryString}` : "/api/v1/academy/jobs";
-  
+
   return apiFetch<{ count: number; jobs: TrainingJob[] }>(url);
 }
 

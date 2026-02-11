@@ -492,56 +492,38 @@ def test_deactivate_adapter_success(
     mock_model_manager.deactivate_adapter.assert_called_once()
 
 
-@patch("venom_core.api.routes.academy.Path")
 def test_list_adapters_with_active_state(
-    mock_path_class,
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
+    client, tmp_path
 ):
     """Test listowania adapterów z active state."""
-    # Mock a training directory
-    mock_training_dir = MagicMock()
-    mock_training_dir.is_dir.return_value = True
-    mock_training_dir.name = "adapter_1"
+    # Create a real temporary directory structure
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
     
-    # Mock adapter path - when training_dir / "adapter" is called
-    mock_adapter_path = MagicMock()
-    mock_adapter_path.exists.return_value = True
+    adapter_dir = models_dir / "adapter_1"
+    adapter_dir.mkdir()
     
-    # Mock metadata file - when training_dir / "metadata.json" is called
-    mock_metadata_file = MagicMock()
-    mock_metadata_file.exists.return_value = False
+    adapter_subdir = adapter_dir / "adapter"
+    adapter_subdir.mkdir()
     
-    def truediv_side_effect(other):
-        if other == "adapter":
-            return mock_adapter_path
-        elif other == "metadata.json":
-            return mock_metadata_file
-        return MagicMock()
-    
-    mock_training_dir.__truediv__ = truediv_side_effect
-    
-    # Mock the models directory structure
-    mock_models_dir = MagicMock()
-    mock_models_dir.exists.return_value = True
-    mock_models_dir.iterdir.return_value = [mock_training_dir]
-    
-    # Setup Path() to return our mock_models_dir when called with ACADEMY_MODELS_DIR
-    mock_path_class.return_value = mock_models_dir
-    
-    # Mock active adapter info
-    mock_model_manager.get_active_adapter_info.return_value = {
-        "adapter_id": "adapter_1",
-        "adapter_path": "./path/1"
-    }
-    
-    response = client.get("/api/v1/academy/adapters")
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["adapter_id"] == "adapter_1"
-    assert data[0]["is_active"] is True
+    # Mock SETTINGS to point to our tmp directory
+    with patch("venom_core.api.routes.academy.SETTINGS") as mock_settings:
+        mock_settings.ACADEMY_MODELS_DIR = str(models_dir)
+        
+        # Mock active adapter info
+        mock_model_manager.get_active_adapter_info.return_value = {
+            "adapter_id": "adapter_1",
+            "adapter_path": str(adapter_subdir)
+        }
+        
+        response = client.get("/api/v1/academy/adapters")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["adapter_id"] == "adapter_1"
+        assert data[0]["is_active"] is True
 
 
 def test_dataset_curate_with_validation_error(

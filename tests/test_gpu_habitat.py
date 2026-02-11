@@ -215,8 +215,8 @@ def test_get_gpu_info_no_gpu(monkeypatch):
     info = habitat.get_gpu_info()
     
     assert info["available"] is False
-    assert info["count"] == 0
-    assert info["gpus"] == []
+    assert "message" in info
+    assert isinstance(info["message"], str) and info["message"]
 
 
 def test_get_gpu_info_with_gpu(monkeypatch):

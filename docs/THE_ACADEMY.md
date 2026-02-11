@@ -558,6 +558,17 @@ Activate a LoRA adapter (hot-swap).
 }
 ```
 
+#### **POST /api/v1/academy/adapters/deactivate**
+Deactivate current adapter (rollback to base model).
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Adapter deactivated successfully - using base model"
+}
+```
+
 #### **DELETE /api/v1/academy/train/{job_id}**
 Cancel a running training job.
 
@@ -570,6 +581,8 @@ Cancel a running training job.
 }
 ```
 
+**Note:** Cancelling a job automatically stops and removes the Docker container.
+
 ## Web UI
 
 Academy dashboard is available at **http://localhost:3000/academy**
@@ -578,7 +591,7 @@ Academy dashboard is available at **http://localhost:3000/academy**
 
 1. **Overview Panel**
    - System status and component health
-   - GPU availability
+   - GPU availability and detailed info (VRAM, utilization)
    - LessonsStore statistics
    - Job statistics (total, running, finished, failed)
    - Configuration display
@@ -594,18 +607,23 @@ Academy dashboard is available at **http://localhost:3000/academy**
    - Start training jobs
    - Job history with status
    - Auto-refresh for running jobs
+   - Cancel running jobs with automatic container cleanup
 
 4. **Adapters Panel**
-   - List all trained adapters
-   - View adapter metadata
-   - Activate/deactivate adapters
-   - Hot-swap without backend restart
+   - List all trained adapters with active state highlighting
+   - View adapter metadata (parameters, creation date)
+   - Activate adapters (hot-swap without backend restart)
+   - Deactivate/rollback to base model
+   - Active adapter indicator
 
 ## Roadmap
 
 - [x] REST API endpoints (v2.0)
 - [x] Web UI Dashboard (v2.0)
 - [x] Job persistence and history
+- [x] Adapter activation/deactivation (v2.1)
+- [x] Container management and cleanup (v2.1)
+- [x] GPU monitoring (v2.1)
 - [ ] Real-time log streaming (SSE)
 - [ ] Full Arena implementation (automated evaluation)
 - [ ] PEFT integration for KernelBuilder
@@ -621,6 +639,23 @@ Academy dashboard is available at **http://localhost:3000/academy**
 
 ---
 
-**Status:** ✅ Core features + API + UI implemented
-**Version:** 2.0 (PR 090)
+**Status:** ✅ Core features + API + UI + ModelManager integration implemented  
+**Version:** 2.1 (PR 090 Phase 2)  
 **Author:** Venom Team
+
+## Changelog
+
+### v2.1 (Phase 2 - Current)
+- ✅ ModelManager adapter integration (activate/deactivate)
+- ✅ Container cleanup on job cancellation
+- ✅ GPU detailed monitoring (nvidia-smi)
+- ✅ Adapter rollback functionality
+- ✅ Active adapter state tracking
+- ✅ Comprehensive test coverage (18 test cases)
+
+### v2.0 (Phase 1 - MVP)
+- ✅ REST API endpoints (11 endpoints)
+- ✅ Web UI Dashboard (4 panels)
+- ✅ Job persistence and history
+- ✅ Dataset curation
+- ✅ Training job management

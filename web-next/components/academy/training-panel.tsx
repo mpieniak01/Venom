@@ -9,15 +9,15 @@ import { LogViewer } from "./log-viewer";
 import {
   startTraining,
   listJobs,
-  type AcademyStatus,
   type TrainingJob,
 } from "@/lib/academy-api";
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface TrainingPanelProps {
-  status: AcademyStatus;
+  // Empty for now - reserved for future use
 }
 
-export function TrainingPanel(_props: TrainingPanelProps) {
+export function TrainingPanel() {
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
   const [loraRank, setLoraRank] = useState(16);

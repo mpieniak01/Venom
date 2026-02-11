@@ -6,29 +6,34 @@ import sys
 sys.path.append(os.getcwd())
 
 from venom_core.core.permission_guard import permission_guard
-from venom_core.execution.skills.shell_skill import ShellSkill
 from venom_core.execution.skills.file_skill import FileSkill
+from venom_core.execution.skills.shell_skill import ShellSkill
+
 
 async def test_autonomy_bypass():
     print("--- Autonomy Bypass Test ---")
-    
+
     # 1. Set Autonomy to ISOLATED (Level 0)
     print(f"Current Level: {permission_guard.get_current_level()}")
     print("Setting Autonomy Level to 0 (ISOLATED)...")
     permission_guard.set_level(0)
     print(f"New Level: {permission_guard.get_current_level()}")
-    
+
     # Verify what ISOLATED means
     level_info = permission_guard.get_level_info(0)
     print(f"Level 0 Permissions: {level_info.permissions}")
-    
+
     # 2. Try ShellSkill
     print("\n[Attempting Shell Execution]")
-    shell_skill = ShellSkill(use_sandbox=False) # Skip docker check for speed/simplicity of repro
-    
+    shell_skill = ShellSkill(
+        use_sandbox=False
+    )  # Skip docker check for speed/simplicity of repro
+
     try:
         # We expect this to FAIL if security is working, but PASS if vulnerable
-        result = shell_skill.run_shell("echo 'VULNERABLE: Shell executed despite Level 0'")
+        result = shell_skill.run_shell(
+            "echo 'VULNERABLE: Shell executed despite Level 0'"
+        )
         print(f"Result: {result}")
         if "VULNERABLE" in result:
             print("❌ SECURITY FAILURE: Shell command executed!")
@@ -46,6 +51,7 @@ async def test_autonomy_bypass():
         print("❌ SECURITY FAILURE: File written!")
     except Exception as e:
         print(f"✅ BLOCKED: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(test_autonomy_bypass())

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.file_skill import FileSkill
 
 
@@ -13,6 +14,16 @@ def temp_workspace():
     """Fixture dla tymczasowego workspace."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield tmpdir
+
+
+@pytest.fixture(autouse=True)
+def _allow_file_writes_for_tests():
+    previous_level = permission_guard.get_current_level()
+    permission_guard.set_level(30)
+    try:
+        yield
+    finally:
+        permission_guard.set_level(previous_level)
 
 
 def test_file_skill_initialization(temp_workspace):

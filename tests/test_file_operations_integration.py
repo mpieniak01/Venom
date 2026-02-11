@@ -9,6 +9,7 @@ import pytest
 from tests.helpers.url_fixtures import LOCALHOST_11434_V1, MOCK_HTTP, local_runtime_id
 from venom_core.core.models import TaskRequest
 from venom_core.core.orchestrator import Orchestrator
+from venom_core.core.permission_guard import permission_guard
 from venom_core.core.state_manager import StateManager
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
@@ -62,6 +63,16 @@ def temp_workspace():
     """Fixture dla tymczasowego workspace."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield tmpdir
+
+
+@pytest.fixture(autouse=True)
+def _allow_file_writes_for_tests():
+    previous_level = permission_guard.get_current_level()
+    permission_guard.set_level(30)
+    try:
+        yield
+    finally:
+        permission_guard.set_level(previous_level)
 
 
 @pytest.mark.asyncio

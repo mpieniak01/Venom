@@ -7,6 +7,7 @@ from typing import Annotated, Optional
 import aiofiles
 from semantic_kernel.functions import kernel_function
 
+from venom_core.core.autonomy_enforcement import require_file_write_permission
 from venom_core.execution.skills.base_skill import (
     BaseSkill,
     async_safe_action,
@@ -48,6 +49,8 @@ class FileSkill(BaseSkill):
         """
         Zapisuje treść do pliku asynchronicznie.
         """
+        require_file_write_permission()
+
         safe_path = self.validate_path(file_path)
 
         # Utwórz katalogi nadrzędne jeśli nie istnieją

@@ -9,6 +9,7 @@ from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
 
+from venom_core.core.autonomy_enforcement import require_core_patch_permission
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -67,6 +68,8 @@ class CoreSkill:
         Returns:
             Komunikat o wyniku operacji
         """
+        require_core_patch_permission()
+
         try:
             path = Path(file_path).resolve()
 
@@ -125,6 +128,8 @@ class CoreSkill:
         Returns:
             Komunikat o wyniku operacji
         """
+        require_core_patch_permission()
+
         try:
             path = Path(file_path).resolve()
             filename = path.name

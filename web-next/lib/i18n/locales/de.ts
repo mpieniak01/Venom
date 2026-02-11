@@ -923,6 +923,7 @@ export const de = {
       pinSuccess: "Speichereintrag angeheftet.",
       unpinSuccess: "Speichereintrag losgelöst.",
       pinError: "Fehler beim Ändern des Pinned-Status.",
+      layoutColaUnavailable: "Cola-Layout ist in diesem Build nicht verfügbar. Auf Cose umgeschaltet.",
       deleteConfirm: "Möchten Sie diesen Speichereintrag wirklich löschen?",
       deleteSuccess: "Speichereintrag gelöscht.",
       deleteError: "Fehler beim Löschen des Speichereintrags.",

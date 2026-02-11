@@ -2,6 +2,8 @@
 
 This document is the single source of truth for daily local testing, PR readiness checks, and release-oriented validation.
 
+Security baseline and required controls are described in `docs/SECURITY_POLICY.md`.
+
 ## Testing Ladder (from fastest to strictest)
 
 ### Level 1: Daily local work (every day)
@@ -29,6 +31,12 @@ Run one command:
 
 ```bash
 make pr-fast
+```
+
+Ensure hooks are installed for both `pre-commit` and `pre-push`:
+
+```bash
+make install-hooks
 ```
 
 What it includes:

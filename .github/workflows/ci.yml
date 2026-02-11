@@ -14,10 +14,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  forbidden-paths:
+    name: Forbidden Paths Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Ensure docs_dev is not changed in branch
+        run: |
+          python3 scripts/block_docs_dev_tracked.py
+
   backend-lite:
     name: Backend lite (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [forbidden-paths]
     env:
       CI: "true"
       PYTHONUNBUFFERED: "1"
@@ -68,6 +81,7 @@ jobs:
     name: Frontend lite (lint)
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    needs: [forbidden-paths]
     env:
       CI: "true"
     steps:

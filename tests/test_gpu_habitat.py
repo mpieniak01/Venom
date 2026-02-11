@@ -179,7 +179,7 @@ def test_stream_job_logs(monkeypatch):
             self.status = "running"
             self.id = "container-stream"
             
-        def logs(self, stream=False, follow=False):
+        def logs(self, stream=False, follow=False, timestamps=False, since=None):
             if stream:
                 return iter([b"2024-01-01T10:00:00Z Line 1\n", b"2024-01-01T10:00:01Z Line 2\n"])
             return b"Line 1\nLine 2"

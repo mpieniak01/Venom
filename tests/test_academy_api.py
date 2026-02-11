@@ -556,3 +556,92 @@ def test_training_start_with_validation_error(
     )
     
     assert response.status_code == 422  # Validation error
+
+
+def test_get_dataset_stats(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test pobierania statystyk datasetu."""
+    mock_dataset_curator.get_statistics.return_value = {
+        "total_examples": 250,
+        "avg_input_length": 300,
+        "avg_output_length": 200,
+    }
+    
+    response = client.get("/api/v1/academy/dataset")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_examples"] == 250
+    assert data["avg_input_length"] == 300
+
+
+def test_cancel_training_not_found(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test anulowania nieistniejącego treningu."""
+    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=[]):
+        response = client.post("/api/v1/academy/train/nonexistent/cancel")
+        
+        assert response.status_code == 404
+
+
+def test_deactivate_adapter_when_none_active(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test deaktywacji gdy żaden adapter nie jest aktywny."""
+    mock_model_manager.get_active_adapter_info.return_value = None
+    
+    response = client.post("/api/v1/academy/adapters/deactivate")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "No adapter" in data["message"]
+
+
+def test_get_training_status_not_found(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test pobierania statusu nieistniejącego joba."""
+    mock_gpu_habitat.get_training_status.side_effect = KeyError("Job not found")
+    
+    response = client.get("/api/v1/academy/train/nonexistent/status")
+    
+    assert response.status_code == 404
+
+
+def test_list_jobs_empty(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test listowania pustej historii jobów."""
+    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=[]):
+        response = client.get("/api/v1/academy/train")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data == []
+
+
+def test_curate_dataset_with_git_history(
+    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
+    client
+):
+    """Test kuracji datasetu z uwzględnieniem historii Git."""
+    response = client.post(
+        "/api/v1/academy/dataset",
+        json={
+            "lessons_limit": 200,
+            "git_commits_limit": 100,
+            "quality_threshold": 0.5
+        }
+    )
+    
+    assert response.status_code == 200
+    assert mock_dataset_curator.collect_from_git_history.called
+    assert mock_dataset_curator.filter_low_quality.called

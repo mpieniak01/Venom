@@ -272,3 +272,93 @@ def test_academy_disabled(mock_settings, client):
 
     response = client.post("/api/v1/academy/train", json={})
     assert response.status_code == 503
+
+
+@patch("venom_core.config.SETTINGS")
+@patch("pathlib.Path.exists")
+def test_activate_adapter_success(
+    mock_exists, mock_settings, client, mock_model_manager
+):
+    """Test aktywacji adaptera - sukces."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_exists.return_value = True
+    mock_model_manager.activate_adapter.return_value = True
+
+    response = client.post(
+        "/api/v1/academy/adapters/activate",
+        json={
+            "adapter_id": "training_001",
+            "adapter_path": "./data/models/training_001/adapter",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["adapter_id"] == "training_001"
+
+    # Verify model manager was called
+    mock_model_manager.activate_adapter.assert_called_once()
+
+
+@patch("venom_core.config.SETTINGS")
+def test_deactivate_adapter_success(mock_settings, client, mock_model_manager):
+    """Test dezaktywacji adaptera - sukces."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_model_manager.deactivate_adapter.return_value = True
+
+    response = client.post("/api/v1/academy/adapters/deactivate")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "base model" in data["message"].lower()
+
+    # Verify model manager was called
+    mock_model_manager.deactivate_adapter.assert_called_once()
+
+
+@patch("venom_core.config.SETTINGS")
+def test_deactivate_adapter_no_active(mock_settings, client, mock_model_manager):
+    """Test dezaktywacji adaptera gdy brak aktywnego."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_model_manager.deactivate_adapter.return_value = False
+
+    response = client.post("/api/v1/academy/adapters/deactivate")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is False
+    assert "no active" in data["message"].lower()
+
+
+@patch("venom_core.config.SETTINGS")
+@patch("venom_core.api.routes.academy._load_jobs_history")
+@patch("venom_core.api.routes.academy._update_job_in_history")
+def test_cancel_training_with_cleanup(
+    mock_update_job,
+    mock_load_jobs,
+    mock_settings,
+    client,
+    mock_gpu_habitat,
+):
+    """Test anulowania treningu z czyszczeniem kontenera."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_load_jobs.return_value = [
+        {
+            "job_id": "training_001",
+            "job_name": "training_test",
+            "status": "running",
+        }
+    ]
+
+    response = client.delete("/api/v1/academy/train/training_001")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["job_id"] == "training_001"
+
+    # Verify cleanup was called
+    mock_gpu_habitat.cleanup_job.assert_called_once_with("training_test")
+    mock_update_job.assert_called_once()

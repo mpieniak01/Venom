@@ -574,14 +574,15 @@ def test_deactivate_adapter_when_none_active(
     client
 ):
     """Test deaktywacji gdy żaden adapter nie jest aktywny."""
-    mock_model_manager.get_active_adapter_info.return_value = None
+    # Mock deactivate_adapter to return False (no active adapter)
+    mock_model_manager.deactivate_adapter.return_value = False
     
     response = client.post("/api/v1/academy/adapters/deactivate")
     
     assert response.status_code == 200
     data = response.json()
-    assert data["success"] is True
-    assert "No adapter" in data["message"]
+    assert data["success"] is False
+    assert "No active adapter" in data["message"]
 
 
 def test_get_training_status_not_found(

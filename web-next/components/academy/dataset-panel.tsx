@@ -12,7 +12,7 @@ interface DatasetPanelProps {
   // Empty for now - reserved for future use
 }
 
-export function DatasetPanel({}: DatasetPanelProps) {
+export function DatasetPanel(_props: DatasetPanelProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DatasetResponse | null>(null);
   const [lessonsLimit, setLessonsLimit] = useState(200);

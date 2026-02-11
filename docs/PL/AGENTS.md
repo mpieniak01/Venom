@@ -13,6 +13,34 @@ Jeśli szukasz listy agentów systemu Venom, użyj:
 - Unikaj martwego kodu i placeholderów.
 - Ścieżki błędów mają być jawne i, gdzie sensowne, pokryte testami.
 
+## Polityka Hard Gate (obowiązkowa)
+
+Agent kodowania nie może kończyć zadania przy czerwonych bramkach jakości.
+
+Obowiązkowa sekwencja przed zakończeniem:
+
+1. `make pr-fast`
+2. `make check-new-code-coverage`
+
+Jeśli którykolwiek gate failuje:
+
+1. napraw problem,
+2. uruchom ponownie obie komendy,
+3. powtarzaj aż do zielonego wyniku lub potwierdzonego blokera środowiskowego.
+
+Tryb "partial done" przy failujących gate'ach jest zabroniony.
+
+## Kontrakt raportu końcowego (obowiązkowy)
+
+Raport końcowy (oraz opis PR) musi zawierać:
+
+1. listę wykonanych komend walidacyjnych,
+2. wynik pass/fail dla każdej komendy,
+3. changed-lines coverage z `make check-new-code-coverage`,
+4. znane ryzyka/skipy z uzasadnieniem.
+
+Baza formatu: `.github/pull_request_template.md`.
+
 ## Wymagana Walidacja Przed PR
 
 - Najpierw uruchamiaj szybkie checki (lint + testy celowane).
@@ -47,6 +75,10 @@ pytest -q
 ## Referencja Kanoniczna
 
 - Źródło prawdy dla bramek jakości/bezpieczeństwa: `README_PL.md` sekcja **"Bramy jakości i bezpieczeństwa"**.
+- Runbook branch protection i required checks: `.github/BRANCH_PROTECTION.md`.
+- Runbook access management: `.github/CODING_AGENT_ACCESS_MANAGEMENT.md`.
+- Polityka MCP: `.github/CODING_AGENT_MCP_POLICY.md`.
+- Profile custom agents: `.github/agents/`.
 
 ## Referencje Architektury
 

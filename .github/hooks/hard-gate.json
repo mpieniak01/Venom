@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "bash scripts/agent_hard_gate.sh",
+        "cwd": ".",
+        "timeoutSec": 7200
+      },
+      {
+        "type": "command",
+        "bash": "bash scripts/agent_pr_summary_hint.sh",
+        "cwd": ".",
+        "timeoutSec": 30
+      }
+    ]
+  }
+}

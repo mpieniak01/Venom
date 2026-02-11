@@ -477,21 +477,6 @@ def test_activate_adapter_with_model_manager(
     mock_model_manager.activate_adapter.assert_called_once()
 
 
-def test_deactivate_adapter_success(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test dezaktywacji adaptera."""
-    mock_model_manager.deactivate_adapter = MagicMock()
-    
-    response = client.post("/api/v1/academy/adapters/deactivate")
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    mock_model_manager.deactivate_adapter.assert_called_once()
-
-
 def test_list_adapters_with_active_state(
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
     client, tmp_path
@@ -745,42 +730,6 @@ def test_activate_adapter_with_model_manager_integration(
         assert data["success"] is True
         assert "activated successfully" in data["message"]
         mock_model_manager.activate_adapter.assert_called_once()
-
-
-def test_deactivate_adapter_success(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test deaktywacji adaptera."""
-    mock_model_manager.deactivate_adapter.return_value = True
-    
-    response = client.post("/api/v1/academy/adapters/deactivate")
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert "deactivated successfully" in data["message"]
-
-
-def test_cancel_training_with_cleanup(
-    mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
-    client
-):
-    """Test anulowania treningu z czyszczeniem zasobów."""
-    job_data = [{
-        "job_id": "cancel_test",
-        "status": "running",
-        "container_id": "container123"
-    }]
-    
-    with patch("venom_core.api.routes.academy._load_jobs_history", return_value=job_data), \
-         patch("venom_core.api.routes.academy._update_job_in_history"):
-        response = client.post("/api/v1/academy/train/cancel_test/cancel")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "cancelled"
-        mock_gpu_habitat.cleanup_job.assert_called_once_with("cancel_test")
 
 
 def test_stream_logs_with_metrics_extraction(

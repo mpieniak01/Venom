@@ -603,11 +603,11 @@ def test_list_jobs_empty(
 ):
     """Test listowania pustej historii jobów."""
     with patch("venom_core.api.routes.academy._load_jobs_history", return_value=[]):
-        response = client.get("/api/v1/academy/train")
+        response = client.get("/api/v1/academy/jobs")
         
         assert response.status_code == 200
         data = response.json()
-        assert data == []
+        assert data == {"count": 0, "jobs": []}
 
 
 def test_curate_dataset_with_git_history(

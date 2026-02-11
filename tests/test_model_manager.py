@@ -259,6 +259,47 @@ def test_model_manager_load_adapter_no_adapter_path(tmp_path):
     assert result is False
 
 
+def test_active_adapter_state_saved_and_cleared(tmp_path):
+    manager = ModelManager(models_dir=str(tmp_path / "models"))
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+
+    activated = manager.activate_adapter(
+        adapter_id="training_001",
+        adapter_path=str(adapter_dir),
+        base_model="base-model",
+    )
+    assert activated is True
+    assert manager.active_adapter_state_path.exists()
+
+    state = manager._load_active_adapter_state()
+    assert state is not None
+    assert state["adapter_id"] == "training_001"
+    assert state["adapter_path"] == str(adapter_dir)
+    assert state["base_model"] == "base-model"
+
+    deactivated = manager.deactivate_adapter()
+    assert deactivated is True
+    assert not manager.active_adapter_state_path.exists()
+
+
+def test_restore_active_adapter_from_state(tmp_path):
+    manager = ModelManager(models_dir=str(tmp_path / "models"))
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    manager._save_active_adapter_state(
+        adapter_id="training_restore",
+        adapter_path=str(adapter_dir),
+        base_model="restore-model",
+    )
+
+    restored = manager.restore_active_adapter()
+    assert restored is True
+    active = manager.get_active_adapter_info()
+    assert active is not None
+    assert active["adapter_id"] == "training_restore"
+
+
 # Testy dla nowych metod zarządzania modelami (THE_ARMORY)
 
 
@@ -476,22 +517,22 @@ async def test_model_manager_get_usage_metrics(tmp_path):
 def test_activate_adapter_academy(tmp_path):
     """Test aktywacji adaptera z Academy."""
     manager = ModelManager(models_dir=str(tmp_path))
-    
+
     # Utwórz katalog adaptera
     adapter_path = tmp_path / "training_001" / "adapter"
     adapter_path.mkdir(parents=True)
-    
+
     # Aktywuj adapter
     success = manager.activate_adapter(
         adapter_id="training_001",
         adapter_path=str(adapter_path),
-        base_model="phi3:latest"
+        base_model="phi3:latest",
     )
-    
+
     assert success is True
     assert manager.active_version == "training_001"
     assert "training_001" in manager.versions
-    
+
     # Sprawdź wersję
     version = manager.get_version("training_001")
     assert version is not None
@@ -502,13 +543,12 @@ def test_activate_adapter_academy(tmp_path):
 def test_activate_adapter_nonexistent(tmp_path):
     """Test aktywacji nieistniejącego adaptera."""
     manager = ModelManager(models_dir=str(tmp_path))
-    
+
     # Próba aktywacji nieistniejącego adaptera
     success = manager.activate_adapter(
-        adapter_id="training_001",
-        adapter_path="/nonexistent/path"
+        adapter_id="training_001", adapter_path="/nonexistent/path"
     )
-    
+
     assert success is False
     assert manager.active_version is None
 
@@ -516,24 +556,21 @@ def test_activate_adapter_nonexistent(tmp_path):
 def test_deactivate_adapter(tmp_path):
     """Test dezaktywacji adaptera."""
     manager = ModelManager(models_dir=str(tmp_path))
-    
+
     # Utwórz i aktywuj adapter
     adapter_path = tmp_path / "training_001" / "adapter"
     adapter_path.mkdir(parents=True)
-    
-    manager.activate_adapter(
-        adapter_id="training_001",
-        adapter_path=str(adapter_path)
-    )
-    
+
+    manager.activate_adapter(adapter_id="training_001", adapter_path=str(adapter_path))
+
     assert manager.active_version == "training_001"
-    
+
     # Dezaktywuj
     success = manager.deactivate_adapter()
-    
+
     assert success is True
     assert manager.active_version is None
-    
+
     # Wersja nadal istnieje, ale nie jest aktywna
     version = manager.get_version("training_001")
     assert version is not None
@@ -543,33 +580,33 @@ def test_deactivate_adapter(tmp_path):
 def test_deactivate_adapter_no_active(tmp_path):
     """Test dezaktywacji gdy brak aktywnego adaptera."""
     manager = ModelManager(models_dir=str(tmp_path))
-    
+
     success = manager.deactivate_adapter()
-    
+
     assert success is False
 
 
 def test_get_active_adapter_info(tmp_path):
     """Test pobierania informacji o aktywnym adapterze."""
     manager = ModelManager(models_dir=str(tmp_path))
-    
+
     # Brak aktywnego adaptera
     info = manager.get_active_adapter_info()
     assert info is None
-    
+
     # Aktywuj adapter
     adapter_path = tmp_path / "training_001" / "adapter"
     adapter_path.mkdir(parents=True)
-    
+
     manager.activate_adapter(
         adapter_id="training_001",
         adapter_path=str(adapter_path),
-        base_model="phi3:latest"
+        base_model="phi3:latest",
     )
-    
+
     # Pobierz info
     info = manager.get_active_adapter_info()
-    
+
     assert info is not None
     assert info["adapter_id"] == "training_001"
     assert info["adapter_path"] == str(adapter_path)
@@ -582,33 +619,27 @@ def test_get_active_adapter_info(tmp_path):
 def test_activate_adapter_switches_active(tmp_path):
     """Test że aktywacja nowego adaptera przełącza poprzedni."""
     manager = ModelManager(models_dir=str(tmp_path))
-    
+
     # Aktywuj pierwszy adapter
     adapter1_path = tmp_path / "training_001" / "adapter"
     adapter1_path.mkdir(parents=True)
-    
-    manager.activate_adapter(
-        adapter_id="training_001",
-        adapter_path=str(adapter1_path)
-    )
-    
+
+    manager.activate_adapter(adapter_id="training_001", adapter_path=str(adapter1_path))
+
     assert manager.active_version == "training_001"
-    
+
     # Aktywuj drugi adapter
     adapter2_path = tmp_path / "training_002" / "adapter"
     adapter2_path.mkdir(parents=True)
-    
-    manager.activate_adapter(
-        adapter_id="training_002",
-        adapter_path=str(adapter2_path)
-    )
-    
+
+    manager.activate_adapter(adapter_id="training_002", adapter_path=str(adapter2_path))
+
     assert manager.active_version == "training_002"
-    
+
     # Pierwszy adapter nie jest aktywny
     version1 = manager.get_version("training_001")
     assert version1.is_active is False
-    
+
     # Drugi adapter jest aktywny
     version2 = manager.get_version("training_002")
     assert version2.is_active is True

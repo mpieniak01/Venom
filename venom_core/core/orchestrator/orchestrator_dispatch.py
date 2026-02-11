@@ -97,7 +97,7 @@ async def run_task(
 
         if intent not in orch.NON_LEARNING_INTENTS and not tool_required:
             context = await orch.context_builder.enrich_context_with_lessons(
-                task_id, context
+                task_id, context, intent=intent
             )
             context = await orch.context_builder.add_hidden_prompts(
                 task_id, context, intent

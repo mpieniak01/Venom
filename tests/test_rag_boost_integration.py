@@ -211,8 +211,9 @@ class TestRAGBoostIntegration:
         task_id = uuid4()
         
         # Force an error in policy manager
+        # Patch at the import location in context_builder
         with patch(
-            "venom_core.core.retrieval_policy.get_policy_manager",
+            "venom_core.core.orchestrator.task_pipeline.context_builder.get_policy_manager",
             side_effect=Exception("Test error")
         ):
             # Should not raise, should fall back gracefully

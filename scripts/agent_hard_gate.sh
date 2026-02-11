@@ -2,17 +2,23 @@
 set -euo pipefail
 
 # Hook payload comes from stdin as JSON.
-payload="$(cat || true)"
-reason="$(python3 - <<'PY' "$payload"
+reason="$(
+  cat | python3 -c '
 import json, sys
-raw = sys.argv[1] if len(sys.argv) > 1 else ""
+raw = sys.stdin.read()
 try:
     data = json.loads(raw) if raw else {}
 except Exception:
     data = {}
 print(data.get("reason", ""))
-PY
+'
 )"
+
+# Explicit override for confirmed environment blocker (must be documented in PR).
+if [[ "${HARD_GATE_ENV_BLOCKER:-0}" == "1" ]]; then
+  echo "Hard Gate bypass enabled via HARD_GATE_ENV_BLOCKER=1 (environment blocker)." >&2
+  exit 0
+fi
 
 # Skip only when session clearly ended as cancel/error.
 if [[ "${reason}" == "cancel" || "${reason}" == "cancelled" || "${reason}" == "error" || "${reason}" == "failed" ]]; then

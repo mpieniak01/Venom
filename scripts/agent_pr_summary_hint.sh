@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-payload="$(cat || true)"
-reason="$(python3 - <<'PY' "$payload"
+reason="$(
+  cat | python3 -c '
 import json, sys
-raw = sys.argv[1] if len(sys.argv) > 1 else ""
+raw = sys.stdin.read()
 try:
     data = json.loads(raw) if raw else {}
 except Exception:
     data = {}
 print(data.get("reason", ""))
-PY
+'
 )"
 
 if [[ "${reason}" == "cancel" || "${reason}" == "cancelled" || "${reason}" == "error" || "${reason}" == "failed" ]]; then

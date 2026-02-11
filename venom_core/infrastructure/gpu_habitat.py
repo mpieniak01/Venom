@@ -158,6 +158,14 @@ class GPUHabitat(DockerHabitat):
 
         raise KeyError(f"Job {job_name} nie ma przypisanego kontenera")
 
+    def _is_path_within_base(self, path: Path, base: Path) -> bool:
+        """Sprawdza czy `path` znajduje się w `base`."""
+        try:
+            path.relative_to(base)
+            return True
+        except ValueError:
+            return False
+
     def run_training_job(
         self,
         dataset_path: str,
@@ -196,11 +204,18 @@ class GPUHabitat(DockerHabitat):
             RuntimeError: Jeśli nie można uruchomić kontenera
         """
         # Walidacja parametrów
-        dataset_path_obj = Path(dataset_path)
+        training_base_dir = Path(SETTINGS.ACADEMY_TRAINING_DIR).resolve()
+        dataset_path_obj = (training_base_dir / Path(dataset_path).name).resolve()
         if not dataset_path_obj.exists():
-            raise ValueError(f"Dataset nie istnieje: {dataset_path_obj}")
+            raise ValueError("Dataset nie istnieje")
 
-        output_dir_obj = Path(output_dir)
+        if not self._is_path_within_base(dataset_path_obj, training_base_dir):
+            raise ValueError("Dataset path jest poza katalogiem Academy training")
+
+        models_base_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
+        output_dir_obj = (models_base_dir / Path(output_dir).name).resolve()
+        if not self._is_path_within_base(output_dir_obj, models_base_dir):
+            raise ValueError("Output path jest poza katalogiem Academy models")
         output_dir_obj.mkdir(parents=True, exist_ok=True)
 
         job_name = job_name or f"training_{dataset_path_obj.stem}"
@@ -238,11 +253,11 @@ class GPUHabitat(DockerHabitat):
 
             # Przygotuj volumes
             volumes = {
-                str(dataset_path_obj.resolve()): {
+                str(dataset_path_obj): {
                     "bind": "/workspace/dataset.jsonl",
                     "mode": "ro",
                 },
-                str(output_dir_obj.resolve()): {
+                str(output_dir_obj): {
                     "bind": "/workspace/output",
                     "mode": "rw",
                 },

@@ -260,9 +260,10 @@ def test_model_manager_load_adapter_no_adapter_path(tmp_path):
 
 
 def test_active_adapter_state_saved_and_cleared(tmp_path):
-    manager = ModelManager(models_dir=str(tmp_path / "models"))
-    adapter_dir = tmp_path / "adapter"
-    adapter_dir.mkdir()
+    models_dir = tmp_path / "models"
+    manager = ModelManager(models_dir=str(models_dir))
+    adapter_dir = models_dir / "training_001" / "adapter"
+    adapter_dir.mkdir(parents=True)
 
     activated = manager.activate_adapter(
         adapter_id="training_001",
@@ -284,9 +285,10 @@ def test_active_adapter_state_saved_and_cleared(tmp_path):
 
 
 def test_restore_active_adapter_from_state(tmp_path):
-    manager = ModelManager(models_dir=str(tmp_path / "models"))
-    adapter_dir = tmp_path / "adapter"
-    adapter_dir.mkdir()
+    models_dir = tmp_path / "models"
+    manager = ModelManager(models_dir=str(models_dir))
+    adapter_dir = models_dir / "training_restore" / "adapter"
+    adapter_dir.mkdir(parents=True)
     manager._save_active_adapter_state(
         adapter_id="training_restore",
         adapter_path=str(adapter_dir),

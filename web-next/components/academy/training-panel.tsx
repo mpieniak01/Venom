@@ -105,7 +105,7 @@ export function TrainingPanel() {
               id="lora-rank"
               type="number"
               value={loraRank}
-              onChange={(e) => setLoraRank(parseInt(e.target.value) || 16)}
+              onChange={(e) => setLoraRank(Number.parseInt(e.target.value, 10) || 16)}
               min={4}
               max={64}
               className="mt-2"
@@ -121,7 +121,9 @@ export function TrainingPanel() {
               type="number"
               step="0.0001"
               value={learningRate}
-              onChange={(e) => setLearningRate(parseFloat(e.target.value) || 0.0002)}
+              onChange={(e) =>
+                setLearningRate(Number.parseFloat(e.target.value) || 0.0002)
+              }
               min={0.00001}
               max={0.01}
               className="mt-2"
@@ -136,7 +138,7 @@ export function TrainingPanel() {
               id="num-epochs"
               type="number"
               value={numEpochs}
-              onChange={(e) => setNumEpochs(parseInt(e.target.value) || 3)}
+              onChange={(e) => setNumEpochs(Number.parseInt(e.target.value, 10) || 3)}
               min={1}
               max={20}
               className="mt-2"
@@ -151,7 +153,7 @@ export function TrainingPanel() {
               id="batch-size"
               type="number"
               value={batchSize}
-              onChange={(e) => setBatchSize(parseInt(e.target.value) || 4)}
+              onChange={(e) => setBatchSize(Number.parseInt(e.target.value, 10) || 4)}
               min={1}
               max={32}
               className="mt-2"

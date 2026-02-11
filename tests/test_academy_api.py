@@ -285,6 +285,7 @@ def test_cancel_training_sets_cancelled_and_cleans_container(
 @patch("venom_core.config.SETTINGS")
 def test_activate_adapter_success(mock_settings, client, mock_model_manager):
     mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_MODELS_DIR = "./data/models"
     mock_model_manager.activate_adapter.return_value = True
     with patch("pathlib.Path.exists", return_value=True):
         response = client.post(

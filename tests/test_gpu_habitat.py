@@ -107,10 +107,23 @@ def test_run_training_job_rejects_missing_dataset(tmp_path, monkeypatch):
 
 def test_run_training_job_success(tmp_path, monkeypatch):
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS,
+        "ACADEMY_TRAINING_DIR",
+        str(training_dir),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS, "ACADEMY_MODELS_DIR", str(models_dir), raising=False
+    )
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
-    dataset = tmp_path / "data.jsonl"
+    dataset = training_dir / "data.jsonl"
     dataset.write_text('{"instruction": "hi"}\n', encoding="utf-8")
-    output_dir = tmp_path / "out"
+    output_dir = models_dir / "out"
 
     result = habitat.run_training_job(
         dataset_path=str(dataset),
@@ -130,10 +143,23 @@ def test_run_training_job_pulls_image_when_missing(tmp_path, monkeypatch):
         return client
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _make_client)
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS,
+        "ACADEMY_TRAINING_DIR",
+        str(training_dir),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS, "ACADEMY_MODELS_DIR", str(models_dir), raising=False
+    )
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
-    dataset = tmp_path / "data.jsonl"
+    dataset = training_dir / "data.jsonl"
     dataset.write_text('{"instruction": "hi"}\n', encoding="utf-8")
-    output_dir = tmp_path / "out"
+    output_dir = models_dir / "out"
 
     habitat.run_training_job(
         dataset_path=str(dataset),
@@ -312,6 +338,19 @@ def test_get_gpu_info_nvidia_smi_error(monkeypatch):
 
 def test_gpu_fallback_disables_gpu_requests(tmp_path, monkeypatch):
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS,
+        "ACADEMY_TRAINING_DIR",
+        str(training_dir),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gpu_habitat_mod.SETTINGS, "ACADEMY_MODELS_DIR", str(models_dir), raising=False
+    )
     with patch.object(
         gpu_habitat_mod.GPUHabitat, "_check_gpu_availability", return_value=False
     ):
@@ -320,9 +359,9 @@ def test_gpu_fallback_disables_gpu_requests(tmp_path, monkeypatch):
     assert habitat.enable_gpu is False
     assert habitat.is_gpu_available() is False
 
-    dataset = tmp_path / "data.jsonl"
+    dataset = training_dir / "data.jsonl"
     dataset.write_text('{"instruction": "hi"}\\n', encoding="utf-8")
-    output_dir = tmp_path / "out"
+    output_dir = models_dir / "out"
     habitat.run_training_job(
         dataset_path=str(dataset),
         base_model="model-x",

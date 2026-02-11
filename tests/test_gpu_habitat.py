@@ -257,7 +257,8 @@ def test_get_gpu_info_nvidia_smi_error(monkeypatch):
     
     # Should gracefully handle error
     assert info["available"] is False
-    assert "error" in info or info["count"] == 0
+    assert "message" in info
+    assert info["count"] == 0
 
 
 def test_cleanup_job_nonexistent(monkeypatch):

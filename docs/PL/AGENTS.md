@@ -30,6 +30,11 @@ Jeśli którykolwiek gate failuje:
 
 Tryb "partial done" przy failujących gate'ach jest zabroniony.
 
+Ścieżka blokera środowiskowego:
+
+1. ustaw `HARD_GATE_ENV_BLOCKER=1` dla wykonania hooka hard-gate,
+2. obowiązkowo opisz bloker i jego wpływ w sekcji ryzyk/ograniczeń PR.
+
 ## Kontrakt raportu końcowego (obowiązkowy)
 
 Raport końcowy (oraz opis PR) musi zawierać:

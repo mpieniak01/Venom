@@ -20,6 +20,11 @@ Jeśli którykolwiek gate zakończy się błędem:
 
 Tryb "partial done" przy czerwonych gate'ach jest zabroniony.
 
+Ścieżka blokera środowiskowego:
+
+1. ustaw `HARD_GATE_ENV_BLOCKER=1` dla hooka,
+2. obowiązkowo opisz bloker i impact w sekcji ryzyk PR.
+
 ### 3) Kontrakt raportu końcowego (PR/summary)
 
 Raport musi zawierać:

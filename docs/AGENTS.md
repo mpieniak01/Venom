@@ -30,6 +30,11 @@ If any gate fails:
 
 A "partial done" status with failing gates is not allowed in this repository policy.
 
+Environment blocker path:
+
+1. set `HARD_GATE_ENV_BLOCKER=1` for the hard-gate hook execution,
+2. include blocker details and impact in PR risks/limitations section.
+
 ## Completion Report Contract (Mandatory)
 
 Every agent-generated completion summary (and PR description) must include:

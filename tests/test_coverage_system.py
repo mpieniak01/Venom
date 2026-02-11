@@ -77,7 +77,7 @@ for _name, _original in _module_backup.items():
 class MockApp:
     def __init__(self):
         self.app = FastAPI()
-        self.client = TestClient(self.app)
+        self.client = TestClient(self.app, client=("127.0.0.1", 50000))
 
 
 @pytest.fixture

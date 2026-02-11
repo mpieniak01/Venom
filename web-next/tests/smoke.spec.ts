@@ -121,7 +121,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(bar.getByTestId("status-bar-resources")).toBeVisible();
     await expect(bar.getByTestId("status-bar-version")).toBeVisible();
     await expect(bar.getByTestId("status-bar-repo")).toBeVisible();
-    await page.goto("/brain");
+    await page.goto("/brain", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("bottom-status-bar")).toBeVisible();
   });
 

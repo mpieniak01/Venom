@@ -34,7 +34,7 @@ from venom_core.utils.ttl_cache import TTLCache
 def _client_with_router(router) -> TestClient:
     app = FastAPI()
     app.include_router(router)
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def test_routes_agents_calendar_memory_projection_nodes_queue_strategy() -> None:

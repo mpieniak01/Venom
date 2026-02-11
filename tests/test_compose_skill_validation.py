@@ -46,20 +46,17 @@ def compose_skill(monkeypatch):
         shutil.rmtree(workspace_root, ignore_errors=True)
 
 
-@pytest.mark.asyncio
-async def test_destroy_environment_validates_stack_name(compose_skill):
-    result = await compose_skill.destroy_environment("../escape")
+def test_destroy_environment_validates_stack_name(compose_skill):
+    result = compose_skill.destroy_environment("../escape")
     assert "Nieprawidłowa nazwa stacka" in result
 
 
-@pytest.mark.asyncio
-async def test_check_service_health_validates_service_name(compose_skill):
-    result = await compose_skill.check_service_health("ok-stack", "../bad-service")
+def test_check_service_health_validates_service_name(compose_skill):
+    result = compose_skill.check_service_health("ok-stack", "../bad-service")
     assert "Nieprawidłowa nazwa serwisu" in result
 
 
-@pytest.mark.asyncio
-async def test_compose_policy_warn_mode_allows_with_warning(compose_skill, monkeypatch):
+def test_compose_policy_warn_mode_allows_with_warning(compose_skill, monkeypatch):
     monkeypatch.setenv("VENOM_COMPOSE_POLICY_MODE", "warn")
     compose_content = """
 version: '3.8'
@@ -68,13 +65,12 @@ services:
     image: alpine:latest
     privileged: true
 """
-    result = await compose_skill.create_environment(compose_content, "safe-stack")
+    result = compose_skill.create_environment(compose_content, "safe-stack")
     assert "✅" in result
     assert "Ostrzeżenia polityki bezpieczeństwa" in result
 
 
-@pytest.mark.asyncio
-async def test_compose_policy_block_mode_blocks(compose_skill, monkeypatch):
+def test_compose_policy_block_mode_blocks(compose_skill, monkeypatch):
     monkeypatch.setenv("VENOM_COMPOSE_POLICY_MODE", "block")
     compose_content = """
 version: '3.8'
@@ -83,11 +79,10 @@ services:
     image: alpine:latest
     network_mode: host
 """
-    result = await compose_skill.create_environment(compose_content, "safe-stack")
+    result = compose_skill.create_environment(compose_content, "safe-stack")
     assert "zablokowany przez politykę bezpieczeństwa" in result
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "host_mount",
     [
@@ -95,9 +90,7 @@ services:
         "C:/:/container_data",
     ],
 )
-async def test_compose_policy_blocks_host_root_mounts(
-    compose_skill, monkeypatch, host_mount
-):
+def test_compose_policy_blocks_host_root_mounts(compose_skill, monkeypatch, host_mount):
     monkeypatch.setenv("VENOM_COMPOSE_POLICY_MODE", "block")
     compose_content = f"""
 version: '3.8'
@@ -107,5 +100,5 @@ services:
     volumes:
       - {host_mount}
 """
-    result = await compose_skill.create_environment(compose_content, "safe-stack")
+    result = compose_skill.create_environment(compose_content, "safe-stack")
     assert "zablokowany przez politykę bezpieczeństwa" in result

@@ -20,7 +20,13 @@ def test_app():
 @pytest.fixture
 def client(test_app):
     """Fixture dla klienta testowego FastAPI."""
-    return TestClient(test_app)
+    return TestClient(test_app, client=("127.0.0.1", 50000))
+
+
+@pytest.fixture
+def remote_client(test_app):
+    """Fixture dla klienta testowego symulującego host zdalny."""
+    return TestClient(test_app, client=("10.10.10.10", 50000))
 
 
 class TestConfigRuntimeAPI:
@@ -124,6 +130,14 @@ class TestConfigRuntimeAPI:
             assert response.status_code == 500
             assert "Błąd wewnętrzny" in response.json()["detail"]
 
+    def test_update_config_remote_host_forbidden(self, remote_client):
+        """Test blokady zmiany konfiguracji dla hosta zdalnego."""
+        response = remote_client.post(
+            "/api/v1/config/runtime",
+            json={"updates": {"AI_MODE": "HYBRID"}},
+        )
+        assert response.status_code == 403
+
 
 class TestConfigBackupsAPI:
     """Testy dla endpointu /api/v1/config/backups."""
@@ -163,6 +177,11 @@ class TestConfigBackupsAPI:
             data = response.json()
             assert data["status"] == "success"
             assert len(data["backups"]) == 0
+
+    def test_get_backups_remote_host_forbidden(self, remote_client):
+        """Test blokady listowania backupów dla hosta zdalnego."""
+        response = remote_client.get("/api/v1/config/backups")
+        assert response.status_code == 403
 
 
 class TestConfigRestoreAPI:
@@ -223,3 +242,11 @@ class TestConfigRestoreAPI:
 
             assert response.status_code == 500
             assert "Błąd wewnętrzny" in response.json()["detail"]
+
+    def test_restore_backup_remote_host_forbidden(self, remote_client):
+        """Test blokady restore backupu dla hosta zdalnego."""
+        response = remote_client.post(
+            "/api/v1/config/restore",
+            json={"backup_filename": ".env-20240101-120000"},
+        )
+        assert response.status_code == 403

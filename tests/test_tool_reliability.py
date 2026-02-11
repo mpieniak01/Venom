@@ -5,9 +5,20 @@ from pathlib import Path
 
 import pytest
 
+from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.shell_skill import ShellSkill
 from venom_core.execution.skills.test_skill import TestSkill
+
+
+@pytest.fixture(autouse=True)
+def _allow_toolchain_operations():
+    previous_level = permission_guard.get_current_level()
+    permission_guard.set_level(40)
+    try:
+        yield
+    finally:
+        permission_guard.set_level(previous_level)
 
 
 @pytest.mark.asyncio

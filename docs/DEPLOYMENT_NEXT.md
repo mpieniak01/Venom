@@ -2,6 +2,8 @@
 
 This document describes Venom's new runtime architecture: **FastAPI** runs as standalone API/SSE/WS, and **Next.js (`web-next`)** serves the user interface. Both parts are run and monitored independently.
 
+For security operating assumptions and localhost admin policy, see `docs/SECURITY_POLICY.md`.
+
 ## Components
 
 | Component | Role | Default port | Start/stop |

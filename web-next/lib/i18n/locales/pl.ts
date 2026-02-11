@@ -929,6 +929,7 @@ export const pl = {
       pinSuccess: "Przypięto wpis pamięci.",
       unpinSuccess: "Odepnieto wpis pamięci.",
       pinError: "Nie udało się zmienić stanu pinned.",
+      layoutColaUnavailable: "Layout Cola nie jest dostępny w tym buildzie. Przełączono na Cose.",
       deleteConfirm: "Czy na pewno usunąć ten wpis pamięci?",
       deleteSuccess: "Usunięto wpis pamięci.",
       deleteError: "Nie udało się usunąć wpisu pamięci.",

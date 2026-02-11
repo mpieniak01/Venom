@@ -2,6 +2,8 @@
 
 This file documents changes and decisions related to security and dependency hygiene (version updates, risk acceptance, project constraints). It is a maintenance note for the experimental project.
 
+Official runtime and autonomy security policy is defined in `docs/SECURITY_POLICY.md`.
+
 ## Recent actions (2025-01-18)
 
 Based on signals from **Snyk**, dependency versions identified as vulnerable (CVE - high) were updated:

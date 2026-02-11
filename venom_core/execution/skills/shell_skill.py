@@ -7,6 +7,8 @@ from typing import Annotated, Optional
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
+from venom_core.core.autonomy_enforcement import require_shell_permission
+from venom_core.execution.skills.base_skill import safe_action
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 from venom_core.utils.logger import get_logger
 
@@ -47,6 +49,7 @@ class ShellSkill:
         name="run_shell",
         description="Wykonuje komendę shell w bezpiecznym środowisku (sandbox) lub lokalnie.",
     )
+    @safe_action
     def run_shell(
         self,
         command: Annotated[str, "Komenda shell do wykonania"],
@@ -67,6 +70,8 @@ class ShellSkill:
         Raises:
             RuntimeError: Jeśli wykonanie się nie powiodło
         """
+        require_shell_permission()
+
         if self.use_sandbox:
             return self._run_in_sandbox(command, timeout)
         else:

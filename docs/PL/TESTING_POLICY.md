@@ -2,6 +2,8 @@
 
 Ten dokument jest nadrzędnym źródłem zasad testowania: od codziennej pracy lokalnej, przez gotowość do PR, po walidację pod wydanie.
 
+Bazowe wymagania bezpieczeństwa i kontroli są opisane w `docs/PL/SECURITY_POLICY.md`.
+
 ## Drabina testów (od najszybszych do najbardziej restrykcyjnych)
 
 ### Poziom 1: Codzienna praca lokalna (codziennie)
@@ -29,6 +31,12 @@ Uruchom jedną komendę:
 
 ```bash
 make pr-fast
+```
+
+Upewnij się, że hooki są zainstalowane dla `pre-commit` i `pre-push`:
+
+```bash
+make install-hooks
 ```
 
 Zakres:

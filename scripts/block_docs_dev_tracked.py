@@ -28,6 +28,8 @@ def _resolve_base_ref() -> str | None:
         if upstream:
             return upstream
     except subprocess.CalledProcessError:
+        # No upstream configured for the current branch.
+        # Fallback to default base used for PR comparisons.
         pass
     return "origin/main"
 

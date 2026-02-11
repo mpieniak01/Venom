@@ -865,6 +865,8 @@ async def deactivate_adapter(req: Request) -> Dict[str, Any]:
             "message": "Adapter deactivated successfully - using base model",
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to deactivate adapter: {e}", exc_info=True)
         raise HTTPException(

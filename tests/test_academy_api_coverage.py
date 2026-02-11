@@ -240,7 +240,7 @@ def test_activate_deactivate_return_503_when_model_manager_missing(
         )
         deactivate = client_with_deps.post("/api/v1/academy/adapters/deactivate")
     assert activate.status_code == 503
-    assert deactivate.status_code == 500
+    assert deactivate.status_code == 503
 
 
 @patch("venom_core.config.SETTINGS")

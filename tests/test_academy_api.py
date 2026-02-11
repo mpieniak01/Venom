@@ -439,8 +439,8 @@ def test_get_gpu_info_endpoint(
 @patch("venom_core.api.routes.academy._update_job_in_history")
 @patch("venom_core.api.routes.academy._load_jobs_history")
 def test_cancel_job_with_cleanup(
-    mock_update_job_in_history,
     mock_load_jobs_history,
+    mock_update_job_in_history,
     mock_professor, mock_dataset_curator, mock_gpu_habitat, mock_model_manager,
     client
 ):

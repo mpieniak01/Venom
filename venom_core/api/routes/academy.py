@@ -2,11 +2,13 @@
 
 import asyncio
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from venom_core.utils.logger import get_logger
@@ -402,6 +404,93 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
     except Exception as e:
         logger.error(f"Failed to get training status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
+
+
+@router.get("/train/{job_id}/logs/stream")
+async def stream_training_logs(job_id: str):
+    """
+    Stream logów z treningu (SSE - Server-Sent Events).
+
+    Args:
+        job_id: ID joba treningowego
+
+    Returns:
+        StreamingResponse z logami w formacie SSE
+    """
+    _ensure_academy_enabled()
+
+    # Znajdź job
+    jobs = _load_jobs_history()
+    job = next((j for j in jobs if j.get("job_id") == job_id), None)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    job_name = job.get("job_name", job_id)
+
+    async def event_generator():
+        """Generator eventów SSE."""
+        try:
+            # Wyślij początkowy event
+            yield f"data: {json.dumps({'type': 'connected', 'job_id': job_id})}\n\n"
+
+            # Sprawdź czy job istnieje w GPU Habitat
+            if not _gpu_habitat or job_name not in _gpu_habitat.training_containers:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Training container not found'})}\n\n"
+                return
+
+            # Streamuj logi
+            last_line_sent = 0
+            for log_line in _gpu_habitat.stream_job_logs(job_name):
+                # Parsuj timestamp jeśli istnieje
+                # Format: "2024-01-01T10:00:00.123456789Z message"
+                if " " in log_line:
+                    parts = log_line.split(" ", 1)
+                    timestamp = parts[0]
+                    message = parts[1] if len(parts) > 1 else log_line
+                else:
+                    timestamp = None
+                    message = log_line
+
+                # Wyślij jako SSE event
+                event_data = {
+                    "type": "log",
+                    "line": last_line_sent,
+                    "message": message,
+                    "timestamp": timestamp,
+                }
+                yield f"data: {json.dumps(event_data)}\n\n"
+
+                last_line_sent += 1
+
+                # Sprawdź status joba co jakiś czas
+                if last_line_sent % 10 == 0:
+                    status_info = _gpu_habitat.get_training_status(job_name)
+                    current_status = status_info.get("status")
+
+                    # Jeśli job zakończony, wyślij event i zakończ
+                    if current_status in ["completed", "failed"]:
+                        yield f"data: {json.dumps({'type': 'status', 'status': current_status})}\n\n"
+                        break
+
+                # Małe opóźnienie żeby nie przeciążyć
+                await asyncio.sleep(0.1)
+
+        except KeyError:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Job not found in container registry'})}\n\n"
+        except Exception as e:
+            logger.error(f"Error streaming logs: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
 
 
 @router.get("/jobs")

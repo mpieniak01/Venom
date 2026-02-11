@@ -393,7 +393,8 @@ async def test_local_search_with_max_hops_and_limit(graph_rag_service):
     )
     
     # Should explore multiple hops and include more nodes
-    assert "node_0" in result
-    # With max_hops=3, should reach at least node_1, node_2, node_3
-    node_count = sum(1 for i in range(5) if f"node_{i}" in result)
+    # Check for the display name "Node 0" instead of entity_id "node_0"
+    assert "Node 0" in result
+    # With max_hops=3, should reach at least Node 1, Node 2, Node 3
+    node_count = sum(1 for i in range(5) if f"Node {i}" in result)
     assert node_count >= 2  # At least the starting node and one hop

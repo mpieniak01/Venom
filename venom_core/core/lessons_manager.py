@@ -150,6 +150,10 @@ class LessonsManager:
 
         # Use provided limit or fall back to default
         effective_limit = limit if limit is not None else MAX_LESSONS_IN_CONTEXT
+        
+        # If limit is 0, return context unchanged
+        if effective_limit == 0:
+            return context
 
         try:
             # Wyszukaj relevantne lekcje

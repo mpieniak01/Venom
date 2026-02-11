@@ -167,3 +167,106 @@ def test_cleanup_job(monkeypatch):
     assert container.stopped is True
     assert container.removed is True
     assert "job-3" not in habitat.training_containers
+
+
+def test_stream_job_logs(monkeypatch):
+    """Test streamowania logów z kontenera."""
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    
+    class StreamingContainer:
+        def __init__(self):
+            self.status = "running"
+            self.id = "container-stream"
+            
+        def logs(self, stream=False, follow=False):
+            if stream:
+                return iter([b"2024-01-01T10:00:00Z Line 1\n", b"2024-01-01T10:00:01Z Line 2\n"])
+            return b"Line 1\nLine 2"
+            
+        def reload(self):
+            pass
+    
+    container = StreamingContainer()
+    habitat.training_containers["stream-job"] = {"container": container, "status": "running"}
+    
+    logs = list(habitat.stream_job_logs("stream-job"))
+    
+    assert len(logs) == 2
+    assert "Line 1" in logs[0]
+    assert "Line 2" in logs[1]
+
+
+def test_stream_job_logs_nonexistent(monkeypatch):
+    """Test streamowania logów dla nieistniejącego joba."""
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    
+    logs = list(habitat.stream_job_logs("nonexistent"))
+    
+    # Should return empty iterator for nonexistent job
+    assert logs == []
+
+
+def test_get_gpu_info_no_gpu(monkeypatch):
+    """Test pobierania info o GPU gdy GPU niedostępne."""
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    
+    info = habitat.get_gpu_info()
+    
+    assert info["available"] is False
+    assert info["count"] == 0
+    assert info["gpus"] == []
+
+
+def test_get_gpu_info_with_gpu(monkeypatch):
+    """Test pobierania info o GPU gdy GPU dostępne."""
+    import subprocess
+    
+    def mock_run(*args, **kwargs):
+        class Result:
+            returncode = 0
+            stdout = "GPU 0: NVIDIA RTX 3090, 24576, 2048, 22528, 15"
+        return Result()
+    
+    monkeypatch.setattr(subprocess, "run", mock_run)
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+    
+    info = habitat.get_gpu_info()
+    
+    assert info["available"] is True
+    assert info["count"] == 1
+    assert len(info["gpus"]) == 1
+    assert info["gpus"][0]["name"] == "NVIDIA RTX 3090"
+    assert info["gpus"][0]["memory_total_mb"] == 24576
+
+
+def test_get_gpu_info_nvidia_smi_error(monkeypatch):
+    """Test obsługi błędu nvidia-smi."""
+    import subprocess
+    
+    def mock_run(*args, **kwargs):
+        raise FileNotFoundError("nvidia-smi not found")
+    
+    monkeypatch.setattr(subprocess, "run", mock_run)
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+    
+    info = habitat.get_gpu_info()
+    
+    # Should gracefully handle error
+    assert info["available"] is False
+    assert "error" in info or info["count"] == 0
+
+
+def test_cleanup_job_nonexistent(monkeypatch):
+    """Test cleanup nieistniejącego joba."""
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    
+    # Should not raise error for nonexistent job
+    habitat.cleanup_job("nonexistent-job")
+    
+    # No assertion needed - just verify no exception

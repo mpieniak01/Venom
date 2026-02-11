@@ -103,6 +103,10 @@ class TestRAGBoostIntegration:
     async def test_context_builder_integration_with_policy(self, mock_settings_enabled):
         """Test that context_builder correctly applies retrieval policy."""
         from types import SimpleNamespace
+        import venom_core.core.retrieval_policy as rp_module
+        
+        # Reset singleton to ensure fresh instance with mocked settings
+        rp_module._policy_manager = None
         
         # Mock orchestrator and its components
         mock_orch = MagicMock()
@@ -122,7 +126,9 @@ class TestRAGBoostIntegration:
         # Create context builder
         from venom_core.core.orchestrator.task_pipeline.context_builder import ContextBuilder
         
-        with patch("venom_core.core.retrieval_policy.SETTINGS", mock_settings_enabled):
+        # Need to patch SETTINGS in both modules
+        with patch("venom_core.core.retrieval_policy.SETTINGS", mock_settings_enabled), \
+             patch("venom_core.core.orchestrator.task_pipeline.context_builder.SETTINGS", mock_settings_enabled):
             builder = ContextBuilder(mock_orch)
             task_id = uuid4()
             
@@ -149,6 +155,10 @@ class TestRAGBoostIntegration:
     async def test_context_builder_no_boost_for_general_chat(self, mock_settings_enabled):
         """Test that GENERAL_CHAT doesn't get boost even when enabled."""
         from types import SimpleNamespace
+        import venom_core.core.retrieval_policy as rp_module
+        
+        # Reset singleton to ensure fresh instance with mocked settings
+        rp_module._policy_manager = None
         
         mock_orch = MagicMock()
         mock_orch.state_manager = MagicMock()

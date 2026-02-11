@@ -15,7 +15,7 @@ interface AdaptersPanelProps {
   status: AcademyStatus;
 }
 
-export function AdaptersPanel({}: AdaptersPanelProps) {
+export function AdaptersPanel(_status: AdaptersPanelProps) {
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);

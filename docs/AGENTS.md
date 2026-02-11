@@ -13,6 +13,34 @@ If you are looking for the list of Venom system agents, use:
 - Avoid dead code and placeholder branches.
 - Make error paths explicit and covered by tests where practical.
 
+## Hard Gate Policy (Mandatory)
+
+Coding agents must not finish a task with red quality gates.
+
+Required gate sequence before completion:
+
+1. `make pr-fast`
+2. `make check-new-code-coverage`
+
+If any gate fails:
+
+1. fix the issues,
+2. rerun both commands,
+3. repeat until both are green, unless there is a confirmed environment blocker.
+
+A "partial done" status with failing gates is not allowed in this repository policy.
+
+## Completion Report Contract (Mandatory)
+
+Every agent-generated completion summary (and PR description) must include:
+
+1. list of executed validation commands,
+2. pass/fail result for each command,
+3. changed-lines coverage percentage from `make check-new-code-coverage`,
+4. known skips/risks with explicit justification.
+
+Use `.github/pull_request_template.md` as the report format baseline.
+
 ## Required Validation Before PR
 
 - Run fast checks first (lint + targeted tests).
@@ -47,6 +75,11 @@ pytest -q
 ## Canonical Reference
 
 - Source of truth for quality/security gates: `README.md` section **"Quality and Security Gates"**.
+- Branch protection runbook for required checks: `.github/BRANCH_PROTECTION.md`.
+- Coding-agent hook config: `.github/hooks/hard-gate.json`.
+- Access management runbook: `.github/CODING_AGENT_ACCESS_MANAGEMENT.md`.
+- MCP usage policy: `.github/CODING_AGENT_MCP_POLICY.md`.
+- Custom agent profiles: `.github/agents/`.
 
 ## Architecture References
 

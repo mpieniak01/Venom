@@ -56,11 +56,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ripgrep
 
-      - name: Run backend lite + sonar new-code tests with Sonar reports
+      - name: Run backend lite hard gate + Sonar new-code coverage
         timeout-minutes: 10
         run: |
           python -m pip install pytest-cov
           make audit-ci-lite
+          mkdir -p test-results/sonar
           make check-new-code-coverage \
             NEW_CODE_INCLUDE_BASELINE=1 \
             NEW_CODE_AUTO_INCLUDE_CHANGED=1 \
@@ -68,7 +69,8 @@ jobs:
             NEW_CODE_TEST_GROUP=config/pytest-groups/sonar-new-code.txt \
             NEW_CODE_COV_TARGET=venom_core \
             NEW_CODE_COVERAGE_MIN=0 \
-            NEW_CODE_CHANGED_LINES_MIN=80
+            NEW_CODE_CHANGED_LINES_MIN=80 \
+          | tee test-results/sonar/backend-lite.log
 
       - name: Upload backend Sonar artifacts
         uses: actions/upload-artifact@v4

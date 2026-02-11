@@ -84,6 +84,7 @@ def update_runtime_config(request: ConfigUpdateRequest, req: Request):
         500: {
             "description": "Błąd wewnętrzny podczas pobierania listy backupów konfiguracji"
         },
+        403: {"description": "Brak uprawnień do odczytu listy backupów konfiguracji"},
     },
 )
 def get_config_backups(req: Request, limit: int = 20):
@@ -113,6 +114,7 @@ class RestoreBackupRequest(BaseModel):
         500: {
             "description": "Błąd wewnętrzny podczas przywracania backupu konfiguracji"
         },
+        403: {"description": "Brak uprawnień do przywracania backupu konfiguracji"},
     },
 )
 def restore_config_backup(request: RestoreBackupRequest, req: Request):

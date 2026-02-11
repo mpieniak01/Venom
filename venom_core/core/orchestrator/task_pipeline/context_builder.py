@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID, uuid4
 
@@ -11,6 +12,7 @@ from venom_core.core.orchestrator.constants import (
     MAX_CONTEXT_CHARS,
     MAX_HIDDEN_PROMPTS_IN_CONTEXT,
 )
+from venom_core.core.retrieval_policy import get_policy_manager
 from venom_core.core.slash_commands import parse_slash_command, resolve_forced_intent
 from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
@@ -218,6 +220,12 @@ class ContextBuilder:
         
         Returns:
             Wzbogacony kontekst
+            
+        Note:
+            Phase B currently applies only lessons_limit dynamically.
+            vector_limit and max_hops are recorded in telemetry but not
+            functionally applied (reserved for Phase C when orchestrator-driven
+            GraphRAG searches are added).
         """
         # Determine lessons limit based on intent (Phase B: RAG Retrieval Boost)
         limit = None
@@ -225,7 +233,6 @@ class ContextBuilder:
         
         if intent:
             try:
-                from venom_core.core.retrieval_policy import get_policy_manager
                 policy_manager = get_policy_manager()
                 policy = policy_manager.get_policy(intent)
                 limit = policy.lessons_limit
@@ -251,7 +258,6 @@ class ContextBuilder:
                     
                     # Add to tracer if available
                     if self.orch.request_tracer:
-                        import json
                         self.orch.request_tracer.add_step(
                             task_id,
                             "RAGBoost",
@@ -260,8 +266,6 @@ class ContextBuilder:
                             details=json.dumps(boost_metadata, ensure_ascii=False),
                         )
             except Exception as e:
-                from venom_core.utils.logger import get_logger
-                logger = get_logger(__name__)
                 logger.warning(f"Failed to get retrieval policy for intent {intent}: {e}")
         
         return await self.orch.lessons_manager.add_lessons_to_context(

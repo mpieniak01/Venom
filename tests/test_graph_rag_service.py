@@ -363,7 +363,7 @@ async def test_local_search_default_limit_unchanged(graph_rag_service):
     )
     
     # Call without limit parameter (should use default 5)
-    result = await graph_rag_service.local_search("test query")
+    await graph_rag_service.local_search("test query")
     
     # Verify search was called with limit=5
     assert graph_rag_service.vector_store.search.call_count == 1

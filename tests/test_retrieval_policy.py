@@ -160,9 +160,10 @@ class TestGetPolicyManager:
 
     def test_singleton_pattern(self):
         """Test that get_policy_manager returns singleton."""
-        # Clear any existing instance
-        import venom_core.core.retrieval_policy as module
-        module._policy_manager = None
+        # Clear cache to ensure fresh test
+        from venom_core.core import retrieval_policy as module
+        if hasattr(module._get_policy_manager_impl, 'cache_clear'):
+            module._get_policy_manager_impl.cache_clear()
 
         manager1 = get_policy_manager()
         manager2 = get_policy_manager()
@@ -170,8 +171,9 @@ class TestGetPolicyManager:
 
     def test_manager_configuration_persistence(self):
         """Test that manager configuration persists across calls."""
-        import venom_core.core.retrieval_policy as module
-        module._policy_manager = None
+        from venom_core.core import retrieval_policy as module
+        if hasattr(module._get_policy_manager_impl, 'cache_clear'):
+            module._get_policy_manager_impl.cache_clear()
 
         manager = get_policy_manager()
         initial_enabled = manager.enabled

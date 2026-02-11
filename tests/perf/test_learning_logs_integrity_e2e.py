@@ -25,6 +25,21 @@ async def _skip_if_backend_unavailable():
         pytest.skip("Backend FastAPI jest niedostępny – pomiń testy E2E.")
 
 
+async def _skip_if_learning_disabled():
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{API_BASE}/api/v1/lessons/learning/status")
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("enabled") is False:
+            pytest.skip(
+                "ENABLE_META_LEARNING=false na backendzie – pomiń test integralności learning logs."
+            )
+    except Exception:
+        # Brak endpointu statusu lub chwilowy błąd nie powinien blokować testu.
+        return
+
+
 def _read_learning_log_local() -> list[dict]:
     path = Path(LEARNING_LOG_PATH)
     if not path.exists():
@@ -114,12 +129,15 @@ async def _submit_and_wait_finished(
 @pytest.mark.smoke
 async def test_learning_logs_integrity_e2e():
     await _skip_if_backend_unavailable()
+    await _skip_if_learning_disabled()
 
     session_id = f"learning-integrity-{uuid4()}"
     task_ids: list[str] = []
     for idx in range(2):
         prompt = f"Learning log test {session_id} #{idx}: odpowiedz krótko OK."
-        task_id = await _submit_and_wait_finished(prompt, session_id)
+        task_id = await _submit_and_wait_finished(
+            prompt, session_id, forced_intent="GENERAL_CHAT"
+        )
         task_ids.append(task_id)
 
     entries = await _wait_for_log_entries(set(task_ids))

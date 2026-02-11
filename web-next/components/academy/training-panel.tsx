@@ -17,7 +17,7 @@ interface TrainingPanelProps {
   status: AcademyStatus;
 }
 
-export function TrainingPanel({ status }: TrainingPanelProps) {
+export function TrainingPanel({ }: TrainingPanelProps) {
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
   const [loraRank, setLoraRank] = useState(16);

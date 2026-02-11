@@ -179,8 +179,8 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
               onClick={togglePause}
               variant="ghost"
               size="sm"
-            className="gap-2"
-          >
+              className="gap-2"
+            >
             {isPaused ? (
               <>
                 <Play className="h-4 w-4" />

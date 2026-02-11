@@ -102,6 +102,11 @@ class Settings(BaseSettings):
     INTENT_CLASSIFIER_TIMEOUT_SECONDS: float = (
         5.0  # Timeout LLM przy klasyfikacji intencji
     )
+    # Intent Embedding Router (Phase A)
+    ENABLE_INTENT_EMBEDDING_ROUTER: bool = False  # Włącz routing intencji przez embeddingi
+    INTENT_EMBED_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"  # Model embeddingów
+    INTENT_EMBED_MIN_SCORE: float = 0.62  # Minimalny próg podobieństwa
+    INTENT_EMBED_MARGIN: float = 0.05  # Minimalny margines między top1 a top2
     ENABLE_META_LEARNING: bool = True  # Globalny przełącznik zapisu lekcji
     LESSONS_TTL_DAYS: int = 0  # Retencja lekcji (0 = wyłączona)
     LAST_MODEL_OLLAMA: str = ""  # Ostatnio wybrany model Ollama

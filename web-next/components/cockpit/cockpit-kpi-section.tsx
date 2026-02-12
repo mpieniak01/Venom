@@ -46,7 +46,7 @@ type SystemTimeStatProps = {
   readonly hint: string;
 };
 
-const SystemTimeStat = memo(function SystemTimeStat({ label, hint }: Readonly<SystemTimeStatProps>) {
+const SystemTimeStat = memo(function SystemTimeStat({ label, hint }: SystemTimeStatProps) {
   const [systemTime, setSystemTime] = useState(() => formatSystemClock(new Date()));
   useEffect(() => {
     const timer = globalThis.window.setInterval(() => {
@@ -108,7 +108,7 @@ export function CockpitKpiSection({
   tokenTrendLabel,
   totalTokens,
   showReferenceSections,
-}: Readonly<CockpitKpiSectionProps>) {
+}: CockpitKpiSectionProps) {
   const t = useTranslation();
   const tasksSummaryLabel = getTasksSummaryLabel(tasksCreated, t);
   const uptimeLabel = getUptimeLabel(metrics);

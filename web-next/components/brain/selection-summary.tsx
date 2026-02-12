@@ -8,7 +8,7 @@ interface BrainSelectionSummaryProps {
     readonly onOpenDetails: () => void;
 }
 
-export function BrainSelectionSummary({ selected, relations, onOpenDetails }: Readonly<BrainSelectionSummaryProps>) {
+export function BrainSelectionSummary({ selected, relations, onOpenDetails }: BrainSelectionSummaryProps) {
     const t = useTranslation();
 
     if (!selected) {

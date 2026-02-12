@@ -23,7 +23,7 @@ export function GraphStats({
     sourceTotalNodes,
     renderedEdges,
     sourceTotalEdges,
-}: Readonly<GraphStatsProps>) {
+}: GraphStatsProps) {
     const t = useTranslation();
     return (
         <div className="flex flex-wrap items-center gap-2">

@@ -52,7 +52,7 @@ export function RuntimeSection({
     switchModel,
     pushToast,
     t
-}: Readonly<RuntimeSectionProps>) {
+}: RuntimeSectionProps) {
     return (
         <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -146,7 +146,7 @@ export function SearchSection({
     handleInstall,
     pendingActions,
     t
-}: Readonly<SearchSectionProps>) {
+}: SearchSectionProps) {
     return (
         <section className="grid gap-10">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -230,7 +230,7 @@ export function NewsSection({
     newsCollapsed, setNewsCollapsed, newsHf, refreshNews, newsSort, setNewsSort, language,
     papersCollapsed, setPapersCollapsed, papersHf, refreshPapers,
     t
-}: Readonly<NewsSectionProps>) {
+}: NewsSectionProps) {
     const sortedNews = newsSort === "oldest" ? [...newsHf.items].reverse() : newsHf.items;
     const sortedPapers = newsSort === "oldest" ? [...papersHf.items].reverse() : papersHf.items;
 
@@ -356,7 +356,7 @@ export function RecommendedAndCatalog({
     catalogCollapsed, setCatalogCollapsed, catalogHf, catalogOllama, refreshCatalog,
     handleInstall, pendingActions,
     t
-}: Readonly<RecommendedAndCatalogProps>) {
+}: RecommendedAndCatalogProps) {
     return (
         <div className="flex flex-col gap-10">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -441,7 +441,7 @@ export function InstalledAndOperations({
     handleActivate, handleRemove, pendingActions,
     operationsCollapsed, setOperationsCollapsed, operations,
     t
-}: Readonly<InstalledAndOperationsProps>) {
+}: InstalledAndOperationsProps) {
     const allowRemoveProviders = new Set(["ollama", "huggingface"]);
     let installedBadge = t("models.sections.installed.noModels");
     if (installedModels.length) {

@@ -12,7 +12,7 @@ interface RecentOperationsProps {
     readonly operations: RecentOperation[];
 }
 
-export function RecentOperations({ operations }: Readonly<RecentOperationsProps>) {
+export function RecentOperations({ operations }: RecentOperationsProps) {
     const t = useTranslation();
     return (
         <div className="card-shell card-base p-4 text-sm">

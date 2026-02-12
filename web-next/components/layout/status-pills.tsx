@@ -135,7 +135,7 @@ function buildStatusPills(input: {
   ];
 }
 
-export function StatusPills({ initialData }: Readonly<{ initialData?: StatusPillsInitialData }>) {
+export function StatusPills({ initialData }: { initialData?: StatusPillsInitialData }) {
   const { data: queue, loading: queueLoading } = useQueueStatus(10000);
   const { data: metrics, loading: metricsLoading } = useMetrics(15000);
   const { data: tasks, loading: tasksLoading } = useTasks(15000);

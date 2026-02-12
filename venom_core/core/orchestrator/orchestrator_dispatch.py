@@ -153,7 +153,7 @@ async def run_task(
                     task_id,
                     f"🚫 Policy gate blocked tool execution: {policy_result.message}",
                 )
-                
+
                 # Store policy block details in task context for UI retrieval
                 orch.state_manager.update_context(
                     task_id,
@@ -163,13 +163,24 @@ async def run_task(
                         "user_message": policy_result.message,
                     }
                 )
-                
+
                 await orch.state_manager.update_status(
                     task_id,
                     TaskStatus.FAILED,
                     result=policy_result.message,
                 )
-                
+
+                # Add assistant session history entry with policy block details
+                orch._append_session_history(
+                    task_id,
+                    role="assistant",
+                    content=policy_result.message,
+                    session_id=request.session_id,
+                    policy_blocked=True,
+                    reason_code=policy_result.reason_code.value if policy_result.reason_code else None,
+                    user_message=policy_result.message,
+                )
+
                 # Increment policy blocked metric
                 if metrics_module.metrics_collector:
                     metrics_module.metrics_collector.increment_policy_blocked()

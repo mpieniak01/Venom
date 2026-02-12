@@ -199,7 +199,7 @@ class MetricsCollector:
                 if samples
                 else None
             )
-            
+
             # Calculate policy block rate
             policy_blocked = self.metrics["policy_blocked_count"]
             total_requests = self.metrics["tasks_created"]

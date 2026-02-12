@@ -85,12 +85,34 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
             orch.state_manager.add_log(
                 task.id, f"🚫 Policy gate blocked: {policy_result.message}"
             )
+
+            # Store policy block details in task context for UI retrieval
+            orch.state_manager.update_context(
+                task.id,
+                {
+                    "policy_blocked": True,
+                    "reason_code": policy_result.reason_code.value if policy_result.reason_code else None,
+                    "user_message": policy_result.message,
+                }
+            )
+
             await orch.state_manager.update_status(
                 task.id,
                 TaskStatus.FAILED,
                 result=policy_result.message,
             )
-            
+
+            # Add assistant session history entry with policy block details
+            orch._append_session_history(
+                task.id,
+                role="assistant",
+                content=policy_result.message,
+                session_id=request.session_id,
+                policy_blocked=True,
+                reason_code=policy_result.reason_code.value if policy_result.reason_code else None,
+                user_message=policy_result.message,
+            )
+
             # Increment policy blocked metric
             if metrics_module.metrics_collector:
                 metrics_module.metrics_collector.increment_policy_blocked()

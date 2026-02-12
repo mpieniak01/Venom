@@ -119,7 +119,7 @@ class TestMetricsCollector:
         """Test obliczania policy block rate."""
         # Arrange
         collector = MetricsCollector()
-        
+
         # 10 tasks created, 3 blocked
         for _ in range(10):
             collector.increment_task_created()

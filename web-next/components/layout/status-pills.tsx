@@ -201,7 +201,7 @@ export function StatusPills({ initialData }: Readonly<{ initialData?: StatusPill
           data-testid={`status-pill-${pill.id}`}
           className={cn("status-pill", resolvePillToneClass(pill.tone))}
         >
-          <span className="text-caption" suppressHydrationWarning>{pill.label}</span>
+          <span className="status-pill-label" suppressHydrationWarning>{pill.label}</span>
           <span className="text-lg font-semibold" data-testid={`status-pill-${pill.id}-value`} suppressHydrationWarning>
             {pill.loading ? (
               <span className="text-sm" suppressHydrationWarning>{t("mobileNav.systemStatus.loading")}</span>
@@ -209,7 +209,7 @@ export function StatusPills({ initialData }: Readonly<{ initialData?: StatusPill
               pill.value
             )}
           </span>
-          <span className="text-hint text-white/70" suppressHydrationWarning>{pill.hint}</span>
+          <span className="status-pill-hint" suppressHydrationWarning>{pill.hint}</span>
         </div>
       ))}
     </div>

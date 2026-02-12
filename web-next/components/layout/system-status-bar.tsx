@@ -55,7 +55,8 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
         await navigator.clipboard.writeText(commitValue);
         markCopied();
         return;
-      } catch {
+      } catch (err) {
+        console.warn("Modern clipboard API failed, using fallback:", err);
         // Fallback below.
       }
     }
@@ -68,10 +69,16 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
       textarea.style.left = "-9999px";
       document.body.appendChild(textarea);
       textarea.select();
-      document.execCommand("copy");
+      const success = document.execCommand("copy");
       textarea.remove();
-      markCopied();
-    } catch {
+      if (success) {
+        markCopied();
+      } else {
+        console.error("Clipboard copy failed: execCommand returned false");
+        setCommitCopied(false);
+      }
+    } catch (err) {
+      console.error("Clipboard copy failed:", err);
       setCommitCopied(false);
     }
   }, [commitValue]);

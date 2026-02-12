@@ -29,8 +29,8 @@ export function useNews() {
     }, [language]);
 
     useEffect(() => {
-        if (typeof window !== "undefined") {
-            window.localStorage.setItem("models-news-sort", newsSort);
+        if (globalThis.window !== undefined) {
+            globalThis.window.localStorage.setItem("models-news-sort", newsSort);
         }
     }, [newsSort]);
 

@@ -542,6 +542,11 @@ def _sync_job_status_with_habitat(
     return status_info, current_status
 
 
+def _log_internal_operation_failure(message: str) -> None:
+    """Loguje błędy operacyjne bez danych kontrolowanych przez użytkownika."""
+    logger.warning(message, exc_info=True)
+
+
 def _save_finished_job_metadata(
     job_id: str, job: Dict[str, Any], current_status: str
 ) -> None:
@@ -553,9 +558,7 @@ def _save_finished_job_metadata(
     try:
         _save_adapter_metadata(job, adapter_path_obj)
     except Exception:
-        logger.warning(
-            "Failed to save adapter metadata for job %s", job_id, exc_info=True
-        )
+        _log_internal_operation_failure("Failed to save adapter metadata")
 
 
 def _cleanup_terminal_job_container(
@@ -568,7 +571,7 @@ def _cleanup_terminal_job_container(
         _update_job_in_history(job_id, {"container_cleaned": True})
         job["container_cleaned"] = True
     except Exception:
-        logger.warning("Failed to cleanup container for job %s", job_id, exc_info=True)
+        _log_internal_operation_failure("Failed to cleanup container")
 
 
 @router.get(

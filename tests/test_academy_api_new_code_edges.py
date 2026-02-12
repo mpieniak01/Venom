@@ -160,3 +160,42 @@ def test_require_localhost_request_handles_missing_client():
     with pytest.raises(Exception) as exc:
         academy_routes.require_localhost_request(req)
     assert "Access denied" in str(exc.value)
+
+
+def test_save_finished_job_metadata_logs_without_user_data(tmp_path):
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    job = {"adapter_path": str(adapter_dir)}
+    tainted_job_id = "user-controlled-<script>"
+
+    with (
+        patch(
+            "venom_core.api.routes.academy._save_adapter_metadata",
+            side_effect=RuntimeError("boom"),
+        ),
+        patch("venom_core.api.routes.academy.logger.warning") as warning_mock,
+    ):
+        academy_routes._save_finished_job_metadata(tainted_job_id, job, "finished")
+
+    warning_mock.assert_called_once()
+    assert "user-controlled" not in str(warning_mock.call_args.args)
+    assert warning_mock.call_args.kwargs.get("exc_info") is True
+
+
+def test_cleanup_terminal_job_container_logs_without_user_data():
+    habitat = SimpleNamespace(cleanup_job=Mock(side_effect=RuntimeError("boom")))
+    tainted_job_id = "user-controlled-<script>"
+    job = {}
+
+    with patch("venom_core.api.routes.academy.logger.warning") as warning_mock:
+        academy_routes._cleanup_terminal_job_container(
+            habitat=habitat,
+            job_id=tainted_job_id,
+            job=job,
+            job_name="job-name",
+            current_status="failed",
+        )
+
+    warning_mock.assert_called_once()
+    assert "user-controlled" not in str(warning_mock.call_args.args)
+    assert warning_mock.call_args.kwargs.get("exc_info") is True

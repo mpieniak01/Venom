@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import type { AcademyStatus } from "@/lib/academy-api";
 
 interface AcademyOverviewProps {
-  status: AcademyStatus;
-  onRefresh: () => void;
+  readonly status: AcademyStatus;
+  readonly onRefresh: () => void;
 }
 
 interface ComponentStatusProps {
-  name: string;
-  active: boolean;
+  readonly name: string;
+  readonly active: boolean;
 }
 
 const ComponentStatus = ({ name, active }: ComponentStatusProps) => (
@@ -26,10 +26,10 @@ const ComponentStatus = ({ name, active }: ComponentStatusProps) => (
 );
 
 interface StatCardProps {
-  label: string;
-  value: string | number;
-  icon: React.ElementType;
-  color?: "emerald" | "blue" | "yellow" | "red";
+  readonly label: string;
+  readonly value: string | number;
+  readonly icon: React.ElementType;
+  readonly color?: "emerald" | "blue" | "yellow" | "red";
 }
 
 const StatCard = ({ label, value, icon: Icon, color = "emerald" }: StatCardProps) => {

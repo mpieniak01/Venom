@@ -23,19 +23,19 @@ function buildNewsItemKey(item: NewsItem, fallbackPrefix: string) {
 }
 
 interface RuntimeSectionProps {
-    selectedServer: ModelsViewerLogic["selectedServer"];
-    setSelectedServer: ModelsViewerLogic["setSelectedServer"];
-    serverOptions: ModelsViewerLogic["serverOptions"];
-    selectedModel: ModelsViewerLogic["selectedModel"];
-    setSelectedModel: ModelsViewerLogic["setSelectedModel"];
-    modelOptions: ModelsViewerLogic["modelOptions"];
-    activeRuntime: ModelsViewerLogic["activeRuntime"];
-    activeServer: ModelsViewerLogic["activeServer"];
-    installed: ModelsViewerLogic["installed"];
-    setActiveLlmServer: ModelsViewerLogic["setActiveLlmServer"];
-    switchModel: ModelsViewerLogic["switchModel"];
-    pushToast: ModelsViewerLogic["pushToast"];
-    t: ModelsViewerLogic["t"];
+    readonly selectedServer: ModelsViewerLogic["selectedServer"];
+    readonly setSelectedServer: ModelsViewerLogic["setSelectedServer"];
+    readonly serverOptions: ModelsViewerLogic["serverOptions"];
+    readonly selectedModel: ModelsViewerLogic["selectedModel"];
+    readonly setSelectedModel: ModelsViewerLogic["setSelectedModel"];
+    readonly modelOptions: ModelsViewerLogic["modelOptions"];
+    readonly activeRuntime: ModelsViewerLogic["activeRuntime"];
+    readonly activeServer: ModelsViewerLogic["activeServer"];
+    readonly installed: ModelsViewerLogic["installed"];
+    readonly setActiveLlmServer: ModelsViewerLogic["setActiveLlmServer"];
+    readonly switchModel: ModelsViewerLogic["switchModel"];
+    readonly pushToast: ModelsViewerLogic["pushToast"];
+    readonly t: ModelsViewerLogic["t"];
 }
 
 export function RuntimeSection({
@@ -121,17 +121,17 @@ export function RuntimeSection({
 }
 
 interface SearchSectionProps {
-    searchCollapsed: ModelsViewerLogic["searchCollapsed"];
-    setSearchCollapsed: ModelsViewerLogic["setSearchCollapsed"];
-    searchQuery: ModelsViewerLogic["searchQuery"];
-    setSearchQuery: ModelsViewerLogic["setSearchQuery"];
-    searchProvider: ModelsViewerLogic["searchProvider"];
-    setSearchProvider: ModelsViewerLogic["setSearchProvider"];
-    searchResults: ModelsViewerLogic["searchResults"];
-    handleSearch: ModelsViewerLogic["handleSearch"];
-    handleInstall: ModelsViewerLogic["handleInstall"];
-    pendingActions: ModelsViewerLogic["pendingActions"];
-    t: ModelsViewerLogic["t"];
+    readonly searchCollapsed: ModelsViewerLogic["searchCollapsed"];
+    readonly setSearchCollapsed: ModelsViewerLogic["setSearchCollapsed"];
+    readonly searchQuery: ModelsViewerLogic["searchQuery"];
+    readonly setSearchQuery: ModelsViewerLogic["setSearchQuery"];
+    readonly searchProvider: ModelsViewerLogic["searchProvider"];
+    readonly setSearchProvider: ModelsViewerLogic["setSearchProvider"];
+    readonly searchResults: ModelsViewerLogic["searchResults"];
+    readonly handleSearch: ModelsViewerLogic["handleSearch"];
+    readonly handleInstall: ModelsViewerLogic["handleInstall"];
+    readonly pendingActions: ModelsViewerLogic["pendingActions"];
+    readonly t: ModelsViewerLogic["t"];
 }
 
 export function SearchSection({
@@ -212,18 +212,18 @@ export function SearchSection({
 }
 
 interface NewsSectionProps {
-    newsCollapsed: ModelsViewerLogic["newsCollapsed"];
-    setNewsCollapsed: ModelsViewerLogic["setNewsCollapsed"];
-    newsHf: ModelsViewerLogic["newsHf"];
-    refreshNews: ModelsViewerLogic["refreshNews"];
-    newsSort: ModelsViewerLogic["newsSort"];
-    setNewsSort: ModelsViewerLogic["setNewsSort"];
-    language: ModelsViewerLogic["language"];
-    papersCollapsed: ModelsViewerLogic["papersCollapsed"];
-    setPapersCollapsed: ModelsViewerLogic["setPapersCollapsed"];
-    papersHf: ModelsViewerLogic["papersHf"];
-    refreshPapers: ModelsViewerLogic["refreshPapers"];
-    t: ModelsViewerLogic["t"];
+    readonly newsCollapsed: ModelsViewerLogic["newsCollapsed"];
+    readonly setNewsCollapsed: ModelsViewerLogic["setNewsCollapsed"];
+    readonly newsHf: ModelsViewerLogic["newsHf"];
+    readonly refreshNews: ModelsViewerLogic["refreshNews"];
+    readonly newsSort: ModelsViewerLogic["newsSort"];
+    readonly setNewsSort: ModelsViewerLogic["setNewsSort"];
+    readonly language: ModelsViewerLogic["language"];
+    readonly papersCollapsed: ModelsViewerLogic["papersCollapsed"];
+    readonly setPapersCollapsed: ModelsViewerLogic["setPapersCollapsed"];
+    readonly papersHf: ModelsViewerLogic["papersHf"];
+    readonly refreshPapers: ModelsViewerLogic["refreshPapers"];
+    readonly t: ModelsViewerLogic["t"];
 }
 
 export function NewsSection({
@@ -336,19 +336,19 @@ export function NewsSection({
 }
 
 interface RecommendedAndCatalogProps {
-    trendingCollapsed: ModelsViewerLogic["trendingCollapsed"];
-    setTrendingCollapsed: ModelsViewerLogic["setTrendingCollapsed"];
-    trendingHf: ModelsViewerLogic["trendingHf"];
-    trendingOllama: ModelsViewerLogic["trendingOllama"];
-    refreshTrending: ModelsViewerLogic["refreshTrending"];
-    catalogCollapsed: ModelsViewerLogic["catalogCollapsed"];
-    setCatalogCollapsed: ModelsViewerLogic["setCatalogCollapsed"];
-    catalogHf: ModelsViewerLogic["catalogHf"];
-    catalogOllama: ModelsViewerLogic["catalogOllama"];
-    refreshCatalog: ModelsViewerLogic["refreshCatalog"];
-    handleInstall: ModelsViewerLogic["handleInstall"];
-    pendingActions: ModelsViewerLogic["pendingActions"];
-    t: ModelsViewerLogic["t"];
+    readonly trendingCollapsed: ModelsViewerLogic["trendingCollapsed"];
+    readonly setTrendingCollapsed: ModelsViewerLogic["setTrendingCollapsed"];
+    readonly trendingHf: ModelsViewerLogic["trendingHf"];
+    readonly trendingOllama: ModelsViewerLogic["trendingOllama"];
+    readonly refreshTrending: ModelsViewerLogic["refreshTrending"];
+    readonly catalogCollapsed: ModelsViewerLogic["catalogCollapsed"];
+    readonly setCatalogCollapsed: ModelsViewerLogic["setCatalogCollapsed"];
+    readonly catalogHf: ModelsViewerLogic["catalogHf"];
+    readonly catalogOllama: ModelsViewerLogic["catalogOllama"];
+    readonly refreshCatalog: ModelsViewerLogic["refreshCatalog"];
+    readonly handleInstall: ModelsViewerLogic["handleInstall"];
+    readonly pendingActions: ModelsViewerLogic["pendingActions"];
+    readonly t: ModelsViewerLogic["t"];
 }
 
 export function RecommendedAndCatalog({
@@ -422,18 +422,18 @@ export function RecommendedAndCatalog({
 }
 
 interface InstalledAndOperationsProps {
-    installedCollapsed: ModelsViewerLogic["installedCollapsed"];
-    setInstalledCollapsed: ModelsViewerLogic["setInstalledCollapsed"];
-    installed: ModelsViewerLogic["installed"];
-    installedBuckets: ModelsViewerLogic["installedBuckets"];
-    installedModels: ModelsViewerLogic["installedModels"];
-    handleActivate: ModelsViewerLogic["handleActivate"];
-    handleRemove: ModelsViewerLogic["handleRemove"];
-    pendingActions: ModelsViewerLogic["pendingActions"];
-    operationsCollapsed: ModelsViewerLogic["operationsCollapsed"];
-    setOperationsCollapsed: ModelsViewerLogic["setOperationsCollapsed"];
-    operations: ModelsViewerLogic["operations"];
-    t: ModelsViewerLogic["t"];
+    readonly installedCollapsed: ModelsViewerLogic["installedCollapsed"];
+    readonly setInstalledCollapsed: ModelsViewerLogic["setInstalledCollapsed"];
+    readonly installed: ModelsViewerLogic["installed"];
+    readonly installedBuckets: ModelsViewerLogic["installedBuckets"];
+    readonly installedModels: ModelsViewerLogic["installedModels"];
+    readonly handleActivate: ModelsViewerLogic["handleActivate"];
+    readonly handleRemove: ModelsViewerLogic["handleRemove"];
+    readonly pendingActions: ModelsViewerLogic["pendingActions"];
+    readonly operationsCollapsed: ModelsViewerLogic["operationsCollapsed"];
+    readonly setOperationsCollapsed: ModelsViewerLogic["setOperationsCollapsed"];
+    readonly operations: ModelsViewerLogic["operations"];
+    readonly t: ModelsViewerLogic["t"];
 }
 
 export function InstalledAndOperations({

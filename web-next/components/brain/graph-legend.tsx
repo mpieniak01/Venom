@@ -1,8 +1,8 @@
 import { useTranslation } from "@/lib/i18n";
 
 interface GraphLegendProps {
-    activeTab: "repo" | "memory" | "hygiene";
-    showEdgeLabels: boolean;
+    readonly activeTab: "repo" | "memory" | "hygiene";
+    readonly showEdgeLabels: boolean;
 }
 
 export function GraphLegend({ activeTab, showEdgeLabels }: GraphLegendProps) {

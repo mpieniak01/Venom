@@ -10,9 +10,9 @@ type CockpitRequestDetailProps = ComponentProps<typeof CockpitRequestDetailDrawe
 type CockpitTuningDrawerProps = ComponentProps<typeof CockpitTuningDrawer>;
 
 type CockpitRuntimeSectionProps = {
-  runtimeProps: CockpitRuntimeProps;
-  requestDetailProps: CockpitRequestDetailProps;
-  tuningDrawerProps: CockpitTuningDrawerProps;
+  readonly runtimeProps: CockpitRuntimeProps;
+  readonly requestDetailProps: CockpitRequestDetailProps;
+  readonly tuningDrawerProps: CockpitTuningDrawerProps;
 };
 
 export function CockpitRuntimeSection({

@@ -5,8 +5,8 @@ import { CreateEventRequest } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 
 interface EventFormProps {
-  onSubmit: (data: CreateEventRequest) => Promise<void>;
-  onCancel: () => void;
+  readonly onSubmit: (data: CreateEventRequest) => Promise<void>;
+  readonly onCancel: () => void;
 }
 
 export function EventForm({ onSubmit, onCancel }: EventFormProps) {

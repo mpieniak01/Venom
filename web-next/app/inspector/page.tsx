@@ -271,7 +271,8 @@ export default function InspectorPage() {
           await mermaidApi.run({
             nodes: container.querySelectorAll(".mermaid"),
           });
-        } catch {
+        } catch (err) {
+          console.warn("Mermaid render failed, using fallback diagram:", err);
           const fallback = sanitizeMermaidDiagram(fallbackDiagram);
           if (node) {
             node.textContent = fallback;
@@ -385,7 +386,7 @@ export default function InspectorPage() {
     if (historyLoading) return;
     if (!history || history.length === 0) return;
     if (selectedId) return;
-    handleHistorySelect(history[history.length - 1].request_id);
+    handleHistorySelect(history.at(-1)!.request_id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyLoading, history, selectedId]);
 
@@ -1038,8 +1039,10 @@ function buildFlowchartDiagram(steps: HistoryStep[]) {
     }
     if (step.details && step.details.length > 80) {
       const noteId = `${nodeId}_note`;
-      lines.push(`${noteId}["${sanitizeMermaidText(step.details, 90)}"]:::note`);
-      lines.push(`${nodeId} -.-> ${noteId}`);
+      lines.push(
+        `${noteId}["${sanitizeMermaidText(step.details, 90)}"]:::note`,
+        `${nodeId} -.-> ${noteId}`
+      );
     }
   });
   return lines.join("\n");
@@ -1070,7 +1073,8 @@ function formatErrorDetails(details: Record<string, unknown>): string[] {
     if (typeof value === "object") {
       try {
         entries.push(`${key}: ${JSON.stringify(value)}`);
-      } catch {
+      } catch (err) {
+        console.warn(`Failed to stringify object for key "${key}":`, err);
         entries.push(`${key}: [object]`);
       }
       return;

@@ -9,7 +9,7 @@ interface RecentOperation {
 }
 
 interface RecentOperationsProps {
-    operations: RecentOperation[];
+    readonly operations: RecentOperation[];
 }
 
 export function RecentOperations({ operations }: RecentOperationsProps) {

@@ -11,9 +11,9 @@ import { useCockpitInteractiveState } from "./hooks/use-cockpit-interactive-stat
 import { useCockpitLogic } from "./hooks/use-cockpit-logic";
 
 interface CockpitProviderProps {
-    initialData: CockpitInitialData;
-    variant?: "reference" | "home";
-    children: ReactNode;
+    readonly initialData: CockpitInitialData;
+    readonly variant?: "reference" | "home";
+    readonly children: ReactNode;
 }
 
 export function CockpitProvider({ initialData, variant = "reference", children }: CockpitProviderProps) {

@@ -63,6 +63,7 @@ export function CalendarHome() {
       await fetchEvents();
       setShowForm(false);
     } catch (err) {
+      console.error("Failed to create calendar event:", err);
       throw err; // Let EventForm handle the error
     }
   };

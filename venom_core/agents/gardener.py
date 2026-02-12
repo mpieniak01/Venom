@@ -136,7 +136,7 @@ class GardenerAgent:
                 try:
                     mtime = file_path.stat().st_mtime
                     current_mtimes[str(file_path)] = mtime
-                except (OSError, PermissionError) as e:
+                except OSError as e:
                     # Plik mógł zostać usunięty lub brak uprawnień
                     logger.debug(f"Nie można odczytać {file_path}: {e}")
 

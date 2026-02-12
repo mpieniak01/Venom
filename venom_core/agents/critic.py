@@ -235,7 +235,7 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
                         "suggested_fix": parsed.get("suggested_fix", ""),
                         "target_file_change": parsed.get("target_file_change"),
                     }
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError:
                 continue
 
         return default_response

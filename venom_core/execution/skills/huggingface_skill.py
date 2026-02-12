@@ -218,7 +218,7 @@ class HuggingFaceSkill:
                         )
                         # Użyj pathlib do bezpiecznego czytania pliku
                         card_content = Path(readme_path).read_text(encoding="utf-8")
-                    except (FileNotFoundError, PermissionError, OSError) as e:
+                    except OSError as e:
                         logger.debug(f"Nie można pobrać README dla {model_id}: {e}")
                         card_content = "Brak dostępnego Model Card"
                 else:

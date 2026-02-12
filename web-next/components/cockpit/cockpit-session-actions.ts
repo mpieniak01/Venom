@@ -23,7 +23,7 @@ export function useCockpitSessionActions({
 }: CockpitSessionActionsParams) {
   const handleSessionReset = useCallback(() => {
     const newSession = resetSession();
-    if (globalThis.window !== undefined) {
+    if (typeof globalThis.window !== "undefined") {
       globalThis.window.dispatchEvent(
         new CustomEvent("venom-session-reset", {
           detail: { sessionId: newSession },
@@ -36,7 +36,7 @@ export function useCockpitSessionActions({
   const handleServerSessionReset = useCallback(async () => {
     const previousSession = sessionId;
     const newSession = resetSession();
-    if (globalThis.window !== undefined) {
+    if (typeof globalThis.window !== "undefined") {
       globalThis.window.dispatchEvent(
         new CustomEvent("venom-session-reset", {
           detail: { sessionId: newSession },

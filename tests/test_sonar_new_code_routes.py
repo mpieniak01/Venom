@@ -140,7 +140,10 @@ def test_routes_system_config_governance_runtime_scheduler_services_status(
 ) -> None:
     # system config
     config_mgr = MagicMock()
-    config_mgr.get_config.return_value = {"mode": "local"}
+    config_mgr.get_effective_config_with_sources.return_value = (
+        {"mode": "local"},
+        {"mode": "env"},
+    )
     config_mgr.update_config.return_value = {"status": "updated"}
     config_mgr.get_backup_list.return_value = ["b1.env"]
     config_mgr.restore_backup.return_value = {"status": "restored"}

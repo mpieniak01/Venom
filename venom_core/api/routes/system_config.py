@@ -35,8 +35,10 @@ def get_runtime_config():
     """
     try:
         # Security: Zawsze wymuszaj maskowanie sekretów w API
-        config = config_manager.get_config(mask_secrets=True)
-        return {"status": "success", "config": config}
+        config, config_sources = config_manager.get_effective_config_with_sources(
+            mask_secrets=True
+        )
+        return {"status": "success", "config": config, "config_sources": config_sources}
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania konfiguracji")

@@ -14,8 +14,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
+from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
 
@@ -437,6 +438,38 @@ class ConfigManager:
 
         return config
 
+    def get_effective_config_with_sources(
+        self, mask_secrets: bool = True
+    ) -> tuple[Dict[str, Any], Dict[str, str]]:
+        """
+        Pobiera efektywną konfigurację (env fallbackuje do domyślnych wartości Settings)
+        oraz źródło każdej wartości.
+
+        Returns:
+            tuple:
+                - config: mapa klucz->wartość (sekrety opcjonalnie maskowane)
+                - sources: mapa klucz->"env" | "default"
+        """
+        config: Dict[str, Any] = {}
+        sources: Dict[str, str] = {}
+        env_values = self._read_env_file()
+
+        for key in CONFIG_WHITELIST:
+            raw_value = env_values.get(key)
+            if raw_value is not None:
+                value = raw_value
+                sources[key] = "env"
+            else:
+                value = self._default_value_as_string(key)
+                sources[key] = "default"
+
+            if mask_secrets and key in SECRET_PARAMS and value:
+                config[key] = self._mask_secret(value)
+            else:
+                config[key] = value
+
+        return config, sources
+
     def update_config(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         """
         Aktualizuje konfigurację.
@@ -559,6 +592,23 @@ class ConfigManager:
             logger.exception("Błąd wczytywania .env")
 
         return env_values
+
+    @staticmethod
+    def _default_value_as_string(key: str) -> str:
+        """Konwertuje domyślną wartość z Settings na string kompatybilny z .env."""
+        if not hasattr(SETTINGS, key):
+            return ""
+
+        value = getattr(SETTINGS, key)
+        if value is None:
+            return ""
+        if isinstance(value, SecretStr):
+            return value.get_secret_value()
+        if isinstance(value, bool):
+            return str(value).lower()
+        if isinstance(value, (int, float)):
+            return str(value)
+        return str(value)
 
     def _write_env_file(self, env_values: Dict[str, str]) -> None:
         """Zapisuje słownik do .env."""

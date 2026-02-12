@@ -8,6 +8,11 @@ from uuid import UUID
 
 from venom_core.config import SETTINGS
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
+from venom_core.core.policy_gate import (
+    PolicyDecision,
+    PolicyEvaluationContext,
+    policy_gate,
+)
 from venom_core.utils.helpers import get_utc_now, get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -57,6 +62,51 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
         runtime_context["expected_runtime_id"] = request.expected_runtime_id
     runtime_context["status"] = "ready"
     orch.state_manager.update_context(task.id, {"llm_runtime": runtime_context})
+
+    # Policy Gate: Check before provider selection
+    if policy_gate.enabled:
+        policy_context = PolicyEvaluationContext(
+            content=request.content,
+            planned_provider=request.forced_provider,
+            planned_tools=[request.forced_tool] if request.forced_tool else [],
+            session_id=request.session_id,
+            forced_tool=request.forced_tool,
+            forced_provider=request.forced_provider,
+        )
+        policy_result = policy_gate.evaluate_before_provider_selection(policy_context)
+
+        if policy_result.decision == PolicyDecision.BLOCK:
+            logger.warning(
+                f"Policy gate blocked task {task.id}: {policy_result.reason_code}"
+            )
+            orch.state_manager.add_log(
+                task.id, f"🚫 Policy gate blocked: {policy_result.message}"
+            )
+            await orch.state_manager.update_status(
+                task.id,
+                TaskStatus.FAILED,
+                result=policy_result.message,
+            )
+
+            if orch.request_tracer:
+                orch.request_tracer.update_status(task.id, "failed")
+                orch.request_tracer.add_step(
+                    task.id,
+                    "PolicyGate",
+                    "block_before_provider",
+                    status="blocked",
+                    details=f"Reason: {policy_result.reason_code}",
+                )
+
+            return TaskResponse(
+                task_id=task.id,
+                status=TaskStatus.FAILED,
+                policy_blocked=True,
+                reason_code=policy_result.reason_code.value
+                if policy_result.reason_code
+                else None,
+                user_message=policy_result.message,
+            )
 
     if orch.request_tracer:
         orch.request_tracer.create_trace(

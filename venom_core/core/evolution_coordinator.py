@@ -117,13 +117,25 @@ class EvolutionCoordinator:
                     instance_info.instance_id, cleanup=True
                 )
 
-                return {
-                    "success": True,
-                    "phase": "completed",
-                    "branch": branch_name,
-                    "merge_result": merge_result,
-                    "message": "Ewolucja zakończona pomyślnie",
-                }
+                # Sprawdź czy merge faktycznie się udał
+                if merge_result.get("merged"):
+                    return {
+                        "success": True,
+                        "phase": "completed",
+                        "branch": branch_name,
+                        "merge_result": merge_result,
+                        "message": "Ewolucja zakończona pomyślnie - zmiany zmergowane",
+                    }
+                else:
+                    # Merge się nie udał (konflikty lub błędy)
+                    return {
+                        "success": False,
+                        "phase": "merge_failed",
+                        "branch": branch_name,
+                        "merge_result": merge_result,
+                        "reason": merge_result.get("reason", "Merge nie powiódł się"),
+                        "message": "Weryfikacja przeszła, ale merge zawodzi",
+                    }
             else:
                 logger.warning(
                     f"❌ Weryfikacja niepomyślna: {verification_result['reason']}"
@@ -276,8 +288,20 @@ class EvolutionCoordinator:
                     
                     logger.info(f"Wynik testów Shadow Instance:\n{test_result}")
                     
-                    # Sprawdź czy w wyniku testów są błędy
-                    if "❌" in test_result or "błąd" in test_result.lower() or "error" in test_result.lower():
+                    # Sprawdź czy w wyniku testów są błędy (precyzyjna detekcja)
+                    # Szukamy wyraźnych markerów błędów na początku linii lub jako standalone
+                    test_failed = False
+                    if "❌" in test_result:
+                        test_failed = True
+                    else:
+                        # Sprawdź linie zaczynające się od ERROR/BŁĄD
+                        for line in test_result.split('\n'):
+                            line_stripped = line.strip().upper()
+                            if line_stripped.startswith(('ERROR:', 'BŁĄD:', 'FAILED:', 'FAILURE:')):
+                                test_failed = True
+                                break
+                    
+                    if test_failed:
                         return {
                             "success": False,
                             "reason": f"Testy wykryły problemy: {test_result[:500]}",

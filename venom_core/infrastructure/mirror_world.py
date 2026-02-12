@@ -5,7 +5,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 DEFAULT_VERIFY_TIMEOUT_SECONDS = 30
 
 # Optional Docker support
-docker: Optional[any] = None
+docker: Optional[Any] = None
 try:
     import docker as _docker
     docker = _docker
@@ -110,31 +110,31 @@ class MirrorWorld:
             return False
         
         try:
-            # Sprawdź czy kontener istnieje
+            # Sprawdź czy kontener istnieje (w osobnym wątku)
             try:
-                container = client.containers.get(container_name)
+                container = await asyncio.to_thread(client.containers.get, container_name)
             except docker.errors.NotFound:
                 logger.info(f"Kontener {container_name} nie istnieje - już usunięty")
                 return True  # Uznajemy za sukces - kontener już nie istnieje
             
-            # Zatrzymaj kontener
+            # Zatrzymaj kontener (w osobnym wątku)
             logger.info(f"Zatrzymywanie kontenera {container_name} (timeout={timeout}s)...")
             try:
-                container.stop(timeout=timeout)
+                await asyncio.to_thread(container.stop, timeout=timeout)
                 logger.info(f"✅ Kontener {container_name} zatrzymany")
             except Exception as stop_error:
                 if force:
                     logger.warning(
                         f"Zatrzymanie graceful nie powiodło się, wymuszam kill: {stop_error}"
                     )
-                    container.kill()
+                    await asyncio.to_thread(container.kill)
                     logger.info(f"✅ Kontener {container_name} zabity (kill)")
                 else:
                     raise
             
-            # Usuń kontener
+            # Usuń kontener (w osobnym wątku)
             logger.info(f"Usuwanie kontenera {container_name}...")
-            container.remove(force=force)
+            await asyncio.to_thread(container.remove, force=force)
             logger.info(f"✅ Kontener {container_name} usunięty")
             
             return True

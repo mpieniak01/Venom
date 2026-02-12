@@ -347,26 +347,38 @@ a {
 
 .status-pill--success {
   border-color: rgba(16, 185, 129, 0.3);
-  background: rgba(6, 78, 59, 0.58);
+  background: rgba(16, 185, 129, 0.12);
   color: #ecfdf5;
 }
 
 .status-pill--warning {
   border-color: rgba(245, 158, 11, 0.35);
-  background: rgba(120, 53, 15, 0.58);
+  background: rgba(245, 158, 11, 0.12);
   color: #fef3c7;
 }
 
 .status-pill--danger {
   border-color: rgba(244, 63, 94, 0.35);
-  background: rgba(127, 29, 29, 0.58);
+  background: rgba(244, 63, 94, 0.12);
   color: #ffe4e6;
 }
 
 .status-pill--neutral {
   border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(39, 39, 42, 0.6);
+  background: rgba(255, 255, 255, 0.05);
   color: #fafafa;
+}
+
+.status-pill-label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: #e4e4e7;
+}
+
+.status-pill-hint {
+  font-size: 0.75rem;
+  color: #f4f4f5;
 }
 
 .pill-badge {

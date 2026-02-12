@@ -154,6 +154,10 @@ async def run_task(
                     TaskStatus.FAILED,
                     result=policy_result.message,
                 )
+                
+                # Increment policy blocked metric
+                if metrics_module.metrics_collector:
+                    metrics_module.metrics_collector.increment_policy_blocked()
 
                 if orch.request_tracer:
                     orch.request_tracer.update_status(task_id, "failed")

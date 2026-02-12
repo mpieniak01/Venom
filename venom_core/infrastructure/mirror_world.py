@@ -89,19 +89,20 @@ class MirrorWorld:
         return self._docker_client
 
     async def _stop_and_remove_container(
-        self, container_name: str, timeout: int = 10, force: bool = True
+        self, container_name: str, force: bool = True
     ) -> bool:
         """
         Zatrzymuje i usuwa kontener Docker.
         
         Args:
             container_name: Nazwa kontenera do usunięcia
-            timeout: Timeout zatrzymania w sekundach (domyślnie 10s)
             force: Czy wymusić zatrzymanie (kill) po timeout
             
         Returns:
             True jeśli kontener został zatrzymany i usunięty, False w przeciwnym razie
         """
+        STOP_TIMEOUT_SECONDS = 10
+        
         client = self._get_docker_client()
         if not client:
             logger.warning(
@@ -117,10 +118,11 @@ class MirrorWorld:
                 logger.info(f"Kontener {container_name} nie istnieje - już usunięty")
                 return True  # Uznajemy za sukces - kontener już nie istnieje
             
-            # Zatrzymaj kontener (w osobnym wątku)
-            logger.info(f"Zatrzymywanie kontenera {container_name} (timeout={timeout}s)...")
+            # Zatrzymaj kontener (w osobnym wątku) z timeout context manager
+            logger.info(f"Zatrzymywanie kontenera {container_name} (timeout={STOP_TIMEOUT_SECONDS}s)...")
             try:
-                await asyncio.to_thread(container.stop, timeout=timeout)
+                async with asyncio.timeout(STOP_TIMEOUT_SECONDS):
+                    await asyncio.to_thread(container.stop)
                 logger.info(f"✅ Kontener {container_name} zatrzymany")
             except Exception as stop_error:
                 if force:
@@ -417,7 +419,7 @@ class MirrorWorld:
                 logger.info(f"Zatrzymywanie kontenera {info.container_name}")
                 # Zatrzymaj i usuń kontener Docker
                 await self._stop_and_remove_container(
-                    info.container_name, timeout=10, force=True
+                    info.container_name, force=True
                 )
 
             # 2. Usuń pliki jeśli cleanup=True

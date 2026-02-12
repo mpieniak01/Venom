@@ -1,5 +1,6 @@
 """Moduł: evolution_coordinator - koordynacja procedury ewolucji Venom."""
 
+import asyncio
 from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
@@ -216,6 +217,138 @@ class EvolutionCoordinator:
         )
         return instance_info
 
+    async def _verify_python_syntax(self, workspace_path: Path) -> tuple[bool, str | None]:
+        """
+        Weryfikuje składnię plików Python.
+        
+        Args:
+            workspace_path: Ścieżka do workspace z plikami Python
+            
+        Returns:
+            Krotka (sukces, komunikat_błędu)
+        """
+        logger.info("Sprawdzanie składni plików Python...")
+        python_files = list(workspace_path.rglob("*.py"))
+        
+        for py_file in python_files:
+            syntax_result = await self.core_skill.verify_syntax(str(py_file))
+            if "❌" in syntax_result:
+                return False, f"Błąd składni w {py_file.name}: {syntax_result}"
+        
+        logger.info("✅ Składnia poprawna")
+        return True, None
+    
+    async def _verify_health(self, instance_info: InstanceInfo) -> tuple[bool, str | None]:
+        """
+        Weryfikuje health check instancji.
+        
+        Args:
+            instance_info: Informacje o instancji
+            
+        Returns:
+            Krotka (sukces, komunikat_błędu)
+        """
+        if instance_info.status != "running":
+            return True, None  # Pomijamy health check dla nieaktywnej instancji
+        
+        logger.info("Sprawdzanie healthcheck...")
+        health_ok, health_msg = await self.mirror_world.verify_instance(
+            instance_info.instance_id
+        )
+        
+        if not health_ok:
+            return False, f"Health check failed: {health_msg}"
+        
+        logger.info("✅ Health check OK")
+        return True, None
+    
+    def _has_test_fail_markers(self, test_result: str) -> bool:
+        """
+        Wykrywa markery błędów w wynikach testów.
+        
+        Args:
+            test_result: Wynik testów jako string
+            
+        Returns:
+            True jeśli wykryto błędy, False w przeciwnym razie
+        """
+        if "❌" in test_result:
+            return True
+        
+        # Sprawdź linie zaczynające się od ERROR/BŁĄD
+        for line in test_result.split("\n"):
+            line_stripped = line.strip().upper()
+            if line_stripped.startswith(
+                ("ERROR:", "BŁĄD:", "FAILED:", "FAILURE:")
+            ):
+                return True
+        
+        return False
+    
+    async def _run_shadow_smoke_tests(
+        self, instance_info: InstanceInfo, tester_agent
+    ) -> dict[str, Any]:
+        """
+        Uruchamia testy smoke w Shadow Instance.
+        
+        Args:
+            instance_info: Informacje o instancji
+            tester_agent: Agent tester
+            
+        Returns:
+            Słownik z wynikiem testów
+        """
+        logger.info("Uruchamianie testów w Shadow Instance...")
+        
+        try:
+            # Przygotuj URL do Shadow Instance
+            instance_url = f"http://localhost:{instance_info.port}"
+            
+            # Przygotuj zadanie testowe dla TesterAgent
+            test_task = (
+                f"Przetestuj aplikację Venom dostępną pod adresem {instance_url}. "
+                f"Wykonaj podstawowe testy smoke:\n"
+                f"1. Sprawdź czy strona główna się ładuje (visit_page)\n"
+                f"2. Sprawdź czy API health endpoint odpowiada ({instance_url}/api/v1/health)\n"
+                f"3. Zweryfikuj czy nie ma błędów JavaScript w konsoli\n"
+                f"4. Sprawdź czy kluczowe elementy UI są widoczne\n"
+                f"Zwróć szczegółowy raport z wynikami testów."
+            )
+            
+            # Uruchom testy z timeoutem
+            test_timeout = 120  # 2 minuty na testy smoke
+            
+            try:
+                test_result = await asyncio.wait_for(
+                    tester_agent.process(test_task), timeout=test_timeout
+                )
+                
+                logger.info(f"Wynik testów Shadow Instance:\n{test_result}")
+                
+                # Sprawdź czy w wyniku testów są błędy
+                if self._has_test_fail_markers(test_result):
+                    return {
+                        "success": False,
+                        "reason": f"Testy wykryły problemy: {test_result[:500]}",
+                        "test_report": test_result,
+                    }
+                
+                logger.info("✅ Testy przeszły pomyślnie")
+                return {"success": True}
+                
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout testów po {test_timeout}s")
+                return {
+                    "success": False,
+                    "reason": f"Testy przekroczyły limit czasu ({test_timeout}s)",
+                }
+        
+        except Exception as e:
+            logger.error(f"Błąd podczas uruchamiania testów: {e}", exc_info=True)
+            # Nie przerywamy procesu - testy są opcjonalne
+            logger.warning("Kontynuuję weryfikację mimo błędu testów")
+            return {"success": True}  # Kontynuuj mimo błędu testów
+    
     async def _verify_shadow_instance(self, instance_info: InstanceInfo) -> dict:
         """
         Weryfikuje czy instancja lustrzana działa poprawnie.
@@ -229,106 +362,115 @@ class EvolutionCoordinator:
         logger.info(f"Weryfikacja instancji {instance_info.instance_id}")
 
         # Weryfikacja 1: Sprawdź składnię plików Python
-        logger.info("Sprawdzanie składni plików Python...")
-        python_files = list(instance_info.workspace_path.rglob("*.py"))
-
-        for py_file in python_files:
-            syntax_result = await self.core_skill.verify_syntax(str(py_file))
-            if "❌" in syntax_result:
-                return {
-                    "success": False,
-                    "reason": f"Błąd składni w {py_file.name}: {syntax_result}",
-                }
-
-        logger.info("✅ Składnia poprawna")
+        syntax_ok, syntax_error = await self._verify_python_syntax(instance_info.workspace_path)
+        if not syntax_ok:
+            return {"success": False, "reason": syntax_error}
 
         # Weryfikacja 2: Sprawdź czy instancja odpowiada (jeśli uruchomiona)
-        if instance_info.status == "running":
-            logger.info("Sprawdzanie healthcheck...")
-            health_ok, health_msg = await self.mirror_world.verify_instance(
-                instance_info.instance_id
-            )
-
-            if not health_ok:
-                return {
-                    "success": False,
-                    "reason": f"Health check failed: {health_msg}",
-                }
-
-            logger.info("✅ Health check OK")
+        health_ok, health_error = await self._verify_health(instance_info)
+        if not health_ok:
+            return {"success": False, "reason": health_error}
 
         # Weryfikacja 3: Opcjonalnie - uruchom testy (jeśli dostępny TesterAgent)
         if self.tester_agent:
-            logger.info("Uruchamianie testów w Shadow Instance...")
-
-            try:
-                # Przygotuj URL do Shadow Instance
-                instance_url = f"http://localhost:{instance_info.port}"
-
-                # Przygotuj zadanie testowe dla TesterAgent
-                test_task = (
-                    f"Przetestuj aplikację Venom dostępną pod adresem {instance_url}. "
-                    f"Wykonaj podstawowe testy smoke:\n"
-                    f"1. Sprawdź czy strona główna się ładuje (visit_page)\n"
-                    f"2. Sprawdź czy API health endpoint odpowiada ({instance_url}/api/v1/health)\n"
-                    f"3. Zweryfikuj czy nie ma błędów JavaScript w konsoli\n"
-                    f"4. Sprawdź czy kluczowe elementy UI są widoczne\n"
-                    f"Zwróć szczegółowy raport z wynikami testów."
-                )
-
-                # Uruchom testy z timeoutem
-                import asyncio
-
-                test_timeout = 120  # 2 minuty na testy smoke
-
-                try:
-                    test_result = await asyncio.wait_for(
-                        self.tester_agent.process(test_task), timeout=test_timeout
-                    )
-
-                    logger.info(f"Wynik testów Shadow Instance:\n{test_result}")
-
-                    # Sprawdź czy w wyniku testów są błędy (precyzyjna detekcja)
-                    # Szukamy wyraźnych markerów błędów na początku linii lub jako standalone
-                    test_failed = False
-                    if "❌" in test_result:
-                        test_failed = True
-                    else:
-                        # Sprawdź linie zaczynające się od ERROR/BŁĄD
-                        for line in test_result.split("\n"):
-                            line_stripped = line.strip().upper()
-                            if line_stripped.startswith(
-                                ("ERROR:", "BŁĄD:", "FAILED:", "FAILURE:")
-                            ):
-                                test_failed = True
-                                break
-
-                    if test_failed:
-                        return {
-                            "success": False,
-                            "reason": f"Testy wykryły problemy: {test_result[:500]}",
-                            "test_report": test_result,
-                        }
-
-                    logger.info("✅ Testy przeszły pomyślnie")
-
-                except asyncio.TimeoutError:
-                    logger.warning(f"Timeout testów po {test_timeout}s")
-                    return {
-                        "success": False,
-                        "reason": f"Testy przekroczyły limit czasu ({test_timeout}s)",
-                    }
-
-            except Exception as e:
-                logger.error(f"Błąd podczas uruchamiania testów: {e}", exc_info=True)
-                # Nie przerywamy procesu - testy są opcjonalne
-                logger.warning("Kontynuuję weryfikację mimo błędu testów")
+            test_result = await self._run_shadow_smoke_tests(instance_info, self.tester_agent)
+            if not test_result["success"]:
+                return test_result
 
         return {
             "success": True,
             "reason": "Wszystkie weryfikacje przeszły pomyślnie",
         }
 
+    def _resolve_merge_dependencies(self) -> tuple[Any | None, Any | None, str]:
+        """
+        Rozwiązuje zależności dla merge (funkcja i repo).
+        
+        Returns:
+            Krotka (merge_fn, repo, current_branch)
+        """
+        merge_fn = getattr(self.git_skill, "merge", None)
+        if not callable(merge_fn):
+            return None, None, "unknown"
+        
+        repo = None
+        current_branch = "unknown"
+        get_repo_fn = getattr(self.git_skill, "_get_repo", None)
+        if callable(get_repo_fn):
+            try:
+                repo = get_repo_fn()
+                try:
+                    # repo.active_branch może zgłosić wyjątek np. przy detached HEAD
+                    current_branch = repo.active_branch.name  # type: ignore[attr-defined]
+                except Exception:
+                    current_branch = "unknown"
+            except Exception as exc:
+                logger.warning(
+                    "Nie udało się pobrać repozytorium podczas przygotowania merge: %s",
+                    exc,
+                )
+                repo = None
+                current_branch = "unknown"
+        
+        return merge_fn, repo, current_branch
+    
+    def _normalize_merge_result(self, merge_result: Any) -> str:
+        """
+        Konwertuje wynik merge na string.
+        
+        Args:
+            merge_result: Wynik merge
+            
+        Returns:
+            String reprezentacja wyniku
+        """
+        return str(merge_result)
+    
+    def _build_merge_response(
+        self, merged: bool, branch_name: str, current_branch: str, 
+        result_text: str = "", reason: str = "", conflicts: str = "",
+        action_required: str = "", skipped: bool = False
+    ) -> dict:
+        """
+        Buduje słownik odpowiedzi merge.
+        
+        Args:
+            merged: Czy merge się udał
+            branch_name: Nazwa source brancha
+            current_branch: Nazwa target brancha
+            result_text: Tekst wyniku merge
+            reason: Powód niepowodzenia
+            conflicts: Tekst konfliktów
+            action_required: Wymagana akcja użytkownika
+            skipped: Czy merge został pominięty
+            
+        Returns:
+            Słownik z wynikiem merge
+        """
+        response = {
+            "merged": merged,
+            "source_branch": branch_name,
+            "target_branch": current_branch,
+        }
+        
+        if skipped:
+            response["message"] = "Automated merge skipped (GitSkill.merge unavailable)"
+            response["skipped"] = True
+        elif merged:
+            response["message"] = result_text
+        elif conflicts:
+            response["reason"] = reason
+            response["conflicts"] = conflicts
+            response["action_required"] = action_required
+        elif reason:
+            response["reason"] = reason
+            if action_required:
+                response["action_required"] = action_required
+            if result_text:
+                response["message"] = result_text
+        
+        return response
+    
     async def _merge_changes(self, branch_name: str) -> dict:
         """
         Merguje zmiany z brancha eksperymentalnego do głównego brancha.
@@ -343,47 +485,39 @@ class EvolutionCoordinator:
 
         # Kompatybilność dla środowisk/testów, gdzie przekazano uproszczony stub
         # zamiast pełnego GitSkill (brak metody merge).
-        merge_fn = getattr(self.git_skill, "merge", None)
+        merge_fn, repo, current_branch = self._resolve_merge_dependencies()
+        
         if not callable(merge_fn):
             logger.warning(
                 "GitSkill without merge() provided; skipping automated merge for %s",
                 branch_name,
             )
-            return {
-                "merged": True,
-                "source_branch": branch_name,
-                "target_branch": "unknown",
-                "message": "Automated merge skipped (GitSkill.merge unavailable)",
-                "skipped": True,
-            }
+            return self._build_merge_response(
+                merged=True, 
+                branch_name=branch_name, 
+                current_branch=current_branch,
+                skipped=True
+            )
 
-        repo = None
         try:
-            # Pobierz aktualny branch (main/master), jeśli skill udostępnia repo.
-            get_repo_fn = getattr(self.git_skill, "_get_repo", None)
-            if callable(get_repo_fn):
-                repo = get_repo_fn()
-                current_branch = repo.active_branch.name
-            else:
-                current_branch = "unknown"
-
             logger.info(f"Aktualny branch: {current_branch}")
 
             # Wykonaj merge używając GitSkill
             merge_result = await merge_fn(branch_name)
 
             # Sprawdź wynik merge
-            merge_result_text = str(merge_result)
+            merge_result_text = self._normalize_merge_result(merge_result)
+            
             if "✅" in merge_result_text:
                 logger.info(
                     f"✅ Pomyślnie zmergowano {branch_name} do {current_branch}"
                 )
-                return {
-                    "merged": True,
-                    "source_branch": branch_name,
-                    "target_branch": current_branch,
-                    "message": merge_result_text,
-                }
+                return self._build_merge_response(
+                    merged=True,
+                    branch_name=branch_name,
+                    current_branch=current_branch,
+                    result_text=merge_result_text
+                )
             elif "CONFLICT" in merge_result_text or "⚠️" in merge_result_text:
                 logger.warning(f"Konflikty podczas merge: {merge_result_text}")
                 # Rollback - przerwij merge
@@ -394,20 +528,24 @@ class EvolutionCoordinator:
                 except Exception as abort_error:
                     logger.error(f"Błąd podczas przerywania merge: {abort_error}")
 
-                return {
-                    "merged": False,
-                    "reason": "Konflikty merge",
-                    "conflicts": merge_result_text,
-                    "action_required": f"Rozwiąż konflikty ręcznie dla brancha '{branch_name}'",
-                }
+                return self._build_merge_response(
+                    merged=False,
+                    branch_name=branch_name,
+                    current_branch=current_branch,
+                    reason="Konflikty merge",
+                    conflicts=merge_result_text,
+                    action_required=f"Rozwiąż konflikty ręcznie dla brancha '{branch_name}'"
+                )
             else:
                 # Nieoczekiwany wynik
                 logger.warning(f"Nieoczekiwany wynik merge: {merge_result_text}")
-                return {
-                    "merged": False,
-                    "reason": "Nieoczekiwany wynik merge",
-                    "message": merge_result_text,
-                }
+                return self._build_merge_response(
+                    merged=False,
+                    branch_name=branch_name,
+                    current_branch=current_branch,
+                    reason="Nieoczekiwany wynik merge",
+                    result_text=merge_result_text
+                )
 
         except Exception as e:
             error_msg = f"Błąd podczas merge: {str(e)}"
@@ -421,11 +559,13 @@ class EvolutionCoordinator:
             except Exception as rollback_error:
                 logger.error(f"Błąd podczas rollback: {rollback_error}")
 
-            return {
-                "merged": False,
-                "reason": error_msg,
-                "action_required": "Sprawdź logi i spróbuj zmergować manualnie",
-            }
+            return self._build_merge_response(
+                merged=False,
+                branch_name=branch_name,
+                current_branch=current_branch,
+                reason=error_msg,
+                action_required="Sprawdź logi i spróbuj zmergować manualnie"
+            )
 
     async def trigger_restart(self, confirm: bool = False) -> str:
         """

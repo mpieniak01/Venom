@@ -61,6 +61,31 @@ export function AdaptersPanel() {
 
   const hasActiveAdapter = adapters.some(a => a.is_active);
 
+  const getButtonContent = (adapterId: string, isActive: boolean) => {
+    if (activating === adapterId) {
+      return (
+        <>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Aktywacja...
+        </>
+      );
+    }
+    if (isActive) {
+      return (
+        <>
+          <CheckCircle2 className="h-4 w-4" />
+          Aktywny
+        </>
+      );
+    }
+    return (
+      <>
+        <Zap className="h-4 w-4" />
+        Aktywuj
+      </>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -179,22 +204,7 @@ export function AdaptersPanel() {
                   size="sm"
                   className="ml-4 gap-2"
                 >
-                  {activating === adapter.adapter_id ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Aktywacja...
-                    </>
-                  ) : adapter.is_active ? (
-                    <>
-                      <CheckCircle2 className="h-4 w-4" />
-                      Aktywny
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="h-4 w-4" />
-                      Aktywuj
-                    </>
-                  )}
+                  {getButtonContent(adapter.adapter_id, adapter.is_active)}
                 </Button>
               </div>
             </div>

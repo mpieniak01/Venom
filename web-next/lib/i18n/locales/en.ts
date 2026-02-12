@@ -572,6 +572,8 @@ export const en = {
       lessonsUsed: "Lessons used",
       memoryUsed: "Long-term memory used",
       detailsLink: "Details ↗",
+      policyBlocked: "Blocked by security policy",
+      policyBlockedDefault: "This request was blocked by the system security policy.",
     },
     chatMessages: {
       taskSent: "Task sent: {{id}}",

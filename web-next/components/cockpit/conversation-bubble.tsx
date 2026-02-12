@@ -27,6 +27,9 @@ type ConversationBubbleProps = Readonly<{
     lessons?: string[];
     memory_entries?: string[];
   } | null;
+  policyBlocked?: boolean;
+  reasonCode?: string | null;
+  userMessage?: string | null;
 }>;
 
 function resolveStatusLabel(
@@ -210,7 +213,22 @@ export function ConversationBubble({
         )}
         {messageBody}
       </div>
-      {(footerActions || footerExtra || forcedLabel || (!isUser && (pending || status || requestId))) && (
+      {policyBlocked && (
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+          <div className="flex items-start gap-2">
+            <span className="text-lg">🚫</span>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-200">
+                {t("cockpit.chatLabels.policyBlocked")}
+              </p>
+              <p className="mt-1 text-xs text-red-300/80">
+                {userMessage || t("cockpit.chatLabels.policyBlockedDefault")}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {(footerActions || footerExtra || forcedLabel || policyBlocked || (!isUser && (pending || status || requestId))) && (
         <div
           className="mt-4 border-t border-white/10 pt-3"
         >
@@ -224,7 +242,11 @@ export function ConversationBubble({
               <span className="text-amber-300">{t("cockpit.chatStatus.inProgress")}</span>
             )}
             {!isUser && status && (
-              <Badge tone={statusTone(status)}>{statusLabel ?? status}</Badge>
+              <Badge tone={policyBlocked ? "danger" : statusTone(status)}>
+                {policyBlocked
+                  ? (reasonCode ? `Blocked: ${reasonCode.replace('POLICY_', '').replace(/_/g, ' ')}` : "Blocked by policy")
+                  : (statusLabel ?? status)}
+              </Badge>
             )}
             {!isUser && status && modeLabelText && (
               <Badge tone="neutral">{modeLabelText}</Badge>

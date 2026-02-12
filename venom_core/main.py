@@ -138,6 +138,9 @@ professor = None
 dataset_curator = None
 gpu_habitat = None
 
+# Inicjalizacja TokenEconomist (Token Usage & Cost Tracking)
+token_economist = None
+
 
 def _extract_available_local_models(
     models: list[dict[str, object]], server_name: str
@@ -491,6 +494,26 @@ def _initialize_academy() -> None:
         professor = None
         dataset_curator = None
         gpu_habitat = None
+
+
+def _initialize_token_economist() -> None:
+    """Inicjalizacja TokenEconomist dla śledzenia użycia tokenów i kosztów."""
+    global token_economist
+    
+    try:
+        logger.info("Inicjalizacja TokenEconomist...")
+        from venom_core.core.token_economist import TokenEconomist
+        
+        # Inicjalizacja z domyślnymi ustawieniami
+        token_economist = TokenEconomist(
+            enable_compression=True,
+            pricing_file=None  # Używamy wbudowanego cennika
+        )
+        logger.info("✅ TokenEconomist zainicjalizowany")
+        
+    except Exception as exc:
+        logger.error(f"❌ Błąd podczas inicjalizacji TokenEconomist: {exc}", exc_info=True)
+        token_economist = None
 
 
 async def _initialize_node_manager() -> None:
@@ -932,6 +955,7 @@ async def lifespan(app: FastAPI):
     workspace_path = _ensure_storage_dirs()
     _initialize_memory_stores()
     _initialize_academy()  # Inicjalizacja THE_ACADEMY
+    _initialize_token_economist()  # Inicjalizacja TokenEconomist
     await _initialize_gardener_and_git(workspace_path)
     await _initialize_background_scheduler()
     await _initialize_documenter_and_watcher(workspace_path)
@@ -1005,12 +1029,8 @@ def setup_router_dependencies():
     tasks_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     feedback_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     queue_routes.set_dependencies(orchestrator)
-    # TokenEconomist nie jest jeszcze zainicjalizowany — przekazujemy None.
-    # UWAGA: Endpointy metrics mogą zwracać szacunkowe dane, dopóki
-    # TokenEconomist nie zostanie dodany.
-    # TODO: Zainicjalizować TokenEconomist i przekazać tutaj, gdy będzie
-    # dostępny (np. po dodaniu obsługi w lifespan).
-    metrics_routes.set_dependencies(token_economist=None)
+    # TokenEconomist zainicjalizowany w _initialize_token_economist()
+    metrics_routes.set_dependencies(token_economist=token_economist)
     llm_simple_routes.set_dependencies(request_tracer)
     git_routes.set_dependencies(git_skill)
     agents_routes.set_dependencies(

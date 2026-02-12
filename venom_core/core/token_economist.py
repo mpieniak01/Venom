@@ -52,6 +52,10 @@ class TokenEconomist:
         self.enable_compression = enable_compression
         self.pricing_file = pricing_file
         self.external_pricing: Optional[Dict[str, Any]] = None
+        
+        # Per-model usage tracking
+        self.model_usage: Dict[str, Dict[str, int]] = {}
+        self.total_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
 
         # Wczytaj cennik z pliku YAML jeśli podano
         if pricing_file:
@@ -505,3 +509,62 @@ class TokenEconomist:
             "input": pricing_1m["input"] / 1000,
             "output": pricing_1m["output"] / 1000,
         }
+
+    def record_usage(
+        self, model_name: str, input_tokens: int, output_tokens: int
+    ) -> None:
+        """
+        Rejestruje użycie tokenów dla danego modelu.
+
+        Args:
+            model_name: Nazwa modelu
+            input_tokens: Liczba tokenów wejściowych
+            output_tokens: Liczba tokenów wyjściowych
+        """
+        if model_name not in self.model_usage:
+            self.model_usage[model_name] = {"input_tokens": 0, "output_tokens": 0}
+        
+        self.model_usage[model_name]["input_tokens"] += input_tokens
+        self.model_usage[model_name]["output_tokens"] += output_tokens
+        
+        self.total_usage["input_tokens"] += input_tokens
+        self.total_usage["output_tokens"] += output_tokens
+        
+        logger.debug(
+            f"Zarejestrowano użycie: {model_name} +{input_tokens} in, +{output_tokens} out"
+        )
+
+    def get_model_breakdown(self) -> Dict[str, Any]:
+        """
+        Zwraca podział użycia i kosztów według modeli.
+
+        Returns:
+            Dict z podziałem per-model zawierający:
+            - models_breakdown: Dict[model_name, Dict] z tokenami i kosztem
+            - total_tokens: Całkowita liczba tokenów
+            - total_cost_usd: Całkowity koszt w USD
+        """
+        models_breakdown = {}
+        total_cost = 0.0
+        
+        for model_name, usage in self.model_usage.items():
+            cost_data = self.calculate_cost(usage, model_name)
+            models_breakdown[model_name] = {
+                "input_tokens": usage["input_tokens"],
+                "output_tokens": usage["output_tokens"],
+                "total_tokens": usage["input_tokens"] + usage["output_tokens"],
+                "cost_usd": cost_data["total_cost_usd"],
+            }
+            total_cost += cost_data["total_cost_usd"]
+        
+        return {
+            "models_breakdown": models_breakdown,
+            "total_tokens": self.total_usage["input_tokens"] + self.total_usage["output_tokens"],
+            "total_cost_usd": round(total_cost, 6),
+        }
+
+    def reset_usage(self) -> None:
+        """Resetuje liczniki użycia (np. na początku nowej sesji)."""
+        self.model_usage.clear()
+        self.total_usage = {"input_tokens": 0, "output_tokens": 0}
+        logger.info("Zresetowano liczniki użycia tokenów")

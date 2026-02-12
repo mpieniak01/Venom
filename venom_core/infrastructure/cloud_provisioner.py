@@ -232,7 +232,7 @@ class CloudProvisioner:
         results = {}
         for cmd in commands:
             try:
-                stdout, stderr, exit_code = await self._execute_ssh_command(
+                _, stderr, exit_code = await self._execute_ssh_command(
                     host, cmd, user, password
                 )
                 if exit_code != 0:

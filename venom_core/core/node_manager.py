@@ -377,7 +377,7 @@ class NodeManager:
                 )
 
                 async with self._lock:
-                    for node_id, node in list(self.nodes.items()):
+                    for node_id, node in self.nodes.items():
                         if node.last_heartbeat < timeout_threshold and node.is_online:
                             logger.warning(
                                 f"Węzeł {node.node_name} ({node_id}) nie odpowiada - oznaczam jako offline"

@@ -492,7 +492,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
 
     config = config_manager.get_config(mask_secrets=False)
     models = await model_manager.list_local_models()
-    selected_model, last_model_key, prev_model_key = _select_model_for_server(
+    selected_model, last_model_key, _ = _select_model_for_server(
         server_name=server_name,
         config=config,
         models=models,

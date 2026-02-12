@@ -211,11 +211,11 @@ Odpowiedź (JSON):"""
 
     def _extract_json_block(self, result_text: str) -> str:
         if "```json" in result_text:
-            json_match = re.search(r"```json\s*(\{.*?\})\s*```", result_text, re.DOTALL)
+            json_match = re.search(r"```json\s*(\{[^\}]*\})\s*```", result_text, re.DOTALL)
             if json_match:
                 return json_match.group(1)
         elif "```" in result_text:
-            json_match = re.search(r"```\s*(\{.*?\})\s*```", result_text, re.DOTALL)
+            json_match = re.search(r"```\s*(\{[^\}]*\})\s*```", result_text, re.DOTALL)
             if json_match:
                 return json_match.group(1)
         return result_text

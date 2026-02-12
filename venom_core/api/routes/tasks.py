@@ -400,7 +400,6 @@ def _bootstrap_orchestrator_if_testing():
     Używaj dependency injection przez set_dependencies() zamiast tego.
     """
     # Funkcja celowo pusta - inicjalizacja powinna odbywać się przez set_dependencies
-    return
 
 
 @router.post(

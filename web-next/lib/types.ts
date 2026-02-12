@@ -152,7 +152,7 @@ export interface FlowTrace {
 export interface ServiceStatus {
   name: string;
   type?: string;
-  status: "healthy" | "degraded" | "down" | string;
+  status: "healthy" | "degraded" | "down";
   detail?: string;
   latency_ms?: number;
   last_check?: string;

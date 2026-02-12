@@ -55,7 +55,7 @@ function resolvePath(locale: Record<string, unknown>, path: string): string | nu
 function applyReplacements(value: string, replacements?: Record<string, string | number>) {
   if (!replacements) return value;
   return Object.entries(replacements).reduce((acc, [key, replacement]) => {
-    const pattern = new RegExp(`{{\\s*${key}\\s*}}`, "g");
+    const pattern = new RegExp(String.raw`{{\s*${key}\s*}}`, "g");
     return acc.replace(pattern, String(replacement));
   }, value);
 }

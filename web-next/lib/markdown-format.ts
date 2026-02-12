@@ -1,9 +1,9 @@
 const CODE_FENCE_REGEX = /```[\s\S]*?```/g;
 const MATH_BLOCK_REGEX = /\$\$([\s\S]+?)\$\$/g;
-const MATH_DISPLAY_REGEX = /\\\[((?:.|\n)+?)\\\]/g;
-const MATH_INLINE_REGEX = /\\\(((?:.|\n)+?)\\\)/g;
-const MATH_HINT_REGEX = /(?:=|\^|\\frac|\\sqrt|sqrt\(|≤|≥|<|>)/;
-const MATH_ALLOWED_REGEX = /^[-0-9a-zA-Z\s+*/=^_().,:√π∑∫<>≤≥\\]+$/;
+const MATH_DISPLAY_REGEX = new RegExp(String.raw`\\\[((?:.|\n)+?)\\\]`, "g");
+const MATH_INLINE_REGEX = new RegExp(String.raw`\\\(((?:.|\n)+?)\\\)`, "g");
+const MATH_HINT_REGEX = new RegExp(String.raw`(?:=|\^|\\frac|\\sqrt|sqrt\(|≤|≥|<|>)`);
+const MATH_ALLOWED_REGEX = new RegExp(String.raw`^[-0-9a-zA-Z\s+*/=^_().,:√π∑∫<>≤≥\\]+$`);
 
 export function formatComputationContent(content: string) {
   let replaced = false;

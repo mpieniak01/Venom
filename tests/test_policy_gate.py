@@ -3,8 +3,6 @@
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.policy_gate import (
     PolicyDecision,

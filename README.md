@@ -24,8 +24,10 @@
 - 🧠 **Hidden Prompts** — Approved responses stored as contextual shortcuts.
 - 💬 **Chat Continuity** — Session history per `session_id` across restarts.
 - 🛠️ **Services Panel** — `/config` shows runtime status of local stack.
+- 🔒 **Policy Gate** — Global security and ethics gate for request validation.
 
 ### Recent Updates (2026-02)
+- 🔒 **Policy Gate** — Added global security and ethics gate with feature flag for staged rollout (`ENABLE_POLICY_GATE`).
 - ⚙️ **Config Panel: effective values visibility** — parameters now clearly show whether value comes from `.env` or backend defaults (`env` vs `default`).
 - 🎓 **Academy hardening** — API routes were cleaned up for maintainability/security (exception handling, reduced complexity, safer logs).
 - 🧭 **Runtime monitoring extended** — Config/runtime screens now include Academy and Intent Embedding Router service signals.

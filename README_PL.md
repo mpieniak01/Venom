@@ -24,8 +24,10 @@
 - 🧠 **Ukryte prompty** — zatwierdzone odpowiedzi jako skróty kontekstu.
 - 💬 **Ciągłość czatu** — historia sesji per `session_id` po restartach.
 - 🛠️ **Panel usług** — `/config` pokazuje status lokalnego stosu.
+- 🔒 **Policy Gate** — globalny gate bezpieczeństwa i etyki do walidacji żądań.
 
 ### Ostatnie wdrożenia (2026-02)
+- 🔒 **Policy Gate** — dodano globalny gate bezpieczeństwa i etyki z flagą funkcji dla stopniowego wdrożenia (`ENABLE_POLICY_GATE`).
 - ⚙️ **Panel config: widoczność wartości efektywnych** — parametry pokazują źródło wartości: wpis z `.env` albo domyślna konfiguracja backendu (`env` vs `default`).
 - 🎓 **Wzmocnienie Academy** — trasy API uporządkowano pod utrzymanie i bezpieczeństwo (obsługa wyjątków, redukcja złożoności, bezpieczniejsze logowanie).
 - 🧭 **Rozszerzony monitoring runtime** — ekrany config/runtime obejmują sygnały dla Academy i Intent Embedding Router.

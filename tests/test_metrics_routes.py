@@ -45,6 +45,14 @@ def test_get_token_metrics_with_economist(monkeypatch, client):
             return {"tokens_used_session": 100}
 
     class DummyEconomist:
+        def get_model_breakdown(self):
+            # Return empty breakdown to trigger fallback to estimation
+            return {
+                "models_breakdown": {},
+                "total_tokens": 0,
+                "total_cost_usd": 0.0,
+            }
+        
         def calculate_cost(self, usage, model_name):
             return {"total_cost_usd": 1.23}
 

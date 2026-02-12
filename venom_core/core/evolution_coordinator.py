@@ -1,5 +1,6 @@
 """Moduł: evolution_coordinator - koordynacja procedury ewolucji Venom."""
 
+import asyncio
 from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
@@ -315,8 +316,6 @@ class EvolutionCoordinator:
             )
             
             # Uruchom testy z timeoutem
-            import asyncio
-            
             test_timeout = 120  # 2 minuty na testy smoke
             
             try:

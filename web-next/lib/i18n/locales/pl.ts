@@ -579,6 +579,8 @@ export const pl = {
       lessonsUsed: "Użyto lekcji",
       memoryUsed: "Użyto pamięci długoterminowej",
       detailsLink: "Szczegóły ↗",
+      policyBlocked: "Zablokowane przez politykę bezpieczeństwa",
+      policyBlockedDefault: "To żądanie zostało zablokowane przez politykę bezpieczeństwa systemu.",
     },
     chatMessages: {
       taskSent: "Wysłano zadanie: {{id}}",

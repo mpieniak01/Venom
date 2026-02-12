@@ -12,6 +12,11 @@ from venom_core.agents.base import reset_llm_stream_callback, set_llm_stream_cal
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
 from venom_core.core.models import TaskRequest, TaskStatus
+from venom_core.core.policy_gate import (
+    PolicyDecision,
+    PolicyEvaluationContext,
+    policy_gate,
+)
 from venom_core.core.tracer import TraceStatus
 from venom_core.utils.logger import get_logger
 
@@ -123,6 +128,74 @@ async def run_task(
             content=request.content,
             session_id=request.session_id,
         )
+
+        # Policy Gate: Check before tool execution
+        # NOTE: planned_tools list will be empty for non-forced tool paths, as tool
+        # selection happens dynamically in _execute_with_stream_callback. This is a
+        # known limitation of the MVP implementation where the gate validates intent
+        # and forced parameters but not the dynamically selected tool.
+        if policy_gate.enabled and tool_required:
+            policy_context = PolicyEvaluationContext(
+                content=request.content,
+                intent=intent,
+                planned_tools=[request.forced_tool] if request.forced_tool else [],
+                session_id=request.session_id,
+                forced_tool=request.forced_tool,
+                forced_provider=request.forced_provider,
+            )
+            policy_result = policy_gate.evaluate_before_tool_execution(policy_context)
+
+            if policy_result.decision == PolicyDecision.BLOCK:
+                logger.warning(
+                    f"Policy gate blocked tool execution for task {task_id}: {policy_result.reason_code}"
+                )
+                orch.state_manager.add_log(
+                    task_id,
+                    f"🚫 Policy gate blocked tool execution: {policy_result.message}",
+                )
+
+                # Store policy block details in task context for UI retrieval
+                orch.state_manager.update_context(
+                    task_id,
+                    {
+                        "policy_blocked": True,
+                        "reason_code": policy_result.reason_code.value if policy_result.reason_code else None,
+                        "user_message": policy_result.message,
+                    }
+                )
+
+                await orch.state_manager.update_status(
+                    task_id,
+                    TaskStatus.FAILED,
+                    result=policy_result.message,
+                )
+
+                # Add assistant session history entry with policy block details
+                orch._append_session_history(
+                    task_id,
+                    role="assistant",
+                    content=policy_result.message,
+                    session_id=request.session_id,
+                    policy_blocked=True,
+                    reason_code=policy_result.reason_code.value if policy_result.reason_code else None,
+                    user_message=policy_result.message,
+                )
+
+                # Increment policy blocked metric
+                if metrics_module.metrics_collector:
+                    metrics_module.metrics_collector.increment_policy_blocked()
+
+                if orch.request_tracer:
+                    orch.request_tracer.update_status(task_id, "failed")
+                    orch.request_tracer.add_step(
+                        task_id,
+                        "PolicyGate",
+                        "block_before_tool_execution",
+                        status="blocked",
+                        details=f"Reason: {policy_result.reason_code}",
+                    )
+
+                return
 
         result = await _execute_with_stream_callback(
             orch, task_id, intent, context, request

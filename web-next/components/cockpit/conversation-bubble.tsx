@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { MarkdownPreview } from "@/components/ui/markdown";
 import { isComputationContent } from "@/lib/markdown-format";
+import { getPolicyBlockBadgeLabel } from "@/lib/policy-utils";
 import { statusTone } from "@/lib/status";
 import { TYPING_EFFECT } from "@/lib/ui-config";
 import { useTranslation } from "@/lib/i18n";
@@ -27,6 +28,9 @@ type ConversationBubbleProps = Readonly<{
     lessons?: string[];
     memory_entries?: string[];
   } | null;
+  policyBlocked?: boolean;
+  reasonCode?: string | null;
+  userMessage?: string | null;
 }>;
 
 function resolveStatusLabel(
@@ -129,6 +133,9 @@ export function ConversationBubble({
   modeLabel,
   sourceLabel,
   contextUsed,
+  policyBlocked,
+  reasonCode,
+  userMessage,
 }: ConversationBubbleProps) {
   const t = useTranslation();
   const isUser = role === "user";
@@ -210,7 +217,22 @@ export function ConversationBubble({
         )}
         {messageBody}
       </div>
-      {(footerActions || footerExtra || forcedLabel || (!isUser && (pending || status || requestId))) && (
+      {policyBlocked && (
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+          <div className="flex items-start gap-2">
+            <span className="text-lg">🚫</span>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-200">
+                {t("cockpit.chatLabels.policyBlocked")}
+              </p>
+              <p className="mt-1 text-xs text-red-300/80">
+                {userMessage || t("cockpit.chatLabels.policyBlockedDefault")}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {(footerActions || footerExtra || forcedLabel || policyBlocked || (!isUser && (pending || status || requestId))) && (
         <div
           className="mt-4 border-t border-white/10 pt-3"
         >
@@ -224,7 +246,11 @@ export function ConversationBubble({
               <span className="text-amber-300">{t("cockpit.chatStatus.inProgress")}</span>
             )}
             {!isUser && status && (
-              <Badge tone={statusTone(status)}>{statusLabel ?? status}</Badge>
+              <Badge tone={policyBlocked ? "danger" : statusTone(status)}>
+                {policyBlocked
+                  ? getPolicyBlockBadgeLabel(reasonCode)
+                  : (statusLabel ?? status)}
+              </Badge>
             )}
             {!isUser && status && modeLabelText && (
               <Badge tone="neutral">{modeLabelText}</Badge>

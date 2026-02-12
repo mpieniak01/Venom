@@ -86,3 +86,61 @@ class TestMetricsCollector:
 
         # Assert
         assert collector.metrics["tasks_created"] == 500
+
+    def test_increment_policy_blocked(self):
+        """Test inkrementacji licznika zablokowanych żądań przez policy gate."""
+        # Arrange
+        collector = MetricsCollector()
+
+        # Act
+        collector.increment_policy_blocked()
+        collector.increment_policy_blocked()
+
+        # Assert
+        assert collector.metrics["policy_blocked_count"] == 2
+
+    def test_policy_blocked_in_metrics_output(self):
+        """Test czy policy metrics są w wyniku get_metrics()."""
+        # Arrange
+        collector = MetricsCollector()
+        collector.increment_task_created()
+        collector.increment_task_created()
+        collector.increment_policy_blocked()
+
+        # Act
+        metrics = collector.get_metrics()
+
+        # Assert
+        assert "policy" in metrics
+        assert metrics["policy"]["blocked_count"] == 1
+        assert metrics["policy"]["block_rate"] == 50.0  # 1 blocked / 2 created * 100
+
+    def test_policy_block_rate_calculation(self):
+        """Test obliczania policy block rate."""
+        # Arrange
+        collector = MetricsCollector()
+
+        # 10 tasks created, 3 blocked
+        for _ in range(10):
+            collector.increment_task_created()
+        for _ in range(3):
+            collector.increment_policy_blocked()
+
+        # Act
+        metrics = collector.get_metrics()
+
+        # Assert
+        assert metrics["policy"]["blocked_count"] == 3
+        assert metrics["policy"]["block_rate"] == 30.0  # 3/10 * 100
+
+    def test_policy_block_rate_zero_when_no_tasks(self):
+        """Test że block rate jest 0 gdy brak tasków."""
+        # Arrange
+        collector = MetricsCollector()
+
+        # Act
+        metrics = collector.get_metrics()
+
+        # Assert
+        assert metrics["policy"]["block_rate"] == 0.0
+

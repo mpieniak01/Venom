@@ -4,7 +4,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from venom_core.infrastructure.mirror_world import MirrorWorld, InstanceInfo
-from pathlib import Path
 
 
 @pytest.fixture

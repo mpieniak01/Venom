@@ -1,8 +1,7 @@
 """Testy dla Evolution Coordinator - Phase 132D (test execution & merge automation)."""
 
 import pytest
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 from venom_core.core.evolution_coordinator import EvolutionCoordinator

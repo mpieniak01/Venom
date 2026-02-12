@@ -83,7 +83,7 @@ google-api-python-client>=2.100.0  # Google Calendar API client
 # --- VENOM ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---
 
 openai<2,>=1.98.0           # SDK OpenAI (wersja 2.x; wymagane przez litellm>=1.81)
-google-generativeai     # Gemini API
+google-genai            # Gemini API (Google GenAI SDK)
 anthropic               # Claude API
 azure-core>=1.38.0      # Azure SDK core – aktualizacja pod CVE dot. deserializacji
 tiktoken                # Tokenizer (wymagany przez AutoGen/SK przy modelach GPT)

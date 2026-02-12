@@ -15,13 +15,22 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+def _is_google_gemini_sdk_available() -> bool:
+    """Sprawdza dostępność SDK Gemini (nowy i legacy)."""
+    return (
+        importlib.util.find_spec("google.genai") is not None
+        or importlib.util.find_spec("google.generativeai") is not None
+    )
+
+
 # Import dla Google Gemini (bezpośredni import tylko, jeśli biblioteka istnieje)
-if importlib.util.find_spec("google.generativeai"):
+if _is_google_gemini_sdk_available():
     GOOGLE_AVAILABLE = True
 else:
     GOOGLE_AVAILABLE = False
     logger.warning(
-        "google-generativeai nie jest zainstalowany - obsługa Gemini niedostępna"
+        "Brak SDK Gemini (google-genai / google-generativeai) - obsługa Gemini niedostępna"
     )
 
 
@@ -217,7 +226,8 @@ class KernelBuilder:
     ) -> None:
         if not GOOGLE_AVAILABLE:
             raise ValueError(
-                "google-generativeai nie jest zainstalowany. Zainstaluj: pip install google-generativeai"
+                "SDK Gemini nie jest zainstalowany. Zainstaluj: pip install google-genai "
+                "(lub legacy: pip install google-generativeai)"
             )
         if not self.settings.GOOGLE_API_KEY:
             raise ValueError(
@@ -231,7 +241,7 @@ class KernelBuilder:
             "Wymagana jest implementacja dedykowanego connectora/wrappera. "
             "Infrastruktura (enable_grounding, routing, formatowanie) jest GOTOWA. "
             "Na razie użyj 'local' lub 'openai'. "
-            "Gemini może być używany poprzez bezpośrednie wywołania google.generativeai API."
+            "Gemini może być używany poprzez bezpośrednie wywołania SDK Google GenAI."
         )
 
     def _register_azure_service(

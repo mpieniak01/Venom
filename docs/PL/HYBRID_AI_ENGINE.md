@@ -260,9 +260,11 @@ OPENAI_API_KEY=server_key
 
 ## Troubleshooting
 
-### "No module named google.generativeai"
+### "No module named google.genai" / "No module named google.generativeai"
 ```bash
-pip install google-generativeai
+pip install google-genai
+# legacy fallback:
+# pip install google-generativeai
 ```
 
 ### "GOOGLE_API_KEY jest wymagany"

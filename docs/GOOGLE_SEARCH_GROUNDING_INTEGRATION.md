@@ -79,16 +79,12 @@ kernel = builder._register_service(
 
 Google Search config (if the library is available):
 ```python
-import google.generativeai as genai
+from google import genai
 
-genai.configure(api_key=GOOGLE_API_KEY)
+client = genai.Client(api_key=GOOGLE_API_KEY)
 
 # Enable grounding
 tools = [{"google_search": {}}]
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-pro",
-    tools=tools
-)
 ```
 
 ### 5. Backend: ResearcherAgent
@@ -292,10 +288,12 @@ state_manager.set_paid_mode(True)
 **Check:**
 1. Is `GOOGLE_API_KEY` set?
 2. Is the model `gemini-1.5-pro`?
-3. Is `google-generativeai` installed?
+3. Is `google-genai` installed?
 
 ```bash
-pip install google-generativeai
+pip install google-genai
+# legacy fallback:
+# pip install google-generativeai
 ```
 
 ### Problem: No citations in response

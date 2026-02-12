@@ -17,21 +17,21 @@ type QueueSnapshot = {
 };
 
 type CockpitKpiSectionProps = {
-  metrics: Metrics | null;
-  metricsLoading: boolean;
-  successRate: number | null;
-  tasksCreated: number;
-  queue: QueueSnapshot | null;
-  feedbackScore: number | null;
-  feedbackUp: number;
-  feedbackDown: number;
-  tokenMetricsLoading: boolean;
-  tokenSplits: { label: string; value: number }[];
-  tokenHistory: TokenSample[];
-  tokenTrendDelta: number | null;
-  tokenTrendLabel: string;
-  totalTokens: number;
-  showReferenceSections: boolean;
+  readonly metrics: Metrics | null;
+  readonly metricsLoading: boolean;
+  readonly successRate: number | null;
+  readonly tasksCreated: number;
+  readonly queue: QueueSnapshot | null;
+  readonly feedbackScore: number | null;
+  readonly feedbackUp: number;
+  readonly feedbackDown: number;
+  readonly tokenMetricsLoading: boolean;
+  readonly tokenSplits: { label: string; value: number }[];
+  readonly tokenHistory: TokenSample[];
+  readonly tokenTrendDelta: number | null;
+  readonly tokenTrendLabel: string;
+  readonly totalTokens: number;
+  readonly showReferenceSections: boolean;
 };
 
 const formatSystemClock = (date: Date) =>
@@ -42,11 +42,11 @@ const formatSystemClock = (date: Date) =>
   });
 
 type SystemTimeStatProps = {
-  label: string;
-  hint: string;
+  readonly label: string;
+  readonly hint: string;
 };
 
-const SystemTimeStat = memo(function SystemTimeStat({ label, hint }: SystemTimeStatProps) {
+const SystemTimeStat = memo(function SystemTimeStat({ label, hint }: Readonly<SystemTimeStatProps>) {
   const [systemTime, setSystemTime] = useState(() => formatSystemClock(new Date()));
   useEffect(() => {
     const timer = globalThis.window.setInterval(() => {
@@ -108,7 +108,7 @@ export function CockpitKpiSection({
   tokenTrendLabel,
   totalTokens,
   showReferenceSections,
-}: CockpitKpiSectionProps) {
+}: Readonly<CockpitKpiSectionProps>) {
   const t = useTranslation();
   const tasksSummaryLabel = getTasksSummaryLabel(tasksCreated, t);
   const uptimeLabel = getUptimeLabel(metrics);

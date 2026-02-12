@@ -9,10 +9,10 @@ interface RecentOperation {
 }
 
 interface RecentOperationsProps {
-    operations: RecentOperation[];
+    readonly operations: RecentOperation[];
 }
 
-export function RecentOperations({ operations }: RecentOperationsProps) {
+export function RecentOperations({ operations }: Readonly<RecentOperationsProps>) {
     const t = useTranslation();
     return (
         <div className="card-shell card-base p-4 text-sm">

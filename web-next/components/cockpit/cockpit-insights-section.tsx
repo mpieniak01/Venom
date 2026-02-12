@@ -50,50 +50,50 @@ type StatusEntry = {
 };
 
 type CockpitInsightsSectionProps = {
-  chatFullscreen: boolean;
-  showArtifacts: boolean;
-  showReferenceSections: boolean;
-  showSharedSections: boolean;
-  usageMetrics?: { memory_usage_percent?: number | null } | null;
-  cpuUsageValue: string;
-  gpuUsageValue: string;
-  ramValue: string;
-  vramValue: string;
-  diskValue: string;
-  diskPercent?: string | null;
-  sessionCostValue: string;
-  graphNodes: number;
-  graphEdges: number;
-  agentDeck: AgentDeckEntry[];
-  queue: QueueStatus | null;
-  queueLoading: boolean;
-  queueAction: string | null;
-  queueActionMessage: string | null;
-  onToggleQueue: () => void;
-  onExecuteQueueMutation: (action: "purge" | "emergency") => void;
-  history: HistoryRequest[];
-  historyStatusEntries: StatusEntry[];
-  selectedRequestId?: string | null;
-  onSelectHistory: (entry: HistoryRequest) => void;
-  loadingHistory: boolean;
-  historyError?: string | null;
-  learningLogs?: LearningLogsResponse | null;
-  learningLoading: boolean;
-  learningError?: string | null;
-  feedbackLogs?: FeedbackLogsResponse | null;
-  feedbackLoading: boolean;
-  feedbackError?: string | null;
-  hiddenPromptsPanel: ReactNode;
-  services: ServiceStatus[] | null | undefined;
-  entries: TelemetryEvent[];
-  newMacro: { label: string; description: string; content: string };
-  setNewMacro: (value: { label: string; description: string; content: string }) => void;
-  customMacros: MacroAction[];
-  setCustomMacros: (next: MacroAction[]) => void;
-  allMacros: MacroAction[];
-  macroSending: string | null;
-  onRunMacro: (macro: MacroAction) => void;
-  onOpenQuickActions: () => void;
+  readonly chatFullscreen: boolean;
+  readonly showArtifacts: boolean;
+  readonly showReferenceSections: boolean;
+  readonly showSharedSections: boolean;
+  readonly usageMetrics?: { memory_usage_percent?: number | null } | null;
+  readonly cpuUsageValue: string;
+  readonly gpuUsageValue: string;
+  readonly ramValue: string;
+  readonly vramValue: string;
+  readonly diskValue: string;
+  readonly diskPercent?: string | null;
+  readonly sessionCostValue: string;
+  readonly graphNodes: number;
+  readonly graphEdges: number;
+  readonly agentDeck: AgentDeckEntry[];
+  readonly queue: QueueStatus | null;
+  readonly queueLoading: boolean;
+  readonly queueAction: string | null;
+  readonly queueActionMessage: string | null;
+  readonly onToggleQueue: () => void;
+  readonly onExecuteQueueMutation: (action: "purge" | "emergency") => void;
+  readonly history: HistoryRequest[];
+  readonly historyStatusEntries: StatusEntry[];
+  readonly selectedRequestId?: string | null;
+  readonly onSelectHistory: (entry: HistoryRequest) => void;
+  readonly loadingHistory: boolean;
+  readonly historyError?: string | null;
+  readonly learningLogs?: LearningLogsResponse | null;
+  readonly learningLoading: boolean;
+  readonly learningError?: string | null;
+  readonly feedbackLogs?: FeedbackLogsResponse | null;
+  readonly feedbackLoading: boolean;
+  readonly feedbackError?: string | null;
+  readonly hiddenPromptsPanel: ReactNode;
+  readonly services: ServiceStatus[] | null | undefined;
+  readonly entries: TelemetryEvent[];
+  readonly newMacro: { label: string; description: string; content: string };
+  readonly setNewMacro: (value: { label: string; description: string; content: string }) => void;
+  readonly customMacros: MacroAction[];
+  readonly setCustomMacros: (next: MacroAction[]) => void;
+  readonly allMacros: MacroAction[];
+  readonly macroSending: string | null;
+  readonly onRunMacro: (macro: MacroAction) => void;
+  readonly onOpenQuickActions: () => void;
 };
 
 export function CockpitInsightsSection({
@@ -141,7 +141,7 @@ export function CockpitInsightsSection({
   macroSending,
   onRunMacro,
   onOpenQuickActions,
-}: CockpitInsightsSectionProps) {
+}: Readonly<CockpitInsightsSectionProps>) {
   const t = useTranslation();
 
   if (chatFullscreen || !showArtifacts) {

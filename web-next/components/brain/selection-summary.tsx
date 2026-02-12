@@ -3,12 +3,12 @@ import { useTranslation } from "@/lib/i18n";
 import { RelationEntry } from "./relation-list";
 
 interface BrainSelectionSummaryProps {
-    selected: Record<string, unknown> | null;
-    relations: RelationEntry[];
-    onOpenDetails: () => void;
+    readonly selected: Record<string, unknown> | null;
+    readonly relations: RelationEntry[];
+    readonly onOpenDetails: () => void;
 }
 
-export function BrainSelectionSummary({ selected, relations, onOpenDetails }: BrainSelectionSummaryProps) {
+export function BrainSelectionSummary({ selected, relations, onOpenDetails }: Readonly<BrainSelectionSummaryProps>) {
     const t = useTranslation();
 
     if (!selected) {

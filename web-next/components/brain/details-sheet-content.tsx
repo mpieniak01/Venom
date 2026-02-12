@@ -4,13 +4,13 @@ import { useTranslation } from "@/lib/i18n";
 import { RelationEntry } from "./relation-list";
 
 interface BrainDetailsSheetContentProps {
-    selected: Record<string, unknown> | null;
-    relations: RelationEntry[];
-    memoryActionPending: string | null;
-    onPin: (id: string, pinned: boolean) => void;
-    onDelete: (id: string) => void;
-    memoryWipePending?: boolean;
-    onClearSession?: () => void;
+    readonly selected: Record<string, unknown> | null;
+    readonly relations: RelationEntry[];
+    readonly memoryActionPending: string | null;
+    readonly onPin: (id: string, pinned: boolean) => void;
+    readonly onDelete: (id: string) => void;
+    readonly memoryWipePending?: boolean;
+    readonly onClearSession?: () => void;
 }
 
 export function BrainDetailsSheetContent({
@@ -21,7 +21,7 @@ export function BrainDetailsSheetContent({
     onDelete,
     memoryWipePending,
     onClearSession,
-}: BrainDetailsSheetContentProps) {
+}: Readonly<BrainDetailsSheetContentProps>) {
     const t = useTranslation();
 
     if (!selected) {

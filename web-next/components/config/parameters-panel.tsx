@@ -29,11 +29,11 @@ function ConfigSection({
   title,
   description,
   children,
-}: {
+}: Readonly<{
   title: string;
   description: string;
   children: React.ReactNode;
-}) {
+}>) {
   const [open, setOpen] = useState(false);
   const contentId = useId();
 

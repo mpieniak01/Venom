@@ -12,7 +12,7 @@ import {
     FeedbackState
 } from "./drawer-helpers";
 
-export function PromptSection({ prompt, t }: { prompt: string; t: (key: string, options?: Record<string, string | number>) => string }) {
+export function PromptSection({ prompt, t }: Readonly<{ prompt: string; t: (key: string, options?: Record<string, string | number>) => string }>) {
     return (
         <div className="mt-4 rounded-2xl box-base p-4">
             <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
@@ -35,14 +35,14 @@ export function PayloadSection({
     payloadContextUsed,
     contextPreviewMeta,
     t
-}: {
+}: Readonly<{
     payloadSessionMeta?: Record<string, unknown>;
     payloadForcedRoute?: Record<string, unknown>;
     payloadGenerationParams?: Record<string, unknown>;
     payloadContextUsed?: Record<string, unknown>;
     contextPreviewMeta?: ContextPreviewMeta | null;
     t: (key: string, options?: Record<string, string | number>) => string;
-}) {
+}>) {
     if (!contextPreviewMeta && !payloadGenerationParams && !payloadSessionMeta && !payloadForcedRoute && !payloadContextUsed) return null;
 
     return (
@@ -122,12 +122,12 @@ export function DiagnosticsSection({
     simpleResponse,
     runtimeErrorMeta,
     t
-}: {
+}: Readonly<{
     requestModeLabel?: string | null;
     simpleResponse?: SimpleResponse | null;
     runtimeErrorMeta?: RuntimeErrorMeta | null;
     t: (key: string, options?: Record<string, string | number>) => string;
-}) {
+}>) {
     if (!requestModeLabel && !simpleResponse && !runtimeErrorMeta) return null;
 
     return (
@@ -186,7 +186,7 @@ export function DiagnosticsSection({
     );
 }
 
-export function ModelInfoSection({ historyDetail, t }: { historyDetail: HistoryRequestDetail; t: (key: string, options?: Record<string, string | number>) => string }) {
+export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail: HistoryRequestDetail; t: (key: string, options?: Record<string, string | number>) => string }>) {
     if (!historyDetail.model && !historyDetail.llm_provider && !historyDetail.llm_endpoint && !historyDetail.llm_runtime_id) return null;
 
     return (
@@ -237,12 +237,12 @@ export function TimingSection({
     historyDetail,
     llmStartAt,
     t
-}: {
+}: Readonly<{
     uiTimingEntry?: { historyMs?: number; ttftMs?: number } | null;
     historyDetail: HistoryRequestDetail;
     llmStartAt?: string | null;
     t: (key: string, options?: Record<string, string | number>) => string;
-}) {
+}>) {
     return (
         <>
             {uiTimingEntry && (
@@ -326,14 +326,14 @@ export function FeedbackSection({
     onFeedbackSubmit,
     onUpdateFeedbackState,
     t
-}: {
+}: Readonly<{
     selectedRequestId: string;
     feedbackByRequest: Record<string, FeedbackState>;
     feedbackSubmittingId: string | null;
     onFeedbackSubmit: (requestId: string, payload?: { rating?: "up" | "down"; comment?: string }) => void;
     onUpdateFeedbackState: (requestId: string, patch: Partial<FeedbackState>) => void;
     t: (key: string, options?: Record<string, string | number>) => string;
-}) {
+}>) {
     const currentFeedback = feedbackByRequest[selectedRequestId];
     return (
         <div className="mt-4 rounded-2xl box-muted p-4">
@@ -389,7 +389,7 @@ export function FeedbackSection({
     );
 }
 
-export function LogsSection({ logs, t }: { logs: string[]; t: (key: string, options?: Record<string, string | number>) => string }) {
+export function LogsSection({ logs, t }: Readonly<{ logs: string[]; t: (key: string, options?: Record<string, string | number>) => string }>) {
     if (!logs || logs.length === 0) return null;
     const logOccurrence = new Map<string, number>();
     const keyedLogs = logs.map((log) => {
@@ -423,13 +423,13 @@ export function StepsSection({
     copyStepsMessage,
     onCopyDetailSteps,
     t
-}: {
+}: Readonly<{
     steps: HistoryStep[];
     requestId?: string;
     copyStepsMessage: string | null;
     onCopyDetailSteps: () => void;
     t: (key: string, options?: Record<string, string | number>) => string;
-}) {
+}>) {
     return (
         <div className="mt-4 space-y-2 rounded-2xl box-muted p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">

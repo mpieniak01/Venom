@@ -341,3 +341,61 @@ def test_read_only_endpoints_not_blocked_by_localhost_guard(
 
     assert status_response.status_code == 200
     assert jobs_response.status_code == 200
+
+
+@patch("venom_core.config.SETTINGS")
+def test_curate_dataset_with_task_history(mock_settings, client, mock_dataset_curator):
+    """Test dataset curation z włączonym task_history (PR-132B)."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_LOCALHOST_ONLY = False
+    mock_dataset_curator.collect_from_task_history = MagicMock(return_value=25)
+    
+    response = client.post(
+        "/api/v1/academy/dataset",
+        json={
+            "lessons_limit": 100,
+            "git_commits_limit": 50,
+            "include_task_history": True,
+            "format": "alpaca",
+        },
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    
+    # Sprawdź czy task_history został zebrany
+    mock_dataset_curator.collect_from_task_history.assert_called_once_with(max_tasks=100)
+    
+    # Sprawdź statystyki
+    assert "task_history_collected" in data["statistics"]
+    assert data["statistics"]["task_history_collected"] == 25
+
+
+@patch("venom_core.config.SETTINGS")
+def test_curate_dataset_without_task_history(mock_settings, client, mock_dataset_curator):
+    """Test dataset curation bez task_history (PR-132B)."""
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_LOCALHOST_ONLY = False
+    mock_dataset_curator.collect_from_task_history = MagicMock(return_value=0)
+    
+    response = client.post(
+        "/api/v1/academy/dataset",
+        json={
+            "lessons_limit": 100,
+            "git_commits_limit": 50,
+            "include_task_history": False,
+            "format": "alpaca",
+        },
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    
+    # Sprawdź że task_history NIE został zebrany
+    mock_dataset_curator.collect_from_task_history.assert_not_called()
+    
+    # Sprawdź statystyki - task_history_collected powinno być 0
+    assert "task_history_collected" in data["statistics"]
+    assert data["statistics"]["task_history_collected"] == 0

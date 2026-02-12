@@ -358,37 +358,87 @@ class HuggingFaceModelProvider(BaseModelProvider):
         self.client = HuggingFaceClient(token=self.token)
 
     async def list_available_models(self) -> List[ModelMetadata]:
-        """Lista popularnych modeli HF (stub - do rozszerzenia)."""
-        # TODO: Integracja z HF Hub API do wyszukiwania modeli
-        popular_models = [
-            ModelMetadata(
-                name="google/gemma-2b-it",
-                provider=ModelProvider.HUGGINGFACE,
-                display_name="Gemma 2B IT",
-                size_gb=4.0,
-                status=ModelStatus.AVAILABLE,
-                runtime="vllm",
-                capabilities=ModelCapabilities(
-                    supports_system_role=False,  # Gemma nie wspiera roli system
-                    allowed_roles=["user", "assistant"],
-                    generation_schema=_create_default_generation_schema(),
+        """Lista popularnych modeli HF z HuggingFace Hub API."""
+        try:
+            # Pobierz popularne modele z HF API (posortowane po downloads)
+            models_data = await self.client.list_models(sort="downloads", limit=20)
+            
+            model_list = []
+            for model_data in models_data:
+                try:
+                    model_name = model_data.get("id", model_data.get("modelId", ""))
+                    if not model_name:
+                        continue
+                    
+                    # Konwertuj na ModelMetadata
+                    model_list.append(
+                        ModelMetadata(
+                            name=model_name,
+                            provider=ModelProvider.HUGGINGFACE,
+                            display_name=model_name.split("/")[-1] if "/" in model_name else model_name,
+                            size_gb=0.0,  # HF API nie zwraca rozmiaru w standardowej odpowiedzi
+                            status=ModelStatus.AVAILABLE,
+                            runtime="vllm",
+                            capabilities=ModelCapabilities(
+                                generation_schema=_create_default_generation_schema(),
+                            ),
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Pominięto model podczas parsowania: {e}")
+                    continue
+            
+            # Fallback do popularnych modeli jeśli API zwróci pusty wynik
+            if not model_list:
+                logger.warning("HF API zwróciło pusty wynik, używam fallbacku")
+                model_list = [
+                    ModelMetadata(
+                        name="google/gemma-2b-it",
+                        provider=ModelProvider.HUGGINGFACE,
+                        display_name="Gemma 2B IT",
+                        size_gb=4.0,
+                        status=ModelStatus.AVAILABLE,
+                        runtime="vllm",
+                        capabilities=ModelCapabilities(
+                            supports_system_role=False,
+                            allowed_roles=["user", "assistant"],
+                            generation_schema=_create_default_generation_schema(),
+                        ),
+                    ),
+                    ModelMetadata(
+                        name="microsoft/phi-3-mini-4k-instruct",
+                        provider=ModelProvider.HUGGINGFACE,
+                        display_name="Phi-3 Mini 4K Instruct",
+                        size_gb=7.0,
+                        status=ModelStatus.AVAILABLE,
+                        runtime="vllm",
+                        capabilities=ModelCapabilities(
+                            generation_schema=_create_default_generation_schema(),
+                        ),
+                    ),
+                ]
+            
+            logger.info(f"Pobrano {len(model_list)} modeli z HuggingFace")
+            return model_list
+            
+        except Exception as e:
+            logger.error(f"Błąd podczas pobierania listy modeli z HF: {e}")
+            # Fallback do popularnych modeli w przypadku błędu
+            return [
+                ModelMetadata(
+                    name="google/gemma-2b-it",
+                    provider=ModelProvider.HUGGINGFACE,
+                    display_name="Gemma 2B IT",
+                    size_gb=4.0,
+                    status=ModelStatus.AVAILABLE,
+                    runtime="vllm",
+                    capabilities=ModelCapabilities(
+                        supports_system_role=False,
+                        allowed_roles=["user", "assistant"],
+                        generation_schema=_create_default_generation_schema(),
+                    ),
                 ),
-            ),
-            ModelMetadata(
-                name="microsoft/phi-3-mini-4k-instruct",
-                provider=ModelProvider.HUGGINGFACE,
-                display_name="Phi-3 Mini 4K Instruct",
-                size_gb=7.0,
-                status=ModelStatus.AVAILABLE,
-                runtime="vllm",
-                capabilities=ModelCapabilities(
-                    generation_schema=_create_default_generation_schema(),
-                ),
-            ),
-        ]
-        # Symuluj async operację
-        await asyncio.sleep(0)
-        return popular_models
+            ]
 
     async def install_model(
         self, model_name: str, progress_callback: Optional[Callable] = None
@@ -426,13 +476,42 @@ class HuggingFaceModelProvider(BaseModelProvider):
             return False
 
     async def get_model_info(self, model_name: str) -> Optional[ModelMetadata]:
-        """Pobiera informacje o modelu z HF (stub)."""
-        # TODO: Integracja z HF Hub API
-        models = await self.list_available_models()
-        for model in models:
-            if model.name == model_name:
-                return model
-        return None
+        """Pobiera informacje o modelu z HuggingFace Hub API."""
+        try:
+            # Najpierw spróbuj pobrać z HF API
+            model_data = await self.client.get_model_info(model_name)
+            
+            if model_data:
+                # Konwertuj dane z API na ModelMetadata
+                return ModelMetadata(
+                    name=model_name,
+                    provider=ModelProvider.HUGGINGFACE,
+                    display_name=model_name.split("/")[-1] if "/" in model_name else model_name,
+                    size_gb=0.0,  # API nie zwraca rozmiaru
+                    status=ModelStatus.AVAILABLE,
+                    runtime="vllm",
+                    capabilities=ModelCapabilities(
+                        generation_schema=_create_default_generation_schema(),
+                    ),
+                )
+            
+            # Fallback: sprawdź w liście popularnych modeli
+            logger.debug(f"Model {model_name} nie znaleziony w HF API, sprawdzam cache")
+            models = await self.list_available_models()
+            for model in models:
+                if model.name == model_name:
+                    return model
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Błąd podczas pobierania info o modelu {model_name}: {e}")
+            # Fallback do listy popularnych modeli
+            models = await self.list_available_models()
+            for model in models:
+                if model.name == model_name:
+                    return model
+            return None
 
 
 class ModelRegistry:

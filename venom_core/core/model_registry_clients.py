@@ -197,6 +197,36 @@ class HuggingFaceClient:
                 logger.warning(f"HF search failed: {e}")
                 return []
 
+    async def get_model_info(self, model_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Pobiera informacje o pojedynczym modelu z HuggingFace Hub API.
+        
+        Args:
+            model_name: Nazwa modelu (np. "microsoft/phi-3-mini-4k-instruct")
+            
+        Returns:
+            Dict z informacjami o modelu lub None jeśli model nie istnieje
+        """
+        url = f"https://huggingface.co/api/models/{model_name}"
+        headers: Dict[str, str] = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    logger.debug(f"Model {model_name} nie został znaleziony w HF Hub")
+                    return None
+                logger.warning(f"Błąd podczas pobierania info o modelu {model_name}: {e}")
+                return None
+            except Exception as e:
+                logger.warning(f"HF get_model_info failed for {model_name}: {e}")
+                return None
+
     async def fetch_blog_feed(self, limit: int) -> List[Dict[str, Any]]:
         url = "https://huggingface.co/blog/feed.xml"
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:

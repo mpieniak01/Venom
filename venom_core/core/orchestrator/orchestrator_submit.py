@@ -25,6 +25,221 @@ logger = get_logger(__name__)
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
+def _prepare_runtime_context(request: TaskRequest, runtime_info) -> dict:
+    """
+    Przygotowuje kontekst runtime dla zadania.
+    
+    Args:
+        request: Żądanie zadania
+        runtime_info: Informacje o runtime LLM
+        
+    Returns:
+        Słownik z kontekstem runtime
+    """
+    runtime_context = runtime_info.to_payload()
+    if request.expected_config_hash:
+        runtime_context["expected_config_hash"] = request.expected_config_hash
+    if request.expected_runtime_id:
+        runtime_context["expected_runtime_id"] = request.expected_runtime_id
+    runtime_context["status"] = "ready"
+    return runtime_context
+
+
+async def _check_policy_before_provider(
+    orch: "Orchestrator", 
+    task, 
+    request: TaskRequest, 
+    runtime_info,
+    policy_context: PolicyEvaluationContext
+) -> TaskResponse | None:
+    """
+    Sprawdza policy przed wyborem providera.
+    
+    Args:
+        orch: Orchestrator
+        task: Zadanie
+        request: Żądanie zadania
+        runtime_info: Informacje o runtime
+        policy_context: Kontekst ewaluacji policy
+        
+    Returns:
+        TaskResponse jeśli zablokowano, None jeśli można kontynuować
+    """
+    if not policy_gate.enabled:
+        return None
+    
+    policy_result = policy_gate.evaluate_before_provider_selection(policy_context)
+    
+    if policy_result.decision != PolicyDecision.BLOCK:
+        return None
+    
+    # Zadanie zostało zablokowane
+    logger.warning(
+        f"Policy gate blocked task {task.id}: {policy_result.reason_code}"
+    )
+    orch.state_manager.add_log(
+        task.id, f"🚫 Policy gate blocked: {policy_result.message}"
+    )
+    
+    # Store policy block details in task context for UI retrieval
+    orch.state_manager.update_context(
+        task.id,
+        {
+            "policy_blocked": True,
+            "reason_code": policy_result.reason_code.value if policy_result.reason_code else None,
+            "user_message": policy_result.message,
+        }
+    )
+    
+    await orch.state_manager.update_status(
+        task.id,
+        TaskStatus.FAILED,
+        result=policy_result.message,
+    )
+    
+    # Add assistant session history entry with policy block details
+    orch._append_session_history(
+        task.id,
+        role="assistant",
+        content=policy_result.message,
+        session_id=request.session_id,
+        policy_blocked=True,
+        reason_code=policy_result.reason_code.value if policy_result.reason_code else None,
+        user_message=policy_result.message,
+    )
+    
+    # Increment policy blocked metric
+    if metrics_module.metrics_collector:
+        metrics_module.metrics_collector.increment_policy_blocked()
+    
+    if orch.request_tracer:
+        orch.request_tracer.update_status(task.id, "failed")
+        orch.request_tracer.add_step(
+            task.id,
+            "PolicyGate",
+            "block_before_provider",
+            status="blocked",
+            details=f"Reason: {policy_result.reason_code}",
+        )
+    
+    return TaskResponse(
+        task_id=task.id,
+        status=TaskStatus.FAILED,
+        policy_blocked=True,
+        reason_code=policy_result.reason_code.value
+        if policy_result.reason_code
+        else None,
+        user_message=policy_result.message,
+    )
+
+
+def _init_request_trace(
+    orch: "Orchestrator", task, request: TaskRequest, runtime_context: dict
+) -> None:
+    """
+    Inicjalizuje tracer dla żądania.
+    
+    Args:
+        orch: Orchestrator
+        task: Zadanie
+        request: Żądanie zadania
+        runtime_context: Kontekst runtime
+    """
+    if not orch.request_tracer:
+        return
+    
+    orch.request_tracer.create_trace(
+        task.id,
+        request.content,
+        session_id=request.session_id,
+    )
+    orch.request_tracer.add_step(
+        task.id,
+        "User",
+        "submit_request",
+        status="ok",
+        details="Request received",
+    )
+    orch.request_tracer.set_llm_metadata(task.id, metadata=runtime_context.copy())
+
+
+async def _handle_queue_or_pause(
+    orch: "Orchestrator", task, request: TaskRequest, runtime_info
+) -> TaskResponse | None:
+    """
+    Obsługuje kolejkowanie lub pauzę zadania.
+    
+    Args:
+        orch: Orchestrator
+        task: Zadanie
+        request: Żądanie zadania
+        runtime_info: Informacje o runtime
+        
+    Returns:
+        TaskResponse jeśli zadanie zakolejkowano, None jeśli można wykonać od razu
+    """
+    # Sprawdź czy system w pauzie
+    if orch.task_manager.is_paused:
+        orch.state_manager.add_log(
+            task.id, "⏸️ System w trybie pauzy - zadanie czeka w kolejce"
+        )
+        await orch._broadcast_event(
+            event_type="TASK_QUEUED",
+            message=f"Zadanie {task.id} oczekuje - system wstrzymany",
+            data={"task_id": str(task.id)},
+        )
+        logger.info("Zadanie %s zakolejkowane - system w pauzie", task.id)
+        return _build_task_response(task, runtime_info)
+    
+    # Sprawdź limity kolejki
+    if SETTINGS.ENABLE_QUEUE_LIMITS:
+        has_capacity, active_count = await orch.task_manager.check_capacity()
+        if not has_capacity:
+            orch.state_manager.add_log(
+                task.id,
+                (
+                    "⏳ Osiągnięto limit współbieżności "
+                    f"({active_count}/{SETTINGS.MAX_CONCURRENT_TASKS}) - zadanie czeka"
+                ),
+            )
+            await orch._broadcast_event(
+                event_type="TASK_QUEUED",
+                message=f"Zadanie {task.id} oczekuje - limit zadań równoległych",
+                data={
+                    "task_id": str(task.id),
+                    "active": active_count,
+                    "limit": SETTINGS.MAX_CONCURRENT_TASKS,
+                },
+            )
+            logger.info(
+                "Zadanie %s czeka - limit współbieżności (%s/%s)",
+                task.id,
+                active_count,
+                SETTINGS.MAX_CONCURRENT_TASKS,
+            )
+            _spawn_background_task(run_task_with_queue(orch, task.id, request))
+            return _build_task_response(task, runtime_info)
+    
+    return None
+
+
+def _schedule_task_execution(
+    orch: "Orchestrator", task_id: UUID, request: TaskRequest
+) -> None:
+    """
+    Planuje wykonanie zadania (fast path lub queue).
+    
+    Args:
+        orch: Orchestrator
+        task_id: ID zadania
+        request: Żądanie zadania
+    """
+    if should_use_fast_path(request):
+        _spawn_background_task(run_task_fastpath(orch, task_id, request))
+    else:
+        _spawn_background_task(run_task_with_queue(orch, task_id, request))
+
+
 def _log_background_task_failure(task: asyncio.Task[Any]) -> None:
     """Odbiera wyjątek taska w tle, aby nie gubić błędów i uniknąć warningów asyncio."""
     try:
@@ -56,101 +271,26 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
     task = orch.state_manager.create_task(content=request.content)
 
     runtime_info = get_active_llm_runtime()
-    runtime_context = runtime_info.to_payload()
-    if request.expected_config_hash:
-        runtime_context["expected_config_hash"] = request.expected_config_hash
-    if request.expected_runtime_id:
-        runtime_context["expected_runtime_id"] = request.expected_runtime_id
-    runtime_context["status"] = "ready"
+    runtime_context = _prepare_runtime_context(request, runtime_info)
     orch.state_manager.update_context(task.id, {"llm_runtime": runtime_context})
 
     # Policy Gate: Check before provider selection
-    # NOTE: Runtime selection (get_active_llm_runtime) happens above for context setup.
-    # This gate check validates the request before dispatching to the selected runtime.
-    if policy_gate.enabled:
-        policy_context = PolicyEvaluationContext(
-            content=request.content,
-            planned_provider=request.forced_provider or runtime_info.provider,
-            planned_tools=[request.forced_tool] if request.forced_tool else [],
-            session_id=request.session_id,
-            forced_tool=request.forced_tool,
-            forced_provider=request.forced_provider,
-        )
-        policy_result = policy_gate.evaluate_before_provider_selection(policy_context)
+    policy_context = PolicyEvaluationContext(
+        content=request.content,
+        planned_provider=request.forced_provider or runtime_info.provider,
+        planned_tools=[request.forced_tool] if request.forced_tool else [],
+        session_id=request.session_id,
+        forced_tool=request.forced_tool,
+        forced_provider=request.forced_provider,
+    )
+    
+    policy_response = await _check_policy_before_provider(
+        orch, task, request, runtime_info, policy_context
+    )
+    if policy_response is not None:
+        return policy_response
 
-        if policy_result.decision == PolicyDecision.BLOCK:
-            logger.warning(
-                f"Policy gate blocked task {task.id}: {policy_result.reason_code}"
-            )
-            orch.state_manager.add_log(
-                task.id, f"🚫 Policy gate blocked: {policy_result.message}"
-            )
-
-            # Store policy block details in task context for UI retrieval
-            orch.state_manager.update_context(
-                task.id,
-                {
-                    "policy_blocked": True,
-                    "reason_code": policy_result.reason_code.value if policy_result.reason_code else None,
-                    "user_message": policy_result.message,
-                }
-            )
-
-            await orch.state_manager.update_status(
-                task.id,
-                TaskStatus.FAILED,
-                result=policy_result.message,
-            )
-
-            # Add assistant session history entry with policy block details
-            orch._append_session_history(
-                task.id,
-                role="assistant",
-                content=policy_result.message,
-                session_id=request.session_id,
-                policy_blocked=True,
-                reason_code=policy_result.reason_code.value if policy_result.reason_code else None,
-                user_message=policy_result.message,
-            )
-
-            # Increment policy blocked metric
-            if metrics_module.metrics_collector:
-                metrics_module.metrics_collector.increment_policy_blocked()
-
-            if orch.request_tracer:
-                orch.request_tracer.update_status(task.id, "failed")
-                orch.request_tracer.add_step(
-                    task.id,
-                    "PolicyGate",
-                    "block_before_provider",
-                    status="blocked",
-                    details=f"Reason: {policy_result.reason_code}",
-                )
-
-            return TaskResponse(
-                task_id=task.id,
-                status=TaskStatus.FAILED,
-                policy_blocked=True,
-                reason_code=policy_result.reason_code.value
-                if policy_result.reason_code
-                else None,
-                user_message=policy_result.message,
-            )
-
-    if orch.request_tracer:
-        orch.request_tracer.create_trace(
-            task.id,
-            request.content,
-            session_id=request.session_id,
-        )
-        orch.request_tracer.add_step(
-            task.id,
-            "User",
-            "submit_request",
-            status="ok",
-            details="Request received",
-        )
-        orch.request_tracer.set_llm_metadata(task.id, metadata=runtime_context.copy())
+    _init_request_trace(orch, task, request, runtime_context)
 
     log_message = f"Zadanie uruchomione: {get_utc_now_iso()}"
     orch.state_manager.add_log(task.id, log_message)
@@ -168,50 +308,13 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
             task.id, f"Zadanie zawiera {len(request.images)} obrazów"
         )
 
-    if orch.task_manager.is_paused:
-        orch.state_manager.add_log(
-            task.id, "⏸️ System w trybie pauzy - zadanie czeka w kolejce"
-        )
-        await orch._broadcast_event(
-            event_type="TASK_QUEUED",
-            message=f"Zadanie {task.id} oczekuje - system wstrzymany",
-            data={"task_id": str(task.id)},
-        )
-        logger.info("Zadanie %s zakolejkowane - system w pauzie", task.id)
-        return _build_task_response(task, runtime_info)
+    # Handle queue or pause
+    queue_response = await _handle_queue_or_pause(orch, task, request, runtime_info)
+    if queue_response is not None:
+        return queue_response
 
-    if SETTINGS.ENABLE_QUEUE_LIMITS:
-        has_capacity, active_count = await orch.task_manager.check_capacity()
-        if not has_capacity:
-            orch.state_manager.add_log(
-                task.id,
-                (
-                    "⏳ Osiągnięto limit współbieżności "
-                    f"({active_count}/{SETTINGS.MAX_CONCURRENT_TASKS}) - zadanie czeka"
-                ),
-            )
-            await orch._broadcast_event(
-                event_type="TASK_QUEUED",
-                message=f"Zadanie {task.id} oczekuje - limit zadań równoległych",
-                data={
-                    "task_id": str(task.id),
-                    "active": active_count,
-                    "limit": SETTINGS.MAX_CONCURRENT_TASKS,
-                },
-            )
-            logger.info(
-                "Zadanie %s czeka - limit współbieżności (%s/%s)",
-                task.id,
-                active_count,
-                SETTINGS.MAX_CONCURRENT_TASKS,
-            )
-            _spawn_background_task(run_task_with_queue(orch, task.id, request))
-            return _build_task_response(task, runtime_info)
-
-    if should_use_fast_path(request):
-        _spawn_background_task(run_task_fastpath(orch, task.id, request))
-    else:
-        _spawn_background_task(run_task_with_queue(orch, task.id, request))
+    # Schedule execution
+    _schedule_task_execution(orch, task.id, request)
 
     logger.info("Zadanie %s przyjęte do wykonania", task.id)
     return _build_task_response(task, runtime_info)

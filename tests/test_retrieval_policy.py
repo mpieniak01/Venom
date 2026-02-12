@@ -139,18 +139,9 @@ class TestRetrievalPolicyManager:
             policy = manager_enabled.get_policy("RESEARCH")
             assert policy.mode == "baseline"
 
-    def test_get_policy_with_intent_source(self, manager_enabled):
-        """Test policy retrieval with intent_source parameter."""
-        policy = manager_enabled.get_policy("RESEARCH", intent_source="embedding")
-        assert policy.mode == "boost"
-        assert policy.vector_limit == 8
-
-    def test_get_policy_with_forced_intent(self, manager_enabled):
-        """Test policy retrieval with forced_intent parameter."""
-        policy = manager_enabled.get_policy(
-            "RESEARCH", forced_intent="KNOWLEDGE_SEARCH"
-        )
-        # Should still use the provided intent (RESEARCH), not forced_intent
+    def test_get_policy_basic_usage(self, manager_enabled):
+        """Test policy retrieval with standard intent."""
+        policy = manager_enabled.get_policy("RESEARCH")
         assert policy.mode == "boost"
         assert policy.vector_limit == 8
 

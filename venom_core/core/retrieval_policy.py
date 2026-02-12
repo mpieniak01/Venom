@@ -87,24 +87,15 @@ class RetrievalPolicyManager:
     def get_policy(
         self,
         intent: str,
-        intent_source: Optional[str] = None,
-        forced_intent: Optional[str] = None,
     ) -> RetrievalPolicy:
         """
         Get retrieval policy for the given intent.
 
         Args:
             intent: The classified intent
-            intent_source: (Reserved for Phase C) Source of intent classification
-            forced_intent: (Reserved for Phase C) Whether intent was forced by user
 
         Returns:
             RetrievalPolicy with appropriate parameters
-            
-        Note:
-            Currently only `intent` is used to determine the policy.
-            `intent_source` and `forced_intent` are reserved for future
-            enhancements in Phase C (e.g., adjusting confidence based on source).
         """
         # If boost disabled, always return baseline
         if not self.enabled:

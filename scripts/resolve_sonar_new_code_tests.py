@@ -18,6 +18,10 @@ LIGHT_BLOCKED_MARKERS = (
     "smoke",
 )
 
+PRIORITY_TEST_ORDER = ("tests/test_core_nervous_system.py",)
+
+_PRIORITY_INDEX = {path: idx for idx, path in enumerate(PRIORITY_TEST_ORDER)}
+
 
 def read_group(path: Path) -> list[str]:
     if not path.exists():
@@ -156,7 +160,10 @@ def resolve_tests(
     selected.update(collect_changed_tests(changed_files))
     selected.update(related_tests_for_modules(changed_files, all_tests))
 
-    light_tests = sorted(path for path in selected if is_light_test(path))
+    light_tests = sorted(
+        (path for path in selected if is_light_test(path)),
+        key=lambda path: (_PRIORITY_INDEX.get(path, len(PRIORITY_TEST_ORDER)), path),
+    )
     return light_tests
 
 

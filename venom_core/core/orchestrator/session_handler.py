@@ -6,6 +6,8 @@ from uuid import UUID
 import httpx
 
 from venom_core.config import SETTINGS
+from venom_core.core.knowledge_contract import KnowledgeKind
+from venom_core.core.knowledge_ttl import compute_expires_at, resolve_ttl_days
 from venom_core.core.models import ContextUsed, TaskRequest
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.services.session_store import SessionStore
@@ -136,7 +138,16 @@ class SessionHandler:
             task.context_history["session_history"] = trimmed
             task.context_history["session_history_full"] = trimmed_full
             if session_id and self.session_store:
-                self.session_store.append_message(session_id, entry)
+                self.session_store.append_message(
+                    session_id,
+                    entry,
+                    knowledge_metadata=self._build_session_knowledge_metadata(
+                        kind=KnowledgeKind.SESSION_MESSAGE,
+                        session_id=session_id,
+                        request_id=str(task_id),
+                        created_at=str(entry["timestamp"]),
+                    ),
+                )
             self.state_manager.update_context(
                 task_id,
                 {
@@ -226,7 +237,16 @@ class SessionHandler:
         summary = self._heuristic_summary(history)
         self.state_manager.update_context(task_id, {"session_summary": summary})
         if session_id and self.session_store:
-            self.session_store.set_summary(session_id, summary)
+            self.session_store.set_summary(
+                session_id,
+                summary,
+                knowledge_metadata=self._build_session_knowledge_metadata(
+                    kind=KnowledgeKind.SESSION_SUMMARY,
+                    session_id=session_id,
+                    request_id=str(task_id),
+                    created_at=get_utc_now_iso(),
+                ),
+            )
         return summary
 
     def _format_session_history_block(self, history: list[Dict[str, Any]]) -> str:
@@ -333,6 +353,27 @@ class SessionHandler:
         )
         return any(key in text for key in keywords)
 
+    def _build_session_knowledge_metadata(
+        self,
+        *,
+        kind: KnowledgeKind,
+        session_id: str,
+        request_id: str,
+        created_at: str,
+    ) -> dict[str, object]:
+        scope = "session"
+        ttl_days = resolve_ttl_days(kind, scope)
+        return {
+            "knowledge_contract_version": "v1",
+            "provenance_source": "session_store",
+            "provenance_request_id": request_id,
+            "provenance_intent": None,
+            "retention_scope": scope,
+            "retention_expires_at": compute_expires_at(created_at, ttl_days),
+            "session_id": session_id,
+            "timestamp": created_at,
+        }
+
     def _ensure_session_summary(self, task_id: UUID, task: "VenomTask") -> None:
         """Tworzy streszczenie gdy historia jest długa."""
         try:
@@ -361,7 +402,16 @@ class SessionHandler:
             self.state_manager.update_context(task_id, {"session_summary": summary})
             session_id = task.context_history.get("session", {}).get("session_id")
             if session_id and self.session_store:
-                self.session_store.set_summary(session_id, summary)
+                self.session_store.set_summary(
+                    session_id,
+                    summary,
+                    knowledge_metadata=self._build_session_knowledge_metadata(
+                        kind=KnowledgeKind.SESSION_SUMMARY,
+                        session_id=session_id,
+                        request_id=str(task_id),
+                        created_at=get_utc_now_iso(),
+                    ),
+                )
             # zapisz do pamięci długoterminowej
             self._memory_upsert(
                 summary,
@@ -373,6 +423,15 @@ class SessionHandler:
                     or "default_session",
                     "user_id": DEFAULT_USER_ID,
                     "pinned": True,
+                    "knowledge_contract_version": "v1",
+                    "provenance_source": "orchestrator",
+                    "provenance_request_id": str(task_id),
+                    "provenance_intent": None,
+                    "retention_scope": "session",
+                    "retention_expires_at": compute_expires_at(
+                        get_utc_now_iso(),
+                        resolve_ttl_days(KnowledgeKind.SESSION_SUMMARY, "session"),
+                    ),
                 },
             )
         except Exception as exc:  # pragma: no cover

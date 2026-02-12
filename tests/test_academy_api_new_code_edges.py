@@ -166,8 +166,6 @@ def test_save_finished_job_metadata_logs_without_user_data(tmp_path):
     adapter_dir = tmp_path / "adapter"
     adapter_dir.mkdir(parents=True, exist_ok=True)
     job = {"adapter_path": str(adapter_dir)}
-    tainted_job_id = "user-controlled-<script>"
-
     with (
         patch(
             "venom_core.api.routes.academy._save_adapter_metadata",
@@ -175,7 +173,7 @@ def test_save_finished_job_metadata_logs_without_user_data(tmp_path):
         ),
         patch("venom_core.api.routes.academy.logger.warning") as warning_mock,
     ):
-        academy_routes._save_finished_job_metadata(tainted_job_id, job, "finished")
+        academy_routes._save_finished_job_metadata(job, "finished")
 
     warning_mock.assert_called_once()
     assert "user-controlled" not in str(warning_mock.call_args.args)

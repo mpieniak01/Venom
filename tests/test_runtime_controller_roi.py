@@ -103,7 +103,7 @@ def test_actionable_field_for_controllable_services(monkeypatch):
 
 
 def test_actionable_field_for_config_based_services(monkeypatch):
-    """Test że usługi konfigurowalne (hive, nexus, background_tasks) mają actionable=False."""
+    """Test że usługi konfigurowalne mają actionable=False."""
     controller = RuntimeController()
     monkeypatch.setattr(
         runtime_controller,
@@ -112,6 +112,8 @@ def test_actionable_field_for_config_based_services(monkeypatch):
             ENABLE_HIVE=True,
             ENABLE_NEXUS=True,
             VENOM_PAUSE_BACKGROUND_TASKS=False,
+            ENABLE_ACADEMY=True,
+            ENABLE_INTENT_EMBEDDING_ROUTER=True,
         ),
     )
 
@@ -126,6 +128,14 @@ def test_actionable_field_for_config_based_services(monkeypatch):
     # Test Background Tasks
     bg_tasks_info = controller.get_service_status(ServiceType.BACKGROUND_TASKS)
     assert bg_tasks_info.actionable is False
+
+    # Test Academy
+    academy_info = controller.get_service_status(ServiceType.ACADEMY)
+    assert academy_info.actionable is False
+
+    # Test Intent Embedding Router
+    embedding_info = controller.get_service_status(ServiceType.INTENT_EMBEDDING_ROUTER)
+    assert embedding_info.actionable is False
 
 
 def test_perform_action_for_config_controlled_service():
@@ -235,6 +245,8 @@ def test_update_config_managed_status_variants(monkeypatch):
             ENABLE_NEXUS=True,
             NEXUS_PORT=7788,
             VENOM_PAUSE_BACKGROUND_TASKS=True,
+            ENABLE_ACADEMY=True,
+            ENABLE_INTENT_EMBEDDING_ROUTER=False,
         ),
     )
     hive = ServiceInfo("hive", ServiceType.HIVE, ServiceStatus.UNKNOWN)
@@ -249,6 +261,20 @@ def test_update_config_managed_status_variants(monkeypatch):
     bg = ServiceInfo("bg", ServiceType.BACKGROUND_TASKS, ServiceStatus.UNKNOWN)
     controller._update_config_managed_status(bg, ServiceType.BACKGROUND_TASKS)
     assert bg.status == ServiceStatus.STOPPED
+
+    academy = ServiceInfo("academy", ServiceType.ACADEMY, ServiceStatus.UNKNOWN)
+    controller._update_config_managed_status(academy, ServiceType.ACADEMY)
+    assert academy.status == ServiceStatus.RUNNING
+
+    embedding = ServiceInfo(
+        "intent_embedding_router",
+        ServiceType.INTENT_EMBEDDING_ROUTER,
+        ServiceStatus.UNKNOWN,
+    )
+    controller._update_config_managed_status(
+        embedding, ServiceType.INTENT_EMBEDDING_ROUTER
+    )
+    assert embedding.status == ServiceStatus.STOPPED
 
 
 def test_stop_and_restart_paths(monkeypatch):

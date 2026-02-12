@@ -340,6 +340,17 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
+        t("config.parameters.sections.embeddingRouter.title"),
+        t("config.parameters.sections.embeddingRouter.description"),
+        [
+          "ENABLE_INTENT_EMBEDDING_ROUTER",
+          "INTENT_EMBED_MODEL_NAME",
+          "INTENT_EMBED_MIN_SCORE",
+          "INTENT_EMBED_MARGIN",
+        ]
+      )}
+
+      {renderSection(
         t("config.parameters.sections.prompts.title"),
         t("config.parameters.sections.prompts.description"),
         ["PROMPTS_DIR"]

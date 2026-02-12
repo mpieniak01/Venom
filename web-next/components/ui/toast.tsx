@@ -38,7 +38,7 @@ const createToastId = () => {
   return `${Date.now()}-${toastIdFallbackCounter.toString(16).padStart(4, "0")}`;
 };
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const timersRef = useRef<Map<string, number>>(new Map());
 

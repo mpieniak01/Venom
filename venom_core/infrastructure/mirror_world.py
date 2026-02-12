@@ -17,6 +17,15 @@ from venom_core.utils.url_policy import build_http_url
 logger = get_logger(__name__)
 DEFAULT_VERIFY_TIMEOUT_SECONDS = 30
 
+# Optional Docker support
+docker: Optional[any] = None
+try:
+    import docker as _docker
+    docker = _docker
+    _DOCKER_AVAILABLE = True
+except ImportError:  # pragma: no cover - środowiska bez optional dependency
+    _DOCKER_AVAILABLE = False
+
 
 @dataclass
 class InstanceInfo:
@@ -52,8 +61,94 @@ class MirrorWorld:
 
         # Rejestr aktywnych instancji
         self.instances: dict[str, InstanceInfo] = {}
+        
+        # Inicjalizacja Docker client (lazy, tylko gdy potrzebny)
+        self._docker_client = None
 
         logger.info(f"MirrorWorld zainicjalizowany z workspace: {self.workspace_root}")
+
+    def _get_docker_client(self):
+        """
+        Pobiera Docker client (lazy initialization).
+        
+        Returns:
+            Docker client lub None jeśli Docker nie jest dostępny
+        """
+        if not _DOCKER_AVAILABLE:
+            logger.warning("Docker SDK nie jest zainstalowane - operacje Docker niedostępne")
+            return None
+        
+        if self._docker_client is None:
+            try:
+                self._docker_client = docker.from_env()
+                logger.debug("Docker client zainicjalizowany")
+            except Exception as e:
+                logger.warning(f"Nie udało się połączyć z Docker daemon: {e}")
+                return None
+        
+        return self._docker_client
+
+    async def _stop_and_remove_container(
+        self, container_name: str, timeout: int = 10, force: bool = True
+    ) -> bool:
+        """
+        Zatrzymuje i usuwa kontener Docker.
+        
+        Args:
+            container_name: Nazwa kontenera do usunięcia
+            timeout: Timeout zatrzymania w sekundach (domyślnie 10s)
+            force: Czy wymusić zatrzymanie (kill) po timeout
+            
+        Returns:
+            True jeśli kontener został zatrzymany i usunięty, False w przeciwnym razie
+        """
+        client = self._get_docker_client()
+        if not client:
+            logger.warning(
+                f"Pomijam zatrzymanie kontenera {container_name} - Docker niedostępny"
+            )
+            return False
+        
+        try:
+            # Sprawdź czy kontener istnieje
+            try:
+                container = client.containers.get(container_name)
+            except docker.errors.NotFound:
+                logger.info(f"Kontener {container_name} nie istnieje - już usunięty")
+                return True  # Uznajemy za sukces - kontener już nie istnieje
+            
+            # Zatrzymaj kontener
+            logger.info(f"Zatrzymywanie kontenera {container_name} (timeout={timeout}s)...")
+            try:
+                container.stop(timeout=timeout)
+                logger.info(f"✅ Kontener {container_name} zatrzymany")
+            except Exception as stop_error:
+                if force:
+                    logger.warning(
+                        f"Zatrzymanie graceful nie powiodło się, wymuszam kill: {stop_error}"
+                    )
+                    container.kill()
+                    logger.info(f"✅ Kontener {container_name} zabity (kill)")
+                else:
+                    raise
+            
+            # Usuń kontener
+            logger.info(f"Usuwanie kontenera {container_name}...")
+            container.remove(force=force)
+            logger.info(f"✅ Kontener {container_name} usunięty")
+            
+            return True
+            
+        except docker.errors.NotFound:
+            # Kontener już nie istnieje (race condition)
+            logger.debug(f"Kontener {container_name} już nie istnieje")
+            return True
+        except Exception as e:
+            logger.error(
+                f"❌ Błąd podczas zatrzymywania/usuwania kontenera {container_name}: {e}",
+                exc_info=True
+            )
+            return False
 
     def spawn_shadow_instance(
         self, branch_name: str, project_root: Path, instance_id: Optional[str] = None
@@ -319,8 +414,11 @@ class MirrorWorld:
         try:
             # 1. Zatrzymaj kontener jeśli istnieje
             if info.container_name:
-                # TODO: Zatrzymanie kontenera Docker
                 logger.info(f"Zatrzymywanie kontenera {info.container_name}")
+                # Zatrzymaj i usuń kontener Docker
+                await self._stop_and_remove_container(
+                    info.container_name, timeout=10, force=True
+                )
 
             # 2. Usuń pliki jeśli cleanup=True
             if cleanup:

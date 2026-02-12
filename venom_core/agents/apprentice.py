@@ -364,7 +364,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
     def _extract_session_id(self, text: str) -> Optional[str]:
         """Wyodrębnia ID sesji z tekstu."""
         pattern = re.compile(
-            r"(?:sesj[aeę]|session)\s+(?:o\s+nazwie\s+)?['\"]?([A-Za-z0-9_-]+)['\"]?",
+            r"(?:sesj[aeę]|session)\s+(?:o\s+nazwie\s+)?['\"]?([A-Za-z0-9_\-]+)['\"]?",
             re.IGNORECASE,
         )
         match = pattern.search(text)
@@ -379,7 +379,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
     def _extract_skill_name(self, text: str) -> Optional[str]:
         """Wyodrębnia nazwę skill z tekstu."""
-        pattern = re.compile(r"skill\s+['\"]?([A-Za-z0-9 _-]+)['\"]?", re.IGNORECASE)
+        pattern = re.compile(r"skill\s+['\"]?([A-Za-z0-9 _\-]+)['\"]?", re.IGNORECASE)
         match = pattern.search(text)
         if not match:
             return None

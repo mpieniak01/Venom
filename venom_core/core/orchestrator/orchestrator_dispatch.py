@@ -47,25 +47,25 @@ async def _handle_policy_block_before_tool_execution(
 ) -> bool:
     """
     Obsługuje blokadę policy przed wykonaniem narzędzia.
-    
+
     Args:
         orch: Orchestrator
         task_id: ID zadania
         request: Żądanie zadania
         intent: Intencja
         policy_context: Kontekst ewaluacji policy
-        
+
     Returns:
         True jeśli flow został przerwany (zadanie zablokowane), False jeśli można kontynuować
     """
     if not policy_gate.enabled:
         return False
-    
+
     policy_result = policy_gate.evaluate_before_tool_execution(policy_context)
-    
+
     if policy_result.decision != PolicyDecision.BLOCK:
         return False
-    
+
     # Zadanie zostało zablokowane
     logger.warning(
         f"Policy gate blocked tool execution for task {task_id}: {policy_result.reason_code}"
@@ -74,23 +74,25 @@ async def _handle_policy_block_before_tool_execution(
         task_id,
         f"🚫 Policy gate blocked tool execution: {policy_result.message}",
     )
-    
+
     # Store policy block details in task context for UI retrieval
     orch.state_manager.update_context(
         task_id,
         {
             "policy_blocked": True,
-            "reason_code": policy_result.reason_code.value if policy_result.reason_code else None,
+            "reason_code": policy_result.reason_code.value
+            if policy_result.reason_code
+            else None,
             "user_message": policy_result.message,
-        }
+        },
     )
-    
+
     await orch.state_manager.update_status(
         task_id,
         TaskStatus.FAILED,
         result=policy_result.message,
     )
-    
+
     # Add assistant session history entry with policy block details
     orch._append_session_history(
         task_id,
@@ -98,14 +100,16 @@ async def _handle_policy_block_before_tool_execution(
         content=policy_result.message,
         session_id=request.session_id,
         policy_blocked=True,
-        reason_code=policy_result.reason_code.value if policy_result.reason_code else None,
+        reason_code=policy_result.reason_code.value
+        if policy_result.reason_code
+        else None,
         user_message=policy_result.message,
     )
-    
+
     # Increment policy blocked metric
     if metrics_module.metrics_collector:
         metrics_module.metrics_collector.increment_policy_blocked()
-    
+
     if orch.request_tracer:
         orch.request_tracer.update_status(task_id, "failed")
         orch.request_tracer.add_step(
@@ -115,7 +119,7 @@ async def _handle_policy_block_before_tool_execution(
             status="blocked",
             details=f"Reason: {policy_result.reason_code}",
         )
-    
+
     return True
 
 
@@ -128,41 +132,41 @@ async def _prepare_intent_and_context(
 ) -> tuple[str, str, bool, dict]:
     """
     Klasyfikuje intencję i buduje kontekst.
-    
+
     Args:
         orch: Orchestrator
         task_id: ID zadania
         request: Żądanie zadania
         request_content: Treść żądania
         fast_path: Czy użyć fast path
-        
+
     Returns:
         Krotka (intent, context, tool_required, intent_debug)
     """
     intent, intent_debug = await _classify_intent_and_log(
         orch, task_id, request, request_content
     )
-    
+
     context = await _build_context_for_intent(
         orch, task_id, request, request_content, intent, fast_path
     )
-    
+
     _store_generation_params_if_present(orch, task_id, request)
     _set_non_llm_metadata_if_applicable(orch, task_id, intent, intent_debug)
-    
+
     tool_required, intent = _evaluate_tool_requirement_and_routing(
         orch, task_id, intent
     )
-    
+
     return intent, context, tool_required, intent_debug
 
 
-async def _emit_classification_trace(
+def _emit_classification_trace(
     orch: "Orchestrator", task_id: UUID, intent: str, intent_debug: dict
 ) -> None:
     """
     Emituje ślad klasyfikacji intencji.
-    
+
     Args:
         orch: Orchestrator
         task_id: ID zadania
@@ -231,9 +235,14 @@ async def run_task(
         orch.validator.validate_forced_tool(
             task_id, request.forced_tool, request.forced_intent
         )
-        
+
         # Prepare intent and context
-        intent, context, tool_required, intent_debug = await _prepare_intent_and_context(
+        (
+            intent,
+            context,
+            tool_required,
+            intent_debug,
+        ) = await _prepare_intent_and_context(
             orch, task_id, request, request_content, fast_path
         )
 
@@ -246,7 +255,7 @@ async def run_task(
             )
             _trace_context_preview(orch, task_id, context)
 
-        await _emit_classification_trace(orch, task_id, intent, intent_debug)
+        _emit_classification_trace(orch, task_id, intent, intent_debug)
 
         await _broadcast_intent(orch, task_id, intent)
         orch._append_session_history(
@@ -266,7 +275,7 @@ async def run_task(
                 forced_tool=request.forced_tool,
                 forced_provider=request.forced_provider,
             )
-            
+
             # Check and handle policy block
             if await _handle_policy_block_before_tool_execution(
                 orch, task_id, request, intent, policy_context

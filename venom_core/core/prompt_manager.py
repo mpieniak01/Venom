@@ -172,7 +172,7 @@ class PromptManager:
             Liczba przeładowanych promptów
         """
         count = 0
-        for agent_name in list(self.prompts_cache.keys()):
+        for agent_name in self.prompts_cache.keys():
             if self.hot_reload(agent_name):
                 count += 1
 

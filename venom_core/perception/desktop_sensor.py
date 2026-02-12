@@ -380,7 +380,7 @@ class DesktopSensor:
             )
 
             try:
-                stdout, stderr = await asyncio.wait_for(
+                stdout, _ = await asyncio.wait_for(
                     process.communicate(), timeout=2
                 )
             except asyncio.TimeoutError:

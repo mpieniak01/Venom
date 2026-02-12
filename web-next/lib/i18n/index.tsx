@@ -64,7 +64,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<LanguageCode>("pl");
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     document.documentElement.dataset.hydrated = "true";
     const stored = globalThis.window.localStorage.getItem(STORAGE_KEY) as LanguageCode | null;
     if (stored && stored in translations) {
@@ -79,7 +79,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     globalThis.window.localStorage.setItem(STORAGE_KEY, language);
     dayjs.locale(language);
   }, [language]);

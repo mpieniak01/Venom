@@ -1,11 +1,11 @@
 import { useTranslation } from "@/lib/i18n";
 
 interface GraphLegendProps {
-    activeTab: "repo" | "memory" | "hygiene";
-    showEdgeLabels: boolean;
+    readonly activeTab: "repo" | "memory" | "hygiene";
+    readonly showEdgeLabels: boolean;
 }
 
-export function GraphLegend({ activeTab, showEdgeLabels }: GraphLegendProps) {
+export function GraphLegend({ activeTab, showEdgeLabels }: Readonly<GraphLegendProps>) {
     const t = useTranslation();
     return (
         <div className="flex flex-wrap gap-3 text-xs text-white">

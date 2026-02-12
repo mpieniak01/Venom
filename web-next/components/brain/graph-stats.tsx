@@ -2,15 +2,15 @@ import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "@/lib/i18n";
 
 interface GraphStatsProps {
-    summaryNodes: string | number;
-    summaryEdges: string | number;
-    summaryUpdated?: string;
-    activeTab: "repo" | "memory" | "hygiene";
-    memoryLimit: number;
-    renderedNodes: number;
-    sourceTotalNodes: number;
-    renderedEdges: number;
-    sourceTotalEdges: number;
+    readonly summaryNodes: string | number;
+    readonly summaryEdges: string | number;
+    readonly summaryUpdated?: string;
+    readonly activeTab: "repo" | "memory" | "hygiene";
+    readonly memoryLimit: number;
+    readonly renderedNodes: number;
+    readonly sourceTotalNodes: number;
+    readonly renderedEdges: number;
+    readonly sourceTotalEdges: number;
 }
 
 export function GraphStats({
@@ -23,7 +23,7 @@ export function GraphStats({
     sourceTotalNodes,
     renderedEdges,
     sourceTotalEdges,
-}: GraphStatsProps) {
+}: Readonly<GraphStatsProps>) {
     const t = useTranslation();
     return (
         <div className="flex flex-wrap items-center gap-2">

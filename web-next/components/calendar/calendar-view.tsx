@@ -4,11 +4,11 @@ import { CalendarEvent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 
 interface CalendarViewProps {
-  events: CalendarEvent[];
-  onRefresh: () => void;
+  readonly events: CalendarEvent[];
+  readonly onRefresh: () => void;
 }
 
-export function CalendarView({ events, onRefresh }: CalendarViewProps) {
+export function CalendarView({ events, onRefresh }: Readonly<CalendarViewProps>) {
   const formatTime = (isoString: string) => {
     try {
       const date = new Date(isoString);

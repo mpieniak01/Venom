@@ -1,12 +1,12 @@
 "use client";
 
 type TokenEfficiencyStatProps = {
-  label: string;
-  value: string | number | null;
-  hint: string;
+  readonly label: string;
+  readonly value: string | number | null;
+  readonly hint: string;
 };
 
-export function TokenEfficiencyStat({ label, value, hint }: TokenEfficiencyStatProps) {
+export function TokenEfficiencyStat({ label, value, hint }: Readonly<TokenEfficiencyStatProps>) {
   return (
     <div className="rounded-2xl box-muted p-3">
       <p className="text-caption">{label}</p>
@@ -17,12 +17,12 @@ export function TokenEfficiencyStat({ label, value, hint }: TokenEfficiencyStatP
 }
 
 type TokenShareBarProps = {
-  label: string;
-  percent: number | null;
-  accent: string;
+  readonly label: string;
+  readonly percent: number | null;
+  readonly accent: string;
 };
 
-export function TokenShareBar({ label, percent, accent }: TokenShareBarProps) {
+export function TokenShareBar({ label, percent, accent }: Readonly<TokenShareBarProps>) {
   return (
     <div className="rounded-2xl box-base p-3">
       <div className="flex items-center justify-between text-sm text-white">
@@ -40,12 +40,12 @@ export function TokenShareBar({ label, percent, accent }: TokenShareBarProps) {
 }
 
 type ResourceMetricCardProps = {
-  label: string;
-  value: string;
-  hint?: string;
+  readonly label: string;
+  readonly value: string;
+  readonly hint?: string;
 };
 
-export function ResourceMetricCard({ label, value, hint }: ResourceMetricCardProps) {
+export function ResourceMetricCard({ label, value, hint }: Readonly<ResourceMetricCardProps>) {
   return (
     <div className="rounded-2xl box-muted p-3 text-sm text-white">
       <p className="text-caption">{label}</p>

@@ -8,11 +8,11 @@ export interface RelationEntry {
 }
 
 interface RelationListProps {
-    selectedId: string;
-    relations: RelationEntry[];
+    readonly selectedId: string;
+    readonly relations: RelationEntry[];
 }
 
-export function RelationList({ selectedId, relations }: RelationListProps) {
+export function RelationList({ selectedId, relations }: Readonly<RelationListProps>) {
     const t = useTranslation();
     return (
         <div className="card-shell card-base p-4 text-sm">

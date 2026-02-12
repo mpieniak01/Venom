@@ -199,7 +199,7 @@ export function AutonomySection({
                     </option>
                     {AUTONOMY_LEVELS.map((level) => (
                         <option key={level} value={level}>
-                            {t(`sidebar.autonomy.levels.${level}` as string) ?? `Poziom ${level}`}
+                            {t(`sidebar.autonomy.levels.${level}`) ?? `Poziom ${level}`}
                         </option>
                     ))}
                 </select>

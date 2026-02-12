@@ -5,16 +5,16 @@ import { Button } from "@/components/ui/button";
 import type { AcademyStatus } from "@/lib/academy-api";
 
 interface AcademyOverviewProps {
-  status: AcademyStatus;
-  onRefresh: () => void;
+  readonly status: AcademyStatus;
+  readonly onRefresh: () => void;
 }
 
 interface ComponentStatusProps {
-  name: string;
-  active: boolean;
+  readonly name: string;
+  readonly active: boolean;
 }
 
-const ComponentStatus = ({ name, active }: ComponentStatusProps) => (
+const ComponentStatus = ({ name, active }: Readonly<ComponentStatusProps>) => (
   <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-3">
     {active ? (
       <CheckCircle2 className="h-4 w-4 text-emerald-400" />
@@ -26,13 +26,13 @@ const ComponentStatus = ({ name, active }: ComponentStatusProps) => (
 );
 
 interface StatCardProps {
-  label: string;
-  value: string | number;
-  icon: React.ElementType;
-  color?: "emerald" | "blue" | "yellow" | "red";
+  readonly label: string;
+  readonly value: string | number;
+  readonly icon: React.ElementType;
+  readonly color?: "emerald" | "blue" | "yellow" | "red";
 }
 
-const StatCard = ({ label, value, icon: Icon, color = "emerald" }: StatCardProps) => {
+const StatCard = ({ label, value, icon: Icon, color = "emerald" }: Readonly<StatCardProps>) => {
   const colorClasses = {
     emerald: "border-emerald-500/20 bg-emerald-500/5 text-emerald-300",
     blue: "border-blue-500/20 bg-blue-500/5 text-blue-300",
@@ -53,7 +53,7 @@ const StatCard = ({ label, value, icon: Icon, color = "emerald" }: StatCardProps
   );
 };
 
-export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
+export function AcademyOverview({ status, onRefresh }: Readonly<AcademyOverviewProps>) {
   return (
     <div className="space-y-6">
       {/* Status nagłówek */}

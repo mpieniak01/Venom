@@ -12,15 +12,15 @@ import { DynamicParameterForm, type GenerationSchema } from "@/components/ui/dyn
 import type { GenerationParams } from "@/lib/types";
 
 type CockpitTuningDrawerProps = {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  loadingSchema: boolean;
-  modelSchema: GenerationSchema | null;
-  generationParams: GenerationParams | null;
-  onChangeGenerationParams: (values: Record<string, unknown>) => void;
-  onResetGenerationParams: () => void;
-  tuningSaving: boolean;
-  onApply: () => void;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly loadingSchema: boolean;
+  readonly modelSchema: GenerationSchema | null;
+  readonly generationParams: GenerationParams | null;
+  readonly onChangeGenerationParams: (values: Record<string, unknown>) => void;
+  readonly onResetGenerationParams: () => void;
+  readonly tuningSaving: boolean;
+  readonly onApply: () => void;
 };
 
 export function CockpitTuningDrawer({
@@ -33,7 +33,7 @@ export function CockpitTuningDrawer({
   onResetGenerationParams,
   tuningSaving,
   onApply,
-}: CockpitTuningDrawerProps) {
+}: Readonly<CockpitTuningDrawerProps>) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">

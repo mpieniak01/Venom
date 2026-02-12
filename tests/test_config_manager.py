@@ -30,6 +30,19 @@ def test_get_config_masks_secrets(config_manager: ConfigManager):
     assert unmasked["OPENAI_API_KEY"] == "secret1234"
 
 
+def test_get_effective_config_with_sources_uses_defaults(config_manager: ConfigManager):
+    config_manager.env_file.write_text("AI_MODE=HYBRID\n", encoding="utf-8")
+
+    config, sources = config_manager.get_effective_config_with_sources(
+        mask_secrets=False
+    )
+
+    assert config["AI_MODE"] == "HYBRID"
+    assert sources["AI_MODE"] == "env"
+    assert config["ENABLE_ACADEMY"] in {"true", "false"}
+    assert sources["ENABLE_ACADEMY"] == "default"
+
+
 def test_update_config_writes_and_backs_up(config_manager: ConfigManager):
     config_manager.env_file.write_text(
         "# header\nLLM_MODEL_NAME=old\n", encoding="utf-8"

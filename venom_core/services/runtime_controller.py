@@ -35,6 +35,8 @@ class ServiceType(str, Enum):
     HIVE = "hive"
     NEXUS = "nexus"
     BACKGROUND_TASKS = "background_tasks"
+    ACADEMY = "academy"
+    INTENT_EMBEDDING_ROUTER = "intent_embedding_router"
 
 
 class ServiceStatus(str, Enum):
@@ -219,6 +221,18 @@ class RuntimeController:
                 if SETTINGS.VENOM_PAUSE_BACKGROUND_TASKS
                 else ServiceStatus.RUNNING
             )
+            return
+        if service_type in {
+            ServiceType.ACADEMY,
+            ServiceType.INTENT_EMBEDDING_ROUTER,
+        }:
+            setting_name = f"ENABLE_{service_type.name}"
+            info.status = (
+                ServiceStatus.RUNNING
+                if getattr(SETTINGS, setting_name, False)
+                else ServiceStatus.STOPPED
+            )
+            return
 
     def _update_last_log(self, info: ServiceInfo, service_type: ServiceType) -> None:
         log_file = self.log_files.get(service_type)
@@ -246,6 +260,8 @@ class RuntimeController:
             ServiceType.HIVE: "Hive kontrolowany przez konfigurację",
             ServiceType.NEXUS: "Nexus kontrolowany przez konfigurację",
             ServiceType.BACKGROUND_TASKS: "Background tasks kontrolowane przez konfigurację",
+            ServiceType.ACADEMY: "Academy kontrolowane przez konfigurację",
+            ServiceType.INTENT_EMBEDDING_ROUTER: "Intent embedding router kontrolowany przez konfigurację",
         }
         message = messages.get(service_type, "Nieznany typ usługi")
         return {"success": False, "message": message}

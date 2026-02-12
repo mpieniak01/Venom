@@ -372,6 +372,8 @@ export const en = {
         llm_ollama: "Ollama",
         llm_vllm: "vLLM",
         background_tasks: "Background Tasks",
+        academy: "Academy",
+        intent_embedding_router: "Intent Embedding Router",
         mcp_engine: "MCP Engine",
         mcp: "MCP",
         semantic_kernel: "Semantic Kernel",
@@ -411,6 +413,7 @@ export const en = {
           dreaming: "Data: dreaming (timelines)",
         },
       },
+      managedByConfig: "Controlled by configuration",
     },
     parameters: {
       title: "System Parameters",
@@ -428,6 +431,12 @@ export const en = {
         noChanges: "No changes to save",
         fetchError: "Failed to fetch configuration",
       },
+      valueSource: {
+        env: "env",
+        default: "default",
+      },
+      effectiveConfigHint:
+        "Value comes from backend defaults (no explicit entry in .env).",
       restartRequired: {
         title: "Restart Required",
         message: "The following services require restart: {{services}}",
@@ -449,6 +458,10 @@ export const en = {
         routing: {
           title: "Routing and Context",
           description: "Summary strategy and context compression",
+        },
+        embeddingRouter: {
+          title: "Intent Embedding Router",
+          description: "Enable and tune embedding-based intent routing",
         },
         prompts: {
           title: "Prompts",

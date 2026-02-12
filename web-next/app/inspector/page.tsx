@@ -183,7 +183,7 @@ export default function InspectorPage() {
   }, [refreshHistory, refreshTasks]);
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     let cancelled = false;
     import("mermaid")
       .then((mod) => {

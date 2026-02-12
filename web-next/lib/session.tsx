@@ -17,7 +17,7 @@ const SESSION_BOOT_KEY = "venom-backend-boot-id";
 let sessionIdFallbackCounter = 0;
 
 const getBuildId = () => {
-  if (typeof globalThis.window === "undefined") return "unknown";
+  if (globalThis.window === undefined) return "unknown";
   const nextData = (globalThis.window as typeof globalThis.window & { __NEXT_DATA__?: { buildId?: string } })
     .__NEXT_DATA__;
   return nextData?.buildId ?? "unknown";
@@ -46,7 +46,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const setSessionId = useCallback((value: string) => {
     setSessionIdState(value);
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     try {
       globalThis.window.localStorage.setItem(SESSION_ID_KEY, value);
       globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
@@ -62,7 +62,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [setSessionId]);
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     let active = true;
     const syncBootId = async () => {
       try {

@@ -34,7 +34,7 @@ type StatusEntry = {
 
 type TelemetryEvent = { id: string; ts: number; payload: unknown };
 
-type CockpitRuntimeProps = {
+type CockpitRuntimeProps = Readonly<{
   chatFullscreen: boolean;
   showArtifacts: boolean;
   showReferenceSections: boolean;
@@ -79,7 +79,7 @@ type CockpitRuntimeProps = {
   macroSending: string | null;
   onRunMacro: (macro: MacroAction) => void;
   onOpenQuickActions: () => void;
-};
+}>;
 
 export function CockpitRuntime(props: CockpitRuntimeProps) {
   return <CockpitInsightsSection {...props} />;

@@ -5,17 +5,19 @@ import { Button } from "@/components/ui/button";
 import type { GenerationSchema, GenerationParameterSchema } from "@/lib/types";
 export type { GenerationSchema } from "@/lib/types";
 
-
+/**
+ * Type for generation parameter values
+ */
+type ParameterValue = number | string | boolean | null | undefined;
+type ParameterValues = Record<string, ParameterValue>;
 
 /**
  * Props dla DynamicParameterForm
  */
 type DynamicParameterFormProps = Readonly<{
   schema: GenerationSchema;
-  values?: Record<string, number | string | boolean | null | undefined>;
-  onChange?: (
-    values: Record<string, number | string | boolean | null | undefined>,
-  ) => void;
+  values?: ParameterValues;
+  onChange?: (values: ParameterValues) => void;
   onReset?: () => void;
 }>;
 
@@ -30,8 +32,8 @@ function ParameterControl({
 }: Readonly<{
   name: string;
   schema: GenerationParameterSchema;
-  value: number | string | boolean | null | undefined;
-  onChange: (value: number | string | boolean | null | undefined) => void;
+  value: ParameterValue;
+  onChange: (value: ParameterValue) => void;
 }>) {
   const { type, min, max, desc, options } = schema;
 
@@ -158,11 +160,9 @@ export function DynamicParameterForm({
   onReset,
 }: DynamicParameterFormProps) {
   // Stan lokalny z wartościami parametrów
-  const [values, setValues] = useState<
-    Record<string, number | string | boolean | null | undefined>
-  >(
+  const [values, setValues] = useState<ParameterValues>(
     () => {
-      const defaults: Record<string, number | string | boolean | null | undefined> = {};
+      const defaults: ParameterValues = {};
       Object.entries(schema).forEach(([key, paramSchema]) => {
         defaults[key] = paramSchema.default;
       });
@@ -192,7 +192,7 @@ export function DynamicParameterForm({
 
   const handleValueChange = (
     name: string,
-    value: number | string | boolean | null | undefined,
+    value: ParameterValue,
   ) => {
     setValues((prev) => ({
       ...prev,
@@ -201,7 +201,7 @@ export function DynamicParameterForm({
   };
 
   const handleReset = () => {
-    const defaults: Record<string, number | string | boolean | null | undefined> = {};
+    const defaults: ParameterValues = {};
     Object.entries(schema).forEach(([key, paramSchema]) => {
       defaults[key] = paramSchema.default;
     });

@@ -18,9 +18,11 @@ export type ContextPreviewMeta = {
     mode?: string | null;
 };
 
+export type RuntimeError = string | Record<string, unknown> | null;
+
 export type RuntimeContext = {
     status: string | null;
-    error: string | Record<string, unknown> | null;
+    error: RuntimeError;
 };
 
 export type RuntimeErrorMeta = {

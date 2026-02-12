@@ -168,7 +168,7 @@ function usePolling<T>(
   fetcher: () => Promise<T>,
   intervalMs = 5000,
 ): PollingState<T> {
-  const isBrowser = typeof globalThis.window !== "undefined";
+  const isBrowser = globalThis.window !== undefined;
   const pollingDisabled = process.env.NEXT_PUBLIC_DISABLE_API_POLLING === "true";
   const disabledState = useMemo(
     () => ({

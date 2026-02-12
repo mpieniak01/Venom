@@ -140,7 +140,7 @@ export default function StrategyPage() {
   const campaignRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     setCachedRoadmap(
       safeParseJson<RoadmapResponse>(globalThis.window.sessionStorage.getItem(ROADMAP_CACHE_KEY)),
     );
@@ -149,7 +149,7 @@ export default function StrategyPage() {
     setReportTimestamp(safeNumber(globalThis.window.sessionStorage.getItem(REPORT_TS_KEY)));
   }, []);
   const persistStatusReport = useCallback((value: string) => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     try {
       const timestamp = Date.now();
       globalThis.window.sessionStorage.setItem(REPORT_CACHE_KEY, value);
@@ -200,7 +200,7 @@ export default function StrategyPage() {
   useEffect(() => {
     if (!liveRoadmap) return;
     setCachedRoadmap(liveRoadmap);
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     try {
       const timestamp = Date.now();
       globalThis.window.sessionStorage.setItem(ROADMAP_CACHE_KEY, JSON.stringify(liveRoadmap));
@@ -709,7 +709,7 @@ const progressToneClasses: Record<NonNullable<GradientProgressProps["tone"]>, st
 };
 
 function GradientProgress({ value = 0, tone = "violet", className }: GradientProgressProps) {
-  const safeValue = Math.max(0, Math.min(100, Number.isFinite(value) ? (value as number) : 0));
+  const safeValue = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
   const toneClass = progressToneClasses[tone] ?? progressToneClasses.violet;
   return (
     <div className={cn("h-2 w-full rounded-full bg-white/10", className)}>

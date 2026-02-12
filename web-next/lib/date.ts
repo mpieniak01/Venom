@@ -1,6 +1,6 @@
 function resolveLanguageFromStorage(): keyof typeof DATE_LOCALES {
-  if (typeof window === "undefined") return "pl";
-  const stored = window.localStorage.getItem("venom-language");
+  if (globalThis.window === undefined) return "pl";
+  const stored = globalThis.window.localStorage.getItem("venom-language");
   if (stored === "en" || stored === "de" || stored === "pl") {
     return stored;
   }

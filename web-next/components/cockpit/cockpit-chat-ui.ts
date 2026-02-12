@@ -337,7 +337,7 @@ export function useCockpitChatUi({
     try {
       const activeModelName = models?.active?.model || "llama3";
       const config = await fetchModelConfig(activeModelName);
-      const schema = config?.generation_schema as GenerationSchema | undefined;
+      const schema = config?.generation_schema;
       setModelSchema(schema ?? null);
       if (config?.current_values) {
         setGenerationParams(config.current_values as GenerationParams);

@@ -88,7 +88,12 @@ class SessionStore:
         except Exception as exc:
             logger.warning(f"Nie udało się zapisać SessionStore: {exc}")
 
-    def append_message(self, session_id: str, entry: Dict[str, object]) -> None:
+    def append_message(
+        self,
+        session_id: str,
+        entry: Dict[str, object],
+        knowledge_metadata: Optional[Dict[str, object]] = None,
+    ) -> None:
         if not session_id:
             return
         with self._lock:
@@ -97,7 +102,15 @@ class SessionStore:
             history_raw = session.get("history")
             if isinstance(history_raw, list):
                 history = [item for item in history_raw if isinstance(item, dict)]
-            history.append(entry)
+            normalized_entry = dict(entry)
+            if knowledge_metadata:
+                current_meta = normalized_entry.get("knowledge_metadata")
+                merged_meta = (
+                    dict(current_meta) if isinstance(current_meta, dict) else {}
+                )
+                merged_meta.update(knowledge_metadata)
+                normalized_entry["knowledge_metadata"] = merged_meta
+            history.append(normalized_entry)
             if self._max_entries and len(history) > self._max_entries:
                 history = history[-self._max_entries :]
             session["history"] = history
@@ -120,12 +133,23 @@ class SessionStore:
             return history[-limit:]
         return history
 
-    def set_summary(self, session_id: str, summary: str) -> None:
+    def set_summary(
+        self,
+        session_id: str,
+        summary: str,
+        knowledge_metadata: Optional[Dict[str, object]] = None,
+    ) -> None:
         if not session_id:
             return
         with self._lock:
             session = self._sessions.setdefault(session_id, {})
-            session["summary"] = summary
+            if knowledge_metadata:
+                session["summary"] = {
+                    "content": summary,
+                    "knowledge_metadata": dict(knowledge_metadata),
+                }
+            else:
+                session["summary"] = summary
             session["updated_at"] = get_utc_now_iso()
             self._sessions[session_id] = session
             self._save()
@@ -136,7 +160,25 @@ class SessionStore:
         with self._lock:
             session = self._sessions.get(session_id, {})
             summary = session.get("summary")
-        return summary if isinstance(summary, str) else None
+        if isinstance(summary, str):
+            return summary
+        if isinstance(summary, dict):
+            content = summary.get("content")
+            return content if isinstance(content, str) else None
+        return None
+
+    def get_summary_entry(self, session_id: str) -> Optional[Dict[str, object]]:
+        """Zwraca summary jako pełny rekord (treść + metadane) dla read-modelu wiedzy."""
+        if not session_id:
+            return None
+        with self._lock:
+            session = self._sessions.get(session_id, {})
+            summary = session.get("summary")
+        if isinstance(summary, str):
+            return {"content": summary}
+        if isinstance(summary, dict):
+            return dict(summary)
+        return None
 
     def clear_session(self, session_id: str) -> bool:
         if not session_id:

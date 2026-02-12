@@ -1,7 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Play, Square, RotateCw, Zap, Layout, Cpu, Activity, Plug, Brain } from "lucide-react";
+import {
+  Play,
+  Square,
+  RotateCw,
+  Zap,
+  Layout,
+  Cpu,
+  Activity,
+  Plug,
+  Brain,
+  GraduationCap,
+  Network,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation, useLanguage } from "@/lib/i18n";
 import { VenomWebSocket } from "@/lib/ws-client";
@@ -360,6 +372,10 @@ export function ServicesPanel() {
         return <Plug className="h-5 w-5" />;
       case "orchestrator":
         return <Brain className="h-5 w-5" />;
+      case "academy":
+        return <GraduationCap className="h-5 w-5" />;
+      case "intent_embedding_router":
+        return <Network className="h-5 w-5" />;
       default:
         return <Activity className="h-5 w-5" />;
     }

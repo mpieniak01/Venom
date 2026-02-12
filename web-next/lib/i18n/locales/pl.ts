@@ -372,6 +372,8 @@ export const pl = {
         llm_ollama: "Ollama",
         llm_vllm: "vLLM",
         background_tasks: "Zadania w tle",
+        academy: "Academy",
+        intent_embedding_router: "Router embeddingów intencji",
         mcp_engine: "Silnik MCP",
         mcp: "MCP",
         semantic_kernel: "Semantic Kernel",
@@ -429,6 +431,12 @@ export const pl = {
         noChanges: "Brak zmian do zapisania",
         fetchError: "Nie udało się pobrać konfiguracji",
       },
+      valueSource: {
+        env: "env",
+        default: "default",
+      },
+      effectiveConfigHint:
+        "Wartość pochodzi z domyślnej konfiguracji backendu (brak jawnego wpisu w .env).",
       restartRequired: {
         title: "Restart wymagany",
         message: "Następujące usługi wymagają restartu: {{services}}",
@@ -450,6 +458,10 @@ export const pl = {
         routing: {
           title: "Routing i kontekst",
           description: "Strategia podsumowań oraz kompresja kontekstu",
+        },
+        embeddingRouter: {
+          title: "Router embeddingów intencji",
+          description: "Włączanie i strojenie routingu intencji opartego o embeddingi",
         },
         prompts: {
           title: "Prompty",

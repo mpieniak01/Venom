@@ -10,6 +10,21 @@ interface Config {
   [key: string]: string;
 }
 
+interface ConfigSources {
+  [key: string]: "env" | "default";
+}
+
+const EMBEDDING_ROUTER_SECTION = {
+  title: "config.parameters.sections.embeddingRouter.title",
+  description: "config.parameters.sections.embeddingRouter.description",
+  keys: [
+    "ENABLE_INTENT_EMBEDDING_ROUTER",
+    "INTENT_EMBED_MODEL_NAME",
+    "INTENT_EMBED_MIN_SCORE",
+    "INTENT_EMBED_MARGIN",
+  ],
+} as const;
+
 function ConfigSection({
   title,
   description,
@@ -64,6 +79,7 @@ export function ParametersPanel() {
   );
   const [showSecrets, setShowSecrets] = useState<{ [key: string]: boolean }>({});
   const [restartRequired, setRestartRequired] = useState<string[]>([]);
+  const [configSources, setConfigSources] = useState<ConfigSources>({});
 
 
   const fetchConfig = useCallback(async () => {
@@ -87,6 +103,7 @@ export function ParametersPanel() {
       if (data.status === "success") {
         setConfig(data.config);
         setOriginalConfig(data.config);
+        setConfigSources(data.config_sources || {});
       } else {
         const errorMessage = data.message || t("config.parameters.messages.fetchError");
         setMessage({
@@ -180,6 +197,7 @@ export function ParametersPanel() {
   const renderInput = (key: string, value: string) => {
     const secret = isSecret(key);
     const showValue = !secret || showSecrets[key];
+    const valueSource = configSources[key] || "env";
 
     return (
       <div key={key} className="space-y-2">
@@ -187,16 +205,28 @@ export function ParametersPanel() {
           <label className="text-sm font-medium text-zinc-300">
             {key.replaceAll(/[_-]+/g, " ").replaceAll(/\b\w/g, (m) => m.toUpperCase())}
           </label>
-          {secret && (
-            <IconButton
-              label={showValue ? t("config.parameters.sections.secrets.hide") : t("config.parameters.sections.secrets.show")}
-              icon={showValue ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              variant="ghost"
-              size="xs"
-              className="text-zinc-500 hover:text-zinc-300"
-              onClick={() => toggleSecret(key)}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${valueSource === "default"
+                  ? "bg-amber-500/20 text-amber-300"
+                  : "bg-emerald-500/20 text-emerald-300"
+                }`}
+            >
+              {valueSource === "default"
+                ? t("config.parameters.valueSource.default")
+                : t("config.parameters.valueSource.env")}
+            </span>
+            {secret && (
+              <IconButton
+                label={showValue ? t("config.parameters.sections.secrets.hide") : t("config.parameters.sections.secrets.show")}
+                icon={showValue ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                variant="ghost"
+                size="xs"
+                className="text-zinc-500 hover:text-zinc-300"
+                onClick={() => toggleSecret(key)}
+              />
+            )}
+          </div>
         </div>
         <input
           type={showValue ? "text" : "password"}
@@ -204,6 +234,9 @@ export function ParametersPanel() {
           onChange={(e) => handleChange(key, e.target.value)}
           className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white outline-none focus:border-emerald-400 focus:ring-0"
         />
+        {valueSource === "default" && (
+          <p className="text-xs text-amber-200/80">{t("config.parameters.effectiveConfigHint")}</p>
+        )}
       </div>
     );
   };
@@ -337,6 +370,12 @@ export function ParametersPanel() {
           "ENABLE_CONTEXT_COMPRESSION",
           "MAX_CONTEXT_TOKENS",
         ]
+      )}
+
+      {renderSection(
+        t(EMBEDDING_ROUTER_SECTION.title),
+        t(EMBEDDING_ROUTER_SECTION.description),
+        [...EMBEDDING_ROUTER_SECTION.keys]
       )}
 
       {renderSection(

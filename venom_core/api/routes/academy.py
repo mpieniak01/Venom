@@ -43,10 +43,9 @@ CANONICAL_JOB_STATUSES = {
 }
 TERMINAL_JOB_STATUSES = {"finished", "failed", "cancelled"}
 JOBS_HISTORY_FILE = Path("./data/training/jobs.jsonl")
+DATASET_REQUIRED_DETAIL = "No dataset found. Please curate dataset first."
 
-RESP_400_DATASET_REQUIRED = {
-    "description": "No dataset found. Please curate dataset first."
-}
+RESP_400_DATASET_REQUIRED = {"description": DATASET_REQUIRED_DETAIL}
 RESP_403_LOCALHOST_ONLY = {
     "description": "Access denied for non-localhost administrative operation."
 }
@@ -425,14 +424,14 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
             if not training_dir.exists():
                 raise HTTPException(
                     status_code=400,
-                    detail="No dataset found. Please curate dataset first.",
+                    detail=DATASET_REQUIRED_DETAIL,
                 )
 
             datasets = sorted(training_dir.glob("dataset_*.jsonl"))
             if not datasets:
                 raise HTTPException(
                     status_code=400,
-                    detail="No dataset found. Please curate dataset first.",
+                    detail=DATASET_REQUIRED_DETAIL,
                 )
 
             dataset_path = str(datasets[-1])
@@ -543,9 +542,12 @@ def _sync_job_status_with_habitat(
     return status_info, current_status
 
 
-def _save_finished_job_metadata(
-    job_id: str, job: Dict[str, Any], current_status: str
-) -> None:
+def _log_internal_operation_failure(message: str) -> None:
+    """Loguje błędy operacyjne bez danych kontrolowanych przez użytkownika."""
+    logger.warning(message, exc_info=True)
+
+
+def _save_finished_job_metadata(job: Dict[str, Any], current_status: str) -> None:
     if current_status != "finished" or not job.get("adapter_path"):
         return
     adapter_path_obj = Path(job["adapter_path"])
@@ -553,8 +555,8 @@ def _save_finished_job_metadata(
         return
     try:
         _save_adapter_metadata(job, adapter_path_obj)
-    except Exception as e:
-        logger.warning("Failed to save adapter metadata for %s: %s", job_id, e)
+    except Exception:
+        _log_internal_operation_failure("Failed to save adapter metadata")
 
 
 def _cleanup_terminal_job_container(
@@ -566,8 +568,8 @@ def _cleanup_terminal_job_container(
         habitat.cleanup_job(job_name)
         _update_job_in_history(job_id, {"container_cleaned": True})
         job["container_cleaned"] = True
-    except Exception as e:
-        logger.warning("Failed to cleanup container for job %s: %s", job_id, e)
+    except Exception:
+        _log_internal_operation_failure("Failed to cleanup container")
 
 
 @router.get(
@@ -593,7 +595,7 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
         status_info, current_status = _sync_job_status_with_habitat(
             habitat, job_id, job, job_name
         )
-        _save_finished_job_metadata(job_id, job, current_status)
+        _save_finished_job_metadata(job, current_status)
         _cleanup_terminal_job_container(habitat, job_id, job, job_name, current_status)
 
         return JobStatusResponse(
@@ -702,57 +704,8 @@ async def stream_training_logs(job_id: str):
 
     job_name = job.get("job_name", job_id)
 
-    async def event_generator():
-        """Generator eventów SSE."""
-        try:
-            habitat = _get_gpu_habitat()
-            from venom_core.learning.training_metrics_parser import (
-                TrainingMetricsParser,
-            )
-
-            parser = TrainingMetricsParser()
-            all_metrics = []
-
-            # Wyślij początkowy event
-            yield _sse_event({"type": "connected", "job_id": job_id})
-
-            # Sprawdź czy job istnieje w GPU Habitat
-            if not habitat or job_name not in habitat.training_containers:
-                yield _sse_event(
-                    {"type": "error", "message": "Training container not found"}
-                )
-                return
-
-            # Streamuj logi
-            last_line_sent = 0
-            for log_line in habitat.stream_job_logs(job_name):
-                timestamp, message = _parse_stream_log_line(log_line)
-                metrics_data = _extract_metrics_data(parser, all_metrics, message)
-                yield _sse_event(
-                    _build_log_event(last_line_sent, message, timestamp, metrics_data)
-                )
-                last_line_sent += 1
-                events, should_stop = _periodic_stream_events(
-                    last_line_sent, habitat, job_name, parser, all_metrics
-                )
-                for event in events:
-                    yield _sse_event(event)
-                if should_stop:
-                    break
-
-                # Małe opóźnienie żeby nie przeciążyć
-                await asyncio.sleep(0.1)
-
-        except KeyError:
-            yield _sse_event(
-                {"type": "error", "message": "Job not found in container registry"}
-            )
-        except Exception as e:
-            logger.error(f"Error streaming logs: {e}", exc_info=True)
-            yield _sse_event({"type": "error", "message": str(e)})
-
     return StreamingResponse(
-        event_generator(),
+        _stream_training_logs_events(job_id=job_id, job_name=job_name),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -760,6 +713,54 @@ async def stream_training_logs(job_id: str):
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
+
+
+async def _stream_training_logs_events(job_id: str, job_name: str):
+    """Generator eventów SSE dla streamingu logów treningu."""
+    try:
+        habitat = _get_gpu_habitat()
+        from venom_core.learning.training_metrics_parser import TrainingMetricsParser
+
+        parser = TrainingMetricsParser()
+        all_metrics = []
+
+        # Wyślij początkowy event
+        yield _sse_event({"type": "connected", "job_id": job_id})
+
+        # Sprawdź czy job istnieje w GPU Habitat
+        if not habitat or job_name not in habitat.training_containers:
+            yield _sse_event(
+                {"type": "error", "message": "Training container not found"}
+            )
+            return
+
+        # Streamuj logi
+        last_line_sent = 0
+        for log_line in habitat.stream_job_logs(job_name):
+            timestamp, message = _parse_stream_log_line(log_line)
+            metrics_data = _extract_metrics_data(parser, all_metrics, message)
+            yield _sse_event(
+                _build_log_event(last_line_sent, message, timestamp, metrics_data)
+            )
+            last_line_sent += 1
+            events, should_stop = _periodic_stream_events(
+                last_line_sent, habitat, job_name, parser, all_metrics
+            )
+            for event in events:
+                yield _sse_event(event)
+            if should_stop:
+                break
+
+            # Małe opóźnienie żeby nie przeciążyć
+            await asyncio.sleep(0.1)
+
+    except KeyError:
+        yield _sse_event(
+            {"type": "error", "message": "Job not found in container registry"}
+        )
+    except Exception as e:
+        logger.error(f"Error streaming logs: {e}", exc_info=True)
+        yield _sse_event({"type": "error", "message": str(e)})
 
 
 @router.get(

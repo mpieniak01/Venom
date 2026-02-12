@@ -264,7 +264,7 @@ export function useOptimisticRequests<TDetail = unknown>(
 let optimisticIdFallbackCounter = 0;
 
 function createOptimisticId() {
-  if (crypto !== undefined && "randomUUID" in crypto) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     const randomPart = crypto.randomUUID().replaceAll("-", "").slice(0, 4);
     return `opt-${Date.now().toString(36)}-${randomPart}`;
   }

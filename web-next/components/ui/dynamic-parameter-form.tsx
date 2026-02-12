@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import type { GenerationSchema, GenerationParameterSchema } from "@/lib/types";
-export type { GenerationSchema, GenerationParameterSchema } from "@/lib/types";
+export type { GenerationSchema } from "@/lib/types";
 
 
 

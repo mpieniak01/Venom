@@ -1,6 +1,5 @@
 """Testy integracyjne dla orchestratora z policy gate."""
 
-import asyncio
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 

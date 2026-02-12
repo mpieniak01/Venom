@@ -133,6 +133,9 @@ export function ConversationBubble({
   modeLabel,
   sourceLabel,
   contextUsed,
+  policyBlocked,
+  reasonCode,
+  userMessage,
 }: ConversationBubbleProps) {
   const t = useTranslation();
   const isUser = role === "user";

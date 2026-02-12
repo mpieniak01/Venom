@@ -4,7 +4,7 @@ import os
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from venom_core.utils.logger import get_logger
 
@@ -34,7 +34,7 @@ class PolicyEvaluationContext(BaseModel):
     content: str
     intent: Optional[str] = None
     planned_provider: Optional[str] = None
-    planned_tools: list[str] = []
+    planned_tools: list[str] = Field(default_factory=list)
     session_id: Optional[str] = None
     forced_tool: Optional[str] = None
     forced_provider: Optional[str] = None

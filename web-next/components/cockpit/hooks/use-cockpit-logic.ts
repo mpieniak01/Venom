@@ -65,6 +65,9 @@ type HistoryEntryLike = {
     status?: string | null;
     contextUsed?: { lessons?: string[]; memory_entries?: string[] } | null;
     session_id?: string;
+    policy_blocked?: boolean;
+    reason_code?: string | null;
+    user_message?: string | null;
 };
 
 type StreamLike = {
@@ -268,6 +271,9 @@ function toHistoryMessages(entries: HistoryEntryLike[]) {
             pending: entry.pending || false,
             status: entry.status || null,
             contextUsed: entry.contextUsed ?? null,
+            policyBlocked: entry.policy_blocked ?? false,
+            reasonCode: entry.reason_code ?? null,
+            userMessage: entry.user_message ?? null,
         };
     });
 }

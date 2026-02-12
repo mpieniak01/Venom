@@ -14,12 +14,12 @@ export function BrandSection({
     isSynced,
     onToggle,
     t
-}: {
+}: Readonly<{
     collapsed: boolean;
     isSynced: boolean;
     onToggle: () => void;
     t: (key: string) => string;
-}) {
+}>) {
     return (
         <div className="flex flex-col gap-6">
             <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between")}>
@@ -66,12 +66,12 @@ export function NavigationSection({
     isSynced,
     pathname,
     t
-}: {
+}: Readonly<{
     collapsed: boolean;
     isSynced: boolean;
     pathname: string;
     t: (key: string) => string;
-}) {
+}>) {
     return (
         <nav className="mt-8 space-y-5">
             <div>
@@ -118,12 +118,12 @@ export function CostModeSection({
     costLoading,
     onToggle,
     t
-}: {
+}: Readonly<{
     costMode: { enabled: boolean; provider?: string } | null;
     costLoading: boolean;
     onToggle: () => void;
     t: (key: string) => string;
-}) {
+}>) {
     let toggleLabel = t("sidebar.cost.switchToPro");
     if (costLoading) {
         toggleLabel = t("sidebar.cost.switching");
@@ -163,13 +163,13 @@ export function AutonomySection({
     autonomyLoading,
     onAutonomyChange,
     t
-}: {
+}: Readonly<{
     autonomyInfo: AutonomySnapshot;
     selectedAutonomy: string;
     autonomyLoading: number | null;
     onAutonomyChange: (level: number) => void;
     t: (key: string) => string;
-}) {
+}>) {
     return (
         <section className="rounded-2xl card-shell bg-gradient-to-b from-violet-500/5 to-transparent p-4 text-sm" data-testid="sidebar-autonomy">
             <div className="flex items-start justify-between gap-3">

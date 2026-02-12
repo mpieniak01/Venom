@@ -55,7 +55,7 @@ function resolvePath(locale: Record<string, unknown>, path: string): string | nu
 function applyReplacements(value: string, replacements?: Record<string, string | number>) {
   if (!replacements) return value;
   return Object.entries(replacements).reduce((acc, [key, replacement]) => {
-    const pattern = new RegExp(`{{\\s*${key}\\s*}}`, "g");
+    const pattern = new RegExp(String.raw`{{\s*${key}\s*}}`, "g");
     return acc.replace(pattern, String(replacement));
   }, value);
 }
@@ -64,7 +64,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<LanguageCode>("pl");
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     document.documentElement.dataset.hydrated = "true";
     const stored = globalThis.window.localStorage.getItem(STORAGE_KEY) as LanguageCode | null;
     if (stored && stored in translations) {
@@ -79,7 +79,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     globalThis.window.localStorage.setItem(STORAGE_KEY, language);
     dayjs.locale(language);
   }, [language]);

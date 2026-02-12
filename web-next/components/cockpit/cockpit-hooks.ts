@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LogEntryType } from "@/lib/logs";
-import type { ServiceStatus, Task, ContextUsed } from "@/lib/types";
+import type { ServiceStatus, Task, ContextUsed, HiddenPromptEntry } from "@/lib/types";
 import type { TokenSample } from "@/components/cockpit/token-types";
 import {
   isTelemetryEventPayload,
@@ -13,7 +13,6 @@ import {
   type TelemetryFeedEntry,
   type TelemetryEventPayload,
 } from "@/components/cockpit/cockpit-utils";
-import type { HiddenPromptEntry } from "@/lib/types";
 import type { SendTaskInput } from "@/hooks/use-api";
 
 const MAX_SESSION_HISTORY_ENTRIES = 500;
@@ -258,7 +257,7 @@ export function useSessionHistoryState({
     sessionId && bootId ? `venom-session-history:${sessionId}:${bootId}` : null;
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     try {
       const storedBootId = globalThis.window.localStorage.getItem("venom-backend-boot-id");
       setBootId(storedBootId);

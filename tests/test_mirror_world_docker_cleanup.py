@@ -35,7 +35,8 @@ class TestDockerContainerCleanup:
         
         # Sprawdź że kontener został zatrzymany i usunięty
         assert result is True
-        mock_container.stop.assert_called_once_with(timeout=10)
+        # Note: timeout is handled by asyncio.timeout context manager, not passed to stop()
+        mock_container.stop.assert_called_once()
         mock_container.remove.assert_called_once_with(force=True)
 
     @pytest.mark.asyncio
@@ -119,7 +120,7 @@ class TestDockerContainerCleanup:
         # Sprawdź że kontener został zatrzymany
         assert result is True
         mirror_world._stop_and_remove_container.assert_called_once_with(
-            "venom-shadow-test", timeout=10, force=True
+            "venom-shadow-test", force=True
         )
 
     @pytest.mark.asyncio

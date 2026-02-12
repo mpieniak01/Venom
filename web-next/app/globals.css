@@ -217,7 +217,7 @@ a {
 .box-base {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
-  color: #f5f5f5;
+  color: #ffffff;
   box-shadow: var(--shadow-card);
 }
 

@@ -25,6 +25,12 @@
 - 💬 **Chat Continuity** — Session history per `session_id` across restarts.
 - 🛠️ **Services Panel** — `/config` shows runtime status of local stack.
 
+### Recent Updates (2026-02)
+- ⚙️ **Config Panel: effective values visibility** — parameters now clearly show whether value comes from `.env` or backend defaults (`env` vs `default`).
+- 🎓 **Academy hardening** — API routes were cleaned up for maintainability/security (exception handling, reduced complexity, safer logs).
+- 🧭 **Runtime monitoring extended** — Config/runtime screens now include Academy and Intent Embedding Router service signals.
+- 🧪 **Intent Router + RAG Boost rollout path** — feature flags and docs are aligned for staged enablement (`ENABLE_INTENT_EMBEDDING_ROUTER`, `ENABLE_RAG_RETRIEVAL_BOOST`).
+
 See `docs/` for architecture, frontend guide, and testing policy.
 
 ## 🖼️ UI Preview (snapshots)
@@ -773,7 +779,7 @@ Venom can autonomously improve through fine-tuning models with LoRA/QLoRA adapte
      sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
    sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
    sudo systemctl restart docker
-   
+
    # Verify GPU access
    docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
    ```

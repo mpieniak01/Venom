@@ -10,6 +10,17 @@ interface Config {
   [key: string]: string;
 }
 
+const EMBEDDING_ROUTER_SECTION = {
+  title: "config.parameters.sections.embeddingRouter.title",
+  description: "config.parameters.sections.embeddingRouter.description",
+  keys: [
+    "ENABLE_INTENT_EMBEDDING_ROUTER",
+    "INTENT_EMBED_MODEL_NAME",
+    "INTENT_EMBED_MIN_SCORE",
+    "INTENT_EMBED_MARGIN",
+  ],
+} as const;
+
 function ConfigSection({
   title,
   description,
@@ -340,14 +351,9 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        t("config.parameters.sections.embeddingRouter.title"),
-        t("config.parameters.sections.embeddingRouter.description"),
-        [
-          "ENABLE_INTENT_EMBEDDING_ROUTER",
-          "INTENT_EMBED_MODEL_NAME",
-          "INTENT_EMBED_MIN_SCORE",
-          "INTENT_EMBED_MARGIN",
-        ]
+        t(EMBEDDING_ROUTER_SECTION.title),
+        t(EMBEDDING_ROUTER_SECTION.description),
+        [...EMBEDDING_ROUTER_SECTION.keys]
       )}
 
       {renderSection(

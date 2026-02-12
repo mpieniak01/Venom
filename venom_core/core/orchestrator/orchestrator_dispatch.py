@@ -130,6 +130,10 @@ async def run_task(
         )
 
         # Policy Gate: Check before tool execution
+        # NOTE: planned_tools list will be empty for non-forced tool paths, as tool
+        # selection happens dynamically in _execute_with_stream_callback. This is a
+        # known limitation of the MVP implementation where the gate validates intent
+        # and forced parameters but not the dynamically selected tool.
         if policy_gate.enabled and tool_required:
             policy_context = PolicyEvaluationContext(
                 content=request.content,
@@ -149,6 +153,17 @@ async def run_task(
                     task_id,
                     f"🚫 Policy gate blocked tool execution: {policy_result.message}",
                 )
+                
+                # Store policy block details in task context for UI retrieval
+                orch.state_manager.update_context(
+                    task_id,
+                    {
+                        "policy_blocked": True,
+                        "reason_code": policy_result.reason_code.value if policy_result.reason_code else None,
+                        "user_message": policy_result.message,
+                    }
+                )
+                
                 await orch.state_manager.update_status(
                     task_id,
                     TaskStatus.FAILED,

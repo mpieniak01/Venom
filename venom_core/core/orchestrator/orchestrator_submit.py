@@ -65,10 +65,12 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
     orch.state_manager.update_context(task.id, {"llm_runtime": runtime_context})
 
     # Policy Gate: Check before provider selection
+    # NOTE: Runtime selection (get_active_llm_runtime) happens above for context setup.
+    # This gate check validates the request before dispatching to the selected runtime.
     if policy_gate.enabled:
         policy_context = PolicyEvaluationContext(
             content=request.content,
-            planned_provider=request.forced_provider,
+            planned_provider=request.forced_provider or runtime_info.provider,
             planned_tools=[request.forced_tool] if request.forced_tool else [],
             session_id=request.session_id,
             forced_tool=request.forced_tool,

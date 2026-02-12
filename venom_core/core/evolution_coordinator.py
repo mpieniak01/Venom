@@ -397,8 +397,20 @@ class EvolutionCoordinator:
         current_branch = "unknown"
         get_repo_fn = getattr(self.git_skill, "_get_repo", None)
         if callable(get_repo_fn):
-            repo = get_repo_fn()
-            current_branch = repo.active_branch.name
+            try:
+                repo = get_repo_fn()
+                try:
+                    # repo.active_branch może zgłosić wyjątek np. przy detached HEAD
+                    current_branch = repo.active_branch.name  # type: ignore[attr-defined]
+                except Exception:
+                    current_branch = "unknown"
+            except Exception as exc:
+                logger.warning(
+                    "Nie udało się pobrać repozytorium podczas przygotowania merge: %s",
+                    exc,
+                )
+                repo = None
+                current_branch = "unknown"
         
         return merge_fn, repo, current_branch
     

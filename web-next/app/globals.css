@@ -217,7 +217,7 @@ a {
 .box-base {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
+  color: #f5f5f5;
   box-shadow: var(--shadow-card);
 }
 
@@ -348,25 +348,25 @@ a {
 .status-pill--success {
   border-color: rgba(16, 185, 129, 0.3);
   background: rgba(16, 185, 129, 0.12);
-  color: #d1fae5;
+  color: #ecfdf5;
 }
 
 .status-pill--warning {
   border-color: rgba(245, 158, 11, 0.35);
   background: rgba(245, 158, 11, 0.12);
-  color: #fde68a;
+  color: #fef3c7;
 }
 
 .status-pill--danger {
   border-color: rgba(244, 63, 94, 0.35);
   background: rgba(244, 63, 94, 0.12);
-  color: #fecdd3;
+  color: #ffe4e6;
 }
 
 .status-pill--neutral {
   border-color: rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
-  color: #e4e4e7;
+  color: #fafafa;
 }
 
 .pill-badge {
@@ -412,25 +412,25 @@ a {
 .alert--success {
   border-color: rgba(16, 185, 129, 0.3);
   background: rgba(16, 185, 129, 0.12);
-  color: #bbf7d0;
+  color: #d1fae5;
 }
 
 .alert--error {
   border-color: rgba(239, 68, 68, 0.3);
   background: rgba(239, 68, 68, 0.12);
-  color: #fecaca;
+  color: #fee2e2;
 }
 
 .alert--warning {
   border-color: rgba(245, 158, 11, 0.3);
   background: rgba(245, 158, 11, 0.12);
-  color: #fde68a;
+  color: #fef3c7;
 }
 
 .alert--info {
   border-color: rgba(59, 130, 246, 0.3);
   background: rgba(59, 130, 246, 0.12);
-  color: #bfdbfe;
+  color: #dbeafe;
 }
 
 .chat-history-scroll,

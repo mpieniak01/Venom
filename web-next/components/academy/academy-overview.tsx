@@ -9,44 +9,51 @@ interface AcademyOverviewProps {
   onRefresh: () => void;
 }
 
-export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
-  const ComponentStatus = ({ name, active }: { name: string; active: boolean }) => (
-    <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-3">
-      {active ? (
-        <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-      ) : (
-        <XCircle className="h-4 w-4 text-red-400" />
-      )}
-      <span className="text-sm text-zinc-300">{name}</span>
-    </div>
-  );
+interface ComponentStatusProps {
+  name: string;
+  active: boolean;
+}
 
-  const StatCard = ({ label, value, icon: Icon, color = "emerald" }: {
-    label: string;
-    value: string | number;
-    icon: React.ElementType;
-    color?: "emerald" | "blue" | "yellow" | "red";
-  }) => {
-    const colorClasses = {
-      emerald: "border-emerald-500/20 bg-emerald-500/5 text-emerald-300",
-      blue: "border-blue-500/20 bg-blue-500/5 text-blue-300",
-      yellow: "border-yellow-500/20 bg-yellow-500/5 text-yellow-300",
-      red: "border-red-500/20 bg-red-500/5 text-red-300",
-    };
+const ComponentStatus = ({ name, active }: ComponentStatusProps) => (
+  <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-3">
+    {active ? (
+      <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+    ) : (
+      <XCircle className="h-4 w-4 text-red-400" />
+    )}
+    <span className="text-sm text-zinc-300">{name}</span>
+  </div>
+);
 
-    return (
-      <div className={`rounded-xl border p-4 ${colorClasses[color]}`}>
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs opacity-70">{label}</p>
-            <p className="mt-1 text-2xl font-bold">{value}</p>
-          </div>
-          <Icon className="h-5 w-5 opacity-50" />
-        </div>
-      </div>
-    );
+interface StatCardProps {
+  label: string;
+  value: string | number;
+  icon: React.ElementType;
+  color?: "emerald" | "blue" | "yellow" | "red";
+}
+
+const StatCard = ({ label, value, icon: Icon, color = "emerald" }: StatCardProps) => {
+  const colorClasses = {
+    emerald: "border-emerald-500/20 bg-emerald-500/5 text-emerald-300",
+    blue: "border-blue-500/20 bg-blue-500/5 text-blue-300",
+    yellow: "border-yellow-500/20 bg-yellow-500/5 text-yellow-300",
+    red: "border-red-500/20 bg-red-500/5 text-red-300",
   };
 
+  return (
+    <div className={`rounded-xl border p-4 ${colorClasses[color]}`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs opacity-70">{label}</p>
+          <p className="mt-1 text-2xl font-bold">{value}</p>
+        </div>
+        <Icon className="h-5 w-5 opacity-50" />
+      </div>
+    </div>
+  );
+};
+
+export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
   return (
     <div className="space-y-6">
       {/* Status nagłówek */}

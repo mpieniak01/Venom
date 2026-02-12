@@ -103,15 +103,23 @@ class Settings(BaseSettings):
         5.0  # Timeout LLM przy klasyfikacji intencji
     )
     # Intent Embedding Router (Phase A)
-    ENABLE_INTENT_EMBEDDING_ROUTER: bool = False  # Włącz routing intencji przez embeddingi
-    INTENT_EMBED_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"  # Model embeddingów
+    ENABLE_INTENT_EMBEDDING_ROUTER: bool = (
+        False  # Włącz routing intencji przez embeddingi
+    )
+    INTENT_EMBED_MODEL_NAME: str = (
+        "sentence-transformers/all-MiniLM-L6-v2"  # Model embeddingów
+    )
     INTENT_EMBED_MIN_SCORE: float = 0.62  # Minimalny próg podobieństwa
     INTENT_EMBED_MARGIN: float = 0.05  # Minimalny margines między top1 a top2
     ENABLE_META_LEARNING: bool = True  # Globalny przełącznik zapisu lekcji
     LESSONS_TTL_DAYS: int = 0  # Retencja lekcji (0 = wyłączona)
-    
+    MEMORY_TTL_DAYS: int = 0  # Retencja wpisów pamięci wektorowej (0 = wyłączona)
+    SESSION_TTL_DAYS: int = 0  # Retencja historii/summaries sesji (0 = wyłączona)
+
     # RAG Retrieval Boost (Phase B) - Intent-based context optimization
-    ENABLE_RAG_RETRIEVAL_BOOST: bool = False  # Włącz boost retrieval dla intencji wiedzo-zależnych
+    ENABLE_RAG_RETRIEVAL_BOOST: bool = (
+        False  # Włącz boost retrieval dla intencji wiedzo-zależnych
+    )
     RAG_BOOST_TOP_K_DEFAULT: int = 5  # Domyślny limit wyników wyszukiwania wektorowego
     RAG_BOOST_TOP_K_RESEARCH: int = 8  # Limit dla intencji RESEARCH
     RAG_BOOST_TOP_K_KNOWLEDGE: int = 8  # Limit dla intencji KNOWLEDGE_SEARCH
@@ -122,7 +130,7 @@ class Settings(BaseSettings):
     RAG_BOOST_LESSONS_LIMIT_DEFAULT: int = 3  # Domyślny limit lekcji w kontekście
     RAG_BOOST_LESSONS_LIMIT_RESEARCH: int = 5  # Limit lekcji dla RESEARCH
     RAG_BOOST_LESSONS_LIMIT_KNOWLEDGE: int = 5  # Limit lekcji dla KNOWLEDGE_SEARCH
-    
+
     LAST_MODEL_OLLAMA: str = ""  # Ostatnio wybrany model Ollama
     LAST_MODEL_VLLM: str = ""  # Ostatnio wybrany model vLLM
     PREVIOUS_MODEL_OLLAMA: str = ""  # Poprzedni model Ollama (fallback)

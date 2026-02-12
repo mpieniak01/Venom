@@ -372,6 +372,8 @@ export const de = {
         llm_ollama: "Ollama",
         llm_vllm: "vLLM",
         background_tasks: "Hintergrundaufgaben",
+        academy: "Academy",
+        intent_embedding_router: "Intent-Embedding-Router",
         mcp_engine: "MCP-Engine",
         mcp: "MCP",
         semantic_kernel: "Semantic Kernel",
@@ -411,6 +413,7 @@ export const de = {
           dreaming: "Daten: Dreaming (Timelines)",
         },
       },
+      managedByConfig: "Durch Konfiguration gesteuert",
     },
     parameters: {
       title: "Systemparameter",
@@ -449,6 +452,10 @@ export const de = {
         routing: {
           title: "Routing und Kontext",
           description: "Zusammenfassungsstrategie und Kontextkompression",
+        },
+        embeddingRouter: {
+          title: "Intent-Embedding-Router",
+          description: "Aktivierung und Feinabstimmung des embedding-basierten Intent-Routings",
         },
         prompts: {
           title: "Prompts",

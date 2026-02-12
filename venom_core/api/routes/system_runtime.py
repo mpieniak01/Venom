@@ -140,7 +140,7 @@ def runtime_service_action(service: str, action: str):
                 status_code=400,
                 detail=(
                     "Nieznana usługa: "
-                    f"{service}. Dostępne: backend, ui, llm_ollama, llm_vllm, hive, nexus, background_tasks"
+                    f"{service}. Dostępne: backend, ui, llm_ollama, llm_vllm, hive, nexus, background_tasks, academy, intent_embedding_router"
                 ),
             )
 

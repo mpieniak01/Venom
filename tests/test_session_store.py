@@ -27,6 +27,30 @@ def test_session_store_summary(tmp_path: Path):
     assert store.get_summary("s1") == "summary"
 
 
+def test_session_store_summary_with_knowledge_metadata(tmp_path: Path):
+    store_path = tmp_path / "session_store.json"
+    store = SessionStore(store_path=str(store_path))
+
+    metadata = {"knowledge_contract_version": "v1", "provenance_source": "orchestrator"}
+    store.set_summary("s1", "summary", knowledge_metadata=metadata)
+
+    assert store.get_summary("s1") == "summary"
+    assert store.get_summary_entry("s1") == {
+        "content": "summary",
+        "knowledge_metadata": metadata,
+    }
+
+
+def test_session_store_summary_entry_for_plain_string(tmp_path: Path):
+    store_path = tmp_path / "session_store.json"
+    store = SessionStore(store_path=str(store_path))
+
+    store.set_summary("s1", "summary")
+
+    assert store.get_summary("s1") == "summary"
+    assert store.get_summary_entry("s1") == {"content": "summary"}
+
+
 def test_session_store_clear(tmp_path: Path):
     store_path = tmp_path / "session_store.json"
     store = SessionStore(store_path=str(store_path))

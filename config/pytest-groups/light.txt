@@ -182,3 +182,16 @@ tests/test_config_paths.py
 tests/test_dispatcher_audit_fixes.py
 tests/test_history_order_api.py
 tests/test_toolmaker_agent.py
+tests/security/test_autonomy_enforcement.py
+tests/test_compose_skill_validation.py
+tests/test_git_routes_logic.py
+tests/test_intent_embedding_router.py
+tests/test_knowledge_adapters.py
+tests/test_knowledge_context_map_api.py
+tests/test_knowledge_contract.py
+tests/test_knowledge_ttl.py
+tests/test_policy_gate.py
+tests/test_policy_gate_integration.py
+tests/test_resolve_sonar_new_code_tests.py
+tests/test_stack_manager_safety.py
+tests/test_url_policy.py

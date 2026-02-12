@@ -13,6 +13,9 @@ export interface Task {
   llm_endpoint?: string | null;
   created_at?: string;
   updated_at?: string;
+  policy_blocked?: boolean;
+  reason_code?: string | null;
+  user_message?: string | null;
 }
 
 export interface Metrics {
@@ -86,6 +89,9 @@ export interface HistoryRequest {
     rating: "up" | "down";
     comment?: string | null;
   } | null;
+  policy_blocked?: boolean;
+  reason_code?: string | null;
+  user_message?: string | null;
 }
 
 export interface HistoryRequestDetail extends HistoryRequest {

@@ -23,3 +23,17 @@ tests/test_node_manager.py
 tests/test_evolution_basic.py
 tests/test_tracer.py
 tests/test_tracer_persistence.py
+
+# Recent lightweight regressions (policy gate / knowledge contract / resolver hardening)
+tests/security/test_autonomy_enforcement.py
+tests/test_compose_skill_validation.py
+tests/test_git_routes_logic.py
+tests/test_intent_embedding_router.py
+tests/test_knowledge_adapters.py
+tests/test_knowledge_contract.py
+tests/test_knowledge_ttl.py
+tests/test_policy_gate.py
+tests/test_policy_gate_integration.py
+tests/test_resolve_sonar_new_code_tests.py
+tests/test_stack_manager_safety.py
+tests/test_url_policy.py

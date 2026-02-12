@@ -25,12 +25,16 @@ class TestPolicyGate:
     def test_gate_disabled_by_default(self):
         """Gate powinien być domyślnie wyłączony."""
         with patch.dict(os.environ, {}, clear=True):
+            # Reset singleton state for test isolation
             gate = PolicyGate()
+            gate._initialized = False
+            gate.__init__()
             assert not gate.enabled
 
     def test_gate_enabled_via_env(self):
         """Gate powinien być włączony gdy ENABLE_POLICY_GATE=true."""
         with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "true"}):
+            # Reset singleton state for test isolation
             gate = PolicyGate()
             gate._initialized = False
             gate.__init__()

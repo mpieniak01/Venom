@@ -445,10 +445,19 @@ class Orchestrator:
         self.session_handler.persist_session_context(task_id, request)
 
     def _append_session_history(
-        self, task_id: UUID, role: str, content: str, session_id: Optional[str]
+        self,
+        task_id: UUID,
+        role: str,
+        content: str,
+        session_id: Optional[str],
+        policy_blocked: bool = False,
+        reason_code: Optional[str] = None,
+        user_message: Optional[str] = None,
     ) -> None:
         """Delegacja do session_handler."""
-        self.session_handler.append_session_history(task_id, role, content, session_id)
+        self.session_handler.append_session_history(
+            task_id, role, content, session_id, policy_blocked, reason_code, user_message
+        )
 
     def _build_session_context_block(
         self,

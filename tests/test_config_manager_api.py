@@ -37,12 +37,20 @@ class TestConfigRuntimeAPI:
         with patch(
             "venom_core.api.routes.system_config.config_manager"
         ) as mock_manager:
-            mock_manager.get_config.return_value = {
-                "AI_MODE": "LOCAL",
-                "LLM_SERVICE_TYPE": "local",
-                "ENABLE_HIVE": "false",
-                "OPENAI_API_KEY": "sk-****1234",  # Maskowany
-            }
+            mock_manager.get_effective_config_with_sources.return_value = (
+                {
+                    "AI_MODE": "LOCAL",
+                    "LLM_SERVICE_TYPE": "local",
+                    "ENABLE_HIVE": "false",
+                    "OPENAI_API_KEY": "sk-****1234",  # Maskowany
+                },
+                {
+                    "AI_MODE": "env",
+                    "LLM_SERVICE_TYPE": "env",
+                    "ENABLE_HIVE": "default",
+                    "OPENAI_API_KEY": "env",
+                },
+            )
 
             response = client.get("/api/v1/config/runtime?mask_secrets=true")
 
@@ -51,16 +59,23 @@ class TestConfigRuntimeAPI:
             assert data["status"] == "success"
             assert "AI_MODE" in data["config"]
             assert data["config"]["AI_MODE"] == "LOCAL"
+            assert data["config_sources"]["ENABLE_HIVE"] == "default"
 
     def test_get_config_no_mask(self, client):
         """Test pobrania konfiguracji bez maskowania."""
         with patch(
             "venom_core.api.routes.system_config.config_manager"
         ) as mock_manager:
-            mock_manager.get_config.return_value = {
-                "AI_MODE": "LOCAL",
-                "OPENAI_API_KEY": "sk-test1234567890",
-            }
+            mock_manager.get_effective_config_with_sources.return_value = (
+                {
+                    "AI_MODE": "LOCAL",
+                    "OPENAI_API_KEY": "sk-test1234567890",
+                },
+                {
+                    "AI_MODE": "env",
+                    "OPENAI_API_KEY": "env",
+                },
+            )
 
             response = client.get("/api/v1/config/runtime?mask_secrets=false")
 

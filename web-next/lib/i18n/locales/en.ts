@@ -431,6 +431,12 @@ export const en = {
         noChanges: "No changes to save",
         fetchError: "Failed to fetch configuration",
       },
+      valueSource: {
+        env: "env",
+        default: "default",
+      },
+      effectiveConfigHint:
+        "Value comes from backend defaults (no explicit entry in .env).",
       restartRequired: {
         title: "Restart Required",
         message: "The following services require restart: {{services}}",

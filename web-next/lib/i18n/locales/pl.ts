@@ -431,6 +431,12 @@ export const pl = {
         noChanges: "Brak zmian do zapisania",
         fetchError: "Nie udało się pobrać konfiguracji",
       },
+      valueSource: {
+        env: "env",
+        default: "default",
+      },
+      effectiveConfigHint:
+        "Wartość pochodzi z domyślnej konfiguracji backendu (brak jawnego wpisu w .env).",
       restartRequired: {
         title: "Restart wymagany",
         message: "Następujące usługi wymagają restartu: {{services}}",

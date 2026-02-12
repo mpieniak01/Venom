@@ -431,6 +431,12 @@ export const de = {
         noChanges: "Keine Änderungen zum Speichern",
         fetchError: "Fehler beim Abrufen der Konfiguration",
       },
+      valueSource: {
+        env: "env",
+        default: "default",
+      },
+      effectiveConfigHint:
+        "Wert stammt aus den Backend-Standardeinstellungen (kein expliziter Eintrag in .env).",
       restartRequired: {
         title: "Neustart erforderlich",
         message: "Folgende Dienste erfordern einen Neustart: {{services}}",

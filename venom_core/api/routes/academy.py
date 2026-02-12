@@ -547,9 +547,7 @@ def _log_internal_operation_failure(message: str) -> None:
     logger.warning(message, exc_info=True)
 
 
-def _save_finished_job_metadata(
-    job_id: str, job: Dict[str, Any], current_status: str
-) -> None:
+def _save_finished_job_metadata(job: Dict[str, Any], current_status: str) -> None:
     if current_status != "finished" or not job.get("adapter_path"):
         return
     adapter_path_obj = Path(job["adapter_path"])
@@ -597,7 +595,7 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
         status_info, current_status = _sync_job_status_with_habitat(
             habitat, job_id, job, job_name
         )
-        _save_finished_job_metadata(job_id, job, current_status)
+        _save_finished_job_metadata(job, current_status)
         _cleanup_terminal_job_container(habitat, job_id, job, job_name, current_status)
 
         return JobStatusResponse(

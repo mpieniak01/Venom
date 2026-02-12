@@ -137,7 +137,7 @@ class PolicyGate:
             context: Kontekst żądania
 
         Returns:
-            PolicyEvaluationResult z decyzję
+            PolicyEvaluationResult z decyzją
         """
         logger.debug("PolicyGate: evaluating before tool execution")
         return self.evaluate(context)

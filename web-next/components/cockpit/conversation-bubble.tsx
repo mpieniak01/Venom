@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { MarkdownPreview } from "@/components/ui/markdown";
 import { isComputationContent } from "@/lib/markdown-format";
+import { getPolicyBlockBadgeLabel } from "@/lib/policy-utils";
 import { statusTone } from "@/lib/status";
 import { TYPING_EFFECT } from "@/lib/ui-config";
 import { useTranslation } from "@/lib/i18n";
@@ -244,7 +245,7 @@ export function ConversationBubble({
             {!isUser && status && (
               <Badge tone={policyBlocked ? "danger" : statusTone(status)}>
                 {policyBlocked
-                  ? (reasonCode ? `Blocked: ${reasonCode.replace('POLICY_', '').replace(/_/g, ' ')}` : "Blocked by policy")
+                  ? getPolicyBlockBadgeLabel(reasonCode)
                   : (statusLabel ?? status)}
               </Badge>
             )}

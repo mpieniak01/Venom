@@ -42,6 +42,29 @@ CANONICAL_JOB_STATUSES = {
     "cancelled",
 }
 TERMINAL_JOB_STATUSES = {"finished", "failed", "cancelled"}
+JOBS_HISTORY_FILE = Path("./data/training/jobs.jsonl")
+
+RESP_400_DATASET_REQUIRED = {
+    "description": "No dataset found. Please curate dataset first."
+}
+RESP_403_LOCALHOST_ONLY = {
+    "description": "Access denied for non-localhost administrative operation."
+}
+RESP_404_JOB_NOT_FOUND = {"description": "Training job not found."}
+RESP_404_ADAPTER_NOT_FOUND = {"description": "Adapter not found."}
+RESP_500_INTERNAL = {"description": "Internal server error."}
+RESP_503_ACADEMY_UNAVAILABLE = {
+    "description": "Academy is unavailable or not initialized."
+}
+
+
+class AcademyRouteError(Exception):
+    """Błąd domenowy routingu Academy mapowany na HTTPException w endpointach."""
+
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
 
 
 def set_dependencies(
@@ -116,7 +139,7 @@ def require_localhost_request(req: Request) -> None:
             "Próba dostępu do endpointu administracyjnego Academy z hosta: %s",
             client_host,
         )
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise AcademyRouteError(status_code=403, detail="Access denied")
 
 
 # ==================== Modele Pydantic ====================
@@ -207,18 +230,22 @@ def _ensure_academy_enabled():
 
     testing_mode = bool(os.getenv("PYTEST_CURRENT_TEST"))
     if not SETTINGS.ENABLE_ACADEMY and (not testing_mode or isinstance(SETTINGS, Mock)):
-        raise HTTPException(status_code=503, detail="Academy is disabled in config")
+        raise AcademyRouteError(status_code=503, detail="Academy is disabled in config")
 
     if not _get_professor() or not _get_dataset_curator() or not _get_gpu_habitat():
-        raise HTTPException(
+        raise AcademyRouteError(
             status_code=503,
             detail="Academy components not initialized. Check server logs.",
         )
 
 
+def _to_http_exception(exc: AcademyRouteError) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
 def _load_jobs_history() -> List[Dict[str, Any]]:
     """Ładuje historię jobów z pliku JSONL."""
-    jobs_file = Path("./data/training/jobs.jsonl")
+    jobs_file = JOBS_HISTORY_FILE
     if not jobs_file.exists():
         return []
 
@@ -235,7 +262,7 @@ def _load_jobs_history() -> List[Dict[str, Any]]:
 
 def _save_job_to_history(job: Dict[str, Any]):
     """Zapisuje job do historii (append do JSONL)."""
-    jobs_file = Path("./data/training/jobs.jsonl")
+    jobs_file = JOBS_HISTORY_FILE
     jobs_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -247,7 +274,7 @@ def _save_job_to_history(job: Dict[str, Any]):
 
 def _update_job_in_history(job_id: str, updates: Dict[str, Any]):
     """Aktualizuje job w historii."""
-    jobs_file = Path("./data/training/jobs.jsonl")
+    jobs_file = JOBS_HISTORY_FILE
     if not jobs_file.exists():
         return
 
@@ -298,7 +325,12 @@ def _is_path_within_base(path: Path, base: Path) -> bool:
 # ==================== Endpointy ====================
 
 
-@router.post("/dataset")
+@router.post(
+    "/dataset",
+    responses={
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
 async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
     """
     Kuracja datasetu ze statystykami.
@@ -311,7 +343,10 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
     Returns:
         DatasetResponse ze ścieżką i statystykami
     """
-    _ensure_academy_enabled()
+    try:
+        _ensure_academy_enabled()
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
 
     try:
         logger.info(f"Curating dataset with request: {request}")
@@ -358,7 +393,14 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
         )
 
 
-@router.post("/train")
+@router.post(
+    "/train",
+    responses={
+        400: RESP_400_DATASET_REQUIRED,
+        403: RESP_403_LOCALHOST_ONLY,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
 async def start_training(request: TrainingRequest, req: Request) -> TrainingResponse:
     """
     Start zadania treningowego.
@@ -368,10 +410,9 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
     Returns:
         TrainingResponse z job_id i parametrami
     """
-    _ensure_academy_enabled()
-    require_localhost_request(req)
-
     try:
+        _ensure_academy_enabled()
+        require_localhost_request(req)
         from venom_core.config import SETTINGS
 
         logger.info(f"Starting training with request: {request}")
@@ -465,6 +506,8 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
             parameters=job_record["parameters"],
         )
 
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -474,7 +517,67 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
         )
 
 
-@router.get("/train/{job_id}/status")
+def _find_job_or_404(job_id: str) -> Dict[str, Any]:
+    jobs = _load_jobs_history()
+    job = next((j for j in jobs if j.get("job_id") == job_id), None)
+    if not job:
+        raise AcademyRouteError(status_code=404, detail=f"Job {job_id} not found")
+    return job
+
+
+def _sync_job_status_with_habitat(
+    habitat: Any, job_id: str, job: Dict[str, Any], job_name: str
+) -> tuple[Dict[str, Any], str]:
+    status_info = habitat.get_training_status(job_name)
+    current_status = _normalize_job_status(status_info.get("status"))
+    if current_status != job.get("status"):
+        updates = {"status": current_status}
+        if current_status in TERMINAL_JOB_STATUSES:
+            updates["finished_at"] = datetime.now().isoformat()
+        if current_status == "finished":
+            adapter_path = Path(job.get("output_dir", "")) / "adapter"
+            if adapter_path.exists():
+                updates["adapter_path"] = str(adapter_path)
+        _update_job_in_history(job_id, updates)
+        job.update(updates)
+    return status_info, current_status
+
+
+def _save_finished_job_metadata(
+    job_id: str, job: Dict[str, Any], current_status: str
+) -> None:
+    if current_status != "finished" or not job.get("adapter_path"):
+        return
+    adapter_path_obj = Path(job["adapter_path"])
+    if not adapter_path_obj.exists():
+        return
+    try:
+        _save_adapter_metadata(job, adapter_path_obj)
+    except Exception as e:
+        logger.warning("Failed to save adapter metadata for %s: %s", job_id, e)
+
+
+def _cleanup_terminal_job_container(
+    habitat: Any, job_id: str, job: Dict[str, Any], job_name: str, current_status: str
+) -> None:
+    if current_status not in TERMINAL_JOB_STATUSES or job.get("container_cleaned"):
+        return
+    try:
+        habitat.cleanup_job(job_name)
+        _update_job_in_history(job_id, {"container_cleaned": True})
+        job["container_cleaned"] = True
+    except Exception as e:
+        logger.warning("Failed to cleanup container for job %s: %s", job_id, e)
+
+
+@router.get(
+    "/train/{job_id}/status",
+    responses={
+        404: RESP_404_JOB_NOT_FOUND,
+        500: RESP_500_INTERNAL,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
 async def get_training_status(job_id: str) -> JobStatusResponse:
     """
     Pobiera status i logi zadania treningowego.
@@ -482,55 +585,16 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
     Returns:
         JobStatusResponse ze statusem, logami i ścieżką adaptera
     """
-    _ensure_academy_enabled()
-
     try:
+        _ensure_academy_enabled()
         habitat = _get_gpu_habitat()
-        # Znajdź job w historii
-        jobs = _load_jobs_history()
-        job = next((j for j in jobs if j.get("job_id") == job_id), None)
-
-        if not job:
-            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-
+        job = _find_job_or_404(job_id)
         job_name = job.get("job_name", job_id)
-
-        # Pobierz status z GPUHabitat
-        status_info = habitat.get_training_status(job_name)
-
-        # Aktualizuj status w historii jeśli się zmienił
-        current_status = _normalize_job_status(status_info.get("status"))
-        if current_status != job.get("status"):
-            updates = {"status": current_status}
-            if current_status in TERMINAL_JOB_STATUSES:
-                updates["finished_at"] = datetime.now().isoformat()
-            if current_status == "finished":
-                # Sprawdź czy adapter został utworzony
-                adapter_path = Path(job.get("output_dir", "")) / "adapter"
-                if adapter_path.exists():
-                    updates["adapter_path"] = str(adapter_path)
-            _update_job_in_history(job_id, updates)
-            job.update(updates)
-
-        # Zapisz metadata adaptera po sukcesie (idempotentnie)
-        if current_status == "finished" and job.get("adapter_path"):
-            adapter_path_obj = Path(job["adapter_path"])
-            if adapter_path_obj.exists():
-                try:
-                    _save_adapter_metadata(job, adapter_path_obj)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to save adapter metadata for %s: %s", job_id, e
-                    )
-
-        # Czyść kontener po statusach terminalnych.
-        if current_status in TERMINAL_JOB_STATUSES and not job.get("container_cleaned"):
-            try:
-                habitat.cleanup_job(job_name)
-                _update_job_in_history(job_id, {"container_cleaned": True})
-                job["container_cleaned"] = True
-            except Exception as e:
-                logger.warning("Failed to cleanup container for job %s: %s", job_id, e)
+        status_info, current_status = _sync_job_status_with_habitat(
+            habitat, job_id, job, job_name
+        )
+        _save_finished_job_metadata(job_id, job, current_status)
+        _cleanup_terminal_job_container(habitat, job_id, job, job_name, current_status)
 
         return JobStatusResponse(
             job_id=job_id,
@@ -542,6 +606,8 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
             error=status_info.get("error"),
         )
 
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -549,7 +615,75 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
         raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
 
-@router.get("/train/{job_id}/logs/stream")
+def _sse_event(payload: Dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+def _parse_stream_log_line(log_line: str) -> tuple[Optional[str], str]:
+    if " " not in log_line:
+        return None, log_line
+    timestamp, message = log_line.split(" ", 1)
+    return timestamp, message
+
+
+def _extract_metrics_data(
+    parser: Any, all_metrics: List[Any], message: str
+) -> Optional[Dict[str, Any]]:
+    metrics = parser.parse_line(message)
+    if not metrics:
+        return None
+    all_metrics.append(metrics)
+    return {
+        "epoch": metrics.epoch,
+        "total_epochs": metrics.total_epochs,
+        "loss": metrics.loss,
+        "progress_percent": metrics.progress_percent,
+    }
+
+
+def _build_log_event(
+    line_no: int,
+    message: str,
+    timestamp: Optional[str],
+    metrics_data: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "type": "log",
+        "line": line_no,
+        "message": message,
+        "timestamp": timestamp,
+    }
+    if metrics_data:
+        payload["metrics"] = metrics_data
+    return payload
+
+
+def _periodic_stream_events(
+    line_no: int, habitat: Any, job_name: str, parser: Any, all_metrics: List[Any]
+) -> tuple[List[Dict[str, Any]], bool]:
+    if line_no % 10 != 0:
+        return [], False
+    events: List[Dict[str, Any]] = []
+    status_info = habitat.get_training_status(job_name)
+    current_status = _normalize_job_status(status_info.get("status"))
+    if all_metrics:
+        events.append(
+            {"type": "metrics", "data": parser.aggregate_metrics(all_metrics)}
+        )
+    should_stop = False
+    if current_status in TERMINAL_JOB_STATUSES:
+        events.append({"type": "status", "status": current_status})
+        should_stop = True
+    return events, should_stop
+
+
+@router.get(
+    "/train/{job_id}/logs/stream",
+    responses={
+        404: RESP_404_JOB_NOT_FOUND,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
 async def stream_training_logs(job_id: str):
     """
     Stream logów z treningu (SSE - Server-Sent Events).
@@ -560,14 +694,11 @@ async def stream_training_logs(job_id: str):
     Returns:
         StreamingResponse z logami w formacie SSE
     """
-    _ensure_academy_enabled()
-
-    # Znajdź job
-    jobs = _load_jobs_history()
-    job = next((j for j in jobs if j.get("job_id") == job_id), None)
-
-    if not job:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    try:
+        _ensure_academy_enabled()
+        job = _find_job_or_404(job_id)
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
 
     job_name = job.get("job_name", job_id)
 
@@ -583,75 +714,42 @@ async def stream_training_logs(job_id: str):
             all_metrics = []
 
             # Wyślij początkowy event
-            yield f"data: {json.dumps({'type': 'connected', 'job_id': job_id})}\n\n"
+            yield _sse_event({"type": "connected", "job_id": job_id})
 
             # Sprawdź czy job istnieje w GPU Habitat
             if not habitat or job_name not in habitat.training_containers:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'Training container not found'})}\n\n"
+                yield _sse_event(
+                    {"type": "error", "message": "Training container not found"}
+                )
                 return
 
             # Streamuj logi
             last_line_sent = 0
             for log_line in habitat.stream_job_logs(job_name):
-                # Parsuj timestamp jeśli istnieje
-                # Format: "2024-01-01T10:00:00.123456789Z message"
-                if " " in log_line:
-                    parts = log_line.split(" ", 1)
-                    timestamp = parts[0]
-                    message = parts[1] if len(parts) > 1 else log_line
-                else:
-                    timestamp = None
-                    message = log_line
-
-                # Parsuj metryki z linii
-                metrics = parser.parse_line(message)
-                metrics_data = None
-                if metrics:
-                    all_metrics.append(metrics)
-                    metrics_data = {
-                        "epoch": metrics.epoch,
-                        "total_epochs": metrics.total_epochs,
-                        "loss": metrics.loss,
-                        "progress_percent": metrics.progress_percent,
-                    }
-
-                # Wyślij jako SSE event
-                event_data = {
-                    "type": "log",
-                    "line": last_line_sent,
-                    "message": message,
-                    "timestamp": timestamp,
-                }
-                if metrics_data:
-                    event_data["metrics"] = metrics_data
-
-                yield f"data: {json.dumps(event_data)}\n\n"
-
+                timestamp, message = _parse_stream_log_line(log_line)
+                metrics_data = _extract_metrics_data(parser, all_metrics, message)
+                yield _sse_event(
+                    _build_log_event(last_line_sent, message, timestamp, metrics_data)
+                )
                 last_line_sent += 1
-
-                # Sprawdź status joba co jakiś czas
-                if last_line_sent % 10 == 0:
-                    status_info = habitat.get_training_status(job_name)
-                    current_status = _normalize_job_status(status_info.get("status"))
-
-                    # Wyślij agregowane metryki
-                    if all_metrics:
-                        aggregated = parser.aggregate_metrics(all_metrics)
-                        yield f"data: {json.dumps({'type': 'metrics', 'data': aggregated})}\n\n"
-
-                    # Jeśli job zakończony, wyślij event i zakończ
-                    if current_status in TERMINAL_JOB_STATUSES:
-                        yield f"data: {json.dumps({'type': 'status', 'status': current_status})}\n\n"
-                        break
+                events, should_stop = _periodic_stream_events(
+                    last_line_sent, habitat, job_name, parser, all_metrics
+                )
+                for event in events:
+                    yield _sse_event(event)
+                if should_stop:
+                    break
 
                 # Małe opóźnienie żeby nie przeciążyć
                 await asyncio.sleep(0.1)
 
         except KeyError:
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Job not found in container registry'})}\n\n"
+            yield _sse_event(
+                {"type": "error", "message": "Job not found in container registry"}
+            )
         except Exception as e:
             logger.error(f"Error streaming logs: {e}", exc_info=True)
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield _sse_event({"type": "error", "message": str(e)})
 
     return StreamingResponse(
         event_generator(),
@@ -664,7 +762,13 @@ async def stream_training_logs(job_id: str):
     )
 
 
-@router.get("/jobs")
+@router.get(
+    "/jobs",
+    responses={
+        500: RESP_500_INTERNAL,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
 async def list_jobs(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     status: Annotated[Optional[str], Query()] = None,
@@ -679,9 +783,8 @@ async def list_jobs(
     Returns:
         Lista jobów
     """
-    _ensure_academy_enabled()
-
     try:
+        _ensure_academy_enabled()
         jobs = _load_jobs_history()
 
         # Filtruj po statusie jeśli podano
@@ -693,12 +796,20 @@ async def list_jobs(
 
         return {"count": len(jobs), "jobs": jobs}
 
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
     except Exception as e:
         logger.error(f"Failed to list jobs: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list jobs: {str(e)}")
 
 
-@router.get("/adapters")
+@router.get(
+    "/adapters",
+    responses={
+        500: RESP_500_INTERNAL,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
 async def list_adapters() -> List[AdapterInfo]:
     """
     Lista dostępnych adapterów.
@@ -708,9 +819,8 @@ async def list_adapters() -> List[AdapterInfo]:
     Returns:
         Lista adapterów
     """
-    _ensure_academy_enabled()
-
     try:
+        _ensure_academy_enabled()
         manager = _get_model_manager()
         from venom_core.config import SETTINGS
 
@@ -763,6 +873,8 @@ async def list_adapters() -> List[AdapterInfo]:
 
         return adapters
 
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
     except Exception as e:
         logger.error(f"Failed to list adapters: {e}", exc_info=True)
         raise HTTPException(
@@ -770,7 +882,15 @@ async def list_adapters() -> List[AdapterInfo]:
         )
 
 
-@router.post("/adapters/activate")
+@router.post(
+    "/adapters/activate",
+    responses={
+        403: RESP_403_LOCALHOST_ONLY,
+        404: RESP_404_ADAPTER_NOT_FOUND,
+        500: RESP_500_INTERNAL,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
 async def activate_adapter(
     request: ActivateAdapterRequest, req: Request
 ) -> Dict[str, Any]:
@@ -782,13 +902,12 @@ async def activate_adapter(
     Returns:
         Status aktywacji
     """
-    _ensure_academy_enabled()
-    require_localhost_request(req)
-
     try:
+        _ensure_academy_enabled()
+        require_localhost_request(req)
         manager = _get_model_manager()
         if not manager:
-            raise HTTPException(
+            raise AcademyRouteError(
                 status_code=503,
                 detail="ModelManager not available for adapter activation",
             )
@@ -821,6 +940,8 @@ async def activate_adapter(
             "adapter_path": str(adapter_path),
         }
 
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -830,7 +951,14 @@ async def activate_adapter(
         )
 
 
-@router.post("/adapters/deactivate")
+@router.post(
+    "/adapters/deactivate",
+    responses={
+        403: RESP_403_LOCALHOST_ONLY,
+        500: RESP_500_INTERNAL,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
 async def deactivate_adapter(req: Request) -> Dict[str, Any]:
     """
     Dezaktywacja aktywnego adaptera (rollback do modelu bazowego).
@@ -838,13 +966,12 @@ async def deactivate_adapter(req: Request) -> Dict[str, Any]:
     Returns:
         Status dezaktywacji
     """
-    _ensure_academy_enabled()
-    require_localhost_request(req)
-
     try:
+        _ensure_academy_enabled()
+        require_localhost_request(req)
         manager = _get_model_manager()
         if not manager:
-            raise HTTPException(
+            raise AcademyRouteError(
                 status_code=503,
                 detail="ModelManager not available for adapter deactivation",
             )
@@ -865,6 +992,8 @@ async def deactivate_adapter(req: Request) -> Dict[str, Any]:
             "message": "Adapter deactivated successfully - using base model",
         }
 
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -874,7 +1003,15 @@ async def deactivate_adapter(req: Request) -> Dict[str, Any]:
         )
 
 
-@router.delete("/train/{job_id}")
+@router.delete(
+    "/train/{job_id}",
+    responses={
+        403: RESP_403_LOCALHOST_ONLY,
+        404: RESP_404_JOB_NOT_FOUND,
+        500: RESP_500_INTERNAL,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
 async def cancel_training(job_id: str, req: Request) -> Dict[str, Any]:
     """
     Anuluj trening (zatrzymaj kontener).
@@ -882,10 +1019,9 @@ async def cancel_training(job_id: str, req: Request) -> Dict[str, Any]:
     Returns:
         Status anulowania
     """
-    _ensure_academy_enabled()
-    require_localhost_request(req)
-
     try:
+        _ensure_academy_enabled()
+        require_localhost_request(req)
         habitat = _get_gpu_habitat()
         # Znajdź job
         jobs = _load_jobs_history()
@@ -919,6 +1055,8 @@ async def cancel_training(job_id: str, req: Request) -> Dict[str, Any]:
             "job_id": job_id,
         }
 
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -928,7 +1066,12 @@ async def cancel_training(job_id: str, req: Request) -> Dict[str, Any]:
         )
 
 
-@router.get("/status")
+@router.get(
+    "/status",
+    responses={
+        500: RESP_500_INTERNAL,
+    },
+)
 async def academy_status() -> Dict[str, Any]:
     """
     Ogólny status Academy.

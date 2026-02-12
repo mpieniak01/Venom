@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import academy as academy_routes
@@ -97,7 +97,7 @@ def test_require_localhost_request_allows_loopback():
 
 def test_require_localhost_request_blocks_remote():
     req = SimpleNamespace(client=SimpleNamespace(host="10.10.10.10"))
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(academy_routes.AcademyRouteError) as exc:
         academy_routes.require_localhost_request(req)
     assert exc.value.status_code == 403
 

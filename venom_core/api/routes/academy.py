@@ -360,9 +360,10 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
             max_commits=request.git_commits_limit
         )
 
-        # TODO: Implement task history collection if needed
-        # if request.include_task_history:
-        #     task_count = _dataset_curator.collect_from_task_history(limit=100)
+        # Zbierz z historii zadań jeśli włączone
+        task_count = 0
+        if request.include_task_history:
+            task_count = curator.collect_from_task_history(max_tasks=100)
 
         # Filtruj niską jakość
         removed = curator.filter_low_quality()
@@ -380,6 +381,7 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
                 **stats,
                 "lessons_collected": lessons_count,
                 "git_commits_collected": git_count,
+                "task_history_collected": task_count,
                 "removed_low_quality": removed,
             },
             message=f"Dataset curated successfully: {stats['total_examples']} examples",

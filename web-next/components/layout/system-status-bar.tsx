@@ -22,7 +22,7 @@ type SystemStatusInitialData = {
   gitStatus?: GitStatus | null;
 };
 
-export function SystemStatusBar({ initialData }: { initialData?: SystemStatusInitialData }) {
+export function SystemStatusBar({ initialData }: Readonly<{ initialData?: SystemStatusInitialData }>) {
   const { data: usageResponse } = useModelsUsage(30000);
   const usage = usageResponse?.usage ?? initialData?.modelsUsage?.usage;
   const { data: liveTokenMetrics } = useTokenMetrics(30000);
@@ -68,14 +68,17 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
       textarea.style.position = "absolute";
       textarea.style.left = "-9999px";
       document.body.appendChild(textarea);
-      textarea.select();
-      const success = document.execCommand("copy");
-      textarea.remove();
-      if (success) {
-        markCopied();
-      } else {
-        console.error("Clipboard copy failed: execCommand returned false");
-        setCommitCopied(false);
+      try {
+        textarea.select();
+        const success = document.execCommand("copy");
+        if (success) {
+          markCopied();
+        } else {
+          console.error("Clipboard copy failed: execCommand returned false");
+          setCommitCopied(false);
+        }
+      } finally {
+        textarea.remove();
       }
     } catch (err) {
       console.error("Clipboard copy failed:", err);

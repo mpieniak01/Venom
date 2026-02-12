@@ -15,7 +15,7 @@ import { ServiceStatusDrawer } from "./service-status-drawer";
 import { LanguageSwitcher } from "./language-switcher";
 import { useTranslation } from "@/lib/i18n";
 
-export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsInitialData }) {
+export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: StatusPillsInitialData }>) {
   const [commandOpen, setCommandOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);

@@ -44,7 +44,7 @@ import { RelationList, RelationEntry } from "./relation-list";
 import { BrainSelectionSummary } from "./selection-summary";
 import { BrainDetailsSheetContent } from "./details-sheet-content";
 
-export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
+export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialData }>) {
   const t = useTranslation();
   const { pushToast } = useToast();
   useProjectionTrigger();

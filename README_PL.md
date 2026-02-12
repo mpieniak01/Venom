@@ -25,6 +25,12 @@
 - 💬 **Ciągłość czatu** — historia sesji per `session_id` po restartach.
 - 🛠️ **Panel usług** — `/config` pokazuje status lokalnego stosu.
 
+### Ostatnie wdrożenia (2026-02)
+- ⚙️ **Panel config: widoczność wartości efektywnych** — parametry pokazują źródło wartości: wpis z `.env` albo domyślna konfiguracja backendu (`env` vs `default`).
+- 🎓 **Wzmocnienie Academy** — trasy API uporządkowano pod utrzymanie i bezpieczeństwo (obsługa wyjątków, redukcja złożoności, bezpieczniejsze logowanie).
+- 🧭 **Rozszerzony monitoring runtime** — ekrany config/runtime obejmują sygnały dla Academy i Intent Embedding Router.
+- 🧪 **Ścieżka rollout Intent Router + RAG Boost** — flagi i dokumentacja są zsynchronizowane pod wdrożenie etapowe (`ENABLE_INTENT_EMBEDDING_ROUTER`, `ENABLE_RAG_RETRIEVAL_BOOST`).
+
 Szczegóły architektury, frontendu i testów: `docs/`.
 
 ## 🖼️ Podgląd interfejsu

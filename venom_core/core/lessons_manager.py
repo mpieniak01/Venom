@@ -9,6 +9,8 @@ from uuid import UUID
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
 from venom_core.core.flows.base import EventBroadcaster
+from venom_core.core.knowledge_contract import KnowledgeKind
+from venom_core.core.knowledge_ttl import compute_expires_at, resolve_ttl_days
 from venom_core.core.learning_log import ensure_learning_log_boot_id
 from venom_core.core.models import TaskRequest
 from venom_core.core.state_manager import StateManager
@@ -150,7 +152,7 @@ class LessonsManager:
 
         # Use provided limit or fall back to default
         effective_limit = limit if limit is not None else MAX_LESSONS_IN_CONTEXT
-        
+
         # If limit is 0, return context unchanged
         if effective_limit == 0:
             return context
@@ -247,6 +249,9 @@ class LessonsManager:
                 reason = "error"
 
             # Zapisz lekcję
+            lesson_scope = "task"
+            lesson_timestamp = datetime.now().isoformat()
+            lesson_ttl_days = resolve_ttl_days(KnowledgeKind.LESSON, lesson_scope)
             lesson = self.lessons_store.add_lesson(
                 situation=situation,
                 action=action,
@@ -255,7 +260,7 @@ class LessonsManager:
                 tags=tags,
                 metadata={
                     "task_id": str(task_id),
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": lesson_timestamp,
                     "intent": intent,
                     "agent": agent.__class__.__name__ if agent else None,
                     "success": success,
@@ -263,6 +268,15 @@ class LessonsManager:
                     "source": "orchestrator",
                     "store_knowledge": request.store_knowledge if request else None,
                     "learning_enabled": SETTINGS.ENABLE_META_LEARNING,
+                    "session_id": request.session_id if request else None,
+                    "knowledge_contract_version": "v1",
+                    "provenance_source": "orchestrator",
+                    "provenance_request_id": str(task_id),
+                    "provenance_intent": intent,
+                    "retention_scope": lesson_scope,
+                    "retention_expires_at": compute_expires_at(
+                        lesson_timestamp, lesson_ttl_days
+                    ),
                 },
             )
 

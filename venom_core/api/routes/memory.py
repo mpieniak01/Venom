@@ -13,8 +13,11 @@ from venom_core.api.dependencies import (
     get_vector_store,
     is_testing_mode,
 )
+from venom_core.core.knowledge_contract import KnowledgeKind
+from venom_core.core.knowledge_ttl import compute_expires_at, resolve_ttl_days
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager as _config_manager
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -97,6 +100,21 @@ def _build_ingest_metadata(request: "MemoryIngestRequest") -> dict[str, object]:
             metadata[key] = value
     if request.pinned is not None:
         metadata["pinned"] = bool(request.pinned)
+
+    scope = str(request.scope or ("session" if request.session_id else "global"))
+    created_at = str(request.timestamp or get_utc_now_iso())
+    ttl_days = resolve_ttl_days(KnowledgeKind.MEMORY_ENTRY, scope)
+    metadata.update(
+        {
+            "knowledge_contract_version": "v1",
+            "provenance_source": "vector_store",
+            "provenance_request_id": None,
+            "provenance_intent": None,
+            "retention_scope": scope,
+            "timestamp": created_at,
+            "retention_expires_at": compute_expires_at(created_at, ttl_days),
+        }
+    )
     return metadata
 
 

@@ -222,19 +222,17 @@ class RuntimeController:
                 else ServiceStatus.RUNNING
             )
             return
-        if service_type == ServiceType.ACADEMY:
+        if service_type in {
+            ServiceType.ACADEMY,
+            ServiceType.INTENT_EMBEDDING_ROUTER,
+        }:
+            setting_name = f"ENABLE_{service_type.name}"
             info.status = (
                 ServiceStatus.RUNNING
-                if getattr(SETTINGS, "ENABLE_ACADEMY", False)
+                if getattr(SETTINGS, setting_name, False)
                 else ServiceStatus.STOPPED
             )
             return
-        if service_type == ServiceType.INTENT_EMBEDDING_ROUTER:
-            info.status = (
-                ServiceStatus.RUNNING
-                if getattr(SETTINGS, "ENABLE_INTENT_EMBEDDING_ROUTER", False)
-                else ServiceStatus.STOPPED
-            )
 
     def _update_last_log(self, info: ServiceInfo, service_type: ServiceType) -> None:
         log_file = self.log_files.get(service_type)

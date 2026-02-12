@@ -553,7 +553,9 @@ def _save_finished_job_metadata(
     try:
         _save_adapter_metadata(job, adapter_path_obj)
     except Exception:
-        logger.warning("Failed to save adapter metadata for job %s", job_id)
+        logger.warning(
+            "Failed to save adapter metadata for job %s", job_id, exc_info=True
+        )
 
 
 def _cleanup_terminal_job_container(
@@ -566,7 +568,7 @@ def _cleanup_terminal_job_container(
         _update_job_in_history(job_id, {"container_cleaned": True})
         job["container_cleaned"] = True
     except Exception:
-        logger.warning("Failed to cleanup container for job %s", job_id)
+        logger.warning("Failed to cleanup container for job %s", job_id, exc_info=True)
 
 
 @router.get(

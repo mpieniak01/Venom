@@ -153,7 +153,14 @@ async function triggerFetch<T>(entry: PollingEntry<T>) {
 
 function notifyEntry(entry: PollingEntry<unknown>) {
   const listeners = Array.from(entry.listeners);
-  for (const listener of listeners) listener();
+  for (const listener of listeners) {
+    if (typeof listener !== "function") continue;
+    try {
+      listener();
+    } catch {
+      // Ignore listener-level errors to keep polling state updates resilient.
+    }
+  }
 }
 
 function usePolling<T>(
@@ -210,6 +217,7 @@ function usePolling<T>(
   const subscribe = useCallback(
     (listener: () => void) => {
       if (pollingDisabled) return () => { };
+      if (typeof listener !== "function") return () => { };
       entry.listeners.add(listener);
       if (entry.listeners.size === 1) {
         if (entry.interval > 0 && !entry.timer) {

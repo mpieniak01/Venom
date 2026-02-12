@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Coroutine
 from uuid import UUID
 
 from venom_core.config import SETTINGS
+from venom_core.core import metrics as metrics_module
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.policy_gate import (
     PolicyDecision,
@@ -87,6 +88,10 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
                 TaskStatus.FAILED,
                 result=policy_result.message,
             )
+            
+            # Increment policy blocked metric
+            if metrics_module.metrics_collector:
+                metrics_module.metrics_collector.increment_policy_blocked()
 
             if orch.request_tracer:
                 orch.request_tracer.update_status(task.id, "failed")

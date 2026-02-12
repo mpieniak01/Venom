@@ -30,6 +30,7 @@ class MetricsCollector:
             "network_connections_active": 0,
             "llm_first_token_ms_total": 0,
             "llm_first_token_samples": 0,
+            "policy_blocked_count": 0,
         }
         self.tool_usage: Dict[str, int] = {}
         self.agent_usage: Dict[str, int] = {}
@@ -96,6 +97,11 @@ class MetricsCollector:
         with self._lock:
             self.metrics["llm_first_token_ms_total"] += max(elapsed_ms, 0)
             self.metrics["llm_first_token_samples"] += 1
+
+    def increment_policy_blocked(self):
+        """Inkrementuje licznik żądań zablokowanych przez policy gate."""
+        with self._lock:
+            self.metrics["policy_blocked_count"] += 1
 
     def increment_tool_usage(self, tool_name: str):
         """
@@ -193,6 +199,15 @@ class MetricsCollector:
                 if samples
                 else None
             )
+            
+            # Calculate policy block rate
+            policy_blocked = self.metrics["policy_blocked_count"]
+            total_requests = self.metrics["tasks_created"]
+            policy_block_rate = (
+                round((policy_blocked / total_requests) * 100, 2)
+                if total_requests > 0
+                else 0.0
+            )
 
             return {
                 "status": "ok",
@@ -212,6 +227,10 @@ class MetricsCollector:
                 "feedback": {
                     "up": self.metrics["feedback_up"],
                     "down": self.metrics["feedback_down"],
+                },
+                "policy": {
+                    "blocked_count": policy_blocked,
+                    "block_rate": policy_block_rate,
                 },
                 "models": {
                     "generation_params_updates": self.metrics["model_params_updates"],

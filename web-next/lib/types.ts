@@ -32,6 +32,10 @@ export interface Metrics {
     up?: number;
     down?: number;
   };
+  policy?: {
+    blocked_count?: number;
+    block_rate?: number;
+  };
   uptime_seconds?: number;
   network?: {
     total_bytes?: number;

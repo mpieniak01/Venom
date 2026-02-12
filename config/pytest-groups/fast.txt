@@ -198,3 +198,4 @@ tests/test_resolve_sonar_new_code_tests.py
 tests/test_stack_manager_safety.py
 tests/test_url_policy.py
 tests/test_mirror_world_docker_cleanup.py
+tests/test_evolution_coordinator_phase132d.py

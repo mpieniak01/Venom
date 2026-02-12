@@ -308,3 +308,138 @@ class TestTokenEconomist:
         assert cost_1["estimated_cost_usd"] > cost_05["estimated_cost_usd"]
         assert cost_1["output_tokens"] == cost_1["input_tokens"]
         assert cost_05["output_tokens"] == cost_05["input_tokens"] // 2
+
+
+class TestTokenEconomistPerModelTracking:
+    """Testy dla funkcjonalności śledzenia per-model w TokenEconomist (PR-132A)."""
+
+    def test_initialization_with_tracking(self):
+        """Test inicjalizacji z licznikami per-model."""
+        economist = TokenEconomist()
+        assert economist.model_usage == {}
+        assert economist.total_usage == {"input_tokens": 0, "output_tokens": 0}
+
+    def test_record_usage_single_model(self):
+        """Test rejestrowania użycia dla pojedynczego modelu."""
+        economist = TokenEconomist()
+        
+        # Zarejestruj użycie dla gpt-4o
+        economist.record_usage("gpt-4o", 100, 50)
+        
+        assert "gpt-4o" in economist.model_usage
+        assert economist.model_usage["gpt-4o"]["input_tokens"] == 100
+        assert economist.model_usage["gpt-4o"]["output_tokens"] == 50
+        assert economist.total_usage["input_tokens"] == 100
+        assert economist.total_usage["output_tokens"] == 50
+
+    def test_record_usage_multiple_models(self):
+        """Test rejestrowania użycia dla wielu modeli."""
+        economist = TokenEconomist()
+        
+        # Zarejestruj użycie dla różnych modeli
+        economist.record_usage("gpt-4o", 100, 50)
+        economist.record_usage("gpt-3.5-turbo", 200, 100)
+        economist.record_usage("local", 500, 300)
+        
+        assert len(economist.model_usage) == 3
+        assert economist.total_usage["input_tokens"] == 800
+        assert economist.total_usage["output_tokens"] == 450
+
+    def test_record_usage_accumulation(self):
+        """Test akumulacji użycia dla tego samego modelu."""
+        economist = TokenEconomist()
+        
+        # Wielokrotne użycie tego samego modelu
+        economist.record_usage("gpt-4o", 100, 50)
+        economist.record_usage("gpt-4o", 200, 100)
+        economist.record_usage("gpt-4o", 50, 25)
+        
+        assert economist.model_usage["gpt-4o"]["input_tokens"] == 350
+        assert economist.model_usage["gpt-4o"]["output_tokens"] == 175
+        assert economist.total_usage["input_tokens"] == 350
+        assert economist.total_usage["output_tokens"] == 175
+
+    def test_get_model_breakdown_empty(self):
+        """Test pobierania breakdown gdy brak danych."""
+        economist = TokenEconomist()
+        
+        breakdown = economist.get_model_breakdown()
+        
+        assert breakdown["models_breakdown"] == {}
+        assert breakdown["total_tokens"] == 0
+        assert breakdown["total_cost_usd"] == 0.0
+
+    def test_get_model_breakdown_single_model(self):
+        """Test pobierania breakdown dla pojedynczego modelu."""
+        economist = TokenEconomist()
+        
+        economist.record_usage("gpt-4o", 100, 50)
+        breakdown = economist.get_model_breakdown()
+        
+        assert "gpt-4o" in breakdown["models_breakdown"]
+        model_data = breakdown["models_breakdown"]["gpt-4o"]
+        assert model_data["input_tokens"] == 100
+        assert model_data["output_tokens"] == 50
+        assert model_data["total_tokens"] == 150
+        assert model_data["cost_usd"] > 0  # gpt-4o nie jest darmowy
+        
+        assert breakdown["total_tokens"] == 150
+        assert breakdown["total_cost_usd"] > 0
+
+    def test_get_model_breakdown_multiple_models(self):
+        """Test pobierania breakdown dla wielu modeli."""
+        economist = TokenEconomist()
+        
+        economist.record_usage("gpt-4o", 100, 50)
+        economist.record_usage("local", 500, 300)
+        
+        breakdown = economist.get_model_breakdown()
+        
+        assert len(breakdown["models_breakdown"]) == 2
+        assert "gpt-4o" in breakdown["models_breakdown"]
+        assert "local" in breakdown["models_breakdown"]
+        
+        # Local powinien mieć koszt 0
+        assert breakdown["models_breakdown"]["local"]["cost_usd"] == 0.0
+        
+        # gpt-4o powinien mieć koszt > 0
+        assert breakdown["models_breakdown"]["gpt-4o"]["cost_usd"] > 0
+        
+        # Całkowity koszt to tylko koszt gpt-4o
+        assert breakdown["total_cost_usd"] == breakdown["models_breakdown"]["gpt-4o"]["cost_usd"]
+        
+        # Całkowita liczba tokenów to suma
+        assert breakdown["total_tokens"] == 950  # 150 + 800
+
+    def test_reset_usage(self):
+        """Test resetowania liczników użycia."""
+        economist = TokenEconomist()
+        
+        # Dodaj dane
+        economist.record_usage("gpt-4o", 100, 50)
+        economist.record_usage("local", 500, 300)
+        
+        # Zresetuj
+        economist.reset_usage()
+        
+        assert economist.model_usage == {}
+        assert economist.total_usage == {"input_tokens": 0, "output_tokens": 0}
+        
+        breakdown = economist.get_model_breakdown()
+        assert breakdown["total_tokens"] == 0
+        assert breakdown["total_cost_usd"] == 0.0
+
+    def test_get_model_breakdown_cost_calculation(self):
+        """Test poprawności obliczeń kosztów w breakdown."""
+        economist = TokenEconomist()
+        
+        # Użyj znanego modelu z znanym cennikiem
+        economist.record_usage("gpt-3.5-turbo", 1_000_000, 1_000_000)
+        
+        breakdown = economist.get_model_breakdown()
+        model_data = breakdown["models_breakdown"]["gpt-3.5-turbo"]
+        
+        # Sprawdź czy koszt jest zgodny z cennikiem
+        # gpt-3.5-turbo: input=0.5 USD/1M, output=1.5 USD/1M
+        expected_cost = (1_000_000 / 1_000_000) * 0.5 + (1_000_000 / 1_000_000) * 1.5
+        assert model_data["cost_usd"] == pytest.approx(expected_cost, abs=1e-6)

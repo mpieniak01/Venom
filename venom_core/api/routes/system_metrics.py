@@ -80,45 +80,52 @@ def _get_token_metrics_impl():
         }
 
     try:
-        # W przyszłości: TokenEconomist powinien przechowywać dane o użyciu per-model
-        # Na razie zwracamy podstawowe dane z metrics_collector
+        # TokenEconomist dostępny - zwróć szczegółowe dane per-model
+        breakdown_data = _token_economist.get_model_breakdown()
+        
+        # Jeśli nie ma żadnych danych o użyciu, fallback do metrics_collector
+        if not breakdown_data["models_breakdown"]:
+            collector = metrics_module.metrics_collector
+            if collector is None:
+                raise HTTPException(status_code=503, detail=METRICS_COLLECTOR_UNAVAILABLE)
 
-        collector = metrics_module.metrics_collector
-        if collector is None:
-            raise HTTPException(status_code=503, detail=METRICS_COLLECTOR_UNAVAILABLE)
+            metrics = collector.get_metrics()
+            total_tokens = metrics.get("tokens_used_session", 0)
+            
+            # Szacunkowy koszt (zakładając konfigurowalny split i model)
+            from venom_core.config import SETTINGS
 
-        metrics = collector.get_metrics()
-        total_tokens = metrics.get("tokens_used_session", 0)
+            split_ratio = SETTINGS.TOKEN_COST_ESTIMATION_SPLIT
+            cost_model = SETTINGS.DEFAULT_COST_MODEL
 
-        # Szacunkowy koszt (zakładając konfigurowalny split i model)
-        # W produkcji: TokenEconomist powinien śledzić rzeczywiste użycie per-model
-        from venom_core.config import SETTINGS
+            estimated_cost = _token_economist.calculate_cost(
+                usage={
+                    "input_tokens": int(total_tokens * split_ratio),
+                    "output_tokens": int(total_tokens * (1 - split_ratio)),
+                },
+                model_name=cost_model,
+            )
 
-        split_ratio = SETTINGS.TOKEN_COST_ESTIMATION_SPLIT
-        cost_model = SETTINGS.DEFAULT_COST_MODEL
-
-        estimated_cost = _token_economist.calculate_cost(
-            usage={
-                "input_tokens": int(total_tokens * split_ratio),
-                "output_tokens": int(total_tokens * (1 - split_ratio)),
-            },
-            model_name=cost_model,
-        )
-
-        # TODO: W przyszłości dodać śledzenie per-model w TokenEconomist
-        # Na razie zwracamy szacunkowe dane
+            return {
+                "total_tokens": total_tokens,
+                "session_total_tokens": total_tokens,
+                "session_cost_usd": estimated_cost.get("total_cost_usd", 0.0),
+                "models_breakdown": {
+                    "estimated": {
+                        "model": f"{cost_model} (estimated)",
+                        "tokens": total_tokens,
+                        "cost_usd": estimated_cost.get("total_cost_usd", 0.0),
+                    }
+                },
+                "note": "Brak zarejestrowanego użycia per-model. Koszty są szacunkowe.",
+            }
+        
+        # Zwróć rzeczywiste dane per-model
         return {
-            "total_tokens": total_tokens,
-            "session_total_tokens": total_tokens,  # Dodajemy oba dla kompatybilności
-            "session_cost_usd": estimated_cost.get("total_cost_usd", 0.0),
-            "models_breakdown": {
-                "estimated": {
-                    "model": "gpt-3.5-turbo (estimated)",
-                    "tokens": total_tokens,
-                    "cost_usd": estimated_cost.get("total_cost_usd", 0.0),
-                }
-            },
-            "note": "Koszty są szacunkowe. Śledzenie per-model zostanie dodane w przyszłej wersji.",
+            "total_tokens": breakdown_data["total_tokens"],
+            "session_total_tokens": breakdown_data["total_tokens"],
+            "session_cost_usd": breakdown_data["total_cost_usd"],
+            "models_breakdown": breakdown_data["models_breakdown"],
         }
     except Exception as e:
         logger.exception(TOKEN_METRICS_FETCH_ERROR)

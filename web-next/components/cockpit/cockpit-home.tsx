@@ -10,10 +10,10 @@ import { CockpitProvider } from "./cockpit-provider";
 export function CockpitHome({
   initialData,
   variant = "reference",
-}: {
+}: Readonly<{
   initialData: CockpitInitialData;
   variant?: "reference" | "home";
-}) {
+}>) {
   return (
     <CockpitProvider initialData={initialData} variant={variant}>
       <CockpitHomeContent />

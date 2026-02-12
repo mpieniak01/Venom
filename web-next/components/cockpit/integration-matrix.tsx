@@ -3,10 +3,10 @@ import { Badge } from "@/components/ui/badge";
 import { ListCard } from "@/components/ui/list-card";
 import type { ServiceStatus } from "@/lib/types";
 
-type IntegrationMatrixProps = {
+type IntegrationMatrixProps = Readonly<{
   services: ServiceStatus[] | null | undefined;
   events: Array<{ id: string; ts: number; payload: unknown }>;
-};
+}>;
 
 export function IntegrationMatrix({ services, events }: IntegrationMatrixProps) {
   const grouped = groupServices(services || []);

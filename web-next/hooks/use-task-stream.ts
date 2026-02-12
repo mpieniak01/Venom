@@ -168,11 +168,11 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
+    if (globalThis.window === undefined) return undefined;
     if (!enabled) {
       sourcesRef.current.forEach((s) => s.close());
       sourcesRef.current.clear();
-      pollTimersRef.current.forEach((t) => window.clearTimeout(t));
+      pollTimersRef.current.forEach((t) => globalThis.window.clearTimeout(t));
       pollTimersRef.current.clear();
       setStreams({});
       return undefined;
@@ -196,7 +196,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     const stopPolling = (taskId: string) => {
       const timer = pollTimersRef.current.get(taskId);
       if (timer) {
-        window.clearTimeout(timer);
+        globalThis.window.clearTimeout(timer);
         pollTimersRef.current.delete(taskId);
       }
     };
@@ -236,11 +236,11 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         if (status && TERMINAL_STATUSES.has(status)) {
           stopPolling(taskId);
         } else {
-          const timer = window.setTimeout(() => pollTask(taskId), pollIntervalMs);
+          const timer = globalThis.window.setTimeout(() => pollTask(taskId), pollIntervalMs);
           pollTimersRef.current.set(taskId, timer);
         }
       } catch {
-        const timer = window.setTimeout(() => pollTask(taskId), pollIntervalMs * 2);
+        const timer = globalThis.window.setTimeout(() => pollTask(taskId), pollIntervalMs * 2);
         pollTimersRef.current.set(taskId, timer);
       }
     };
@@ -256,7 +256,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
 
       if (throttleTimersRef.current.has(taskId)) return;
 
-      const timer = window.setTimeout(() => {
+      const timer = globalThis.window.setTimeout(() => {
         throttleTimersRef.current.delete(taskId);
         const queued = pendingUpdatesRef.current.get(taskId);
         pendingUpdatesRef.current.delete(taskId);
@@ -268,7 +268,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     const flushPending = (taskId: string) => {
       const timer = throttleTimersRef.current.get(taskId);
       if (timer) {
-        window.clearTimeout(timer);
+        globalThis.window.clearTimeout(timer);
         throttleTimersRef.current.delete(taskId);
       }
       const queued = pendingUpdatesRef.current.get(taskId);
@@ -365,7 +365,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         sources.delete(id);
         stopPolling(id);
         const timer = throttleTimersRef.current.get(id);
-        if (timer) window.clearTimeout(timer);
+        if (timer) globalThis.window.clearTimeout(timer);
         throttleTimersRef.current.delete(id);
         pendingUpdatesRef.current.delete(id);
         setStreams((prev) => {

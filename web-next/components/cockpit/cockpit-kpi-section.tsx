@@ -16,23 +16,23 @@ type QueueSnapshot = {
   limit?: number | string | null;
 };
 
-type CockpitKpiSectionProps = {
-  readonly metrics: Metrics | null;
-  readonly metricsLoading: boolean;
-  readonly successRate: number | null;
-  readonly tasksCreated: number;
-  readonly queue: QueueSnapshot | null;
-  readonly feedbackScore: number | null;
-  readonly feedbackUp: number;
-  readonly feedbackDown: number;
-  readonly tokenMetricsLoading: boolean;
-  readonly tokenSplits: { label: string; value: number }[];
-  readonly tokenHistory: TokenSample[];
-  readonly tokenTrendDelta: number | null;
-  readonly tokenTrendLabel: string;
-  readonly totalTokens: number;
-  readonly showReferenceSections: boolean;
-};
+type CockpitKpiSectionProps = Readonly<{
+  metrics: Metrics | null;
+  metricsLoading: boolean;
+  successRate: number | null;
+  tasksCreated: number;
+  queue: QueueSnapshot | null;
+  feedbackScore: number | null;
+  feedbackUp: number;
+  feedbackDown: number;
+  tokenMetricsLoading: boolean;
+  tokenSplits: { label: string; value: number }[];
+  tokenHistory: TokenSample[];
+  tokenTrendDelta: number | null;
+  tokenTrendLabel: string;
+  totalTokens: number;
+  showReferenceSections: boolean;
+}>;
 
 const formatSystemClock = (date: Date) =>
   date.toLocaleTimeString("pl-PL", {
@@ -41,10 +41,10 @@ const formatSystemClock = (date: Date) =>
     second: "2-digit",
   });
 
-type SystemTimeStatProps = {
-  readonly label: string;
-  readonly hint: string;
-};
+type SystemTimeStatProps = Readonly<{
+  label: string;
+  hint: string;
+}>;
 
 const SystemTimeStat = memo(function SystemTimeStat({ label, hint }: SystemTimeStatProps) {
   const [systemTime, setSystemTime] = useState(() => formatSystemClock(new Date()));

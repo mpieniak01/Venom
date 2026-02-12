@@ -402,7 +402,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         identifier = identifier.replace("../", "____").replace("..\\", "____")
 
         # Usuń niedozwolone znaki, zostaw tylko alfanumeryczne i _
-        sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", identifier)
+        sanitized = re.sub(r"\W", "_", identifier)
 
         # Upewnij się że zaczyna się od litery lub _
         if sanitized and sanitized[0].isdigit():

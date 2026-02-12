@@ -79,7 +79,7 @@ class WhisperSkill:
             model = self.model
             if model is None:
                 raise RuntimeError("Model Whisper nie został zainicjalizowany.")
-            segments, info = await loop.run_in_executor(
+            segments, _ = await loop.run_in_executor(
                 None,
                 lambda: model.transcribe(
                     audio_buffer,

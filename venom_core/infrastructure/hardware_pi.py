@@ -163,7 +163,7 @@ class HardwareBridge:
 
         try:
             loop = asyncio.get_event_loop()
-            stdin, stdout, stderr = await loop.run_in_executor(
+            _, stdout, stderr = await loop.run_in_executor(
                 None, self.ssh_client.exec_command, command
             )
 

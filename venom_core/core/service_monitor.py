@@ -374,7 +374,7 @@ class ServiceHealthMonitor:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(
+            _, stderr = await asyncio.wait_for(
                 process.communicate(), timeout=self.check_timeout
             )
 

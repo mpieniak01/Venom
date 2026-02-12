@@ -282,7 +282,7 @@ class CoreSkill:
             if not path.exists():
                 return f"❌ Plik {file_path} nie istnieje"
 
-            if not path.suffix == ".py":
+            if path.suffix != ".py":
                 return f"⚠️ Plik {file_path} nie jest plikiem Python (.py)"
 
             # Czytaj plik

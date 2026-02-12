@@ -102,11 +102,7 @@ class StackManager:
                 logger.info(f"Docker Compose dostępny: {result.stdout.strip()}")
             else:
                 raise RuntimeError("Docker Compose nie odpowiada poprawnie")
-        except (
-            subprocess.TimeoutExpired,
-            FileNotFoundError,
-            subprocess.SubprocessError,
-        ) as e:
+        except subprocess.SubprocessError as e:
             error_msg = f"Docker Compose nie jest dostępny: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e

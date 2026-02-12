@@ -454,7 +454,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         identifier = re.sub(r"[\\/]", "_", identifier)
 
         # Usuń pozostałe niedozwolone znaki, zostaw tylko alfanumeryczne i _
-        sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", identifier)
+        sanitized = re.sub(r"\W", "_", identifier)
 
         # Upewnij się że zaczyna się od litery lub _
         if sanitized and sanitized[0].isdigit():

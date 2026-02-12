@@ -29,7 +29,7 @@ export function useNews() {
     }, [language]);
 
     useEffect(() => {
-        if (typeof window !== "undefined") {
+        if (window !== undefined) {
             window.localStorage.setItem("models-news-sort", newsSort);
         }
     }, [newsSort]);

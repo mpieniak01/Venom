@@ -141,7 +141,7 @@ export function CockpitInsightsSection({
   macroSending,
   onRunMacro,
   onOpenQuickActions,
-}: Readonly<CockpitInsightsSectionProps>) {
+}: CockpitInsightsSectionProps) {
   const t = useTranslation();
 
   if (chatFullscreen || !showArtifacts) {

@@ -26,7 +26,7 @@ export function CockpitQueueControl({
   queueActionMessage,
   onToggleQueue,
   onExecuteQueueMutation,
-}: Readonly<CockpitQueueControlProps>) {
+}: CockpitQueueControlProps) {
   return (
     <Panel
       title="Zarządzanie kolejką"

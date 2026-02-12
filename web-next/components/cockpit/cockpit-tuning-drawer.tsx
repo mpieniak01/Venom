@@ -33,7 +33,7 @@ export function CockpitTuningDrawer({
   onResetGenerationParams,
   tuningSaving,
   onApply,
-}: Readonly<CockpitTuningDrawerProps>) {
+}: CockpitTuningDrawerProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">

@@ -21,7 +21,7 @@ export function BrainDetailsSheetContent({
     onDelete,
     memoryWipePending,
     onClearSession,
-}: Readonly<BrainDetailsSheetContentProps>) {
+}: BrainDetailsSheetContentProps) {
     const t = useTranslation();
 
     if (!selected) {

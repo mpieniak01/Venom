@@ -9,7 +9,7 @@ interface EventFormProps {
   readonly onCancel: () => void;
 }
 
-export function EventForm({ onSubmit, onCancel }: Readonly<EventFormProps>) {
+export function EventForm({ onSubmit, onCancel }: EventFormProps) {
   const [formData, setFormData] = useState<CreateEventRequest>({
     title: "",
     start_time: "",

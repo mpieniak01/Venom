@@ -12,7 +12,7 @@ interface RelationListProps {
     readonly relations: RelationEntry[];
 }
 
-export function RelationList({ selectedId, relations }: Readonly<RelationListProps>) {
+export function RelationList({ selectedId, relations }: RelationListProps) {
     const t = useTranslation();
     return (
         <div className="card-shell card-base p-4 text-sm">

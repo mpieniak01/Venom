@@ -6,7 +6,7 @@ type TokenEfficiencyStatProps = {
   readonly hint: string;
 };
 
-export function TokenEfficiencyStat({ label, value, hint }: Readonly<TokenEfficiencyStatProps>) {
+export function TokenEfficiencyStat({ label, value, hint }: TokenEfficiencyStatProps) {
   return (
     <div className="rounded-2xl box-muted p-3">
       <p className="text-caption">{label}</p>
@@ -22,7 +22,7 @@ type TokenShareBarProps = {
   readonly accent: string;
 };
 
-export function TokenShareBar({ label, percent, accent }: Readonly<TokenShareBarProps>) {
+export function TokenShareBar({ label, percent, accent }: TokenShareBarProps) {
   return (
     <div className="rounded-2xl box-base p-3">
       <div className="flex items-center justify-between text-sm text-white">
@@ -45,7 +45,7 @@ type ResourceMetricCardProps = {
   readonly hint?: string;
 };
 
-export function ResourceMetricCard({ label, value, hint }: Readonly<ResourceMetricCardProps>) {
+export function ResourceMetricCard({ label, value, hint }: ResourceMetricCardProps) {
   return (
     <div className="rounded-2xl box-muted p-3 text-sm text-white">
       <p className="text-caption">{label}</p>

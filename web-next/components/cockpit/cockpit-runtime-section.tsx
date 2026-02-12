@@ -19,7 +19,7 @@ export function CockpitRuntimeSection({
   runtimeProps,
   requestDetailProps,
   tuningDrawerProps,
-}: Readonly<CockpitRuntimeSectionProps>) {
+}: CockpitRuntimeSectionProps) {
   return (
     <>
       <CockpitRuntime {...runtimeProps} />

@@ -5,7 +5,7 @@ interface GraphLegendProps {
     readonly showEdgeLabels: boolean;
 }
 
-export function GraphLegend({ activeTab, showEdgeLabels }: Readonly<GraphLegendProps>) {
+export function GraphLegend({ activeTab, showEdgeLabels }: GraphLegendProps) {
     const t = useTranslation();
     return (
         <div className="flex flex-wrap gap-3 text-xs text-white">

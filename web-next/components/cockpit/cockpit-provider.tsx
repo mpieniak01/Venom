@@ -16,7 +16,7 @@ interface CockpitProviderProps {
     readonly children: ReactNode;
 }
 
-export function CockpitProvider({ initialData, variant = "reference", children }: Readonly<CockpitProviderProps>) {
+export function CockpitProvider({ initialData, variant = "reference", children }: CockpitProviderProps) {
 
     // 1. Layout State
     const layout = useCockpitLayout(variant);

@@ -8,7 +8,7 @@ interface CalendarViewProps {
   readonly onRefresh: () => void;
 }
 
-export function CalendarView({ events, onRefresh }: Readonly<CalendarViewProps>) {
+export function CalendarView({ events, onRefresh }: CalendarViewProps) {
   const formatTime = (isoString: string) => {
     try {
       const date = new Date(isoString);

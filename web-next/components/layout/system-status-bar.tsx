@@ -22,7 +22,7 @@ type SystemStatusInitialData = {
   gitStatus?: GitStatus | null;
 };
 
-export function SystemStatusBar({ initialData }: Readonly<{ initialData?: SystemStatusInitialData }>) {
+export function SystemStatusBar({ initialData }: { initialData?: SystemStatusInitialData }) {
   const { data: usageResponse } = useModelsUsage(30000);
   const usage = usageResponse?.usage ?? initialData?.modelsUsage?.usage;
   const { data: liveTokenMetrics } = useTokenMetrics(30000);

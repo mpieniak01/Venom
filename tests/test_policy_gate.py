@@ -1,9 +1,8 @@
 """Testy dla policy gate - globalnego gate'u polityk bezpieczeństwa."""
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.policy_gate import (
     PolicyDecision,
     PolicyEvaluationContext,

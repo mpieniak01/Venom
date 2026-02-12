@@ -13,32 +13,8 @@ export type PolicyReasonCode =
   (typeof POLICY_REASON_CODES)[keyof typeof POLICY_REASON_CODES];
 
 /**
- * Maps reason codes to user-friendly messages
- */
-export function getPolicyBlockMessage(
-  reasonCode?: string | null,
-  defaultMessage?: string
-): string {
-  if (!reasonCode) {
-    return defaultMessage || "Request blocked by policy gate";
-  }
-
-  const messages: Record<string, string> = {
-    POLICY_UNSAFE_CONTENT:
-      "🚫 Request blocked: Content may contain unsafe or inappropriate material",
-    POLICY_TOOL_RESTRICTED:
-      "🚫 Request blocked: The requested tool is restricted by policy",
-    POLICY_PROVIDER_RESTRICTED:
-      "🚫 Request blocked: The requested provider is restricted by policy",
-    POLICY_MISSING_CONTEXT:
-      "🚫 Request blocked: Required context is missing for this request",
-  };
-
-  return messages[reasonCode] || `🚫 Request blocked: ${reasonCode}`;
-}
-
-/**
  * Returns a short badge label for policy block status
+ * NOTE: Currently returns English labels. Could be enhanced with i18n in future.
  */
 export function getPolicyBlockBadgeLabel(reasonCode?: string | null): string {
   if (!reasonCode) {

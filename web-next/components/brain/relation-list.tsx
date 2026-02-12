@@ -8,8 +8,8 @@ export interface RelationEntry {
 }
 
 interface RelationListProps {
-    selectedId: string;
-    relations: RelationEntry[];
+    readonly selectedId: string;
+    readonly relations: RelationEntry[];
 }
 
 export function RelationList({ selectedId, relations }: RelationListProps) {

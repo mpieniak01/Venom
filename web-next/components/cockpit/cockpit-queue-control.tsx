@@ -13,11 +13,11 @@ type QueueSnapshot = {
 };
 
 type CockpitQueueControlProps = {
-  queue: QueueSnapshot | null;
-  queueAction: string | null;
-  queueActionMessage: string | null;
-  onToggleQueue: () => void;
-  onExecuteQueueMutation: (action: "purge" | "emergency") => void;
+  readonly queue: QueueSnapshot | null;
+  readonly queueAction: string | null;
+  readonly queueActionMessage: string | null;
+  readonly onToggleQueue: () => void;
+  readonly onExecuteQueueMutation: (action: "purge" | "emergency") => void;
 };
 
 export function CockpitQueueControl({

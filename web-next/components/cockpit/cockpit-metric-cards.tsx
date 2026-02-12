@@ -1,9 +1,9 @@
 "use client";
 
 type TokenEfficiencyStatProps = {
-  label: string;
-  value: string | number | null;
-  hint: string;
+  readonly label: string;
+  readonly value: string | number | null;
+  readonly hint: string;
 };
 
 export function TokenEfficiencyStat({ label, value, hint }: TokenEfficiencyStatProps) {
@@ -17,9 +17,9 @@ export function TokenEfficiencyStat({ label, value, hint }: TokenEfficiencyStatP
 }
 
 type TokenShareBarProps = {
-  label: string;
-  percent: number | null;
-  accent: string;
+  readonly label: string;
+  readonly percent: number | null;
+  readonly accent: string;
 };
 
 export function TokenShareBar({ label, percent, accent }: TokenShareBarProps) {
@@ -40,9 +40,9 @@ export function TokenShareBar({ label, percent, accent }: TokenShareBarProps) {
 }
 
 type ResourceMetricCardProps = {
-  label: string;
-  value: string;
-  hint?: string;
+  readonly label: string;
+  readonly value: string;
+  readonly hint?: string;
 };
 
 export function ResourceMetricCard({ label, value, hint }: ResourceMetricCardProps) {

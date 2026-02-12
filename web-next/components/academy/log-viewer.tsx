@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import type { TrainingJobStatus } from "@/lib/academy-api";
 
 interface LogViewerProps {
-  jobId: string;
-  onClose?: () => void;
+  readonly jobId: string;
+  readonly onClose?: () => void;
 }
 
 interface LogEntry {
@@ -36,7 +36,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("connecting");
+  const [status, setStatus] = useState<TrainingJobStatus | "connecting" | "streaming" | "disconnected" | "connected" | "error">("connecting");
   const [metrics, setMetrics] = useState<AggregatedMetrics | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -141,7 +141,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
   };
 
   const getStatusColor = () => {
-    switch (status as TrainingJobStatus | string) {
+    switch (status) {
       case "connected":
       case "streaming":
         return "text-emerald-400";

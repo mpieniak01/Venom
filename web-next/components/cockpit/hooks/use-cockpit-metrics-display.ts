@@ -48,7 +48,7 @@ export function useCockpitMetricsDisplay(data: Data) {
                 },
             ];
             // Keep last 30 samples
-            if (next.length > 30) return next.slice(next.length - 30);
+            if (next.length > 30) return next.slice(-30);
             return next;
         });
     }, [data.tokenMetrics?.total_tokens]);

@@ -188,9 +188,9 @@ export function useTokenMetricsSummary({
   const completionTokens = tokenMetrics?.completion_tokens ?? 0;
   const cachedTokens = tokenMetrics?.cached_tokens ?? 0;
   const lastTokenSample =
-    tokenHistory.length > 0 ? tokenHistory[tokenHistory.length - 1]?.value ?? null : null;
+    tokenHistory.length > 0 ? tokenHistory.at(-1)?.value ?? null : null;
   const prevTokenSample =
-    tokenHistory.length > 1 ? tokenHistory[tokenHistory.length - 2]?.value ?? null : null;
+    tokenHistory.length > 1 ? tokenHistory.at(-2)?.value ?? null : null;
   const tokenTrendDelta =
     lastTokenSample !== null && prevTokenSample !== null
       ? lastTokenSample - prevTokenSample

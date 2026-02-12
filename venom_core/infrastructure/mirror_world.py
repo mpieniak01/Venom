@@ -122,7 +122,7 @@ class MirrorWorld:
             logger.info(f"Zatrzymywanie kontenera {container_name} (timeout={STOP_TIMEOUT_SECONDS}s)...")
             try:
                 async with asyncio.timeout(STOP_TIMEOUT_SECONDS):
-                    await asyncio.to_thread(container.stop, timeout=STOP_TIMEOUT_SECONDS)
+                    await asyncio.to_thread(container.stop)
                 logger.info(f"✅ Kontener {container_name} zatrzymany")
             except Exception as stop_error:
                 if force:

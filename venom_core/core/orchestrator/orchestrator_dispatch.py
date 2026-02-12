@@ -125,7 +125,7 @@ async def _prepare_intent_and_context(
     request: TaskRequest,
     request_content: str,
     fast_path: bool,
-) -> tuple[str, str, bool]:
+) -> tuple[str, str, bool, dict]:
     """
     Klasyfikuje intencję i buduje kontekst.
     
@@ -137,7 +137,7 @@ async def _prepare_intent_and_context(
         fast_path: Czy użyć fast path
         
     Returns:
-        Krotka (intent, context, tool_required)
+        Krotka (intent, context, tool_required, intent_debug)
     """
     intent, intent_debug = await _classify_intent_and_log(
         orch, task_id, request, request_content
@@ -154,7 +154,7 @@ async def _prepare_intent_and_context(
         orch, task_id, intent
     )
     
-    return intent, context, tool_required
+    return intent, context, tool_required, intent_debug
 
 
 async def _emit_classification_trace(
@@ -233,7 +233,7 @@ async def run_task(
         )
         
         # Prepare intent and context
-        intent, context, tool_required = await _prepare_intent_and_context(
+        intent, context, tool_required, intent_debug = await _prepare_intent_and_context(
             orch, task_id, request, request_content, fast_path
         )
 
@@ -246,10 +246,7 @@ async def run_task(
             )
             _trace_context_preview(orch, task_id, context)
 
-        await _emit_classification_trace(
-            orch, task_id, intent, 
-            getattr(orch.intent_manager, "last_intent_debug", {})
-        )
+        await _emit_classification_trace(orch, task_id, intent, intent_debug)
 
         await _broadcast_intent(orch, task_id, intent)
         orch._append_session_history(

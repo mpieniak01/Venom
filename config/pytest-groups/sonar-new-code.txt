@@ -182,3 +182,4 @@ tests/test_flow_mermaid_generation.py
 tests/test_ghost_agent.py
 tests/test_audit_lite_deps.py
 tests/test_academy_api.py
+tests/test_mirror_world_docker_cleanup.py

@@ -35,6 +35,18 @@ class McpManagerSkill(BaseSkill):
     Skill zarządzający importem i cyklem życia narzędzi MCP (Model Context Protocol).
     """
 
+    # Allowlista zmiennych środowiskowych dla procesów MCP (minimalna bezpieczna konfiguracja)
+    SAFE_ENV_VARS = {
+        # Podstawowe zmienne systemowe
+        "PATH", "HOME", "USER", "SHELL", "LANG", "LC_ALL", "TZ",
+        # Zmienne Pythona
+        "PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV",
+        # Zmienne workspace (potrzebne dla działania MCP)
+        "WORKSPACE_ROOT", "REPO_ROOT",
+        # Zmienne potrzebne dla niektórych narzędzi MCP
+        "TERM", "DISPLAY", "PWD",
+    }
+
     def __init__(self):
         super().__init__()
         self.mcp_root = (
@@ -50,6 +62,39 @@ class McpManagerSkill(BaseSkill):
         self.custom_skills_dir.mkdir(parents=True, exist_ok=True)
 
         self.generator = McpProxyGenerator()
+
+    def _sanitize_env_for_mcp(self, base_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        """
+        Sanityzuje zmienne środowiskowe do bezpiecznego przekazania do procesu MCP.
+        
+        Filtruje wrażliwe dane jak API keys, tokeny, hasła, zachowując tylko
+        niezbędne zmienne systemowe i workspace.
+        
+        Args:
+            base_env: Bazowe środowisko (domyślnie os.environ)
+            
+        Returns:
+            Bezpieczny słownik zmiennych środowiskowych
+        """
+        if base_env is None:
+            base_env = os.environ
+        
+        # Filtruj tylko dozwolone zmienne
+        safe_env = {
+            key: value 
+            for key, value in base_env.items() 
+            if key in self.SAFE_ENV_VARS
+        }
+        
+        # Dodaj PYTHONUNBUFFERED dla lepszego logowania
+        safe_env["PYTHONUNBUFFERED"] = "1"
+        
+        self.logger.debug(
+            f"Sanityzowano env: {len(base_env)} -> {len(safe_env)} zmiennych "
+            f"(odfiltrowano {len(base_env) - len(safe_env)} zmiennych)"
+        )
+        
+        return safe_env
 
     @kernel_function(
         name="import_mcp_tool_from_git",
@@ -136,11 +181,14 @@ class McpManagerSkill(BaseSkill):
             f"Introspekcja narzędzi. Server cmd: {final_server_command} {final_server_args}"
         )
 
+        # Sanityzuj env przed przekazaniem do procesu MCP (bezpieczeństwo)
+        safe_env = self._sanitize_env_for_mcp()
+        
         tools_metadata = await self._introspect_tools(
             final_server_command,
             final_server_args,
             cwd=repo_dir,
-            env=os.environ.copy(),  # TODO: clean env
+            env=safe_env,
         )
 
         if not tools_metadata:
@@ -199,20 +247,15 @@ class McpManagerSkill(BaseSkill):
                 "Biblioteka 'mcp' nie jest zainstalowana. "
                 "Zainstaluj optional dependency, aby używać introspekcji MCP."
             )
+        
+        # Upewnij się, że env zawiera PYTHONUNBUFFERED i PYTHONPATH
+        final_env = {**env, "PYTHONUNBUFFERED": "1"}
+        if "PYTHONPATH" not in final_env and cwd:
+            final_env["PYTHONPATH"] = str(cwd)
+        
         server_params = StdioServerParameters(
-            command=command, args=args, env={**env, "PYTHONUNBUFFERED": "1"}
+            command=command, args=args, env=final_env
         )
-
-        # Add CWD to env config if library supports it, or just rely on path resolution?
-        # StdioServerParameters definition in mcp source is simple.
-        # Problem: We need to run it in specific CWD.
-        # Note: standard mcp library might not support 'cwd' in StdioServerParameters directly yet?
-        # Checking hypothetical API or assuming we pass absolute paths.
-        # If cwd is needed, we might need to wrap the command or use `env['PYTHONPATH']`.
-        # Workaround: Use absolute path for script.
-
-        # Actually, let's update env PYTHONPATH
-        env["PYTHONPATH"] = str(cwd)
 
         tools_list = []
         try:

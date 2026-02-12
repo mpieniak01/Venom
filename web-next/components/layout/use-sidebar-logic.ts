@@ -66,7 +66,7 @@ export function useSidebarLogic(t: (key: string, options?: Record<string, string
         const targetState = !(costMode?.enabled ?? false);
         if (
             targetState &&
-            typeof globalThis.window !== "undefined" &&
+            globalThis.window !== undefined &&
             !globalThis.window.confirm(t("sidebar.messages.costConfirm"))
         ) {
             setStatusMessage(t("sidebar.messages.costCancelled"));

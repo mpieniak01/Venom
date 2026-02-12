@@ -258,7 +258,7 @@ export function useSessionHistoryState({
     sessionId && bootId ? `venom-session-history:${sessionId}:${bootId}` : null;
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     try {
       const storedBootId = globalThis.window.localStorage.getItem("venom-backend-boot-id");
       setBootId(storedBootId);

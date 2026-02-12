@@ -514,7 +514,7 @@ export function useCockpitLogic({
     }, [resetKey]);
 
     useEffect(() => {
-        if (typeof globalThis.window === "undefined") return;
+        if (globalThis.window === undefined) return;
         const handleReset = (evt: Event) => {
             const detail = (evt as CustomEvent<{ sessionId?: string | null }>).detail;
             pendingResetSessionRef.current = detail?.sessionId ?? null;

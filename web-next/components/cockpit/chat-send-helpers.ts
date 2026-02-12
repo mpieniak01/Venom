@@ -214,8 +214,8 @@ export const buildSimpleStreamRequestPayload = (
 ) => ({
     content: trimmed,
     model: selectedLlmModel || null,
-    maxTokens: typeof generationParams?.max_tokens === "number" ? generationParams.max_tokens : null,
-    temperature: typeof generationParams?.temperature === "number" ? generationParams.temperature : null,
+    maxTokens: generationParams?.max_tokens !== undefined && generationParams?.max_tokens !== null ? generationParams.max_tokens : null,
+    temperature: generationParams?.temperature !== undefined && generationParams?.temperature !== null ? generationParams.temperature : null,
     sessionId: resolvedSession,
 });
 

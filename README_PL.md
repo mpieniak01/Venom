@@ -249,7 +249,7 @@ Python 3.10+ (zalecane 3.11)
 - `fastapi` - API serwera
 - `zeroconf` - wykrywanie usług mDNS dla lokalnej sieci
 - `pynput` - Nagrywanie akcji użytkownika (THE_APPRENTICE)
-- `google-generativeai` - Google Gemini (opcjonalne)
+- `google-genai` - Google Gemini (opcjonalne, preferowane SDK)
 - `openai` / `anthropic` - Modele LLM (opcjonalne)
 
 Pełna lista w [requirements.txt](requirements.txt)

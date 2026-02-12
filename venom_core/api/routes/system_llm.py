@@ -401,10 +401,13 @@ def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     if provider_raw == "google":
         if not SETTINGS.GOOGLE_API_KEY:
             raise HTTPException(status_code=400, detail="Brak GOOGLE_API_KEY")
-        if importlib.util.find_spec("google.generativeai") is None:
+        if (
+            importlib.util.find_spec("google.genai") is None
+            and importlib.util.find_spec("google.generativeai") is None
+        ):
             raise HTTPException(
                 status_code=400,
-                detail="Brak biblioteki google-generativeai",
+                detail="Brak SDK Gemini (google-genai / google-generativeai)",
             )
 
     default_model = (

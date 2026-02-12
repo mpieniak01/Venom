@@ -79,16 +79,12 @@ kernel = builder._register_service(
 
 Konfiguracja z Google Search (gdy biblioteka dostępna):
 ```python
-import google.generativeai as genai
+from google import genai
 
-genai.configure(api_key=GOOGLE_API_KEY)
+client = genai.Client(api_key=GOOGLE_API_KEY)
 
 # Włącz grounding
 tools = [{"google_search": {}}]
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-pro",
-    tools=tools
-)
 ```
 
 ### 5. Backend: ResearcherAgent
@@ -292,10 +288,12 @@ state_manager.set_paid_mode(True)
 **Sprawdź:**
 1. Czy `GOOGLE_API_KEY` jest ustawiony?
 2. Czy model to `gemini-1.5-pro`?
-3. Czy biblioteka `google-generativeai` jest zainstalowana?
+3. Czy biblioteka `google-genai` jest zainstalowana?
 
 ```bash
-pip install google-generativeai
+pip install google-genai
+# fallback dla starszych wdrożeń:
+# pip install google-generativeai
 ```
 
 ### Problem: Brak cytowań w odpowiedzi

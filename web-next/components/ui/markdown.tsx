@@ -83,7 +83,7 @@ function renderMathTokens(html: string, tokens: MathToken[]) {
       rendered = `<code>${escapeHtml(token.expression)}</code>`;
     }
     // Użyj replace z escapowanymi znakami specjalnymi regex dla bezpiecznej zamiany
-    const escapedId = token.id.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedId = token.id.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
     output = output.replaceAll(new RegExp(escapedId, 'g'), rendered);
   }
   return output;

@@ -38,6 +38,9 @@ export type ChatMessage = {
     lessons?: string[];
     memory_entries?: string[];
   } | null;
+  policyBlocked?: boolean;
+  reasonCode?: string | null;
+  userMessage?: string | null;
 };
 
 export type ChatComposerHandle = {
@@ -547,6 +550,9 @@ function CockpitThreadItem({
       modeLabel={msg.modeLabel}
       sourceLabel={msg.sourceLabel}
       contextUsed={msg.contextUsed ?? undefined}
+      policyBlocked={msg.policyBlocked}
+      reasonCode={msg.reasonCode}
+      userMessage={msg.userMessage}
     />
   );
 }

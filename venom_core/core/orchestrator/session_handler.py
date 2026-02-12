@@ -99,7 +99,14 @@ class SessionHandler:
             logger.warning(f"Nie udało się zapisać kontekstu sesji: {exc}")
 
     def append_session_history(
-        self, task_id: UUID, role: str, content: str, session_id: Optional[str]
+        self,
+        task_id: UUID,
+        role: str,
+        content: str,
+        session_id: Optional[str],
+        policy_blocked: bool = False,
+        reason_code: Optional[str] = None,
+        user_message: Optional[str] = None,
     ) -> None:
         """Dodaje wpis do historii sesji (ograniczonej do SESSION_HISTORY_LIMIT)."""
         if not content:
@@ -129,6 +136,14 @@ class SessionHandler:
             }
             if was_trimmed:
                 entry["original_length"] = len(content)
+
+            # Add policy fields if present
+            if policy_blocked:
+                entry["policy_blocked"] = policy_blocked
+            if reason_code:
+                entry["reason_code"] = reason_code
+            if user_message:
+                entry["user_message"] = user_message
 
             history.append(entry)
             full_history.append(entry)

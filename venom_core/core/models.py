@@ -135,6 +135,9 @@ class TaskResponse(BaseModel):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_endpoint: Optional[str] = None
+    policy_blocked: bool = False
+    reason_code: Optional[str] = None
+    user_message: Optional[str] = None
 
 
 class ExecutionStep(BaseModel):

@@ -249,7 +249,7 @@ Python 3.10+ (recommended 3.11)
 - `fastapi` - API server
 - `zeroconf` - mDNS service discovery for local network
 - `pynput` - User action recording (THE_APPRENTICE)
-- `google-generativeai` - Google Gemini (optional)
+- `google-genai` - Google Gemini (optional, preferred SDK)
 - `openai` / `anthropic` - LLM models (optional)
 
 Full list in [requirements.txt](requirements.txt)

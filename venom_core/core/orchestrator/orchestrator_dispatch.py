@@ -42,7 +42,6 @@ async def _handle_policy_block_before_tool_execution(
     orch: "Orchestrator",
     task_id: UUID,
     request: TaskRequest,
-    intent: str,
     policy_context: PolicyEvaluationContext,
 ) -> bool:
     """
@@ -52,7 +51,6 @@ async def _handle_policy_block_before_tool_execution(
         orch: Orchestrator
         task_id: ID zadania
         request: Żądanie zadania
-        intent: Intencja
         policy_context: Kontekst ewaluacji policy
 
     Returns:
@@ -162,7 +160,7 @@ async def _prepare_intent_and_context(
 
 
 def _emit_classification_trace(
-    orch: "Orchestrator", task_id: UUID, intent: str, intent_debug: dict
+    orch: "Orchestrator", task_id: UUID, intent: str
 ) -> None:
     """
     Emituje ślad klasyfikacji intencji.
@@ -171,7 +169,6 @@ def _emit_classification_trace(
         orch: Orchestrator
         task_id: ID zadania
         intent: Intencja
-        intent_debug: Debug info intencji
     """
     orch.state_manager.add_log(
         task_id, f"Sklasyfikowana intencja: {intent} - {datetime.now().isoformat()}"
@@ -255,7 +252,7 @@ async def run_task(
             )
             _trace_context_preview(orch, task_id, context)
 
-        _emit_classification_trace(orch, task_id, intent, intent_debug)
+        _emit_classification_trace(orch, task_id, intent)
 
         await _broadcast_intent(orch, task_id, intent)
         orch._append_session_history(
@@ -278,7 +275,7 @@ async def run_task(
 
             # Check and handle policy block
             if await _handle_policy_block_before_tool_execution(
-                orch, task_id, request, intent, policy_context
+                orch, task_id, request, policy_context
             ):
                 return  # Flow interrupted by policy block
 

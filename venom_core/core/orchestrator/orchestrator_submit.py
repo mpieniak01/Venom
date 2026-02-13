@@ -49,7 +49,6 @@ async def _check_policy_before_provider(
     orch: "Orchestrator", 
     task, 
     request: TaskRequest, 
-    runtime_info,
     policy_context: PolicyEvaluationContext
 ) -> TaskResponse | None:
     """
@@ -59,7 +58,6 @@ async def _check_policy_before_provider(
         orch: Orchestrator
         task: Zadanie
         request: Żądanie zadania
-        runtime_info: Informacje o runtime
         policy_context: Kontekst ewaluacji policy
         
     Returns:
@@ -285,7 +283,7 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
     )
     
     policy_response = await _check_policy_before_provider(
-        orch, task, request, runtime_info, policy_context
+        orch, task, request, policy_context
     )
     if policy_response is not None:
         return policy_response

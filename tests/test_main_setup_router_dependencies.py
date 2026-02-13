@@ -130,3 +130,143 @@ def test_initialize_academy_restore_error_falls_back(monkeypatch):
 def test_initialize_academy_disabled_returns_early(monkeypatch):
     monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", False, raising=False)
     main_module._initialize_academy()
+
+
+def test_get_orchestrator_kernel_prefers_task_dispatcher_kernel(monkeypatch):
+    sentinel_dispatcher_kernel = object()
+    sentinel_orchestrator_kernel = object()
+    monkeypatch.setattr(
+        main_module,
+        "orchestrator",
+        SimpleNamespace(
+            task_dispatcher=SimpleNamespace(kernel=sentinel_dispatcher_kernel),
+            kernel=sentinel_orchestrator_kernel,
+        ),
+    )
+
+    assert main_module._get_orchestrator_kernel() is sentinel_dispatcher_kernel
+
+
+def test_get_orchestrator_kernel_falls_back_to_orchestrator_kernel(monkeypatch):
+    sentinel_orchestrator_kernel = object()
+    monkeypatch.setattr(
+        main_module,
+        "orchestrator",
+        SimpleNamespace(
+            task_dispatcher=SimpleNamespace(), kernel=sentinel_orchestrator_kernel
+        ),
+    )
+
+    assert main_module._get_orchestrator_kernel() is sentinel_orchestrator_kernel
+
+
+def _patch_setup_routes(monkeypatch):
+    def make_dummy():
+        return SimpleNamespace(
+            set_dependencies=lambda *args, **kwargs: None, router=None
+        )
+
+    monkeypatch.setattr(main_module, "tasks_routes", make_dummy())
+    monkeypatch.setattr(main_module, "feedback_routes", make_dummy())
+    monkeypatch.setattr(main_module, "queue_routes", make_dummy())
+    monkeypatch.setattr(main_module, "metrics_routes", make_dummy())
+    monkeypatch.setattr(main_module, "memory_routes", make_dummy())
+    monkeypatch.setattr(main_module, "memory_projection_routes", make_dummy())
+    monkeypatch.setattr(main_module, "git_routes", make_dummy())
+    monkeypatch.setattr(main_module, "knowledge_routes", make_dummy())
+    monkeypatch.setattr(main_module, "agents_routes", make_dummy())
+    monkeypatch.setattr(main_module, "academy_routes", make_dummy())
+    monkeypatch.setattr(main_module, "system_deps", make_dummy())
+    monkeypatch.setattr(main_module, "nodes_routes", make_dummy())
+    monkeypatch.setattr(main_module, "strategy_routes", make_dummy())
+    monkeypatch.setattr(main_module, "models_routes", make_dummy())
+    monkeypatch.setattr(main_module, "flow_routes", make_dummy())
+    monkeypatch.setattr(main_module, "benchmark_routes", make_dummy())
+    monkeypatch.setattr(main_module, "calendar_routes", make_dummy())
+
+
+def _patch_setup_runtime_globals(monkeypatch):
+    monkeypatch.setattr(main_module, "state_manager", object())
+    monkeypatch.setattr(main_module, "request_tracer", object())
+    monkeypatch.setattr(main_module, "vector_store", object())
+    monkeypatch.setattr(main_module, "graph_store", object())
+    monkeypatch.setattr(main_module, "lessons_store", object())
+    monkeypatch.setattr(main_module, "session_store", object())
+    monkeypatch.setattr(main_module, "git_skill", object())
+    monkeypatch.setattr(main_module, "gardener_agent", object())
+    monkeypatch.setattr(main_module, "shadow_agent", object())
+    monkeypatch.setattr(main_module, "file_watcher", object())
+    monkeypatch.setattr(main_module, "documenter_agent", object())
+    monkeypatch.setattr(main_module, "background_scheduler", object())
+    monkeypatch.setattr(
+        main_module,
+        "service_monitor",
+        SimpleNamespace(set_orchestrator=lambda *_: None),
+    )
+    monkeypatch.setattr(main_module, "llm_controller", object())
+    monkeypatch.setattr(main_module, "model_manager", object())
+    monkeypatch.setattr(main_module, "node_manager", object())
+    monkeypatch.setattr(main_module, "benchmark_service", object())
+    monkeypatch.setattr(main_module, "google_calendar_skill", object())
+    monkeypatch.setattr(main_module, "model_registry", object())
+    monkeypatch.setattr(main_module, "hardware_bridge", object())
+    monkeypatch.setattr(main_module, "token_economist", None)
+
+
+def test_setup_router_dependencies_retries_professor_init_success(monkeypatch):
+    _patch_setup_routes(monkeypatch)
+    _patch_setup_runtime_globals(monkeypatch)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", True, raising=False)
+    monkeypatch.setattr(main_module, "professor", None)
+    monkeypatch.setattr(main_module, "dataset_curator", object())
+    monkeypatch.setattr(main_module, "gpu_habitat", object())
+    monkeypatch.setattr(
+        main_module,
+        "orchestrator",
+        SimpleNamespace(task_dispatcher=SimpleNamespace(kernel=object())),
+    )
+
+    professor_mod = ModuleType("venom_core.agents.professor")
+
+    class DummyProfessor:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    professor_mod.Professor = DummyProfessor
+    monkeypatch.setitem(sys.modules, "venom_core.agents.professor", professor_mod)
+
+    main_module.setup_router_dependencies()
+
+    assert isinstance(main_module.professor, DummyProfessor)
+    assert (
+        main_module.professor.kwargs["dataset_curator"] is main_module.dataset_curator
+    )
+
+
+def test_setup_router_dependencies_retries_professor_init_handles_exception(
+    monkeypatch,
+):
+    _patch_setup_routes(monkeypatch)
+    _patch_setup_runtime_globals(monkeypatch)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", True, raising=False)
+    monkeypatch.setattr(main_module, "professor", None)
+    monkeypatch.setattr(main_module, "dataset_curator", object())
+    monkeypatch.setattr(main_module, "gpu_habitat", object())
+    monkeypatch.setattr(
+        main_module,
+        "orchestrator",
+        SimpleNamespace(task_dispatcher=SimpleNamespace(kernel=object())),
+    )
+
+    professor_mod = ModuleType("venom_core.agents.professor")
+
+    class FailingProfessor:
+        def __init__(self, **_kwargs):
+            raise RuntimeError("boom")
+
+    professor_mod.Professor = FailingProfessor
+    monkeypatch.setitem(sys.modules, "venom_core.agents.professor", professor_mod)
+
+    main_module.setup_router_dependencies()
+
+    assert main_module.professor is None

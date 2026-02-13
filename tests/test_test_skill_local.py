@@ -3,6 +3,7 @@
 import asyncio
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -123,4 +124,95 @@ async def test_run_local_linter_binary_timeout_kills_process(local_test_skill):
         monkeypatch.undo()
 
     assert result is None
+    assert process.killed is True
+
+
+@pytest.mark.asyncio
+async def test_run_pytest_docker_missing_pytest_falls_back_to_local(monkeypatch):
+    habitat = SimpleNamespace(
+        execute=lambda *_args, **_kwargs: (1, "No module named pytest")
+    )
+    skill = TestSkill(habitat=habitat, allow_local_execution=True)
+    called = {"local": False}
+
+    async def _fake_local(_path: str):
+        called["local"] = True
+        return 0, "1 passed in 0.01s"
+
+    monkeypatch.setattr(skill, "_run_pytest_locally", _fake_local)
+
+    result = await skill.run_pytest(test_path="tests/test_example.py")
+
+    assert called["local"] is True
+    assert "Passed: 1" in result
+    assert "Failed: 0" in result
+
+
+@pytest.mark.asyncio
+async def test_run_pytest_docker_missing_pytest_falls_back_to_local_error(monkeypatch):
+    habitat = SimpleNamespace(
+        execute=lambda *_args, **_kwargs: (1, "No module named pytest")
+    )
+    skill = TestSkill(habitat=habitat, allow_local_execution=True)
+
+    async def _fake_local(_path: str):
+        return "❌ local run failed"
+
+    monkeypatch.setattr(skill, "_run_pytest_locally", _fake_local)
+
+    result = await skill.run_pytest(test_path="tests/test_example.py")
+
+    assert result == "❌ local run failed"
+
+
+@pytest.mark.asyncio
+async def test_run_pytest_locally_returns_error_when_subprocess_fails(monkeypatch):
+    skill = TestSkill(allow_local_execution=True)
+
+    async def _raise_subprocess(*_args, **_kwargs):
+        raise RuntimeError("spawn failed")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _raise_subprocess)
+
+    result = await skill._run_pytest_locally("tests/test_example.py")
+
+    assert "Błąd uruchamiania lokalnego procesu" in result
+
+
+@pytest.mark.asyncio
+async def test_run_pytest_locally_timeout_kills_process(monkeypatch):
+    skill = TestSkill(allow_local_execution=True)
+
+    class DummyProcess:
+        def __init__(self):
+            self.killed = False
+            self.returncode = None
+
+        async def communicate(self):
+            return b"", None
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+
+    process = DummyProcess()
+
+    async def _fake_create_subprocess_exec(*_args, **_kwargs):
+        return process
+
+    class _TimeoutCtx:
+        def __enter__(self):
+            raise TimeoutError()
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        test_skill_module, "fail_after", lambda *_args, **_kwargs: _TimeoutCtx()
+    )
+
+    result = await skill._run_pytest_locally("tests/test_example.py")
+
+    assert "Przekroczono limit czasu" in result
     assert process.killed is True

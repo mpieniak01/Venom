@@ -72,7 +72,7 @@ export function DatasetPanel() {
   }
 
   async function handleDeleteUpload(fileId: string) {
-    if (!confirm("Czy na pewno chcesz usunąć ten plik?")) return;
+    if (!confirm("Are you sure you want to delete this file?")) return;
 
     try {
       await deleteDatasetUpload(fileId);
@@ -80,7 +80,7 @@ export function DatasetPanel() {
       setSelectedUploadIds((prev) => prev.filter((id) => id !== fileId));
     } catch (err) {
       console.error("Failed to delete upload:", err);
-      alert("Nie udało się usunąć pliku");
+      alert("Failed to delete file");
     }
   }
 
@@ -106,7 +106,7 @@ export function DatasetPanel() {
       setPreview(data);
     } catch (err) {
       console.error("Failed to preview dataset:", err);
-      alert("Nie udało się wygenerować podglądu");
+      alert("Failed to generate preview");
     } finally {
       setPreviewing(false);
     }
@@ -148,15 +148,15 @@ export function DatasetPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-white">Kuracja Datasetu (v2)</h2>
+        <h2 className="text-lg font-semibold text-white">Dataset Curation (v2)</h2>
         <p className="text-sm text-zinc-400">
-          Przygotowanie danych treningowych: wybierz źródła i uploaduj własne pliki
+          Prepare training data: select sources and upload your own files
         </p>
       </div>
 
       {/* User Uploads Section */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-        <h3 className="text-base font-semibold text-white mb-4">Twoje Pliki</h3>
+        <h3 className="text-base font-semibold text-white mb-4">Your Files</h3>
         
         <div className="space-y-4">
           <div>
@@ -183,18 +183,18 @@ export function DatasetPanel() {
               ) : (
                 <>
                   <Upload className="h-4 w-4" />
-                  Upload Plików
+                  Upload Files
                 </>
               )}
             </Button>
             <p className="mt-2 text-xs text-zinc-400">
-              Dozwolone: .jsonl, .json, .md, .txt, .csv (max 25MB)
+              Supported: .jsonl, .json, .md, .txt, .csv
             </p>
           </div>
 
           {uploads.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm font-medium text-zinc-300">Uploadowane pliki:</p>
+              <p className="text-sm font-medium text-zinc-300">Uploaded files:</p>
               {uploads.map((upload) => (
                 <div
                   key={upload.id}
@@ -227,7 +227,7 @@ export function DatasetPanel() {
 
       {/* Training Scope Section */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-        <h3 className="text-base font-semibold text-white mb-4">Zakres Treningu</h3>
+        <h3 className="text-base font-semibold text-white mb-4">Training Scope</h3>
         
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -244,7 +244,7 @@ export function DatasetPanel() {
           {includeLessons && (
             <div className="ml-6">
               <Label htmlFor="lessons-limit" className="text-zinc-300 text-sm">
-                Limit lekcji
+                Lessons limit
               </Label>
               <Input
                 id="lessons-limit"
@@ -272,7 +272,7 @@ export function DatasetPanel() {
           {includeGit && (
             <div className="ml-6">
               <Label htmlFor="git-limit" className="text-zinc-300 text-sm">
-                Limit commitów
+                Commits limit
               </Label>
               <Input
                 id="git-limit"
@@ -300,7 +300,7 @@ export function DatasetPanel() {
           {selectedUploadIds.length > 0 && (
             <div className="mt-2 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
               <p className="text-sm text-blue-300">
-                ✓ {selectedUploadIds.length} uploadowanych plików zostanie uwzględnionych
+                ✓ {selectedUploadIds.length} uploaded file(s) will be included
               </p>
             </div>
           )}
@@ -321,7 +321,7 @@ export function DatasetPanel() {
             ) : (
               <>
                 <Eye className="h-4 w-4" />
-                Podgląd
+                Preview
               </>
             )}
           </Button>
@@ -334,12 +334,12 @@ export function DatasetPanel() {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Kuracja w trakcie...
+                Curating...
               </>
             ) : (
               <>
                 <Play className="h-4 w-4" />
-                Kuruj Dataset
+                Curate Dataset
               </>
             )}
           </Button>
@@ -352,11 +352,11 @@ export function DatasetPanel() {
           <div className="flex items-start gap-3">
             <Eye className="h-6 w-6 text-blue-400" />
             <div className="flex-1">
-              <p className="font-medium text-blue-300">Podgląd Datasetu</p>
+              <p className="font-medium text-blue-300">Dataset Preview</p>
 
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div>
-                  <p className="text-xs text-zinc-400">Łączna liczba</p>
+                  <p className="text-xs text-zinc-400">Total Count</p>
                   <p className="mt-1 text-lg font-semibold text-white">
                     {preview.total_examples}
                   </p>
@@ -368,7 +368,7 @@ export function DatasetPanel() {
                   </div>
                 ))}
                 <div>
-                  <p className="text-xs text-zinc-400">Odrzucono</p>
+                  <p className="text-xs text-zinc-400">Rejected</p>
                   <p className="mt-1 text-lg font-semibold text-white">
                     {preview.removed_low_quality}
                   </p>
@@ -388,7 +388,7 @@ export function DatasetPanel() {
 
               {preview.samples.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-sm font-medium text-zinc-300 mb-2">Przykładowe rekordy:</p>
+                  <p className="text-sm font-medium text-zinc-300 mb-2">Sample records:</p>
                   <div className="space-y-2">
                     {preview.samples.slice(0, 3).map((sample, idx) => (
                       <div key={idx} className="rounded-lg bg-black/20 p-3 text-xs">
@@ -427,13 +427,13 @@ export function DatasetPanel() {
                 <div className="mt-4">
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-4">
                     <div>
-                      <p className="text-xs text-zinc-400">Łączna liczba</p>
+                      <p className="text-xs text-zinc-400">Total Count</p>
                       <p className="mt-1 text-lg font-semibold text-white">
                         {result.statistics.total_examples}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-zinc-400">Usunięto</p>
+                      <p className="text-xs text-zinc-400">Removed</p>
                       <p className="mt-1 text-lg font-semibold text-white">
                         {result.statistics.removed_low_quality}
                       </p>
@@ -463,15 +463,15 @@ export function DatasetPanel() {
         </div>
       )}
 
-      {/* Informacje */}
+      {/* Information */}
       <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
         <p className="text-sm text-blue-300 font-medium mb-2">
-          ℹ️ Academy v2: Trenujemy adapter LoRA, nie pełny model
+          ℹ️ Academy v2: Training LoRA adapter, not full model
         </p>
         <p className="text-xs text-zinc-400">
-          Dataset może zawierać przykłady z LessonsStore, Git History, Task History i Twoich uploadów.
-          Trenowany jest adapter LoRA/QLoRA na modelu bazowym, nie cały model od zera.
-          Format: Alpaca JSONL (instruction-input-output). Minimalna jakość jest filtrowana automatycznie.
+          Dataset can include examples from LessonsStore, Git History, Task History, and your uploads.
+          Training uses LoRA/QLoRA adapter on base model, not training from scratch.
+          Format: Alpaca JSONL (instruction-input-output). Low quality examples are filtered automatically.
         </p>
       </div>
     </div>

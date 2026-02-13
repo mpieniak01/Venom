@@ -368,3 +368,55 @@ def test_cleanup_job_local_pid_without_process_uses_validated_signal(monkeypatch
     habitat.cleanup_job("job-local")
     assert called and called[0][0] == "job-local"
     assert "job-local" not in habitat.training_containers
+
+
+def test_is_pid_owned_by_current_user_handles_guard_paths(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    assert habitat._is_pid_owned_by_current_user(1) is False
+
+    class _NoUidPath:
+        def __init__(self, _value):
+            pass
+
+        def read_text(self, encoding="utf-8"):
+            _ = encoding
+            return "Name:\tpython\nState:\tR\n"
+
+    monkeypatch.setattr(gpu_habitat_mod, "Path", _NoUidPath)
+    assert habitat._is_pid_owned_by_current_user(1234) is False
+
+
+def test_is_pid_owned_by_current_user_true_and_malformed_uid(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+
+    class _StatusPath:
+        text = "Uid:\t1000\t1000\t1000\t1000\n"
+
+        def __init__(self, _value):
+            pass
+
+        def read_text(self, encoding="utf-8"):
+            _ = encoding
+            return self.text
+
+    monkeypatch.setattr(gpu_habitat_mod, "Path", _StatusPath)
+    monkeypatch.setattr(gpu_habitat_mod.os, "getuid", lambda: 1000)
+    assert habitat._is_pid_owned_by_current_user(1234) is True
+
+    _StatusPath.text = "Uid:\n"
+    assert habitat._is_pid_owned_by_current_user(1234) is False
+
+
+def test_is_pid_owned_by_current_user_handles_read_errors(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+
+    class _ExplodingPath:
+        def __init__(self, _value):
+            pass
+
+        def read_text(self, encoding="utf-8"):
+            _ = encoding
+            raise OSError("cannot read status")
+
+    monkeypatch.setattr(gpu_habitat_mod, "Path", _ExplodingPath)
+    assert habitat._is_pid_owned_by_current_user(1234) is False

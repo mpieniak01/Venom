@@ -237,6 +237,9 @@ class Settings(BaseSettings):
     ACADEMY_BATCH_SIZE: int = 4  # Batch size (zmniejsz jeśli OOM)
     ACADEMY_MAX_SEQ_LENGTH: int = 2048  # Maksymalna długość sekwencji
     ACADEMY_ENABLE_GPU: bool = True  # Czy używać GPU (jeśli dostępne)
+    ACADEMY_USE_LOCAL_RUNTIME: bool = (
+        False  # Czy uruchamiać trening lokalnie (bez Dockera)
+    )
     ACADEMY_TRAINING_IMAGE: str = "unsloth/unsloth:latest"  # Obraz Docker dla treningu
 
     # Konfiguracja THE_NEXUS (Distributed Mesh)

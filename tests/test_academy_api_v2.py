@@ -120,6 +120,32 @@ def test_upload_files_success(client, tmp_path):
             assert data["files"][0]["name"] == "test.jsonl"
 
 
+def test_upload_cleans_orphan_file_on_metadata_failure(client, tmp_path):
+    """Po błędzie zapisu metadanych plik nie powinien zostać na dysku."""
+    with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
+        with patch(
+            "venom_core.api.routes.academy._save_upload_metadata",
+            side_effect=RuntimeError("metadata failure"),
+        ):
+            test_file = io.BytesIO(
+                b'{"instruction":"test","input":"","output":"test output"}'
+            )
+            test_file.name = "test.jsonl"
+
+            response = client.post(
+                "/api/v1/academy/dataset/upload",
+                files={"files": ("test.jsonl", test_file, "application/jsonl")},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is False
+            assert data["uploaded"] == 0
+            assert data["failed"] == 1
+            assert "Unexpected error" in data["errors"][0]["error"]
+            assert list(tmp_path.iterdir()) == []
+
+
 def test_upload_invalid_extension(client, tmp_path):
     """Test upload pliku z niepoprawnym rozszerzeniem"""
     with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):

@@ -3,7 +3,6 @@
 import asyncio
 import json
 import os
-import sys
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -22,11 +21,13 @@ logger = get_logger(__name__)
 # Import platform-specific file locking
 try:
     import fcntl
+
     HAS_FCNTL = True
 except ImportError:
     HAS_FCNTL = False
     try:
         import msvcrt
+
         HAS_MSVCRT = True
     except ImportError:
         HAS_MSVCRT = False
@@ -259,7 +260,9 @@ class DatasetScopeRequest(BaseModel):
     include_lessons: bool = Field(default=True)
     include_git: bool = Field(default=True)
     upload_ids: List[str] = Field(default_factory=list)
-    quality_profile: str = Field(default="balanced", pattern="^(strict|balanced|lenient)$")
+    quality_profile: str = Field(
+        default="balanced", pattern="^(strict|balanced|lenient)$"
+    )
 
 
 class DatasetPreviewResponse(BaseModel):
@@ -431,7 +434,7 @@ def _check_path_traversal(filename: str) -> bool:
 def _file_lock(file_path: Path, mode: str = "r"):
     """
     Context manager dla atomicznego dostępu do pliku z lockowaniem.
-    
+
     Używa fcntl na Unix/Linux lub msvcrt na Windows.
     Fallback: brak lockowania jeśli nie ma dostępnych bibliotek.
     """
@@ -476,10 +479,10 @@ def _load_uploads_metadata() -> List[Dict[str, Any]]:
 def _save_upload_metadata(upload_info: Dict[str, Any]):
     """Zapisuje metadata uploadu (append do JSONL) z lockowaniem."""
     metadata_file = _get_uploads_metadata_file()
-    
+
     # Upewnij się że plik istnieje
     metadata_file.touch(exist_ok=True)
-    
+
     try:
         with _file_lock(metadata_file, "a") as f:
             f.write(json.dumps(upload_info, ensure_ascii=False) + "\n")
@@ -495,8 +498,8 @@ def _delete_upload_metadata(file_id: str):
 
     try:
         # Read-modify-write w jednej operacji z lockiem
-        temp_file = metadata_file.with_suffix('.tmp')
-        
+        temp_file = metadata_file.with_suffix(".tmp")
+
         with _file_lock(metadata_file, "r") as f_in:
             uploads = []
             for line in f_in:
@@ -504,15 +507,15 @@ def _delete_upload_metadata(file_id: str):
                     upload = json.loads(line)
                     if upload.get("id") != file_id:
                         uploads.append(upload)
-        
+
         # Write to temp file first
         with open(temp_file, "w", encoding="utf-8") as f_out:
             for upload in uploads:
                 f_out.write(json.dumps(upload, ensure_ascii=False) + "\n")
-        
+
         # Atomic replace
         temp_file.replace(metadata_file)
-        
+
     except Exception as e:
         logger.error(f"Failed to delete upload metadata: {e}")
         # Clean up temp file if it exists
@@ -520,7 +523,9 @@ def _delete_upload_metadata(file_id: str):
             try:
                 temp_file.unlink()
             except Exception as cleanup_error:
-                logger.warning(f"Failed to remove temporary metadata file {temp_file}: {cleanup_error}")
+                logger.warning(
+                    f"Failed to remove temporary metadata file {temp_file}: {cleanup_error}"
+                )
 
 
 def _compute_file_hash(file_path: Path) -> str:
@@ -621,7 +626,7 @@ async def curate_dataset(
                 if not _check_path_traversal(file_id):
                     logger.warning(f"Invalid file_id (path traversal): {file_id}")
                     continue
-                    
+
                 file_path = uploads_dir / file_id
                 if not file_path.exists():
                     logger.warning(f"Upload not found: {file_id}")
@@ -1456,13 +1461,10 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
-    from fastapi import UploadFile, File, Form
-    from venom_core.config import SETTINGS
-
-    # Import here to avoid circular dependency
-    import shutil
     import mimetypes
     from datetime import datetime
+
+    from venom_core.config import SETTINGS
 
     # Parse multipart form data manually
     form = await req.form()
@@ -1491,20 +1493,25 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
         if not filename:
             continue
 
+        file_path: Path | None = None
         try:
             # Validate filename
             if not _check_path_traversal(filename):
-                failed_files.append({
-                    "name": filename,
-                    "error": "Invalid filename (path traversal)",
-                })
+                failed_files.append(
+                    {
+                        "name": filename,
+                        "error": "Invalid filename (path traversal)",
+                    }
+                )
                 continue
 
             if not _validate_file_extension(filename):
-                failed_files.append({
-                    "name": filename,
-                    "error": f"Invalid file extension. Allowed: {SETTINGS.ACADEMY_ALLOWED_EXTENSIONS}",
-                })
+                failed_files.append(
+                    {
+                        "name": filename,
+                        "error": f"Invalid file extension. Allowed: {SETTINGS.ACADEMY_ALLOWED_EXTENSIONS}",
+                    }
+                )
                 continue
 
             # Read file content
@@ -1512,10 +1519,12 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
             size_bytes = len(content)
 
             if not _validate_file_size(size_bytes):
-                failed_files.append({
-                    "name": filename,
-                    "error": f"File too large ({size_bytes} bytes, max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
-                })
+                failed_files.append(
+                    {
+                        "name": filename,
+                        "error": f"File too large ({size_bytes} bytes, max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
+                    }
+                )
                 continue
 
             # Generate unique ID with microseconds to prevent collisions
@@ -1527,10 +1536,12 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
                     f.write(content)
             except Exception as e:
                 logger.error(f"Failed to save file {filename}: {e}")
-                failed_files.append({
-                    "name": filename,
-                    "error": f"Failed to save file: {str(e)}",
-                })
+                failed_files.append(
+                    {
+                        "name": filename,
+                        "error": f"Failed to save file: {str(e)}",
+                    }
+                )
                 continue
 
             # Compute hash
@@ -1581,14 +1592,25 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
 
         except Exception as e:
             # Catch any unexpected errors for this file
+            if file_path and file_path.exists():
+                try:
+                    file_path.unlink()
+                except OSError as cleanup_error:
+                    logger.warning(
+                        f"Failed to cleanup orphan upload file {file_path}: {cleanup_error}"
+                    )
             logger.error(f"Unexpected error processing file {filename}: {e}")
-            failed_files.append({
-                "name": filename,
-                "error": f"Unexpected error: {str(e)}",
-            })
+            failed_files.append(
+                {
+                    "name": filename,
+                    "error": f"Unexpected error: {str(e)}",
+                }
+            )
             continue
 
-    logger.info(f"Uploaded {len(uploaded_files)} files to Academy ({len(failed_files)} failed)")
+    logger.info(
+        f"Uploaded {len(uploaded_files)} files to Academy ({len(failed_files)} failed)"
+    )
 
     # Return partial success response with both successful and failed files
     success = len(uploaded_files) > 0
@@ -1733,7 +1755,7 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
                 if not _check_path_traversal(file_id):
                     warnings.append(f"Invalid file_id (path traversal): {file_id}")
                     continue
-                    
+
                 file_path = uploads_dir / file_id
                 if not file_path.exists():
                     warnings.append(f"Upload not found: {file_id}")

@@ -296,3 +296,32 @@ def test_append_pending_results_adds_only_missing_ids():
     assert len(results) == 2
     assert results[1]["task_id"] == "task_2"
     assert results[1]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_map_reduce_handles_enqueue_exception(
+    parallel_skill, mock_message_broker
+):
+    mock_message_broker.enqueue_task = AsyncMock(side_effect=RuntimeError("queue down"))
+    result = await parallel_skill.map_reduce(
+        task_description="x", items='["a"]', wait_timeout=1
+    )
+    assert "Błąd podczas wykonywania Map-Reduce" in result
+
+
+@pytest.mark.asyncio
+async def test_parallel_execute_handles_enqueue_exception(
+    parallel_skill, mock_message_broker
+):
+    mock_message_broker.enqueue_task = AsyncMock(side_effect=RuntimeError("queue down"))
+    result = await parallel_skill.parallel_execute(
+        task_description="x", subtasks='["a"]', wait_timeout=1
+    )
+    assert "Błąd podczas równoległego wykonywania" in result
+
+
+@pytest.mark.asyncio
+async def test_get_task_status_handles_exception(parallel_skill, mock_message_broker):
+    mock_message_broker.get_task_status = AsyncMock(side_effect=RuntimeError("boom"))
+    result = await parallel_skill.get_task_status("task-x")
+    assert result.startswith("❌ Błąd:")

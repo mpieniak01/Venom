@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { Save, Eye, EyeOff, AlertTriangle, Info, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { SelectMenu } from "@/components/ui/select-menu";
 import { useTranslation } from "@/lib/i18n";
 
 interface Config {
@@ -199,6 +200,22 @@ export function ParametersPanel() {
     const showValue = !secret || showSecrets[key];
     const valueSource = configSources[key] || "env";
 
+
+    const isBooleanKey = (key: string, val: string) => {
+      const k = key.toUpperCase();
+      const v = val.toLowerCase();
+      if (v === "true" || v === "false") return true;
+      return (
+        k.startsWith("ENABLE_") ||
+        k.startsWith("IS_") ||
+        k.startsWith("HAS_") ||
+        k.startsWith("USE_") ||
+        k.endsWith("_ENABLED")
+      );
+    };
+
+    const isBool = isBooleanKey(key, value);
+
     return (
       <div key={key} className="space-y-2">
         <div className="flex items-center justify-between">
@@ -208,8 +225,8 @@ export function ParametersPanel() {
           <div className="flex items-center gap-2">
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${valueSource === "default"
-                  ? "bg-amber-500/20 text-amber-300"
-                  : "bg-emerald-500/20 text-emerald-300"
+                ? "bg-amber-500/20 text-amber-300"
+                : "bg-emerald-500/20 text-emerald-300"
                 }`}
             >
               {valueSource === "default"
@@ -228,12 +245,25 @@ export function ParametersPanel() {
             )}
           </div>
         </div>
-        <input
-          type={showValue ? "text" : "password"}
-          value={value}
-          onChange={(e) => handleChange(key, e.target.value)}
-          className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white outline-none focus:border-emerald-400 focus:ring-0"
-        />
+        {isBool ? (
+          <SelectMenu
+            value={value.toLowerCase() === "true" ? "true" : "false"}
+            options={[
+              { value: "true", label: "True" },
+              { value: "false", label: "False" },
+            ]}
+            onChange={(newValue) => handleChange(key, newValue)}
+            buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white hover:bg-white/5 hover:border-white/20 transition-colors"
+            menuClassName="w-full"
+          />
+        ) : (
+          <input
+            type={showValue ? "text" : "password"}
+            value={value}
+            onChange={(e) => handleChange(key, e.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white outline-none focus:border-emerald-400 focus:ring-0"
+          />
+        )}
         {valueSource === "default" && (
           <p className="text-xs text-amber-200/80">{t("config.parameters.effectiveConfigHint")}</p>
         )}

@@ -25,7 +25,7 @@
   --danger: #ff0055;
   --warning: #ffcc00;
 
-  --border-glass: 1px solid rgba(255, 255, 255, 0.08);
+  --border-glass: 1px solid rgba(255, 255, 255, 0.12);
 
   /* GEOMETRIA (4px) */
   --radius-panel: 4px;
@@ -215,21 +215,21 @@ a {
 }
 
 .box-base {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.03);
   color: #f8fafc;
   box-shadow: var(--shadow-card);
 }
 
 .box-muted {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(0, 0, 0, 0.3);
   color: #ffffff;
   box-shadow: var(--shadow-card);
 }
 
 .box-subtle {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(0, 0, 0, 0.2);
   color: #ffffff;
   box-shadow: var(--shadow-card);

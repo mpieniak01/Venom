@@ -1,11 +1,13 @@
 """Testy jednostkowe dla ShellSkill z obsługą Docker Sandbox."""
 
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from venom_core.config import SETTINGS
+from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.shell_skill import ShellSkill
 
 pytestmark = pytest.mark.requires_docker
@@ -26,6 +28,16 @@ def temp_workspace():
 
         # Przywróć oryginalną wartość
         SETTINGS.WORKSPACE_ROOT = original_workspace
+
+
+@pytest.fixture(autouse=True)
+def _allow_shell_for_tests():
+    previous_level = permission_guard.get_current_level()
+    permission_guard.set_level(40)
+    try:
+        yield
+    finally:
+        permission_guard.set_level(previous_level)
 
 
 def test_shell_skill_initialization_sandbox():
@@ -97,7 +109,7 @@ def test_shell_skill_run_failed_command_local(temp_workspace):
     """Test wykonania komendy która się nie powiedzie lokalnie."""
     skill = ShellSkill(use_sandbox=False)
 
-    result = skill.run_shell("python -c \"raise ValueError('Test error')\"")
+    result = skill.run_shell(f"{sys.executable} -c \"raise ValueError('Test error')\"")
 
     assert "błąd" in result.lower() or "exit_code=" in result
     assert "ValueError" in result or "Test error" in result
@@ -161,7 +173,7 @@ def test_shell_skill_python_script_execution_local(temp_workspace):
     script_path = Path(temp_workspace) / "test_local.py"
     script_path.write_text("print('Local script executed')")
 
-    result = skill.run_shell("python test_local.py")
+    result = skill.run_shell(f"{sys.executable} test_local.py")
 
     assert "Local script executed" in result
     assert "pomyślnie" in result.lower() or "exit_code=0" in result
@@ -242,7 +254,7 @@ def test_shell_skill_stderr_capture_local(temp_workspace):
     skill = ShellSkill(use_sandbox=False)
 
     result = skill.run_shell(
-        "python -c \"import sys; sys.stderr.write('Local error\\n')\""
+        f"{sys.executable} -c \"import sys; sys.stderr.write('Local error\\n')\""
     )
 
     assert "Local error" in result

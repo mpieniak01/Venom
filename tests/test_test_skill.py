@@ -1,33 +1,36 @@
 """Testy jednostkowe dla TestSkill."""
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
 from venom_core.execution.skills.test_skill import TestSkill
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 
-pytestmark = pytest.mark.requires_docker
-
-
-@pytest.fixture(scope="module")
-def docker_habitat():
-    """Fixture dla DockerHabitat."""
-    habitat = DockerHabitat()
-    yield habitat
-    # Cleanup
-    habitat.cleanup()
-
 
 @pytest.fixture
-def test_skill(docker_habitat):
-    """Fixture dla TestSkill."""
-    return TestSkill(habitat=docker_habitat)
+def test_skill():
+    """Fixture dla TestSkill (Docker jeśli dostępny, inaczej fallback lokalny)."""
+    try:
+        habitat = DockerHabitat()
+    except RuntimeError:
+        habitat = None
+
+    skill = TestSkill(habitat=habitat, allow_local_execution=True)
+    try:
+        yield skill
+    finally:
+        if habitat is not None:
+            habitat.cleanup()
 
 
 @pytest.mark.asyncio
 async def test_run_pytest_with_no_tests(test_skill):
     """Test uruchomienia pytest gdy nie ma testów."""
-    # Uruchom pytest w pustym katalogu
-    result = await test_skill.run_pytest(test_path=".", timeout=30)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Uruchom pytest w pustym katalogu
+        result = await test_skill.run_pytest(test_path=tmpdir)
 
     assert result is not None
     assert isinstance(result, str)
@@ -38,7 +41,10 @@ async def test_run_pytest_with_no_tests(test_skill):
 @pytest.mark.asyncio
 async def test_run_linter(test_skill):
     """Test uruchomienia lintera."""
-    result = await test_skill.run_linter(path=".", timeout=30)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_file = Path(tmpdir) / "sample.py"
+        test_file.write_text("x=1\n", encoding="utf-8")
+        result = await test_skill.run_linter(path=tmpdir)
 
     assert result is not None
     assert isinstance(result, str)

@@ -1,5 +1,6 @@
 """Testy integracyjne dla CoderAgent z pętlą samonaprawy."""
 
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -7,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from venom_core.config import SETTINGS
+from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.shell_skill import ShellSkill
 
@@ -36,6 +38,16 @@ def mock_kernel():
     kernel.get_service = MagicMock(return_value=chat_service)
 
     return kernel
+
+
+@pytest.fixture(autouse=True)
+def _allow_tooling_permissions():
+    previous_level = permission_guard.get_current_level()
+    permission_guard.set_level(40)
+    try:
+        yield
+    finally:
+        permission_guard.set_level(previous_level)
 
 
 def test_coder_agent_initialization(mock_kernel):
@@ -111,7 +123,7 @@ async def test_file_and_shell_skill_integration(temp_workspace):
     assert exists == "True"
 
     # Wykonaj skrypt
-    result = shell_skill.run_shell("python integration_test.py")
+    result = shell_skill.run_shell(f"{sys.executable} integration_test.py")
 
     assert "Integration test" in result
 
@@ -131,7 +143,7 @@ print("After error")
     await file_skill.write_file("error_test.py", error_script)
 
     # Wykonaj skrypt
-    result = shell_skill.run_shell("python error_test.py")
+    result = shell_skill.run_shell(f"{sys.executable} error_test.py")
     exit_code = shell_skill.get_exit_code_from_output(result)
 
     # Powinien wykryć błąd
@@ -154,7 +166,7 @@ print(f"Result: {result}")
     await file_skill.write_file("success_test.py", success_script)
 
     # Wykonaj skrypt
-    result = shell_skill.run_shell("python success_test.py")
+    result = shell_skill.run_shell(f"{sys.executable} success_test.py")
     exit_code = shell_skill.get_exit_code_from_output(result)
 
     # Powinien wykryć sukces

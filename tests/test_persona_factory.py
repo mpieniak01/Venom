@@ -203,3 +203,102 @@ def test_persona_enrichment_high_patience_branch():
     assert str(persona.age) in enriched.description
     assert persona.goal in enriched.description
     assert "Szybko się frustruje" not in enriched.description
+
+
+def test_persona_enrichment_with_llm_mock():
+    """Test wzbogacania persony przez LLM (mock kernel)."""
+    from unittest.mock import MagicMock, AsyncMock
+    
+    # Mock kernel i chat service
+    mock_kernel = MagicMock()
+    mock_chat_service = MagicMock()
+    mock_response = MagicMock()
+    mock_response.__str__ = MagicMock(
+        return_value="Anna to 34-letnia profesjonalistka z wysoką znajomością technologii. "
+                     "Jest cierpliwa i dokładna w swoich działaniach, a jej głównym celem jest kupić produkt."
+    )
+    
+    mock_chat_service.get_chat_message_content = AsyncMock(return_value=mock_response)
+    mock_kernel.get_service = MagicMock(return_value=mock_chat_service)
+    
+    factory = PersonaFactory(kernel=mock_kernel)
+    persona = Persona(
+        name="Anna",
+        age=34,
+        tech_literacy=TechLiteracy.HIGH,
+        patience=0.9,
+        goal="Kupić produkt",
+        traits=["dokładny"],
+        description="",
+    )
+    
+    enriched = factory._enrich_persona_with_llm(persona)
+    
+    # Sprawdź że LLM został wywołany
+    assert mock_chat_service.get_chat_message_content.called
+    # Sprawdź że dostaliśmy wzbogacony opis
+    assert enriched.description
+    assert "Anna" in enriched.description
+    assert "profesjonalistka" in enriched.description or len(enriched.description) > 20
+
+
+def test_persona_enrichment_llm_fallback_on_error():
+    """Test fallbacku do szablonu gdy LLM rzuca wyjątek."""
+    from unittest.mock import MagicMock, AsyncMock
+    
+    # Mock kernel który rzuca wyjątek
+    mock_kernel = MagicMock()
+    mock_chat_service = MagicMock()
+    mock_chat_service.get_chat_message_content = AsyncMock(
+        side_effect=Exception("LLM error")
+    )
+    mock_kernel.get_service = MagicMock(return_value=mock_chat_service)
+    
+    factory = PersonaFactory(kernel=mock_kernel)
+    persona = Persona(
+        name="Jan",
+        age=60,
+        tech_literacy=TechLiteracy.LOW,
+        patience=0.3,
+        goal="Test celu",
+        traits=["niecierpliwy"],
+        description="",
+    )
+    
+    enriched = factory._enrich_persona_with_llm(persona)
+    
+    # Sprawdź że dostaliśmy fallback (szablon)
+    assert enriched.description
+    assert "Jan" in enriched.description
+    assert "60" in enriched.description or "rzadko używa komputera" in enriched.description
+
+
+def test_persona_enrichment_llm_empty_response():
+    """Test fallbacku gdy LLM zwraca pustą odpowiedź."""
+    from unittest.mock import MagicMock, AsyncMock
+    
+    # Mock kernel z pustą odpowiedzią
+    mock_kernel = MagicMock()
+    mock_chat_service = MagicMock()
+    mock_response = MagicMock()
+    mock_response.__str__ = MagicMock(return_value="")
+    
+    mock_chat_service.get_chat_message_content = AsyncMock(return_value=mock_response)
+    mock_kernel.get_service = MagicMock(return_value=mock_chat_service)
+    
+    factory = PersonaFactory(kernel=mock_kernel)
+    persona = Persona(
+        name="Test",
+        age=30,
+        tech_literacy=TechLiteracy.MEDIUM,
+        patience=0.5,
+        goal="Test",
+        traits=["test"],
+        description="",
+    )
+    
+    enriched = factory._enrich_persona_with_llm(persona)
+    
+    # Sprawdź że dostaliśmy fallback (szablon) gdy LLM zwrócił pusty string
+    assert enriched.description
+    assert "Test" in enriched.description

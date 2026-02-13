@@ -230,10 +230,88 @@ class PersonaFactory:
         Returns:
             Wzbogacona persona
         """
-        # TODO: Implementacja z LLM - dla MVP używamy prostego szablonu
-        logger.debug(f"Wzbogacanie persony {persona.name} z LLM - placeholder")
+        # Jeśli kernel dostępny, spróbuj wzbogacić przez LLM
+        if self.kernel:
+            try:
+                import asyncio
+                from semantic_kernel.contents import ChatHistory
+                from semantic_kernel.contents.chat_message_content import ChatMessageContent
+                from semantic_kernel.contents.utils.author_role import AuthorRole
 
-        # Dodaj prostą biografię
+                logger.debug(f"Wzbogacanie persony {persona.name} z LLM")
+
+                # Przygotuj prompt dla LLM
+                tech_level = {
+                    TechLiteracy.LOW: "rzadko używa komputera",
+                    TechLiteracy.MEDIUM: "ma podstawową znajomość technologii",
+                    TechLiteracy.HIGH: "jest biegły w obsłudze aplikacji webowych",
+                }
+
+                prompt = f"""Stwórz krótki, spójny opis użytkownika dla symulacji UX:
+
+Imię: {persona.name}
+Wiek: {persona.age}
+Znajomość tech: {tech_level[persona.tech_literacy]}
+Cierpliwość: {'wysoka' if persona.patience > self.PATIENCE_HIGH_THRESHOLD else 'niska'}
+Cel: {persona.goal}
+Cechy: {', '.join(persona.traits)}
+
+Napisz 2-3 zdaniowy opis tej persony, który nadaje jej charakteru i kontekstu.
+Nie zmieniaj podanych faktów - tylko dodaj koloryt i tło.
+Odpowiedź: tylko opis, bez dodatkowych komentarzy."""
+
+                # Wywołaj LLM
+                chat_service = self.kernel.get_service()
+                chat_history = ChatHistory()
+                chat_history.add_message(
+                    ChatMessageContent(
+                        role=AuthorRole.USER,
+                        content=prompt
+                    )
+                )
+
+                # Ustawienia wykonania - krótka odpowiedź
+                from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
+                settings = OpenAIChatPromptExecutionSettings(
+                    temperature=0.8,
+                    max_tokens=150
+                )
+
+                # Wywołaj asynchronicznie
+                try:
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # Loop już działa - użyj asyncio.run w nowym kontekście
+                        response = asyncio.run(chat_service.get_chat_message_content(
+                            chat_history=chat_history,
+                            settings=settings
+                        ))
+                    except RuntimeError:
+                        # Brak running loop - użyj asyncio.run
+                        response = asyncio.run(chat_service.get_chat_message_content(
+                            chat_history=chat_history,
+                            settings=settings
+                        ))
+                except Exception as invoke_error:
+                    raise invoke_error
+
+                enriched_description = str(response).strip()
+
+                # Walidacja: opis nie może być pusty i powinien zawierać imię persony
+                if enriched_description and len(enriched_description) > 10:
+                    # Ogranicz długość do max 500 znaków
+                    persona.description = enriched_description[:500]
+                    logger.info(f"Wzbogacono personę {persona.name} przez LLM")
+                    return persona
+                else:
+                    logger.warning(f"LLM zwrócił pusty/zbyt krótki opis, używam szablonu")
+                    # Fallback do szablonu
+                    
+            except Exception as e:
+                logger.warning(f"Błąd podczas wzbogacania persony przez LLM: {e}, używam szablonu")
+                # Fallback do szablonu
+
+        # Szablon fallback (bez LLM lub w razie błędu)
         tech_level = {
             TechLiteracy.LOW: "rzadko używa komputera",
             TechLiteracy.MEDIUM: "ma podstawową znajomość technologii",

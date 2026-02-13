@@ -274,3 +274,55 @@ class TestApprenticeAgent:
             apprentice_agent._sanitize_identifier("../../../etc/passwd")
             == "____________etc_passwd"
         )
+
+    @pytest.mark.asyncio
+    async def test_llm_response_async_normal_path(self, apprentice_agent):
+        """Test normalnej ścieżki wywołania LLM (nie-placeholder)."""
+        # Mock chat service i odpowiedź
+        mock_chat_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.__str__ = MagicMock(return_value="To jest odpowiedź LLM na zapytanie.")
+        
+        mock_chat_service.get_chat_message_content = AsyncMock(return_value=mock_response)
+        apprentice_agent.kernel.get_service = MagicMock(return_value=mock_chat_service)
+        
+        # Mock hybrid router
+        apprentice_agent.hybrid_router.get_routing_info_for_task = MagicMock(
+            return_value={"provider": "openai", "model_name": "gpt-4"}
+        )
+        
+        # Mock recorder
+        apprentice_agent.recorder.is_recording = False
+        apprentice_agent.recorder.list_sessions = MagicMock(return_value=["session1", "session2"])
+        
+        result = await apprentice_agent._llm_response_async("Jakie masz możliwości?")
+        
+        # Sprawdź, że dostaliśmy odpowiedź LLM, nie placeholder
+        assert "To jest odpowiedź LLM" in result
+        assert mock_chat_service.get_chat_message_content.called
+
+    @pytest.mark.asyncio
+    async def test_llm_response_async_fallback_on_error(self, apprentice_agent):
+        """Test fallbacku na błąd wywołania LLM."""
+        # Mock chat service który rzuca wyjątek
+        mock_chat_service = MagicMock()
+        mock_chat_service.get_chat_message_content = AsyncMock(
+            side_effect=Exception("LLM error")
+        )
+        apprentice_agent.kernel.get_service = MagicMock(return_value=mock_chat_service)
+        
+        # Mock hybrid router
+        apprentice_agent.hybrid_router.get_routing_info_for_task = MagicMock(
+            return_value={"provider": "openai", "model_name": "gpt-4"}
+        )
+        
+        # Mock recorder
+        apprentice_agent.recorder.is_recording = False
+        apprentice_agent.recorder.list_sessions = MagicMock(return_value=[])
+        
+        result = await apprentice_agent._llm_response_async("Test")
+        
+        # Sprawdź, że dostaliśmy kontrolowany fallback, nie wyjątek
+        assert "ApprenticeAgent" in result
+        assert "czasowo niedostępny" in result or "trybu podstawowego" in result
+        assert "❌" not in result  # Nie jest to błąd krytyczny

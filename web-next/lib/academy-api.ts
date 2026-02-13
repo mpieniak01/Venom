@@ -260,7 +260,9 @@ export async function uploadDatasetFiles(params: {
 }): Promise<{
   success: boolean;
   uploaded: number;
+  failed: number;
   files: UploadFileInfo[];
+  errors: Array<{ name: string; error: string }>;
   message: string;
 }> {
   const formData = new FormData();

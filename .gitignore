@@ -88,6 +88,7 @@ next-dev.log
 # Local runtime artifacts
 :memory:
 models_cache/
+unsloth_compiled_cache/
 
 # docs_dev/ is LOCAL-ONLY (WIP drafts). Never commit.
 docs_dev/

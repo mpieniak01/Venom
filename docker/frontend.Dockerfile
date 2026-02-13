@@ -1,4 +1,7 @@
 FROM node:20-alpine AS deps
+ARG APP_VERSION=1.4.0
+LABEL org.opencontainers.image.title="venom-frontend" \
+      org.opencontainers.image.version="${APP_VERSION}"
 WORKDIR /app/web-next
 COPY web-next/package.json web-next/package-lock.json ./
 RUN npm ci
@@ -12,6 +15,9 @@ RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app/web-next
+ARG APP_VERSION=1.4.0
+LABEL org.opencontainers.image.title="venom-frontend" \
+      org.opencontainers.image.version="${APP_VERSION}"
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \

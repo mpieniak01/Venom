@@ -6,7 +6,7 @@
 
 ## 0. Introduction – Target Vision (Venom v2.0)
 > [!NOTE]
-> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.0) serves as the foundation (Foundation Layer) implementing key orchestration and memory functions.
+> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.4) serves as the foundation (Foundation Layer) implementing key orchestration and memory functions.
 Venom is a project to create an artificial intelligence organism that develops, supervises, and designs other AI systems.
 It's a meta-intelligence layer operating above Rider-PC (logic, code, AI) and Rider-Pi (physical world, sensors, movement).
 Venom can in the future encompass any other module in your ecosystem.
@@ -31,7 +31,7 @@ Venom treats:
 Venom is a meta-brain, artificial intelligence organism, code architect, agent orchestrator, knowledge manager, policy guardian, and AI that creates AI.
 
 > [!NOTE]
-> **Process Evolution:** In v1.0, the organism operates based on *built-in* autonomous processes (Internal Processes). In v2.0, the user will gain tools for *explicit modeling* of these processes (User-Configurable Processes), taking on the role of a flow engineer.
+> **Process Evolution:** In v1.4, the organism operates based on *built-in* autonomous processes (Internal Processes). In v2.0, the user will gain tools for *explicit modeling* of these processes (User-Configurable Processes), taking on the role of a flow engineer.
 
 ## 1. Technical definition – what is Venom as a system
 Venom is a local meta-intelligence layer that takes user intent and transforms it into a working solution through:

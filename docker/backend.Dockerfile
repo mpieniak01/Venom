@@ -1,5 +1,9 @@
 FROM python:3.11-slim
 
+ARG APP_VERSION=1.4.0
+LABEL org.opencontainers.image.title="venom-backend" \
+      org.opencontainers.image.version="${APP_VERSION}"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1

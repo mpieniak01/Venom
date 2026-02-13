@@ -415,25 +415,28 @@ def test_is_model_trainable():
 # ==================== Ingestion Tests ====================
 
 
-def test_ingest_jsonl_file(tmp_path, mock_dataset_curator):
+def test_ingest_jsonl_file(tmp_path):
     """Test ingestion pliku JSONL"""
     from venom_core.api.routes.academy import _ingest_upload_file
 
     # Utwórz plik JSONL
     jsonl_file = tmp_path / "test.jsonl"
     jsonl_file.write_text(
-        '{"instruction":"test1","input":"","output":"output1"}\n'
-        '{"instruction":"test2","input":"","output":"output2"}\n'
+        '{"instruction":"test1 instruction","input":"","output":"output1 text here"}\n'
+        '{"instruction":"test2 instruction","input":"","output":"output2 text here"}\n'
     )
 
-    mock_dataset_curator.examples = []
-    count = _ingest_upload_file(mock_dataset_curator, jsonl_file)
+    # Create a simple mock with a real list
+    mock_curator = MagicMock()
+    mock_curator.examples = []
+    
+    count = _ingest_upload_file(mock_curator, jsonl_file)
 
     assert count == 2
-    assert len(mock_dataset_curator.examples) == 2
+    assert len(mock_curator.examples) == 2
 
 
-def test_ingest_json_file(tmp_path, mock_dataset_curator):
+def test_ingest_json_file(tmp_path):
     """Test ingestion pliku JSON"""
     from venom_core.api.routes.academy import _ingest_upload_file
 
@@ -441,16 +444,19 @@ def test_ingest_json_file(tmp_path, mock_dataset_curator):
     json_file = tmp_path / "test.json"
     json_file.write_text(
         json.dumps([
-            {"instruction": "test1", "input": "", "output": "output1"},
-            {"instruction": "test2", "input": "", "output": "output2"},
+            {"instruction": "test1 instruction", "input": "", "output": "output1 text here"},
+            {"instruction": "test2 instruction", "input": "", "output": "output2 text here"},
         ])
     )
 
-    mock_dataset_curator.examples = []
-    count = _ingest_upload_file(mock_dataset_curator, json_file)
+    # Create a simple mock with a real list
+    mock_curator = MagicMock()
+    mock_curator.examples = []
+    
+    count = _ingest_upload_file(mock_curator, json_file)
 
     assert count == 2
-    assert len(mock_dataset_curator.examples) == 2
+    assert len(mock_curator.examples) == 2
 
 
 def test_validate_training_record():

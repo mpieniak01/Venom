@@ -551,6 +551,11 @@ async def curate_dataset(
         if request.upload_ids:
             uploads_dir = _get_uploads_dir()
             for file_id in request.upload_ids:
+                # Validate file_id to prevent path traversal
+                if not _check_path_traversal(file_id):
+                    logger.warning(f"Invalid file_id (path traversal): {file_id}")
+                    continue
+                    
                 file_path = uploads_dir / file_id
                 if not file_path.exists():
                     logger.warning(f"Upload not found: {file_id}")
@@ -1442,8 +1447,8 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
                 detail=f"File too large: {filename} ({size_bytes} bytes, max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
             )
 
-        # Generate unique ID and save file
-        file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
+        # Generate unique ID with microseconds to prevent collisions
+        file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
         file_path = uploads_dir / file_id
 
         try:
@@ -1552,6 +1557,13 @@ async def delete_dataset_upload(file_id: str, req: Request) -> Dict[str, Any]:
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
+    # Validate file_id to prevent path traversal
+    if not _check_path_traversal(file_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file_id (path traversal): {file_id}",
+        )
+
     uploads_dir = _get_uploads_dir()
     file_path = uploads_dir / file_id
 
@@ -1627,6 +1639,11 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
             uploads_count = 0
             uploads_dir = _get_uploads_dir()
             for file_id in request.upload_ids:
+                # Validate file_id to prevent path traversal
+                if not _check_path_traversal(file_id):
+                    warnings.append(f"Invalid file_id (path traversal): {file_id}")
+                    continue
+                    
                 file_path = uploads_dir / file_id
                 if not file_path.exists():
                     warnings.append(f"Upload not found: {file_id}")

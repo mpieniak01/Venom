@@ -557,6 +557,36 @@ def _compute_file_hash(file_path: Path) -> str:
     return sha256.hexdigest()
 
 
+def _compute_bytes_hash(content: bytes) -> str:
+    """Oblicza SHA256 hash dla bajtów w pamięci."""
+    import hashlib
+
+    return hashlib.sha256(content).hexdigest()
+
+
+def _estimate_records_from_content(filename: str, content: bytes) -> int:
+    """Szacuje liczbę rekordów na podstawie zawartości pliku w pamięci."""
+    records_estimate = 0
+    filename_lc = filename.lower()
+
+    if filename_lc.endswith(".jsonl"):
+        text = content.decode("utf-8", errors="ignore")
+        return sum(1 for line in text.splitlines() if line.strip())
+
+    if filename_lc.endswith(".json"):
+        text = content.decode("utf-8", errors="ignore")
+        data = json.loads(text)
+        if isinstance(data, list):
+            return len(data)
+        return 1
+
+    if filename_lc.endswith((".md", ".txt", ".csv")):
+        text = content.decode("utf-8", errors="ignore")
+        return max(1, len(text.split("\n\n")))
+
+    return records_estimate
+
+
 def _is_model_trainable(model_id: str) -> bool:
     """
     Sprawdza czy model jest trenowalny (wspiera LoRA/QLoRA).
@@ -612,7 +642,13 @@ async def curate_dataset(
         raise _to_http_exception(e) from e
 
     try:
-        logger.info(f"Curating dataset with request: {request}")
+        logger.info(
+            "Curating dataset: lessons=%s git=%s task_history=%s uploads=%s",
+            request.include_lessons,
+            request.include_git,
+            request.include_task_history,
+            len(request.upload_ids or []),
+        )
         curator = _get_dataset_curator()
 
         # Wyczyść poprzednie przykłady
@@ -639,22 +675,32 @@ async def curate_dataset(
         # Zbierz z uploadów
         if request.upload_ids:
             uploads_dir = _get_uploads_dir()
-            for file_id in request.upload_ids:
+            for upload_idx, file_id in enumerate(request.upload_ids, start=1):
                 # Validate file_id to prevent path traversal
                 if not _check_path_traversal(file_id):
-                    logger.warning(f"Invalid file_id (path traversal): {file_id}")
+                    logger.warning(
+                        "Skipped upload entry due to invalid identifier (idx=%s)",
+                        upload_idx,
+                    )
                     continue
 
                 file_path = uploads_dir / file_id
                 if not file_path.exists():
-                    logger.warning(f"Upload not found: {file_id}")
+                    logger.warning(
+                        "Skipped upload entry because file was not found (idx=%s)",
+                        upload_idx,
+                    )
                     continue
 
                 try:
                     count = _ingest_upload_file(curator, file_path)
                     uploads_count += count
                 except Exception as e:
-                    logger.warning(f"Failed to ingest {file_id}: {e}")
+                    logger.warning(
+                        "Failed to ingest upload entry (idx=%s, error=%s)",
+                        upload_idx,
+                        type(e).__name__,
+                    )
 
         # Filtruj niską jakość
         removed = curator.filter_low_quality()
@@ -714,7 +760,14 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
         require_localhost_request(req)
         from venom_core.config import SETTINGS
 
-        logger.info(f"Starting training with request: {request}")
+        logger.info(
+            "Starting training: base_model_set=%s lora_rank=%s num_epochs=%s learning_rate=%s batch_size=%s",
+            bool(request.base_model),
+            request.lora_rank,
+            request.num_epochs,
+            request.learning_rate,
+            request.batch_size,
+        )
         habitat = _get_gpu_habitat()
 
         # Jeśli nie podano dataset_path, użyj ostatniego
@@ -1550,10 +1603,13 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
             file_path = uploads_dir / file_id
 
             try:
-                with open(file_path, "wb") as f:
-                    f.write(content)
+                async with await anyio.open_file(file_path, "wb") as f:
+                    await f.write(content)
             except Exception as e:
-                logger.error(f"Failed to save file {filename}: {e}")
+                logger.error(
+                    "Failed to persist uploaded file (error=%s)",
+                    type(e).__name__,
+                )
                 failed_files.append(
                     {
                         "name": filename,
@@ -1563,7 +1619,7 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
                 continue
 
             # Compute hash
-            sha256_hash = _compute_file_hash(file_path)
+            sha256_hash = _compute_bytes_hash(content)
 
             # Determine MIME type
             mime_type, _ = mimetypes.guess_type(filename)
@@ -1573,23 +1629,12 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
             # Estimate records (simple heuristic)
             records_estimate = 0
             try:
-                if filename.endswith(".jsonl"):
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        records_estimate = sum(1 for line in f if line.strip())
-                elif filename.endswith(".json"):
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        if isinstance(data, list):
-                            records_estimate = len(data)
-                        else:
-                            records_estimate = 1
-                elif filename.endswith((".md", ".txt")):
-                    # Rough estimate: split by double newlines
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content_str = f.read()
-                        records_estimate = max(1, len(content_str.split("\n\n")))
+                records_estimate = _estimate_records_from_content(filename, content)
             except Exception as e:
-                logger.warning(f"Failed to estimate records for {filename}: {e}")
+                logger.warning(
+                    "Failed to estimate records for uploaded file (error=%s)",
+                    type(e).__name__,
+                )
 
             # Create metadata
             upload_info = {
@@ -1615,9 +1660,13 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
                     file_path.unlink()
                 except OSError as cleanup_error:
                     logger.warning(
-                        f"Failed to cleanup orphan upload file {file_path}: {cleanup_error}"
+                        "Failed to cleanup orphan upload file (error=%s)",
+                        type(cleanup_error).__name__,
                     )
-            logger.error(f"Unexpected error processing file {filename}: {e}")
+            logger.error(
+                "Unexpected error while processing uploaded file (error=%s)",
+                type(e).__name__,
+            )
             failed_files.append(
                 {
                     "name": filename,
@@ -1740,7 +1789,13 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
         raise _to_http_exception(e) from e
 
     try:
-        logger.info(f"Previewing dataset with request: {request}")
+        logger.info(
+            "Previewing dataset: lessons=%s git=%s task_history=%s uploads=%s",
+            request.include_lessons,
+            request.include_git,
+            request.include_task_history,
+            len(request.upload_ids or []),
+        )
         curator = _get_dataset_curator()
 
         # Wyczyść poprzednie przykłady
@@ -1768,7 +1823,7 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
         if request.upload_ids:
             uploads_count = 0
             uploads_dir = _get_uploads_dir()
-            for file_id in request.upload_ids:
+            for upload_idx, file_id in enumerate(request.upload_ids, start=1):
                 # Validate file_id to prevent path traversal
                 if not _check_path_traversal(file_id):
                     warnings.append(f"Invalid file_id (path traversal): {file_id}")
@@ -1784,7 +1839,11 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
                     count = _ingest_upload_file(curator, file_path)
                     uploads_count += count
                 except Exception as e:
-                    logger.warning(f"Failed to ingest {file_id}: {e}")
+                    logger.warning(
+                        "Failed to ingest upload entry during preview (idx=%s, error=%s)",
+                        upload_idx,
+                        type(e).__name__,
+                    )
                     warnings.append(f"Failed to ingest {file_id}: {str(e)}")
 
             by_source["uploads"] = uploads_count

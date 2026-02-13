@@ -55,5 +55,21 @@ tests/test_parallel_skill.py
 tests/test_metrics_routes.py
 tests/test_model_registry_clients.py
 tests/test_model_registry_clients_additional.py
+tests/test_critic_agent.py
+tests/test_architect_agent.py
+tests/test_coder_critic_loop.py
+tests/test_prompt_manager.py
+tests/test_service_monitor.py
+tests/test_service_monitor_streaming.py
+tests/test_lessons_manager.py
+tests/test_retrieval_policy.py
+tests/test_browser_skill.py
+tests/test_healing_flow.py
+tests/test_orchestrator_core_scenarios.py
+tests/test_dispatcher_audit_fixes.py
+tests/test_metrics.py
+tests/test_academy_api.py
+tests/test_gpu_habitat.py
+tests/test_session_store.py
 
 # AUTO-ADDED by pre-commit (staged backend/test changes)

@@ -58,10 +58,16 @@ export function DatasetPanel() {
 
     try {
       setUploading(true);
-      await uploadDatasetFiles({ files });
+      const result = await uploadDatasetFiles({ files });
       await loadUploads();
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
+      }
+      
+      // Show result message with details about failures if any
+      if (result.failed > 0) {
+        const errorDetails = result.errors.map(e => `- ${e.name}: ${e.error}`).join('\n');
+        alert(`${result.message}\n\nFailed uploads:\n${errorDetails}`);
       }
     } catch (err) {
       console.error("Failed to upload files:", err);

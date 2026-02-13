@@ -1414,6 +1414,7 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
         )
 
     uploaded_files = []
+    failed_files = []
     uploads_dir = _get_uploads_dir()
 
     for file in files:
@@ -1424,95 +1425,118 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
         if not filename:
             continue
 
-        # Validate filename
-        if not _check_path_traversal(filename):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid filename (path traversal): {filename}",
-            )
-
-        if not _validate_file_extension(filename):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid file extension: {filename}. Allowed: {SETTINGS.ACADEMY_ALLOWED_EXTENSIONS}",
-            )
-
-        # Read file content
-        content = await file.read()
-        size_bytes = len(content)
-
-        if not _validate_file_size(size_bytes):
-            raise HTTPException(
-                status_code=400,
-                detail=f"File too large: {filename} ({size_bytes} bytes, max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
-            )
-
-        # Generate unique ID with microseconds to prevent collisions
-        file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
-        file_path = uploads_dir / file_id
-
         try:
-            with open(file_path, "wb") as f:
-                f.write(content)
+            # Validate filename
+            if not _check_path_traversal(filename):
+                failed_files.append({
+                    "name": filename,
+                    "error": "Invalid filename (path traversal)",
+                })
+                continue
+
+            if not _validate_file_extension(filename):
+                failed_files.append({
+                    "name": filename,
+                    "error": f"Invalid file extension. Allowed: {SETTINGS.ACADEMY_ALLOWED_EXTENSIONS}",
+                })
+                continue
+
+            # Read file content
+            content = await file.read()
+            size_bytes = len(content)
+
+            if not _validate_file_size(size_bytes):
+                failed_files.append({
+                    "name": filename,
+                    "error": f"File too large ({size_bytes} bytes, max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
+                })
+                continue
+
+            # Generate unique ID with microseconds to prevent collisions
+            file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
+            file_path = uploads_dir / file_id
+
+            try:
+                with open(file_path, "wb") as f:
+                    f.write(content)
+            except Exception as e:
+                logger.error(f"Failed to save file {filename}: {e}")
+                failed_files.append({
+                    "name": filename,
+                    "error": f"Failed to save file: {str(e)}",
+                })
+                continue
+
+            # Compute hash
+            sha256_hash = _compute_file_hash(file_path)
+
+            # Determine MIME type
+            mime_type, _ = mimetypes.guess_type(filename)
+            if not mime_type:
+                mime_type = "application/octet-stream"
+
+            # Estimate records (simple heuristic)
+            records_estimate = 0
+            try:
+                if filename.endswith(".jsonl"):
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        records_estimate = sum(1 for line in f if line.strip())
+                elif filename.endswith(".json"):
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            records_estimate = len(data)
+                        else:
+                            records_estimate = 1
+                elif filename.endswith((".md", ".txt")):
+                    # Rough estimate: split by double newlines
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content_str = f.read()
+                        records_estimate = max(1, len(content_str.split("\n\n")))
+            except Exception as e:
+                logger.warning(f"Failed to estimate records for {filename}: {e}")
+
+            # Create metadata
+            upload_info = {
+                "id": file_id,
+                "name": filename,
+                "size_bytes": size_bytes,
+                "mime": mime_type,
+                "created_at": datetime.now().isoformat(),
+                "status": "ready",
+                "records_estimate": records_estimate,
+                "sha256": sha256_hash,
+                "tag": tag,
+                "description": description,
+            }
+
+            _save_upload_metadata(upload_info)
+            uploaded_files.append(upload_info)
+
         except Exception as e:
-            logger.error(f"Failed to save file {filename}: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Failed to save file: {str(e)}"
-            )
+            # Catch any unexpected errors for this file
+            logger.error(f"Unexpected error processing file {filename}: {e}")
+            failed_files.append({
+                "name": filename,
+                "error": f"Unexpected error: {str(e)}",
+            })
+            continue
 
-        # Compute hash
-        sha256_hash = _compute_file_hash(file_path)
+    logger.info(f"Uploaded {len(uploaded_files)} files to Academy ({len(failed_files)} failed)")
 
-        # Determine MIME type
-        mime_type, _ = mimetypes.guess_type(filename)
-        if not mime_type:
-            mime_type = "application/octet-stream"
-
-        # Estimate records (simple heuristic)
-        records_estimate = 0
-        try:
-            if filename.endswith(".jsonl"):
-                with open(file_path, "r", encoding="utf-8") as f:
-                    records_estimate = sum(1 for line in f if line.strip())
-            elif filename.endswith(".json"):
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        records_estimate = len(data)
-                    else:
-                        records_estimate = 1
-            elif filename.endswith((".md", ".txt")):
-                # Rough estimate: split by double newlines
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content_str = f.read()
-                    records_estimate = max(1, len(content_str.split("\n\n")))
-        except Exception as e:
-            logger.warning(f"Failed to estimate records for {filename}: {e}")
-
-        # Create metadata
-        upload_info = {
-            "id": file_id,
-            "name": filename,
-            "size_bytes": size_bytes,
-            "mime": mime_type,
-            "created_at": datetime.now().isoformat(),
-            "status": "ready",
-            "records_estimate": records_estimate,
-            "sha256": sha256_hash,
-            "tag": tag,
-            "description": description,
-        }
-
-        _save_upload_metadata(upload_info)
-        uploaded_files.append(upload_info)
-
-    logger.info(f"Uploaded {len(uploaded_files)} files to Academy")
+    # Return partial success response with both successful and failed files
+    success = len(uploaded_files) > 0
+    message = f"Uploaded {len(uploaded_files)} file(s) successfully"
+    if failed_files:
+        message += f", {len(failed_files)} file(s) failed"
 
     return {
-        "success": True,
+        "success": success,
         "uploaded": len(uploaded_files),
+        "failed": len(failed_files),
         "files": uploaded_files,
-        "message": f"Uploaded {len(uploaded_files)} file(s) successfully",
+        "errors": failed_files,
+        "message": message,
     }
 
 

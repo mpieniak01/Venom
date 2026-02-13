@@ -293,7 +293,9 @@ def test_signal_validated_local_job_sends_signal_only_when_pid_valid(monkeypatch
     monkeypatch.setattr(habitat, "_validate_local_job_pid", lambda _job: 321)
     monkeypatch.setattr(habitat, "_is_pid_owned_by_current_user", lambda _pid: True)
     monkeypatch.setattr(
-        gpu_habitat_mod.os, "kill", lambda pid, sig: calls.append((pid, sig))
+        habitat,
+        "_send_signal_to_validated_pid",
+        lambda pid, sig: calls.append((pid, sig)) or True,
     )
 
     sent = habitat._signal_validated_local_job(
@@ -315,7 +317,9 @@ def test_signal_validated_local_job_rejects_disallowed_signal(monkeypatch):
     monkeypatch.setattr(habitat, "_is_pid_owned_by_current_user", lambda _pid: True)
     called = []
     monkeypatch.setattr(
-        gpu_habitat_mod.os, "kill", lambda pid, sig: called.append((pid, sig))
+        habitat,
+        "_send_signal_to_validated_pid",
+        lambda pid, sig: called.append((pid, sig)) or True,
     )
 
     sent = habitat._signal_validated_local_job("job-c", {"pid": 321}, 999)
@@ -329,7 +333,9 @@ def test_signal_validated_local_job_rejects_foreign_pid_owner(monkeypatch):
     monkeypatch.setattr(habitat, "_is_pid_owned_by_current_user", lambda _pid: False)
     called = []
     monkeypatch.setattr(
-        gpu_habitat_mod.os, "kill", lambda pid, sig: called.append((pid, sig))
+        habitat,
+        "_send_signal_to_validated_pid",
+        lambda pid, sig: called.append((pid, sig)) or True,
     )
 
     sent = habitat._signal_validated_local_job(
@@ -337,6 +343,25 @@ def test_signal_validated_local_job_rejects_foreign_pid_owner(monkeypatch):
     )
     assert sent is False
     assert called == []
+
+
+def test_send_signal_to_validated_pid_fallback_kill_command(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    monkeypatch.delattr(gpu_habitat_mod.os, "pidfd_open", raising=False)
+    monkeypatch.delattr(gpu_habitat_mod.signal, "pidfd_send_signal", raising=False)
+
+    calls = []
+
+    def _fake_run(cmd, check, capture_output, text):
+        calls.append((cmd, check, capture_output, text))
+        return None
+
+    monkeypatch.setattr(gpu_habitat_mod.subprocess, "run", _fake_run)
+    assert (
+        habitat._send_signal_to_validated_pid(321, gpu_habitat_mod.signal.SIGTERM)
+        is True
+    )
+    assert calls and calls[0][0] == ["kill", "-s", "SIGTERM", "321"]
 
 
 def test_get_local_job_status_uses_validated_pid_when_process_missing(monkeypatch):

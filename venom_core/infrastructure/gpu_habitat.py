@@ -526,10 +526,44 @@ class GPUHabitat(DockerHabitat):
             )
             return False
 
+        return self._send_signal_to_validated_pid(pid, sig)
+
+    def _send_signal_to_validated_pid(self, pid: int, sig: signal.Signals) -> bool:
+        """
+        Wysyła sygnał do zweryfikowanego PID-a lokalnego joba.
+
+        Preferuje Linux pidfd API (odporne na PID reuse), a jeśli nie jest
+        dostępne używa bezpiecznego wywołania `kill` bez shell=True.
+        """
         try:
-            os.kill(pid, sig)
+            normalized_signal = signal.Signals(sig)
+        except (TypeError, ValueError):
+            return False
+
+        if hasattr(os, "pidfd_open") and hasattr(signal, "pidfd_send_signal"):
+            pidfd = None
+            try:
+                pidfd = os.pidfd_open(pid, 0)
+                signal.pidfd_send_signal(pidfd, normalized_signal, None, 0)
+                return True
+            except OSError:
+                return False
+            finally:
+                if pidfd is not None:
+                    try:
+                        os.close(pidfd)
+                    except OSError:
+                        pass
+
+        try:
+            subprocess.run(
+                ["kill", "-s", normalized_signal.name, str(pid)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
             return True
-        except OSError:
+        except (OSError, subprocess.SubprocessError):
             return False
 
     def _is_allowed_local_job_signal(self, sig: signal.Signals) -> bool:

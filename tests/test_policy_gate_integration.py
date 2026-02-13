@@ -74,7 +74,10 @@ async def test_policy_gate_disabled_allows_all(mock_orchestrator):
 
             response = await submit_task(mock_orchestrator, request)
 
-            assert response.task_id == mock_orchestrator.state_manager.create_task.return_value.id
+            assert (
+                response.task_id
+                == mock_orchestrator.state_manager.create_task.return_value.id
+            )
             assert not response.policy_blocked
             assert response.reason_code is None
 
@@ -103,7 +106,10 @@ async def test_policy_gate_enabled_allow_path(mock_orchestrator):
 
             response = await submit_task(mock_orchestrator, request)
 
-            assert response.task_id == mock_orchestrator.state_manager.create_task.return_value.id
+            assert (
+                response.task_id
+                == mock_orchestrator.state_manager.create_task.return_value.id
+            )
             assert not response.policy_blocked
 
 
@@ -141,7 +147,10 @@ async def test_policy_gate_enabled_block_before_provider(mock_orchestrator):
 
                 response = await submit_task(mock_orchestrator, request)
 
-                assert response.task_id == mock_orchestrator.state_manager.create_task.return_value.id
+                assert (
+                    response.task_id
+                    == mock_orchestrator.state_manager.create_task.return_value.id
+                )
                 assert response.policy_blocked is True
                 assert response.reason_code == "POLICY_UNSAFE_CONTENT"
                 assert response.user_message == "Unsafe content detected"
@@ -225,5 +234,6 @@ async def test_policy_gate_tracer_step_on_block(mock_orchestrator):
                 # Verify tracer was called
                 mock_orchestrator.request_tracer.add_step.assert_called()
                 mock_orchestrator.request_tracer.update_status.assert_called_with(
-                    mock_orchestrator.state_manager.create_task.return_value.id, "failed"
+                    mock_orchestrator.state_manager.create_task.return_value.id,
+                    "failed",
                 )

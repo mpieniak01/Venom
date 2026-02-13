@@ -55,12 +55,12 @@ class RetrievalPolicyManager:
     def __init__(self):
         """Initialize the policy manager with settings from config."""
         self.enabled = getattr(SETTINGS, "ENABLE_RAG_RETRIEVAL_BOOST", False)
-        
+
         # Default baseline values
         self.default_vector_limit = 5
         self.default_max_hops = 2
         self.default_lessons_limit = 3
-        
+
         # Load boost settings if available
         self._load_boost_settings()
 
@@ -69,20 +69,30 @@ class RetrievalPolicyManager:
         # Note: Configuration uses RAG_BOOST_TOP_K_* naming (common ML/retrieval term)
         # while code uses vector_limit for clarity. Both refer to the same concept:
         # the number of top results to retrieve from vector search.
-        
+
         # Default boost settings
         self.boost_top_k_default = getattr(SETTINGS, "RAG_BOOST_TOP_K_DEFAULT", 5)
         self.boost_top_k_research = getattr(SETTINGS, "RAG_BOOST_TOP_K_RESEARCH", 8)
         self.boost_top_k_knowledge = getattr(SETTINGS, "RAG_BOOST_TOP_K_KNOWLEDGE", 8)
         self.boost_top_k_complex = getattr(SETTINGS, "RAG_BOOST_TOP_K_COMPLEX", 6)
-        
+
         self.boost_max_hops_default = getattr(SETTINGS, "RAG_BOOST_MAX_HOPS_DEFAULT", 2)
-        self.boost_max_hops_research = getattr(SETTINGS, "RAG_BOOST_MAX_HOPS_RESEARCH", 3)
-        self.boost_max_hops_knowledge = getattr(SETTINGS, "RAG_BOOST_MAX_HOPS_KNOWLEDGE", 3)
-        
-        self.boost_lessons_limit_default = getattr(SETTINGS, "RAG_BOOST_LESSONS_LIMIT_DEFAULT", 3)
-        self.boost_lessons_limit_research = getattr(SETTINGS, "RAG_BOOST_LESSONS_LIMIT_RESEARCH", 5)
-        self.boost_lessons_limit_knowledge = getattr(SETTINGS, "RAG_BOOST_LESSONS_LIMIT_KNOWLEDGE", 5)
+        self.boost_max_hops_research = getattr(
+            SETTINGS, "RAG_BOOST_MAX_HOPS_RESEARCH", 3
+        )
+        self.boost_max_hops_knowledge = getattr(
+            SETTINGS, "RAG_BOOST_MAX_HOPS_KNOWLEDGE", 3
+        )
+
+        self.boost_lessons_limit_default = getattr(
+            SETTINGS, "RAG_BOOST_LESSONS_LIMIT_DEFAULT", 3
+        )
+        self.boost_lessons_limit_research = getattr(
+            SETTINGS, "RAG_BOOST_LESSONS_LIMIT_RESEARCH", 5
+        )
+        self.boost_lessons_limit_knowledge = getattr(
+            SETTINGS, "RAG_BOOST_LESSONS_LIMIT_KNOWLEDGE", 5
+        )
 
     def get_policy(
         self,
@@ -116,7 +126,9 @@ class RetrievalPolicyManager:
             )
             return policy
         except Exception as e:
-            logger.warning(f"Error getting boost policy for {intent}: {e}, falling back to baseline")
+            logger.warning(
+                f"Error getting boost policy for {intent}: {e}, falling back to baseline"
+            )
             return self._get_baseline_policy()
 
     def _get_baseline_policy(self) -> RetrievalPolicy:
@@ -173,7 +185,7 @@ class RetrievalPolicyManager:
 def get_policy_manager() -> RetrievalPolicyManager:
     """
     Get or create the singleton policy manager instance.
-    
+
     Uses functools.lru_cache for thread-safe singleton initialization.
     """
     return _get_policy_manager_impl()

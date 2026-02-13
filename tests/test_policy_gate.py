@@ -158,13 +158,9 @@ class TestPolicyReasonCode:
     def test_reason_codes(self):
         """Test wszystkich kodów przyczyn."""
         assert PolicyReasonCode.POLICY_UNSAFE_CONTENT.value == "POLICY_UNSAFE_CONTENT"
-        assert (
-            PolicyReasonCode.POLICY_TOOL_RESTRICTED.value == "POLICY_TOOL_RESTRICTED"
-        )
+        assert PolicyReasonCode.POLICY_TOOL_RESTRICTED.value == "POLICY_TOOL_RESTRICTED"
         assert (
             PolicyReasonCode.POLICY_PROVIDER_RESTRICTED.value
             == "POLICY_PROVIDER_RESTRICTED"
         )
-        assert (
-            PolicyReasonCode.POLICY_MISSING_CONTEXT.value == "POLICY_MISSING_CONTEXT"
-        )
+        assert PolicyReasonCode.POLICY_MISSING_CONTEXT.value == "POLICY_MISSING_CONTEXT"

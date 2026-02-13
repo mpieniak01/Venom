@@ -52,7 +52,7 @@ class TokenEconomist:
         self.enable_compression = enable_compression
         self.pricing_file = pricing_file
         self.external_pricing: Optional[Dict[str, Any]] = None
-        
+
         # Per-model usage tracking
         self.model_usage: Dict[str, Dict[str, int]] = {}
         self.total_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
@@ -523,13 +523,13 @@ class TokenEconomist:
         """
         if model_name not in self.model_usage:
             self.model_usage[model_name] = {"input_tokens": 0, "output_tokens": 0}
-        
+
         self.model_usage[model_name]["input_tokens"] += input_tokens
         self.model_usage[model_name]["output_tokens"] += output_tokens
-        
+
         self.total_usage["input_tokens"] += input_tokens
         self.total_usage["output_tokens"] += output_tokens
-        
+
         logger.debug(
             f"Zarejestrowano użycie: {model_name} +{input_tokens} in, +{output_tokens} out"
         )
@@ -546,7 +546,7 @@ class TokenEconomist:
         """
         models_breakdown = {}
         total_cost = 0.0
-        
+
         for model_name, usage in self.model_usage.items():
             cost_data = self.calculate_cost(usage, model_name)
             models_breakdown[model_name] = {
@@ -556,10 +556,11 @@ class TokenEconomist:
                 "cost_usd": cost_data["total_cost_usd"],
             }
             total_cost += cost_data["total_cost_usd"]
-        
+
         return {
             "models_breakdown": models_breakdown,
-            "total_tokens": self.total_usage["input_tokens"] + self.total_usage["output_tokens"],
+            "total_tokens": self.total_usage["input_tokens"]
+            + self.total_usage["output_tokens"],
             "total_cost_usd": round(total_cost, 6),
         }
 

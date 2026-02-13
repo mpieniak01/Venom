@@ -25,7 +25,7 @@ Created a simple test to prove this behavior:
 from unittest.mock import patch
 
 @patch("os.path.exists")  # TOP decorator
-@patch("os.path.isfile")  # BOTTOM decorator  
+@patch("os.path.isfile")  # BOTTOM decorator
 def test_order(param1, param2):
     print(f"param1._mock_name: {param1._mock_name}")
     print(f"param2._mock_name: {param2._mock_name}")
@@ -139,6 +139,6 @@ The key lesson: **When debugging decorator issues, create a verification test fi
 
 ---
 
-**Created:** 2026-02-11  
-**Last Updated:** 2026-02-11  
+**Created:** 2026-02-11
+**Last Updated:** 2026-02-11
 **Status:** RESOLVED in commit f7dd0af

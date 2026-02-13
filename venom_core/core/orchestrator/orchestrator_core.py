@@ -456,7 +456,13 @@ class Orchestrator:
     ) -> None:
         """Delegacja do session_handler."""
         self.session_handler.append_session_history(
-            task_id, role, content, session_id, policy_blocked, reason_code, user_message
+            task_id,
+            role,
+            content,
+            session_id,
+            policy_blocked,
+            reason_code,
+            user_message,
         )
 
     def _build_session_context_block(

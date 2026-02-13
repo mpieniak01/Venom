@@ -225,21 +225,21 @@ def test_sanitize_env_for_mcp_filters_sensitive_vars(manager):
         "PYTHONPATH": "/some/path",
         "SOME_RANDOM_VAR": "value",
     }
-    
+
     sanitized = manager._sanitize_env_for_mcp(test_env)
-    
+
     # Sprawdź że wrażliwe zmienne zostały odfiltrowane
     assert "OPENAI_API_KEY" not in sanitized
     assert "GOOGLE_API_KEY" not in sanitized
     assert "HF_TOKEN" not in sanitized
     assert "GITHUB_TOKEN" not in sanitized
     assert "SOME_RANDOM_VAR" not in sanitized
-    
+
     # Sprawdź że bezpieczne zmienne pozostały
     assert sanitized["PATH"] == "/usr/bin"
     assert sanitized["HOME"] == "/home/user"
     assert sanitized["PYTHONPATH"] == "/some/path"
-    
+
     # Sprawdź że dodano PYTHONUNBUFFERED
     assert sanitized["PYTHONUNBUFFERED"] == "1"
 
@@ -256,9 +256,9 @@ def test_sanitize_env_preserves_safe_vars(manager):
         "PYTHONPATH": "/app/lib",
         "WORKSPACE_ROOT": "/workspace",
     }
-    
+
     sanitized = manager._sanitize_env_for_mcp(test_env)
-    
+
     # Wszystkie te zmienne są na allowliście
     for key in test_env:
         assert key in sanitized
@@ -271,9 +271,9 @@ def test_sanitize_env_uses_os_environ_by_default(manager, monkeypatch):
     monkeypatch.setenv("PATH", "/test/path")
     monkeypatch.setenv("HOME", "/test/home")
     monkeypatch.setenv("SECRET_KEY", "should-be-filtered")
-    
+
     sanitized = manager._sanitize_env_for_mcp(base_env=None)
-    
+
     # Sprawdź że użyto os.environ
     assert sanitized["PATH"] == "/test/path"
     assert sanitized["HOME"] == "/test/home"
@@ -284,38 +284,38 @@ def test_sanitize_env_uses_os_environ_by_default(manager, monkeypatch):
 async def test_import_uses_sanitized_env(manager):
     """Test że import_mcp_tool używa sanityzowanego env (PR-132C)."""
     import os
-    
+
     # Mock metod
     manager._run_shell = AsyncMock()
-    
+
     # Capture co jest przekazywane do _introspect_tools
     introspect_called_with_env = None
-    
+
     async def mock_introspect(command, args, cwd, env):
         nonlocal introspect_called_with_env
         introspect_called_with_env = env
         return [McpToolMetadata(name="test", description="test", input_schema={})]
-    
+
     manager._introspect_tools = mock_introspect
     manager.generator.generate_skill_code = MagicMock(return_value="# code")
-    
+
     # Dodaj wrażliwe zmienne do os.environ (tymczasowo dla testu)
     original_env = os.environ.copy()
     try:
         os.environ["TEST_API_KEY"] = "secret123"
-        
+
         await manager.import_mcp_tool(
             repo_url="https://fake.git",
             tool_name="test_tool",
             install_command="pip install .",
             server_entrypoint="python server.py",
         )
-        
+
         # Sprawdź że env przekazane do introspect nie zawiera wrażliwych danych
         assert introspect_called_with_env is not None
         assert "TEST_API_KEY" not in introspect_called_with_env
         assert "PYTHONUNBUFFERED" in introspect_called_with_env
-        
+
     finally:
         # Przywróć oryginalny env
         os.environ.clear()

@@ -362,20 +362,22 @@ class HuggingFaceModelProvider(BaseModelProvider):
         try:
             # Pobierz popularne modele z HF API (posortowane po downloads)
             models_data = await self.client.list_models(sort="downloads", limit=20)
-            
+
             model_list = []
             for model_data in models_data:
                 try:
                     model_name = model_data.get("id", model_data.get("modelId", ""))
                     if not model_name:
                         continue
-                    
+
                     # Konwertuj na ModelMetadata
                     model_list.append(
                         ModelMetadata(
                             name=model_name,
                             provider=ModelProvider.HUGGINGFACE,
-                            display_name=model_name.split("/")[-1] if "/" in model_name else model_name,
+                            display_name=model_name.split("/")[-1]
+                            if "/" in model_name
+                            else model_name,
                             size_gb=0.0,  # HF API nie zwraca rozmiaru w standardowej odpowiedzi
                             status=ModelStatus.AVAILABLE,
                             runtime="vllm",
@@ -387,7 +389,7 @@ class HuggingFaceModelProvider(BaseModelProvider):
                 except Exception as e:
                     logger.debug(f"Pominięto model podczas parsowania: {e}")
                     continue
-            
+
             # Fallback do popularnych modeli jeśli API zwróci pusty wynik
             if not model_list:
                 logger.warning("HF API zwróciło pusty wynik, używam fallbacku")
@@ -417,10 +419,10 @@ class HuggingFaceModelProvider(BaseModelProvider):
                         ),
                     ),
                 ]
-            
+
             logger.info(f"Pobrano {len(model_list)} modeli z HuggingFace")
             return model_list
-            
+
         except Exception as e:
             logger.error(f"Błąd podczas pobierania listy modeli z HF: {e}")
             # Fallback do popularnych modeli w przypadku błędu
@@ -480,13 +482,15 @@ class HuggingFaceModelProvider(BaseModelProvider):
         try:
             # Najpierw spróbuj pobrać z HF API
             model_data = await self.client.get_model_info(model_name)
-            
+
             if model_data:
                 # Konwertuj dane z API na ModelMetadata
                 return ModelMetadata(
                     name=model_name,
                     provider=ModelProvider.HUGGINGFACE,
-                    display_name=model_name.split("/")[-1] if "/" in model_name else model_name,
+                    display_name=model_name.split("/")[-1]
+                    if "/" in model_name
+                    else model_name,
                     size_gb=0.0,  # API nie zwraca rozmiaru
                     status=ModelStatus.AVAILABLE,
                     runtime="vllm",
@@ -494,16 +498,16 @@ class HuggingFaceModelProvider(BaseModelProvider):
                         generation_schema=_create_default_generation_schema(),
                     ),
                 )
-            
+
             # Fallback: sprawdź w liście popularnych modeli
             logger.debug(f"Model {model_name} nie znaleziony w HF API, sprawdzam cache")
             models = await self.list_available_models()
             for model in models:
                 if model.name == model_name:
                     return model
-            
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Błąd podczas pobierania info o modelu {model_name}: {e}")
             # Fallback do listy popularnych modeli

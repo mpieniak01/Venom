@@ -143,4 +143,3 @@ class TestMetricsCollector:
 
         # Assert
         assert metrics["policy"]["block_rate"] == 0.0
-

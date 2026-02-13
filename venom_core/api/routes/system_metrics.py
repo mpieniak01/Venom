@@ -82,16 +82,18 @@ def _get_token_metrics_impl():
     try:
         # TokenEconomist dostępny - zwróć szczegółowe dane per-model
         breakdown_data = _token_economist.get_model_breakdown()
-        
+
         # Jeśli nie ma żadnych danych o użyciu, fallback do metrics_collector
         if not breakdown_data["models_breakdown"]:
             collector = metrics_module.metrics_collector
             if collector is None:
-                raise HTTPException(status_code=503, detail=METRICS_COLLECTOR_UNAVAILABLE)
+                raise HTTPException(
+                    status_code=503, detail=METRICS_COLLECTOR_UNAVAILABLE
+                )
 
             metrics = collector.get_metrics()
             total_tokens = metrics.get("tokens_used_session", 0)
-            
+
             # Szacunkowy koszt (zakładając konfigurowalny split i model)
             from venom_core.config import SETTINGS
 
@@ -119,7 +121,7 @@ def _get_token_metrics_impl():
                 },
                 "note": "Brak zarejestrowanego użycia per-model. Koszty są szacunkowe.",
             }
-        
+
         # Zwróć rzeczywiste dane per-model
         return {
             "total_tokens": breakdown_data["total_tokens"],

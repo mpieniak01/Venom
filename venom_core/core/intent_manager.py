@@ -431,12 +431,15 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
         self._llm_disabled = False
         self.kernel: Optional[Kernel] = None
         self.last_intent_debug: Dict[str, Any] = {}
-        
+
         # Inicjalizacja embedding routera
         self.embedding_router = None
         if SETTINGS.ENABLE_INTENT_EMBEDDING_ROUTER:
             try:
-                from venom_core.core.intent_embedding_router import IntentEmbeddingRouter
+                from venom_core.core.intent_embedding_router import (
+                    IntentEmbeddingRouter,
+                )
+
                 self.embedding_router = IntentEmbeddingRouter(self.LEXICON_DIR)
                 if self.embedding_router.is_enabled():
                     logger.info("Intent Embedding Router włączony i gotowy")
@@ -445,8 +448,7 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
                     self.embedding_router = None
             except Exception as exc:
                 logger.warning(
-                    "Nie udało się zainicjalizować Intent Embedding Router: %s",
-                    exc
+                    "Nie udało się zainicjalizować Intent Embedding Router: %s", exc
                 )
                 self.embedding_router = None
 
@@ -512,7 +514,9 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
 
         # Embedding-based classification (if enabled)
         if self.embedding_router and self.embedding_router.is_enabled():
-            embedding_intent, score, top2 = await self.embedding_router.classify(user_input)
+            embedding_intent, score, top2 = await self.embedding_router.classify(
+                user_input
+            )
             if embedding_intent:
                 self.last_intent_debug["source"] = "embedding"
                 self.last_intent_debug["score"] = score
@@ -520,7 +524,7 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
                 logger.info(
                     "Intent Embedding Router wybrał: %s (score=%.3f)",
                     embedding_intent,
-                    score
+                    score,
                 )
                 return embedding_intent
             else:

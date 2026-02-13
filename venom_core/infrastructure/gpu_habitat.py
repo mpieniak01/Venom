@@ -985,6 +985,59 @@ print("=" * 60)
 '''
         return script
 
+    def _terminate_local_process(self, process, pid: int) -> None:
+        """
+        Bezpiecznie terminuje proces lokalny.
+
+        Args:
+            process: Obiekt subprocess.Popen
+            pid: ID procesu
+        """
+        if process.poll() is None:  # Running
+            logger.info(f"Terminating local process {pid}")
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+    def _cleanup_local_job(self, job_name: str, job_info: Dict[str, Any]) -> None:
+        """
+        Czyści zadanie lokalne (process lub pid).
+
+        Args:
+            job_name: Nazwa joba
+            job_info: Informacje o jobie
+        """
+        process = job_info.get("process")
+        pid = job_info.get("pid")
+        
+        if process:
+            self._terminate_local_process(process, pid)
+        elif pid:
+            self._signal_validated_local_job(job_name, job_info, signal.SIGTERM)
+
+    def _cleanup_docker_job(self, job_name: str) -> None:
+        """
+        Czyści zadanie dockerowe (zatrzymuje i usuwa kontener).
+
+        Args:
+            job_name: Nazwa joba
+        """
+        container = self._get_job_container(job_name)
+
+        # Zatrzymaj kontener
+        try:
+            container.stop(timeout=10)
+        except TypeError:
+            container.stop()
+        
+        # Usuń kontener
+        try:
+            container.remove(force=True)
+        except TypeError:
+            container.remove()
+
     def cleanup_job(self, job_name: str) -> None:
         """
         Czyści zadanie treningowe (usuwa kontener lub killuje proces).
@@ -1000,34 +1053,9 @@ print("=" * 60)
             job_info = self.training_containers[job_name]
 
             if job_info.get("type") == "local":
-                # Local cleanup
-                process = job_info.get("process")
-                pid = job_info.get("pid")
-                if process:
-                    if process.poll() is None:  # Running
-                        logger.info(f"Terminating local process {pid}")
-                        process.terminate()
-                        try:
-                            process.wait(timeout=5)
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-                elif pid:
-                    self._signal_validated_local_job(job_name, job_info, signal.SIGTERM)
-
-                # Opcjonalnie usuń log file? Nie, zostawmy dla debugu.
+                self._cleanup_local_job(job_name, job_info)
             else:
-                # Docker cleanup
-                container = self._get_job_container(job_name)
-
-                # Zatrzymaj i usuń kontener
-                try:
-                    container.stop(timeout=10)
-                except TypeError:
-                    container.stop()
-                try:
-                    container.remove(force=True)
-                except TypeError:
-                    container.remove()
+                self._cleanup_docker_job(job_name)
 
             # Usuń z rejestru
             del self.training_containers[job_name]

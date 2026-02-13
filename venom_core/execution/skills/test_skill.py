@@ -122,49 +122,26 @@ class TestSkill:
                 exit_code, output = self.habitat.execute(
                     command, timeout=DEFAULT_PYTEST_TIMEOUT_SECONDS
                 )
+                # Graceful fallback: kontener sandbox może nie mieć pytest.
+                if (
+                    exit_code != 0
+                    and self.allow_local_execution
+                    and "No module named pytest" in output
+                ):
+                    logger.warning(
+                        "Pytest niedostępny w kontenerze - fallback do uruchomienia lokalnego."
+                    )
+                    local_result = await self._run_pytest_locally(test_path)
+                    if isinstance(local_result, str):
+                        return local_result
+                    exit_code, output = local_result
 
             # --- Tryb Lokalny (Fallback) ---
             elif self.allow_local_execution:
-                logger.warning(f"⚠️ Uruchamiam pytest LOKALNIE dla: {test_path}")
-                import asyncio
-                import subprocess
-                import sys
-
-                # Używamy sys.executable aby mieć pewność że to ten sam venv
-                cmd = [
-                    sys.executable,
-                    "-m",
-                    "pytest",
-                    test_path,
-                    "-v",
-                    "--tb=short",
-                    "--color=no",
-                ]
-
-                try:
-                    # Uruchomienie lokalne
-                    process = await asyncio.create_subprocess_exec(
-                        *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-                    )
-
-                    try:
-                        with fail_after(DEFAULT_PYTEST_TIMEOUT_SECONDS):
-                            stdout, _ = await process.communicate()
-                        output = stdout.decode("utf-8", errors="replace")
-                        exit_code = (
-                            process.returncode if process.returncode is not None else 1
-                        )
-                    except TimeoutError:
-                        process.kill()
-                        await process.communicate()
-                        return (
-                            "❌ Przekroczono limit czasu "
-                            f"({DEFAULT_PYTEST_TIMEOUT_SECONDS}s) podczas uruchamiania "
-                            "testów lokalnie."
-                        )
-
-                except Exception as e:
-                    return f"❌ Błąd uruchamiania lokalnego procesu: {str(e)}"
+                local_result = await self._run_pytest_locally(test_path)
+                if isinstance(local_result, str):
+                    return local_result
+                exit_code, output = local_result
 
             # --- Tryb Niedostępny ---
             else:
@@ -186,6 +163,44 @@ class TestSkill:
             error_msg = f"❌ Błąd podczas uruchamiania pytest: {str(e)}"
             logger.error(error_msg)
             return error_msg
+
+    async def _run_pytest_locally(self, test_path: str) -> tuple[int, str] | str:
+        """Uruchamia pytest lokalnie i zwraca (exit_code, output) lub komunikat błędu."""
+        logger.warning(f"⚠️ Uruchamiam pytest LOKALNIE dla: {test_path}")
+        import asyncio
+        import subprocess
+        import sys
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "pytest",
+            test_path,
+            "-v",
+            "--tb=short",
+            "--color=no",
+        ]
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+            )
+            try:
+                with fail_after(DEFAULT_PYTEST_TIMEOUT_SECONDS):
+                    stdout, _ = await process.communicate()
+                output = stdout.decode("utf-8", errors="replace")
+                exit_code = process.returncode if process.returncode is not None else 1
+                return exit_code, output
+            except TimeoutError:
+                process.kill()
+                await process.communicate()
+                return (
+                    "❌ Przekroczono limit czasu "
+                    f"({DEFAULT_PYTEST_TIMEOUT_SECONDS}s) podczas uruchamiania "
+                    "testów lokalnie."
+                )
+        except Exception as e:
+            return f"❌ Błąd uruchamiania lokalnego procesu: {str(e)}"
 
     @kernel_function(
         name="run_linter",

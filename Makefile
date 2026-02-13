@@ -16,7 +16,7 @@ WEB_PID_FILE ?= .web-next.pid
 NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
 START_MODE ?= dev
-ALLOW_DEGRADED_START ?= 1
+ALLOW_DEGRADED_START ?= 0
 UVICORN_DEV_FLAGS ?= --reload
 UVICORN_PROD_FLAGS ?= --no-server-header
 BACKEND_LOG ?= logs/backend.log
@@ -197,64 +197,70 @@ _start:
 	@mkdir -p logs
 	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
 	@active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' .env 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]'); \
-	if [ -z "$$active_server" ]; then active_server="vllm"; fi; \
-		if [ "$$active_server" = "ollama" ]; then \
-			echo "▶️  Uruchamiam Ollama..."; \
-			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
-			$(MAKE) --no-print-directory ollama-start >/dev/null || true; \
-			echo "⏳ Czekam na Ollama (/api/tags)..."; \
-			ollama_fatal=""; \
-			ollama_ready=""; \
-			for attempt in {1..90}; do \
-				if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then \
-					ollama_ready="yes"; \
-					echo "✅ Ollama gotowy"; \
-					break; \
-				fi; \
-				if [ -f "logs/ollama.log" ] && grep -Eiq "Error: listen tcp .*:11434|operation not permitted|address already in use" "logs/ollama.log"; then \
-					echo "❌ Ollama zakończyła start błędem (sprawdź logs/ollama.log)"; \
-					ollama_fatal="yes"; \
-					break; \
-				fi; \
-				sleep 1; \
-			done; \
-			if [ -z "$$ollama_ready" ]; then \
-				if [ -z "$$ollama_fatal" ]; then echo "❌ Ollama nie wystartowała w czasie (brak odpowiedzi z /api/tags)"; fi; \
-				if [ -f "logs/ollama.log" ]; then \
-					echo "ℹ️  Ostatnie logi Ollama:"; \
-					tail -n 40 "logs/ollama.log" || true; \
-				fi; \
-				if [ "$(ALLOW_DEGRADED_START)" = "1" ]; then \
-					echo "⚠️  Tryb degradowany: kontynuuję start bez LLM (ALLOW_DEGRADED_START=1)"; \
-					$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
-				else \
-					$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
-					exit 1; \
-				fi; \
-			fi; \
-		else \
-		echo "▶️  Uruchamiam vLLM..."; \
-		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
-		$(MAKE) --no-print-directory vllm-start >/dev/null || true; \
-		echo "⏳ Czekam na vLLM (/v1/models)..."; \
-		vllm_ready=""; \
+	if [ -z "$$active_server" ]; then active_server="ollama"; fi; \
+	start_ollama() { \
+		echo "▶️  Uruchamiam Ollama..."; \
+		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+		$(MAKE) --no-print-directory ollama-start >/dev/null || true; \
+		echo "⏳ Czekam na Ollama (/api/tags)..."; \
+		ollama_fatal=""; \
 		for attempt in {1..90}; do \
-			if curl -fsS "$(VLLM_ENDPOINT)/v1/models" >/dev/null 2>&1; then \
-				vllm_ready="yes"; \
-				echo "✅ vLLM gotowy"; \
+			if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then \
+				echo "✅ Ollama gotowy"; \
+				return 0; \
+			fi; \
+			if [ -f "logs/ollama.log" ] && grep -Eiq "Error: listen tcp .*:11434|operation not permitted|address already in use" "logs/ollama.log"; then \
+				echo "❌ Ollama zakończyła start błędem (sprawdź logs/ollama.log)"; \
+				ollama_fatal="yes"; \
 				break; \
 			fi; \
 			sleep 1; \
 		done; \
-		if [ -z "$$vllm_ready" ]; then \
-			echo "❌ vLLM nie wystartował w czasie (brak odpowiedzi z /v1/models)"; \
-			if [ -f "logs/vllm.log" ]; then \
-				echo "ℹ️  Ostatnie logi vLLM:"; \
-				tail -n 40 "logs/vllm.log" || true; \
+		if [ -z "$$ollama_fatal" ]; then echo "❌ Ollama nie wystartowała w czasie (brak odpowiedzi z /api/tags)"; fi; \
+		if [ -f "logs/ollama.log" ]; then \
+			echo "ℹ️  Ostatnie logi Ollama:"; \
+			tail -n 40 "logs/ollama.log" || true; \
+		fi; \
+		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+		return 1; \
+	}; \
+	start_vllm() { \
+		echo "▶️  Uruchamiam vLLM..."; \
+		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+		$(MAKE) --no-print-directory vllm-start >/dev/null || true; \
+		echo "⏳ Czekam na vLLM (/v1/models)..."; \
+		for attempt in {1..90}; do \
+			if curl -fsS "$(VLLM_ENDPOINT)/v1/models" >/dev/null 2>&1; then \
+				echo "✅ vLLM gotowy"; \
+				return 0; \
 			fi; \
-			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+			sleep 1; \
+		done; \
+		echo "❌ vLLM nie wystartował w czasie (brak odpowiedzi z /v1/models)"; \
+		if [ -f "logs/vllm.log" ]; then \
+			echo "ℹ️  Ostatnie logi vLLM:"; \
+			tail -n 40 "logs/vllm.log" || true; \
+		fi; \
+		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+		return 1; \
+	}; \
+	llm_ready=""; \
+	if [ "$$active_server" = "ollama" ]; then \
+		if start_ollama; then llm_ready="ollama"; \
+		elif start_vllm; then llm_ready="vllm"; fi; \
+	else \
+		if start_vllm; then llm_ready="vllm"; \
+		elif start_ollama; then llm_ready="ollama"; fi; \
+	fi; \
+	if [ -z "$$llm_ready" ]; then \
+		if [ "$(ALLOW_DEGRADED_START)" = "1" ]; then \
+			echo "⚠️  Tryb degradowany: kontynuuję start bez LLM (ALLOW_DEGRADED_START=1)"; \
+		else \
+			echo "❌ Nie udało się uruchomić żadnego LLM (ollama/vLLM)."; \
 			exit 1; \
 		fi; \
+	else \
+		echo "🧠 LLM gotowy: $$llm_ready"; \
 	fi
 	@backend_reused=""; \
 	if curl -fsS http://$(HOST_DISPLAY):$(PORT)/api/v1/system/status >/dev/null 2>&1; then \
@@ -314,6 +320,7 @@ _start:
 				rm -f "$(PID_FILE)"; \
 			fi; \
 			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+			$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
 			exit 1; \
 		fi; \
 	else \
@@ -367,6 +374,7 @@ _start:
 				rm -f $(PID_FILE); \
 			fi; \
 			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+			$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
 			exit 1; \
 		fi; \
 		echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"; \

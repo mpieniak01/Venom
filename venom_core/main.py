@@ -142,6 +142,18 @@ gpu_habitat = None
 token_economist = None
 
 
+def _get_orchestrator_kernel():
+    """Zwraca kernel orchestratora (nowy i legacy kształt obiektu)."""
+    if not orchestrator:
+        return None
+    task_dispatcher = getattr(orchestrator, "task_dispatcher", None)
+    if task_dispatcher is not None:
+        kernel = getattr(task_dispatcher, "kernel", None)
+        if kernel is not None:
+            return kernel
+    return getattr(orchestrator, "kernel", None)
+
+
 def _extract_available_local_models(
     models: list[dict[str, object]], server_name: str
 ) -> set[str]:
@@ -449,11 +461,12 @@ def _initialize_academy() -> None:
             f"✅ GPUHabitat zainicjalizowany (GPU: {SETTINGS.ACADEMY_ENABLE_GPU})"
         )
 
-        # Inicjalizacja Professor (wymaga kernel z orchestrator)
-        # Zostanie zakończona po inicjalizacji orchestratora
-        if orchestrator and hasattr(orchestrator, "kernel"):
+        # Inicjalizacja Professor (wymaga kernela z task_dispatchera orchestratora).
+        # Jeśli kernel nie jest jeszcze gotowy, zrobimy retry w setup_router_dependencies().
+        kernel = _get_orchestrator_kernel()
+        if kernel is not None:
             professor = Professor(
-                kernel=orchestrator.kernel,
+                kernel=kernel,
                 dataset_curator=dataset_curator,
                 gpu_habitat=gpu_habitat,
                 lessons_store=lessons_store,
@@ -499,20 +512,22 @@ def _initialize_academy() -> None:
 def _initialize_token_economist() -> None:
     """Inicjalizacja TokenEconomist dla śledzenia użycia tokenów i kosztów."""
     global token_economist
-    
+
     try:
         logger.info("Inicjalizacja TokenEconomist...")
         from venom_core.core.token_economist import TokenEconomist
-        
+
         # Inicjalizacja z domyślnymi ustawieniami
         token_economist = TokenEconomist(
             enable_compression=True,
-            pricing_file=None  # Używamy wbudowanego cennika
+            pricing_file=None,  # Używamy wbudowanego cennika
         )
         logger.info("✅ TokenEconomist zainicjalizowany")
-        
+
     except Exception as exc:
-        logger.error(f"❌ Błąd podczas inicjalizacji TokenEconomist: {exc}", exc_info=True)
+        logger.error(
+            f"❌ Błąd podczas inicjalizacji TokenEconomist: {exc}", exc_info=True
+        )
         token_economist = None
 
 
@@ -995,9 +1010,39 @@ app.add_middleware(
 # Funkcja do ustawienia zależności routerów - wywoływana po inicjalizacji w lifespan
 def setup_router_dependencies():
     """Konfiguracja zależności routerów po inicjalizacji."""
+    global professor
+
     logger.info(
         f"Setting system dependencies. Orchestrator: {orchestrator is not None}"
     )
+
+    # Academy: druga próba inicjalizacji Professor po pełnym starcie orchestratora.
+    retry_kernel = _get_orchestrator_kernel()
+    if (
+        SETTINGS.ENABLE_ACADEMY
+        and professor is None
+        and dataset_curator is not None
+        and gpu_habitat is not None
+        and lessons_store is not None
+        and retry_kernel is not None
+    ):
+        try:
+            from venom_core.agents.professor import Professor
+
+            professor = Professor(
+                kernel=retry_kernel,
+                dataset_curator=dataset_curator,
+                gpu_habitat=gpu_habitat,
+                lessons_store=lessons_store,
+            )
+            logger.info(
+                "✅ Professor zainicjalizowany (retry po starcie orchestratora)"
+            )
+        except Exception as exc:
+            logger.warning(
+                "Nie udało się zainicjalizować Professor w setup_router_dependencies: %s",
+                exc,
+            )
 
     # Set global dependencies in api/dependencies.py
     if orchestrator:

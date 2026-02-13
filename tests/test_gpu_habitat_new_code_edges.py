@@ -11,6 +11,7 @@ import venom_core.infrastructure.gpu_habitat as gpu_habitat_mod
 
 @pytest.fixture(autouse=True)
 def ensure_docker_stub(monkeypatch):
+    monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_USE_LOCAL_RUNTIME", False)
     if gpu_habitat_mod.docker is None:
         docker_stub = SimpleNamespace(
             from_env=lambda: None,
@@ -70,7 +71,7 @@ def test_check_gpu_availability_handles_api_error(monkeypatch):
             )
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: _Client())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True, use_local_runtime=False)
     assert habitat.is_gpu_available() is False
 
 
@@ -82,7 +83,7 @@ def test_get_job_container_resolves_container_by_id(monkeypatch):
             self.containers = SimpleNamespace(get=lambda _cid: self._container)
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: _Client())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
     habitat.training_containers["job-1"] = {"container_id": "container-xyz"}
 
     container = habitat._get_job_container("job-1")
@@ -99,7 +100,7 @@ def test_get_job_container_raises_key_error_when_container_lookup_fails(monkeypa
             )
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: _Client())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
     habitat.training_containers["job-missing"] = {"container_id": "missing"}
 
     with pytest.raises(KeyError):
@@ -108,7 +109,7 @@ def test_get_job_container_raises_key_error_when_container_lookup_fails(monkeypa
 
 def test_get_training_status_maps_preparing_and_dead(monkeypatch):
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _DummyDockerClient)
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
     habitat.training_containers["job-prep"] = {
         "container": _DummyContainer(status="created")
     }
@@ -128,7 +129,7 @@ def test_get_training_status_returns_error_payload_on_exception(monkeypatch):
             raise RuntimeError("cannot read logs")
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _DummyDockerClient)
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
     habitat.training_containers["job-err"] = {"container": _ExplodingContainer()}
 
     status = habitat.get_training_status("job-err")
@@ -150,7 +151,7 @@ def test_cleanup_job_falls_back_on_typeerror_stop_remove(monkeypatch):
             return None
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _DummyDockerClient)
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
     habitat.training_containers["job-legacy"] = {"container": _LegacyContainer()}
 
     habitat.cleanup_job("job-legacy")
@@ -164,7 +165,7 @@ def test_get_gpu_info_handles_empty_output(monkeypatch):
             self.containers = SimpleNamespace(run=lambda **_kwargs: b"")
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: _Client())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True, use_local_runtime=False)
 
     info = habitat.get_gpu_info()
     assert info["available"] is True
@@ -182,7 +183,7 @@ def test_stream_job_logs_skips_unicode_decode_errors(monkeypatch):
             self.containers = SimpleNamespace(get=lambda _cid: _Container())
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: _Client())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
     habitat.training_containers["job-logs"] = {"container_id": "c1"}
 
     lines = list(habitat.stream_job_logs("job-logs"))

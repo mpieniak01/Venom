@@ -11,6 +11,7 @@ import venom_core.infrastructure.gpu_habitat as gpu_habitat_mod
 @pytest.fixture(autouse=True)
 def ensure_docker_stub(monkeypatch):
     """Zapewnia stub Docker SDK, gdy pakiet docker nie jest zainstalowany."""
+    monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_USE_LOCAL_RUNTIME", False)
     if gpu_habitat_mod.docker is None:
         docker_stub = SimpleNamespace(
             from_env=lambda: None,
@@ -50,7 +51,7 @@ def test_get_gpu_info_docker_success(monkeypatch):
             self.images = MagicMock()
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: MockDockerClient())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True, use_local_runtime=False)
 
     info = habitat.get_gpu_info()
 
@@ -71,7 +72,7 @@ def test_get_gpu_info_docker_api_error(monkeypatch):
             self.images = MagicMock()
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: MockDockerClient())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True, use_local_runtime=False)
 
     info = habitat.get_gpu_info()
 
@@ -97,7 +98,7 @@ def test_stream_job_logs_with_output(monkeypatch):
             self.containers = MockContainers()
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: MockDockerClient())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
 
     # Add job to registry
     habitat.job_registry["test_job"] = {"container_id": "abc123"}
@@ -125,7 +126,7 @@ def test_stream_job_logs_empty(monkeypatch):
             self.containers = MockContainers()
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: MockDockerClient())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
 
     # Add job to registry
     habitat.job_registry["test_job"] = {"container_id": "abc123"}
@@ -158,7 +159,7 @@ def test_cleanup_job_removes_container(monkeypatch):
             self.containers = MockContainers()
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: MockDockerClient())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
 
     # Add job to registry
     habitat.job_registry["test_job"] = {"container_id": "test123"}
@@ -181,7 +182,7 @@ def test_cleanup_job_container_not_found(monkeypatch):
             self.containers = MockContainers()
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: MockDockerClient())
-    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+    habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False, use_local_runtime=False)
 
     # Add job to registry
     habitat.job_registry["test_job"] = {"container_id": "missing123"}

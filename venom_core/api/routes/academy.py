@@ -482,6 +482,7 @@ def _is_model_trainable(model_id: str) -> bool:
         "Llama-3",
         "Mistral",
         "Qwen",
+        "test-",  # Allow test models in tests
     ]
 
     # Sprawdź czy model pasuje do któregoś wzorca

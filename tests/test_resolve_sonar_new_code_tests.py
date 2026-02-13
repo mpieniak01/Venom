@@ -127,3 +127,61 @@ def test_resolve_candidates_from_changed_files_returns_sorted_light_unique(
         ["venom_core/core/file.py", "tests/api/test_any.py"]
     )
     assert resolved == ["tests/test_a.py", "tests/test_b.py"]
+
+
+def test_resolve_tests_applies_time_budget(monkeypatch, tmp_path):
+    module = _load_module()
+    baseline = tmp_path / "ci-lite.txt"
+    new_code = tmp_path / "sonar-new-code.txt"
+    baseline.write_text("tests/test_fast.py\n", encoding="utf-8")
+    new_code.write_text("tests/test_slow.py\n", encoding="utf-8")
+
+    monkeypatch.setattr(module, "git_changed_files", lambda _base: [])
+    monkeypatch.setattr(
+        module,
+        "all_test_files",
+        lambda: ["tests/test_fast.py", "tests/test_slow.py"],
+    )
+    monkeypatch.setattr(module, "related_tests_for_modules", lambda *_args: set())
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(
+        module,
+        "load_junit_timings",
+        lambda _xml: {"tests/test_fast.py": 1.0, "tests/test_slow.py": 120.0},
+    )
+
+    resolved = module.resolve_tests(
+        baseline_group=baseline,
+        new_code_group=new_code,
+        include_baseline=True,
+        diff_base="origin/main",
+        time_budget_sec=10.0,
+        timings_junit_xml="irrelevant.xml",
+    )
+    assert resolved == ["tests/test_fast.py"]
+
+
+def test_resolve_tests_excludes_slow_fastlane(monkeypatch, tmp_path):
+    module = _load_module()
+    baseline = tmp_path / "ci-lite.txt"
+    new_code = tmp_path / "sonar-new-code.txt"
+    baseline.write_text("tests/test_core_nervous_system.py\n", encoding="utf-8")
+    new_code.write_text("tests/test_ok.py\n", encoding="utf-8")
+
+    monkeypatch.setattr(module, "git_changed_files", lambda _base: [])
+    monkeypatch.setattr(
+        module,
+        "all_test_files",
+        lambda: ["tests/test_core_nervous_system.py", "tests/test_ok.py"],
+    )
+    monkeypatch.setattr(module, "related_tests_for_modules", lambda *_args: set())
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+
+    resolved = module.resolve_tests(
+        baseline_group=baseline,
+        new_code_group=new_code,
+        include_baseline=True,
+        diff_base="origin/main",
+        exclude_slow_fastlane=True,
+    )
+    assert resolved == ["tests/test_ok.py"]

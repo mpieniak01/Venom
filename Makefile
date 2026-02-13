@@ -76,49 +76,36 @@ NEW_CODE_PYTEST_MARK_EXPR ?= not requires_docker and not requires_docker_compose
 NEW_CODE_CHANGED_LINES_MIN ?= 80
 NEW_CODE_DIFF_BASE ?= origin/main
 NEW_CODE_AUTO_INCLUDE_CHANGED ?= 1
+NEW_CODE_TIME_BUDGET_SEC ?= 90
+NEW_CODE_FALLBACK_COVERAGE ?= 1
+NEW_CODE_MAX_FALLBACK_TESTS ?= 20
+NEW_CODE_MAX_TESTS ?= 0
+NEW_CODE_EXCLUDE_SLOW_FASTLANE ?= 1
 
 test-light-coverage:
 	@mkdir -p test-results/sonar
 	@PYTEST_BIN="pytest"; \
 	if [ -x "$(VENV)/bin/pytest" ]; then PYTEST_BIN="$(VENV)/bin/pytest"; fi; \
-	TESTS_TO_RUN=""; \
-	if [ "$(NEW_CODE_AUTO_INCLUDE_CHANGED)" = "1" ]; then \
-		TESTS_TO_RUN=$$(python3 scripts/resolve_sonar_new_code_tests.py \
-			--baseline-group "$(NEW_CODE_BASELINE_GROUP)" \
-			--new-code-group "$(NEW_CODE_TEST_GROUP)" \
-			--include-baseline "$(NEW_CODE_INCLUDE_BASELINE)" \
-			--diff-base "$(NEW_CODE_DIFF_BASE)"); \
-	else \
-		NEW_CODE_TESTS=$$(grep -vE '^\s*(#|$$)' "$(NEW_CODE_TEST_GROUP)"); \
-		if [ -z "$$NEW_CODE_TESTS" ]; then \
-			echo "❌ Brak testów w $(NEW_CODE_TEST_GROUP)"; \
-			exit 1; \
-		fi; \
-		TESTS_TO_RUN="$$NEW_CODE_TESTS"; \
-		if [ "$(NEW_CODE_INCLUDE_BASELINE)" = "1" ]; then \
-			BASELINE_TESTS=$$(grep -vE '^\s*(#|$$)' "$(NEW_CODE_BASELINE_GROUP)"); \
-			if [ -z "$$BASELINE_TESTS" ]; then \
-				echo "❌ Brak testów w $(NEW_CODE_BASELINE_GROUP)"; \
-				exit 1; \
-			fi; \
-			TESTS_TO_RUN="$$BASELINE_TESTS $$NEW_CODE_TESTS"; \
-		fi; \
-	fi; \
-	if [ -z "$$TESTS_TO_RUN" ]; then \
-		echo "❌ Resolver nie zwrócił testów do uruchomienia"; \
-		exit 1; \
-	fi; \
-	echo "ℹ️ Final test list for test-light-coverage:"; \
-	printf '  %s\n' $$TESTS_TO_RUN; \
-	$$PYTEST_BIN -n 4 $$TESTS_TO_RUN \
-		-o junit_family=xunit1 \
-		-m "$(NEW_CODE_PYTEST_MARK_EXPR)" \
-		--cov=$(NEW_CODE_COV_TARGET) \
-		--cov-report=term-missing:skip-covered \
-		--cov-report=xml:$(NEW_CODE_COVERAGE_XML) \
-		--cov-report=html:$(NEW_CODE_COVERAGE_HTML) \
-		--cov-fail-under=$(NEW_CODE_COVERAGE_MIN) \
-		--junitxml=$(NEW_CODE_JUNIT_XML)
+	python3 scripts/run_new_code_coverage_gate.py \
+		--pytest-bin "$$PYTEST_BIN" \
+		--baseline-group "$(NEW_CODE_BASELINE_GROUP)" \
+		--new-code-group "$(NEW_CODE_TEST_GROUP)" \
+		--include-baseline "$(NEW_CODE_INCLUDE_BASELINE)" \
+		--diff-base "$(NEW_CODE_DIFF_BASE)" \
+		--time-budget-sec "$(NEW_CODE_TIME_BUDGET_SEC)" \
+		--timings-junit-xml "$(NEW_CODE_JUNIT_XML)" \
+		--exclude-slow-fastlane "$(NEW_CODE_EXCLUDE_SLOW_FASTLANE)" \
+		--max-tests "$(NEW_CODE_MAX_TESTS)" \
+		--fallback-coverage "$(NEW_CODE_FALLBACK_COVERAGE)" \
+		--max-fallback-tests "$(NEW_CODE_MAX_FALLBACK_TESTS)" \
+		--mark-expr "$(NEW_CODE_PYTEST_MARK_EXPR)" \
+		--cov-target "$(NEW_CODE_COV_TARGET)" \
+		--coverage-xml "$(NEW_CODE_COVERAGE_XML)" \
+		--coverage-html "$(NEW_CODE_COVERAGE_HTML)" \
+		--junit-xml "$(NEW_CODE_JUNIT_XML)" \
+		--cov-fail-under "$(NEW_CODE_COVERAGE_MIN)" \
+		--min-coverage "$(NEW_CODE_CHANGED_LINES_MIN)" \
+		--sonar-config "sonar-project.properties"
 
 check-new-code-coverage: test-light-coverage
 	@python3 scripts/check_new_code_coverage.py \

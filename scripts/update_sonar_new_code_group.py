@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 GROUP_PATH = Path("config/pytest-groups/sonar-new-code.txt")
 AUTO_SECTION_HEADER = "# AUTO-ADDED by pre-commit (staged backend/test changes)"
+SLEEP_RE = re.compile(r"(?:time|asyncio)\.sleep\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)")
 
 
 def _load_resolver_module():
@@ -59,34 +62,137 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
     return deduped
 
 
-def _append_auto_items(path: Path, new_items: list[str]) -> None:
-    content = path.read_text(encoding="utf-8") if path.exists() else ""
-    lines = content.splitlines()
-
+def _split_auto_section(lines: list[str]) -> tuple[list[str], list[str]]:
     header_idx = next(
         (idx for idx, line in enumerate(lines) if line.strip() == AUTO_SECTION_HEADER),
         None,
     )
     if header_idx is None:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(AUTO_SECTION_HEADER)
-        lines.extend(new_items)
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return
+        return lines[:], []
 
-    insert_idx = header_idx + 1
-    while insert_idx < len(lines):
-        stripped = lines[insert_idx].strip()
+    head = lines[: header_idx + 1]
+    auto_entries: list[str] = []
+    idx = header_idx + 1
+    while idx < len(lines):
+        stripped = lines[idx].strip()
         if stripped.startswith("#"):
             break
-        insert_idx += 1
+        if stripped:
+            auto_entries.append(stripped)
+        idx += 1
+    tail = lines[idx:]
+    return head + tail, auto_entries
 
-    lines[insert_idx:insert_idx] = new_items
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+def _render_group(manual_lines: list[str], auto_entries: list[str]) -> str:
+    out = manual_lines[:]
+    if auto_entries:
+        if not any(line.strip() == AUTO_SECTION_HEADER for line in out):
+            if out and out[-1].strip():
+                out.append("")
+            out.append(AUTO_SECTION_HEADER)
+        header_idx = next(
+            idx for idx, line in enumerate(out) if line.strip() == AUTO_SECTION_HEADER
+        )
+        insert_idx = header_idx + 1
+        while insert_idx < len(out) and not out[insert_idx].strip().startswith("#"):
+            insert_idx += 1
+        out = out[: header_idx + 1] + auto_entries + out[insert_idx:]
+    return "\n".join(out).rstrip() + "\n"
 
 
-def main() -> int:
+def _append_auto_items(path: Path, new_items: list[str]) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    manual_lines, auto_entries = _split_auto_section(lines)
+    merged = _dedupe_keep_order(auto_entries + new_items)
+    path.write_text(_render_group(manual_lines, merged), encoding="utf-8")
+
+
+def _sleep_total_seconds(path: str) -> float:
+    file_path = Path(path)
+    if not file_path.exists():
+        return 0.0
+    total = 0.0
+    for value in SLEEP_RE.findall(file_path.read_text(encoding="utf-8")):
+        try:
+            total += float(value)
+        except ValueError:
+            continue
+    return total
+
+
+def _is_fast_safe_candidate(path: str, resolver_module) -> bool:
+    lower = path.lower()
+    if any(
+        token in lower
+        for token in (
+            "integration",
+            "benchmark",
+            "test_core_nervous_system.py",
+            "test_evolution_coordinator_phase132d.py",
+        )
+    ):
+        return False
+
+    is_fast_safe_test = getattr(resolver_module, "is_fast_safe_test", None)
+    if callable(is_fast_safe_test):
+        if not is_fast_safe_test(path):
+            return False
+    elif not Path(path).exists():
+        # Legacy resolver stubs don't expose fast-safe check; keep backward behavior.
+        return True
+
+    if _sleep_total_seconds(path) > 2.0:
+        return False
+
+    return True
+
+
+def _apply_auto_cleanup(
+    auto_entries: list[str],
+    *,
+    resolver_module,
+    mode: str,
+    max_auto_size: int,
+) -> list[str]:
+    existing_files = _dedupe_keep_order(auto_entries)
+
+    if mode == "fast-safe":
+        existing_files = [
+            item
+            for item in existing_files
+            if _is_fast_safe_candidate(item, resolver_module)
+        ]
+
+    if max_auto_size > 0 and len(existing_files) > max_auto_size:
+        existing_files = existing_files[-max_auto_size:]
+
+    return existing_files
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Update Sonar new-code test group with staged related tests."
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("fast-safe", "strict-append"),
+        default="fast-safe",
+        help="Candidate filtering mode.",
+    )
+    parser.add_argument(
+        "--prune-auto",
+        action="store_true",
+        help="Cleanup AUTO section before appending new candidates.",
+    )
+    parser.add_argument(
+        "--max-auto-size",
+        type=int,
+        default=120,
+        help="Maximum AUTO section size after cleanup (0 disables cap).",
+    )
+    args = parser.parse_args(argv)
+
     staged = _git_staged_files()
     relevant_changes = [
         p
@@ -103,44 +209,60 @@ def main() -> int:
         return 0
 
     resolver = _load_resolver_module()
-    resolver_fn = getattr(resolver, "resolve_candidates_from_changed_files", None)
-    if callable(resolver_fn):
-        candidates = resolver_fn(relevant_changes)
-    else:
-        all_tests_fn = getattr(resolver, "all_test_files", None) or getattr(
-            resolver, "_all_test_files", None
+    try:
+        candidates = resolver.resolve_candidates_from_changed_files(
+            relevant_changes,
+            exclude_slow_fastlane=(args.mode == "fast-safe"),
         )
-        changed_fn = getattr(resolver, "collect_changed_tests", None) or getattr(
-            resolver, "_collect_changed_tests", None
-        )
-        related_fn = getattr(resolver, "related_tests_for_modules", None) or getattr(
-            resolver, "_related_tests_for_modules", None
-        )
-        light_fn = getattr(resolver, "is_light_test", None) or getattr(
-            resolver, "_is_light_test", None
-        )
-        if not all(
-            callable(fn) for fn in (all_tests_fn, changed_fn, related_fn, light_fn)
-        ):
-            raise RuntimeError("Resolver module does not expose required API.")
-        all_tests = all_tests_fn()
-        changed_tests = changed_fn(relevant_changes)
-        related_tests = related_fn(relevant_changes, all_tests)
-        candidates = sorted(changed_tests | related_tests)
-        candidates = [test for test in candidates if light_fn(test)]
+    except TypeError:
+        # Backward-compat for resolver stubs/signatures used in tests/tools.
+        candidates = resolver.resolve_candidates_from_changed_files(relevant_changes)
     candidates = _dedupe_keep_order(candidates)
+
+    if args.mode == "fast-safe":
+        candidates = [
+            item for item in candidates if _is_fast_safe_candidate(item, resolver)
+        ]
+
+    file_lines = (
+        GROUP_PATH.read_text(encoding="utf-8").splitlines()
+        if GROUP_PATH.exists()
+        else []
+    )
+    manual_lines, auto_entries = _split_auto_section(file_lines)
+
+    if args.prune_auto:
+        auto_entries = _apply_auto_cleanup(
+            auto_entries,
+            resolver_module=resolver,
+            mode=args.mode,
+            max_auto_size=args.max_auto_size,
+        )
 
     existing = set(_read_group_items(GROUP_PATH))
     to_add = [test for test in candidates if test not in existing]
 
-    if not to_add:
-        print("Sonar new-code group already up to date for staged changes.")
-        return 0
+    merged_auto = auto_entries + to_add
+    merged_auto = _apply_auto_cleanup(
+        merged_auto,
+        resolver_module=resolver,
+        mode=args.mode,
+        max_auto_size=args.max_auto_size,
+    )
 
-    _append_auto_items(GROUP_PATH, to_add)
-    print(f"Added {len(to_add)} test(s) to {GROUP_PATH}:")
-    for item in to_add:
-        print(f"  - {item}")
+    GROUP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    GROUP_PATH.write_text(_render_group(manual_lines, merged_auto), encoding="utf-8")
+
+    if to_add:
+        print(f"Added {len(to_add)} test(s) to {GROUP_PATH}:")
+        for item in to_add:
+            print(f"  - {item}")
+    else:
+        print("Sonar new-code group already up to date for staged changes.")
+
+    if args.prune_auto:
+        print(f"AUTO section size after cleanup: {len(merged_auto)}")
+
     return 0
 
 

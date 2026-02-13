@@ -203,3 +203,174 @@ export async function cancelTraining(jobId: string): Promise<{ success: boolean;
     method: "DELETE",
   });
 }
+
+// ==================== Academy v2: Upload & Scope ====================
+
+export interface UploadFileInfo {
+  id: string;
+  name: string;
+  size_bytes: number;
+  mime: string;
+  created_at: string;
+  status: "validating" | "ready" | "failed";
+  records_estimate: number;
+  sha256: string;
+  error?: string;
+}
+
+export interface DatasetScopeRequest {
+  lessons_limit?: number;
+  git_commits_limit?: number;
+  include_task_history?: boolean;
+  format?: "alpaca" | "sharegpt";
+  include_lessons?: boolean;
+  include_git?: boolean;
+  upload_ids?: string[];
+  quality_profile?: "strict" | "balanced" | "lenient";
+}
+
+export interface DatasetPreviewResponse {
+  total_examples: number;
+  by_source: Record<string, number>;
+  removed_low_quality: number;
+  warnings: string[];
+  samples: Array<{
+    instruction: string;
+    input: string;
+    output: string;
+  }>;
+}
+
+export interface TrainableModelInfo {
+  model_id: string;
+  label: string;
+  provider: string;
+  trainable: boolean;
+  reason_if_not_trainable?: string;
+  recommended: boolean;
+}
+
+/**
+ * Upload user dataset files to Academy
+ */
+export async function uploadDatasetFiles(params: {
+  files: FileList | File[];
+  tag?: string;
+  description?: string;
+}): Promise<{
+  success: boolean;
+  uploaded: number;
+  failed: number;
+  files: UploadFileInfo[];
+  errors: Array<{ name: string; error: string }>;
+  message: string;
+}> {
+  const formData = new FormData();
+
+  // Add files
+  const filesArray = Array.from(params.files);
+  filesArray.forEach((file) => {
+    formData.append("files", file);
+  });
+
+  // Add metadata
+  if (params.tag) {
+    formData.append("tag", params.tag);
+  }
+  if (params.description) {
+    formData.append("description", params.description);
+  }
+
+  // Use custom fetch for multipart/form-data (apiFetch sets application/json by default)
+  const baseUrl = typeof window !== "undefined"
+    ? window.location.origin
+    : "http://localhost:8000";
+
+  const response = await fetch(`${baseUrl}/api/v1/academy/dataset/upload`, {
+    method: "POST",
+    body: formData,
+    // Don't set Content-Type - browser will set it with boundary automatically
+  });
+
+  if (!response.ok) {
+    let errorMessage = "Upload failed";
+    try {
+      const text = await response.text();
+      if (text) {
+        try {
+          const parsed = JSON.parse(text) as unknown;
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            "message" in parsed &&
+            typeof (parsed as { message: unknown }).message === "string"
+          ) {
+            errorMessage = (parsed as { message: string }).message;
+          } else {
+            errorMessage = text;
+          }
+        } catch {
+          errorMessage = text;
+        }
+      }
+    } catch {
+      // Keep default error message
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
+}
+
+/**
+ * List uploaded dataset files
+ */
+export async function listDatasetUploads(): Promise<UploadFileInfo[]> {
+  return apiFetch<UploadFileInfo[]>("/api/v1/academy/dataset/uploads");
+}
+
+/**
+ * Delete an uploaded file
+ */
+export async function deleteDatasetUpload(fileId: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  return apiFetch<{
+    success: boolean;
+    message: string;
+  }>(`/api/v1/academy/dataset/uploads/${fileId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Preview dataset before curation
+ */
+export async function previewDataset(
+  params: DatasetScopeRequest
+): Promise<DatasetPreviewResponse> {
+  return apiFetch<DatasetPreviewResponse>("/api/v1/academy/dataset/preview", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+/**
+ * Curate dataset with selected scope (v2)
+ */
+export async function curateDatasetV2(
+  params: DatasetScopeRequest
+): Promise<DatasetResponse> {
+  return apiFetch<DatasetResponse>("/api/v1/academy/dataset", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+/**
+ * Get list of trainable models
+ */
+export async function getTrainableModels(): Promise<TrainableModelInfo[]> {
+  return apiFetch<TrainableModelInfo[]>("/api/v1/academy/models/trainable");
+}

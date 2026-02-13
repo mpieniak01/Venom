@@ -10,6 +10,7 @@ flaml[automl]           # Optymalizacja parametrów (silnik pod AutoGen)
 # API / orkiestracja zewnętrzna
 fastapi==0.128.0        # API Orchestratora (pin zgodny z profilem CI Lite)
 uvicorn[standard]==0.40.0  # Serwer ASGI (pin zgodny z profilem CI Lite)
+python-multipart==0.0.20 # Required for FastAPI multipart/form-data support (file uploads)
 
 
 # --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---

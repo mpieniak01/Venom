@@ -188,3 +188,152 @@ def test_stream_job_logs_skips_unicode_decode_errors(monkeypatch):
 
     lines = list(habitat.stream_job_logs("job-logs"))
     assert lines == ["valid-line"]
+
+
+def test_validate_local_job_pid_accepts_matching_proc_metadata(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+
+    class _FakePath:
+        registry = {
+            "/proc/123": {"exists": True, "resolve": "/proc/123"},
+            "/proc/123/cwd": {"exists": True, "resolve": "/tmp/out"},
+            "/proc/123/cmdline": {
+                "exists": True,
+                "text": "python\x00/tmp/script.py\x00",
+            },
+            "/tmp/out": {"exists": True, "resolve": "/tmp/out"},
+            "/tmp/script.py": {"exists": True, "resolve": "/tmp/script.py"},
+        }
+
+        def __init__(self, value):
+            self.value = str(value)
+
+        def exists(self):
+            return self.registry.get(self.value, {}).get("exists", False)
+
+        def resolve(self):
+            resolved = self.registry.get(self.value, {}).get("resolve", self.value)
+            return _FakePath(resolved)
+
+        def read_text(self, encoding="utf-8"):
+            _ = encoding
+            return self.registry[self.value]["text"]
+
+        def __truediv__(self, part):
+            return _FakePath(f"{self.value.rstrip('/')}/{part}")
+
+        def __eq__(self, other):
+            return isinstance(other, _FakePath) and self.value == other.value
+
+    monkeypatch.setattr(gpu_habitat_mod, "Path", _FakePath)
+
+    pid = habitat._validate_local_job_pid(
+        {
+            "pid": 123,
+            "output_dir": "/tmp/out",
+            "script_path": "/tmp/script.py",
+        }
+    )
+    assert pid == 123
+
+
+def test_validate_local_job_pid_rejects_mismatch_or_invalid(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+
+    class _FakePath:
+        registry = {
+            "/proc/123": {"exists": True, "resolve": "/proc/123"},
+            "/proc/123/cwd": {"exists": True, "resolve": "/other/cwd"},
+            "/proc/123/cmdline": {
+                "exists": True,
+                "text": "python\x00/other/script.py\x00",
+            },
+            "/tmp/out": {"exists": True, "resolve": "/tmp/out"},
+            "/tmp/script.py": {"exists": True, "resolve": "/tmp/script.py"},
+        }
+
+        def __init__(self, value):
+            self.value = str(value)
+
+        def exists(self):
+            return self.registry.get(self.value, {}).get("exists", False)
+
+        def resolve(self):
+            resolved = self.registry.get(self.value, {}).get("resolve", self.value)
+            return _FakePath(resolved)
+
+        def read_text(self, encoding="utf-8"):
+            _ = encoding
+            return self.registry[self.value]["text"]
+
+        def __truediv__(self, part):
+            return _FakePath(f"{self.value.rstrip('/')}/{part}")
+
+        def __eq__(self, other):
+            return isinstance(other, _FakePath) and self.value == other.value
+
+    monkeypatch.setattr(gpu_habitat_mod, "Path", _FakePath)
+
+    assert (
+        habitat._validate_local_job_pid(
+            {
+                "pid": 123,
+                "output_dir": "/tmp/out",
+                "script_path": "/tmp/script.py",
+            }
+        )
+        is None
+    )
+    assert habitat._validate_local_job_pid({"pid": "bad"}) is None
+
+
+def test_signal_validated_local_job_sends_signal_only_when_pid_valid(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    calls = []
+    monkeypatch.setattr(habitat, "_validate_local_job_pid", lambda _job: 321)
+    monkeypatch.setattr(
+        gpu_habitat_mod.os, "kill", lambda pid, sig: calls.append((pid, sig))
+    )
+
+    sent = habitat._signal_validated_local_job(
+        "job-a", {"pid": 321}, gpu_habitat_mod.signal.SIGTERM
+    )
+    assert sent is True
+    assert calls and calls[0][0] == 321
+
+    monkeypatch.setattr(habitat, "_validate_local_job_pid", lambda _job: None)
+    sent = habitat._signal_validated_local_job(
+        "job-b", {"pid": 999}, gpu_habitat_mod.signal.SIGTERM
+    )
+    assert sent is False
+
+
+def test_get_local_job_status_uses_validated_pid_when_process_missing(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    habitat.training_containers = {
+        "job-local": {"pid": 111, "process": None, "log_file": "/tmp/does-not-exist"}
+    }
+    monkeypatch.setattr(habitat, "_validate_local_job_pid", lambda _job: 111)
+
+    status = habitat._get_local_job_status("job-local")
+    assert status["status"] == "running"
+
+
+def test_cleanup_job_local_pid_without_process_uses_validated_signal(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    habitat.training_containers = {
+        "job-local": {"type": "local", "pid": 222, "process": None}
+    }
+    called = []
+    monkeypatch.setattr(
+        habitat,
+        "_signal_validated_local_job",
+        lambda job_name, job_info, sig: called.append(
+            (job_name, job_info.get("pid"), sig)
+        )
+        or True,
+    )
+
+    habitat.cleanup_job("job-local")
+    assert called and called[0][0] == "job-local"
+    assert "job-local" not in habitat.training_containers

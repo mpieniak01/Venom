@@ -62,7 +62,7 @@ test-all: test test-web-unit test-web-e2e
 
 sonar-reports-backend:
 	@mkdir -p test-results/sonar
-	pytest -o junit_family=xunit1 --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
+	pytest -m "not performance and not smoke" -o junit_family=xunit1 --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
 
 NEW_CODE_COVERAGE_MIN ?= 0
 NEW_CODE_TEST_GROUP ?= config/pytest-groups/sonar-new-code.txt
@@ -72,7 +72,7 @@ NEW_CODE_COV_TARGET ?= venom_core
 NEW_CODE_COVERAGE_XML ?= test-results/sonar/python-coverage.xml
 NEW_CODE_JUNIT_XML ?= test-results/sonar/python-junit.xml
 NEW_CODE_COVERAGE_HTML ?= test-results/sonar/htmlcov-new-code
-NEW_CODE_PYTEST_MARK_EXPR ?= not requires_docker and not requires_docker_compose
+NEW_CODE_PYTEST_MARK_EXPR ?= not requires_docker and not requires_docker_compose and not performance and not smoke
 NEW_CODE_CHANGED_LINES_MIN ?= 80
 NEW_CODE_DIFF_BASE ?= origin/main
 NEW_CODE_AUTO_INCLUDE_CHANGED ?= 1

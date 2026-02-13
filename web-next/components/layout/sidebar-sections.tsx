@@ -30,7 +30,7 @@ export function BrandSection({
                     <div className={cn(isSynced && "transition-all duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 overflow-hidden" : "max-w-[200px] opacity-100 ml-3")}>
                         <div className="flex items-center gap-2 whitespace-nowrap">
                             <p className="eyebrow">{t("sidebar.brand.caption")}</p>
-                            <span className="pill-badge">v1.0</span>
+                            <span className="pill-badge">v1.4</span>
                         </div>
                     </div>
                 </div>

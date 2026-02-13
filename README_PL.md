@@ -1,4 +1,4 @@
-# Venom v1.0 🐍
+# Venom v1.4 🐍
 
 [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml)
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
@@ -720,8 +720,8 @@ git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 
 # opcjonalne nadpisania:
-# export BACKEND_IMAGE=ghcr.io/<owner>/venom-backend:v1.2.0
-# export FRONTEND_IMAGE=ghcr.io/<owner>/venom-frontend:v1.2.0
+# export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:v1.4.0
+# export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:v1.4.0
 # export OLLAMA_MODEL=gemma3:1b
 
 scripts/docker/run-release.sh start
@@ -805,7 +805,7 @@ takie jak `models/` i `models_cache/`.
 
 ## 🎯 Mapa drogowa
 
-### ✅ v1.0 (obecnie)
+### ✅ v1.4 (obecnie)
 - [x] Warstwa Planowania (ArchitectAgent)
 - [x] Ekspansja Wiedzy (ResearcherAgent + WebSearchSkill)
 - [x] Integracja z Internetem

@@ -37,6 +37,11 @@ class GPUHabitat(DockerHabitat):
 
     # Domyślny obraz treningowy (Unsloth - bardzo szybki fine-tuning)
     DEFAULT_TRAINING_IMAGE = "unsloth/unsloth:latest"
+    ALLOWED_LOCAL_JOB_SIGNALS = {
+        signal.SIGTERM,
+        signal.SIGINT,
+        signal.SIGKILL,
+    }
 
     def __init__(
         self,
@@ -504,10 +509,61 @@ class GPUHabitat(DockerHabitat):
             )
             return False
 
+        if not self._is_allowed_local_job_signal(sig):
+            logger.warning(
+                "Pomijam wysłanie sygnału %s dla job=%s: sygnał poza allowlist",
+                sig,
+                job_name,
+            )
+            return False
+
+        if not self._is_pid_owned_by_current_user(pid):
+            logger.warning(
+                "Pomijam wysłanie sygnału %s dla job=%s: PID=%s nie należy do aktualnego użytkownika",
+                sig,
+                job_name,
+                pid,
+            )
+            return False
+
         try:
             os.kill(pid, sig)
             return True
         except OSError:
+            return False
+
+    def _is_allowed_local_job_signal(self, sig: signal.Signals) -> bool:
+        """Zwraca True tylko dla sygnałów dopuszczonych w local runtime."""
+        try:
+            normalized_signal = signal.Signals(sig)
+        except (TypeError, ValueError):
+            return False
+        return normalized_signal in self.ALLOWED_LOCAL_JOB_SIGNALS
+
+    def _is_pid_owned_by_current_user(self, pid: int) -> bool:
+        """
+        Weryfikuje czy PID należy do aktualnego użytkownika systemowego.
+        """
+        if pid <= 1:
+            return False
+        try:
+            status_content = Path(f"/proc/{pid}/status").read_text(encoding="utf-8")
+            uid_line = next(
+                (
+                    line
+                    for line in status_content.splitlines()
+                    if line.startswith("Uid:")
+                ),
+                None,
+            )
+            if uid_line is None:
+                return False
+            parts = uid_line.split()
+            if len(parts) < 2:
+                return False
+            process_real_uid = int(parts[1])
+            return process_real_uid == os.getuid()
+        except (OSError, ValueError, StopIteration):
             return False
 
     def get_training_status(self, job_name: str) -> Dict[str, str | None]:

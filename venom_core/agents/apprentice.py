@@ -5,11 +5,15 @@ Agent odpowiedzialny za uczenie się workflow poprzez obserwację
 demonstracji użytkownika i generowanie skryptów automatyzacji.
 """
 
+import asyncio
 import re
 from pathlib import Path
 from typing import List, Optional
 
 from semantic_kernel import Kernel
+from semantic_kernel.contents import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
@@ -129,7 +133,7 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
 
         # Inne - deleguj do LLM
         else:
-            return self._llm_response(request)
+            return await self._llm_response_async(request)
 
     def _start_recording(self, request: str) -> str:
         """
@@ -414,9 +418,9 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
         return sanitized
 
-    def _llm_response(self, request: str) -> str:
+    async def _llm_response_async(self, request: str) -> str:
         """
-        Deleguje żądanie do LLM przez hybrydowy router.
+        Asynchroniczne wywołanie LLM przez hybrydowy router.
 
         Args:
             request: Żądanie użytkownika
@@ -459,14 +463,41 @@ Obecnie:
                 f"({routing_info['model_name']})"
             )
 
-            # TODO: Faktyczne wywołanie LLM przez KernelBuilder z routing_info
-            # Na razie zwracamy fallback response
-            return (
-                f"Jestem ApprenticeAgent. Mogę pomóc Ci nauczyć nowe umiejętności poprzez demonstrację.\n\n"
-                f"{context}\n\n"
-                f"[INFO] Routing: {routing_info['provider']} ({routing_info['model_name']})"
+            # Faktyczne wywołanie LLM przez kernel
+            chat_service = self.kernel.get_service()
+            chat_history = ChatHistory()
+            
+            # Dodaj system prompt
+            chat_history.add_message(
+                ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
+            )
+            
+            # Dodaj zapytanie użytkownika
+            chat_history.add_message(
+                ChatMessageContent(role=AuthorRole.USER, content=full_prompt)
             )
 
+            # Ustawienia wykonania
+            settings = self._create_execution_settings(
+                generation_params={"temperature": 0.7, "max_tokens": 1000}
+            )
+
+            # Wywołanie LLM z fallbackami
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
+                chat_history=chat_history,
+                settings=settings,
+                enable_functions=False,
+            )
+
+            return str(response)
+
         except Exception as e:
-            logger.error(f"Błąd podczas przetwarzania przez LLM: {e}")
-            return f"❌ Błąd podczas przetwarzania żądania: {e}"
+            logger.warning(f"Błąd podczas wywołania LLM, używam fallback: {e}")
+            # Kontrolowany fallback bez podnoszenia wyjątku
+            return (
+                f"Jestem ApprenticeAgent. Mogę pomóc Ci nauczyć nowe umiejętności poprzez demonstrację.\n\n"
+                f"Dostępne komendy: REC (rozpocznij nagrywanie), STOP (zakończ), "
+                f"'analizuj sesję', 'generuj skill'.\n\n"
+                f"⚠️ LLM czasowo niedostępny, używam trybu podstawowego."
+            )

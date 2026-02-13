@@ -326,3 +326,31 @@ class TestApprenticeAgent:
         assert "ApprenticeAgent" in result
         assert "czasowo niedostępny" in result or "trybu podstawowego" in result
         assert "❌" not in result  # Nie jest to błąd krytyczny
+
+    @pytest.mark.asyncio
+    async def test_process_integration_llm_path(self, apprentice_agent):
+        """Test integracyjny - process() wywołujący ścieżkę LLM."""
+        # Mock chat service i odpowiedź
+        mock_chat_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.__str__ = MagicMock(return_value="Odpowiedź z LLM na ogólne pytanie.")
+        
+        mock_chat_service.get_chat_message_content = AsyncMock(return_value=mock_response)
+        apprentice_agent.kernel.get_service = MagicMock(return_value=mock_chat_service)
+        
+        # Mock hybrid router
+        apprentice_agent.hybrid_router.get_routing_info_for_task = MagicMock(
+            return_value={"provider": "openai", "model_name": "gpt-4"}
+        )
+        
+        # Mock recorder
+        apprentice_agent.recorder.is_recording = False
+        apprentice_agent.recorder.list_sessions = MagicMock(return_value=[])
+        
+        # Wywołaj process() z żądaniem niespassującym do żadnego keywords
+        # (nie: rozpocznij, stop, analizuj, generuj)
+        result = await apprentice_agent.process("Co możesz dla mnie zrobić?")
+        
+        # Sprawdź, że dostaliśmy odpowiedź LLM bez błędów runtime
+        assert "Odpowiedź z LLM" in result
+        assert mock_chat_service.get_chat_message_content.called

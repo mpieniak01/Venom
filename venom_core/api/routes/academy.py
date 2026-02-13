@@ -435,22 +435,25 @@ def _file_lock(file_path: Path, mode: str = "r"):
     Używa fcntl na Unix/Linux lub msvcrt na Windows.
     Fallback: brak lockowania jeśli nie ma dostępnych bibliotek.
     """
-    f = open(file_path, mode, encoding="utf-8")
-    try:
-        if HAS_FCNTL:
-            # Unix/Linux file locking
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-        elif HAS_MSVCRT:
-            # Windows file locking
-            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-        # Jeśli brak lockowania, po prostu yield (localhost-only, niskie ryzyko)
-        yield f
-    finally:
-        if HAS_FCNTL:
-            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-        elif HAS_MSVCRT:
-            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-        f.close()
+    with open(file_path, mode, encoding="utf-8") as f:
+        locked = False
+        try:
+            if HAS_FCNTL:
+                # Unix/Linux file locking
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                locked = True
+            elif HAS_MSVCRT:
+                # Windows file locking
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                locked = True
+            # Jeśli brak lockowania, po prostu yield (localhost-only, niskie ryzyko)
+            yield f
+        finally:
+            if locked:
+                if HAS_FCNTL:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                elif HAS_MSVCRT:
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 def _load_uploads_metadata() -> List[Dict[str, Any]]:

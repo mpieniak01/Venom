@@ -5,10 +5,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
-import pytest
-
-
-
 # ==================== Ingest File Edge Cases ====================
 
 
@@ -56,8 +52,16 @@ def test_ingest_json_array(tmp_path):
     json_file.write_text(
         json.dumps(
             [
-                {"instruction": "test instruction 1", "input": "", "output": "output result 1"},
-                {"instruction": "test instruction 2", "input": "", "output": "output result 2"},
+                {
+                    "instruction": "test instruction 1",
+                    "input": "",
+                    "output": "output result 1",
+                },
+                {
+                    "instruction": "test instruction 2",
+                    "input": "",
+                    "output": "output result 2",
+                },
             ]
         )
     )
@@ -75,7 +79,13 @@ def test_ingest_json_single_object(tmp_path):
 
     json_file = tmp_path / "test.json"
     json_file.write_text(
-        json.dumps({"instruction": "test instruction here", "input": "", "output": "output result here"})
+        json.dumps(
+            {
+                "instruction": "test instruction here",
+                "input": "",
+                "output": "output result here",
+            }
+        )
     )
 
     mock_curator = MagicMock()
@@ -114,7 +124,9 @@ def test_ingest_txt(tmp_path):
     from venom_core.api.routes.academy import _ingest_upload_file
 
     txt_file = tmp_path / "test.txt"
-    txt_file.write_text("Question number 1 here\n\nAnswer number 1 here\n\nQuestion number 2 here\n\nAnswer number 2 here")
+    txt_file.write_text(
+        "Question number 1 here\n\nAnswer number 1 here\n\nQuestion number 2 here\n\nAnswer number 2 here"
+    )
 
     mock_curator = MagicMock()
     mock_curator.examples = []
@@ -146,7 +158,10 @@ def test_ingest_csv_with_alternative_columns(tmp_path):
     from venom_core.api.routes.academy import _ingest_upload_file
 
     csv_file = tmp_path / "test.csv"
-    csv_file.write_text('prompt,response\n' '"What is Artificial Intelligence?","AI is machine intelligence simulation"\n')
+    csv_file.write_text(
+        "prompt,response\n"
+        '"What is Artificial Intelligence?","AI is machine intelligence simulation"\n'
+    )
 
     mock_curator = MagicMock()
     mock_curator.examples = []
@@ -163,7 +178,9 @@ def test_ingest_markdown_with_odd_sections(tmp_path):
 
     md_file = tmp_path / "test.md"
     # Tylko 3 sekcje - ostatnia nie będzie miała pary
-    md_file.write_text("Question number 1 goes here\n\nAnswer number 1 is here\n\nOrphan section without pair")
+    md_file.write_text(
+        "Question number 1 goes here\n\nAnswer number 1 is here\n\nOrphan section without pair"
+    )
 
     mock_curator = MagicMock()
     mock_curator.examples = []
@@ -184,19 +201,29 @@ def test_validate_training_record_missing_fields():
     assert not _validate_training_record({"input": "", "output": "test output here"})
 
     # Brak output
-    assert not _validate_training_record({"instruction": "test instruction", "input": ""})
+    assert not _validate_training_record(
+        {"instruction": "test instruction", "input": ""}
+    )
 
-    # Puste instruction  
-    assert not _validate_training_record({"instruction": "", "input": "", "output": "test output here"})
+    # Puste instruction
+    assert not _validate_training_record(
+        {"instruction": "", "input": "", "output": "test output here"}
+    )
 
     # Puste output
-    assert not _validate_training_record({"instruction": "test instruction", "input": "", "output": ""})
-    
+    assert not _validate_training_record(
+        {"instruction": "test instruction", "input": "", "output": ""}
+    )
+
     # Too short instruction (< 10 chars)
-    assert not _validate_training_record({"instruction": "short", "input": "", "output": "test output here"})
-    
+    assert not _validate_training_record(
+        {"instruction": "short", "input": "", "output": "test output here"}
+    )
+
     # Too short output (< 10 chars)
-    assert not _validate_training_record({"instruction": "test instruction", "input": "", "output": "short"})
+    assert not _validate_training_record(
+        {"instruction": "test instruction", "input": "", "output": "short"}
+    )
 
 
 def test_validate_training_record_valid():
@@ -205,13 +232,20 @@ def test_validate_training_record_valid():
 
     # Poprawny rekord (obie wartości >= 10 chars)
     result = _validate_training_record(
-        {"instruction": "test instruction here", "input": "", "output": "result output here"}
+        {
+            "instruction": "test instruction here",
+            "input": "",
+            "output": "result output here",
+        }
     )
     assert result is True
 
     # Z inputem
     result = _validate_training_record(
-        {"instruction": "test instruction here", "input": "context info", "output": "result output here"}
+        {
+            "instruction": "test instruction here",
+            "input": "context info",
+            "output": "result output here",
+        }
     )
     assert result is True
-

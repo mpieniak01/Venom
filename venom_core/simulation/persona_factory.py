@@ -1,5 +1,6 @@
 """Moduł: persona_factory - generator profili użytkowników dla symulacji."""
 
+import asyncio
 import json
 import secrets
 from dataclasses import asdict, dataclass
@@ -7,6 +8,10 @@ from enum import Enum
 from typing import Optional, TypedDict
 
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
+from semantic_kernel.contents import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.utils.logger import get_logger
 
@@ -233,11 +238,6 @@ class PersonaFactory:
         # Jeśli kernel dostępny, spróbuj wzbogacić przez LLM
         if self.kernel:
             try:
-                import asyncio
-                from semantic_kernel.contents import ChatHistory
-                from semantic_kernel.contents.chat_message_content import ChatMessageContent
-                from semantic_kernel.contents.utils.author_role import AuthorRole
-
                 logger.debug(f"Wzbogacanie persony {persona.name} z LLM")
 
                 # Przygotuj prompt dla LLM
@@ -271,7 +271,6 @@ Odpowiedź: tylko opis, bez dodatkowych komentarzy."""
                 )
 
                 # Ustawienia wykonania - krótka odpowiedź
-                from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
                 settings = OpenAIChatPromptExecutionSettings(
                     temperature=0.8,
                     max_tokens=150
@@ -286,14 +285,18 @@ Odpowiedź: tylko opis, bez dodatkowych komentarzy."""
 
                 enriched_description = str(response).strip()
 
-                # Walidacja: opis nie może być pusty i powinien zawierać imię persony
-                if enriched_description and len(enriched_description) > 10:
+                # Walidacja: opis nie może być pusty, wystarczająco długi i powinien zawierać imię persony
+                if (
+                    enriched_description
+                    and len(enriched_description) > 10
+                    and persona.name.lower() in enriched_description.lower()
+                ):
                     # Ogranicz długość do max 500 znaków
                     persona.description = enriched_description[:500]
                     logger.info(f"Wzbogacono personę {persona.name} przez LLM")
                     return persona
                 else:
-                    logger.warning(f"LLM zwrócił pusty/zbyt krótki opis, używam szablonu")
+                    logger.warning(f"LLM zwrócił pusty/zbyt krótki opis lub bez imienia, używam szablonu")
                     # Fallback do szablonu
                     
             except Exception as e:

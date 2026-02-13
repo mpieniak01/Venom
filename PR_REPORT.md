@@ -13,11 +13,11 @@ Implemented three quality improvements:
 
 **Changes**:
 - Added `_llm_response_async()` method for async LLM invocation
-- Refactored `_llm_response()` to call async version properly
+- Refactored `process()` to call `_llm_response_async()` directly from async context
 - Implemented actual LLM call through `kernel.get_service()` and `_invoke_chat_with_fallbacks()`
 - Used routing info from `HybridModelRouter` for model selection
 - Added controlled fallback on LLM error (warning log, no exception to user)
-- Fixed asyncio deprecation warnings by using `get_running_loop()`
+- Moved semantic kernel imports to module level
 
 **Before**: Placeholder response with routing info
 **After**: Real LLM call with graceful fallback
@@ -28,9 +28,9 @@ Implemented three quality improvements:
 **Changes**:
 - Implemented real LLM call in `_enrich_persona_with_llm()` when kernel available
 - Generate short, coherent persona backstory via LLM
-- Validate description (max 500 chars, not empty, contains persona info)
+- Validate description (max 500 chars, not empty, contains persona name)
 - Safe fallback to template logic on error or empty response
-- Fixed asyncio deprecation warnings
+- Moved semantic kernel imports to module level
 
 **Before**: Template-only placeholder with TODO comment
 **After**: LLM-enriched persona with template fallback
@@ -146,7 +146,9 @@ New tests: 5 added, all passing
 
 ### Low Risk Items:
 1. **LLM availability**: Both implementations have safe fallback to template/placeholder logic
-2. **Async context**: Fixed deprecation warnings, using `get_running_loop()` pattern
+1. **Process flow**: `process()` is async and now directly calls `_llm_response_async()` to avoid event loop conflicts
+2. **Import organization**: Moved all semantic kernel imports to module level for better code organization
+3. **Validation**: PersonaFactory validates that LLM output contains persona name before accepting
 3. **Refactored helpers**: All existing tests pass, no behavior change in GPUHabitat
 
 ### Deferred/Skipped:

@@ -274,7 +274,7 @@ def test_persona_enrichment_llm_fallback_on_error():
 
 
 def test_persona_enrichment_llm_empty_response():
-    """Test fallbacku gdy LLM zwraca pustą odpowiedź."""
+    """Test fallbacku gdy LLM zwraca pusty/zbyt krótki opis lub bez imienia persony."""
     from unittest.mock import MagicMock, AsyncMock
     
     # Mock kernel z pustą odpowiedzią
@@ -302,3 +302,38 @@ def test_persona_enrichment_llm_empty_response():
     # Sprawdź że dostaliśmy fallback (szablon) gdy LLM zwrócił pusty string
     assert enriched.description
     assert "Test" in enriched.description
+
+
+def test_persona_enrichment_llm_no_name_in_response():
+    """Test fallbacku gdy LLM nie zawiera imienia persony w odpowiedzi."""
+    from unittest.mock import MagicMock, AsyncMock
+    
+    # Mock kernel z odpowiedzią bez imienia persony
+    mock_kernel = MagicMock()
+    mock_chat_service = MagicMock()
+    mock_response = MagicMock()
+    # Odpowiedź jest wystarczająco długa ale nie zawiera imienia "Maria"
+    mock_response.__str__ = MagicMock(
+        return_value="To jest opis użytkownika który ma średnią znajomość technologii."
+    )
+    
+    mock_chat_service.get_chat_message_content = AsyncMock(return_value=mock_response)
+    mock_kernel.get_service = MagicMock(return_value=mock_chat_service)
+    
+    factory = PersonaFactory(kernel=mock_kernel)
+    persona = Persona(
+        name="Maria",
+        age=45,
+        tech_literacy=TechLiteracy.MEDIUM,
+        patience=0.6,
+        goal="Zarejestrować konto",
+        traits=["ostrożny"],
+        description="",
+    )
+    
+    enriched = factory._enrich_persona_with_llm(persona)
+    
+    # Sprawdź że dostaliśmy fallback (szablon), bo odpowiedź nie zawierała imienia
+    assert enriched.description
+    assert "Maria" in enriched.description  # Szablon zawsze zawiera imię
+    assert "45" in enriched.description or "podstawową znajomość" in enriched.description

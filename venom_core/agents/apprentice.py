@@ -5,11 +5,15 @@ Agent odpowiedzialny za uczenie się workflow poprzez obserwację
 demonstracji użytkownika i generowanie skryptów automatyzacji.
 """
 
+import asyncio
 import re
 from pathlib import Path
 from typing import List, Optional
 
 from semantic_kernel import Kernel
+from semantic_kernel.contents import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
@@ -129,7 +133,7 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
 
         # Inne - deleguj do LLM
         else:
-            return self._llm_response(request)
+            return await self._llm_response_async(request)
 
     def _start_recording(self, request: str) -> str:
         """
@@ -414,25 +418,6 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
         return sanitized
 
-    def _llm_response(self, request: str) -> str:
-        """
-        Deleguje żądanie do LLM przez hybrydowy router.
-
-        Args:
-            request: Żądanie użytkownika
-
-        Returns:
-            Odpowiedź LLM
-        """
-        # Synchroniczna wrapper na async wywołanie
-        import asyncio
-        try:
-            # Zawsze używamy asyncio.run - metoda synchroniczna tworzy nowy loop
-            return asyncio.run(self._llm_response_async(request))
-        except Exception as e:
-            logger.error(f"Błąd podczas przetwarzania przez LLM: {e}")
-            return f"❌ Błąd podczas przetwarzania żądania: {e}"
-
     async def _llm_response_async(self, request: str) -> str:
         """
         Asynchroniczne wywołanie LLM przez hybrydowy router.
@@ -479,10 +464,6 @@ Obecnie:
             )
 
             # Faktyczne wywołanie LLM przez kernel
-            from semantic_kernel.contents import ChatHistory
-            from semantic_kernel.contents.chat_message_content import ChatMessageContent
-            from semantic_kernel.contents.utils.author_role import AuthorRole
-
             chat_service = self.kernel.get_service()
             chat_history = ChatHistory()
             

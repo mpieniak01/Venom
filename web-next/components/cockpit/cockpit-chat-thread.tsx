@@ -176,7 +176,7 @@ export const ChatComposer = memo(
       : "mt-2 grid w-full max-w-full gap-2";
     const selectsRowClassName = compactControls
       ? "flex flex-wrap items-center gap-2"
-      : "grid w-full max-w-full items-center gap-2 md:grid-cols-[auto_auto_auto] md:justify-between";
+      : "flex flex-wrap items-center gap-3";
     const secondaryRowClassName = compactControls
       ? "flex flex-wrap items-center gap-2"
       : "flex w-full flex-wrap items-center gap-2";
@@ -242,16 +242,7 @@ export const ChatComposer = memo(
               />
             </div>
             <div
-              className={modelControlClassName}
-              style={
-                !compactControls
-                  ? {
-                    width: `${modelMinWidthCh}ch`,
-                    minWidth: `${modelMinWidthCh}ch`,
-                    maxWidth: `${modelMinWidthCh}ch`,
-                  }
-                  : undefined
-              }
+              className={`${modelControlClassName} w-56`}
             >
               <label className={labelClassName}>{t("cockpit.models.model")}</label>
               <SelectMenu
@@ -267,6 +258,7 @@ export const ChatComposer = memo(
                 buttonTestId="llm-model-select"
                 placeholder={t("cockpit.models.noModels")}
                 disabled={!hasModels}
+                menuWidth="content"
                 buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap overflow-hidden text-ellipsis"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />

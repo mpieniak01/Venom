@@ -52,10 +52,16 @@ function resolvePath(locale: Record<string, unknown>, path: string): string | nu
   return typeof result === "string" ? result : null;
 }
 
+function escapeRegexSpecialChars(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function applyReplacements(value: string, replacements?: Record<string, string | number>) {
   if (!replacements) return value;
   return Object.entries(replacements).reduce((acc, [key, replacement]) => {
-    const pattern = new RegExp(String.raw`{{\s*${key}\s*}}`, "g");
+    // Use escaped key for safer regex construction
+    const escapedKey = escapeRegexSpecialChars(key);
+    const pattern = new RegExp(String.raw`{{\s*${escapedKey}\s*}}`, "g");
     return acc.replace(pattern, String(replacement));
   }, value);
 }

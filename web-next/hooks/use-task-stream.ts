@@ -70,15 +70,24 @@ const defaultState: TaskStreamState = {
 
 const TERMINAL_STATUSES = new Set<TaskStatus>(["COMPLETED", "FAILED", "LOST"]);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toStringOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : value != null ? String(value) : null;
+}
+
 function extractRuntime(payload: Record<string, unknown>) {
-  const runtime = (payload.active_runtime || payload.runtime || {}) as Record<string, unknown>;
+  const runtimeRaw = payload.active_runtime || payload.runtime;
+  const runtime = isRecord(runtimeRaw) ? runtimeRaw : {};
   return {
-    provider: (payload.llm_provider || runtime.provider || null) as string | null,
-    model: (payload.llm_model || runtime.model || null) as string | null,
-    endpoint: (payload.llm_endpoint || runtime.endpoint || null) as string | null,
-    status: (payload.llm_status || runtime.status || null) as string | null,
-    error: (payload.llm_error || runtime.error || null) as string | null,
-    context: (payload.context || runtime.context || null) as Record<string, unknown> | null,
+    provider: toStringOrNull(payload.llm_provider ?? runtime.provider),
+    model: toStringOrNull(payload.llm_model ?? runtime.model),
+    endpoint: toStringOrNull(payload.llm_endpoint ?? runtime.endpoint),
+    status: toStringOrNull(payload.llm_status ?? runtime.status),
+    error: toStringOrNull(payload.llm_error ?? runtime.error),
+    context: isRecord(payload.context) ? payload.context : isRecord(runtime.context) ? runtime.context : null,
   };
 }
 

@@ -277,23 +277,12 @@ Odpowiedź: tylko opis, bez dodatkowych komentarzy."""
                     max_tokens=150
                 )
 
-                # Wywołaj asynchronicznie
-                try:
-                    try:
-                        loop = asyncio.get_running_loop()
-                        # Loop już działa - użyj asyncio.run w nowym kontekście
-                        response = asyncio.run(chat_service.get_chat_message_content(
-                            chat_history=chat_history,
-                            settings=settings
-                        ))
-                    except RuntimeError:
-                        # Brak running loop - użyj asyncio.run
-                        response = asyncio.run(chat_service.get_chat_message_content(
-                            chat_history=chat_history,
-                            settings=settings
-                        ))
-                except Exception as invoke_error:
-                    raise invoke_error
+                # Wywołaj asynchronicznie - zawsze używamy asyncio.run
+                # (wywołanie synchroniczne zawsze tworzy nowy loop)
+                response = asyncio.run(chat_service.get_chat_message_content(
+                    chat_history=chat_history,
+                    settings=settings
+                ))
 
                 enriched_description = str(response).strip()
 

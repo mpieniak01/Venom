@@ -68,9 +68,11 @@ export function useCockpitSectionProps() {
   const onUpdateFeedbackState = logic.chatUi.updateFeedbackState;
   const onChangeGenerationParams = useCallback((vals: Record<string, unknown>) => {
     // Validate and convert unknown values to GenerationParams
+    // Only accept primitive types that GenerationParams expects
     const params: Partial<GenerationParams> = {};
     for (const [key, value] of Object.entries(vals)) {
-      if (value !== undefined && value !== null) {
+      const valueType = typeof value;
+      if (valueType === 'number' || valueType === 'string' || valueType === 'boolean') {
         params[key as keyof GenerationParams] = value as number | string | boolean;
       }
     }

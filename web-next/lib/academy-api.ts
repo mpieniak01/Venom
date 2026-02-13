@@ -251,7 +251,7 @@ export interface TrainableModelInfo {
 }
 
 /**
- * Upload plików użytkownika do Academy
+ * Upload user dataset files to Academy
  */
 export async function uploadDatasetFiles(params: {
   files: FileList | File[];
@@ -299,14 +299,14 @@ export async function uploadDatasetFiles(params: {
 }
 
 /**
- * Lista uploadowanych plików
+ * List uploaded dataset files
  */
 export async function listDatasetUploads(): Promise<UploadFileInfo[]> {
   return apiFetch<UploadFileInfo[]>("/api/v1/academy/dataset/uploads");
 }
 
 /**
- * Usuń uploadowany plik
+ * Delete an uploaded file
  */
 export async function deleteDatasetUpload(fileId: string): Promise<{
   success: boolean;
@@ -321,7 +321,7 @@ export async function deleteDatasetUpload(fileId: string): Promise<{
 }
 
 /**
- * Preview datasetu przed curate
+ * Preview dataset before curation
  */
 export async function previewDataset(
   params: DatasetScopeRequest
@@ -333,7 +333,7 @@ export async function previewDataset(
 }
 
 /**
- * Kuracja datasetu z wybranym scope (v2)
+ * Curate dataset with selected scope (v2)
  */
 export async function curateDatasetV2(
   params: DatasetScopeRequest
@@ -345,7 +345,7 @@ export async function curateDatasetV2(
 }
 
 /**
- * Lista modeli trenowalnych
+ * Get list of trainable models
  */
 export async function getTrainableModels(): Promise<TrainableModelInfo[]> {
   return apiFetch<TrainableModelInfo[]>("/api/v1/academy/models/trainable");

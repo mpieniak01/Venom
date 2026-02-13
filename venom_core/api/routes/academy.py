@@ -3,6 +3,8 @@
 import asyncio
 import json
 import os
+import sys
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional
@@ -16,6 +18,18 @@ from pydantic import BaseModel, Field, field_validator
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Import platform-specific file locking
+try:
+    import fcntl
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
+    try:
+        import msvcrt
+        HAS_MSVCRT = True
+    except ImportError:
+        HAS_MSVCRT = False
 
 router = APIRouter(prefix="/api/v1/academy", tags=["academy"])
 
@@ -413,6 +427,32 @@ def _check_path_traversal(filename: str) -> bool:
     return True
 
 
+@contextmanager
+def _file_lock(file_path: Path, mode: str = "r"):
+    """
+    Context manager dla atomicznego dostępu do pliku z lockowaniem.
+    
+    Używa fcntl na Unix/Linux lub msvcrt na Windows.
+    Fallback: brak lockowania jeśli nie ma dostępnych bibliotek.
+    """
+    f = open(file_path, mode, encoding="utf-8")
+    try:
+        if HAS_FCNTL:
+            # Unix/Linux file locking
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        elif HAS_MSVCRT:
+            # Windows file locking
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        # Jeśli brak lockowania, po prostu yield (localhost-only, niskie ryzyko)
+        yield f
+    finally:
+        if HAS_FCNTL:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        elif HAS_MSVCRT:
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        f.close()
+
+
 def _load_uploads_metadata() -> List[Dict[str, Any]]:
     """Ładuje metadane uploadów z pliku JSONL."""
     metadata_file = _get_uploads_metadata_file()
@@ -431,30 +471,53 @@ def _load_uploads_metadata() -> List[Dict[str, Any]]:
 
 
 def _save_upload_metadata(upload_info: Dict[str, Any]):
-    """Zapisuje metadata uploadu (append do JSONL)."""
+    """Zapisuje metadata uploadu (append do JSONL) z lockowaniem."""
     metadata_file = _get_uploads_metadata_file()
+    
+    # Upewnij się że plik istnieje
+    metadata_file.touch(exist_ok=True)
+    
     try:
-        with open(metadata_file, "a", encoding="utf-8") as f:
+        with _file_lock(metadata_file, "a") as f:
             f.write(json.dumps(upload_info, ensure_ascii=False) + "\n")
     except Exception as e:
         logger.error(f"Failed to save upload metadata: {e}")
 
 
 def _delete_upload_metadata(file_id: str):
-    """Usuwa metadata uploadu z pliku."""
+    """Usuwa metadata uploadu z pliku z atomiczną operacją (lock)."""
     metadata_file = _get_uploads_metadata_file()
     if not metadata_file.exists():
         return
 
     try:
-        uploads = _load_uploads_metadata()
-        uploads = [u for u in uploads if u.get("id") != file_id]
-
-        with open(metadata_file, "w", encoding="utf-8") as f:
+        # Read-modify-write w jednej operacji z lockiem
+        temp_file = metadata_file.with_suffix('.tmp')
+        
+        with _file_lock(metadata_file, "r") as f_in:
+            uploads = []
+            for line in f_in:
+                if line.strip():
+                    upload = json.loads(line)
+                    if upload.get("id") != file_id:
+                        uploads.append(upload)
+        
+        # Write to temp file first
+        with open(temp_file, "w", encoding="utf-8") as f_out:
             for upload in uploads:
-                f.write(json.dumps(upload, ensure_ascii=False) + "\n")
+                f_out.write(json.dumps(upload, ensure_ascii=False) + "\n")
+        
+        # Atomic replace
+        temp_file.replace(metadata_file)
+        
     except Exception as e:
         logger.error(f"Failed to delete upload metadata: {e}")
+        # Clean up temp file if it exists
+        if temp_file.exists():
+            try:
+                temp_file.unlink()
+            except:
+                pass
 
 
 def _compute_file_hash(file_path: Path) -> str:

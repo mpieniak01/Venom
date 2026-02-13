@@ -1,8 +1,8 @@
 """Moduł: training_metrics_parser - Parsowanie metryk z logów treningowych."""
 
 import re
-from typing import Dict, Optional, List, Any
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 from venom_core.utils.logger import get_logger
 
@@ -172,9 +172,7 @@ class TrainingMetricsParser:
                     continue
         return None
 
-    def aggregate_metrics(
-        self, metrics_list: List[TrainingMetrics]
-    ) -> Dict[str, Any]:
+    def aggregate_metrics(self, metrics_list: List[TrainingMetrics]) -> Dict[str, Any]:
         """
         Agreguje metryki z wielu linii.
 

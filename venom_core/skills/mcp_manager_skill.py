@@ -38,13 +38,24 @@ class McpManagerSkill(BaseSkill):
     # Allowlista zmiennych środowiskowych dla procesów MCP (minimalna bezpieczna konfiguracja)
     SAFE_ENV_VARS = {
         # Podstawowe zmienne systemowe
-        "PATH", "HOME", "USER", "SHELL", "LANG", "LC_ALL", "TZ",
+        "PATH",
+        "HOME",
+        "USER",
+        "SHELL",
+        "LANG",
+        "LC_ALL",
+        "TZ",
         # Zmienne Pythona
-        "PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "VIRTUAL_ENV",
         # Zmienne workspace (potrzebne dla działania MCP)
-        "WORKSPACE_ROOT", "REPO_ROOT",
+        "WORKSPACE_ROOT",
+        "REPO_ROOT",
         # Zmienne potrzebne dla niektórych narzędzi MCP
-        "TERM", "DISPLAY", "PWD",
+        "TERM",
+        "DISPLAY",
+        "PWD",
     }
 
     def __init__(self):
@@ -63,37 +74,37 @@ class McpManagerSkill(BaseSkill):
 
         self.generator = McpProxyGenerator()
 
-    def _sanitize_env_for_mcp(self, base_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    def _sanitize_env_for_mcp(
+        self, base_env: Optional[Dict[str, str]] = None
+    ) -> Dict[str, str]:
         """
         Sanityzuje zmienne środowiskowe do bezpiecznego przekazania do procesu MCP.
-        
+
         Filtruje wrażliwe dane jak API keys, tokeny, hasła, zachowując tylko
         niezbędne zmienne systemowe i workspace.
-        
+
         Args:
             base_env: Bazowe środowisko (domyślnie os.environ)
-            
+
         Returns:
             Bezpieczny słownik zmiennych środowiskowych
         """
         if base_env is None:
             base_env = os.environ
-        
+
         # Filtruj tylko dozwolone zmienne
         safe_env = {
-            key: value 
-            for key, value in base_env.items() 
-            if key in self.SAFE_ENV_VARS
+            key: value for key, value in base_env.items() if key in self.SAFE_ENV_VARS
         }
-        
+
         # Dodaj PYTHONUNBUFFERED dla lepszego logowania
         safe_env["PYTHONUNBUFFERED"] = "1"
-        
+
         self.logger.debug(
             f"Sanityzowano env: {len(base_env)} -> {len(safe_env)} zmiennych "
             f"(odfiltrowano {len(base_env) - len(safe_env)} zmiennych)"
         )
-        
+
         return safe_env
 
     @kernel_function(
@@ -183,7 +194,7 @@ class McpManagerSkill(BaseSkill):
 
         # Sanityzuj env przed przekazaniem do procesu MCP (bezpieczeństwo)
         safe_env = self._sanitize_env_for_mcp()
-        
+
         tools_metadata = await self._introspect_tools(
             final_server_command,
             final_server_args,
@@ -247,15 +258,13 @@ class McpManagerSkill(BaseSkill):
                 "Biblioteka 'mcp' nie jest zainstalowana. "
                 "Zainstaluj optional dependency, aby używać introspekcji MCP."
             )
-        
+
         # Upewnij się, że env zawiera PYTHONUNBUFFERED i PYTHONPATH
         final_env = {**env, "PYTHONUNBUFFERED": "1"}
         if "PYTHONPATH" not in final_env and cwd:
             final_env["PYTHONPATH"] = str(cwd)
-        
-        server_params = StdioServerParameters(
-            command=command, args=args, env=final_env
-        )
+
+        server_params = StdioServerParameters(command=command, args=args, env=final_env)
 
         tools_list = []
         try:

@@ -674,8 +674,8 @@ Academy dashboard is available at **http://localhost:3000/academy**
 
 ---
 
-**Status:** ✅ Full monitoring stack with metrics parsing and progress tracking  
-**Version:** 2.3 (PR 090 Phase 4)  
+**Status:** ✅ Full monitoring stack with metrics parsing and progress tracking
+**Version:** 2.3 (PR 090 Phase 4)
 **Author:** Venom Team
 
 ## Changelog

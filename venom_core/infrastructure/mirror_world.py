@@ -21,6 +21,7 @@ DEFAULT_VERIFY_TIMEOUT_SECONDS = 30
 docker: Optional[Any] = None
 try:
     import docker as _docker
+
     docker = _docker
     _DOCKER_AVAILABLE = True
 except ImportError:  # pragma: no cover - środowiska bez optional dependency
@@ -61,7 +62,7 @@ class MirrorWorld:
 
         # Rejestr aktywnych instancji
         self.instances: dict[str, InstanceInfo] = {}
-        
+
         # Inicjalizacja Docker client (lazy, tylko gdy potrzebny)
         self._docker_client = None
 
@@ -70,14 +71,16 @@ class MirrorWorld:
     def _get_docker_client(self):
         """
         Pobiera Docker client (lazy initialization).
-        
+
         Returns:
             Docker client lub None jeśli Docker nie jest dostępny
         """
         if not _DOCKER_AVAILABLE:
-            logger.warning("Docker SDK nie jest zainstalowane - operacje Docker niedostępne")
+            logger.warning(
+                "Docker SDK nie jest zainstalowane - operacje Docker niedostępne"
+            )
             return None
-        
+
         if self._docker_client is None:
             try:
                 self._docker_client = docker.from_env()
@@ -85,7 +88,7 @@ class MirrorWorld:
             except Exception as e:
                 logger.warning(f"Nie udało się połączyć z Docker daemon: {e}")
                 return None
-        
+
         return self._docker_client
 
     async def _stop_and_remove_container(
@@ -93,33 +96,37 @@ class MirrorWorld:
     ) -> bool:
         """
         Zatrzymuje i usuwa kontener Docker.
-        
+
         Args:
             container_name: Nazwa kontenera do usunięcia
             force: Czy wymusić zatrzymanie (kill) po timeout
-            
+
         Returns:
             True jeśli kontener został zatrzymany i usunięty, False w przeciwnym razie
         """
         STOP_TIMEOUT_SECONDS = 10
-        
+
         client = self._get_docker_client()
         if not client:
             logger.warning(
                 f"Pomijam zatrzymanie kontenera {container_name} - Docker niedostępny"
             )
             return False
-        
+
         try:
             # Sprawdź czy kontener istnieje (w osobnym wątku)
             try:
-                container = await asyncio.to_thread(client.containers.get, container_name)
+                container = await asyncio.to_thread(
+                    client.containers.get, container_name
+                )
             except docker.errors.NotFound:
                 logger.info(f"Kontener {container_name} nie istnieje - już usunięty")
                 return True  # Uznajemy za sukces - kontener już nie istnieje
-            
+
             # Zatrzymaj kontener (w osobnym wątku) z timeout context manager
-            logger.info(f"Zatrzymywanie kontenera {container_name} (timeout={STOP_TIMEOUT_SECONDS}s)...")
+            logger.info(
+                f"Zatrzymywanie kontenera {container_name} (timeout={STOP_TIMEOUT_SECONDS}s)..."
+            )
             try:
                 async with asyncio.timeout(STOP_TIMEOUT_SECONDS):
                     await asyncio.to_thread(container.stop)
@@ -133,14 +140,14 @@ class MirrorWorld:
                     logger.info(f"✅ Kontener {container_name} zabity (kill)")
                 else:
                     raise
-            
+
             # Usuń kontener (w osobnym wątku)
             logger.info(f"Usuwanie kontenera {container_name}...")
             await asyncio.to_thread(container.remove, force=force)
             logger.info(f"✅ Kontener {container_name} usunięty")
-            
+
             return True
-            
+
         except docker.errors.NotFound:
             # Kontener już nie istnieje (race condition)
             logger.debug(f"Kontener {container_name} już nie istnieje")
@@ -148,7 +155,7 @@ class MirrorWorld:
         except Exception as e:
             logger.error(
                 f"❌ Błąd podczas zatrzymywania/usuwania kontenera {container_name}: {e}",
-                exc_info=True
+                exc_info=True,
             )
             return False
 
@@ -418,9 +425,7 @@ class MirrorWorld:
             if info.container_name:
                 logger.info(f"Zatrzymywanie kontenera {info.container_name}")
                 # Zatrzymaj i usuń kontener Docker
-                await self._stop_and_remove_container(
-                    info.container_name, force=True
-                )
+                await self._stop_and_remove_container(info.container_name, force=True)
 
             # 2. Usuń pliki jeśli cleanup=True
             if cleanup:

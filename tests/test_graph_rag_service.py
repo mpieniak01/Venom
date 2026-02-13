@@ -322,7 +322,7 @@ async def test_local_search_with_custom_limit(graph_rag_service):
             "TestType",
             properties={"name": f"Entity {i}", "description": f"Description {i}"},
         )
-    
+
     # Mock vector store to return more results than requested
     def mock_search(query, limit):
         # Return as many results as the limit
@@ -330,25 +330,25 @@ async def test_local_search_with_custom_limit(graph_rag_service):
             {"metadata": {"entity_id": f"entity_{i}"}, "score": 1.0 - (i * 0.1)}
             for i in range(min(limit, 10))
         ]
-    
+
     graph_rag_service.vector_store.search = mock_search
-    
+
     # Test with default limit (5)
     result_default = await graph_rag_service.local_search("test query")
     # Should find 5 entities (default limit)
     entity_count_default = result_default.count("entity_")
-    
+
     # Test with custom limit (8)
     result_custom = await graph_rag_service.local_search("test query", limit=8)
     entity_count_custom = result_custom.count("entity_")
-    
+
     # Custom limit should return more entities
     assert entity_count_custom >= entity_count_default
-    
+
     # Test with smaller custom limit (2)
     result_small = await graph_rag_service.local_search("test query", limit=2)
     entity_count_small = result_small.count("entity_")
-    
+
     # Smaller limit should return fewer entities
     assert entity_count_small <= entity_count_default
 
@@ -357,14 +357,14 @@ async def test_local_search_with_custom_limit(graph_rag_service):
 async def test_local_search_default_limit_unchanged(graph_rag_service):
     """Test that default behavior is unchanged (backward compatibility)."""
     graph_rag_service.add_entity("test", "Type", properties={"name": "Test"})
-    
+
     graph_rag_service.vector_store.search = Mock(
         return_value=[{"metadata": {"entity_id": "test"}}]
     )
-    
+
     # Call without limit parameter (should use default 5)
     await graph_rag_service.local_search("test query")
-    
+
     # Verify search was called with limit=5
     assert graph_rag_service.vector_store.search.call_count == 1
     call_args = graph_rag_service.vector_store.search.call_args
@@ -372,26 +372,24 @@ async def test_local_search_default_limit_unchanged(graph_rag_service):
     assert call_args[1]["limit"] == 5
 
 
-@pytest.mark.asyncio  
+@pytest.mark.asyncio
 async def test_local_search_with_max_hops_and_limit(graph_rag_service):
     """Test that both max_hops and limit work together."""
     # Create a chain of entities
     for i in range(5):
-        graph_rag_service.add_entity(f"node_{i}", "Type", properties={"name": f"Node {i}"})
+        graph_rag_service.add_entity(
+            f"node_{i}", "Type", properties={"name": f"Node {i}"}
+        )
         if i > 0:
-            graph_rag_service.add_relationship(f"node_{i-1}", f"node_{i}", "LINKS_TO")
-    
+            graph_rag_service.add_relationship(f"node_{i - 1}", f"node_{i}", "LINKS_TO")
+
     graph_rag_service.vector_store.search = Mock(
         return_value=[{"metadata": {"entity_id": "node_0"}}]
     )
-    
+
     # Test with higher limit and higher max_hops
-    result = await graph_rag_service.local_search(
-        "test query",
-        max_hops=3,
-        limit=8
-    )
-    
+    result = await graph_rag_service.local_search("test query", max_hops=3, limit=8)
+
     # Should explore multiple hops and include more nodes
     # Check for the display name "Node 0" instead of entity_id "node_0"
     assert "Node 0" in result

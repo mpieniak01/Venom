@@ -28,11 +28,11 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 def _prepare_runtime_context(request: TaskRequest, runtime_info) -> dict:
     """
     Przygotowuje kontekst runtime dla zadania.
-    
+
     Args:
         request: Żądanie zadania
         runtime_info: Informacje o runtime LLM
-        
+
     Returns:
         Słownik z kontekstem runtime
     """
@@ -46,55 +46,55 @@ def _prepare_runtime_context(request: TaskRequest, runtime_info) -> dict:
 
 
 async def _check_policy_before_provider(
-    orch: "Orchestrator", 
-    task, 
-    request: TaskRequest, 
-    policy_context: PolicyEvaluationContext
+    orch: "Orchestrator",
+    task,
+    request: TaskRequest,
+    policy_context: PolicyEvaluationContext,
 ) -> TaskResponse | None:
     """
     Sprawdza policy przed wyborem providera.
-    
+
     Args:
         orch: Orchestrator
         task: Zadanie
         request: Żądanie zadania
         policy_context: Kontekst ewaluacji policy
-        
+
     Returns:
         TaskResponse jeśli zablokowano, None jeśli można kontynuować
     """
     if not policy_gate.enabled:
         return None
-    
+
     policy_result = policy_gate.evaluate_before_provider_selection(policy_context)
-    
+
     if policy_result.decision != PolicyDecision.BLOCK:
         return None
-    
+
     # Zadanie zostało zablokowane
-    logger.warning(
-        f"Policy gate blocked task {task.id}: {policy_result.reason_code}"
-    )
+    logger.warning(f"Policy gate blocked task {task.id}: {policy_result.reason_code}")
     orch.state_manager.add_log(
         task.id, f"🚫 Policy gate blocked: {policy_result.message}"
     )
-    
+
     # Store policy block details in task context for UI retrieval
     orch.state_manager.update_context(
         task.id,
         {
             "policy_blocked": True,
-            "reason_code": policy_result.reason_code.value if policy_result.reason_code else None,
+            "reason_code": policy_result.reason_code.value
+            if policy_result.reason_code
+            else None,
             "user_message": policy_result.message,
-        }
+        },
     )
-    
+
     await orch.state_manager.update_status(
         task.id,
         TaskStatus.FAILED,
         result=policy_result.message,
     )
-    
+
     # Add assistant session history entry with policy block details
     orch._append_session_history(
         task.id,
@@ -102,14 +102,16 @@ async def _check_policy_before_provider(
         content=policy_result.message,
         session_id=request.session_id,
         policy_blocked=True,
-        reason_code=policy_result.reason_code.value if policy_result.reason_code else None,
+        reason_code=policy_result.reason_code.value
+        if policy_result.reason_code
+        else None,
         user_message=policy_result.message,
     )
-    
+
     # Increment policy blocked metric
     if metrics_module.metrics_collector:
         metrics_module.metrics_collector.increment_policy_blocked()
-    
+
     if orch.request_tracer:
         orch.request_tracer.update_status(task.id, "failed")
         orch.request_tracer.add_step(
@@ -119,7 +121,7 @@ async def _check_policy_before_provider(
             status="blocked",
             details=f"Reason: {policy_result.reason_code}",
         )
-    
+
     return TaskResponse(
         task_id=task.id,
         status=TaskStatus.FAILED,
@@ -136,7 +138,7 @@ def _init_request_trace(
 ) -> None:
     """
     Inicjalizuje tracer dla żądania.
-    
+
     Args:
         orch: Orchestrator
         task: Zadanie
@@ -145,7 +147,7 @@ def _init_request_trace(
     """
     if not orch.request_tracer:
         return
-    
+
     orch.request_tracer.create_trace(
         task.id,
         request.content,
@@ -166,13 +168,13 @@ async def _handle_queue_or_pause(
 ) -> TaskResponse | None:
     """
     Obsługuje kolejkowanie lub pauzę zadania.
-    
+
     Args:
         orch: Orchestrator
         task: Zadanie
         request: Żądanie zadania
         runtime_info: Informacje o runtime
-        
+
     Returns:
         TaskResponse jeśli zadanie zakolejkowano, None jeśli można wykonać od razu
     """
@@ -188,7 +190,7 @@ async def _handle_queue_or_pause(
         )
         logger.info("Zadanie %s zakolejkowane - system w pauzie", task.id)
         return _build_task_response(task, runtime_info)
-    
+
     # Sprawdź limity kolejki
     if SETTINGS.ENABLE_QUEUE_LIMITS:
         has_capacity, active_count = await orch.task_manager.check_capacity()
@@ -217,7 +219,7 @@ async def _handle_queue_or_pause(
             )
             _spawn_background_task(run_task_with_queue(orch, task.id, request))
             return _build_task_response(task, runtime_info)
-    
+
     return None
 
 
@@ -226,7 +228,7 @@ def _schedule_task_execution(
 ) -> None:
     """
     Planuje wykonanie zadania (fast path lub queue).
-    
+
     Args:
         orch: Orchestrator
         task_id: ID zadania
@@ -281,7 +283,7 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
         forced_tool=request.forced_tool,
         forced_provider=request.forced_provider,
     )
-    
+
     policy_response = await _check_policy_before_provider(
         orch, task, request, policy_context
     )

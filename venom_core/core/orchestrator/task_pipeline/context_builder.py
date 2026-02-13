@@ -212,15 +212,15 @@ class ContextBuilder:
     ) -> str:
         """
         Dodaje lekcje (Lessons) do kontekstu.
-        
+
         Args:
             task_id: ID zadania
             context: Kontekst do wzbogacenia
             intent: Opcjonalnie intencja dla RAG Boost (Phase B)
-        
+
         Returns:
             Wzbogacony kontekst
-            
+
         Note:
             Phase B currently applies only lessons_limit dynamically.
             vector_limit and max_hops are recorded in telemetry but not
@@ -230,13 +230,13 @@ class ContextBuilder:
         # Determine lessons limit based on intent (Phase B: RAG Retrieval Boost)
         limit = None
         boost_metadata = {}
-        
+
         if intent:
             try:
                 policy_manager = get_policy_manager()
                 policy = policy_manager.get_policy(intent)
                 limit = policy.lessons_limit
-                
+
                 # Build telemetry metadata
                 boost_metadata = {
                     "retrieval_boost.enabled": policy_manager.enabled,
@@ -246,16 +246,16 @@ class ContextBuilder:
                     "retrieval_boost.vector_limit": policy.vector_limit,
                     "retrieval_boost.max_hops": policy.max_hops,
                 }
-                
+
                 # Log RAG boost telemetry if enabled
                 if policy.mode == "boost":
                     self.orch.state_manager.add_log(
                         task_id,
-                        f"📊 RAG Boost: aktywny dla {intent} (lessons_limit={limit})"
+                        f"📊 RAG Boost: aktywny dla {intent} (lessons_limit={limit})",
                     )
                     # Store telemetry in context
                     self.orch.state_manager.update_context(task_id, boost_metadata)
-                    
+
                     # Add to tracer if available
                     if self.orch.request_tracer:
                         self.orch.request_tracer.add_step(
@@ -266,8 +266,10 @@ class ContextBuilder:
                             details=json.dumps(boost_metadata, ensure_ascii=False),
                         )
             except Exception as e:
-                logger.warning(f"Failed to get retrieval policy for intent {intent}: {e}")
-        
+                logger.warning(
+                    f"Failed to get retrieval policy for intent {intent}: {e}"
+                )
+
         return await self.orch.lessons_manager.add_lessons_to_context(
             task_id, context, limit=limit
         )

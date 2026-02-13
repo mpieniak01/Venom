@@ -108,7 +108,7 @@ async def enrich_context_with_lessons(
     # Get retrieval policy for intent
     policy_manager = get_policy_manager()
     policy = policy_manager.get_policy(intent)
-    
+
     # Apply dynamic limit
     return await self.orch.lessons_manager.add_lessons_to_context(
         task_id, context, limit=policy.lessons_limit
@@ -280,7 +280,7 @@ BOOST_ELIGIBLE_INTENTS = {
 
 Check boost activation rate:
 ```sql
-SELECT 
+SELECT
   intent,
   COUNT(*) as total_requests,
   SUM(CASE WHEN retrieval_boost.mode = 'boost' THEN 1 ELSE 0 END) as boosted,
@@ -292,7 +292,7 @@ GROUP BY intent;
 
 Monitor performance impact:
 ```sql
-SELECT 
+SELECT
   retrieval_boost.mode,
   AVG(response_time_ms) as avg_latency,
   PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY response_time_ms) as p95_latency

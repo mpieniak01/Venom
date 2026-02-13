@@ -52,7 +52,7 @@ def test_get_token_metrics_with_economist(monkeypatch, client):
                 "total_tokens": 0,
                 "total_cost_usd": 0.0,
             }
-        
+
         def calculate_cost(self, usage, model_name):
             return {"total_cost_usd": 1.23}
 
@@ -80,11 +80,11 @@ def test_get_system_metrics_error(monkeypatch, client):
 
 def test_get_token_metrics_with_per_model_breakdown(monkeypatch, client):
     """Test metrics endpoint zwraca per-model breakdown gdy TokenEconomist ma dane (PR-132A)."""
-    
+
     class DummyCollector:
         def get_metrics(self):
             return {"tokens_used_session": 500}
-    
+
     class DummyEconomistWithTracking:
         def get_model_breakdown(self):
             return {
@@ -100,24 +100,24 @@ def test_get_token_metrics_with_per_model_breakdown(monkeypatch, client):
                         "output_tokens": 150,
                         "total_tokens": 350,
                         "cost_usd": 0.0,
-                    }
+                    },
                 },
                 "total_tokens": 500,
                 "total_cost_usd": 0.00225,
             }
-    
+
     metrics_routes.set_dependencies(token_economist=DummyEconomistWithTracking())
     monkeypatch.setattr(metrics_module, "metrics_collector", DummyCollector())
-    
+
     response = client.get("/api/v1/metrics/tokens")
     assert response.status_code == 200
     data = response.json()
-    
+
     # Sprawdź czy zwrócono rzeczywiste dane per-model
     assert data["total_tokens"] == 500
     assert data["session_total_tokens"] == 500
     assert data["session_cost_usd"] == pytest.approx(0.00225)
-    
+
     # Sprawdź breakdown per-model
     assert "gpt-4o" in data["models_breakdown"]
     assert "local" in data["models_breakdown"]
@@ -125,18 +125,21 @@ def test_get_token_metrics_with_per_model_breakdown(monkeypatch, client):
     assert data["models_breakdown"]["local"]["total_tokens"] == 350
     assert data["models_breakdown"]["gpt-4o"]["cost_usd"] == pytest.approx(0.00225)
     assert data["models_breakdown"]["local"]["cost_usd"] == 0.0
-    
+
     # Nie powinno być komunikatu "note" o braku danych
-    assert "note" not in data or "brak zarejestrowanego użycia" not in data.get("note", "").lower()
+    assert (
+        "note" not in data
+        or "brak zarejestrowanego użycia" not in data.get("note", "").lower()
+    )
 
 
 def test_get_token_metrics_economist_no_data_fallback(monkeypatch, client):
     """Test fallback do estymacji gdy TokenEconomist nie ma danych per-model (PR-132A)."""
-    
+
     class DummyCollector:
         def get_metrics(self):
             return {"tokens_used_session": 200}
-    
+
     class DummyEconomistWithoutData:
         def get_model_breakdown(self):
             # Brak danych per-model
@@ -145,17 +148,17 @@ def test_get_token_metrics_economist_no_data_fallback(monkeypatch, client):
                 "total_tokens": 0,
                 "total_cost_usd": 0.0,
             }
-        
+
         def calculate_cost(self, usage, model_name):
             return {"total_cost_usd": 0.0003}
-    
+
     metrics_routes.set_dependencies(token_economist=DummyEconomistWithoutData())
     monkeypatch.setattr(metrics_module, "metrics_collector", DummyCollector())
-    
+
     response = client.get("/api/v1/metrics/tokens")
     assert response.status_code == 200
     data = response.json()
-    
+
     # Sprawdź czy zwrócono estymację
     assert data["total_tokens"] == 200
     assert "estimated" in data["models_breakdown"]

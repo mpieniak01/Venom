@@ -211,7 +211,9 @@ Odpowiedź (JSON):"""
 
     def _extract_json_block(self, result_text: str) -> str:
         if "```json" in result_text:
-            json_match = re.search(r"```json\s*(\{[^\}]*\})\s*```", result_text, re.DOTALL)
+            json_match = re.search(
+                r"```json\s*(\{[^\}]*\})\s*```", result_text, re.DOTALL
+            )
             if json_match:
                 return json_match.group(1)
         elif "```" in result_text:
@@ -423,7 +425,9 @@ Odpowiedź (JSON):"""
         Returns:
             Odpowiedź na zapytanie
         """
-        logger.info(f"Local search: {query[:100]}... (max_hops={max_hops}, limit={limit})")
+        logger.info(
+            f"Local search: {query[:100]}... (max_hops={max_hops}, limit={limit})"
+        )
 
         try:
             search_results = self.vector_store.search(query, limit=limit)

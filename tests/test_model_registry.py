@@ -489,11 +489,12 @@ async def test_model_registry_concurrent_operations(tmp_path):
 @pytest.mark.asyncio
 async def test_huggingface_list_models_integration(tmp_path):
     """Test integracji HuggingFaceModelProvider z HF Hub API (PR-132B)."""
-    from venom_core.core.model_registry import HuggingFaceModelProvider
     from unittest.mock import AsyncMock
-    
+
+    from venom_core.core.model_registry import HuggingFaceModelProvider
+
     provider = HuggingFaceModelProvider(cache_dir=str(tmp_path))
-    
+
     # Mock client.list_models
     mock_models_data = [
         {
@@ -511,11 +512,11 @@ async def test_huggingface_list_models_integration(tmp_path):
             "tags": ["text-generation", "mistral"],
         },
     ]
-    
+
     provider.client.list_models = AsyncMock(return_value=mock_models_data)
-    
+
     models = await provider.list_available_models()
-    
+
     # Sprawdź że zwrócono modele z API
     assert len(models) == 2
     assert models[0].name == "meta-llama/Llama-2-7b-hf"
@@ -525,14 +526,15 @@ async def test_huggingface_list_models_integration(tmp_path):
 @pytest.mark.asyncio
 async def test_huggingface_list_models_fallback_on_empty(tmp_path):
     """Test fallbacku do popularnych modeli gdy API zwraca pusty wynik (PR-132B)."""
-    from venom_core.core.model_registry import HuggingFaceModelProvider
     from unittest.mock import AsyncMock
-    
+
+    from venom_core.core.model_registry import HuggingFaceModelProvider
+
     provider = HuggingFaceModelProvider(cache_dir=str(tmp_path))
     provider.client.list_models = AsyncMock(return_value=[])
-    
+
     models = await provider.list_available_models()
-    
+
     # Sprawdź że zwrócono fallback modele
     assert len(models) >= 1
     assert any("gemma" in m.name.lower() or "phi" in m.name.lower() for m in models)
@@ -541,14 +543,15 @@ async def test_huggingface_list_models_fallback_on_empty(tmp_path):
 @pytest.mark.asyncio
 async def test_huggingface_list_models_fallback_on_error(tmp_path):
     """Test fallbacku do popularnych modeli przy błędzie API (PR-132B)."""
-    from venom_core.core.model_registry import HuggingFaceModelProvider
     from unittest.mock import AsyncMock
-    
+
+    from venom_core.core.model_registry import HuggingFaceModelProvider
+
     provider = HuggingFaceModelProvider(cache_dir=str(tmp_path))
     provider.client.list_models = AsyncMock(side_effect=Exception("API error"))
-    
+
     models = await provider.list_available_models()
-    
+
     # Sprawdź że zwrócono fallback modele
     assert len(models) >= 1
     assert models[0].name == "google/gemma-2b-it"
@@ -557,11 +560,12 @@ async def test_huggingface_list_models_fallback_on_error(tmp_path):
 @pytest.mark.asyncio
 async def test_huggingface_get_model_info_success(tmp_path):
     """Test pobierania info o modelu z HF Hub API (PR-132B)."""
-    from venom_core.core.model_registry import HuggingFaceModelProvider
     from unittest.mock import AsyncMock
-    
+
+    from venom_core.core.model_registry import HuggingFaceModelProvider
+
     provider = HuggingFaceModelProvider(cache_dir=str(tmp_path))
-    
+
     mock_model_data = {
         "id": "microsoft/phi-3-mini-4k-instruct",
         "downloads": 500000,
@@ -570,11 +574,11 @@ async def test_huggingface_get_model_info_success(tmp_path):
         "author": "microsoft",
         "pipeline_tag": "text-generation",
     }
-    
+
     provider.client.get_model_info = AsyncMock(return_value=mock_model_data)
-    
+
     model_info = await provider.get_model_info("microsoft/phi-3-mini-4k-instruct")
-    
+
     assert model_info is not None
     assert model_info.name == "microsoft/phi-3-mini-4k-instruct"
 
@@ -582,15 +586,16 @@ async def test_huggingface_get_model_info_success(tmp_path):
 @pytest.mark.asyncio
 async def test_huggingface_get_model_info_not_found(tmp_path):
     """Test gdy model nie istnieje w HF Hub (PR-132B)."""
-    from venom_core.core.model_registry import HuggingFaceModelProvider
     from unittest.mock import AsyncMock
-    
+
+    from venom_core.core.model_registry import HuggingFaceModelProvider
+
     provider = HuggingFaceModelProvider(cache_dir=str(tmp_path))
     provider.client.get_model_info = AsyncMock(return_value=None)
     provider.client.list_models = AsyncMock(return_value=[])
-    
+
     model_info = await provider.get_model_info("nonexistent/model")
-    
+
     # Sprawdź że zwrócono None
     assert model_info is None
 
@@ -598,16 +603,17 @@ async def test_huggingface_get_model_info_not_found(tmp_path):
 @pytest.mark.asyncio
 async def test_huggingface_get_model_info_fallback(tmp_path):
     """Test fallbacku do listy popularnych modeli (PR-132B)."""
-    from venom_core.core.model_registry import HuggingFaceModelProvider
     from unittest.mock import AsyncMock
-    
+
+    from venom_core.core.model_registry import HuggingFaceModelProvider
+
     provider = HuggingFaceModelProvider(cache_dir=str(tmp_path))
     provider.client.get_model_info = AsyncMock(side_effect=Exception("API error"))
     # Mock list_available_models zwraca fallback z gemma
     provider.client.list_models = AsyncMock(return_value=[])
-    
+
     model_info = await provider.get_model_info("google/gemma-2b-it")
-    
+
     # Sprawdź że znaleziono model w fallbacku
     assert model_info is not None
     assert model_info.name == "google/gemma-2b-it"

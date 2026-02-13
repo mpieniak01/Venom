@@ -364,6 +364,84 @@ def test_send_signal_to_validated_pid_fallback_kill_command(monkeypatch):
     assert calls and calls[0][0] == ["kill", "-s", "SIGTERM", "321"]
 
 
+def test_send_signal_to_validated_pid_rejects_invalid_signal():
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    assert habitat._send_signal_to_validated_pid(321, 999999) is False
+
+
+def test_send_signal_to_validated_pid_pidfd_success_and_close(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    calls = []
+
+    def _fake_pidfd_open(pid, flags):
+        calls.append(("open", pid, flags))
+        return 77
+
+    def _fake_pidfd_send_signal(pidfd, sig, data, flags):
+        calls.append(("send", pidfd, sig, data, flags))
+
+    def _fake_close(pidfd):
+        calls.append(("close", pidfd))
+
+    monkeypatch.setattr(gpu_habitat_mod.os, "pidfd_open", _fake_pidfd_open)
+    monkeypatch.setattr(
+        gpu_habitat_mod.signal, "pidfd_send_signal", _fake_pidfd_send_signal
+    )
+    monkeypatch.setattr(gpu_habitat_mod.os, "close", _fake_close)
+
+    assert (
+        habitat._send_signal_to_validated_pid(321, gpu_habitat_mod.signal.SIGTERM)
+        is True
+    )
+    assert ("open", 321, 0) in calls
+    assert ("close", 77) in calls
+    assert any(item[0] == "send" for item in calls)
+
+
+def test_send_signal_to_validated_pid_pidfd_oserror_and_close_error(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    calls = []
+
+    def _fake_pidfd_open(pid, flags):
+        calls.append(("open", pid, flags))
+        return 88
+
+    def _fake_pidfd_send_signal(pidfd, sig, data, flags):
+        calls.append(("send", pidfd, sig, data, flags))
+        raise OSError("cannot signal")
+
+    def _fake_close(_pidfd):
+        raise OSError("close failed")
+
+    monkeypatch.setattr(gpu_habitat_mod.os, "pidfd_open", _fake_pidfd_open)
+    monkeypatch.setattr(
+        gpu_habitat_mod.signal, "pidfd_send_signal", _fake_pidfd_send_signal
+    )
+    monkeypatch.setattr(gpu_habitat_mod.os, "close", _fake_close)
+
+    assert (
+        habitat._send_signal_to_validated_pid(321, gpu_habitat_mod.signal.SIGTERM)
+        is False
+    )
+    assert ("open", 321, 0) in calls
+    assert any(item[0] == "send" for item in calls)
+
+
+def test_send_signal_to_validated_pid_fallback_kill_command_error(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    monkeypatch.delattr(gpu_habitat_mod.os, "pidfd_open", raising=False)
+    monkeypatch.delattr(gpu_habitat_mod.signal, "pidfd_send_signal", raising=False)
+
+    def _fake_run(*_args, **_kwargs):
+        raise OSError("kill not available")
+
+    monkeypatch.setattr(gpu_habitat_mod.subprocess, "run", _fake_run)
+    assert (
+        habitat._send_signal_to_validated_pid(321, gpu_habitat_mod.signal.SIGTERM)
+        is False
+    )
+
+
 def test_get_local_job_status_uses_validated_pid_when_process_missing(monkeypatch):
     habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
     habitat.training_containers = {

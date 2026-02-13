@@ -82,9 +82,10 @@ function renderMathTokens(html: string, tokens: MathToken[]) {
       console.warn("KaTeX render error:", err);
       rendered = `<code>${escapeHtml(token.expression)}</code>`;
     }
-    // Użyj replace z escapowanymi znakami specjalnymi regex dla bezpiecznej zamiany
+    // Escape special regex characters for safe replacement
     const escapedId = token.id.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    output = output.replaceAll(new RegExp(escapedId, 'g'), rendered);
+    const idRegex = new RegExp(escapedId, 'g');
+    output = output.replaceAll(idRegex, rendered);
   }
   return output;
 }

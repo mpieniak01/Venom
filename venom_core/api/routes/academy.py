@@ -516,8 +516,8 @@ def _delete_upload_metadata(file_id: str):
         if temp_file.exists():
             try:
                 temp_file.unlink()
-            except:
-                pass
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to remove temporary metadata file {temp_file}: {cleanup_error}")
 
 
 def _compute_file_hash(file_path: Path) -> str:

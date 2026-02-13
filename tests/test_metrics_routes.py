@@ -164,3 +164,56 @@ def test_get_token_metrics_economist_no_data_fallback(monkeypatch, client):
     assert "estimated" in data["models_breakdown"]
     assert "note" in data
     assert "szacunkowe" in data["note"].lower() or "estimated" in data["note"].lower()
+
+
+def test_get_system_metrics_requires_collector(monkeypatch, client):
+    metrics_routes.set_dependencies(token_economist=None)
+    monkeypatch.setattr(metrics_module, "metrics_collector", None)
+
+    response = client.get("/api/v1/metrics/system")
+    assert response.status_code == 503
+
+
+def test_get_metrics_root_requires_collector(monkeypatch, client):
+    monkeypatch.setattr(metrics_module, "metrics_collector", None)
+    response = client.get("/api/v1/metrics")
+    assert response.status_code == 503
+
+
+def test_get_metrics_root_uses_cache(monkeypatch, client):
+    class DummyCollector:
+        def __init__(self):
+            self.calls = 0
+
+        def get_metrics(self):
+            self.calls += 1
+            return {"status": "ok", "calls": self.calls}
+
+    collector = DummyCollector()
+    metrics_routes._metrics_cache.clear()
+    monkeypatch.setattr(metrics_module, "metrics_collector", collector)
+
+    first = client.get("/api/v1/metrics")
+    second = client.get("/api/v1/metrics")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert collector.calls == 1
+
+
+def test_get_token_metrics_economist_exception_returns_500(monkeypatch, client):
+    class DummyCollector:
+        def get_metrics(self):
+            return {"tokens_used_session": 100}
+
+    class FailingEconomist:
+        def get_model_breakdown(self):
+            raise RuntimeError("cannot compute")
+
+    metrics_routes.set_dependencies(token_economist=FailingEconomist())
+    monkeypatch.setattr(metrics_module, "metrics_collector", DummyCollector())
+    metrics_routes._token_metrics_cache.clear()
+
+    response = client.get("/api/v1/metrics/tokens")
+    assert response.status_code == 500

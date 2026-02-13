@@ -427,6 +427,7 @@ class GPUHabitat(DockerHabitat):
         self.training_containers[job_name] = {
             "pid": process.pid,
             "process": process,
+            "script_path": str(script_path),
             "log_file": str(log_file),
             "dataset_path": str(dataset_path),
             "output_dir": str(output_dir),
@@ -444,6 +445,70 @@ class GPUHabitat(DockerHabitat):
             "status": "running",
             "adapter_path": str(output_dir / "adapter"),
         }
+
+    def _validate_local_job_pid(self, job_info: Dict[str, Any]) -> Optional[int]:
+        """
+        Zwraca PID tylko jeśli wskazuje na oczekiwany proces lokalnego treningu.
+        """
+        raw_pid = job_info.get("pid")
+        try:
+            pid = int(raw_pid)
+        except (TypeError, ValueError):
+            return None
+
+        if pid <= 1:
+            return None
+
+        proc_dir = Path(f"/proc/{pid}")
+        if not proc_dir.exists():
+            return None
+
+        output_dir = job_info.get("output_dir")
+        if output_dir:
+            try:
+                expected_cwd = Path(output_dir).resolve()
+                actual_cwd = (proc_dir / "cwd").resolve()
+                if actual_cwd != expected_cwd:
+                    return None
+            except OSError:
+                return None
+
+        expected_script = job_info.get("script_path")
+        if expected_script:
+            try:
+                cmdline_raw = (proc_dir / "cmdline").read_text(encoding="utf-8")
+                args = [part for part in cmdline_raw.split("\x00") if part]
+                expected_script_path = Path(expected_script).resolve()
+                has_expected_script = any(
+                    Path(arg).resolve() == expected_script_path for arg in args
+                )
+                if not has_expected_script:
+                    return None
+            except (OSError, ValueError):
+                return None
+
+        return pid
+
+    def _signal_validated_local_job(
+        self, job_name: str, job_info: Dict[str, Any], sig: signal.Signals
+    ) -> bool:
+        """
+        Wysyła sygnał tylko do zweryfikowanego procesu lokalnego joba.
+        """
+        pid = self._validate_local_job_pid(job_info)
+        if pid is None:
+            logger.warning(
+                "Pomijam wysłanie sygnału %s dla job=%s: PID niezweryfikowany",
+                sig,
+                job_name,
+            )
+            return False
+
+        try:
+            os.kill(pid, sig)
+            return True
+        except OSError:
+            return False
 
     def get_training_status(self, job_name: str) -> Dict[str, str | None]:
         """
@@ -521,13 +586,13 @@ class GPUHabitat(DockerHabitat):
             else:
                 status = "failed"
         else:
-            # Jeśli process object nie istnieje (np. po restarcie aplikacji), sprawdź PID
-            # To jest uproszczone, bo PIDy mogą być reuse'owane, ale dla dev env wystarczy.
-            try:
-                os.kill(pid, 0)  # Sprawdź czy proces istnieje
-                status = "running"  # Zakładamy że to ten proces
-            except OSError:
-                status = "finished"  # Lub failed, trudno ocenić bez exit code
+            # Po restarcie aplikacji nie mamy Popen; uznaj "running" tylko dla
+            # zweryfikowanego PID, aby nie raportować obcego procesu po PID reuse.
+            status = (
+                "running"
+                if self._validate_local_job_pid(job_info) is not None
+                else "finished"
+            )
 
         job_info["status"] = status
 
@@ -857,10 +922,7 @@ print("=" * 60)
                         except subprocess.TimeoutExpired:
                             process.kill()
                 elif pid:
-                    try:
-                        os.kill(pid, signal.SIGTERM)
-                    except OSError:
-                        pass
+                    self._signal_validated_local_job(job_name, job_info, signal.SIGTERM)
 
                 # Opcjonalnie usuń log file? Nie, zostawmy dla debugu.
             else:

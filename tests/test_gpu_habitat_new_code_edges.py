@@ -291,6 +291,7 @@ def test_signal_validated_local_job_sends_signal_only_when_pid_valid(monkeypatch
     habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
     calls = []
     monkeypatch.setattr(habitat, "_validate_local_job_pid", lambda _job: 321)
+    monkeypatch.setattr(habitat, "_is_pid_owned_by_current_user", lambda _pid: True)
     monkeypatch.setattr(
         gpu_habitat_mod.os, "kill", lambda pid, sig: calls.append((pid, sig))
     )
@@ -306,6 +307,36 @@ def test_signal_validated_local_job_sends_signal_only_when_pid_valid(monkeypatch
         "job-b", {"pid": 999}, gpu_habitat_mod.signal.SIGTERM
     )
     assert sent is False
+
+
+def test_signal_validated_local_job_rejects_disallowed_signal(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    monkeypatch.setattr(habitat, "_validate_local_job_pid", lambda _job: 321)
+    monkeypatch.setattr(habitat, "_is_pid_owned_by_current_user", lambda _pid: True)
+    called = []
+    monkeypatch.setattr(
+        gpu_habitat_mod.os, "kill", lambda pid, sig: called.append((pid, sig))
+    )
+
+    sent = habitat._signal_validated_local_job("job-c", {"pid": 321}, 999)
+    assert sent is False
+    assert called == []
+
+
+def test_signal_validated_local_job_rejects_foreign_pid_owner(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    monkeypatch.setattr(habitat, "_validate_local_job_pid", lambda _job: 321)
+    monkeypatch.setattr(habitat, "_is_pid_owned_by_current_user", lambda _pid: False)
+    called = []
+    monkeypatch.setattr(
+        gpu_habitat_mod.os, "kill", lambda pid, sig: called.append((pid, sig))
+    )
+
+    sent = habitat._signal_validated_local_job(
+        "job-d", {"pid": 321}, gpu_habitat_mod.signal.SIGTERM
+    )
+    assert sent is False
+    assert called == []
 
 
 def test_get_local_job_status_uses_validated_pid_when_process_missing(monkeypatch):

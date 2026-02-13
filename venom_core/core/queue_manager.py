@@ -200,7 +200,7 @@ class QueueManager(BaseFlow):
         # Anuluj wszystkie aktywne zadania
         tasks_cancelled = 0
         async with self._queue_lock:
-            for task_id, task_handle in list(self.active_tasks.items()):
+            for task_id, task_handle in self.active_tasks.items():
                 task_handle.cancel()
                 await self.state_manager.update_status(
                     task_id,

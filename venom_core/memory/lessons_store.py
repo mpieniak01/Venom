@@ -440,7 +440,7 @@ class LessonsStore:
 
         deleted_count = 0
         # Używamy kopii kluczy aby uniknąć RuntimeError podczas iteracji
-        for lesson_id in list(self.lessons.keys()):
+        for lesson_id in tuple(self.lessons):
             lesson = self.lessons[lesson_id]
             try:
                 # Parsuj timestamp jako ISO 8601 (obsługa 'Z' suffix i innych offsetów)
@@ -487,7 +487,7 @@ class LessonsStore:
 
         deleted_count = 0
         # Używamy kopii kluczy aby uniknąć RuntimeError podczas iteracji
-        for lesson_id in list(self.lessons.keys()):
+        for lesson_id in tuple(self.lessons):
             lesson = self.lessons[lesson_id]
             if tag in lesson.tags:
                 del self.lessons[lesson_id]
@@ -597,7 +597,7 @@ class LessonsStore:
             return 0
         cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
         deleted = 0
-        for lesson_id in list(self.lessons.keys()):
+        for lesson_id in tuple(self.lessons):
             lesson = self.lessons[lesson_id]
             ts_value = _parse_timestamp(lesson.timestamp)
             if ts_value is None:

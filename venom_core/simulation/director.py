@@ -380,7 +380,7 @@ class SimulationDirector:
         logger.info("Czyszczenie zasobów symulacji")
 
         # Zamknij aktywne sesje
-        for session_id, agent in list(self.active_simulations.items()):
+        for session_id, agent in self.active_simulations.items():
             try:
                 await agent.browser_skill.close_browser()
                 logger.debug(f"Zamknięto przeglądarkę dla sesji: {session_id}")

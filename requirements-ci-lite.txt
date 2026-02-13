@@ -7,7 +7,6 @@ uvicorn[standard]==0.40.0
 pydantic==2.11.10
 pydantic-settings==2.10.1
 python-dotenv==1.2.1
-python-multipart==0.0.20  # Required for FastAPI multipart/form-data support (file uploads)
 loguru==0.7.3
 aiofiles==25.1.0
 httpx==0.28.1

@@ -186,12 +186,7 @@ export const ChatComposer = memo(
     const modelControlClassName = compactControls
       ? controlStackClassName
       : "flex min-w-0 items-center gap-1.5";
-    const modelMinWidthCh = useMemo(() => {
-      const longest = llmModelOptions.reduce((max, option) => {
-        return Math.max(max, option.label.length);
-      }, 0);
-      return Math.max(longest + 4, 22);
-    }, [llmModelOptions]);
+
     const actionsClassName = compactControls
       ? "ml-auto flex flex-wrap items-center gap-2"
       : "ml-auto flex flex-wrap items-center justify-end gap-2";

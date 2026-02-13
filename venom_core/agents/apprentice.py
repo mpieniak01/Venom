@@ -427,14 +427,8 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         # Synchroniczna wrapper na async wywołanie
         import asyncio
         try:
-            # Sprawdź czy już mamy running loop
-            try:
-                asyncio.get_running_loop()
-                # Loop już działa - wywołaj asyncio.run w nowym kontekście
-                return asyncio.run(self._llm_response_async(request))
-            except RuntimeError:
-                # Brak running loop - po prostu użyj asyncio.run
-                return asyncio.run(self._llm_response_async(request))
+            # Zawsze używamy asyncio.run - metoda synchroniczna tworzy nowy loop
+            return asyncio.run(self._llm_response_async(request))
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania przez LLM: {e}")
             return f"❌ Błąd podczas przetwarzania żądania: {e}"

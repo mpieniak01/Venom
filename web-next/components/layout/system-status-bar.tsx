@@ -50,6 +50,7 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
       commitResetRef.current = setTimeout(() => setCommitCopied(false), NOTIFICATIONS.COMMIT_COPY_TIMEOUT_MS);
     };
 
+    // Modern Clipboard API (preferred)
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(commitValue);
@@ -61,6 +62,9 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
       }
     }
 
+    // Fallback for older browsers using textarea selection
+    // Note: document.execCommand('copy') is deprecated but kept as last resort
+    // for legacy browser support where navigator.clipboard is unavailable
     try {
       const textarea = document.createElement("textarea");
       textarea.value = commitValue;
@@ -70,6 +74,7 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
       document.body.appendChild(textarea);
       try {
         textarea.select();
+        // Deprecated API - only used as fallback when modern API unavailable
         const success = document.execCommand("copy");
         if (success) {
           markCopied();

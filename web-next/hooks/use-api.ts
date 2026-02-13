@@ -78,18 +78,20 @@ const SERVICE_UNAVAILABLE_CODES = new Set([502, 503, 504]);
 const OFFLINE_BACKOFF_MS = 15000;
 
 
-function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number) {
-  const existing = pollingRegistry.get(key) as PollingEntry<T> | undefined;
+function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number): PollingEntry<T> {
+  const existing = pollingRegistry.get(key);
   if (existing) {
-    existing.fetcher = fetcher;
-    if (interval > 0 && interval < existing.interval) {
-      existing.interval = interval;
-      if (existing.timer) {
-        clearInterval(existing.timer);
-        existing.timer = undefined;
+    // Type assertion safe here because we control the registry
+    const typedExisting = existing as PollingEntry<T>;
+    typedExisting.fetcher = fetcher;
+    if (interval > 0 && interval < typedExisting.interval) {
+      typedExisting.interval = interval;
+      if (typedExisting.timer) {
+        clearInterval(typedExisting.timer);
+        typedExisting.timer = undefined;
       }
     }
-    return existing;
+    return typedExisting;
   }
   const entry: PollingEntry<T> = {
     state: { data: null, loading: true, refreshing: false, error: null },

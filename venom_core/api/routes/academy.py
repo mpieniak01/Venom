@@ -462,59 +462,77 @@ def _file_lock(file_path: Path, mode: str = "r"):
 def _load_uploads_metadata() -> List[Dict[str, Any]]:
     """Ładuje metadane uploadów z pliku JSONL."""
     metadata_file = _get_uploads_metadata_file()
-    if not metadata_file.exists():
-        return []
-
     uploads = []
     try:
-        with open(metadata_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    uploads.append(json.loads(line))
+        with _uploads_metadata_lock():
+            if not metadata_file.exists():
+                return []
+            with open(metadata_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        uploads.append(json.loads(line))
     except Exception as e:
         logger.warning(f"Failed to load uploads metadata: {e}")
     return uploads
 
 
+def _get_uploads_metadata_lock_file() -> Path:
+    """Zwraca ścieżkę lock-file dla operacji na metadata uploads."""
+    metadata_file = _get_uploads_metadata_file()
+    return metadata_file.with_suffix(".lock")
+
+
+@contextmanager
+def _uploads_metadata_lock():
+    """
+    Globalny lock dla operacji read/write/delete na metadata uploads.
+
+    Chroni pełny cykl read-modify-write, nie tylko pojedynczy odczyt.
+    """
+    lock_file = _get_uploads_metadata_lock_file()
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    lock_file.touch(exist_ok=True)
+    with _file_lock(lock_file, "a"):
+        yield
+
+
 def _save_upload_metadata(upload_info: Dict[str, Any]):
     """Zapisuje metadata uploadu (append do JSONL) z lockowaniem."""
     metadata_file = _get_uploads_metadata_file()
-
-    # Upewnij się że plik istnieje
-    metadata_file.touch(exist_ok=True)
-
     try:
-        with _file_lock(metadata_file, "a") as f:
-            f.write(json.dumps(upload_info, ensure_ascii=False) + "\n")
+        with _uploads_metadata_lock():
+            # Upewnij się że plik istnieje
+            metadata_file.touch(exist_ok=True)
+            with open(metadata_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(upload_info, ensure_ascii=False) + "\n")
     except Exception as e:
         logger.error(f"Failed to save upload metadata: {e}")
 
 
 def _delete_upload_metadata(file_id: str):
-    """Usuwa metadata uploadu z pliku z atomiczną operacją (lock)."""
+    """Usuwa metadata uploadu z pliku z atomową operacją read-modify-write."""
     metadata_file = _get_uploads_metadata_file()
-    if not metadata_file.exists():
-        return
-
+    temp_file = metadata_file.with_suffix(".tmp")
     try:
-        # Read-modify-write w jednej operacji z lockiem
-        temp_file = metadata_file.with_suffix(".tmp")
+        with _uploads_metadata_lock():
+            if not metadata_file.exists():
+                return
 
-        with _file_lock(metadata_file, "r") as f_in:
             uploads = []
-            for line in f_in:
-                if line.strip():
-                    upload = json.loads(line)
-                    if upload.get("id") != file_id:
-                        uploads.append(upload)
+            with open(metadata_file, "r", encoding="utf-8") as f_in:
+                for line in f_in:
+                    if line.strip():
+                        upload = json.loads(line)
+                        if upload.get("id") != file_id:
+                            uploads.append(upload)
 
-        # Write to temp file first
-        with open(temp_file, "w", encoding="utf-8") as f_out:
-            for upload in uploads:
-                f_out.write(json.dumps(upload, ensure_ascii=False) + "\n")
+            # Write to temp file first
+            with open(temp_file, "w", encoding="utf-8") as f_out:
+                for upload in uploads:
+                    f_out.write(json.dumps(upload, ensure_ascii=False) + "\n")
 
-        # Atomic replace
-        temp_file.replace(metadata_file)
+            # Atomic replace
+            temp_file.replace(metadata_file)
 
     except Exception as e:
         logger.error(f"Failed to delete upload metadata: {e}")

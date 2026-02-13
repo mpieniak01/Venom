@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/components/ui/toast";
+import {
+  ConfirmDialog,
+  ConfirmDialogActions,
+  ConfirmDialogContent,
+  ConfirmDialogDescription,
+  ConfirmDialogTitle,
+} from "@/components/ui/confirm-dialog";
 import {
   curateDatasetV2,
   uploadDatasetFiles,
@@ -18,25 +26,30 @@ import {
 } from "@/lib/academy-api";
 
 export function DatasetPanel() {
+  const { pushToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DatasetResponse | null>(null);
   const [lessonsLimit, setLessonsLimit] = useState(200);
   const [gitLimit, setGitLimit] = useState(100);
-  
+
   // Upload state
   const [uploading, setUploading] = useState(false);
   const [uploads, setUploads] = useState<UploadFileInfo[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Scope selection state
   const [includeLessons, setIncludeLessons] = useState(true);
   const [includeGit, setIncludeGit] = useState(true);
   const [includeTaskHistory, setIncludeTaskHistory] = useState(false);
   const [selectedUploadIds, setSelectedUploadIds] = useState<string[]>([]);
-  
+
   // Preview state
   const [preview, setPreview] = useState<DatasetPreviewResponse | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean;
+    fileId: string | null;
+  }>({ open: false, fileId: null });
 
   // Load uploads on mount
   useEffect(() => {
@@ -63,30 +76,31 @@ export function DatasetPanel() {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-      
+
+      pushToast(result.message, result.failed > 0 ? "warning" : "success");
       // Show result message with details about failures if any
       if (result.failed > 0) {
-        const errorDetails = result.errors.map(e => `- ${e.name}: ${e.error}`).join('\n');
-        alert(`${result.message}\n\nFailed uploads:\n${errorDetails}`);
+        result.errors.forEach((entry) => {
+          pushToast(`${entry.name}: ${entry.error}`, "error");
+        });
       }
     } catch (err) {
       console.error("Failed to upload files:", err);
-      alert(err instanceof Error ? err.message : "Upload failed");
+      pushToast(err instanceof Error ? err.message : "Upload failed", "error");
     } finally {
       setUploading(false);
     }
   }
 
   async function handleDeleteUpload(fileId: string) {
-    if (!confirm("Are you sure you want to delete this file?")) return;
-
     try {
       await deleteDatasetUpload(fileId);
       await loadUploads();
       setSelectedUploadIds((prev) => prev.filter((id) => id !== fileId));
+      pushToast("File deleted", "success");
     } catch (err) {
       console.error("Failed to delete upload:", err);
-      alert("Failed to delete file");
+      pushToast("Failed to delete file", "error");
     }
   }
 
@@ -112,7 +126,7 @@ export function DatasetPanel() {
       setPreview(data);
     } catch (err) {
       console.error("Failed to preview dataset:", err);
-      alert("Failed to generate preview");
+      pushToast("Failed to generate preview", "error");
     } finally {
       setPreviewing(false);
     }
@@ -163,7 +177,7 @@ export function DatasetPanel() {
       {/* User Uploads Section */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-6">
         <h3 className="text-base font-semibold text-white mb-4">Your Files</h3>
-        
+
         <div className="space-y-4">
           <div>
             <input
@@ -219,7 +233,7 @@ export function DatasetPanel() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => handleDeleteUpload(upload.id)}
+                    onClick={() => setDeleteConfirm({ open: true, fileId: upload.id })}
                     className="text-red-400 hover:text-red-300"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -234,7 +248,7 @@ export function DatasetPanel() {
       {/* Training Scope Section */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-6">
         <h3 className="text-base font-semibold text-white mb-4">Training Scope</h3>
-        
+
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Checkbox
@@ -480,6 +494,30 @@ export function DatasetPanel() {
           Format: Alpaca JSONL (instruction-input-output). Low quality examples are filtered automatically.
         </p>
       </div>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, open }))}
+      >
+        <ConfirmDialogContent>
+          <ConfirmDialogTitle>Delete uploaded file?</ConfirmDialogTitle>
+          <ConfirmDialogDescription>
+            This action permanently removes the file from Academy uploads.
+          </ConfirmDialogDescription>
+          <ConfirmDialogActions
+            onCancel={() => setDeleteConfirm({ open: false, fileId: null })}
+            onConfirm={async () => {
+              const { fileId } = deleteConfirm;
+              setDeleteConfirm({ open: false, fileId: null });
+              if (!fileId) return;
+              await handleDeleteUpload(fileId);
+            }}
+            confirmLabel="Delete"
+            cancelLabel="Cancel"
+            confirmVariant="danger"
+          />
+        </ConfirmDialogContent>
+      </ConfirmDialog>
     </div>
   );
 }

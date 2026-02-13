@@ -168,7 +168,7 @@ export const buildSimpleRequestSteps = (
                 details: `ttft_ms=${Math.round(timing.ttftMs)}`,
             }
             : null,
-    ].filter(Boolean) as NonNullable<HistoryRequestDetail["steps"]>;
+    ].filter((step): step is NonNullable<HistoryRequestDetail["steps"]>[number] => step !== null);
     return steps.length > 0 ? steps : undefined;
 };
 

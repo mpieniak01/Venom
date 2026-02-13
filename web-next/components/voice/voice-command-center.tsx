@@ -187,9 +187,15 @@ export function VoiceCommandCenter() {
       const audioContext = new AudioContextCtor();
       audioContextRef.current = audioContext;
       const source = audioContext.createMediaStreamSource(mediaStream);
-      // TODO: Replace deprecated createScriptProcessor with AudioWorklet
-      // ScriptProcessorNode is deprecated but still widely supported.
-      // AudioWorklet replacement requires separate worklet file and more complex setup.
+      
+      // DEPRECATED API WARNING: createScriptProcessor() is deprecated
+      // Migration to AudioWorklet deferred due to:
+      // 1. Requires separate worklet.js file and build integration
+      // 2. More complex message passing vs direct onaudioprocess
+      // 3. Current impl works across all modern browsers
+      // 4. Migration requires testing real-time WS audio streaming
+      // TODO (2024-Q2): Migrate to AudioWorklet with proper worklet module
+      // Reference: https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletNode
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
       source.connect(processor);

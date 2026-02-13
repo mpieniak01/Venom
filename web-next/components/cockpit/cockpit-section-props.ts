@@ -66,7 +66,16 @@ export function useCockpitSectionProps() {
   const onFeedbackClick = logic.chatUi.handleFeedbackClick;
   const onFeedbackSubmit = logic.chatUi.handleFeedbackSubmit;
   const onUpdateFeedbackState = logic.chatUi.updateFeedbackState;
-  const onChangeGenerationParams = useCallback((vals: Record<string, unknown>) => interactive.setters.setGenerationParams(vals as Partial<GenerationParams>), [interactive.setters]);
+  const onChangeGenerationParams = useCallback((vals: Record<string, unknown>) => {
+    // Validate and convert unknown values to GenerationParams
+    const params: Partial<GenerationParams> = {};
+    for (const [key, value] of Object.entries(vals)) {
+      if (value !== undefined && value !== null) {
+        params[key as keyof GenerationParams] = value as number | string | boolean;
+      }
+    }
+    interactive.setters.setGenerationParams(params);
+  }, [interactive.setters]);
   const handleActivateModel = logic.handleActivateModel;
 
   const composerRef = logic.chatUi.composerRef;

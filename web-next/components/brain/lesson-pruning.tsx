@@ -83,7 +83,11 @@ export function LessonPruningPanel() {
                         <div className="flex flex-wrap gap-2">
                             {stats?.stats?.tag_distribution ? (
                                 Object.entries(stats.stats.tag_distribution)
-                                    .sort(([, a], [, b]) => (b as number) - (a as number))
+                                    .sort(([, a], [, b]) => {
+                                        const numA = typeof a === "number" ? a : 0;
+                                        const numB = typeof b === "number" ? b : 0;
+                                        return numB - numA;
+                                    })
                                     .slice(0, 5)
                                     .map(([tag, count]) => (
                                         <Badge key={tag} tone="neutral">

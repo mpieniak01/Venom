@@ -531,6 +531,24 @@ def test_preview_with_failed_ingest_warning(client, mock_dataset_curator, tmp_pa
             assert any("failed to ingest" in w.lower() for w in data["warnings"])
 
 
+def test_preview_returns_500_when_curator_fails(client, mock_dataset_curator):
+    """Nieoczekiwany błąd curatora powinien dać HTTP 500."""
+    mock_dataset_curator.clear.side_effect = RuntimeError("preview internal error")
+
+    response = client.post(
+        "/api/v1/academy/dataset/preview",
+        json={
+            "include_lessons": True,
+            "include_git": False,
+            "include_task_history": False,
+            "upload_ids": [],
+        },
+    )
+
+    assert response.status_code == 500
+    assert "Failed to preview dataset" in response.json()["detail"]
+
+
 # ==================== Trainable Models Tests ====================
 
 
@@ -800,6 +818,141 @@ def test_ingest_json_file(tmp_path):
 
     assert count == 2
     assert len(mock_curator.examples) == 2
+
+
+def test_ingest_json_file_single_dict(tmp_path):
+    """Test ingestion pliku JSON zawierającego pojedynczy rekord (dict)."""
+    from venom_core.api.routes.academy import _ingest_upload_file
+
+    json_file = tmp_path / "single.json"
+    json_file.write_text(
+        json.dumps(
+            {
+                "instruction": "single record instruction",
+                "input": "",
+                "output": "single record output",
+            }
+        )
+    )
+
+    mock_curator = MagicMock()
+    mock_curator.examples = []
+
+    count = _ingest_upload_file(mock_curator, json_file)
+
+    assert count == 1
+    assert len(mock_curator.examples) == 1
+
+
+def test_ingest_markdown_file(tmp_path):
+    """Test ingestion pliku markdown do rekordów instruction/output."""
+    from venom_core.api.routes.academy import _ingest_upload_file
+
+    md_file = tmp_path / "test.md"
+    md_file.write_text(
+        "Instruction one more\n\nOutput one more\n\nInstruction two more\n\nOutput two more"
+    )
+
+    mock_curator = MagicMock()
+    mock_curator.examples = []
+
+    count = _ingest_upload_file(mock_curator, md_file)
+
+    assert count == 2
+    assert len(mock_curator.examples) == 2
+
+
+def test_ingest_csv_file(tmp_path):
+    """Test ingestion pliku CSV z mapowaniem instruction/input/output."""
+    from venom_core.api.routes.academy import _ingest_upload_file
+
+    csv_file = tmp_path / "test.csv"
+    csv_file.write_text(
+        "instruction,input,output\n"
+        "Instruction one valid,,Output one valid\n"
+        "Instruction two valid,ctx,Output two valid\n"
+    )
+
+    mock_curator = MagicMock()
+    mock_curator.examples = []
+
+    count = _ingest_upload_file(mock_curator, csv_file)
+
+    assert count == 2
+    assert len(mock_curator.examples) == 2
+
+
+def test_ingest_jsonl_with_invalid_line_keeps_valid_records(tmp_path):
+    """Błędna linia JSONL nie przerywa ingestion poprawnych rekordów."""
+    from venom_core.api.routes.academy import _ingest_upload_file
+
+    jsonl_file = tmp_path / "mixed.jsonl"
+    jsonl_file.write_text(
+        '{"instruction":"valid instruction one","input":"","output":"valid output one"}\n'
+        "{invalid-json}\n"
+        '{"instruction":"valid instruction two","input":"","output":"valid output two"}\n'
+    )
+
+    mock_curator = MagicMock()
+    mock_curator.examples = []
+
+    count = _ingest_upload_file(mock_curator, jsonl_file)
+
+    assert count == 2
+    assert len(mock_curator.examples) == 2
+
+
+def test_ingest_upload_file_raises_for_missing_file(tmp_path):
+    """Brak pliku powinien propagować wyjątek z _ingest_upload_file."""
+    from venom_core.api.routes.academy import _ingest_upload_file
+
+    mock_curator = MagicMock()
+    mock_curator.examples = []
+
+    with pytest.raises(FileNotFoundError):
+        _ingest_upload_file(mock_curator, tmp_path / "missing.jsonl")
+
+
+def test_estimate_records_from_content():
+    """Test helpera szacowania rekordów dla różnych formatów."""
+    from venom_core.api.routes.academy import _estimate_records_from_content
+
+    assert (
+        _estimate_records_from_content(
+            "data.jsonl",
+            b'{"instruction":"a","output":"b"}\n\n{"instruction":"c","output":"d"}\n',
+        )
+        == 2
+    )
+    assert (
+        _estimate_records_from_content(
+            "data.json",
+            json.dumps(
+                [
+                    {"instruction": "one", "output": "one-one"},
+                    {"instruction": "two", "output": "two-two"},
+                ]
+            ).encode("utf-8"),
+        )
+        == 2
+    )
+    assert (
+        _estimate_records_from_content(
+            "data.md",
+            b"Section 1\n\nSection 2\n\nSection 3",
+        )
+        >= 1
+    )
+    assert _estimate_records_from_content("data.bin", b"\x00\x01") == 0
+
+
+def test_compute_bytes_hash_is_stable():
+    """Hash dla tych samych danych wejściowych powinien być deterministyczny."""
+    from venom_core.api.routes.academy import _compute_bytes_hash
+
+    payload = b"academy-hash-payload"
+    assert _compute_bytes_hash(payload) == _compute_bytes_hash(payload)
+    assert _compute_bytes_hash(payload) != _compute_bytes_hash(payload + b"-x")
 
 
 def test_validate_training_record():

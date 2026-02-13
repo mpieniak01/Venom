@@ -241,6 +241,15 @@ class Settings(BaseSettings):
         False  # Czy uruchamiać trening lokalnie (bez Dockera)
     )
     ACADEMY_TRAINING_IMAGE: str = "unsloth/unsloth:latest"  # Obraz Docker dla treningu
+    ACADEMY_MAX_UPLOAD_SIZE_MB: int = 25  # Maksymalny rozmiar pliku do uploadu (MB)
+    ACADEMY_MAX_UPLOADS_PER_REQUEST: int = 10  # Maksymalna liczba plików na upload
+    ACADEMY_ALLOWED_EXTENSIONS: list[str] = [
+        ".jsonl",
+        ".json",
+        ".md",
+        ".txt",
+        ".csv",
+    ]  # Dozwolone rozszerzenia plików
 
     # Konfiguracja THE_NEXUS (Distributed Mesh)
     ENABLE_NEXUS: bool = False  # Włącz tryb Nexus (master node)

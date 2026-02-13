@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional
@@ -16,6 +17,20 @@ from pydantic import BaseModel, Field, field_validator
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Import platform-specific file locking
+try:
+    import fcntl
+
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
+    try:
+        import msvcrt
+
+        HAS_MSVCRT = True
+    except ImportError:
+        HAS_MSVCRT = False
 
 router = APIRouter(prefix="/api/v1/academy", tags=["academy"])
 
@@ -220,6 +235,57 @@ class ActivateAdapterRequest(BaseModel):
     adapter_path: str
 
 
+class UploadFileInfo(BaseModel):
+    """Informacje o uploadowanym pliku."""
+
+    id: str
+    name: str
+    size_bytes: int
+    mime: str
+    created_at: str
+    status: str  # "validating", "ready", "failed"
+    records_estimate: int = 0
+    sha256: str
+    error: Optional[str] = None
+
+
+class DatasetScopeRequest(BaseModel):
+    """Request do kuracji datasetu z wybranym scope."""
+
+    lessons_limit: int = Field(default=200, ge=10, le=1000)
+    git_commits_limit: int = Field(default=100, ge=0, le=500)
+    include_task_history: bool = Field(default=False)
+    format: str = Field(default="alpaca", pattern="^(alpaca|sharegpt)$")
+    # New fields for scope selection
+    include_lessons: bool = Field(default=True)
+    include_git: bool = Field(default=True)
+    upload_ids: List[str] = Field(default_factory=list)
+    quality_profile: str = Field(
+        default="balanced", pattern="^(strict|balanced|lenient)$"
+    )
+
+
+class DatasetPreviewResponse(BaseModel):
+    """Response z preview datasetu przed curate."""
+
+    total_examples: int
+    by_source: Dict[str, int]
+    removed_low_quality: int
+    warnings: List[str] = Field(default_factory=list)
+    samples: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class TrainableModelInfo(BaseModel):
+    """Informacje o modelu trenowalnym."""
+
+    model_id: str
+    label: str
+    provider: str
+    trainable: bool
+    reason_if_not_trainable: Optional[str] = None
+    recommended: bool = False
+
+
 # ==================== Helpers ====================
 
 
@@ -321,6 +387,232 @@ def _is_path_within_base(path: Path, base: Path) -> bool:
         return False
 
 
+# ==================== Upload Utilities ====================
+
+
+def _get_uploads_dir() -> Path:
+    """Zwraca katalog uploads pod ACADEMY_TRAINING_DIR."""
+    from venom_core.config import SETTINGS
+
+    uploads_dir = Path(SETTINGS.ACADEMY_TRAINING_DIR) / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    return uploads_dir
+
+
+def _get_uploads_metadata_file() -> Path:
+    """Zwraca plik z metadanymi uploadów."""
+    uploads_dir = _get_uploads_dir()
+    metadata_file = uploads_dir / "metadata.jsonl"
+    return metadata_file
+
+
+def _validate_file_extension(filename: str) -> bool:
+    """Waliduje rozszerzenie pliku."""
+    from venom_core.config import SETTINGS
+
+    ext = Path(filename).suffix.lower()
+    return ext in SETTINGS.ACADEMY_ALLOWED_EXTENSIONS
+
+
+def _validate_file_size(size_bytes: int) -> bool:
+    """Waliduje rozmiar pliku."""
+    from venom_core.config import SETTINGS
+
+    max_bytes = SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    return size_bytes <= max_bytes
+
+
+def _check_path_traversal(filename: str) -> bool:
+    """Sprawdza czy filename nie zawiera path traversal."""
+    # Nie dopuszczamy '..' ani '/' w nazwie pliku
+    if ".." in filename or "/" in filename or "\\" in filename:
+        return False
+    return True
+
+
+@contextmanager
+def _file_lock(file_path: Path, mode: str = "r"):
+    """
+    Context manager dla atomicznego dostępu do pliku z lockowaniem.
+
+    Używa fcntl na Unix/Linux lub msvcrt na Windows.
+    Fallback: brak lockowania jeśli nie ma dostępnych bibliotek.
+    """
+    with open(file_path, mode, encoding="utf-8") as f:
+        locked = False
+        try:
+            if HAS_FCNTL:
+                # Unix/Linux file locking
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                locked = True
+            elif HAS_MSVCRT:
+                # Windows file locking
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                locked = True
+            # Jeśli brak lockowania, po prostu yield (localhost-only, niskie ryzyko)
+            yield f
+        finally:
+            if locked:
+                if HAS_FCNTL:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                elif HAS_MSVCRT:
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def _load_uploads_metadata() -> List[Dict[str, Any]]:
+    """Ładuje metadane uploadów z pliku JSONL."""
+    metadata_file = _get_uploads_metadata_file()
+    uploads = []
+    try:
+        with _uploads_metadata_lock():
+            if not metadata_file.exists():
+                return []
+            with open(metadata_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        uploads.append(json.loads(line))
+    except Exception as e:
+        logger.warning(f"Failed to load uploads metadata: {e}")
+    return uploads
+
+
+def _get_uploads_metadata_lock_file() -> Path:
+    """Zwraca ścieżkę lock-file dla operacji na metadata uploads."""
+    metadata_file = _get_uploads_metadata_file()
+    return metadata_file.with_suffix(".lock")
+
+
+@contextmanager
+def _uploads_metadata_lock():
+    """
+    Globalny lock dla operacji read/write/delete na metadata uploads.
+
+    Chroni pełny cykl read-modify-write, nie tylko pojedynczy odczyt.
+    """
+    lock_file = _get_uploads_metadata_lock_file()
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    lock_file.touch(exist_ok=True)
+    with _file_lock(lock_file, "a"):
+        yield
+
+
+def _save_upload_metadata(upload_info: Dict[str, Any]):
+    """Zapisuje metadata uploadu (append do JSONL) z lockowaniem."""
+    metadata_file = _get_uploads_metadata_file()
+    try:
+        with _uploads_metadata_lock():
+            # Upewnij się że plik istnieje
+            metadata_file.touch(exist_ok=True)
+            with open(metadata_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(upload_info, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.error("Failed to save upload metadata: %s", e, exc_info=True)
+        raise
+
+
+def _delete_upload_metadata(file_id: str):
+    """Usuwa metadata uploadu z pliku z atomową operacją read-modify-write."""
+    metadata_file = _get_uploads_metadata_file()
+    temp_file = metadata_file.with_suffix(".tmp")
+    try:
+        with _uploads_metadata_lock():
+            if not metadata_file.exists():
+                return
+
+            uploads = []
+            with open(metadata_file, "r", encoding="utf-8") as f_in:
+                for line in f_in:
+                    if line.strip():
+                        upload = json.loads(line)
+                        if upload.get("id") != file_id:
+                            uploads.append(upload)
+
+            # Write to temp file first
+            with open(temp_file, "w", encoding="utf-8") as f_out:
+                for upload in uploads:
+                    f_out.write(json.dumps(upload, ensure_ascii=False) + "\n")
+
+            # Atomic replace
+            temp_file.replace(metadata_file)
+
+    except Exception as e:
+        logger.error(f"Failed to delete upload metadata: {e}")
+        # Clean up temp file if it exists
+        if temp_file.exists():
+            try:
+                temp_file.unlink()
+            except Exception as cleanup_error:
+                logger.warning(
+                    f"Failed to remove temporary metadata file {temp_file}: {cleanup_error}"
+                )
+
+
+def _compute_file_hash(file_path: Path) -> str:
+    """Oblicza SHA256 hash pliku."""
+    import hashlib
+
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+
+def _compute_bytes_hash(content: bytes) -> str:
+    """Oblicza SHA256 hash dla bajtów w pamięci."""
+    import hashlib
+
+    return hashlib.sha256(content).hexdigest()
+
+
+def _estimate_records_from_content(filename: str, content: bytes) -> int:
+    """Szacuje liczbę rekordów na podstawie zawartości pliku w pamięci."""
+    records_estimate = 0
+    filename_lc = filename.lower()
+
+    if filename_lc.endswith(".jsonl"):
+        text = content.decode("utf-8", errors="ignore")
+        return sum(1 for line in text.splitlines() if line.strip())
+
+    if filename_lc.endswith(".json"):
+        text = content.decode("utf-8", errors="ignore")
+        data = json.loads(text)
+        if isinstance(data, list):
+            return len(data)
+        return 1
+
+    if filename_lc.endswith((".md", ".txt", ".csv")):
+        text = content.decode("utf-8", errors="ignore")
+        return max(1, len(text.split("\n\n")))
+
+    return records_estimate
+
+
+def _is_model_trainable(model_id: str) -> bool:
+    """
+    Sprawdza czy model jest trenowalny (wspiera LoRA/QLoRA).
+
+    Returns:
+        True jeśli model jest trenowalny
+    """
+    # Lista prefiksów/wzorców dla modeli trenowalnych
+    trainable_patterns = [
+        "unsloth/",
+        "Phi-3",
+        "Llama-3",
+        "Mistral",
+        "Qwen",
+        "test-",  # Allow test models in tests
+    ]
+
+    # Sprawdź czy model pasuje do któregoś wzorca
+    for pattern in trainable_patterns:
+        if pattern in model_id:
+            return True
+
+    return False
+
+
 # ==================== Endpointy ====================
 
 
@@ -330,14 +622,17 @@ def _is_path_within_base(path: Path, base: Path) -> bool:
         503: RESP_503_ACADEMY_UNAVAILABLE,
     },
 )
-async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
+async def curate_dataset(
+    request: DatasetScopeRequest,
+) -> DatasetResponse:
     """
-    Kuracja datasetu ze statystykami.
+    Kuracja datasetu ze statystykami (v2: wspiera user-defined scope).
 
     Zbiera dane z:
-    - LessonsStore (successful experiences)
-    - Git history (commits)
-    - Task history (opcjonalnie)
+    - LessonsStore (successful experiences) - jeśli include_lessons=True
+    - Git history (commits) - jeśli include_git=True
+    - Task history (opcjonalnie) - jeśli include_task_history=True
+    - User uploads - jeśli upload_ids podane
 
     Returns:
         DatasetResponse ze ścieżką i statystykami
@@ -348,22 +643,65 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
         raise _to_http_exception(e) from e
 
     try:
-        logger.info(f"Curating dataset with request: {request}")
+        logger.info(
+            "Curating dataset: lessons=%s git=%s task_history=%s uploads=%s",
+            request.include_lessons,
+            request.include_git,
+            request.include_task_history,
+            len(request.upload_ids or []),
+        )
         curator = _get_dataset_curator()
 
         # Wyczyść poprzednie przykłady
         curator.clear()
 
-        # Zbierz dane
-        lessons_count = curator.collect_from_lessons(limit=request.lessons_limit)
-        git_count = curator.collect_from_git_history(
-            max_commits=request.git_commits_limit
-        )
+        # Zbierz dane według scope
+        lessons_count = 0
+        git_count = 0
+        task_count = 0
+        uploads_count = 0
+
+        if request.include_lessons:
+            lessons_count = curator.collect_from_lessons(limit=request.lessons_limit)
+
+        if request.include_git:
+            git_count = curator.collect_from_git_history(
+                max_commits=request.git_commits_limit
+            )
 
         # Zbierz z historii zadań jeśli włączone
-        task_count = 0
         if request.include_task_history:
             task_count = curator.collect_from_task_history(max_tasks=100)
+
+        # Zbierz z uploadów
+        if request.upload_ids:
+            uploads_dir = _get_uploads_dir()
+            for upload_idx, file_id in enumerate(request.upload_ids, start=1):
+                # Validate file_id to prevent path traversal
+                if not _check_path_traversal(file_id):
+                    logger.warning(
+                        "Skipped upload entry due to invalid identifier (idx=%s)",
+                        upload_idx,
+                    )
+                    continue
+
+                file_path = uploads_dir / file_id
+                if not file_path.exists():
+                    logger.warning(
+                        "Skipped upload entry because file was not found (idx=%s)",
+                        upload_idx,
+                    )
+                    continue
+
+                try:
+                    count = _ingest_upload_file(curator, file_path)
+                    uploads_count += count
+                except Exception as e:
+                    logger.warning(
+                        "Failed to ingest upload entry (idx=%s, error=%s)",
+                        upload_idx,
+                        type(e).__name__,
+                    )
 
         # Filtruj niską jakość
         removed = curator.filter_low_quality()
@@ -382,7 +720,15 @@ async def curate_dataset(request: DatasetRequest) -> DatasetResponse:
                 "lessons_collected": lessons_count,
                 "git_commits_collected": git_count,
                 "task_history_collected": task_count,
+                "uploads_collected": uploads_count,
                 "removed_low_quality": removed,
+                "quality_profile": request.quality_profile,
+                "by_source": {
+                    "lessons": lessons_count,
+                    "git": git_count,
+                    "task_history": task_count,
+                    "uploads": uploads_count,
+                },
             },
             message=f"Dataset curated successfully: {stats['total_examples']} examples",
         )
@@ -416,7 +762,14 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
         require_localhost_request(req)
         from venom_core.config import SETTINGS
 
-        logger.info(f"Starting training with request: {request}")
+        logger.info(
+            "Starting training: base_model_set=%s lora_rank=%s num_epochs=%s learning_rate=%s batch_size=%s",
+            bool(request.base_model),
+            request.lora_rank,
+            request.num_epochs,
+            request.learning_rate,
+            request.batch_size,
+        )
         habitat = _get_gpu_habitat()
 
         # Jeśli nie podano dataset_path, użyj ostatniego
@@ -440,6 +793,17 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
 
         # Jeśli nie podano base_model, użyj domyślnego
         base_model = request.base_model or SETTINGS.ACADEMY_DEFAULT_BASE_MODEL
+
+        # Walidacja: model musi być trenowalny
+        if not _is_model_trainable(base_model):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "MODEL_NOT_TRAINABLE",
+                    "message": f"Model '{base_model}' is not trainable. Use /api/v1/academy/models/trainable to see supported models.",
+                    "reason_code": "MODEL_NOT_TRAINABLE",
+                },
+            )
 
         # Przygotuj output directory
         job_id = f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -1141,3 +1505,570 @@ async def academy_status() -> Dict[str, Any]:
         raise HTTPException(
             status_code=500, detail=f"Failed to get academy status: {str(e)}"
         )
+
+
+# ==================== Upload Endpoints ====================
+
+
+@router.post(
+    "/dataset/upload",
+    responses={
+        400: {
+            "description": "Invalid request payload (e.g., no files, too many files)."
+        },
+        403: RESP_403_LOCALHOST_ONLY,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
+async def upload_dataset_files(req: Request) -> Dict[str, Any]:
+    """
+    Upload plików użytkownika do Academy (localhost-only).
+
+    Akceptuje multipart/form-data z plikami.
+    Waliduje rozszerzenie, rozmiar, path traversal.
+
+    Returns:
+        Lista uploadowanych plików z metadata
+    """
+    try:
+        _ensure_academy_enabled()
+        require_localhost_request(req)
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    import mimetypes
+    from datetime import datetime
+
+    from venom_core.config import SETTINGS
+
+    # Parse multipart form data manually
+    form = await req.form()
+    files = form.getlist("files")
+    tag = form.get("tag", "user-upload")
+    description = form.get("description", "")
+
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    if len(files) > SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many files (max {SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST})",
+        )
+
+    uploaded_files = []
+    failed_files = []
+    uploads_dir = _get_uploads_dir()
+
+    for file in files:
+        if not hasattr(file, "filename"):
+            continue
+
+        filename = file.filename
+        if not filename:
+            continue
+
+        file_path: Path | None = None
+        try:
+            # Validate filename
+            if not _check_path_traversal(filename):
+                failed_files.append(
+                    {
+                        "name": filename,
+                        "error": "Invalid filename (path traversal)",
+                    }
+                )
+                continue
+
+            if not _validate_file_extension(filename):
+                failed_files.append(
+                    {
+                        "name": filename,
+                        "error": f"Invalid file extension. Allowed: {SETTINGS.ACADEMY_ALLOWED_EXTENSIONS}",
+                    }
+                )
+                continue
+
+            # Generate unique ID with microseconds to prevent collisions
+            file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
+            file_path = uploads_dir / file_id
+
+            try:
+                max_size_bytes = SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB * 1024 * 1024
+                size_bytes = 0
+                oversize = False
+                collected_chunks: list[bytes] = []
+
+                async with await anyio.open_file(file_path, "wb") as f:
+                    while True:
+                        chunk = await file.read(1024 * 1024)  # 1MB chunks
+                        if not chunk:
+                            break
+                        size_bytes += len(chunk)
+                        if size_bytes > max_size_bytes:
+                            oversize = True
+                            break
+                        await f.write(chunk)
+                        collected_chunks.append(chunk)
+
+                if oversize:
+                    if file_path.exists():
+                        file_path.unlink()
+                    failed_files.append(
+                        {
+                            "name": filename,
+                            "error": f"File too large ({size_bytes} bytes, max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
+                        }
+                    )
+                    continue
+
+            except Exception as e:
+                logger.error(
+                    "Failed to persist uploaded file (error=%s)",
+                    type(e).__name__,
+                )
+                failed_files.append(
+                    {
+                        "name": filename,
+                        "error": f"Failed to save file: {str(e)}",
+                    }
+                )
+                continue
+
+            # Compute hash
+            content_bytes = b"".join(collected_chunks)
+            sha256_hash = _compute_bytes_hash(content_bytes)
+
+            # Determine MIME type
+            mime_type, _ = mimetypes.guess_type(filename)
+            if not mime_type:
+                mime_type = "application/octet-stream"
+
+            # Estimate records (simple heuristic)
+            records_estimate = 0
+            try:
+                records_estimate = _estimate_records_from_content(
+                    filename, content_bytes
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to estimate records for uploaded file (error=%s)",
+                    type(e).__name__,
+                )
+
+            # Create metadata
+            upload_info = {
+                "id": file_id,
+                "name": filename,
+                "size_bytes": size_bytes,
+                "mime": mime_type,
+                "created_at": datetime.now().isoformat(),
+                "status": "ready",
+                "records_estimate": records_estimate,
+                "sha256": sha256_hash,
+                "tag": tag,
+                "description": description,
+            }
+
+            _save_upload_metadata(upload_info)
+            uploaded_files.append(upload_info)
+
+        except Exception as e:
+            # Catch any unexpected errors for this file
+            if file_path and file_path.exists():
+                try:
+                    file_path.unlink()
+                except OSError as cleanup_error:
+                    logger.warning(
+                        "Failed to cleanup orphan upload file (error=%s)",
+                        type(cleanup_error).__name__,
+                    )
+            logger.error(
+                "Unexpected error while processing uploaded file (error=%s)",
+                type(e).__name__,
+            )
+            failed_files.append(
+                {
+                    "name": filename,
+                    "error": f"Unexpected error: {str(e)}",
+                }
+            )
+            continue
+
+    logger.info(
+        f"Uploaded {len(uploaded_files)} files to Academy ({len(failed_files)} failed)"
+    )
+
+    # Return partial success response with both successful and failed files
+    success = len(uploaded_files) > 0
+    message = f"Uploaded {len(uploaded_files)} file(s) successfully"
+    if failed_files:
+        message += f", {len(failed_files)} file(s) failed"
+
+    return {
+        "success": success,
+        "uploaded": len(uploaded_files),
+        "failed": len(failed_files),
+        "files": uploaded_files,
+        "errors": failed_files,
+        "message": message,
+    }
+
+
+@router.get("/dataset/uploads")
+async def list_dataset_uploads() -> List[UploadFileInfo]:
+    """
+    Lista uploadowanych plików użytkownika.
+
+    Returns:
+        Lista UploadFileInfo
+    """
+    try:
+        _ensure_academy_enabled()
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    uploads = _load_uploads_metadata()
+    return [UploadFileInfo(**u) for u in uploads]
+
+
+@router.delete(
+    "/dataset/uploads/{file_id}",
+    responses={
+        403: RESP_403_LOCALHOST_ONLY,
+        404: {"description": "Upload not found"},
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
+async def delete_dataset_upload(file_id: str, req: Request) -> Dict[str, Any]:
+    """
+    Usuwa uploadowany plik (localhost-only).
+
+    Args:
+        file_id: ID pliku do usunięcia
+
+    Returns:
+        Status usunięcia
+    """
+    try:
+        _ensure_academy_enabled()
+        require_localhost_request(req)
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    # Validate file_id to prevent path traversal
+    if not _check_path_traversal(file_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file_id (path traversal): {file_id}",
+        )
+
+    uploads_dir = _get_uploads_dir()
+    file_path = uploads_dir / file_id
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Upload not found: {file_id}")
+
+    # Delete file
+    try:
+        file_path.unlink()
+        _delete_upload_metadata(file_id)
+        logger.info(f"Deleted upload: {file_id}")
+        return {
+            "success": True,
+            "message": f"Upload deleted: {file_id}",
+        }
+    except Exception as e:
+        logger.error(f"Failed to delete upload {file_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete upload: {str(e)}"
+        )
+
+
+@router.post(
+    "/dataset/preview",
+    responses={
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
+async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewResponse:
+    """
+    Preview datasetu przed curate z wybranym scope.
+
+    Zwraca statystyki i sample bez zapisywania datasetu.
+
+    Args:
+        request: DatasetScopeRequest z wybranym scope
+
+    Returns:
+        DatasetPreviewResponse ze statystykami i samples
+    """
+    try:
+        _ensure_academy_enabled()
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    try:
+        logger.info(
+            "Previewing dataset: lessons=%s git=%s task_history=%s uploads=%s",
+            request.include_lessons,
+            request.include_git,
+            request.include_task_history,
+            len(request.upload_ids or []),
+        )
+        curator = _get_dataset_curator()
+
+        # Wyczyść poprzednie przykłady
+        curator.clear()
+
+        # Zbierz dane według scope
+        by_source = {}
+        warnings = []
+
+        if request.include_lessons:
+            lessons_count = curator.collect_from_lessons(limit=request.lessons_limit)
+            by_source["lessons"] = lessons_count
+
+        if request.include_git:
+            git_count = curator.collect_from_git_history(
+                max_commits=request.git_commits_limit
+            )
+            by_source["git"] = git_count
+
+        if request.include_task_history:
+            task_count = curator.collect_from_task_history(max_tasks=100)
+            by_source["task_history"] = task_count
+
+        # Zbierz z uploadów
+        if request.upload_ids:
+            uploads_count = 0
+            uploads_dir = _get_uploads_dir()
+            for upload_idx, file_id in enumerate(request.upload_ids, start=1):
+                # Validate file_id to prevent path traversal
+                if not _check_path_traversal(file_id):
+                    warnings.append(f"Invalid file_id (path traversal): {file_id}")
+                    continue
+
+                file_path = uploads_dir / file_id
+                if not file_path.exists():
+                    warnings.append(f"Upload not found: {file_id}")
+                    continue
+
+                # Read and add to curator
+                try:
+                    count = _ingest_upload_file(curator, file_path)
+                    uploads_count += count
+                except Exception as e:
+                    logger.warning(
+                        "Failed to ingest upload entry during preview (idx=%s, error=%s)",
+                        upload_idx,
+                        type(e).__name__,
+                    )
+                    warnings.append(f"Failed to ingest {file_id}: {str(e)}")
+
+            by_source["uploads"] = uploads_count
+
+        # Filtruj niską jakość. quality_profile steruje progiem ostrzeżeń.
+        removed = curator.filter_low_quality()
+
+        # Statystyki
+        stats = curator.get_statistics()
+        total_examples = stats.get("total_examples", 0)
+
+        # Warnings
+        recommended_min_examples = {
+            "strict": 150,
+            "balanced": 100,
+            "lenient": 50,
+        }.get(request.quality_profile, 100)
+        if total_examples < recommended_min_examples:
+            warnings.append(
+                f"Low number of examples ({total_examples}). Recommended for profile '{request.quality_profile}': >= {recommended_min_examples}"
+            )
+
+        # Sample records
+        samples = []
+        if hasattr(curator, "examples") and curator.examples:
+            # Take first 5 examples
+            for example in curator.examples[:5]:
+                samples.append(
+                    {
+                        "instruction": example.get("instruction", ""),
+                        "input": example.get("input", ""),
+                        "output": example.get("output", "")[:200]
+                        + ("..." if len(example.get("output", "")) > 200 else ""),
+                    }
+                )
+
+        return DatasetPreviewResponse(
+            total_examples=total_examples,
+            by_source=by_source,
+            removed_low_quality=removed,
+            warnings=warnings,
+            samples=samples,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to preview dataset: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to preview dataset: {str(e)}"
+        )
+
+
+def _ingest_upload_file(curator, file_path: Path) -> int:
+    """
+    Ingestuje plik uploadowany do curator.
+
+    Returns:
+        Liczba dodanych rekordów
+    """
+    count = 0
+    ext = file_path.suffix.lower()
+
+    try:
+        if ext == ".jsonl":
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        record = json.loads(line)
+                        if _validate_training_record(record):
+                            curator.examples.append(record)
+                            count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to parse JSONL line: {e}")
+
+        elif ext == ".json":
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    for record in data:
+                        if _validate_training_record(record):
+                            curator.examples.append(record)
+                            count += 1
+                elif isinstance(data, dict) and _validate_training_record(data):
+                    curator.examples.append(data)
+                    count += 1
+
+        elif ext in [".md", ".txt"]:
+            # Parse as instruction/output pairs split by double newlines
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                sections = content.split("\n\n")
+                for i in range(0, len(sections) - 1, 2):
+                    instruction = sections[i].strip()
+                    output = sections[i + 1].strip() if i + 1 < len(sections) else ""
+                    if instruction and output:
+                        record = {
+                            "instruction": instruction,
+                            "input": "",
+                            "output": output,
+                        }
+                        curator.examples.append(record)
+                        count += 1
+
+        elif ext == ".csv":
+            import csv
+
+            with open(file_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    # Try to map CSV columns to instruction/input/output
+                    record = {
+                        "instruction": row.get("instruction", row.get("prompt", "")),
+                        "input": row.get("input", ""),
+                        "output": row.get("output", row.get("response", "")),
+                    }
+                    if _validate_training_record(record):
+                        curator.examples.append(record)
+                        count += 1
+
+    except Exception as e:
+        logger.error(f"Failed to ingest file {file_path}: {e}")
+        raise
+
+    return count
+
+
+def _validate_training_record(record: Dict[str, Any]) -> bool:
+    """Waliduje czy rekord treningowy jest poprawny."""
+    if not isinstance(record, dict):
+        return False
+
+    # Required fields
+    instruction = record.get("instruction", "")
+    output = record.get("output", "")
+
+    # Min length check
+    if len(instruction) < 10 or len(output) < 10:
+        return False
+
+    return True
+
+
+@router.get("/models/trainable")
+async def get_trainable_models() -> List[TrainableModelInfo]:
+    """
+    Lista modeli trenowalnych dla Academy.
+
+    Returns:
+        Lista TrainableModelInfo z modelami zgodnymi z LoRA/QLoRA
+    """
+    try:
+        _ensure_academy_enabled()
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    # Define trainable models
+    # In a real implementation, this would come from a registry or config
+    trainable_models = [
+        TrainableModelInfo(
+            model_id="unsloth/Phi-3-mini-4k-instruct",
+            label="Phi-3 Mini 4K (Unsloth)",
+            provider="unsloth",
+            trainable=True,
+            recommended=True,
+        ),
+        TrainableModelInfo(
+            model_id="unsloth/Phi-3.5-mini-instruct",
+            label="Phi-3.5 Mini (Unsloth)",
+            provider="unsloth",
+            trainable=True,
+            recommended=False,
+        ),
+        TrainableModelInfo(
+            model_id="unsloth/Llama-3.2-1B-Instruct",
+            label="Llama 3.2 1B (Unsloth)",
+            provider="unsloth",
+            trainable=True,
+            recommended=False,
+        ),
+        TrainableModelInfo(
+            model_id="unsloth/Llama-3.2-3B-Instruct",
+            label="Llama 3.2 3B (Unsloth)",
+            provider="unsloth",
+            trainable=True,
+            recommended=False,
+        ),
+    ]
+
+    # Add some non-trainable examples for clarity
+    non_trainable_models = [
+        TrainableModelInfo(
+            model_id="gpt-4",
+            label="GPT-4 (OpenAI)",
+            provider="openai",
+            trainable=False,
+            reason_if_not_trainable="OpenAI models do not support local LoRA training",
+        ),
+        TrainableModelInfo(
+            model_id="claude-3-opus",
+            label="Claude 3 Opus (Anthropic)",
+            provider="anthropic",
+            trainable=False,
+            reason_if_not_trainable="Anthropic models do not support local LoRA training",
+        ),
+    ]
+
+    return trainable_models + non_trainable_models

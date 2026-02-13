@@ -107,6 +107,9 @@ def test_run_training_job_rejects_missing_dataset(tmp_path, monkeypatch):
 
 def test_run_training_job_success(tmp_path, monkeypatch):
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
+    # Ensure Docker mode
+    monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_USE_LOCAL_RUNTIME", False)
+    
     training_dir = tmp_path / "training"
     models_dir = tmp_path / "models"
     training_dir.mkdir()
@@ -141,6 +144,9 @@ def test_run_training_job_pulls_image_when_missing(tmp_path, monkeypatch):
 
     def _make_client():
         return client
+
+    # Ensure Docker mode
+    monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_USE_LOCAL_RUNTIME", False)
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _make_client)
     training_dir = tmp_path / "training"
@@ -293,6 +299,8 @@ def test_get_gpu_info_with_gpu(monkeypatch):
         return GPUDockerClient()
 
     monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _make_client)
+    # Ensure Docker mode
+    monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_USE_LOCAL_RUNTIME", False)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
 
     info = habitat.get_gpu_info()
@@ -342,6 +350,8 @@ def test_gpu_fallback_disables_gpu_requests(tmp_path, monkeypatch):
     models_dir = tmp_path / "models"
     training_dir.mkdir()
     models_dir.mkdir()
+    # Ensure Docker mode
+    monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_USE_LOCAL_RUNTIME", False)
     monkeypatch.setattr(
         gpu_habitat_mod.SETTINGS,
         "ACADEMY_TRAINING_DIR",
@@ -383,3 +393,55 @@ def test_cleanup_job_nonexistent(monkeypatch):
     habitat.cleanup_job("nonexistent-job")
 
     # No assertion needed - just verify no exception
+
+
+def test_local_runtime_cpu_fallback(tmp_path, monkeypatch):
+    """Test fallbacku do CPU w trybie local runtime."""
+    # Symuluj brak GPU lokalnie (nvidia-smi fail)
+    with patch("subprocess.run", side_effect=FileNotFoundError):
+        # Wymuś local runtime
+        monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_USE_LOCAL_RUNTIME", True)
+        
+        # Inicjalizuj habitat z włączonym GPU
+        habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=True)
+        
+        # Powinien przełączyć się na CPU
+        assert habitat.enable_gpu is False
+        assert habitat.is_gpu_available() is False
+        assert habitat.use_local_runtime is True
+
+def test_local_runtime_training_execution(tmp_path, monkeypatch):
+    """Test uruchomienia treningu w trybie local runtime (Popen)."""
+    monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_USE_LOCAL_RUNTIME", True)
+    
+    # Mock subprocess.Popen
+    process_mock = SimpleNamespace(pid=12345, poll=lambda: None)
+    with patch("subprocess.Popen", return_value=process_mock) as popen_mock:
+        # Mock dependency check to pass
+        with patch.object(gpu_habitat_mod.GPUHabitat, "_check_local_dependencies"):
+            habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
+            
+            # Setup paths
+            training_dir = tmp_path / "training"
+            models_dir = tmp_path / "models"
+            training_dir.mkdir()
+            models_dir.mkdir()
+            monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_TRAINING_DIR", str(training_dir), raising=False)
+            monkeypatch.setattr(gpu_habitat_mod.SETTINGS, "ACADEMY_MODELS_DIR", str(models_dir), raising=False)
+            
+            dataset = training_dir / "data.jsonl"
+            dataset.write_text('{"instruction": "hi"}\\n', encoding="utf-8")
+            output_dir = models_dir / "out"
+            
+            # Run
+            result = habitat.run_training_job(
+                dataset_path=str(dataset),
+                base_model="model-x",
+                output_dir=str(output_dir),
+                job_name="local-job",
+            )
+            
+            assert result["status"] == "running"
+            assert result["job_name"] == "local-job"
+            assert popen_mock.called
+

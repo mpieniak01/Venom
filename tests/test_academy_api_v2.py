@@ -102,7 +102,9 @@ def test_upload_files_success(client, tmp_path):
     with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
         with patch("venom_core.api.routes.academy._save_upload_metadata"):
             # Przygotuj plik testowy
-            test_file = io.BytesIO(b'{"instruction":"test","input":"","output":"test output"}')
+            test_file = io.BytesIO(
+                b'{"instruction":"test","input":"","output":"test output"}'
+            )
             test_file.name = "test.jsonl"
 
             response = client.post(
@@ -129,8 +131,12 @@ def test_upload_invalid_extension(client, tmp_path):
             files={"files": ("malware.exe", test_file, "application/octet-stream")},
         )
 
-        assert response.status_code == 400
-        assert "Invalid file extension" in response.json()["detail"]
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert data["uploaded"] == 0
+        assert data["failed"] == 1
+        assert "Invalid file extension" in data["errors"][0]["error"]
 
 
 def test_upload_path_traversal(client, tmp_path):
@@ -144,8 +150,12 @@ def test_upload_path_traversal(client, tmp_path):
             files={"files": ("../../../etc/passwd", test_file, "text/plain")},
         )
 
-        assert response.status_code == 400
-        assert "path traversal" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert data["uploaded"] == 0
+        assert data["failed"] == 1
+        assert "path traversal" in data["errors"][0]["error"].lower()
 
 
 def test_upload_file_too_large(client, tmp_path):
@@ -161,8 +171,12 @@ def test_upload_file_too_large(client, tmp_path):
             files={"files": ("large.jsonl", test_file, "application/jsonl")},
         )
 
-        assert response.status_code == 400
-        assert "too large" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert data["uploaded"] == 0
+        assert data["failed"] == 1
+        assert "too large" in data["errors"][0]["error"].lower()
 
 
 def test_upload_localhost_only(strict_client, tmp_path):
@@ -183,12 +197,13 @@ def test_upload_localhost_only(strict_client, tmp_path):
 def test_upload_json_array_records_estimate(client, tmp_path):
     """Test uploadu JSON array - szacowanie rekordów"""
     with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
-        json_data = [{"instruction": "test1", "output": "out1"}, {"instruction": "test2", "output": "out2"}]
+        json_data = [
+            {"instruction": "test1", "output": "out1"},
+            {"instruction": "test2", "output": "out2"},
+        ]
         content = json.dumps(json_data).encode()
-        
-        files = {
-            "files": ("test.json", io.BytesIO(content), "application/json")
-        }
+
+        files = {"files": ("test.json", io.BytesIO(content), "application/json")}
 
         response = client.post("/api/v1/academy/dataset/upload", files=files)
 
@@ -204,10 +219,8 @@ def test_upload_json_single_object_records_estimate(client, tmp_path):
     with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
         json_data = {"instruction": "test", "output": "out"}
         content = json.dumps(json_data).encode()
-        
-        files = {
-            "files": ("test.json", io.BytesIO(content), "application/json")
-        }
+
+        files = {"files": ("test.json", io.BytesIO(content), "application/json")}
 
         response = client.post("/api/v1/academy/dataset/upload", files=files)
 
@@ -222,10 +235,8 @@ def test_upload_markdown_records_estimate(client, tmp_path):
     """Test uploadu Markdown - szacowanie rekordów"""
     with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
         md_content = "Question 1\n\nAnswer 1\n\nQuestion 2\n\nAnswer 2".encode()
-        
-        files = {
-            "files": ("test.md", io.BytesIO(md_content), "text/markdown")
-        }
+
+        files = {"files": ("test.md", io.BytesIO(md_content), "text/markdown")}
 
         response = client.post("/api/v1/academy/dataset/upload", files=files)
 
@@ -240,10 +251,8 @@ def test_upload_txt_records_estimate(client, tmp_path):
     """Test uploadu TXT - szacowanie rekordów"""
     with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
         txt_content = "Section 1\n\nSection 2\n\nSection 3".encode()
-        
-        files = {
-            "files": ("test.txt", io.BytesIO(txt_content), "text/plain")
-        }
+
+        files = {"files": ("test.txt", io.BytesIO(txt_content), "text/plain")}
 
         response = client.post("/api/v1/academy/dataset/upload", files=files)
 
@@ -316,7 +325,9 @@ def test_preview_dataset(client, mock_dataset_curator):
         {"instruction": "test instruction 2", "input": "", "output": "output result 2"},
     ]
 
-    with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=Path("/tmp")):
+    with patch(
+        "venom_core.api.routes.academy._get_uploads_dir", return_value=Path("/tmp")
+    ):
         response = client.post(
             "/api/v1/academy/dataset/preview",
             json={
@@ -346,7 +357,9 @@ def test_preview_with_low_examples_warning(client, mock_dataset_curator):
     )
     mock_dataset_curator.examples = []
 
-    with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=Path("/tmp")):
+    with patch(
+        "venom_core.api.routes.academy._get_uploads_dir", return_value=Path("/tmp")
+    ):
         response = client.post(
             "/api/v1/academy/dataset/preview",
             json={
@@ -366,10 +379,16 @@ def test_preview_with_uploads(client, mock_dataset_curator, tmp_path):
     """Test preview z uploadami"""
     # Create a test upload file
     upload_file = tmp_path / "test.jsonl"
-    upload_file.write_text('{"instruction": "test instruction here", "input": "", "output": "output result here"}\n')
+    upload_file.write_text(
+        '{"instruction": "test instruction here", "input": "", "output": "output result here"}\n'
+    )
 
     mock_dataset_curator.examples = [
-        {"instruction": "test instruction here", "input": "", "output": "output result here"}
+        {
+            "instruction": "test instruction here",
+            "input": "",
+            "output": "output result here",
+        }
     ]
 
     with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
@@ -396,7 +415,9 @@ def test_preview_with_long_output_truncation(client, mock_dataset_curator):
         {"instruction": "test instruction here", "input": "", "output": long_output}
     ]
 
-    with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=Path("/tmp")):
+    with patch(
+        "venom_core.api.routes.academy._get_uploads_dir", return_value=Path("/tmp")
+    ):
         response = client.post(
             "/api/v1/academy/dataset/preview",
             json={
@@ -415,7 +436,9 @@ def test_preview_with_long_output_truncation(client, mock_dataset_curator):
 
 def test_preview_with_git_and_task_history(client, mock_dataset_curator):
     """Test preview z git i task history"""
-    with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=Path("/tmp")):
+    with patch(
+        "venom_core.api.routes.academy._get_uploads_dir", return_value=Path("/tmp")
+    ):
         response = client.post(
             "/api/v1/academy/dataset/preview",
             json={
@@ -430,7 +453,9 @@ def test_preview_with_git_and_task_history(client, mock_dataset_curator):
         data = response.json()
         assert "by_source" in data
         # Check that the curator methods were called
-        mock_dataset_curator.collect_from_git_history.assert_called_once_with(max_commits=50)
+        mock_dataset_curator.collect_from_git_history.assert_called_once_with(
+            max_commits=50
+        )
         mock_dataset_curator.collect_from_task_history.assert_called_once()
 
 
@@ -490,14 +515,14 @@ def test_get_trainable_models(client):
     assert response.status_code == 200
     data = response.json()
     assert len(data) > 0
-    
+
     # Sprawdź, że są modele trainable i non-trainable
     trainable_count = sum(1 for m in data if m["trainable"])
     non_trainable_count = sum(1 for m in data if not m["trainable"])
-    
+
     assert trainable_count > 0
     assert non_trainable_count > 0
-    
+
     # Sprawdź struktur modelu
     model = data[0]
     assert "model_id" in model
@@ -535,7 +560,9 @@ def test_curate_with_uploads(client, mock_dataset_curator, tmp_path):
     """Test kuracji z uploadami"""
     # Create a test upload file
     upload_file = tmp_path / "test.jsonl"
-    upload_file.write_text('{"instruction": "test instruction here", "input": "", "output": "output result here"}\n')
+    upload_file.write_text(
+        '{"instruction": "test instruction here", "input": "", "output": "output result here"}\n'
+    )
 
     with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
         response = client.post(
@@ -637,10 +664,13 @@ def test_train_with_non_trainable_model(client, tmp_path):
 
     assert response.status_code == 400
     detail = response.json()["detail"]
-    
+
     # Sprawdź czy zwraca poprawny kod błędu
     if isinstance(detail, dict):
-        assert detail.get("error") == "MODEL_NOT_TRAINABLE" or detail.get("reason_code") == "MODEL_NOT_TRAINABLE"
+        assert (
+            detail.get("error") == "MODEL_NOT_TRAINABLE"
+            or detail.get("reason_code") == "MODEL_NOT_TRAINABLE"
+        )
     else:
         assert "not trainable" in detail.lower()
 
@@ -706,7 +736,7 @@ def test_ingest_jsonl_file(tmp_path):
     # Create a simple mock with a real list
     mock_curator = MagicMock()
     mock_curator.examples = []
-    
+
     count = _ingest_upload_file(mock_curator, jsonl_file)
 
     assert count == 2
@@ -720,16 +750,26 @@ def test_ingest_json_file(tmp_path):
     # Utwórz plik JSON (array)
     json_file = tmp_path / "test.json"
     json_file.write_text(
-        json.dumps([
-            {"instruction": "test1 instruction", "input": "", "output": "output1 text here"},
-            {"instruction": "test2 instruction", "input": "", "output": "output2 text here"},
-        ])
+        json.dumps(
+            [
+                {
+                    "instruction": "test1 instruction",
+                    "input": "",
+                    "output": "output1 text here",
+                },
+                {
+                    "instruction": "test2 instruction",
+                    "input": "",
+                    "output": "output2 text here",
+                },
+            ]
+        )
     )
 
     # Create a simple mock with a real list
     mock_curator = MagicMock()
     mock_curator.examples = []
-    
+
     count = _ingest_upload_file(mock_curator, json_file)
 
     assert count == 2

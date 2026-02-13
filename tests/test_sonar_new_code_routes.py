@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import numpy as np
 import pytest
@@ -13,6 +15,7 @@ from venom_core.agents.unsupported import UnsupportedAgent
 from venom_core.api.routes import agents as agents_routes
 from venom_core.api.routes import calendar as calendar_routes
 from venom_core.api.routes import memory_projection as memory_projection_routes
+from venom_core.api.routes import models_install as models_install_routes
 from venom_core.api.routes import nodes as nodes_routes
 from venom_core.api.routes import queue as queue_routes
 from venom_core.api.routes import strategy as strategy_routes
@@ -26,8 +29,12 @@ from venom_core.api.routes import (
     system_status,
 )
 from venom_core.core.model_router import ComplexityScore, ServiceId
+from venom_core.core.models import TaskStatus
+from venom_core.core.queue_manager import QueueManager
 from venom_core.execution.skills.chrono_skill import ChronoSkill
 from venom_core.execution.skills.complexity_skill import ComplexitySkill
+from venom_core.memory.lessons_store import Lesson, LessonsStore
+from venom_core.simulation.director import SimulationDirector
 from venom_core.utils.ttl_cache import TTLCache
 
 
@@ -316,3 +323,109 @@ async def test_complexity_skill_new_code_paths() -> None:
         "zaprojektuj system api i integrację"
     )
     assert "ryzyka" in await skill.flag_risks("zrób to szybko, pełny system i migracja")
+
+
+@pytest.mark.asyncio
+async def test_models_install_marks_active_model_by_basename(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = MagicMock()
+    manager.list_local_models = AsyncMock(
+        return_value=[
+            {"name": "custom", "path": "/models/gemma3:1b"},
+            {"name": "other", "path": "/models/other:1b"},
+        ]
+    )
+    monkeypatch.setattr(models_install_routes, "get_model_manager", lambda: manager)
+    monkeypatch.setattr(
+        models_install_routes,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(
+            provider="ollama", to_payload=lambda: {"provider": "ollama"}
+        ),
+    )
+    monkeypatch.setattr(
+        models_install_routes,
+        "probe_runtime_status",
+        AsyncMock(return_value=("ok", None)),
+    )
+    monkeypatch.setattr(models_install_routes.SETTINGS, "LLM_MODEL_NAME", "gemma3:1b")
+    monkeypatch.setattr(models_install_routes.SETTINGS, "HYBRID_LOCAL_MODEL", None)
+
+    payload = await models_install_routes.list_models()
+
+    assert payload["success"] is True
+    active_models = [model for model in payload["models"] if model.get("active")]
+    assert len(active_models) == 1
+    assert active_models[0]["name"] == "custom"
+    assert active_models[0]["source"] == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_queue_manager_emergency_stop_iterates_active_tasks() -> None:
+    state_manager = MagicMock()
+    state_manager.update_status = AsyncMock()
+    state_manager.get_all_tasks.return_value = []
+
+    manager = QueueManager(state_manager=state_manager)
+    task_id = uuid4()
+    fake_task = MagicMock()
+    manager.active_tasks[task_id] = fake_task
+
+    result = await manager.emergency_stop()
+
+    fake_task.cancel.assert_called_once()
+    state_manager.update_status.assert_awaited_once_with(
+        task_id,
+        TaskStatus.FAILED,
+        result="🚨 Zadanie przerwane przez Emergency Stop",
+    )
+    assert result["cancelled"] == 1
+    assert result["paused"] is True
+
+
+@pytest.mark.asyncio
+async def test_simulation_director_cleanup_closes_sessions_and_stack() -> None:
+    director = SimulationDirector.__new__(SimulationDirector)
+    ok_agent = SimpleNamespace(browser_skill=SimpleNamespace(close_browser=AsyncMock()))
+    err_agent = SimpleNamespace(
+        browser_skill=SimpleNamespace(close_browser=AsyncMock(side_effect=RuntimeError))
+    )
+    director.active_simulations = {"s1": ok_agent, "s2": err_agent}
+    director.stack_manager = MagicMock(
+        destroy_stack=MagicMock(return_value=(True, "ok"))
+    )
+
+    await director.cleanup(stack_name="demo-stack")
+
+    ok_agent.browser_skill.close_browser.assert_awaited_once()
+    err_agent.browser_skill.close_browser.assert_awaited_once()
+    director.stack_manager.destroy_stack.assert_called_once()
+    assert director.active_simulations == {}
+
+
+def test_lessons_store_delete_and_prune_iterate_over_snapshot(tmp_path) -> None:
+    store = LessonsStore(storage_path=str(tmp_path / "lessons.json"), auto_save=False)
+    now = datetime.now(timezone.utc)
+    lesson_old = Lesson(
+        situation="old",
+        action="act",
+        result="res",
+        feedback="fb",
+        tags=["a"],
+        timestamp=(now - timedelta(days=7)).isoformat(),
+    )
+    lesson_new = Lesson(
+        situation="new",
+        action="act",
+        result="res",
+        feedback="fb",
+        tags=["keep"],
+        timestamp=now.isoformat(),
+    )
+    store.add_lesson(lesson_old)
+    store.add_lesson(lesson_new)
+
+    assert store.delete_by_tag("a") == 1
+    assert store.prune_by_ttl(3) == 0
+    assert len(store.lessons) == 1

@@ -139,7 +139,7 @@ async def list_models():
             getattr(SETTINGS, "HYBRID_LOCAL_MODEL", None),
         }
         active_names = {name for name in active_names if name}
-        active_names.update({Path(name).name for name in list(active_names)})
+        active_names.update({Path(name).name for name in active_names})
 
         for model in models:
             candidate_names = {model.get("name")}

@@ -207,7 +207,7 @@ export function DatasetPanel() {
                   <div className="flex-1">
                     <p className="text-sm text-white">{upload.name}</p>
                     <p className="text-xs text-zinc-400">
-                      {(upload.size_bytes / 1024).toFixed(1)} KB • ~{upload.records_estimate} rekordów • {new Date(upload.created_at).toLocaleString("pl-PL")}
+                      {(upload.size_bytes / 1024).toFixed(1)} KB • ~{upload.records_estimate} records • {new Date(upload.created_at).toLocaleString()}
                     </p>
                   </div>
                   <Button

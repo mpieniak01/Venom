@@ -291,8 +291,24 @@ export async function uploadDatasetFiles(params: {
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Upload failed");
+    let errorMessage = "Upload failed";
+    try {
+      const error = await response.json();
+      if (error && error.message) {
+        errorMessage = error.message;
+      }
+    } catch {
+      // If JSON parsing fails, use text or default message
+      try {
+        const text = await response.text();
+        if (text) {
+          errorMessage = text;
+        }
+      } catch {
+        // Use default message
+      }
+    }
+    throw new Error(errorMessage);
   }
 
   return response.json();

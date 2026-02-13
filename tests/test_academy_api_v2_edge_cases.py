@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+from venom_core.api.routes import academy as academy_routes
 
 # ==================== Ingest File Edge Cases ====================
 
@@ -249,3 +251,80 @@ def test_validate_training_record_valid():
         }
     )
     assert result is True
+
+
+# ==================== Upload Metadata Helpers ====================
+
+
+def test_upload_metadata_roundtrip_with_lock(tmp_path):
+    """Zapis i odczyt metadata uploadów powinien działać poprawnie."""
+    with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
+        academy_routes._save_upload_metadata(
+            {
+                "id": "file-1",
+                "name": "a.jsonl",
+                "size_bytes": 10,
+                "mime": "application/jsonl",
+                "created_at": "2026-02-13T12:00:00",
+                "status": "ready",
+                "records_estimate": 1,
+                "sha256": "abc",
+            }
+        )
+        academy_routes._save_upload_metadata(
+            {
+                "id": "file-2",
+                "name": "b.txt",
+                "size_bytes": 12,
+                "mime": "text/plain",
+                "created_at": "2026-02-13T12:00:01",
+                "status": "ready",
+                "records_estimate": 2,
+                "sha256": "def",
+            }
+        )
+
+        uploads = academy_routes._load_uploads_metadata()
+
+    assert len(uploads) == 2
+    assert {u["id"] for u in uploads} == {"file-1", "file-2"}
+
+
+def test_load_uploads_metadata_ignores_invalid_lines(tmp_path):
+    """Uszkodzona linia metadata nie powinna wywalić całego odczytu."""
+    uploads_dir = tmp_path / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    metadata_file = uploads_dir / "metadata.jsonl"
+    metadata_file.write_text('{"id":"ok"}\nINVALID\n', encoding="utf-8")
+
+    with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
+        uploads = academy_routes._load_uploads_metadata()
+
+    # Funkcja zachowuje poprawnie sparsowane rekordy sprzed błędnej linii.
+    assert uploads == [{"id": "ok"}]
+
+
+def test_delete_upload_metadata_filters_selected_id(tmp_path):
+    """Usunięcie metadata powinno zostawić tylko pozostałe rekordy."""
+    with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
+        academy_routes._save_upload_metadata({"id": "keep", "name": "k"})
+        academy_routes._save_upload_metadata({"id": "drop", "name": "d"})
+
+        academy_routes._delete_upload_metadata("drop")
+        uploads = academy_routes._load_uploads_metadata()
+
+    assert len(uploads) == 1
+    assert uploads[0]["id"] == "keep"
+
+
+def test_delete_upload_metadata_cleanup_temp_on_replace_error(tmp_path):
+    """Przy błędzie replace plik tymczasowy powinien zostać posprzątany."""
+    with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
+        academy_routes._save_upload_metadata({"id": "x", "name": "x"})
+        metadata_file = academy_routes._get_uploads_metadata_file()
+        tmp_file = metadata_file.with_suffix(".tmp")
+
+        with patch("pathlib.Path.replace", side_effect=OSError("replace-fail")):
+            academy_routes._delete_upload_metadata("x")
+
+        assert not tmp_file.exists()

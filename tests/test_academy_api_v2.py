@@ -205,6 +205,60 @@ def test_upload_file_too_large(client, tmp_path):
         assert "too large" in data["errors"][0]["error"].lower()
 
 
+def test_upload_without_files_returns_400(client):
+    """Request bez files powinien zwrócić 400."""
+    response = client.post("/api/v1/academy/dataset/upload", data={"tag": "x"})
+
+    assert response.status_code == 400
+    assert "No files provided" in response.json()["detail"]
+
+
+def test_upload_too_many_files_returns_400(client):
+    """Przekroczenie limitu liczby plików powinno zwrócić 400."""
+    with patch("venom_core.config.SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST", 1):
+        response = client.post(
+            "/api/v1/academy/dataset/upload",
+            files=[
+                ("files", ("a.txt", io.BytesIO(b"a"), "text/plain")),
+                ("files", ("b.txt", io.BytesIO(b"b"), "text/plain")),
+            ],
+        )
+
+    assert response.status_code == 400
+    assert "Too many files" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_upload_skips_non_file_objects_and_empty_filenames(tmp_path):
+    """Gałęzie skip: brak `filename` oraz pusty `filename`."""
+
+    class _Form:
+        def __init__(self):
+            self._items = [object(), type("F", (), {"filename": ""})()]
+
+        def getlist(self, key):
+            assert key == "files"
+            return self._items
+
+        def get(self, _key, default=""):
+            return default
+
+    class _Req:
+        async def form(self):
+            return _Form()
+
+    with (
+        patch("venom_core.api.routes.academy._ensure_academy_enabled"),
+        patch("venom_core.api.routes.academy.require_localhost_request"),
+        patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path),
+    ):
+        result = await academy_routes.upload_dataset_files(_Req())
+
+    assert result["success"] is False
+    assert result["uploaded"] == 0
+    assert result["failed"] == 0
+
+
 def test_upload_localhost_only(strict_client, tmp_path):
     """Test że upload wymaga localhost"""
     with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
@@ -338,6 +392,28 @@ def test_delete_upload_not_found(client, tmp_path):
         response = client.delete("/api/v1/academy/dataset/uploads/nonexistent.jsonl")
 
         assert response.status_code == 404
+
+
+def test_delete_upload_invalid_file_id_returns_400(client):
+    """Path traversal w file_id powinien zwrócić 400."""
+    response = client.delete("/api/v1/academy/dataset/uploads/bad\\secret.txt")
+    assert response.status_code == 400
+    assert "path traversal" in response.json()["detail"].lower()
+
+
+def test_delete_upload_returns_500_when_unlink_fails(client, tmp_path):
+    """Błąd unlink powinien zwrócić HTTP 500."""
+    test_file = tmp_path / "locked.jsonl"
+    test_file.write_text("test")
+
+    with (
+        patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path),
+        patch("pathlib.Path.unlink", side_effect=OSError("locked")),
+    ):
+        response = client.delete("/api/v1/academy/dataset/uploads/locked.jsonl")
+
+    assert response.status_code == 500
+    assert "Failed to delete upload" in response.json()["detail"]
 
 
 # ==================== Preview Tests ====================
@@ -529,6 +605,43 @@ def test_preview_with_failed_ingest_warning(client, mock_dataset_curator, tmp_pa
             # Should have warning about failed ingest
             assert len(data["warnings"]) > 0
             assert any("failed to ingest" in w.lower() for w in data["warnings"])
+
+
+def test_preview_warns_on_upload_id_path_traversal(client):
+    """upload_ids z path traversal powinien dać warning."""
+    response = client.post(
+        "/api/v1/academy/dataset/preview",
+        json={
+            "include_lessons": False,
+            "include_git": False,
+            "upload_ids": ["../bad.jsonl"],
+        },
+    )
+
+    assert response.status_code == 200
+    warnings = response.json()["warnings"]
+    assert any("path traversal" in w.lower() for w in warnings)
+
+
+def test_preview_uses_strict_quality_profile_threshold(client, mock_dataset_curator):
+    """Dla strict próg warningu to >=150."""
+    mock_dataset_curator.get_statistics = MagicMock(
+        return_value={"total_examples": 120}
+    )
+    mock_dataset_curator.examples = []
+
+    response = client.post(
+        "/api/v1/academy/dataset/preview",
+        json={
+            "include_lessons": False,
+            "include_git": False,
+            "quality_profile": "strict",
+        },
+    )
+
+    assert response.status_code == 200
+    warnings = response.json()["warnings"]
+    assert any("profile 'strict'" in w for w in warnings)
 
 
 def test_preview_returns_500_when_curator_fails(client, mock_dataset_curator):

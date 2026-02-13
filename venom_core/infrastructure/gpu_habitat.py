@@ -1,6 +1,9 @@
 """Moduł: gpu_habitat - Siedlisko Treningowe z obsługą GPU."""
 
 import importlib
+import os
+import signal
+import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -35,13 +38,19 @@ class GPUHabitat(DockerHabitat):
     # Domyślny obraz treningowy (Unsloth - bardzo szybki fine-tuning)
     DEFAULT_TRAINING_IMAGE = "unsloth/unsloth:latest"
 
-    def __init__(self, enable_gpu: bool = True, training_image: Optional[str] = None):
+    def __init__(
+        self,
+        enable_gpu: bool = True,
+        training_image: Optional[str] = None,
+        use_local_runtime: bool = False,
+    ):
         """
         Inicjalizacja GPUHabitat.
 
         Args:
             enable_gpu: Czy włączyć wsparcie GPU (domyślnie True)
             training_image: Obraz Docker dla treningu (domyślnie unsloth)
+            use_local_runtime: Czy używać lokalnego środowiska Python (bez Dockera)
 
         Raises:
             RuntimeError: Jeśli Docker nie jest dostępny
@@ -53,17 +62,24 @@ class GPUHabitat(DockerHabitat):
             marker typologiczny, a nie dla dziedziczenia funkcjonalności.
         """
         # Inicjalizacja klienta Docker (bez tworzenia standardowego kontenera)
-        if docker is None:
-            error_msg = "Docker SDK nie jest dostępny"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-        try:
-            self.client = docker.from_env()
-            logger.info("Połączono z Docker daemon (GPU mode)")
-        except Exception as e:
-            error_msg = f"Nie można połączyć się z Docker daemon: {e}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg) from e
+        # Jeśli używamy local runtime, Docker nie jest wymagany (chyba że do innych celów)
+        self.use_local_runtime = use_local_runtime or SETTINGS.ACADEMY_USE_LOCAL_RUNTIME
+
+        if not self.use_local_runtime:
+            if docker is None:
+                error_msg = "Docker SDK nie jest dostępny"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            try:
+                self.client = docker.from_env()
+                logger.info("Połączono z Docker daemon (GPU mode)")
+            except Exception as e:
+                error_msg = f"Nie można połączyć się z Docker daemon: {e}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg) from e
+        else:
+            self.client = None
+            logger.info("Tryb Local Runtime aktywny (Docker pominięty dla treningu)")
 
         self.enable_gpu = enable_gpu
         self.training_image = training_image or self.DEFAULT_TRAINING_IMAGE
@@ -74,7 +90,12 @@ class GPUHabitat(DockerHabitat):
 
         # Sprawdź dostępność GPU
         if self.enable_gpu:
-            self._gpu_available = self._check_gpu_availability()
+            if self.use_local_runtime:
+                # W trybie lokalnym sprawdź tylko czy PyTorch widzi GPU (nvidia-smi check opcjonalny)
+                self._gpu_available = self._check_local_gpu_availability()
+            else:
+                self._gpu_available = self._check_gpu_availability()
+
             if not self._gpu_available:
                 # Deterministyczny fallback CPU: nie próbujemy już wymuszać GPU.
                 self.enable_gpu = False
@@ -84,8 +105,47 @@ class GPUHabitat(DockerHabitat):
 
         logger.info(
             f"GPUHabitat zainicjalizowany (GPU={'enabled' if enable_gpu else 'disabled'}, "
-            f"image={self.training_image})"
+            f"image={self.training_image}, local_runtime={self.use_local_runtime})"
         )
+
+    def _check_local_gpu_availability(self) -> bool:
+        """Sprawdza dostępność GPU w trybie lokalnym (nvidia-smi)."""
+        try:
+            subprocess.run(["nvidia-smi"], check=True, capture_output=True)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    def _check_local_dependencies(self) -> None:
+        """Sprawdza czy wymagane biblioteki są zainstalowane lokalnie."""
+        # Podstawowe biblioteki (wymagane zawsze)
+        core_packages = ["transformers", "peft", "trl", "datasets", "accelerate"]
+        missing = []
+
+        for package in core_packages:
+            try:
+                importlib.import_module(package)
+            except ImportError:
+                missing.append(package)
+
+        if missing:
+            raise RuntimeError(
+                f"Brak wymaganych bibliotek do treningu: {', '.join(missing)}. "
+                f"Zainstaluj je komendą: pip install {' '.join(missing)}"
+            )
+
+        # Sprawdź Unsloth (opcjonalne, tylko dla GPU)
+        try:
+            importlib.import_module("unsloth")
+            self._has_unsloth = True
+        except ImportError:
+            self._has_unsloth = False
+
+        if self.enable_gpu and not self._has_unsloth:
+            logger.warning(
+                "Biblioteka 'unsloth' nie jest zainstalowana. Trening zostanie uruchomiony "
+                "bez optymalizacji Unsloth (wolniej/CPU fallback możliwy)."
+            )
 
     def _check_gpu_availability(self) -> bool:
         """
@@ -221,11 +281,43 @@ class GPUHabitat(DockerHabitat):
         job_name = job_name or f"training_{dataset_path_obj.stem}"
 
         logger.info(
-            f"Uruchamianie treningu: job={job_name}, model={base_model}, "
-            f"dataset={dataset_path_obj.name}"
+            f"Uruchamianie treningu ({'LOCAL' if self.use_local_runtime else 'DOCKER'}): "
+            f"job={job_name}, model={base_model}, dataset={dataset_path_obj.name}"
         )
 
         try:
+            # Generuj skrypt
+            use_unsloth = self.enable_gpu and getattr(
+                self, "_has_unsloth", True
+            )  # Default True for Docker
+
+            training_script = self._generate_training_script(
+                dataset_path=str(dataset_path_obj)
+                if self.use_local_runtime
+                else "/workspace/dataset.jsonl",
+                base_model=base_model,
+                output_dir=str(output_dir_obj)
+                if self.use_local_runtime
+                else "/workspace/output",
+                lora_rank=lora_rank,
+                learning_rate=learning_rate,
+                num_epochs=num_epochs,
+                max_seq_length=max_seq_length,
+                batch_size=batch_size,
+                use_unsloth=use_unsloth,
+            )
+
+            # Zapisz skrypt
+            script_path = output_dir_obj / "train_script.py"
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(training_script)
+
+            if self.use_local_runtime:
+                return self._run_local_training_job(
+                    job_name, script_path, output_dir_obj, dataset_path_obj
+                )
+
+            # --- DOCKER MODE ---
             # Przygotuj obraz treningowy
             try:
                 self.client.images.get(self.training_image)
@@ -235,21 +327,12 @@ class GPUHabitat(DockerHabitat):
                 self.client.images.pull(self.training_image)
 
             # Przygotuj skrypt treningowy
-            training_script = self._generate_training_script(
-                dataset_path="/workspace/dataset.jsonl",
-                base_model=base_model,
-                output_dir="/workspace/output",
-                lora_rank=lora_rank,
-                learning_rate=learning_rate,
-                num_epochs=num_epochs,
-                max_seq_length=max_seq_length,
-                batch_size=batch_size,
-            )
+            # (Generowanie przeniesione wyżej aby obsłużyć oba tryby)
 
-            # Zapisz skrypt w output_dir
-            script_path = output_dir_obj / "train_script.py"
-            with open(script_path, "w", encoding="utf-8") as f:
-                f.write(training_script)
+            # --- KONIEC modification ---
+            # Oryginalny kod generował skrypt tutaj, ale teraz robimy to wcześniej.
+            # Dla Dockera ścieżki w skrypcie muszą być kontenerowe (/workspace/...),
+            # co obsłużyliśmy w warunku wyżej.
 
             # Przygotuj volumes
             volumes = {
@@ -314,6 +397,54 @@ class GPUHabitat(DockerHabitat):
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
+    def _run_local_training_job(
+        self, job_name: str, script_path: Path, output_dir: Path, dataset_path: Path
+    ) -> Dict[str, str]:
+        """Uruchamia proces treningowy lokalnie (subprocess)."""
+        # Sprawdź zależności
+        self._check_local_dependencies()
+
+        # Log file
+        log_file = output_dir / "training.log"
+
+        # Environment vars
+        env = os.environ.copy()
+        if self.enable_gpu:
+            env["CUDA_VISIBLE_DEVICES"] = "0"
+
+        # Uruchom proces
+        with open(log_file, "w") as f_out:
+            process = subprocess.Popen(
+                ["python3", str(script_path)],
+                stdout=f_out,
+                stderr=subprocess.STDOUT,
+                env=env,
+                cwd=str(output_dir),
+                start_new_session=True,  # Odłącz od procesu rodzica
+            )
+
+        # Rejestruj job
+        self.training_containers[job_name] = {
+            "pid": process.pid,
+            "process": process,
+            "log_file": str(log_file),
+            "dataset_path": str(dataset_path),
+            "output_dir": str(output_dir),
+            "status": "running",
+            "type": "local",
+        }
+
+        logger.info(
+            f"Proces treningowy uruchomiony lokalnie: PID={process.pid} (job={job_name})"
+        )
+
+        return {
+            "container_id": f"local-{process.pid}",  # Fake ID dla kompatybilności
+            "job_name": job_name,
+            "status": "running",
+            "adapter_path": str(output_dir / "adapter"),
+        }
+
     def get_training_status(self, job_name: str) -> Dict[str, str | None]:
         """
         Pobiera status zadania treningowego.
@@ -330,6 +461,10 @@ class GPUHabitat(DockerHabitat):
             KeyError: Jeśli job nie istnieje
         """
         job_info = self.training_containers[job_name]
+
+        if job_info.get("type") == "local":
+            return self._get_local_job_status(job_name)
+
         container = self._get_job_container(job_name)
 
         try:
@@ -369,6 +504,52 @@ class GPUHabitat(DockerHabitat):
                 "container_id": container.id if hasattr(container, "id") else None,
             }
 
+    def _get_local_job_status(self, job_name: str) -> Dict[str, Optional[str]]:
+        """Pobiera status lokalnego procesu treningowego."""
+        job_info = self.training_containers[job_name]
+        pid = job_info.get("pid")
+        process = job_info.get("process")  # Popen object
+        log_file = Path(job_info.get("log_file", ""))
+
+        status = "unknown"
+        if process:
+            retcode = process.poll()
+            if retcode is None:
+                status = "running"
+            elif retcode == 0:
+                status = "finished"
+            else:
+                status = "failed"
+        else:
+            # Jeśli process object nie istnieje (np. po restarcie aplikacji), sprawdź PID
+            # To jest uproszczone, bo PIDy mogą być reuse'owane, ale dla dev env wystarczy.
+            try:
+                os.kill(pid, 0)  # Sprawdź czy proces istnieje
+                status = "running"  # Zakładamy że to ten proces
+            except OSError:
+                status = "finished"  # Lub failed, trudno ocenić bez exit code
+
+        job_info["status"] = status
+
+        # Pobierz logi
+        logs = ""
+        if log_file.exists():
+            try:
+                # Ostatnie 2000 znaków
+                file_size = log_file.stat().st_size
+                with open(log_file, "r") as f:
+                    if file_size > 4000:
+                        f.seek(file_size - 4000)
+                    logs = f.read()
+            except Exception as e:
+                logs = f"Error reading logs: {e}"
+
+        return {
+            "status": status,
+            "logs": logs,
+            "container_id": f"local-{pid}",
+        }
+
     def _generate_training_script(
         self,
         dataset_path: str,
@@ -379,16 +560,46 @@ class GPUHabitat(DockerHabitat):
         num_epochs: int,
         max_seq_length: int,
         batch_size: int,
+        use_unsloth: bool = True,
     ) -> str:
         """
-        Generuje skrypt treningowy Pythona dla Unsloth.
-
-        Args:
-            Parametry treningu (patrz run_training_job)
-
-        Returns:
-            Kod źródłowy skryptu Pythona
+        Generuje skrypt treningowy Pythona.
         """
+        if use_unsloth:
+            return self._generate_unsloth_script(
+                dataset_path,
+                base_model,
+                output_dir,
+                lora_rank,
+                learning_rate,
+                num_epochs,
+                max_seq_length,
+                batch_size,
+            )
+        else:
+            return self._generate_hf_script(
+                dataset_path,
+                base_model,
+                output_dir,
+                lora_rank,
+                learning_rate,
+                num_epochs,
+                max_seq_length,
+                batch_size,
+            )
+
+    def _generate_unsloth_script(
+        self,
+        dataset_path: str,
+        base_model: str,
+        output_dir: str,
+        lora_rank: int,
+        learning_rate: float,
+        num_epochs: int,
+        max_seq_length: int,
+        batch_size: int,
+    ) -> str:
+        """Generuje skrypt dla Unsloth (GPU optimized)."""
         script = f'''#!/usr/bin/env python3
 """
 Skrypt treningowy Venom - wygenerowany automatycznie przez GPUHabitat.
@@ -505,9 +716,123 @@ print("=" * 60)
 '''
         return script
 
+    def _generate_hf_script(
+        self,
+        dataset_path: str,
+        base_model: str,
+        output_dir: str,
+        lora_rank: int,
+        learning_rate: float,
+        num_epochs: int,
+        max_seq_length: int,
+        batch_size: int,
+    ) -> str:
+        """Generuje skrypt dla standardowego HuggingFace Transformers (CPU/Fallback)."""
+        script = f'''#!/usr/bin/env python3
+"""
+Skrypt treningowy Venom - CPU Fallback (HuggingFace Transformers).
+Używany gdy Unsloth/GPU nie jest dostępne.
+"""
+
+import json
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from peft import LoraConfig, get_peft_model, TaskType
+from trl import SFTTrainer
+from datasets import Dataset
+
+# Konfiguracja
+BASE_MODEL = "{base_model}"
+DATASET_PATH = "{dataset_path}"
+OUTPUT_DIR = "{output_dir}"
+LORA_RANK = {lora_rank}
+LEARNING_RATE = {learning_rate}
+NUM_EPOCHS = {num_epochs}
+MAX_SEQ_LENGTH = {max_seq_length}
+BATCH_SIZE = {batch_size}
+
+print("=" * 60)
+print("VENOM CPU TRAINING JOB (Standard Transformers)")
+print("=" * 60)
+
+# Ładuj model
+print("\\n[1/5] Ładowanie modelu (CPU mode)...")
+tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
+model = AutoModelForCausalLM.from_pretrained(BASE_MODEL)
+
+# Dodaj adapter LoRA
+print("\\n[2/5] Dodawanie adaptera LoRA...")
+peft_config = LoraConfig(
+    task_type=TaskType.CAUSAL_LM,
+    inference_mode=False,
+    r=LORA_RANK,
+    lora_alpha=LORA_RANK * 2,
+    lora_dropout=0.05,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"] # Standard flan-t5/llama targets
+)
+model = get_peft_model(model, peft_config)
+model.print_trainable_parameters()
+
+# Ładuj dataset
+print("\\n[3/5] Ładowanie datasetu...")
+examples = []
+with open(DATASET_PATH, "r", encoding="utf-8") as f:
+    for line in f:
+        examples.append(json.loads(line))
+
+dataset = Dataset.from_list(examples)
+
+# Formatowanie promptu
+def formatting_func(example):
+    text = f"### Instruction:\\n{{example['instruction']}}\\n\\n"
+    if example.get('input'):
+        text += f"### Input:\\n{{example['input']}}\\n\\n"
+    text += f"### Response:\\n{{example['output']}}"
+    return {{"text": text}}
+
+dataset = dataset.map(formatting_func)
+
+# Konfiguracja treningu
+print("\\n[4/5] Konfiguracja treningu...")
+training_args = TrainingArguments(
+    output_dir=OUTPUT_DIR,
+    per_device_train_batch_size=BATCH_SIZE,
+    gradient_accumulation_steps=4,
+    learning_rate=LEARNING_RATE,
+    num_train_epochs=NUM_EPOCHS,
+    logging_steps=1,
+    save_strategy="epoch",
+    use_cpu=True, # Wymuś CPU
+    no_cuda=True,
+)
+
+trainer = SFTTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    train_dataset=dataset,
+    dataset_text_field="text",
+    max_seq_length=MAX_SEQ_LENGTH,
+    args=training_args,
+)
+
+# Trenuj
+print("\\n[5/5] Rozpoczynam trening...")
+trainer.train()
+
+# Zapisz adapter
+print("\\nZapisywanie adaptera...")
+model.save_pretrained(f"{{OUTPUT_DIR}}/adapter")
+tokenizer.save_pretrained(f"{{OUTPUT_DIR}}/adapter")
+
+print("\\n" + "=" * 60)
+print("TRENING ZAKOŃCZONY POMYŚLNIE!")
+print("=" * 60)
+'''
+        return script
+
     def cleanup_job(self, job_name: str) -> None:
         """
-        Czyści zadanie treningowe (usuwa kontener).
+        Czyści zadanie treningowe (usuwa kontener lub killuje proces).
 
         Args:
             job_name: Nazwa joba
@@ -517,17 +842,40 @@ print("=" * 60)
             return
 
         try:
-            container = self._get_job_container(job_name)
+            job_info = self.training_containers[job_name]
 
-            # Zatrzymaj i usuń kontener
-            try:
-                container.stop(timeout=10)
-            except TypeError:
-                container.stop()
-            try:
-                container.remove(force=True)
-            except TypeError:
-                container.remove()
+            if job_info.get("type") == "local":
+                # Local cleanup
+                process = job_info.get("process")
+                pid = job_info.get("pid")
+                if process:
+                    if process.poll() is None:  # Running
+                        logger.info(f"Terminating local process {pid}")
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                elif pid:
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                    except OSError:
+                        pass
+
+                # Opcjonalnie usuń log file? Nie, zostawmy dla debugu.
+            else:
+                # Docker cleanup
+                container = self._get_job_container(job_name)
+
+                # Zatrzymaj i usuń kontener
+                try:
+                    container.stop(timeout=10)
+                except TypeError:
+                    container.stop()
+                try:
+                    container.remove(force=True)
+                except TypeError:
+                    container.remove()
 
             # Usuń z rejestru
             del self.training_containers[job_name]

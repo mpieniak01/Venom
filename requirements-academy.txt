@@ -1,25 +1,25 @@
 # VENOM ACADEMY - Opcjonalne zależności do trenowania/fine-tuningu modeli
 # Instalacja: pip install -r requirements-academy.txt
-# 
+#
 # UWAGA: Wymaga CUDA 12.0+ i nvidia-container-toolkit dla GPU.
 # Możliwe jest użycie CPU, ale będzie znacznie wolniejsze.
 
-# === LoRA/QLoRA Fine-tuning Framework ===
-unsloth[colab-new]>=2024.12  # Ultra-szybki fine-tuning z LoRA/QLoRA
-peft>=0.13.2                  # Parameter-Efficient Fine-Tuning (LoRA, Adapters)
-trl>=0.12.1                   # Transformer Reinforcement Learning (SFTTrainer)
-
-# === Dataset Processing ===
+# === Core Framework (CPU / GPU) ===
+accelerate>=0.34.0            # Wymagane przez TRL/PEFT (działa na CPU i GPU)
 datasets>=3.2.0               # Hugging Face Datasets library
+trl<0.9.0                     # TRL (SFTTrainer)
+peft>=0.18.0                  # Parameter-Efficient Fine-Tuning (LoRA)
 
-# === Quantization & Memory Optimization ===
-bitsandbytes>=0.45.0          # 4-bit/8-bit quantization dla GPU
-xformers>=0.0.28.post3; platform_system == "Linux"  # Memory-efficient attention (tylko Linux)
+# === GPU Acceleration Stack (Optional - Nvidia GPU Only) ===
+# Odkomentuj jeśli masz GPU. Unsloth wymaga CUDA i nie zainstaluje się na samym CPU.
+# unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git
+# bitsandbytes>=0.49.0          # 4-bit/8-bit quantization (wymaga CUDA)
+# xformers<0.0.26; platform_system == "Linux"  # Memory-efficient attention (wymaga CUDA)
 
-# === Docker SDK ===
+# === Docker SDK (Optional) ===
 docker>=7.1.0                 # Docker Python SDK dla GPUHabitat
 
-# === Progress & Monitoring ===
+# === Progress & Monitoring (Optional) ===
 wandb>=0.19.1                 # Weights & Biases integration (opcjonalne)
 tensorboard>=2.18.0           # TensorBoard logging (opcjonalne)
 

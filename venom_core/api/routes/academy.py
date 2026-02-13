@@ -506,7 +506,8 @@ def _save_upload_metadata(upload_info: Dict[str, Any]):
             with open(metadata_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(upload_info, ensure_ascii=False) + "\n")
     except Exception as e:
-        logger.error(f"Failed to save upload metadata: {e}")
+        logger.error("Failed to save upload metadata: %s", e, exc_info=True)
+        raise
 
 
 def _delete_upload_metadata(file_id: str):
@@ -721,6 +722,7 @@ async def curate_dataset(
                 "task_history_collected": task_count,
                 "uploads_collected": uploads_count,
                 "removed_low_quality": removed,
+                "quality_profile": request.quality_profile,
                 "by_source": {
                     "lessons": lessons_count,
                     "git": git_count,
@@ -1511,7 +1513,9 @@ async def academy_status() -> Dict[str, Any]:
 @router.post(
     "/dataset/upload",
     responses={
-        400: {"description": "Invalid file (extension, size, or path traversal)"},
+        400: {
+            "description": "Invalid request payload (e.g., no files, too many files)."
+        },
         403: RESP_403_LOCALHOST_ONLY,
         503: RESP_503_ACADEMY_UNAVAILABLE,
     },
@@ -1585,26 +1589,39 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
                 )
                 continue
 
-            # Read file content
-            content = await file.read()
-            size_bytes = len(content)
-
-            if not _validate_file_size(size_bytes):
-                failed_files.append(
-                    {
-                        "name": filename,
-                        "error": f"File too large ({size_bytes} bytes, max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
-                    }
-                )
-                continue
-
             # Generate unique ID with microseconds to prevent collisions
             file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
             file_path = uploads_dir / file_id
 
             try:
+                max_size_bytes = SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB * 1024 * 1024
+                size_bytes = 0
+                oversize = False
+                collected_chunks: list[bytes] = []
+
                 async with await anyio.open_file(file_path, "wb") as f:
-                    await f.write(content)
+                    while True:
+                        chunk = await file.read(1024 * 1024)  # 1MB chunks
+                        if not chunk:
+                            break
+                        size_bytes += len(chunk)
+                        if size_bytes > max_size_bytes:
+                            oversize = True
+                            break
+                        await f.write(chunk)
+                        collected_chunks.append(chunk)
+
+                if oversize:
+                    if file_path.exists():
+                        file_path.unlink()
+                    failed_files.append(
+                        {
+                            "name": filename,
+                            "error": f"File too large ({size_bytes} bytes, max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
+                        }
+                    )
+                    continue
+
             except Exception as e:
                 logger.error(
                     "Failed to persist uploaded file (error=%s)",
@@ -1619,7 +1636,8 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
                 continue
 
             # Compute hash
-            sha256_hash = _compute_bytes_hash(content)
+            content_bytes = b"".join(collected_chunks)
+            sha256_hash = _compute_bytes_hash(content_bytes)
 
             # Determine MIME type
             mime_type, _ = mimetypes.guess_type(filename)
@@ -1629,7 +1647,9 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
             # Estimate records (simple heuristic)
             records_estimate = 0
             try:
-                records_estimate = _estimate_records_from_content(filename, content)
+                records_estimate = _estimate_records_from_content(
+                    filename, content_bytes
+                )
             except Exception as e:
                 logger.warning(
                     "Failed to estimate records for uploaded file (error=%s)",
@@ -1848,7 +1868,7 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
 
             by_source["uploads"] = uploads_count
 
-        # Filtruj niską jakość (w zależności od profilu)
+        # Filtruj niską jakość. quality_profile steruje progiem ostrzeżeń.
         removed = curator.filter_low_quality()
 
         # Statystyki
@@ -1856,9 +1876,14 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
         total_examples = stats.get("total_examples", 0)
 
         # Warnings
-        if total_examples < 50:
+        recommended_min_examples = {
+            "strict": 150,
+            "balanced": 100,
+            "lenient": 50,
+        }.get(request.quality_profile, 100)
+        if total_examples < recommended_min_examples:
             warnings.append(
-                f"Low number of examples ({total_examples}). Recommended: >= 100"
+                f"Low number of examples ({total_examples}). Recommended for profile '{request.quality_profile}': >= {recommended_min_examples}"
             )
 
         # Sample records

@@ -243,7 +243,7 @@ class Settings(BaseSettings):
     ACADEMY_TRAINING_IMAGE: str = "unsloth/unsloth:latest"  # Obraz Docker dla treningu
     ACADEMY_MAX_UPLOAD_SIZE_MB: int = 25  # Maksymalny rozmiar pliku do uploadu (MB)
     ACADEMY_MAX_UPLOADS_PER_REQUEST: int = 10  # Maksymalna liczba plików na upload
-    ACADEMY_ALLOWED_EXTENSIONS: list = [
+    ACADEMY_ALLOWED_EXTENSIONS: list[str] = [
         ".jsonl",
         ".json",
         ".md",

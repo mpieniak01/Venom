@@ -282,10 +282,10 @@ export async function uploadDatasetFiles(params: {
   }
 
   // Use custom fetch for multipart/form-data (apiFetch sets application/json by default)
-  const baseUrl = typeof window !== "undefined" 
-    ? window.location.origin 
+  const baseUrl = typeof window !== "undefined"
+    ? window.location.origin
     : "http://localhost:8000";
-  
+
   const response = await fetch(`${baseUrl}/api/v1/academy/dataset/upload`, {
     method: "POST",
     body: formData,
@@ -295,20 +295,26 @@ export async function uploadDatasetFiles(params: {
   if (!response.ok) {
     let errorMessage = "Upload failed";
     try {
-      const error = await response.json();
-      if (error && error.message) {
-        errorMessage = error.message;
-      }
-    } catch {
-      // If JSON parsing fails, use text or default message
-      try {
-        const text = await response.text();
-        if (text) {
+      const text = await response.text();
+      if (text) {
+        try {
+          const parsed = JSON.parse(text) as unknown;
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            "message" in parsed &&
+            typeof (parsed as { message: unknown }).message === "string"
+          ) {
+            errorMessage = (parsed as { message: string }).message;
+          } else {
+            errorMessage = text;
+          }
+        } catch {
           errorMessage = text;
         }
-      } catch {
-        // Use default message
       }
+    } catch {
+      // Keep default error message
     }
     throw new Error(errorMessage);
   }

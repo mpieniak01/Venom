@@ -254,7 +254,7 @@ export function DatasetPanel() {
             <Checkbox
               id="include-lessons"
               checked={includeLessons}
-              onCheckedChange={(checked) => setIncludeLessons(checked as boolean)}
+              onCheckedChange={(checked) => setIncludeLessons(checked === true)}
             />
             <Label htmlFor="include-lessons" className="text-zinc-300 cursor-pointer">
               Lessons Store
@@ -282,7 +282,7 @@ export function DatasetPanel() {
             <Checkbox
               id="include-git"
               checked={includeGit}
-              onCheckedChange={(checked) => setIncludeGit(checked as boolean)}
+              onCheckedChange={(checked) => setIncludeGit(checked === true)}
             />
             <Label htmlFor="include-git" className="text-zinc-300 cursor-pointer">
               Git History
@@ -310,7 +310,7 @@ export function DatasetPanel() {
             <Checkbox
               id="include-task-history"
               checked={includeTaskHistory}
-              onCheckedChange={(checked) => setIncludeTaskHistory(checked as boolean)}
+              onCheckedChange={(checked) => setIncludeTaskHistory(checked === true)}
             />
             <Label htmlFor="include-task-history" className="text-zinc-300 cursor-pointer">
               Task History (experimental)

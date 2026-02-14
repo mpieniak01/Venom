@@ -13,9 +13,28 @@ interface ProviderListProps {
   isActivating?: boolean;
 }
 
+export function providerTypeToTranslationKey(providerType: string): string {
+  const normalized = providerType
+    .split("_")
+    .map((word, i) =>
+      i === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1),
+    )
+    .join("");
+  return `providers.types.${normalized}`;
+}
+
+export function canActivateProvider(provider: ProviderInfo, hasActivateHandler: boolean): boolean {
+  return (
+    provider.capabilities.activate &&
+    !provider.is_active &&
+    provider.connection_status.status === "connected" &&
+    hasActivateHandler
+  );
+}
+
 export function ProviderList({ providers, onActivate, isActivating }: ProviderListProps) {
   const { t } = useTranslation();
-  
+
   if (!providers || providers.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -47,11 +66,11 @@ export function ProviderList({ providers, onActivate, isActivating }: ProviderLi
                   </span>
                 )}
               </div>
-              
+
               <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                {t(`providers.types.${provider.provider_type.split("_").map((word, i) => i === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)).join("")}`)}
+                {t(providerTypeToTranslationKey(provider.provider_type))}
               </div>
-              
+
               <div className="mt-3">
                 <ProviderStatusIndicator
                   status={provider.connection_status.status}
@@ -97,11 +116,9 @@ export function ProviderList({ providers, onActivate, isActivating }: ProviderLi
 
             <div>
               {provider.capabilities.activate &&
-                !provider.is_active &&
-                provider.connection_status.status === "connected" &&
-                onActivate && (
+                canActivateProvider(provider, Boolean(onActivate)) && (
                   <button
-                    onClick={() => onActivate(provider.name)}
+                    onClick={() => onActivate?.(provider.name)}
                     disabled={isActivating}
                     className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >

@@ -28,6 +28,7 @@ from venom_core.api.routes import memory as memory_routes
 from venom_core.api.routes import memory_projection as memory_projection_routes
 from venom_core.api.routes import models as models_routes
 from venom_core.api.routes import nodes as nodes_routes
+from venom_core.api.routes import providers as providers_routes
 from venom_core.api.routes import queue as queue_routes
 from venom_core.api.routes import strategy as strategy_routes
 from venom_core.api.routes import system as system_routes
@@ -1162,6 +1163,7 @@ app.include_router(system_routes.router)
 app.include_router(nodes_routes.router)
 app.include_router(strategy_routes.router)
 app.include_router(models_routes.router)
+app.include_router(providers_routes.router)
 app.include_router(flow_routes.router)
 app.include_router(benchmark_routes.router)
 app.include_router(calendar_routes.router)

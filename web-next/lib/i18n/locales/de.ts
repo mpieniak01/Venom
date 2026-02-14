@@ -1234,6 +1234,33 @@ export const de = {
       likes: "Likes",
       downloads: "Downloads",
     },
+    domain: {
+      sourceType: {
+        label: "Quelltyp",
+        "local-runtime": "Lokale Laufzeit",
+        "cloud-api": "Cloud-API",
+        "integrator-catalog": "Integrator-Katalog",
+      },
+      modelRole: {
+        label: "Rolle",
+        "llm-engine": "LLM-Engine",
+        "intent-embedding": "Intent-Embedding",
+      },
+      trainability: {
+        label: "Trainierbarkeit",
+        trainable: "Trainierbar",
+        "not-trainable": "Nicht trainierbar",
+        badge: {
+          trainable: "Trainierbar",
+          notTrainable: "Nicht trainierbar",
+        },
+        reasons: {
+          notInCatalog: "Modell ist nicht im Academy-Katalog trainierbarer Modelle",
+          notAvailable: "Informationen zur Trainierbarkeit nicht verfügbar",
+          cloudOnly: "Cloud-API-Modelle können nicht lokal trainiert werden",
+        },
+      },
+    },
     search: {
       title: "MODELL FINDEN",
       subtitle: "Durchsuchen Sie externe Repositories (HuggingFace, Ollama) und installieren Sie neue Modelle.",

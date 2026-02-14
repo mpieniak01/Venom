@@ -4,12 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/lib/i18n";
-import type { ModelCatalogEntry, ModelInfo, ModelOperation } from "@/lib/types";
+import type { ModelCatalogEntry, ModelInfo, ModelOperation, EnrichedModelInfo } from "@/lib/types";
 import {
     formatNumber,
     getStatusTone,
     getInstalledModelSizeLabel
 } from "./models-helpers";
+import { DomainBadges } from "./model-domain-badges";
 
 export const SectionHeader = ({
     title,
@@ -107,6 +108,71 @@ export const CatalogCard = ({
                 </span>
                 <span>👍 {formatNumber(model.likes)}</span>
                 <span>⬇️ {formatNumber(model.downloads)}</span>
+            </div>
+            {model.tags && model.tags.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {model.tags.slice(0, 5).map((tag) => (
+                        <Badge key={tag} className="text-[10px]">
+                            {tag.length > 30 ? tag.slice(0, 30) + '...' : tag}
+                        </Badge>
+                    ))}
+                </div>
+            )}
+            <Button
+                className="mt-4 rounded-full px-4"
+                size="sm"
+                variant="secondary"
+                disabled={pending}
+                onClick={onAction}
+            >
+                {pending ? t("models.actions.installing") : actionLabel}
+            </Button>
+        </div>
+    );
+};
+
+export const EnrichedCatalogCard = ({
+    model,
+    actionLabel,
+    onAction,
+    pending,
+}: {
+    model: EnrichedModelInfo;
+    actionLabel: string;
+    onAction: () => void;
+    pending?: boolean;
+}) => {
+    const { t } = useLanguage();
+    return (
+        <div className="rounded-3xl box-base p-5 text-white shadow-card">
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <p className="text-lg font-semibold">{model.display_name || model.name}</p>
+                    <p className="text-xs text-slate-400">{model.name}</p>
+                </div>
+                <Badge tone="neutral">{model.runtime || "vllm"}</Badge>
+            </div>
+            
+            {/* Domain Badges v2 */}
+            <div className="mt-3">
+                <DomainBadges
+                    sourceType={model.source_type}
+                    sourceTypeLabel={t(`models.domain.sourceType.${model.source_type}`)}
+                    modelRole={model.model_role}
+                    modelRoleLabel={t(`models.domain.modelRole.${model.model_role}`)}
+                    trainabilityStatus={model.academy_trainable}
+                    trainabilityLabel={t(`models.domain.trainability.${model.academy_trainable}`)}
+                    trainabilityReason={model.trainability_reason}
+                />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
+                <span>{t("models.status.provider")}: {model.provider}</span>
+                <span>
+                    {t("models.status.size")}: {typeof model.size_gb === "number" ? `${model.size_gb.toFixed(2)} GB` : "—"}
+                </span>
+                {typeof model.likes === "number" && <span>👍 {formatNumber(model.likes)}</span>}
+                {typeof model.downloads === "number" && <span>⬇️ {formatNumber(model.downloads)}</span>}
             </div>
             {model.tags && model.tags.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">

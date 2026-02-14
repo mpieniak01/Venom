@@ -1241,6 +1241,33 @@ export const pl = {
       likes: "Polubienia",
       downloads: "Pobrania",
     },
+    domain: {
+      sourceType: {
+        label: "Typ źródła",
+        "local-runtime": "Środowisko lokalne",
+        "cloud-api": "API w chmurze",
+        "integrator-catalog": "Katalog integratora",
+      },
+      modelRole: {
+        label: "Rola",
+        "llm-engine": "Silnik LLM",
+        "intent-embedding": "Embedding intencji",
+      },
+      trainability: {
+        label: "Trenowalność",
+        trainable: "Treniwalny",
+        "not-trainable": "Nietreniwalny",
+        badge: {
+          trainable: "Treniwalny",
+          notTrainable: "Nietreniwalny",
+        },
+        reasons: {
+          notInCatalog: "Model nie znajduje się w katalogu trenowalnych modeli Academy",
+          notAvailable: "Informacje o trenowalności niedostępne",
+          cloudOnly: "Modele API w chmurze nie mogą być trenowane lokalnie",
+        },
+      },
+    },
     search: {
       title: "ZNAJDŹ MODEL",
       subtitle: "Przeszukaj zewnętrzne repozytoria (HuggingFace, Ollama) i zainstaluj nowe modele.",

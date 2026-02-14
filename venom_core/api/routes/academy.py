@@ -689,6 +689,49 @@ def _get_default_trainable_models_catalog() -> List[TrainableModelInfo]:
 # ==================== Endpointy ====================
 
 
+def _collect_scope_counts(curator: Any, request: DatasetScopeRequest) -> Dict[str, int]:
+    counts = {"lessons": 0, "git": 0, "task_history": 0}
+    if request.include_lessons:
+        counts["lessons"] = curator.collect_from_lessons(limit=request.lessons_limit)
+    if request.include_git:
+        counts["git"] = curator.collect_from_git_history(
+            max_commits=request.git_commits_limit
+        )
+    if request.include_task_history:
+        counts["task_history"] = curator.collect_from_task_history(max_tasks=100)
+    return counts
+
+
+def _ingest_uploads_for_curate(curator: Any, upload_ids: List[str]) -> int:
+    uploads_count = 0
+    uploads_dir = _get_uploads_dir()
+    for upload_idx, file_id in enumerate(upload_ids, start=1):
+        if not _check_path_traversal(file_id):
+            logger.warning(
+                "Skipped upload entry due to invalid identifier (idx=%s)",
+                upload_idx,
+            )
+            continue
+
+        file_path = uploads_dir / file_id
+        if not file_path.exists():
+            logger.warning(
+                "Skipped upload entry because file was not found (idx=%s)",
+                upload_idx,
+            )
+            continue
+
+        try:
+            uploads_count += _ingest_upload_file(curator, file_path)
+        except Exception as e:
+            logger.warning(
+                "Failed to ingest upload entry (idx=%s, error=%s)",
+                upload_idx,
+                type(e).__name__,
+            )
+    return uploads_count
+
+
 @router.post(
     "/dataset",
     responses={
@@ -727,54 +770,10 @@ async def curate_dataset(
 
         # Wyczyść poprzednie przykłady
         curator.clear()
-
-        # Zbierz dane według scope
-        lessons_count = 0
-        git_count = 0
-        task_count = 0
+        scope_counts = _collect_scope_counts(curator, request)
         uploads_count = 0
-
-        if request.include_lessons:
-            lessons_count = curator.collect_from_lessons(limit=request.lessons_limit)
-
-        if request.include_git:
-            git_count = curator.collect_from_git_history(
-                max_commits=request.git_commits_limit
-            )
-
-        # Zbierz z historii zadań jeśli włączone
-        if request.include_task_history:
-            task_count = curator.collect_from_task_history(max_tasks=100)
-
-        # Zbierz z uploadów
         if request.upload_ids:
-            uploads_dir = _get_uploads_dir()
-            for upload_idx, file_id in enumerate(request.upload_ids, start=1):
-                # Validate file_id to prevent path traversal
-                if not _check_path_traversal(file_id):
-                    logger.warning(
-                        "Skipped upload entry due to invalid identifier (idx=%s)",
-                        upload_idx,
-                    )
-                    continue
-
-                file_path = uploads_dir / file_id
-                if not file_path.exists():
-                    logger.warning(
-                        "Skipped upload entry because file was not found (idx=%s)",
-                        upload_idx,
-                    )
-                    continue
-
-                try:
-                    count = _ingest_upload_file(curator, file_path)
-                    uploads_count += count
-                except Exception as e:
-                    logger.warning(
-                        "Failed to ingest upload entry (idx=%s, error=%s)",
-                        upload_idx,
-                        type(e).__name__,
-                    )
+            uploads_count = _ingest_uploads_for_curate(curator, request.upload_ids)
 
         # Filtruj niską jakość
         removed = curator.filter_low_quality()
@@ -790,16 +789,16 @@ async def curate_dataset(
             dataset_path=str(dataset_path),
             statistics={
                 **stats,
-                "lessons_collected": lessons_count,
-                "git_commits_collected": git_count,
-                "task_history_collected": task_count,
+                "lessons_collected": scope_counts["lessons"],
+                "git_commits_collected": scope_counts["git"],
+                "task_history_collected": scope_counts["task_history"],
                 "uploads_collected": uploads_count,
                 "removed_low_quality": removed,
                 "quality_profile": request.quality_profile,
                 "by_source": {
-                    "lessons": lessons_count,
-                    "git": git_count,
-                    "task_history": task_count,
+                    "lessons": scope_counts["lessons"],
+                    "git": scope_counts["git"],
+                    "task_history": scope_counts["task_history"],
                     "uploads": uploads_count,
                 },
             },
@@ -1583,6 +1582,131 @@ async def academy_status() -> Dict[str, Any]:
 # ==================== Upload Endpoints ====================
 
 
+async def _persist_uploaded_file(
+    file: Any, file_path: Path, max_size_bytes: int
+) -> tuple[int, bytes]:
+    size_bytes = 0
+    collected_chunks: list[bytes] = []
+    async with await anyio.open_file(file_path, "wb") as out_file:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size_bytes += len(chunk)
+            if size_bytes > max_size_bytes:
+                raise ValueError(f"FILE_TOO_LARGE:{size_bytes}")
+            await out_file.write(chunk)
+            collected_chunks.append(chunk)
+    return size_bytes, b"".join(collected_chunks)
+
+
+async def _process_uploaded_file(
+    file: Any, uploads_dir: Path, tag: str, description: str
+) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, str]]]:
+    import mimetypes
+    from datetime import datetime
+
+    from venom_core.config import SETTINGS
+
+    if not hasattr(file, "filename") or not file.filename:
+        return None, None
+
+    filename = file.filename
+    if not _check_path_traversal(filename):
+        return None, {"name": filename, "error": "Invalid filename (path traversal)"}
+    if not _validate_file_extension(filename):
+        return None, {
+            "name": filename,
+            "error": f"Invalid file extension. Allowed: {SETTINGS.ACADEMY_ALLOWED_EXTENSIONS}",
+        }
+
+    file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
+    file_path = uploads_dir / file_id
+    try:
+        max_size_bytes = SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB * 1024 * 1024
+        size_bytes, content_bytes = await _persist_uploaded_file(
+            file=file, file_path=file_path, max_size_bytes=max_size_bytes
+        )
+    except ValueError as e:
+        if file_path.exists():
+            file_path.unlink()
+        if str(e).startswith("FILE_TOO_LARGE:"):
+            size_bytes = int(str(e).split(":", 1)[1])
+            return None, {
+                "name": filename,
+                "error": (
+                    f"File too large ({size_bytes} bytes, "
+                    f"max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)"
+                ),
+            }
+        return None, {"name": filename, "error": f"Failed to save file: {str(e)}"}
+    except Exception as e:
+        if file_path.exists():
+            file_path.unlink()
+        logger.error(
+            "Failed to persist uploaded file (error=%s)",
+            type(e).__name__,
+        )
+        return None, {"name": filename, "error": f"Failed to save file: {str(e)}"}
+
+    try:
+        sha256_hash = _compute_bytes_hash(content_bytes)
+        mime_type, _ = mimetypes.guess_type(filename)
+        mime_type = mime_type or "application/octet-stream"
+        records_estimate = 0
+        try:
+            records_estimate = _estimate_records_from_content(filename, content_bytes)
+        except Exception as e:
+            logger.warning(
+                "Failed to estimate records for uploaded file (error=%s)",
+                type(e).__name__,
+            )
+        upload_info = {
+            "id": file_id,
+            "name": filename,
+            "size_bytes": size_bytes,
+            "mime": mime_type,
+            "created_at": datetime.now().isoformat(),
+            "status": "ready",
+            "records_estimate": records_estimate,
+            "sha256": sha256_hash,
+            "tag": tag,
+            "description": description,
+        }
+        _save_upload_metadata(upload_info)
+        return upload_info, None
+    except Exception as e:
+        if file_path.exists():
+            try:
+                file_path.unlink()
+            except OSError as cleanup_error:
+                logger.warning(
+                    "Failed to cleanup orphan upload file (error=%s)",
+                    type(cleanup_error).__name__,
+                )
+        logger.error(
+            "Unexpected error while processing uploaded file (error=%s)",
+            type(e).__name__,
+        )
+        return None, {"name": filename, "error": f"Unexpected error: {str(e)}"}
+
+
+def _build_upload_response(
+    uploaded_files: List[Dict[str, Any]], failed_files: List[Dict[str, str]]
+) -> Dict[str, Any]:
+    message = f"Uploaded {len(uploaded_files)} file(s) successfully"
+    if failed_files:
+        message += f", {len(failed_files)} file(s) failed"
+    return {
+        "success": len(uploaded_files) > 0,
+        "uploaded": len(uploaded_files),
+        "failed": len(failed_files),
+        "files": uploaded_files,
+        "errors": failed_files,
+        "message": message,
+    }
+
+
 @router.post(
     "/dataset/upload",
     responses={
@@ -1609,9 +1733,6 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
-    import mimetypes
-    from datetime import datetime
-
     from venom_core.config import SETTINGS
 
     # Parse multipart form data manually
@@ -1634,158 +1755,22 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
     uploads_dir = _get_uploads_dir()
 
     for file in files:
-        if not hasattr(file, "filename"):
-            continue
-
-        filename = file.filename
-        if not filename:
-            continue
-
-        file_path: Path | None = None
-        try:
-            # Validate filename
-            if not _check_path_traversal(filename):
-                failed_files.append(
-                    {
-                        "name": filename,
-                        "error": "Invalid filename (path traversal)",
-                    }
-                )
-                continue
-
-            if not _validate_file_extension(filename):
-                failed_files.append(
-                    {
-                        "name": filename,
-                        "error": f"Invalid file extension. Allowed: {SETTINGS.ACADEMY_ALLOWED_EXTENSIONS}",
-                    }
-                )
-                continue
-
-            # Generate unique ID with microseconds to prevent collisions
-            file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
-            file_path = uploads_dir / file_id
-
-            try:
-                max_size_bytes = SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB * 1024 * 1024
-                size_bytes = 0
-                oversize = False
-                collected_chunks: list[bytes] = []
-
-                async with await anyio.open_file(file_path, "wb") as f:
-                    while True:
-                        chunk = await file.read(1024 * 1024)  # 1MB chunks
-                        if not chunk:
-                            break
-                        size_bytes += len(chunk)
-                        if size_bytes > max_size_bytes:
-                            oversize = True
-                            break
-                        await f.write(chunk)
-                        collected_chunks.append(chunk)
-
-                if oversize:
-                    if file_path.exists():
-                        file_path.unlink()
-                    failed_files.append(
-                        {
-                            "name": filename,
-                            "error": f"File too large ({size_bytes} bytes, max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)",
-                        }
-                    )
-                    continue
-
-            except Exception as e:
-                logger.error(
-                    "Failed to persist uploaded file (error=%s)",
-                    type(e).__name__,
-                )
-                failed_files.append(
-                    {
-                        "name": filename,
-                        "error": f"Failed to save file: {str(e)}",
-                    }
-                )
-                continue
-
-            # Compute hash
-            content_bytes = b"".join(collected_chunks)
-            sha256_hash = _compute_bytes_hash(content_bytes)
-
-            # Determine MIME type
-            mime_type, _ = mimetypes.guess_type(filename)
-            if not mime_type:
-                mime_type = "application/octet-stream"
-
-            # Estimate records (simple heuristic)
-            records_estimate = 0
-            try:
-                records_estimate = _estimate_records_from_content(
-                    filename, content_bytes
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to estimate records for uploaded file (error=%s)",
-                    type(e).__name__,
-                )
-
-            # Create metadata
-            upload_info = {
-                "id": file_id,
-                "name": filename,
-                "size_bytes": size_bytes,
-                "mime": mime_type,
-                "created_at": datetime.now().isoformat(),
-                "status": "ready",
-                "records_estimate": records_estimate,
-                "sha256": sha256_hash,
-                "tag": tag,
-                "description": description,
-            }
-
-            _save_upload_metadata(upload_info)
+        upload_info, error_info = await _process_uploaded_file(
+            file=file,
+            uploads_dir=uploads_dir,
+            tag=tag,
+            description=description,
+        )
+        if upload_info:
             uploaded_files.append(upload_info)
-
-        except Exception as e:
-            # Catch any unexpected errors for this file
-            if file_path and file_path.exists():
-                try:
-                    file_path.unlink()
-                except OSError as cleanup_error:
-                    logger.warning(
-                        "Failed to cleanup orphan upload file (error=%s)",
-                        type(cleanup_error).__name__,
-                    )
-            logger.error(
-                "Unexpected error while processing uploaded file (error=%s)",
-                type(e).__name__,
-            )
-            failed_files.append(
-                {
-                    "name": filename,
-                    "error": f"Unexpected error: {str(e)}",
-                }
-            )
-            continue
+        if error_info:
+            failed_files.append(error_info)
 
     logger.info(
         f"Uploaded {len(uploaded_files)} files to Academy ({len(failed_files)} failed)"
     )
 
-    # Return partial success response with both successful and failed files
-    success = len(uploaded_files) > 0
-    message = f"Uploaded {len(uploaded_files)} file(s) successfully"
-    if failed_files:
-        message += f", {len(failed_files)} file(s) failed"
-
-    return {
-        "success": success,
-        "uploaded": len(uploaded_files),
-        "failed": len(failed_files),
-        "files": uploaded_files,
-        "errors": failed_files,
-        "message": message,
-    }
+    return _build_upload_response(uploaded_files, failed_files)
 
 
 @router.get("/dataset/uploads")
@@ -1808,8 +1793,10 @@ async def list_dataset_uploads() -> List[UploadFileInfo]:
 @router.delete(
     "/dataset/uploads/{file_id}",
     responses={
+        400: {"description": "Invalid upload identifier."},
         403: RESP_403_LOCALHOST_ONLY,
         404: {"description": "Upload not found"},
+        500: RESP_500_INTERNAL,
         503: RESP_503_ACADEMY_UNAVAILABLE,
     },
 )
@@ -1858,9 +1845,67 @@ async def delete_dataset_upload(file_id: str, req: Request) -> Dict[str, Any]:
         )
 
 
+def _ingest_uploads_for_preview(
+    curator: Any, upload_ids: List[str], warnings: List[str]
+) -> int:
+    uploads_count = 0
+    uploads_dir = _get_uploads_dir()
+    for upload_idx, file_id in enumerate(upload_ids, start=1):
+        if not _check_path_traversal(file_id):
+            warnings.append(f"Invalid file_id (path traversal): {file_id}")
+            continue
+        file_path = uploads_dir / file_id
+        if not file_path.exists():
+            warnings.append(f"Upload not found: {file_id}")
+            continue
+        try:
+            uploads_count += _ingest_upload_file(curator, file_path)
+        except Exception as e:
+            logger.warning(
+                "Failed to ingest upload entry during preview (idx=%s, error=%s)",
+                upload_idx,
+                type(e).__name__,
+            )
+            warnings.append(f"Failed to ingest {file_id}: {str(e)}")
+    return uploads_count
+
+
+def _add_low_examples_warning(
+    warnings: List[str], total_examples: int, quality_profile: str
+) -> None:
+    recommended_min_examples = {
+        "strict": 150,
+        "balanced": 100,
+        "lenient": 50,
+    }.get(quality_profile, 100)
+    if total_examples >= recommended_min_examples:
+        return
+    warnings.append(
+        f"Low number of examples ({total_examples}). Recommended for profile "
+        f"'{quality_profile}': >= {recommended_min_examples}"
+    )
+
+
+def _build_preview_samples(curator: Any) -> List[Dict[str, str]]:
+    samples: List[Dict[str, str]] = []
+    if not hasattr(curator, "examples") or not curator.examples:
+        return samples
+    for example in curator.examples[:5]:
+        output = example.get("output", "")
+        samples.append(
+            {
+                "instruction": example.get("instruction", ""),
+                "input": example.get("input", ""),
+                "output": output[:200] + ("..." if len(output) > 200 else ""),
+            }
+        )
+    return samples
+
+
 @router.post(
     "/dataset/preview",
     responses={
+        500: RESP_500_INTERNAL,
         503: RESP_503_ACADEMY_UNAVAILABLE,
     },
 )
@@ -1894,52 +1939,16 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
         # Wyczyść poprzednie przykłady
         curator.clear()
 
-        # Zbierz dane według scope
-        by_source = {}
+        by_source = _collect_scope_counts(curator, request)
         warnings = []
-
-        if request.include_lessons:
-            lessons_count = curator.collect_from_lessons(limit=request.lessons_limit)
-            by_source["lessons"] = lessons_count
-
-        if request.include_git:
-            git_count = curator.collect_from_git_history(
-                max_commits=request.git_commits_limit
-            )
-            by_source["git"] = git_count
-
-        if request.include_task_history:
-            task_count = curator.collect_from_task_history(max_tasks=100)
-            by_source["task_history"] = task_count
 
         # Zbierz z uploadów
         if request.upload_ids:
-            uploads_count = 0
-            uploads_dir = _get_uploads_dir()
-            for upload_idx, file_id in enumerate(request.upload_ids, start=1):
-                # Validate file_id to prevent path traversal
-                if not _check_path_traversal(file_id):
-                    warnings.append(f"Invalid file_id (path traversal): {file_id}")
-                    continue
-
-                file_path = uploads_dir / file_id
-                if not file_path.exists():
-                    warnings.append(f"Upload not found: {file_id}")
-                    continue
-
-                # Read and add to curator
-                try:
-                    count = _ingest_upload_file(curator, file_path)
-                    uploads_count += count
-                except Exception as e:
-                    logger.warning(
-                        "Failed to ingest upload entry during preview (idx=%s, error=%s)",
-                        upload_idx,
-                        type(e).__name__,
-                    )
-                    warnings.append(f"Failed to ingest {file_id}: {str(e)}")
-
-            by_source["uploads"] = uploads_count
+            by_source["uploads"] = _ingest_uploads_for_preview(
+                curator=curator,
+                upload_ids=request.upload_ids,
+                warnings=warnings,
+            )
 
         # Filtruj niską jakość. quality_profile steruje progiem ostrzeżeń.
         removed = curator.filter_low_quality()
@@ -1948,30 +1957,12 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
         stats = curator.get_statistics()
         total_examples = stats.get("total_examples", 0)
 
-        # Warnings
-        recommended_min_examples = {
-            "strict": 150,
-            "balanced": 100,
-            "lenient": 50,
-        }.get(request.quality_profile, 100)
-        if total_examples < recommended_min_examples:
-            warnings.append(
-                f"Low number of examples ({total_examples}). Recommended for profile '{request.quality_profile}': >= {recommended_min_examples}"
-            )
-
-        # Sample records
-        samples = []
-        if hasattr(curator, "examples") and curator.examples:
-            # Take first 5 examples
-            for example in curator.examples[:5]:
-                samples.append(
-                    {
-                        "instruction": example.get("instruction", ""),
-                        "input": example.get("input", ""),
-                        "output": example.get("output", "")[:200]
-                        + ("..." if len(example.get("output", "")) > 200 else ""),
-                    }
-                )
+        _add_low_examples_warning(
+            warnings=warnings,
+            total_examples=total_examples,
+            quality_profile=request.quality_profile,
+        )
+        samples = _build_preview_samples(curator)
 
         return DatasetPreviewResponse(
             total_examples=total_examples,
@@ -1988,6 +1979,70 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
         )
 
 
+def _append_training_record_if_valid(curator: Any, record: Dict[str, Any]) -> int:
+    if not _validate_training_record(record):
+        return 0
+    curator.examples.append(record)
+    return 1
+
+
+def _ingest_jsonl_upload(curator: Any, file_path: Path) -> int:
+    count = 0
+    with open(file_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+                count += _append_training_record_if_valid(curator, record)
+            except Exception as e:
+                logger.warning(f"Failed to parse JSONL line: {e}")
+    return count
+
+
+def _ingest_json_upload(curator: Any, file_path: Path) -> int:
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, list):
+        return sum(_append_training_record_if_valid(curator, record) for record in data)
+    if isinstance(data, dict):
+        return _append_training_record_if_valid(curator, data)
+    return 0
+
+
+def _ingest_text_upload(curator: Any, file_path: Path) -> int:
+    count = 0
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    sections = content.split("\n\n")
+    for i in range(0, len(sections) - 1, 2):
+        instruction = sections[i].strip()
+        output = sections[i + 1].strip() if i + 1 < len(sections) else ""
+        if not instruction or not output:
+            continue
+        count += _append_training_record_if_valid(
+            curator,
+            {"instruction": instruction, "input": "", "output": output},
+        )
+    return count
+
+
+def _ingest_csv_upload(curator: Any, file_path: Path) -> int:
+    import csv
+
+    count = 0
+    with open(file_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            record = {
+                "instruction": row.get("instruction", row.get("prompt", "")),
+                "input": row.get("input", ""),
+                "output": row.get("output", row.get("response", "")),
+            }
+            count += _append_training_record_if_valid(curator, record)
+    return count
+
+
 def _ingest_upload_file(curator, file_path: Path) -> int:
     """
     Ingestuje plik uploadowany do curator.
@@ -1995,73 +2050,24 @@ def _ingest_upload_file(curator, file_path: Path) -> int:
     Returns:
         Liczba dodanych rekordów
     """
-    count = 0
     ext = file_path.suffix.lower()
+    ingest_by_extension = {
+        ".jsonl": _ingest_jsonl_upload,
+        ".json": _ingest_json_upload,
+        ".md": _ingest_text_upload,
+        ".txt": _ingest_text_upload,
+        ".csv": _ingest_csv_upload,
+    }
 
     try:
-        if ext == ".jsonl":
-            with open(file_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        record = json.loads(line)
-                        if _validate_training_record(record):
-                            curator.examples.append(record)
-                            count += 1
-                    except Exception as e:
-                        logger.warning(f"Failed to parse JSONL line: {e}")
-
-        elif ext == ".json":
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    for record in data:
-                        if _validate_training_record(record):
-                            curator.examples.append(record)
-                            count += 1
-                elif isinstance(data, dict) and _validate_training_record(data):
-                    curator.examples.append(data)
-                    count += 1
-
-        elif ext in [".md", ".txt"]:
-            # Parse as instruction/output pairs split by double newlines
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-                sections = content.split("\n\n")
-                for i in range(0, len(sections) - 1, 2):
-                    instruction = sections[i].strip()
-                    output = sections[i + 1].strip() if i + 1 < len(sections) else ""
-                    if instruction and output:
-                        record = {
-                            "instruction": instruction,
-                            "input": "",
-                            "output": output,
-                        }
-                        curator.examples.append(record)
-                        count += 1
-
-        elif ext == ".csv":
-            import csv
-
-            with open(file_path, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    # Try to map CSV columns to instruction/input/output
-                    record = {
-                        "instruction": row.get("instruction", row.get("prompt", "")),
-                        "input": row.get("input", ""),
-                        "output": row.get("output", row.get("response", "")),
-                    }
-                    if _validate_training_record(record):
-                        curator.examples.append(record)
-                        count += 1
+        handler = ingest_by_extension.get(ext)
+        if not handler:
+            return 0
+        return handler(curator, file_path)
 
     except Exception as e:
         logger.error(f"Failed to ingest file {file_path}: {e}")
         raise
-
-    return count
 
 
 def _validate_training_record(record: Dict[str, Any]) -> bool:
@@ -2078,6 +2084,82 @@ def _validate_training_record(record: Dict[str, Any]) -> bool:
         return False
 
     return True
+
+
+def _add_trainable_model_from_catalog(
+    result: List[TrainableModelInfo],
+    seen: set[str],
+    model_id: str,
+    provider: str,
+    label: str,
+    default_model: str,
+    reason: Optional[str] = None,
+) -> None:
+    if not model_id or model_id in seen:
+        return
+    result.append(
+        TrainableModelInfo(
+            model_id=model_id,
+            label=label,
+            provider=provider,
+            trainable=reason is None,
+            reason_if_not_trainable=reason,
+            recommended=(model_id == default_model),
+        )
+    )
+    seen.add(model_id)
+
+
+async def _collect_local_trainable_models(
+    mgr: Any, default_model: str, result: List[TrainableModelInfo], seen: set[str]
+) -> None:
+    local_models = await mgr.list_local_models()
+    for model in local_models:
+        model_id = str(model.get("name") or "").strip()
+        if not model_id or model_id in seen:
+            continue
+        provider = str(model.get("provider") or model.get("source") or "unknown")
+        source = str(model.get("source") or "")
+        reason = _get_model_non_trainable_reason(model_id=model_id, provider=provider)
+        _add_trainable_model_from_catalog(
+            result=result,
+            seen=seen,
+            model_id=model_id,
+            provider=provider,
+            label=_build_model_label(
+                model_id=model_id, provider=provider, source=source
+            ),
+            default_model=default_model,
+            reason=reason,
+        )
+
+
+def _collect_default_trainable_models(
+    default_model: str, result: List[TrainableModelInfo], seen: set[str]
+) -> None:
+    for entry in _get_default_trainable_models_catalog():
+        if entry.model_id in seen:
+            continue
+        entry.recommended = entry.model_id == default_model
+        result.append(entry)
+        seen.add(entry.model_id)
+
+
+def _ensure_default_model_visible(
+    default_model: str, result: List[TrainableModelInfo], seen: set[str]
+) -> None:
+    if not default_model or default_model in seen:
+        return
+    reason = _get_model_non_trainable_reason(model_id=default_model, provider=None)
+    _add_trainable_model_from_catalog(
+        result=result,
+        seen=seen,
+        model_id=default_model,
+        provider="config",
+        label=f"{default_model} (default)",
+        default_model=default_model,
+        reason=reason,
+    )
 
 
 @router.get("/models/trainable")
@@ -2106,57 +2188,22 @@ async def get_trainable_models() -> List[TrainableModelInfo]:
     # 1) Modele z aktualnego katalogu lokalnego (jeśli manager dostępny)
     if mgr is not None:
         try:
-            local_models = await mgr.list_local_models()
-            for model in local_models:
-                model_id = str(model.get("name") or "").strip()
-                if not model_id or model_id in seen:
-                    continue
-
-                provider = str(
-                    model.get("provider") or model.get("source") or "unknown"
-                )
-                source = str(model.get("source") or "")
-                reason = _get_model_non_trainable_reason(
-                    model_id=model_id, provider=provider
-                )
-                result.append(
-                    TrainableModelInfo(
-                        model_id=model_id,
-                        label=_build_model_label(
-                            model_id=model_id, provider=provider, source=source
-                        ),
-                        provider=provider,
-                        trainable=reason is None,
-                        reason_if_not_trainable=reason,
-                        recommended=(model_id == default_model),
-                    )
-                )
-                seen.add(model_id)
+            await _collect_local_trainable_models(
+                mgr=mgr,
+                default_model=default_model,
+                result=result,
+                seen=seen,
+            )
         except Exception as exc:
             logger.warning("Failed to load local model catalog for Academy: %s", exc)
 
     # 2) Fallback: domyślny katalog trenowalnych modeli (HF/Unsloth)
-    for entry in _get_default_trainable_models_catalog():
-        if entry.model_id in seen:
-            continue
-        entry.recommended = entry.model_id == default_model
-        result.append(entry)
-        seen.add(entry.model_id)
+    _collect_default_trainable_models(
+        default_model=default_model, result=result, seen=seen
+    )
 
     # 3) Upewnij się, że model domyślny jest zawsze widoczny (nawet jeśli niestandardowy).
-    if default_model and default_model not in seen:
-        reason = _get_model_non_trainable_reason(model_id=default_model, provider=None)
-        result.append(
-            TrainableModelInfo(
-                model_id=default_model,
-                label=f"{default_model} (default)",
-                provider="config",
-                trainable=reason is None,
-                reason_if_not_trainable=reason,
-                recommended=True,
-            )
-        )
-        seen.add(default_model)
+    _ensure_default_model_visible(default_model=default_model, result=result, seen=seen)
 
     # 4) Sortowanie: recommended -> trainable -> label
     result.sort(key=lambda item: (not item.recommended, not item.trainable, item.label))

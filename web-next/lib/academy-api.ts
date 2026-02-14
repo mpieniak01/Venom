@@ -253,6 +253,30 @@ export interface TrainableModelInfo {
 /**
  * Upload user dataset files to Academy
  */
+async function parseUploadErrorMessage(response: Response): Promise<string> {
+  const defaultError = "Upload failed";
+  try {
+    const text = await response.text();
+    if (!text) return defaultError;
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "message" in parsed &&
+        typeof (parsed as { message: unknown }).message === "string"
+      ) {
+        return (parsed as { message: string }).message;
+      }
+      return text;
+    } catch {
+      return text;
+    }
+  } catch {
+    return defaultError;
+  }
+}
+
 export async function uploadDatasetFiles(params: {
   files: FileList | File[];
   tag?: string;
@@ -293,30 +317,7 @@ export async function uploadDatasetFiles(params: {
   });
 
   if (!response.ok) {
-    let errorMessage = "Upload failed";
-    try {
-      const text = await response.text();
-      if (text) {
-        try {
-          const parsed = JSON.parse(text) as unknown;
-          if (
-            parsed &&
-            typeof parsed === "object" &&
-            "message" in parsed &&
-            typeof (parsed as { message: unknown }).message === "string"
-          ) {
-            errorMessage = (parsed as { message: string }).message;
-          } else {
-            errorMessage = text;
-          }
-        } catch {
-          errorMessage = text;
-        }
-      }
-    } catch {
-      // Keep default error message
-    }
-    throw new Error(errorMessage);
+    throw new Error(await parseUploadErrorMessage(response));
   }
 
   return response.json();

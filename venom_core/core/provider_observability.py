@@ -297,116 +297,139 @@ class ProviderObservability:
         Returns:
             Lista wyemitowanych alertów
         """
-        emitted_alerts = []
-
-        # High latency alert
-        if (
-            slo_status.latency_p99_ms
-            and slo_status.latency_p99_ms > slo_status.slo_target.latency_p99_ms
-        ):
-            alert = Alert(
-                id=f"{provider}_latency_{datetime.now().timestamp()}",
-                severity=AlertSeverity.WARNING,
-                alert_type=AlertType.HIGH_LATENCY,
-                provider=provider,
-                message="providers.alerts.highLatency",
-                technical_details=f"p99={slo_status.latency_p99_ms:.0f}ms threshold={slo_status.slo_target.latency_p99_ms:.0f}ms",
-                metadata={
-                    "latency": slo_status.latency_p99_ms,
-                    "threshold": slo_status.slo_target.latency_p99_ms,
-                },
-            )
-            if self.emit_alert(alert):
+        emitted_alerts: List[Alert] = []
+        candidate_alerts = [
+            self._build_high_latency_alert(provider, slo_status),
+            self._build_error_spike_alert(provider, slo_status),
+            self._build_budget_alert(provider, slo_status),
+            self._build_availability_alert(provider, slo_status),
+            self._build_slo_breach_alert(provider, slo_status),
+        ]
+        for alert in candidate_alerts:
+            if alert and self.emit_alert(alert):
                 emitted_alerts.append(alert)
-
-        # Error spike alert
-        if slo_status.error_rate > slo_status.slo_target.error_rate_target:
-            severity = (
-                AlertSeverity.CRITICAL
-                if slo_status.error_rate > slo_status.slo_target.error_rate_target * 2
-                else AlertSeverity.WARNING
-            )
-            alert = Alert(
-                id=f"{provider}_error_{datetime.now().timestamp()}",
-                severity=severity,
-                alert_type=AlertType.ERROR_SPIKE,
-                provider=provider,
-                message="providers.alerts.errorSpike",
-                technical_details=f"error_rate={slo_status.error_rate * 100:.1f}% threshold={slo_status.slo_target.error_rate_target * 100:.1f}%",
-                metadata={
-                    "rate": slo_status.error_rate * 100,
-                    "threshold": slo_status.slo_target.error_rate_target * 100,
-                },
-            )
-            if self.emit_alert(alert):
-                emitted_alerts.append(alert)
-
-        # Budget warning
-        if slo_status.slo_target.cost_budget_usd > 0:
-            budget_usage_pct = (
-                slo_status.cost_usage_usd / slo_status.slo_target.cost_budget_usd * 100
-            )
-            if budget_usage_pct > 80:
-                severity = (
-                    AlertSeverity.CRITICAL
-                    if budget_usage_pct > 100
-                    else AlertSeverity.WARNING
-                )
-                alert_type = (
-                    AlertType.BUDGET_CRITICAL
-                    if budget_usage_pct > 100
-                    else AlertType.BUDGET_WARNING
-                )
-                alert = Alert(
-                    id=f"{provider}_budget_{datetime.now().timestamp()}",
-                    severity=severity,
-                    alert_type=alert_type,
-                    provider=provider,
-                    message="providers.alerts.budgetWarning",
-                    technical_details=f"cost=${slo_status.cost_usage_usd:.2f} budget=${slo_status.slo_target.cost_budget_usd:.2f}",
-                    metadata={
-                        "current": slo_status.cost_usage_usd,
-                        "limit": slo_status.slo_target.cost_budget_usd,
-                    },
-                )
-                if self.emit_alert(alert):
-                    emitted_alerts.append(alert)
-
-        # Availability drop
-        if slo_status.availability < slo_status.slo_target.availability_target:
-            alert = Alert(
-                id=f"{provider}_availability_{datetime.now().timestamp()}",
-                severity=AlertSeverity.CRITICAL,
-                alert_type=AlertType.AVAILABILITY_DROP,
-                provider=provider,
-                message="providers.alerts.availabilityDrop",
-                technical_details=f"availability={slo_status.availability * 100:.1f}% target={slo_status.slo_target.availability_target * 100:.1f}%",
-                metadata={
-                    "availability": slo_status.availability * 100,
-                    "target": slo_status.slo_target.availability_target * 100,
-                },
-            )
-            if self.emit_alert(alert):
-                emitted_alerts.append(alert)
-
-        # SLO breach
-        if slo_status.breaches:
-            alert = Alert(
-                id=f"{provider}_slo_{datetime.now().timestamp()}",
-                severity=AlertSeverity.WARNING,
-                alert_type=AlertType.SLO_BREACH,
-                provider=provider,
-                message="providers.alerts.sloBreached",
-                technical_details=f"breaches: {', '.join(slo_status.breaches)}",
-                metadata={
-                    "metric": ", ".join(slo_status.breaches),
-                    "breaches": slo_status.breaches,
-                },
-            )
-            if self.emit_alert(alert):
-                emitted_alerts.append(alert)
-
         return emitted_alerts
+
+    def _build_high_latency_alert(
+        self, provider: str, slo_status: SLOStatus
+    ) -> Optional[Alert]:
+        if (
+            not slo_status.latency_p99_ms
+            or slo_status.latency_p99_ms <= slo_status.slo_target.latency_p99_ms
+        ):
+            return None
+        return Alert(
+            id=f"{provider}_latency_{datetime.now().timestamp()}",
+            severity=AlertSeverity.WARNING,
+            alert_type=AlertType.HIGH_LATENCY,
+            provider=provider,
+            message="providers.alerts.highLatency",
+            technical_details=(
+                f"p99={slo_status.latency_p99_ms:.0f}ms "
+                f"threshold={slo_status.slo_target.latency_p99_ms:.0f}ms"
+            ),
+            metadata={
+                "latency": slo_status.latency_p99_ms,
+                "threshold": slo_status.slo_target.latency_p99_ms,
+            },
+        )
+
+    def _build_error_spike_alert(
+        self, provider: str, slo_status: SLOStatus
+    ) -> Optional[Alert]:
+        if slo_status.error_rate <= slo_status.slo_target.error_rate_target:
+            return None
+        critical_threshold = slo_status.slo_target.error_rate_target * 2
+        severity = (
+            AlertSeverity.CRITICAL
+            if slo_status.error_rate > critical_threshold
+            else AlertSeverity.WARNING
+        )
+        return Alert(
+            id=f"{provider}_error_{datetime.now().timestamp()}",
+            severity=severity,
+            alert_type=AlertType.ERROR_SPIKE,
+            provider=provider,
+            message="providers.alerts.errorSpike",
+            technical_details=(
+                f"error_rate={slo_status.error_rate * 100:.1f}% "
+                f"threshold={slo_status.slo_target.error_rate_target * 100:.1f}%"
+            ),
+            metadata={
+                "rate": slo_status.error_rate * 100,
+                "threshold": slo_status.slo_target.error_rate_target * 100,
+            },
+        )
+
+    def _build_budget_alert(
+        self, provider: str, slo_status: SLOStatus
+    ) -> Optional[Alert]:
+        if slo_status.slo_target.cost_budget_usd <= 0:
+            return None
+        budget_usage_pct = (
+            slo_status.cost_usage_usd / slo_status.slo_target.cost_budget_usd * 100
+        )
+        if budget_usage_pct <= 80:
+            return None
+        is_critical = budget_usage_pct > 100
+        severity = AlertSeverity.CRITICAL if is_critical else AlertSeverity.WARNING
+        alert_type = (
+            AlertType.BUDGET_CRITICAL if is_critical else AlertType.BUDGET_WARNING
+        )
+        return Alert(
+            id=f"{provider}_budget_{datetime.now().timestamp()}",
+            severity=severity,
+            alert_type=alert_type,
+            provider=provider,
+            message="providers.alerts.budgetWarning",
+            technical_details=(
+                f"cost=${slo_status.cost_usage_usd:.2f} "
+                f"budget=${slo_status.slo_target.cost_budget_usd:.2f}"
+            ),
+            metadata={
+                "current": slo_status.cost_usage_usd,
+                "limit": slo_status.slo_target.cost_budget_usd,
+            },
+        )
+
+    def _build_availability_alert(
+        self, provider: str, slo_status: SLOStatus
+    ) -> Optional[Alert]:
+        if slo_status.availability >= slo_status.slo_target.availability_target:
+            return None
+        return Alert(
+            id=f"{provider}_availability_{datetime.now().timestamp()}",
+            severity=AlertSeverity.CRITICAL,
+            alert_type=AlertType.AVAILABILITY_DROP,
+            provider=provider,
+            message="providers.alerts.availabilityDrop",
+            technical_details=(
+                f"availability={slo_status.availability * 100:.1f}% "
+                f"target={slo_status.slo_target.availability_target * 100:.1f}%"
+            ),
+            metadata={
+                "availability": slo_status.availability * 100,
+                "target": slo_status.slo_target.availability_target * 100,
+            },
+        )
+
+    def _build_slo_breach_alert(
+        self, provider: str, slo_status: SLOStatus
+    ) -> Optional[Alert]:
+        if not slo_status.breaches:
+            return None
+        return Alert(
+            id=f"{provider}_slo_{datetime.now().timestamp()}",
+            severity=AlertSeverity.WARNING,
+            alert_type=AlertType.SLO_BREACH,
+            provider=provider,
+            message="providers.alerts.sloBreached",
+            technical_details=f"breaches: {', '.join(slo_status.breaches)}",
+            metadata={
+                "metric": ", ".join(slo_status.breaches),
+                "breaches": slo_status.breaches,
+            },
+        )
 
     def get_active_alerts(self, provider: Optional[str] = None) -> List[Alert]:
         """

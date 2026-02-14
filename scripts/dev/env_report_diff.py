@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -65,7 +65,7 @@ def _build_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]
     rows.sort(key=lambda r: abs(r["delta_bytes"]), reverse=True)
 
     return {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_before_bytes": total_before,
         "total_after_bytes": total_after,
         "total_delta_bytes": total_after - total_before,

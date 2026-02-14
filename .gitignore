@@ -96,5 +96,4 @@ docs_dev/
 # Local benchmark outputs
 data/benchmarks/
 .mypy_cache/
-data/training/*.json
-data/training/*.jsonl
+data/training/

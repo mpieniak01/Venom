@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -673,12 +673,9 @@ def test_get_trainable_models(client):
     data = response.json()
     assert len(data) > 0
 
-    # Sprawdź, że są modele trainable i non-trainable
+    # Sprawdź, że są modele trainable
     trainable_count = sum(1 for m in data if m["trainable"])
-    non_trainable_count = sum(1 for m in data if not m["trainable"])
-
     assert trainable_count > 0
-    assert non_trainable_count > 0
 
     # Sprawdź struktur modelu
     model = data[0]
@@ -687,6 +684,49 @@ def test_get_trainable_models(client):
     assert "provider" in model
     assert "trainable" in model
     assert "recommended" in model
+
+
+def test_get_trainable_models_marks_ollama_as_non_trainable(client, mock_model_manager):
+    """Modele Ollama mają być widoczne, ale oznaczone jako nietrenowalne."""
+    mock_model_manager.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "gemma3:latest",
+                "provider": "ollama",
+                "source": "ollama",
+                "active": True,
+            },
+            {
+                "name": "unsloth/Phi-3-mini-4k-instruct",
+                "provider": "vllm",
+                "source": "models",
+                "active": False,
+            },
+        ]
+    )
+
+    response = client.get("/api/v1/academy/models/trainable")
+    assert response.status_code == 200
+    data = response.json()
+
+    by_id = {item["model_id"]: item for item in data}
+    assert by_id["gemma3:latest"]["trainable"] is False
+    assert "ollama" in (by_id["gemma3:latest"]["reason_if_not_trainable"] or "").lower()
+    assert by_id["unsloth/Phi-3-mini-4k-instruct"]["trainable"] is True
+
+
+def test_get_trainable_models_uses_fallback_when_model_catalog_fails(
+    client, mock_model_manager
+):
+    """Awaria listowania modeli nie może wycinać fallback listy Academy."""
+    mock_model_manager.list_local_models = AsyncMock(side_effect=RuntimeError("boom"))
+
+    response = client.get("/api/v1/academy/models/trainable")
+    assert response.status_code == 200
+    data = response.json()
+
+    assert any(item["model_id"] == "unsloth/Phi-3-mini-4k-instruct" for item in data)
+    assert any(item["trainable"] for item in data)
 
 
 # ==================== Curate with Scope Tests ====================

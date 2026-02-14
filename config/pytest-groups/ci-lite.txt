@@ -43,3 +43,7 @@ tests/test_env_audit.py
 tests/test_env_cleanup.py
 tests/test_env_report_diff.py
 tests/test_docker_cleanup_script.py
+
+# Academy lightweight regression coverage
+tests/test_academy_api_coverage.py
+tests/test_academy_api_new_code_edges.py

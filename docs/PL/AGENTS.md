@@ -52,6 +52,13 @@ Baza formatu: `.github/pull_request_template.md`.
 - Uruchamiaj odpowiednie grupy `pytest` dla zmienianych modułów.
 - Potwierdź brak nowych podatności critical/high.
 
+## Zasada i18n Komunikatów Użytkownika (obowiązkowa)
+
+- Każdy komunikat widoczny dla użytkownika (labelki UI, przyciski, toasty, modale, błędy walidacji, błędy API pokazywane w UI, teksty empty-state) musi być realizowany przez klucze tłumaczeń, bez hardkodowanych stringów.
+- Dla nowych lub zmienionych komunikatów trzeba dodać/uzupełnić tłumaczenia we wszystkich wspieranych językach: `pl`, `en`, `de`.
+- Zachowuj spójny namespace kluczy i pełną parzystość między plikami locale (bez brakujących kluczy w jednym języku).
+- Nie mergujemy zmian powodujących miks języków w UI przez fallback do hardkodu.
+
 ## Zasada Świadomości Stosu CI
 
 - Przed dodaniem/aktualizacją testów dla CI-lite sprawdź, jakie zależności i narzędzia są dostępne w stosie CI-lite.

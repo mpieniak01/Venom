@@ -132,17 +132,33 @@ def configure_local_settings(tmp_path_factory) -> Dict[str, Any]:
     }
 
     tmp_state_dir = tmp_path_factory.mktemp("state")
+    tmp_academy_training_dir = tmp_path_factory.mktemp("academy-training")
+    tmp_academy_models_dir = tmp_path_factory.mktemp("academy-models")
     overrides["STATE_FILE_PATH"] = str(tmp_state_dir / "state_dump.json")
     # Izoluj artefakty chronosa/snienia od repozytorium podczas testów.
     overrides["CHRONOS_TIMELINES_DIR"] = str(tmp_state_dir / "timelines")
     overrides["DREAMING_OUTPUT_DIR"] = str(tmp_state_dir / "synthetic_training")
+    # Izoluj artefakty Academy od repozytorium podczas testów.
+    overrides["ACADEMY_TRAINING_DIR"] = str(tmp_academy_training_dir)
+    overrides["ACADEMY_MODELS_DIR"] = str(tmp_academy_models_dir)
 
     original_values = {attr: getattr(SETTINGS, attr) for attr in overrides}
 
     for attr, value in overrides.items():
         setattr(SETTINGS, attr, value)
 
+    # Utrzymaj spójną ścieżkę jobs history także dla helperów korzystających
+    # z modułowej stałej, aby testy nie zapisywały do ./data/training/jobs.jsonl.
+    from venom_core.api.routes import academy as academy_routes
+
+    original_jobs_history_file = academy_routes.JOBS_HISTORY_FILE
+    academy_routes.JOBS_HISTORY_FILE = (
+        Path(overrides["ACADEMY_TRAINING_DIR"]) / "jobs.jsonl"
+    )
+
     yield original_values
+
+    academy_routes.JOBS_HISTORY_FILE = original_jobs_history_file
 
     for attr, value in original_values.items():
         setattr(SETTINGS, attr, value)

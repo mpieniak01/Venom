@@ -3,6 +3,7 @@
 import { RefreshCw, CheckCircle2, XCircle, AlertCircle, Cpu, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AcademyStatus } from "@/lib/academy-api";
+import { useTranslation } from "@/lib/i18n";
 
 interface AcademyOverviewProps {
   readonly status: AcademyStatus;
@@ -54,17 +55,18 @@ const StatCard = ({ label, value, icon: Icon, color = "emerald" }: StatCardProps
 };
 
 export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
+  const t = useTranslation();
   return (
     <div className="space-y-6">
       {/* Status nagłówek */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">Status Academy</h2>
-          <p className="text-sm text-zinc-400">Komponent do trenowania i fine-tuningu modeli</p>
+          <h2 className="text-lg font-semibold text-white">{t("academy.overview.title")}</h2>
+          <p className="text-sm text-zinc-400">{t("academy.overview.subtitle")}</p>
         </div>
         <Button onClick={onRefresh} variant="outline" size="sm" className="gap-2">
           <RefreshCw className="h-4 w-4" />
-          Odśwież
+          {t("academy.common.refresh")}
         </Button>
       </div>
 
@@ -80,12 +82,14 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
           }`} />
           <div>
             <p className="font-medium text-white">
-              {status.gpu.available ? "GPU dostępne" : "GPU niedostępne"}
+              {status.gpu.available
+                ? t("academy.overview.gpuAvailable")
+                : t("academy.overview.gpuUnavailable")}
             </p>
             <p className="text-sm text-zinc-400">
               {status.gpu.enabled
-                ? "GPU włączone w konfiguracji"
-                : "GPU wyłączone w konfiguracji (CPU fallback)"}
+                ? t("academy.overview.gpuEnabledHint")
+                : t("academy.overview.gpuDisabledHint")}
             </p>
           </div>
         </div>
@@ -94,25 +98,25 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
       {/* Statystyki */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Lessons Store"
+          label={t("academy.overview.cards.lessonsStore")}
           value={status.lessons.total_lessons || 0}
           icon={Database}
           color="blue"
         />
         <StatCard
-          label="Wszystkie joby"
+          label={t("academy.overview.cards.totalJobs")}
           value={status.jobs.total}
           icon={Database}
           color="emerald"
         />
         <StatCard
-          label="W trakcie"
+          label={t("academy.overview.cards.runningJobs")}
           value={status.jobs.running}
           icon={AlertCircle}
           color="yellow"
         />
         <StatCard
-          label="Zakończone"
+          label={t("academy.overview.cards.finishedJobs")}
           value={status.jobs.finished}
           icon={CheckCircle2}
           color="emerald"
@@ -121,7 +125,7 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
 
       {/* Komponenty */}
       <div>
-        <h3 className="mb-3 text-sm font-medium text-zinc-300">Komponenty Academy</h3>
+        <h3 className="mb-3 text-sm font-medium text-zinc-300">{t("academy.overview.componentsTitle")}</h3>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
           <ComponentStatus name="Professor" active={status.components.professor} />
           <ComponentStatus name="DatasetCurator" active={status.components.dataset_curator} />
@@ -133,18 +137,18 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
 
       {/* Konfiguracja */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-        <h3 className="mb-4 text-sm font-medium text-zinc-300">Konfiguracja</h3>
+        <h3 className="mb-4 text-sm font-medium text-zinc-300">{t("academy.overview.configTitle")}</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <p className="text-xs text-zinc-400">Minimum lekcji</p>
+            <p className="text-xs text-zinc-400">{t("academy.overview.minLessons")}</p>
             <p className="mt-1 text-lg font-semibold text-white">{status.config.min_lessons}</p>
           </div>
           <div>
-            <p className="text-xs text-zinc-400">Interwał treningowy</p>
+            <p className="text-xs text-zinc-400">{t("academy.overview.trainingInterval")}</p>
             <p className="mt-1 text-lg font-semibold text-white">{status.config.training_interval_hours}h</p>
           </div>
           <div>
-            <p className="text-xs text-zinc-400">Model bazowy</p>
+            <p className="text-xs text-zinc-400">{t("academy.overview.baseModel")}</p>
             <p className="mt-1 text-sm font-mono text-white">{status.config.default_base_model}</p>
           </div>
         </div>
@@ -156,8 +160,7 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
           <div className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-red-400" />
             <p className="text-sm text-red-300">
-              {status.jobs.failed} {status.jobs.failed === 1 ? "job zakończył" : "joby zakończyły"} się błędem.
-              Sprawdź logi w zakładce &quot;Trening&quot;.
+              {t("academy.overview.failedJobs", { count: status.jobs.failed })}
             </p>
           </div>
         </div>
@@ -169,10 +172,10 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
             <AlertCircle className="h-5 w-5 text-yellow-400" />
             <div>
               <p className="text-sm text-yellow-300">
-                GPU jest włączone w konfiguracji, ale niedostępne
+                {t("academy.overview.gpuWarningTitle")}
               </p>
               <p className="mt-1 text-xs text-zinc-400">
-                Sprawdź czy zainstalowano nvidia-container-toolkit i czy Docker ma dostęp do GPU
+                {t("academy.overview.gpuWarningHint")}
               </p>
             </div>
           </div>

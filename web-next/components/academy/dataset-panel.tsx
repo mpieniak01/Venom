@@ -24,8 +24,11 @@ import {
   type UploadFileInfo,
   type DatasetPreviewResponse,
 } from "@/lib/academy-api";
+import { useLanguage, useTranslation } from "@/lib/i18n";
 
 export function DatasetPanel() {
+  const t = useTranslation();
+  const { language } = useLanguage();
   const { pushToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DatasetResponse | null>(null);
@@ -86,7 +89,7 @@ export function DatasetPanel() {
       }
     } catch (err) {
       console.error("Failed to upload files:", err);
-      pushToast(err instanceof Error ? err.message : "Upload failed", "error");
+      pushToast(err instanceof Error ? err.message : t("academy.dataset.uploadFailed"), "error");
     } finally {
       setUploading(false);
     }
@@ -97,10 +100,10 @@ export function DatasetPanel() {
       await deleteDatasetUpload(fileId);
       await loadUploads();
       setSelectedUploadIds((prev) => prev.filter((id) => id !== fileId));
-      pushToast("File deleted", "success");
+      pushToast(t("academy.dataset.fileDeleted"), "success");
     } catch (err) {
       console.error("Failed to delete upload:", err);
-      pushToast("Failed to delete file", "error");
+      pushToast(t("academy.dataset.deleteFileFailed"), "error");
     }
   }
 
@@ -126,7 +129,7 @@ export function DatasetPanel() {
       setPreview(data);
     } catch (err) {
       console.error("Failed to preview dataset:", err);
-      pushToast("Failed to generate preview", "error");
+      pushToast(t("academy.dataset.previewFailed"), "error");
     } finally {
       setPreviewing(false);
     }
@@ -158,25 +161,40 @@ export function DatasetPanel() {
           avg_input_length: 0,
           avg_output_length: 0,
         },
-        message: err instanceof Error ? err.message : "Failed to curate dataset",
+        message: err instanceof Error ? err.message : t("academy.dataset.curateFailed"),
       });
     } finally {
       setLoading(false);
     }
   }
 
+  function sourceLabel(source: string) {
+    switch (source) {
+      case "lessons":
+        return t("academy.dataset.sources.lessons");
+      case "git":
+        return t("academy.dataset.sources.git");
+      case "task_history":
+        return t("academy.dataset.sources.taskHistory");
+      case "uploads":
+        return t("academy.dataset.sources.uploads");
+      default:
+        return source;
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-white">Dataset Curation (v2)</h2>
+        <h2 className="text-lg font-semibold text-white">{t("academy.dataset.title")}</h2>
         <p className="text-sm text-zinc-400">
-          Prepare training data: select sources and upload your own files
+          {t("academy.dataset.subtitle")}
         </p>
       </div>
 
       {/* User Uploads Section */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-        <h3 className="text-base font-semibold text-white mb-4">Your Files</h3>
+        <h3 className="text-base font-semibold text-white mb-4">{t("academy.dataset.yourFiles")}</h3>
 
         <div className="space-y-4">
           <div>
@@ -198,23 +216,23 @@ export function DatasetPanel() {
               {uploading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Uploading...
+                  {t("academy.dataset.uploading")}
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4" />
-                  Upload Files
+                  {t("academy.dataset.uploadFiles")}
                 </>
               )}
             </Button>
             <p className="mt-2 text-xs text-zinc-400">
-              Supported: .jsonl, .json, .md, .txt, .csv
+              {t("academy.dataset.supported")}
             </p>
           </div>
 
           {uploads.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm font-medium text-zinc-300">Uploaded files:</p>
+              <p className="text-sm font-medium text-zinc-300">{t("academy.dataset.uploadedFiles")}</p>
               {uploads.map((upload) => (
                 <div
                   key={upload.id}
@@ -227,7 +245,7 @@ export function DatasetPanel() {
                   <div className="flex-1">
                     <p className="text-sm text-white">{upload.name}</p>
                     <p className="text-xs text-zinc-400">
-                      {(upload.size_bytes / 1024).toFixed(1)} KB • ~{upload.records_estimate} records • {new Date(upload.created_at).toLocaleString()}
+                      {(upload.size_bytes / 1024).toFixed(1)} KB • ~{upload.records_estimate} {t("academy.dataset.records")} • {new Date(upload.created_at).toLocaleString(language)}
                     </p>
                   </div>
                   <Button
@@ -247,7 +265,7 @@ export function DatasetPanel() {
 
       {/* Training Scope Section */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-        <h3 className="text-base font-semibold text-white mb-4">Training Scope</h3>
+        <h3 className="text-base font-semibold text-white mb-4">{t("academy.dataset.trainingScope")}</h3>
 
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -257,14 +275,14 @@ export function DatasetPanel() {
               onCheckedChange={(checked) => setIncludeLessons(checked === true)}
             />
             <Label htmlFor="include-lessons" className="text-zinc-300 cursor-pointer">
-              Lessons Store
+              {t("academy.dataset.lessonsStore")}
             </Label>
           </div>
 
           {includeLessons && (
             <div className="ml-6">
               <Label htmlFor="lessons-limit" className="text-zinc-300 text-sm">
-                Lessons limit
+                {t("academy.dataset.lessonsLimit")}
               </Label>
               <Input
                 id="lessons-limit"
@@ -285,14 +303,14 @@ export function DatasetPanel() {
               onCheckedChange={(checked) => setIncludeGit(checked === true)}
             />
             <Label htmlFor="include-git" className="text-zinc-300 cursor-pointer">
-              Git History
+              {t("academy.dataset.gitHistory")}
             </Label>
           </div>
 
           {includeGit && (
             <div className="ml-6">
               <Label htmlFor="git-limit" className="text-zinc-300 text-sm">
-                Commits limit
+                {t("academy.dataset.commitsLimit")}
               </Label>
               <Input
                 id="git-limit"
@@ -313,14 +331,14 @@ export function DatasetPanel() {
               onCheckedChange={(checked) => setIncludeTaskHistory(checked === true)}
             />
             <Label htmlFor="include-task-history" className="text-zinc-300 cursor-pointer">
-              Task History (experimental)
+              {t("academy.dataset.taskHistoryExperimental")}
             </Label>
           </div>
 
           {selectedUploadIds.length > 0 && (
             <div className="mt-2 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
               <p className="text-sm text-blue-300">
-                ✓ {selectedUploadIds.length} uploaded file(s) will be included
+                ✓ {t("academy.dataset.selectedUploads", { count: selectedUploadIds.length })}
               </p>
             </div>
           )}
@@ -336,12 +354,12 @@ export function DatasetPanel() {
             {previewing ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Generowanie...
+                {t("academy.dataset.generating")}
               </>
             ) : (
               <>
                 <Eye className="h-4 w-4" />
-                Preview
+                {t("academy.dataset.preview")}
               </>
             )}
           </Button>
@@ -354,12 +372,12 @@ export function DatasetPanel() {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Curating...
+                {t("academy.dataset.curating")}
               </>
             ) : (
               <>
                 <Play className="h-4 w-4" />
-                Curate Dataset
+                {t("academy.dataset.curateDataset")}
               </>
             )}
           </Button>
@@ -372,23 +390,23 @@ export function DatasetPanel() {
           <div className="flex items-start gap-3">
             <Eye className="h-6 w-6 text-blue-400" />
             <div className="flex-1">
-              <p className="font-medium text-blue-300">Dataset Preview</p>
+              <p className="font-medium text-blue-300">{t("academy.dataset.previewTitle")}</p>
 
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div>
-                  <p className="text-xs text-zinc-400">Total Count</p>
+                  <p className="text-xs text-zinc-400">{t("academy.dataset.totalCount")}</p>
                   <p className="mt-1 text-lg font-semibold text-white">
                     {preview.total_examples}
                   </p>
                 </div>
                 {Object.entries(preview.by_source).map(([source, count]) => (
                   <div key={source}>
-                    <p className="text-xs text-zinc-400 capitalize">{source}</p>
+                    <p className="text-xs text-zinc-400 capitalize">{sourceLabel(source)}</p>
                     <p className="mt-1 text-lg font-semibold text-white">{count}</p>
                   </div>
                 ))}
                 <div>
-                  <p className="text-xs text-zinc-400">Rejected</p>
+                  <p className="text-xs text-zinc-400">{t("academy.dataset.rejected")}</p>
                   <p className="mt-1 text-lg font-semibold text-white">
                     {preview.removed_low_quality}
                   </p>
@@ -408,7 +426,7 @@ export function DatasetPanel() {
 
               {preview.samples.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-sm font-medium text-zinc-300 mb-2">Sample records:</p>
+                  <p className="text-sm font-medium text-zinc-300 mb-2">{t("academy.dataset.sampleRecords")}</p>
                   <div className="space-y-2">
                     {preview.samples.slice(0, 3).map((sample, idx) => (
                       <div key={idx} className="rounded-lg bg-black/20 p-3 text-xs">
@@ -447,13 +465,13 @@ export function DatasetPanel() {
                 <div className="mt-4">
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-4">
                     <div>
-                      <p className="text-xs text-zinc-400">Total Count</p>
+                      <p className="text-xs text-zinc-400">{t("academy.dataset.totalCount")}</p>
                       <p className="mt-1 text-lg font-semibold text-white">
                         {result.statistics.total_examples}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-zinc-400">Removed</p>
+                      <p className="text-xs text-zinc-400">{t("academy.dataset.removed")}</p>
                       <p className="mt-1 text-lg font-semibold text-white">
                         {result.statistics.removed_low_quality}
                       </p>
@@ -464,7 +482,7 @@ export function DatasetPanel() {
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       {Object.entries(result.statistics.by_source).map(([source, count]) => (
                         <div key={source} className="rounded-lg bg-white/5 p-2">
-                          <p className="text-xs text-zinc-400 capitalize">{source}</p>
+                          <p className="text-xs text-zinc-400 capitalize">{sourceLabel(source)}</p>
                           <p className="mt-1 text-sm font-semibold text-white">{count}</p>
                         </div>
                       ))}
@@ -486,12 +504,10 @@ export function DatasetPanel() {
       {/* Information */}
       <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
         <p className="text-sm text-blue-300 font-medium mb-2">
-          ℹ️ Academy v2: Training LoRA adapter, not full model
+          ℹ️ {t("academy.dataset.infoTitle")}
         </p>
         <p className="text-xs text-zinc-400">
-          Dataset can include examples from LessonsStore, Git History, Task History, and your uploads.
-          Training uses LoRA/QLoRA adapter on base model, not training from scratch.
-          Format: Alpaca JSONL (instruction-input-output). Low quality examples are filtered automatically.
+          {t("academy.dataset.infoDescription")}
         </p>
       </div>
 
@@ -500,9 +516,9 @@ export function DatasetPanel() {
         onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, open }))}
       >
         <ConfirmDialogContent>
-          <ConfirmDialogTitle>Delete uploaded file?</ConfirmDialogTitle>
+          <ConfirmDialogTitle>{t("academy.dataset.deleteDialogTitle")}</ConfirmDialogTitle>
           <ConfirmDialogDescription>
-            This action permanently removes the file from Academy uploads.
+            {t("academy.dataset.deleteDialogDescription")}
           </ConfirmDialogDescription>
           <ConfirmDialogActions
             onCancel={() => setDeleteConfirm({ open: false, fileId: null })}
@@ -512,8 +528,8 @@ export function DatasetPanel() {
               if (!fileId) return;
               await handleDeleteUpload(fileId);
             }}
-            confirmLabel="Delete"
-            cancelLabel="Cancel"
+            confirmLabel={t("academy.dataset.delete")}
+            cancelLabel={t("academy.dataset.cancel")}
             confirmVariant="danger"
           />
         </ConfirmDialogContent>

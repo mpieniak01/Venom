@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -29,12 +28,22 @@ def _make_client() -> TestClient:
 
 def test_load_jobs_history_returns_empty_when_file_missing(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        academy_routes,
+        "JOBS_HISTORY_FILE",
+        tmp_path / "data" / "training" / "jobs.jsonl",
+    )
     assert academy_routes._load_jobs_history() == []
 
 
 def test_load_jobs_history_ignores_invalid_json_line(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    jobs_file = Path("data/training/jobs.jsonl")
+    monkeypatch.setattr(
+        academy_routes,
+        "JOBS_HISTORY_FILE",
+        tmp_path / "data" / "training" / "jobs.jsonl",
+    )
+    jobs_file = academy_routes.JOBS_HISTORY_FILE
     jobs_file.parent.mkdir(parents=True, exist_ok=True)
     jobs_file.write_text('{"job_id":"ok"}\nINVALID\n', encoding="utf-8")
 
@@ -44,6 +53,11 @@ def test_load_jobs_history_ignores_invalid_json_line(tmp_path, monkeypatch):
 
 def test_save_job_to_history_and_update_job(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        academy_routes,
+        "JOBS_HISTORY_FILE",
+        tmp_path / "data" / "training" / "jobs.jsonl",
+    )
     academy_routes._save_job_to_history({"job_id": "job-1", "status": "queued"})
     academy_routes._update_job_in_history("job-1", {"status": "running"})
     jobs = academy_routes._load_jobs_history()
@@ -54,8 +68,13 @@ def test_save_job_to_history_and_update_job(tmp_path, monkeypatch):
 
 def test_update_job_in_history_noop_when_file_missing(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        academy_routes,
+        "JOBS_HISTORY_FILE",
+        tmp_path / "data" / "training" / "jobs.jsonl",
+    )
     academy_routes._update_job_in_history("missing", {"status": "failed"})
-    assert not Path("data/training/jobs.jsonl").exists()
+    assert not academy_routes.JOBS_HISTORY_FILE.exists()
 
 
 @patch("venom_core.config.SETTINGS", new_callable=Mock)
@@ -371,6 +390,16 @@ def test_curate_dataset_handles_unexpected_exception(mock_settings):
 def test_trainable_models_endpoint_contains_trainable_and_non_trainable(mock_settings):
     mock_settings.ENABLE_ACADEMY = True
     client = _make_client()
+    academy_routes._model_manager.list_local_models = AsyncMock(
+        return_value=[
+            {"name": "gemma3:latest", "provider": "ollama", "source": "ollama"},
+            {
+                "name": "unsloth/Phi-3-mini-4k-instruct",
+                "provider": "vllm",
+                "source": "models",
+            },
+        ]
+    )
     resp = client.get("/api/v1/academy/models/trainable")
     assert resp.status_code == 200
     payload = resp.json()

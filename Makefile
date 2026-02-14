@@ -29,7 +29,7 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test install-hooks sync-sonar-new-code-group start start-dev start-prod stop restart status clean-ports \
+.PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod stop restart status clean-ports \
 	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage sonar-reports-backend-new-code pr-fast \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
@@ -42,7 +42,31 @@ lint:
 format:
 	black . && isort .
 
-test: pytest
+# Test Artifact Strategy (docs/TEST_ARTIFACTS_POLICY.md)
+# Domyślnie: CLEAN (artefakty testowe są usuwane)
+# Opcjonalnie: PRESERVE (artefakty zachowane do debugowania)
+TEST_ARTIFACT_MODE ?= clean
+TEST_ARTIFACT_CLEANUP_DAYS ?= 7
+
+test:
+	@echo "🧪 Uruchamiam testy w trybie CLEAN (artefakty usuwane po sesji)..."
+	VENOM_TEST_ARTIFACT_MODE=clean $(MAKE) --no-print-directory pytest
+
+test-data:
+	@echo "🧪 Uruchamiam testy w trybie PRESERVE (artefakty zachowane)..."
+	VENOM_TEST_ARTIFACT_MODE=preserve $(MAKE) --no-print-directory pytest
+
+test-artifacts-cleanup:
+	@echo "🗑️  Czyszczenie starych artefaktów testowych..."
+	@if [ "$(CLEANUP_ALL)" = "1" ]; then \
+		echo "Usuwanie wszystkich artefaktów z test-results/tmp/..."; \
+		rm -rf test-results/tmp/*; \
+		echo "✅ Usunięto wszystkie artefakty testowe"; \
+	else \
+		echo "Usuwanie artefaktów starszych niż $(TEST_ARTIFACT_CLEANUP_DAYS) dni..."; \
+		find test-results/tmp -type d -name "session-*" -mtime +$(TEST_ARTIFACT_CLEANUP_DAYS) -exec rm -rf {} + 2>/dev/null || true; \
+		echo "✅ Usunięto stare artefakty testowe"; \
+	fi
 
 test-unit:
 	pytest -k "not performance and not smoke"

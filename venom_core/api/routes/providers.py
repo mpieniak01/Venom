@@ -7,7 +7,7 @@ import time
 from typing import Any, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from venom_core.config import SETTINGS
@@ -22,6 +22,46 @@ router = APIRouter(prefix="/api/v1", tags=["providers"])
 
 # Valid provider names
 VALID_PROVIDERS = {"huggingface", "ollama", "vllm", "openai", "google"}
+
+
+def _extract_user_from_request(request: Request) -> str:
+    """
+    Extract user identifier from request for audit logging.
+
+    Attempts to identify the user from:
+    1. Authenticated user in request.state (set by auth middleware)
+    2. Common identity headers (X-Authenticated-User, X-User, X-Admin-User)
+    3. Falls back to "unknown" if no user can be determined
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        User identifier string
+    """
+    try:
+        # Try user set by authentication middleware on request.state
+        if hasattr(request, "state") and hasattr(request.state, "user"):
+            user = request.state.user
+            if user:
+                return str(user)
+
+        # Fallback to common identity headers
+        if hasattr(request, "headers"):
+            for header_name in (
+                "X-Authenticated-User",
+                "X-User",
+                "X-Admin-User",
+            ):
+                header_value = request.headers.get(header_name)
+                if header_value:
+                    return header_value
+
+    except Exception as exc:
+        # Never let user extraction errors break the endpoint
+        logger.warning(f"Failed to extract user from request: {exc}")
+
+    return "unknown"
 
 
 class ProviderCapability(BaseModel):
@@ -643,7 +683,9 @@ async def get_alerts(
 
 
 @router.post("/providers/{provider_name}/test-connection")
-async def test_provider_connection(provider_name: str) -> dict[str, Any]:
+async def test_provider_connection(
+    provider_name: str, request: Request
+) -> dict[str, Any]:
     """
     Test connection to a provider (admin endpoint).
 
@@ -652,11 +694,11 @@ async def test_provider_connection(provider_name: str) -> dict[str, Any]:
 
     Args:
         provider_name: Provider identifier
+        request: FastAPI request object
 
     Returns:
         Connection test results with error mappings and runbook links
     """
-    from fastapi import Request
     from venom_core.core.admin_audit import get_audit_trail
     from venom_core.core.error_mappings import (
         get_admin_message_key,
@@ -677,7 +719,7 @@ async def test_provider_connection(provider_name: str) -> dict[str, Any]:
 
     # Audit the test
     audit_trail = get_audit_trail()
-    user = "admin"  # Could be extracted from request headers/auth
+    user = _extract_user_from_request(request)
 
     try:
         # Perform connection test
@@ -732,7 +774,9 @@ async def test_provider_connection(provider_name: str) -> dict[str, Any]:
 
 
 @router.post("/providers/{provider_name}/preflight")
-async def provider_preflight_check(provider_name: str) -> dict[str, Any]:
+async def provider_preflight_check(
+    provider_name: str, request: Request
+) -> dict[str, Any]:
     """
     Perform preflight validation for a provider (admin endpoint).
 
@@ -744,6 +788,7 @@ async def provider_preflight_check(provider_name: str) -> dict[str, Any]:
 
     Args:
         provider_name: Provider identifier
+        request: FastAPI request object
 
     Returns:
         Comprehensive preflight check results
@@ -760,7 +805,7 @@ async def provider_preflight_check(provider_name: str) -> dict[str, Any]:
         )
 
     audit_trail = get_audit_trail()
-    user = "admin"
+    user = _extract_user_from_request(request)
 
     try:
         # Gather all preflight checks

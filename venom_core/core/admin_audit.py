@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from venom_core.utils.logger import get_logger
@@ -64,7 +64,7 @@ class AdminAuditTrail:
             error_message: Error message if result is failure
         """
         entry = AuditEntry(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(tz=timezone.utc),
             action=action,
             user=user,
             provider=provider,

@@ -279,3 +279,37 @@ class TestProviderAdminEndpoints:
         # Connection status should be consistent (same provider, same conditions)
         assert data1["connection_status"] == data2["connection_status"]
         assert data2["connection_status"] == data3["connection_status"]
+
+    def test_user_extraction_with_header(self, client):
+        """Test that user is extracted from request header."""
+        # Clear audit trail
+        trail = get_audit_trail()
+        trail.clear()
+
+        # Make request with X-Authenticated-User header
+        response = client.post(
+            "/api/v1/providers/ollama/test-connection",
+            headers={"X-Authenticated-User": "test_admin"},
+        )
+        assert response.status_code == 200
+
+        # Check audit log has the correct user
+        entries = trail.get_entries(limit=1)
+        assert len(entries) == 1
+        assert entries[0].user == "test_admin"
+        assert entries[0].action == "test_connection"
+
+    def test_user_extraction_fallback_to_unknown(self, client):
+        """Test that user defaults to 'unknown' when no auth present."""
+        # Clear audit trail
+        trail = get_audit_trail()
+        trail.clear()
+
+        # Make request without auth headers
+        response = client.post("/api/v1/providers/ollama/test-connection")
+        assert response.status_code == 200
+
+        # Check audit log has 'unknown' user
+        entries = trail.get_entries(limit=1)
+        assert len(entries) == 1
+        assert entries[0].user == "unknown"

@@ -10,8 +10,10 @@ import { DatasetPanel } from "./dataset-panel";
 import { TrainingPanel } from "./training-panel";
 import { AdaptersPanel } from "./adapters-panel";
 import { getAcademyStatus, type AcademyStatus } from "@/lib/academy-api";
+import { useTranslation } from "@/lib/i18n";
 
 export function AcademyDashboard() {
+  const t = useTranslation();
   const [activeTab, setActiveTab] = useState<"overview" | "dataset" | "training" | "adapters">("overview");
   const [status, setStatus] = useState<AcademyStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,7 +40,7 @@ export function AcademyDashboard() {
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
-        <div className="text-zinc-400">Ładowanie Academy...</div>
+        <div className="text-zinc-400">{t("academy.common.loadingAcademy")}</div>
       </div>
     );
   }
@@ -47,20 +49,19 @@ export function AcademyDashboard() {
     return (
       <div className="space-y-6">
         <SectionHeading
-          eyebrow="THE ACADEMY"
-          title="Model Training & Fine-tuning"
-          description="Autonomiczne ulepszanie modeli przez LoRA/QLoRA"
+          eyebrow={t("academy.dashboard.eyebrow")}
+          title={t("academy.dashboard.title")}
+          description={t("academy.dashboard.description")}
           as="h1"
           size="lg"
           rightSlot={<GraduationCap className="page-heading-icon" />}
         />
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-6">
           <p className="text-sm text-red-300">
-            ❌ Academy niedostępne: {error || "Unknown error"}
+            ❌ {t("academy.dashboard.unavailable")} {error || t("academy.common.unknownError")}
           </p>
           <p className="mt-2 text-xs text-zinc-400">
-            Sprawdź czy ENABLE_ACADEMY=true w konfiguracji i czy zainstalowano zależności
-            (pip install -r requirements-academy.txt)
+            {t("academy.dashboard.unavailableHint")}
           </p>
           <Button
             onClick={loadStatus}
@@ -68,7 +69,7 @@ export function AcademyDashboard() {
             size="sm"
             className="mt-4"
           >
-            Spróbuj ponownie
+            {t("academy.common.retry")}
           </Button>
         </div>
       </div>
@@ -79,19 +80,19 @@ export function AcademyDashboard() {
     return (
       <div className="space-y-6">
         <SectionHeading
-          eyebrow="THE ACADEMY"
-          title="Model Training & Fine-tuning"
-          description="Autonomiczne ulepszanie modeli przez LoRA/QLoRA"
+          eyebrow={t("academy.dashboard.eyebrow")}
+          title={t("academy.dashboard.title")}
+          description={t("academy.dashboard.description")}
           as="h1"
           size="lg"
           rightSlot={<GraduationCap className="page-heading-icon" />}
         />
         <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-6">
           <p className="text-sm text-yellow-300">
-            ⚠️ Academy jest wyłączone w konfiguracji
+            ⚠️ {t("academy.dashboard.disabled")}
           </p>
           <p className="mt-2 text-xs text-zinc-400">
-            Aby włączyć, ustaw ENABLE_ACADEMY=true w pliku .env i zrestartuj backend
+            {t("academy.dashboard.disabledHint")}
           </p>
         </div>
       </div>
@@ -101,9 +102,9 @@ export function AcademyDashboard() {
   return (
     <div className="space-y-6">
       <SectionHeading
-        eyebrow="THE ACADEMY"
-        title="Model Training & Fine-tuning"
-        description="Autonomiczne ulepszanie modeli przez LoRA/QLoRA"
+        eyebrow={t("academy.dashboard.eyebrow")}
+        title={t("academy.dashboard.title")}
+        description={t("academy.dashboard.description")}
         as="h1"
         size="lg"
         rightSlot={<GraduationCap className="page-heading-icon" />}
@@ -123,7 +124,7 @@ export function AcademyDashboard() {
           )}
         >
           <Server className="h-4 w-4" />
-          Przegląd
+          {t("academy.dashboard.tabs.overview")}
         </Button>
         <Button
           onClick={() => setActiveTab("dataset")}
@@ -137,7 +138,7 @@ export function AcademyDashboard() {
           )}
         >
           <Database className="h-4 w-4" />
-          Dataset
+          {t("academy.dashboard.tabs.dataset")}
         </Button>
         <Button
           onClick={() => setActiveTab("training")}
@@ -151,7 +152,7 @@ export function AcademyDashboard() {
           )}
         >
           <Play className="h-4 w-4" />
-          Trening
+          {t("academy.dashboard.tabs.training")}
         </Button>
         <Button
           onClick={() => setActiveTab("adapters")}
@@ -165,7 +166,7 @@ export function AcademyDashboard() {
           )}
         >
           <Zap className="h-4 w-4" />
-          Adaptery
+          {t("academy.dashboard.tabs.adapters")}
         </Button>
       </div>
 

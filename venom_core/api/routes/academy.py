@@ -595,22 +595,95 @@ def _is_model_trainable(model_id: str) -> bool:
     Returns:
         True jeśli model jest trenowalny
     """
-    # Lista prefiksów/wzorców dla modeli trenowalnych
-    trainable_patterns = [
+    return _get_model_non_trainable_reason(model_id=model_id, provider=None) is None
+
+
+def _get_model_non_trainable_reason(
+    model_id: str, provider: Optional[str] = None
+) -> Optional[str]:
+    """
+    Zwraca powód braku trenowalności modelu dla Academy, albo None jeśli trenowalny.
+
+    Academy trenuje adaptery LoRA/QLoRA na modelach HuggingFace/Unsloth.
+    Lokalne modele Ollama (GGUF) pozostają inferencyjne.
+    """
+    model_id_lc = model_id.lower()
+    provider_lc = (provider or "").lower()
+
+    if provider_lc in {"openai", "azure-openai", "anthropic", "google-gemini"}:
+        return "External API models do not support local Academy LoRA training"
+
+    if provider_lc == "ollama":
+        return (
+            "Ollama runtime models are inference-focused in this pipeline; "
+            "select a HuggingFace/Unsloth base model for Academy training"
+        )
+
+    # Popular API-only model names should be rejected even without provider metadata.
+    blocked_name_markers = ("gpt-", "claude", "gemini")
+    if any(marker in model_id_lc for marker in blocked_name_markers):
+        return "Model family does not support local Academy LoRA training"
+
+    # Lista wzorców rodzin modeli wspieranych przez nasz pipeline LoRA/QLoRA.
+    trainable_patterns = (
         "unsloth/",
-        "Phi-3",
-        "Llama-3",
-        "Mistral",
-        "Qwen",
+        "phi-3",
+        "llama-3",
+        "mistral",
+        "qwen",
+        "gemma",
         "test-",  # Allow test models in tests
+    )
+    if any(pattern in model_id_lc for pattern in trainable_patterns):
+        return None
+
+    return "Model is not in Academy trainable families list"
+
+
+def _build_model_label(
+    model_id: str, provider: str, source: Optional[str] = None
+) -> str:
+    """Buduje czytelną etykietę modelu dla UI Academy."""
+    source_suffix = f" [{source}]" if source else ""
+    return f"{model_id} ({provider}){source_suffix}"
+
+
+def _get_default_trainable_models_catalog() -> List[TrainableModelInfo]:
+    """
+    Zwraca domyślny katalog modeli trenowalnych.
+
+    To fallback na wypadek braku lokalnych metadanych modeli.
+    """
+    return [
+        TrainableModelInfo(
+            model_id="unsloth/Phi-3-mini-4k-instruct",
+            label="Phi-3 Mini 4K (Unsloth)",
+            provider="unsloth",
+            trainable=True,
+            recommended=True,
+        ),
+        TrainableModelInfo(
+            model_id="unsloth/Phi-3.5-mini-instruct",
+            label="Phi-3.5 Mini (Unsloth)",
+            provider="unsloth",
+            trainable=True,
+            recommended=False,
+        ),
+        TrainableModelInfo(
+            model_id="unsloth/Llama-3.2-1B-Instruct",
+            label="Llama 3.2 1B (Unsloth)",
+            provider="unsloth",
+            trainable=True,
+            recommended=False,
+        ),
+        TrainableModelInfo(
+            model_id="unsloth/Llama-3.2-3B-Instruct",
+            label="Llama 3.2 3B (Unsloth)",
+            provider="unsloth",
+            trainable=True,
+            recommended=False,
+        ),
     ]
-
-    # Sprawdź czy model pasuje do któregoś wzorca
-    for pattern in trainable_patterns:
-        if pattern in model_id:
-            return True
-
-    return False
 
 
 # ==================== Endpointy ====================
@@ -2020,55 +2093,71 @@ async def get_trainable_models() -> List[TrainableModelInfo]:
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
-    # Define trainable models
-    # In a real implementation, this would come from a registry or config
-    trainable_models = [
-        TrainableModelInfo(
-            model_id="unsloth/Phi-3-mini-4k-instruct",
-            label="Phi-3 Mini 4K (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=True,
-        ),
-        TrainableModelInfo(
-            model_id="unsloth/Phi-3.5-mini-instruct",
-            label="Phi-3.5 Mini (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=False,
-        ),
-        TrainableModelInfo(
-            model_id="unsloth/Llama-3.2-1B-Instruct",
-            label="Llama 3.2 1B (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=False,
-        ),
-        TrainableModelInfo(
-            model_id="unsloth/Llama-3.2-3B-Instruct",
-            label="Llama 3.2 3B (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=False,
-        ),
-    ]
+    from venom_core.config import SETTINGS
 
-    # Add some non-trainable examples for clarity
-    non_trainable_models = [
-        TrainableModelInfo(
-            model_id="gpt-4",
-            label="GPT-4 (OpenAI)",
-            provider="openai",
-            trainable=False,
-            reason_if_not_trainable="OpenAI models do not support local LoRA training",
-        ),
-        TrainableModelInfo(
-            model_id="claude-3-opus",
-            label="Claude 3 Opus (Anthropic)",
-            provider="anthropic",
-            trainable=False,
-            reason_if_not_trainable="Anthropic models do not support local LoRA training",
-        ),
-    ]
+    result: List[TrainableModelInfo] = []
+    seen: set[str] = set()
+    default_model_raw = getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")
+    default_model = (
+        default_model_raw.strip() if isinstance(default_model_raw, str) else ""
+    )
+    mgr = _get_model_manager()
 
-    return trainable_models + non_trainable_models
+    # 1) Modele z aktualnego katalogu lokalnego (jeśli manager dostępny)
+    if mgr is not None:
+        try:
+            local_models = await mgr.list_local_models()
+            for model in local_models:
+                model_id = str(model.get("name") or "").strip()
+                if not model_id or model_id in seen:
+                    continue
+
+                provider = str(
+                    model.get("provider") or model.get("source") or "unknown"
+                )
+                source = str(model.get("source") or "")
+                reason = _get_model_non_trainable_reason(
+                    model_id=model_id, provider=provider
+                )
+                result.append(
+                    TrainableModelInfo(
+                        model_id=model_id,
+                        label=_build_model_label(
+                            model_id=model_id, provider=provider, source=source
+                        ),
+                        provider=provider,
+                        trainable=reason is None,
+                        reason_if_not_trainable=reason,
+                        recommended=(model_id == default_model),
+                    )
+                )
+                seen.add(model_id)
+        except Exception as exc:
+            logger.warning("Failed to load local model catalog for Academy: %s", exc)
+
+    # 2) Fallback: domyślny katalog trenowalnych modeli (HF/Unsloth)
+    for entry in _get_default_trainable_models_catalog():
+        if entry.model_id in seen:
+            continue
+        entry.recommended = entry.model_id == default_model
+        result.append(entry)
+        seen.add(entry.model_id)
+
+    # 3) Upewnij się, że model domyślny jest zawsze widoczny (nawet jeśli niestandardowy).
+    if default_model and default_model not in seen:
+        reason = _get_model_non_trainable_reason(model_id=default_model, provider=None)
+        result.append(
+            TrainableModelInfo(
+                model_id=default_model,
+                label=f"{default_model} (default)",
+                provider="config",
+                trainable=reason is None,
+                reason_if_not_trainable=reason,
+                recommended=True,
+            )
+        )
+        seen.add(default_model)
+
+    # 4) Sortowanie: recommended -> trainable -> label
+    result.sort(key=lambda item: (not item.recommended, not item.trainable, item.label))
+    return result

@@ -52,6 +52,13 @@ Use `.github/pull_request_template.md` as the report format baseline.
 - Run relevant `pytest` groups for touched modules.
 - Confirm no new critical/high security findings.
 
+## User-Facing Messages i18n Rule (Mandatory)
+
+- Any user-facing message (UI label, button, toast, modal, validation error, API error shown in UI, empty-state text) must be implemented via translation keys, not hardcoded strings.
+- For new or changed user-facing messages, add/update translations in all supported locales: `pl`, `en`, `de`.
+- Keep one key namespace and parity across locale files (no missing keys in one language).
+- Do not merge changes with mixed-language UI caused by fallback hardcoded text.
+
 ## CI Stack Awareness Rule
 
 - Before adding/updating tests for CI-lite, verify which dependencies and tools are available in the CI-lite stack.

@@ -41,3 +41,9 @@ Format sekcji raportowych: `.github/pull_request_template.md`.
 1. Pilnuj zgodności z `docs/TESTING_POLICY.md` i `docs/AGENTS.md`.
 2. Dla testów optional dependency stosuj `pytest.importorskip(...)`, gdy dependency nie jest gwarantowane w CI-lite.
 3. Nie zgłaszaj zadania jako ukończonego, jeśli wymagane status checks pozostają czerwone.
+
+### 5) i18n komunikatów użytkownika (obowiązkowe)
+
+1. Komunikaty dla użytkownika nie mogą być hardkodowane w komponentach/handlerach; używaj kluczy tłumaczeń.
+2. Każdy nowy/zmieniony komunikat musi mieć wpisy w `pl`, `en`, `de`.
+3. Zachowaj spójność kluczy między locale i nie dopuszczaj do mieszania języków w UI.

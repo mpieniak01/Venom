@@ -53,16 +53,16 @@ class UpdateLimitRequest(BaseModel):
         ..., description="Zakres: 'global', nazwa providera lub modelu"
     )
     soft_limit_usd: Optional[float] = Field(
-        None, description="Soft limit w USD (dla cost)"
+        None, description="Soft limit w USD (dla cost)", gt=0
     )
     hard_limit_usd: Optional[float] = Field(
-        None, description="Hard limit w USD (dla cost)"
+        None, description="Hard limit w USD (dla cost)", gt=0
     )
     max_requests_per_minute: Optional[int] = Field(
-        None, description="Max requestów na minutę (dla rate)"
+        None, description="Max requestów na minutę (dla rate)", gt=0
     )
     max_tokens_per_minute: Optional[int] = Field(
-        None, description="Max tokenów na minutę (dla rate)"
+        None, description="Max tokenów na minutę (dla rate)", gt=0
     )
 
 
@@ -97,7 +97,7 @@ def get_governance_status() -> GovernanceStatusResponse:
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu governance")
         raise HTTPException(
-            status_code=500, detail=f"Internal error: {str(e)}"
+            status_code=500, detail="Internal server error"
         ) from e
 
 
@@ -141,7 +141,7 @@ def get_limits_config() -> LimitsConfigResponse:
     except Exception as e:
         logger.exception("Błąd podczas pobierania konfiguracji limitów")
         raise HTTPException(
-            status_code=500, detail=f"Internal error: {str(e)}"
+            status_code=500, detail="Internal server error"
         ) from e
 
 
@@ -168,15 +168,15 @@ def get_provider_credential_status(provider_name: str) -> ProviderCredentialStat
         status = governance.validate_credentials(provider_name)
 
         message_map = {
-            CredentialStatus.CONFIGURED: f"Provider {provider_name} is properly configured",
-            CredentialStatus.MISSING_CREDENTIALS: f"Provider {provider_name} is missing credentials",
-            CredentialStatus.INVALID_CREDENTIALS: f"Provider {provider_name} has invalid credentials",
+            CredentialStatus.CONFIGURED: "governance.messages.credentialsConfigured",
+            CredentialStatus.MISSING_CREDENTIALS: "governance.messages.credentialsMissing",
+            CredentialStatus.INVALID_CREDENTIALS: "governance.messages.credentialsInvalid",
         }
 
         return ProviderCredentialStatusResponse(
             provider=provider_name,
             credential_status=status.value,
-            message=message_map.get(status, "Unknown status"),
+            message=message_map.get(status, "governance.messages.credentialsConfigured"),
         )
 
     except Exception as e:
@@ -184,7 +184,7 @@ def get_provider_credential_status(provider_name: str) -> ProviderCredentialStat
             f"Błąd podczas walidacji credentiali dla providera {provider_name}"
         )
         raise HTTPException(
-            status_code=500, detail=f"Internal error: {str(e)}"
+            status_code=500, detail="Internal server error"
         ) from e
 
 
@@ -209,6 +209,14 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
         governance = get_provider_governance()
 
         if request.limit_type == "cost":
+            # Validate cost limits
+            if request.soft_limit_usd is not None and request.hard_limit_usd is not None:
+                if request.soft_limit_usd > request.hard_limit_usd:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Soft limit cannot be greater than hard limit",
+                    )
+            
             # Update cost limit
             from venom_core.core.provider_governance import CostLimit, LimitType
 
@@ -240,7 +248,7 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
 
             return {
                 "status": "success",
-                "message": f"Cost limit updated for {request.scope}",
+                "message": "governance.messages.limitUpdated",
                 "limit": {
                     "soft_limit_usd": governance.cost_limits[key].soft_limit_usd,
                     "hard_limit_usd": governance.cost_limits[key].hard_limit_usd,
@@ -283,7 +291,7 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
 
             return {
                 "status": "success",
-                "message": f"Rate limit updated for {request.scope}",
+                "message": "governance.messages.limitUpdated",
                 "limit": {
                     "max_requests_per_minute": governance.rate_limits[
                         key
@@ -305,7 +313,7 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
     except Exception as e:
         logger.exception("Błąd podczas aktualizacji limitu")
         raise HTTPException(
-            status_code=500, detail=f"Internal error: {str(e)}"
+            status_code=500, detail="Internal server error"
         ) from e
 
 
@@ -338,7 +346,7 @@ def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
             logger.info("Reset all usage counters")
             return {
                 "status": "success",
-                "message": "All usage counters reset",
+                "message": "governance.messages.usageReset",
             }
         else:
             # Reset specific scope
@@ -354,11 +362,11 @@ def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
             logger.info(f"Reset usage counters for {scope}")
             return {
                 "status": "success",
-                "message": f"Usage counters reset for {scope}",
+                "message": "governance.messages.usageReset",
             }
 
     except Exception as e:
         logger.exception("Błąd podczas resetowania liczników")
         raise HTTPException(
-            status_code=500, detail=f"Internal error: {str(e)}"
+            status_code=500, detail="Internal server error"
         ) from e

@@ -1328,6 +1328,8 @@ export const en = {
       credentialsInvalid: "Provider {{provider}} has invalid credentials",
       switchedProvider: "Switched to {{provider}}",
       noFallbackAvailable: "No fallback provider available",
+      limitUpdated: "Limit updated successfully",
+      usageReset: "Usage counters reset successfully",
     },
     labels: {
       costLimits: "Cost Limits",

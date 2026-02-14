@@ -1370,6 +1370,8 @@ export const pl = {
       credentialsInvalid: "Provider {{provider}} ma nieprawidłowe dane uwierzytelniające",
       switchedProvider: "Przełączono na {{provider}}",
       noFallbackAvailable: "Brak dostępnego providera zastępczego",
+      limitUpdated: "Limit zaktualizowany pomyślnie",
+      usageReset: "Liczniki zużycia zresetowane pomyślnie",
     },
     labels: {
       costLimits: "Limity kosztów",

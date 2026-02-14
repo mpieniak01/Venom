@@ -247,7 +247,7 @@ export function useWorkflowState() {
       if (!response.ok) {
         throw new Error("Failed to perform dry run");
       }
-      const result = await response.json();
+      await response.json();
       // Show result in a toast or notification
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");

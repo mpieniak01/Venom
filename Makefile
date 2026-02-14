@@ -48,7 +48,9 @@ format:
 TEST_ARTIFACT_MODE ?= clean
 TEST_ARTIFACT_CLEANUP_DAYS ?= 7
 
-test: pytest
+test:
+	@echo "🧪 Uruchamiam testy w trybie CLEAN (artefakty usuwane po sesji)..."
+	VENOM_TEST_ARTIFACT_MODE=clean $(MAKE) --no-print-directory pytest
 
 test-data:
 	@echo "🧪 Uruchamiam testy w trybie PRESERVE (artefakty zachowane)..."

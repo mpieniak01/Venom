@@ -9,6 +9,7 @@ Before completion, run:
 2) make check-new-code-coverage
 
 If any gate fails, fix and rerun both gates until green.
+If a test hangs/timeouts, treat it as a bug to fix (not a rerun-until-green loop).
 
 In the final summary include:
 - commands run,

@@ -912,6 +912,14 @@ export const de = {
       epochs: "Epochs",
       lora: "LoRA",
       logs: "Logs",
+      status: {
+        queued: "In Warteschlange",
+        preparing: "Vorbereitung",
+        running: "Läuft",
+        finished: "Abgeschlossen",
+        failed: "Fehlgeschlagen",
+        cancelled: "Abgebrochen",
+      },
     },
     adapters: {
       title: "LoRA-Adapter",

@@ -115,6 +115,18 @@ export function TrainingPanel() {
     }
   };
 
+  const getStatusLabel = (status: TrainingJobStatus) => {
+    const labels: Record<TrainingJobStatus, string> = {
+      queued: t("academy.training.status.queued"),
+      preparing: t("academy.training.status.preparing"),
+      running: t("academy.training.status.running"),
+      finished: t("academy.training.status.finished"),
+      failed: t("academy.training.status.failed"),
+      cancelled: t("academy.training.status.cancelled"),
+    };
+    return labels[status];
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -264,7 +276,7 @@ export function TrainingPanel() {
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm text-white">{job.job_id}</span>
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getStatusColor(job.status)}`}>
-                        {job.status}
+                        {getStatusLabel(job.status)}
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-zinc-400">

@@ -45,6 +45,7 @@ data/audio/
 data/test_*.json
 models/
 !web-next/components/models/
+!web-next/app/models/
 
 # Custom skills - generated dynamically, keep only README
 venom_core/execution/skills/custom/*.py

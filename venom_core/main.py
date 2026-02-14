@@ -21,6 +21,7 @@ from venom_core.api.routes import calendar as calendar_routes
 from venom_core.api.routes import feedback as feedback_routes
 from venom_core.api.routes import flow as flow_routes
 from venom_core.api.routes import git as git_routes
+from venom_core.api.routes import governance as governance_routes
 from venom_core.api.routes import knowledge as knowledge_routes
 from venom_core.api.routes import learning as learning_routes
 from venom_core.api.routes import llm_simple as llm_simple_routes
@@ -1156,6 +1157,7 @@ app.include_router(system_llm_routes.router)
 app.include_router(system_runtime_routes.router)
 app.include_router(system_config_routes.router)
 app.include_router(system_governance_routes.router)
+app.include_router(governance_routes.router)
 app.include_router(system_iot_routes.router)
 app.include_router(system_status_routes.router)
 app.include_router(system_storage_routes.router)

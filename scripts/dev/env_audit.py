@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Environment audit for dependency hygiene and rebuildable artifacts.
 
-Generates deterministic JSON/Markdown reports and supports a lightweight
-policy check mode intended for CI.
+Generates JSON/Markdown reports with stable schema and ordering, and
+supports a lightweight policy check mode intended for CI.
 """
 
 from __future__ import annotations
@@ -17,8 +17,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from packaging.version import InvalidVersion, Version
+try:
+    from packaging.specifiers import InvalidSpecifier, SpecifierSet
+    from packaging.version import InvalidVersion, Version
+except ImportError as exc:
+    raise SystemExit(
+        "env_audit.py requires the 'packaging' package. "
+        "Install dependencies for this repo environment first."
+    ) from exc
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -108,7 +114,16 @@ REQ_RE = re.compile(r"^([A-Za-z0-9_.-]+)(\[[^\]]+\])?\s*([!<>=~]{1,2}[^;\s]+)?")
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+    try:
+        return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+    except FileNotFoundError as exc:
+        cmd_name = cmd[0] if cmd else "<unknown>"
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=127,
+            stdout="",
+            stderr=f"{cmd_name}: command not found ({exc})",
+        )
 
 
 def _to_pkg_key(name: str) -> str:

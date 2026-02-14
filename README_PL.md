@@ -495,6 +495,37 @@ config/env-history/.env-YYYYMMDD-HHMMSS
 
 Venom oferuje narzędzia do szybkiej diagnostyki zużycia zasobów systemowych.
 
+### 🧹 Higiena środowiska dev (Repo + Docker)
+
+Użyj poniższych komend, aby audytować i czyścić odtwarzalne artefakty środowiska developerskiego:
+
+```bash
+# 1) Audyt zależności i artefaktów (JSON + Markdown)
+make env-audit
+
+# 2) Bezpieczne czyszczenie repo
+make env-clean-safe
+
+# 3) Bezpieczne czyszczenie Docker (dangling/build cache)
+make env-clean-docker-safe
+
+# 4) Głębokie czyszczenie (wymaga jawnej zgody)
+CONFIRM_DEEP_CLEAN=1 make env-clean-deep
+
+# 5) Porównanie dwóch ostatnich raportów audytu
+make env-report-diff
+```
+
+Domyślne zabezpieczenia:
+- chronione (nieusuwane domyślnie): `models/`, `data/*`, `.venv/`
+- tryb `safe` usuwa tylko cache/build odtwarzalny
+- tryb `deep` działa tylko z `CONFIRM_DEEP_CLEAN=1`
+
+Polityka zależności:
+- Python: krytyczne piny współdzielone muszą być spójne między `requirements.txt` i `requirements-ci-lite.txt`
+- Node: root `dependencies/devDependencies` w `web-next/package-lock.json` muszą odpowiadać `web-next/package.json`
+- Lekka walidacja polityki uruchamia się w `make audit-ci-lite`
+
 #### Zrzut systemu
 ```bash
 # Generuje raport diagnostyczny (procesy, pamięć, CPU, status usług)

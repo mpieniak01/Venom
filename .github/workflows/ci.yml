@@ -60,7 +60,9 @@ jobs:
         timeout-minutes: 10
         run: |
           set -o pipefail
-          python -m pip install pytest-cov
+          # Global per-test timeout guard: prevents infinite hangs/deadlocks from
+          # stalling the whole job. Timeout must still be tuned to avoid false positives.
+          export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} --timeout=120 --timeout-method=thread"
           make audit-ci-lite
           mkdir -p test-results/sonar
           DIFF_BASE="origin/main"

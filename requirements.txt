@@ -142,6 +142,7 @@ pytest==9.0.2           # Testy (pin zgodny z profilem CI Lite)
 pytest-asyncio==1.3.0   # Obsługa testów asynchronicznych (pin zgodny z profilem CI Lite)
 pytest-cov>=7.0.0       # Raporty pokrycia testami
 pytest-xdist==3.8.0
+pytest-timeout==2.4.0   # Twarde timeouty per-test (anty-zawieszka)
 locust                  # Testy wydajnościowe HTTP/SSE
 ruff                    # Linter (zastępuje flake8/black)
 mypy                    # Statyczne typowanie

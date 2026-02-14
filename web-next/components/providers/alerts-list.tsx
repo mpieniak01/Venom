@@ -16,7 +16,7 @@ interface Alert {
   technical_details: string | null;
   timestamp: string;
   expires_at: string | null;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 interface AlertsListProps {

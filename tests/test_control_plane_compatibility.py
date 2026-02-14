@@ -44,7 +44,8 @@ class TestCompatibilityValidator:
 
     def test_runtime_provider_incompatible(self, validator):
         """Test incompatible runtime and provider combination."""
-        compatible, message = validator.validate_runtime_provider("minimal", "vllm")
+        # Use python runtime with vllm provider (vllm not in python's compatible providers)
+        compatible, message = validator.validate_runtime_provider("python", "vllm")
         assert compatible is False
         assert "not compatible" in message.lower()
 

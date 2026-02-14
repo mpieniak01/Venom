@@ -462,3 +462,186 @@ async def get_provider_status(provider_name: str) -> dict[str, Any]:
         "provider": provider_name,
         "connection_status": status.model_dump(),
     }
+
+
+@router.get("/providers/{provider_name}/metrics")
+async def get_provider_metrics(provider_name: str) -> dict[str, Any]:
+    """
+    Get performance metrics for a specific provider.
+    
+    Returns latency percentiles, error rates, cost, and throughput.
+    
+    Args:
+        provider_name: Provider identifier
+    """
+    from venom_core.core.metrics import metrics_collector
+    
+    provider_name = provider_name.lower()
+    
+    # Validate provider
+    if provider_name not in VALID_PROVIDERS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown provider: {provider_name}",
+        )
+    
+    if not metrics_collector:
+        raise HTTPException(
+            status_code=503,
+            detail="Metrics collector not initialized",
+        )
+    
+    provider_metrics = metrics_collector.get_provider_metrics(provider_name)
+    
+    if not provider_metrics:
+        # Return empty metrics structure
+        return {
+            "status": "success",
+            "provider": provider_name,
+            "metrics": {
+                "total_requests": 0,
+                "successful_requests": 0,
+                "failed_requests": 0,
+                "success_rate": 0.0,
+                "error_rate": 0.0,
+                "latency": {
+                    "p50_ms": None,
+                    "p95_ms": None,
+                    "p99_ms": None,
+                    "samples": 0,
+                },
+                "errors": {
+                    "total": 0,
+                    "timeouts": 0,
+                    "auth_errors": 0,
+                    "budget_errors": 0,
+                    "by_code": {},
+                },
+                "cost": {
+                    "total_usd": 0.0,
+                    "total_tokens": 0,
+                },
+            },
+        }
+    
+    return {
+        "status": "success",
+        "provider": provider_name,
+        "metrics": provider_metrics,
+    }
+
+
+@router.get("/providers/{provider_name}/health")
+async def get_provider_health(provider_name: str) -> dict[str, Any]:
+    """
+    Get SLO status and health score for a specific provider.
+    
+    Args:
+        provider_name: Provider identifier
+    """
+    from venom_core.core.metrics import metrics_collector
+    from venom_core.core.provider_observability import get_provider_observability
+    
+    provider_name = provider_name.lower()
+    
+    # Validate provider
+    if provider_name not in VALID_PROVIDERS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown provider: {provider_name}",
+        )
+    
+    if not metrics_collector:
+        raise HTTPException(
+            status_code=503,
+            detail="Metrics collector not initialized",
+        )
+    
+    observability = get_provider_observability()
+    provider_metrics = metrics_collector.get_provider_metrics(provider_name)
+    slo_status = observability.calculate_slo_status(provider_name, provider_metrics)
+    
+    return {
+        "status": "success",
+        "provider": provider_name,
+        "health": {
+            "health_status": slo_status.health_status.value,
+            "health_score": slo_status.health_score,
+            "availability": slo_status.availability,
+            "latency_p99_ms": slo_status.latency_p99_ms,
+            "error_rate": slo_status.error_rate,
+            "cost_usage_usd": slo_status.cost_usage_usd,
+            "slo_target": {
+                "availability_target": slo_status.slo_target.availability_target,
+                "latency_p99_ms": slo_status.slo_target.latency_p99_ms,
+                "error_rate_target": slo_status.slo_target.error_rate_target,
+                "cost_budget_usd": slo_status.slo_target.cost_budget_usd,
+            },
+            "slo_breaches": slo_status.breaches,
+        },
+    }
+
+
+@router.get("/alerts")
+async def get_alerts(
+    provider: Optional[str] = None,
+    severity: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Get active alerts for providers.
+    
+    Args:
+        provider: Optional provider filter
+        severity: Optional severity filter (info, warning, critical)
+    """
+    from venom_core.core.provider_observability import get_provider_observability
+    
+    observability = get_provider_observability()
+    
+    # Get active alerts (optionally filtered by provider)
+    if provider:
+        provider = provider.lower()
+        if provider not in VALID_PROVIDERS:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Unknown provider: {provider}",
+            )
+    
+    active_alerts = observability.get_active_alerts(provider)
+    
+    # Filter by severity if specified
+    if severity:
+        severity = severity.lower()
+        if severity not in ("info", "warning", "critical"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid severity: {severity}. Must be info, warning, or critical",
+            )
+        active_alerts = [a for a in active_alerts if a.severity.value == severity]
+    
+    # Get summary
+    summary = observability.get_alert_summary()
+    
+    # Convert alerts to dict
+    alerts_data = [
+        {
+            "id": alert.id,
+            "severity": alert.severity.value,
+            "alert_type": alert.alert_type.value,
+            "provider": alert.provider,
+            "message": alert.message,
+            "technical_details": alert.technical_details,
+            "timestamp": alert.timestamp.isoformat(),
+            "expires_at": alert.expires_at.isoformat() if alert.expires_at else None,
+            "metadata": alert.metadata,
+        }
+        for alert in active_alerts
+    ]
+    
+    return {
+        "status": "success",
+        "alerts": alerts_data,
+        "summary": summary,
+        "count": len(alerts_data),
+    }
+

@@ -373,6 +373,55 @@ export interface ModelsUsageResponse {
   usage?: ModelsUsage;
 }
 
+// Provider management types
+export type ProviderType = "cloud_provider" | "catalog_integrator" | "local_runtime";
+export type ConnectionStatus = "connected" | "degraded" | "offline" | "unknown";
+
+export interface ProviderCapability {
+  install: boolean;
+  search: boolean;
+  activate: boolean;
+  inference: boolean;
+  trainable: boolean;
+}
+
+export interface ProviderConnectionStatus {
+  status: ConnectionStatus;
+  reason_code?: string | null;
+  message?: string | null;
+  latency_ms?: number | null;
+}
+
+export interface ProviderInfo {
+  name: string;
+  display_name: string;
+  provider_type: ProviderType;
+  runtime: string;
+  capabilities: ProviderCapability;
+  connection_status: ProviderConnectionStatus;
+  is_active: boolean;
+  endpoint?: string | null;
+}
+
+export interface ProvidersResponse {
+  status: string;
+  providers: ProviderInfo[];
+  active_provider?: string | null;
+  count: number;
+}
+
+export interface ProviderStatusResponse {
+  status: string;
+  provider: string;
+  connection_status: ProviderConnectionStatus;
+}
+
+export interface ProviderActivateRequest {
+  provider: string;
+  runtime?: string | null;
+  model?: string | null;
+}
+
 export interface CostMode {
   enabled: boolean;
   provider: string;

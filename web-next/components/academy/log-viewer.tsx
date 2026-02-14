@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal, X, Pause, Play, TrendingDown, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { TrainingJobStatus } from "@/lib/academy-api";
+import { useTranslation } from "@/lib/i18n";
 
 interface LogViewerProps {
   readonly jobId: string;
@@ -32,6 +33,7 @@ interface AggregatedMetrics {
 }
 
 export function LogViewer({ jobId, onClose }: LogViewerProps) {
+  const t = useTranslation();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -107,7 +109,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
     eventSource.onerror = () => {
       setIsConnected(false);
       setStatus("disconnected");
-      setError("Connection lost");
+      setError(t("academy.logs.connectionLost"));
       eventSource.close();
     };
 
@@ -116,7 +118,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
         eventSource.close();
       }
     };
-  }, [jobId, isPaused]);
+  }, [jobId, isPaused, t]);
 
   // Auto-scroll do dołu gdy pojawiają się nowe logi
   useEffect(() => {
@@ -166,7 +168,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
             <Terminal className="h-5 w-5 text-emerald-400" />
             <div>
               <h3 className="text-sm font-semibold text-white">
-                Training Logs - {jobId}
+                {t("academy.logs.title")} - {jobId}
               </h3>
               <p className={`text-xs ${getStatusColor()}`}>
                 {isConnected ? (
@@ -191,12 +193,12 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
               {isPaused ? (
                 <>
                   <Play className="h-4 w-4" />
-                  Resume
+                  {t("academy.logs.resume")}
                 </>
               ) : (
                 <>
                   <Pause className="h-4 w-4" />
-                  Pause
+                  {t("academy.logs.pause")}
                 </>
               )}
             </Button>
@@ -216,7 +218,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
             {metrics.current_epoch !== undefined && metrics.total_epochs && (
               <div className="flex items-center gap-2">
                 <Activity className="h-4 w-4 text-blue-400" />
-                <span className="text-zinc-400">Epoch:</span>
+                <span className="text-zinc-400">{t("academy.logs.epoch")}:</span>
                 <span className="font-semibold text-white">
                   {metrics.current_epoch}/{metrics.total_epochs}
                 </span>
@@ -233,13 +235,13 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
             {metrics.latest_loss !== undefined && (
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-emerald-400" />
-                <span className="text-zinc-400">Loss:</span>
+                <span className="text-zinc-400">{t("academy.logs.loss")}:</span>
                 <span className="font-semibold text-white">
                   {metrics.latest_loss.toFixed(4)}
                 </span>
                 {metrics.min_loss !== undefined && (
                   <span className="text-zinc-500 text-[10px]">
-                    (best: {metrics.min_loss.toFixed(4)})
+                    ({t("academy.logs.best")}: {metrics.min_loss.toFixed(4)})
                   </span>
                 )}
               </div>
@@ -256,13 +258,13 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
       >
         {error && (
           <div className="mb-2 rounded border border-red-500/20 bg-red-500/10 p-2 text-red-300">
-            Error: {error}
+            {t("academy.logs.errorPrefix")}: {error}
           </div>
         )}
 
         {logs.length === 0 && !error && (
           <div className="flex h-full items-center justify-center text-zinc-500">
-            {status === "connecting" ? "Connecting..." : "No logs yet"}
+            {status === "connecting" ? t("academy.logs.connecting") : t("academy.logs.noLogsYet")}
           </div>
         )}
 
@@ -287,8 +289,8 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
       {/* Footer */}
       <div className="border-t border-white/10 bg-zinc-900 px-4 py-2">
         <p className="text-xs text-zinc-400">
-          {logs.length} lines • {isPaused ? "Paused" : "Live"}
-          {!shouldAutoScrollRef.current && " • Auto-scroll disabled (scroll to bottom to enable)"}
+          {logs.length} {t("academy.logs.lines")} • {t(isPaused ? "academy.logs.paused" : "academy.logs.live")}
+          {!shouldAutoScrollRef.current && ` • ${t("academy.logs.autoScrollDisabled")}`}
         </p>
       </div>
     </div>

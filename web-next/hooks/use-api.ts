@@ -27,6 +27,9 @@ import {
   ModelsResponse,
   ModelsUsage,
   ModelsUsageResponse,
+  ProviderInfo,
+  ProvidersResponse,
+  ProviderStatusResponse,
   QueueStatus,
   RoadmapResponse,
   RoadmapStatusResponse,
@@ -1072,5 +1075,40 @@ export async function flushSemanticCache() {
   return apiFetch<{ status: string; message: string; deleted: number }>(
     "/api/v1/memory/cache/semantic",
     { method: "DELETE" },
+  );
+}
+
+// ====================================
+// Provider Management API
+// ====================================
+
+export function useProviders(intervalMs = 30000) {
+  return usePolling<ProvidersResponse>(
+    "providers-list",
+    () => apiFetch("/api/v1/providers"),
+    intervalMs,
+  );
+}
+
+export async function getProviderInfo(providerName: string) {
+  return apiFetch<{ status: string; provider: ProviderInfo }>(
+    `/api/v1/providers/${encodeURIComponent(providerName)}`,
+  );
+}
+
+export async function getProviderStatus(providerName: string) {
+  return apiFetch<ProviderStatusResponse>(
+    `/api/v1/providers/${encodeURIComponent(providerName)}/status`,
+  );
+}
+
+export async function activateProvider(
+  providerName: string,
+  options?: { model?: string; runtime?: string }
+) {
+  const body = options ? JSON.stringify({ provider: providerName, ...options }) : undefined;
+  return apiFetch<{ status: string; message: string; provider: string; model?: string }>(
+    `/api/v1/providers/${encodeURIComponent(providerName)}/activate`,
+    { method: "POST", body },
   );
 }

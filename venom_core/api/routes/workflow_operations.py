@@ -7,18 +7,13 @@ This module provides endpoints for workflow control operations:
 - dry-run execution
 """
 
-from uuid import UUID
-
 from fastapi import APIRouter, HTTPException, Request
 
 from venom_core.api.model_schemas.workflow_control import (
     WorkflowOperationRequest,
     WorkflowOperationResponse,
 )
-from venom_core.services.workflow_operations import (
-    StateTransitionError,
-    get_workflow_operation_service,
-)
+from venom_core.services.workflow_operations import get_workflow_operation_service
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -103,7 +98,9 @@ async def pause_workflow(request: Request, operation_request: WorkflowOperationR
         500: {"description": "Internal server error"},
     },
 )
-async def resume_workflow(request: Request, operation_request: WorkflowOperationRequest):
+async def resume_workflow(
+    request: Request, operation_request: WorkflowOperationRequest
+):
     """Resume a paused workflow.
 
     This endpoint resumes a workflow that was previously paused.
@@ -138,7 +135,9 @@ async def resume_workflow(request: Request, operation_request: WorkflowOperation
         500: {"description": "Internal server error"},
     },
 )
-async def cancel_workflow(request: Request, operation_request: WorkflowOperationRequest):
+async def cancel_workflow(
+    request: Request, operation_request: WorkflowOperationRequest
+):
     """Cancel a workflow.
 
     This endpoint cancels a running or paused workflow.
@@ -208,7 +207,9 @@ async def retry_workflow(request: Request, operation_request: WorkflowOperationR
         500: {"description": "Internal server error"},
     },
 )
-async def dry_run_workflow(request: Request, operation_request: WorkflowOperationRequest):
+async def dry_run_workflow(
+    request: Request, operation_request: WorkflowOperationRequest
+):
     """Perform a dry-run of workflow execution.
 
     This endpoint simulates workflow execution without actually

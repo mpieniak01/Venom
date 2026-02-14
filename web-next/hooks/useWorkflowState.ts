@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { getApiBaseUrl } from "@/lib/env";
 import type {
   SystemState,
   PlanRequest,
@@ -9,9 +10,13 @@ import type {
   ApplyResults,
 } from "@/types/workflow-control";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WORKFLOW_STORAGE_KEY = "workflow_control_id";
 const DEFAULT_WORKFLOW_ID = "00000000-0000-0000-0000-000000000001";
+
+const buildApiUrl = (path: string): string => {
+  const baseUrl = getApiBaseUrl();
+  return baseUrl ? `${baseUrl}${path}` : path;
+};
 
 function createUuidV4(): string {
   const cryptoApi = globalThis.crypto;
@@ -85,7 +90,7 @@ export function useWorkflowState() {
   const fetchSystemState = useCallback(async () => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/workflow/control/state`
+        buildApiUrl("/api/v1/workflow/control/state")
       );
       if (!response.ok) {
         throw new Error(await readApiErrorMessage(response, t("workflowControl.error")));
@@ -115,7 +120,7 @@ export function useWorkflowState() {
     setError(null);
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/workflow/control/plan`,
+        buildApiUrl("/api/v1/workflow/control/plan"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -140,7 +145,7 @@ export function useWorkflowState() {
     setError(null);
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/workflow/control/apply`,
+        buildApiUrl("/api/v1/workflow/control/apply"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -169,7 +174,7 @@ export function useWorkflowState() {
     try {
       const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/workflow/operations/pause`,
+        buildApiUrl("/api/v1/workflow/operations/pause"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -197,7 +202,7 @@ export function useWorkflowState() {
     try {
       const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/workflow/operations/resume`,
+        buildApiUrl("/api/v1/workflow/operations/resume"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -225,7 +230,7 @@ export function useWorkflowState() {
     try {
       const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/workflow/operations/cancel`,
+        buildApiUrl("/api/v1/workflow/operations/cancel"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -253,7 +258,7 @@ export function useWorkflowState() {
     try {
       const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/workflow/operations/retry`,
+        buildApiUrl("/api/v1/workflow/operations/retry"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -281,7 +286,7 @@ export function useWorkflowState() {
     try {
       const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/workflow/operations/dry-run`,
+        buildApiUrl("/api/v1/workflow/operations/dry-run"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

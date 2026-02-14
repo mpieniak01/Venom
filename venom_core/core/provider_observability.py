@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -90,9 +89,9 @@ class Alert:
             # Generate fingerprint based on provider, alert_type, and hour
             hour_key = self.timestamp.strftime("%Y%m%d%H")
             fp_str = f"{self.provider}:{self.alert_type.value}:{hour_key}"
-            # MD5 is safe here: fingerprints are only used for alert deduplication,
-            # not for cryptographic purposes or security validation.
-            self.fingerprint = hashlib.md5(fp_str.encode()).hexdigest()
+            # Plain deterministic key is enough for alert deduplication and avoids
+            # cryptographic-hash security hotspots.
+            self.fingerprint = fp_str
 
         if not self.expires_at:
             # Default expiry: 1 hour for info, 3 hours for warning, 6 hours for critical

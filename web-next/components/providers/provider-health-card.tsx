@@ -29,7 +29,7 @@ interface ProviderHealthCardProps {
 }
 
 export function ProviderHealthCard({ provider, health }: ProviderHealthCardProps) {
-  const { t } = useTranslation();
+  const t = useTranslation();
 
   if (!health) {
     return (

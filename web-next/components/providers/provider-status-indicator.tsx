@@ -38,7 +38,7 @@ export function ProviderStatusIndicator({
   message,
   latency_ms,
 }: ProviderStatusIndicatorProps) {
-  const { t } = useTranslation();
+  const t = useTranslation();
 
   return (
     <div className="flex items-center gap-2">
@@ -48,7 +48,7 @@ export function ProviderStatusIndicator({
       </span>
       {shouldShowProviderLatency(status, latency_ms) && (
         <span className="text-xs text-gray-500 dark:text-gray-400">
-          ({Math.round(latency_ms)}ms)
+          ({Math.round(latency_ms ?? 0)}ms)
         </span>
       )}
       {shouldShowProviderMessage(status, message) && (

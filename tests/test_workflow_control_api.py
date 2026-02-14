@@ -1,14 +1,71 @@
 """Integration tests for Workflow Control Plane API endpoints."""
 
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 
+from venom_core.api.model_schemas.workflow_control import ApplyMode, ReasonCode
 from venom_core.main import app
-from venom_core.api.model_schemas.workflow_control import (
-    ApplyMode,
-    ReasonCode,
-    ResourceType,
-)
+
+
+class InMemoryConfigManager:
+    """Test double for config manager to avoid real .env writes."""
+
+    def __init__(self):
+        self._config: dict[str, Any] = {
+            "AI_MODE": "standard",
+            "INTENT_MODE": "simple",
+            "KERNEL": "standard",
+            "WORKFLOW_RUNTIME": "python",
+            "ACTIVE_PROVIDER": "ollama",
+            "EMBEDDING_MODEL": "sentence-transformers",
+            "LLM_MODEL_NAME": "llama2",
+            "LLM_SERVICE_TYPE": "local",
+        }
+        self.history: list[dict[str, Any]] = []
+
+    def get_config(self, mask_secrets: bool = False) -> dict[str, Any]:
+        return dict(self._config)
+
+    def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
+        self.history.append(dict(updates))
+        if "FAIL_ON_UPDATE" in updates:
+            return {
+                "success": False,
+                "message": "Injected failure",
+                "restart_required": [],
+            }
+
+        changed_keys: list[str] = []
+        for key, value in updates.items():
+            old = self._config.get(key)
+            if str(old) != str(value):
+                self._config[key] = str(value)
+                changed_keys.append(key)
+
+        restart_required = []
+        if any(k in {"KERNEL", "WORKFLOW_RUNTIME"} for k in changed_keys):
+            restart_required.append("backend")
+
+        return {
+            "success": True,
+            "message": "Updated in-memory config",
+            "restart_required": restart_required,
+            "changed_keys": changed_keys,
+        }
+
+
+@pytest.fixture(autouse=True)
+def isolated_control_plane(monkeypatch):
+    """Reset singleton and inject in-memory config manager for each test."""
+    import venom_core.services.control_plane as control_plane_module
+
+    fake_config = InMemoryConfigManager()
+    monkeypatch.setattr(control_plane_module, "config_manager", fake_config)
+    control_plane_module._control_plane_service = None
+    yield fake_config
+    control_plane_module._control_plane_service = None
 
 
 @pytest.fixture
@@ -137,9 +194,7 @@ class TestApplyEndpoint:
             ],
         }
 
-        plan_response = client.post(
-            "/api/v1/workflow/control/plan", json=plan_request
-        )
+        plan_response = client.post("/api/v1/workflow/control/plan", json=plan_request)
         assert plan_response.status_code == 200
         plan_data = plan_response.json()
         ticket = plan_data["execution_ticket"]
@@ -193,9 +248,7 @@ class TestApplyEndpoint:
             ],
         }
 
-        plan_response = client.post(
-            "/api/v1/workflow/control/plan", json=plan_request
-        )
+        plan_response = client.post("/api/v1/workflow/control/plan", json=plan_request)
         ticket = plan_response.json()["execution_ticket"]
 
         # Apply without confirming restart
@@ -209,6 +262,79 @@ class TestApplyEndpoint:
         # Should indicate restart required but not confirmed
         if data["apply_mode"] == ApplyMode.RESTART_REQUIRED.value:
             assert len(data["pending_restart"]) > 0
+
+    def test_apply_partial_failure_triggers_rollback(self, client):
+        """Test partial failure rolls back already applied config changes."""
+        # Plan two changes: first succeeds, second fails in fake config manager.
+        plan_request = {
+            "changes": [
+                {
+                    "resource_type": "decision_strategy",
+                    "resource_id": "AI_MODE",
+                    "action": "update",
+                    "new_value": "expert",
+                },
+                {
+                    "resource_type": "config",
+                    "resource_id": "FAIL_ON_UPDATE",
+                    "action": "update",
+                    "new_value": "boom",
+                },
+            ],
+        }
+        plan_response = client.post("/api/v1/workflow/control/plan", json=plan_request)
+        assert plan_response.status_code == 200
+        ticket = plan_response.json()["execution_ticket"]
+
+        apply_response = client.post(
+            "/api/v1/workflow/control/apply",
+            json={"execution_ticket": ticket, "confirm_restart": True},
+        )
+        assert apply_response.status_code == 200
+        apply_data = apply_response.json()
+        assert apply_data["apply_mode"] == ApplyMode.REJECTED.value
+        assert apply_data["rollback_available"] is True
+        assert any("Rollback" in msg for msg in apply_data["failed_changes"])
+
+        # Confirm rollback restored state.
+        state_response = client.get("/api/v1/workflow/control/state")
+        assert state_response.status_code == 200
+        assert state_response.json()["system_state"]["decision_strategy"] == "standard"
+
+        # Confirm rollback operation is visible in audit trail.
+        audit_response = client.get("/api/v1/workflow/control/audit")
+        assert audit_response.status_code == 200
+        audit_entries = audit_response.json()["entries"]
+        assert any(e["operation_type"] == "rollback" for e in audit_entries)
+
+    def test_apply_rejects_when_operation_in_progress(self, client, monkeypatch):
+        """Apply should reject when ticket is already being processed."""
+        plan_request = {
+            "changes": [
+                {
+                    "resource_type": "decision_strategy",
+                    "resource_id": "AI_MODE",
+                    "action": "update",
+                    "new_value": "advanced",
+                }
+            ],
+        }
+        plan_response = client.post("/api/v1/workflow/control/plan", json=plan_request)
+        ticket = plan_response.json()["execution_ticket"]
+
+        import venom_core.services.control_plane as control_plane_module
+
+        service = control_plane_module.get_control_plane_service()
+        monkeypatch.setattr(service, "_begin_operation", lambda _operation_id: False)
+
+        apply_response = client.post(
+            "/api/v1/workflow/control/apply",
+            json={"execution_ticket": ticket, "confirm_restart": True},
+        )
+        assert apply_response.status_code == 200
+        data = apply_response.json()
+        assert data["apply_mode"] == ApplyMode.REJECTED.value
+        assert data["reason_code"] == ReasonCode.OPERATION_IN_PROGRESS.value
 
 
 class TestStateEndpoint:
@@ -250,6 +376,18 @@ class TestStateEndpoint:
         assert isinstance(state["runtime"], dict)
         assert isinstance(state["provider"], dict)
         assert isinstance(state["active_operations"], list)
+        assert isinstance(state["health"], dict)
+        assert "overall" in state["health"]
+        assert "checks" in state["health"]
+
+    def test_state_reflects_runtime_from_config(self, client, isolated_control_plane):
+        """State should derive runtime from config, not hardcoded placeholder."""
+        isolated_control_plane.update_config({"WORKFLOW_RUNTIME": "hybrid"})
+        response = client.get("/api/v1/workflow/control/state")
+        assert response.status_code == 200
+        state = response.json()["system_state"]
+        assert state["provider"]["active"] == "ollama"
+        assert state["health"]["overall"] in {"healthy", "degraded", "critical"}
 
 
 class TestAuditEndpoint:
@@ -303,9 +441,7 @@ class TestAuditEndpoint:
 
     def test_audit_trail_pagination(self, client):
         """Test audit trail pagination."""
-        response = client.get(
-            "/api/v1/workflow/control/audit?page=1&page_size=10"
-        )
+        response = client.get("/api/v1/workflow/control/audit?page=1&page_size=10")
 
         assert response.status_code == 200
         data = response.json()
@@ -347,9 +483,7 @@ class TestEndToEndWorkflow:
             ],
         }
 
-        plan_response = client.post(
-            "/api/v1/workflow/control/plan", json=plan_request
-        )
+        plan_response = client.post("/api/v1/workflow/control/plan", json=plan_request)
         assert plan_response.status_code == 200
 
         plan_data = plan_response.json()
@@ -386,9 +520,7 @@ class TestEndToEndWorkflow:
             "dry_run": True,
         }
 
-        plan_response = client.post(
-            "/api/v1/workflow/control/plan", json=plan_request
-        )
+        plan_response = client.post("/api/v1/workflow/control/plan", json=plan_request)
         ticket = plan_response.json()["execution_ticket"]
 
         # Try to apply dry_run plan (should fail or be rejected based on implementation)

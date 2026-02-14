@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertCircle, XCircle } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import type { ApplyResults, AppliedChange } from "@/types/workflow-control";
 
 interface ApplyResultsModalProps {
@@ -20,6 +21,7 @@ export function ApplyResultsModal({
   results,
   onClose,
 }: ApplyResultsModalProps) {
+  const t = useTranslation();
   const applyMode = results?.apply_mode;
   const appliedChanges = results?.applied_changes || [];
   const pendingRestart = results?.pending_restart || [];
@@ -29,9 +31,9 @@ export function ApplyResultsModal({
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Apply Results</DialogTitle>
+          <DialogTitle>{t("workflowControl.apply.title")}</DialogTitle>
           <DialogDescription>
-            Configuration changes have been processed
+            {t("workflowControl.apply.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -49,9 +51,9 @@ export function ApplyResultsModal({
                 <XCircle className="h-5 w-5 text-red-500" />
               )}
               <span className="font-semibold">
-                {applyMode === "hot_swap" && "✅ Changes Applied Successfully"}
-                {applyMode === "restart_required" && "⚠️ Restart Required"}
-                {applyMode === "rejected" && "❌ Changes Rejected"}
+                {applyMode === "hot_swap" && t("workflowControl.apply.hotSwap")}
+                {applyMode === "restart_required" && t("workflowControl.apply.restartRequired")}
+                {applyMode === "rejected" && t("workflowControl.apply.rejected")}
               </span>
             </div>
             <p className="text-sm text-muted-foreground">{results?.message}</p>
@@ -62,7 +64,7 @@ export function ApplyResultsModal({
             <div className="space-y-2">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />
-                Applied Changes ({appliedChanges.length})
+                {t("workflowControl.apply.appliedChanges", { count: appliedChanges.length })}
               </h3>
               <div className="space-y-1">
                 {appliedChanges.map((change: AppliedChange, idx: number) => (
@@ -87,7 +89,7 @@ export function ApplyResultsModal({
             <div className="space-y-2">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-yellow-500" />
-                Services Requiring Restart ({pendingRestart.length})
+                {t("workflowControl.apply.pendingRestart", { count: pendingRestart.length })}
               </h3>
               <div className="space-y-1">
                 {pendingRestart.map((service: string, idx: number) => (
@@ -107,7 +109,7 @@ export function ApplyResultsModal({
             <div className="space-y-2">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <XCircle className="h-4 w-4 text-red-500" />
-                Failed Changes ({failedChanges.length})
+                {t("workflowControl.apply.failedChanges", { count: failedChanges.length })}
               </h3>
               <div className="space-y-1">
                 {failedChanges.map((error: string, idx: number) => (
@@ -125,13 +127,13 @@ export function ApplyResultsModal({
           {/* Rollback Info */}
           {results?.rollback_available && (
             <div className="p-3 rounded bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-sm">
-              ℹ️ Rollback is available if needed
+              {t("workflowControl.apply.rollback")}
             </div>
           )}
         </div>
 
         <div className="mt-6 flex justify-end">
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onClose}>{t("workflowControl.apply.close")}</Button>
         </div>
       </DialogContent>
     </Dialog>

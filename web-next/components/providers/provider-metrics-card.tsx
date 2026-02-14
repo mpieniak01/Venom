@@ -38,7 +38,7 @@ interface ProviderMetricsCardProps {
 }
 
 export function ProviderMetricsCard({ provider, metrics }: ProviderMetricsCardProps) {
-  const { t } = useTranslation();
+  const t = useTranslation();
 
   if (!metrics) {
     return (

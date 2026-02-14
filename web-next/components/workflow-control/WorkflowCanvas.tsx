@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useEffect } from "react";
-import ReactFlow, {
-  Node,
+import {
+  ReactFlow,
   Edge,
+  Node,
   Controls,
   Background,
   BackgroundVariant,
@@ -13,7 +14,9 @@ import ReactFlow, {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
+import { useTranslation } from "@/lib/i18n";
 import type { SystemState } from "@/types/workflow-control";
+import { buildWorkflowGraph } from "@/lib/workflow-canvas-helpers";
 
 interface WorkflowCanvasProps {
   systemState: SystemState | null;
@@ -53,8 +56,7 @@ const nodeTypes = {
   embedding: EmbeddingNode,
 };
 
-// Auto-layout using dagre
-function getLayoutedElements(nodes: Node[], edges: Edge[]) {
+function getLayoutedElements(nodes: Node[], edges: Edge[]): Node[] {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({ rankdir: "TB", nodesep: 100, ranksep: 150 });
@@ -62,86 +64,25 @@ function getLayoutedElements(nodes: Node[], edges: Edge[]) {
   nodes.forEach((node) => {
     dagreGraph.setNode(node.id, { width: 200, height: 100 });
   });
-
   edges.forEach((edge) => {
     dagreGraph.setEdge(edge.source, edge.target);
   });
-
   dagre.layout(dagreGraph);
 
-  const layoutedNodes = nodes.map((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id);
+  return nodes.map((node) => {
+    const pos = dagreGraph.node(node.id);
     return {
       ...node,
-      position: {
-        x: nodeWithPosition.x - 100,
-        y: nodeWithPosition.y - 50,
-      },
+      position: { x: pos.x - 100, y: pos.y - 50 },
     };
   });
-
-  return { nodes: layoutedNodes, edges };
 }
 
 export function WorkflowCanvas({ systemState }: WorkflowCanvasProps) {
   // Generate nodes and edges from system state
   const { initialNodes, initialEdges } = useMemo(() => {
-    if (!systemState) {
-      return { initialNodes: [], initialEdges: [] };
-    }
-
-    const nodes: Node[] = [
-      {
-        id: "decision",
-        type: "decision",
-        data: {
-          strategy: systemState.decision_strategy,
-          intentMode: systemState.intent_mode,
-        },
-        position: { x: 0, y: 0 },
-      },
-      {
-        id: "kernel",
-        type: "kernel",
-        data: {
-          kernel: systemState.kernel,
-        },
-        position: { x: 0, y: 0 },
-      },
-      {
-        id: "runtime",
-        type: "runtime",
-        data: {
-          runtime: systemState.runtime,
-        },
-        position: { x: 0, y: 0 },
-      },
-      {
-        id: "provider",
-        type: "provider",
-        data: {
-          provider: systemState.provider,
-        },
-        position: { x: 0, y: 0 },
-      },
-      {
-        id: "embedding",
-        type: "embedding",
-        data: {
-          model: systemState.embedding_model,
-        },
-        position: { x: 0, y: 0 },
-      },
-    ];
-
-    const edges: Edge[] = [
-      { id: "e1", source: "decision", target: "kernel", animated: true },
-      { id: "e2", source: "kernel", target: "runtime", animated: true },
-      { id: "e3", source: "runtime", target: "provider", animated: true },
-      { id: "e4", source: "decision", target: "embedding", animated: true },
-    ];
-
-    return getLayoutedElements(nodes, edges);
+    const { nodes, edges } = buildWorkflowGraph(systemState);
+    return { initialNodes: getLayoutedElements(nodes, edges), initialEdges: edges };
   }, [systemState]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -173,53 +114,60 @@ export function WorkflowCanvas({ systemState }: WorkflowCanvasProps) {
 
 // Custom node components
 function DecisionNode({ data }: { data: DecisionNodeData }) {
+  const t = useTranslation();
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-blue-50 dark:bg-blue-950 border-2 border-blue-500">
-      <div className="font-bold text-sm mb-1">Decision & Intent</div>
+      <div className="font-bold text-sm mb-1">{t("workflowControl.sections.decision")}</div>
       <div className="text-xs">
-        <div>Strategy: {data.strategy}</div>
-        <div>Mode: {data.intentMode}</div>
+        <div>{t("workflowControl.labels.currentStrategy")}: {data.strategy || t("workflowControl.common.na")}</div>
+        <div>{t("workflowControl.labels.currentIntent")}: {data.intentMode || t("workflowControl.common.na")}</div>
       </div>
     </div>
   );
 }
 
 function KernelNode({ data }: { data: KernelNodeData }) {
+  const t = useTranslation();
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-green-50 dark:bg-green-950 border-2 border-green-500">
-      <div className="font-bold text-sm mb-1">Kernel</div>
-      <div className="text-xs">{data.kernel}</div>
+      <div className="font-bold text-sm mb-1">{t("workflowControl.labels.currentKernel")}</div>
+      <div className="text-xs">{data.kernel || t("workflowControl.common.na")}</div>
     </div>
   );
 }
 
 function RuntimeNode({ data }: { data: RuntimeNodeData }) {
+  const t = useTranslation();
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-purple-50 dark:bg-purple-950 border-2 border-purple-500">
-      <div className="font-bold text-sm mb-1">Runtime</div>
+      <div className="font-bold text-sm mb-1">{t("workflowControl.labels.runtimeServices")}</div>
       <div className="text-xs">
-        {data.runtime?.services?.length || 0} services
+        {t("workflowControl.canvas.servicesCount", {
+          count: data.runtime?.services?.length || 0,
+        })}
       </div>
     </div>
   );
 }
 
 function ProviderNode({ data }: { data: ProviderNodeData }) {
+  const t = useTranslation();
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-orange-50 dark:bg-orange-950 border-2 border-orange-500">
-      <div className="font-bold text-sm mb-1">Provider</div>
+      <div className="font-bold text-sm mb-1">{t("workflowControl.labels.currentProvider")}</div>
       <div className="text-xs">
-        {data.provider?.active || "N/A"}
+        {data.provider?.active || t("workflowControl.common.na")}
       </div>
     </div>
   );
 }
 
 function EmbeddingNode({ data }: { data: EmbeddingNodeData }) {
+  const t = useTranslation();
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-pink-50 dark:bg-pink-950 border-2 border-pink-500">
-      <div className="font-bold text-sm mb-1">Embedding</div>
-      <div className="text-xs">{data.model}</div>
+      <div className="font-bold text-sm mb-1">{t("workflowControl.labels.currentEmbedding")}</div>
+      <div className="text-xs">{data.model || t("workflowControl.common.na")}</div>
     </div>
   );
 }

@@ -25,8 +25,20 @@ interface AlertsListProps {
   severityFilter?: "info" | "warning" | "critical";
 }
 
+function toTranslationReplacements(
+  metadata: Record<string, unknown>
+): Record<string, string | number> {
+  const result: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (typeof value === "string" || typeof value === "number") {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 export function AlertsList({ alerts, providerFilter, severityFilter }: AlertsListProps) {
-  const { t } = useTranslation();
+  const t = useTranslation();
 
   // Filter alerts
   let filteredAlerts = alerts;
@@ -68,7 +80,7 @@ export function AlertsList({ alerts, providerFilter, severityFilter }: AlertsLis
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return t("providers.alerts.timestamp.justNow");
     if (diffMins < 60) return t("providers.alerts.timestamp.minutesAgo", { minutes: diffMins });
     const diffHours = Math.floor(diffMins / 60);
@@ -79,10 +91,10 @@ export function AlertsList({ alerts, providerFilter, severityFilter }: AlertsLis
 
   const formatAlertMessage = (alert: Alert): string => {
     const messageKey = alert.message;
-    
+
     // Try to translate with metadata substitution
     try {
-      return t(messageKey, alert.metadata);
+      return t(messageKey, toTranslationReplacements(alert.metadata));
     } catch {
       // Fallback to technical details if translation fails
       return alert.technical_details || messageKey;
@@ -115,7 +127,7 @@ export function AlertsList({ alerts, providerFilter, severityFilter }: AlertsLis
                 <span className="text-xs text-zinc-400">{alert.provider}</span>
               </div>
               <p className="text-sm font-medium mb-1">
-                {t(`providers.alerts.types.${alert.alert_type}`, alert.alert_type)}
+                {t(`providers.alerts.types.${alert.alert_type}`)}
               </p>
               <p className="text-sm opacity-90">
                 {formatAlertMessage(alert)}
@@ -149,14 +161,14 @@ interface AlertsSummaryProps {
 }
 
 export function AlertsSummary({ summary }: AlertsSummaryProps) {
-  const { t } = useTranslation();
+  const t = useTranslation();
 
   return (
     <div className="card-shell card-base p-5">
       <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-4">
         {t("providers.alerts.title")}
       </p>
-      
+
       <div className="grid grid-cols-4 gap-3 mb-4">
         <div className="rounded-2xl box-subtle px-3 py-2 text-center">
           <p className="text-xs text-zinc-400">{t("providers.alerts.summary.total")}</p>

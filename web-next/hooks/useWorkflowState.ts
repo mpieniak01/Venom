@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type {
   SystemState,
   PlanRequest,
@@ -9,32 +10,56 @@ import type {
 } from "@/types/workflow-control";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const WORKFLOW_STORAGE_KEY = "workflow_control_id";
+const DEFAULT_WORKFLOW_ID = "00000000-0000-0000-0000-000000000001";
 
 // Generate a valid UUID v4 for the workflow
 // In production, this should come from the backend or be persisted
-const generateWorkflowId = (): string => {
+const getOrCreateWorkflowId = (): string => {
+  if (typeof window === "undefined") return DEFAULT_WORKFLOW_ID;
+
+  const stored = localStorage.getItem(WORKFLOW_STORAGE_KEY);
+  if (stored) return stored;
+
   if (typeof window !== "undefined") {
-    const stored = localStorage.getItem("workflow_control_id");
-    if (stored) return stored;
+    const uuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+    localStorage.setItem(WORKFLOW_STORAGE_KEY, uuid);
+    return uuid;
   }
-  
-  // Generate UUID v4
-  const uuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-  
-  if (typeof window !== "undefined") {
-    localStorage.setItem("workflow_control_id", uuid);
-  }
-  
-  return uuid;
+
+  return DEFAULT_WORKFLOW_ID;
 };
 
-const WORKFLOW_ID = generateWorkflowId();
+export async function readApiErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const text = await response.text();
+    if (!text) return fallback;
+    try {
+      const parsed = JSON.parse(text) as { detail?: string; message?: string };
+      if (typeof parsed?.detail === "string" && parsed.detail.trim()) return parsed.detail;
+      if (typeof parsed?.message === "string" && parsed.message.trim()) return parsed.message;
+    } catch {
+      // Non-JSON payload; return raw text below.
+    }
+    return text.trim() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function extractSystemStateFromPayload(payload: unknown): SystemState | null {
+  if (payload && typeof payload === "object" && "system_state" in payload) {
+    return (payload as { system_state: SystemState }).system_state;
+  }
+  return null;
+}
 
 export function useWorkflowState() {
+  const t = useTranslation();
   const [systemState, setSystemState] = useState<SystemState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,15 +71,21 @@ export function useWorkflowState() {
         `${API_BASE_URL}/api/v1/workflow/control/state`
       );
       if (!response.ok) {
-        throw new Error("Failed to fetch system state");
+        throw new Error(await readApiErrorMessage(response, t("workflowControl.error")));
       }
       const data = await response.json();
-      setSystemState(data.system_state);
+      const nextState = extractSystemStateFromPayload(data);
+      if (nextState) {
+        setSystemState(nextState);
+      } else {
+        setSystemState(null);
+        throw new Error(t("workflowControl.messages.invalidStatePayload"));
+      }
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("workflowControl.error"));
     }
-  }, []);
+  }, [t]);
 
   // Refresh state
   const refresh = useCallback(() => {
@@ -75,16 +106,16 @@ export function useWorkflowState() {
         }
       );
       if (!response.ok) {
-        throw new Error("Failed to plan changes");
+        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.planError")));
       }
       return await response.json();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("workflowControl.messages.planError"));
       return null;
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Apply changes
   const applyChanges = useCallback(async (executionTicket: string): Promise<ApplyResults | null> => {
@@ -103,24 +134,23 @@ export function useWorkflowState() {
         }
       );
       if (!response.ok) {
-        throw new Error("Failed to apply changes");
+        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.applyError")));
       }
       return await response.json();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("workflowControl.messages.applyError"));
       return null;
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Pause workflow
   const pauseWorkflow = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      // Generate a workflow ID (in real app, get from state)
-      const workflowId = WORKFLOW_ID;
+      const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
         `${API_BASE_URL}/api/v1/workflow/operations/pause`,
         {
@@ -133,22 +163,22 @@ export function useWorkflowState() {
         }
       );
       if (!response.ok) {
-        throw new Error("Failed to pause workflow");
+        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.pauseError")));
       }
       await fetchSystemState();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("workflowControl.messages.pauseError"));
     } finally {
       setIsLoading(false);
     }
-  }, [fetchSystemState]);
+  }, [fetchSystemState, t]);
 
   // Resume workflow
   const resumeWorkflow = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const workflowId = WORKFLOW_ID;
+      const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
         `${API_BASE_URL}/api/v1/workflow/operations/resume`,
         {
@@ -161,22 +191,22 @@ export function useWorkflowState() {
         }
       );
       if (!response.ok) {
-        throw new Error("Failed to resume workflow");
+        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.resumeError")));
       }
       await fetchSystemState();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("workflowControl.messages.resumeError"));
     } finally {
       setIsLoading(false);
     }
-  }, [fetchSystemState]);
+  }, [fetchSystemState, t]);
 
   // Cancel workflow
   const cancelWorkflow = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const workflowId = WORKFLOW_ID;
+      const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
         `${API_BASE_URL}/api/v1/workflow/operations/cancel`,
         {
@@ -189,22 +219,22 @@ export function useWorkflowState() {
         }
       );
       if (!response.ok) {
-        throw new Error("Failed to cancel workflow");
+        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.cancelError")));
       }
       await fetchSystemState();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("workflowControl.messages.cancelError"));
     } finally {
       setIsLoading(false);
     }
-  }, [fetchSystemState]);
+  }, [fetchSystemState, t]);
 
   // Retry workflow
   const retryWorkflow = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const workflowId = WORKFLOW_ID;
+      const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
         `${API_BASE_URL}/api/v1/workflow/operations/retry`,
         {
@@ -217,22 +247,22 @@ export function useWorkflowState() {
         }
       );
       if (!response.ok) {
-        throw new Error("Failed to retry workflow");
+        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.retryError")));
       }
       await fetchSystemState();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("workflowControl.messages.retryError"));
     } finally {
       setIsLoading(false);
     }
-  }, [fetchSystemState]);
+  }, [fetchSystemState, t]);
 
   // Dry run
   const dryRun = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const workflowId = WORKFLOW_ID;
+      const workflowId = getOrCreateWorkflowId();
       const response = await fetch(
         `${API_BASE_URL}/api/v1/workflow/operations/dry-run`,
         {
@@ -245,16 +275,15 @@ export function useWorkflowState() {
         }
       );
       if (!response.ok) {
-        throw new Error("Failed to perform dry run");
+        throw new Error(await readApiErrorMessage(response, t("workflowControl.messages.dryRunError")));
       }
       await response.json();
-      // Show result in a toast or notification
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("workflowControl.messages.dryRunError"));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Initial load and polling
   useEffect(() => {

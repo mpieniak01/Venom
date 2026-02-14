@@ -6,9 +6,12 @@ import { ControlPanels } from "./ControlPanels";
 import { OperationControls } from "./OperationControls";
 import { ApplyResultsModal } from "./ApplyResultsModal";
 import { useWorkflowState } from "@/hooks/useWorkflowState";
+import { useTranslation } from "@/lib/i18n";
+import { shouldShowApplyResultsModal } from "@/lib/workflow-control-ui-helpers";
 import type { ApplyResults, PlanRequest } from "@/types/workflow-control";
 
 export function WorkflowControlView() {
+  const t = useTranslation();
   const {
     systemState,
     isLoading,
@@ -42,9 +45,9 @@ export function WorkflowControlView() {
   return (
     <div className="flex flex-col h-screen bg-background">
       <header className="border-b p-4">
-        <h1 className="text-2xl font-bold">Workflow Control Plane</h1>
+        <h1 className="text-2xl font-bold">{t("workflowControl.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Unified control for system configuration and workflow management
+          {t("workflowControl.description")}
         </p>
       </header>
 
@@ -80,7 +83,7 @@ export function WorkflowControlView() {
       </div>
 
       {/* Apply Results Modal */}
-      {showResultsModal && applyResults && (
+      {applyResults && shouldShowApplyResultsModal(showResultsModal, applyResults) && (
         <ApplyResultsModal
           results={applyResults}
           onClose={() => setShowResultsModal(false)}
@@ -90,7 +93,7 @@ export function WorkflowControlView() {
       {/* Error Display */}
       {error && (
         <div className="fixed bottom-4 right-4 bg-destructive text-destructive-foreground p-4 rounded-lg shadow-lg">
-          <p className="font-semibold">Error</p>
+          <p className="font-semibold">{t("workflowControl.common.errorTitle")}</p>
           <p className="text-sm">{error}</p>
         </div>
       )}

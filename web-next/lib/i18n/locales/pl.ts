@@ -40,7 +40,8 @@ export const pl = {
       inspector: "Inspektor",
       strategy: "Strategia",
       models: "Modele",
-      academy: "Academy",
+      academy: "Akadamia",
+      workflowControl: "Przeplywy",
       calendar: "Kalendarz",
       benchmark: "Benchmark",
       config: "Konfiguracja",
@@ -1866,6 +1867,10 @@ export const pl = {
     description: "Zunifikowana płaszczyzna sterowania konfiguracją stosu",
     loading: "Ładowanie stanu systemu...",
     error: "Nie udało się załadować stanu systemu",
+    common: {
+      na: "N/D",
+      errorTitle: "Błąd",
+    },
     sections: {
       decision: "Sterowanie decyzją i intencją",
       kernel: "Sterowanie kernelem i embeddingiem",
@@ -1882,6 +1887,7 @@ export const pl = {
       newEmbedding: "Nowy embedding",
       currentProvider: "Bieżący provider",
       newProvider: "Nowy provider",
+      runtimeServices: "Usługi runtime",
       selectStrategy: "Wybierz strategię decyzji",
       selectIntent: "Wybierz tryb intencji",
       selectKernel: "Wybierz typ kernela",
@@ -1916,6 +1922,7 @@ export const pl = {
     },
     buttons: {
       planApply: "Planuj i zastosuj zmiany",
+      applying: "Zastosowywanie...",
       pause: "Wstrzymaj",
       resume: "Wznów",
       cancel: "Anuluj",
@@ -1934,8 +1941,12 @@ export const pl = {
       title: "Operacje przepływu",
       currentStatus: "Bieżący status",
     },
+    canvas: {
+      servicesCount: "{{count}} usług",
+    },
     apply: {
       title: "Wyniki zastosowania",
+      description: "Zmiany konfiguracji zostały przetworzone",
       close: "Zamknij",
       hotSwap: "Zastosowane (Hot-swap)",
       restartRequired: "Wymagany restart",
@@ -1943,6 +1954,9 @@ export const pl = {
       rollback: "Dostępny rollback",
       noRollback: "Brak rollbacku",
       noChanges: "Brak zmian w tej kategorii",
+      appliedChanges: "Zastosowane zmiany ({{count}})",
+      pendingRestart: "Usługi wymagające restartu ({{count}})",
+      failedChanges: "Nieudane zmiany ({{count}})",
     },
     messages: {
       planSuccess: "Zmiany zaplanowane pomyślnie",
@@ -1959,6 +1973,7 @@ export const pl = {
       retryError: "Nie udało się ponowić przepływu",
       dryRunSuccess: "Test zakończony",
       dryRunError: "Nie udało się wykonać testu",
+      invalidStatePayload: "Niepoprawny payload stanu workflow z API",
     },
   },
 };

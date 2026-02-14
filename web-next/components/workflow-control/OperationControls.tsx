@@ -8,6 +8,8 @@ import {
   RotateCcw,
   PlayCircle,
 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
+import { getWorkflowStatusMeta } from "@/lib/workflow-control-ui-helpers";
 
 interface OperationControlsProps {
   workflowStatus?: string;
@@ -28,28 +30,19 @@ export function OperationControls({
   onDryRun,
   isLoading,
 }: OperationControlsProps) {
-  const canPause = workflowStatus === "running";
-  const canResume = workflowStatus === "paused";
-  const canCancel = ["running", "paused"].includes(workflowStatus || "");
-  const canRetry = ["failed", "cancelled"].includes(workflowStatus || "");
+  const t = useTranslation();
+  const statusMeta = getWorkflowStatusMeta(workflowStatus);
+  const { canPause, canResume, canCancel, canRetry } = statusMeta;
 
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1">
-        <div className="text-sm font-medium">Workflow Status:</div>
+        <div className="text-sm font-medium">{t("workflowControl.operations.currentStatus")}:</div>
         <div className="text-xs text-muted-foreground">
           <span
-            className={`inline-block px-2 py-1 rounded ${
-              workflowStatus === "running"
-                ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100"
-                : workflowStatus === "paused"
-                  ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100"
-                  : workflowStatus === "failed"
-                    ? "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100"
-            }`}
+            className={`inline-block px-2 py-1 rounded ${statusMeta.colorClass}`}
           >
-            {workflowStatus || "idle"}
+            {t(`workflowControl.status.${statusMeta.statusKey}`)}
           </span>
         </div>
       </div>
@@ -60,10 +53,10 @@ export function OperationControls({
           size="sm"
           onClick={onPause}
           disabled={!canPause || isLoading}
-          title="Pause workflow"
+          title={t("workflowControl.buttons.pause")}
         >
           <Pause className="h-4 w-4 mr-1" />
-          Pause
+          {t("workflowControl.buttons.pause")}
         </Button>
 
         <Button
@@ -71,21 +64,21 @@ export function OperationControls({
           size="sm"
           onClick={onResume}
           disabled={!canResume || isLoading}
-          title="Resume workflow"
+          title={t("workflowControl.buttons.resume")}
         >
           <Play className="h-4 w-4 mr-1" />
-          Resume
+          {t("workflowControl.buttons.resume")}
         </Button>
 
         <Button
-          variant="destructive"
+          variant="danger"
           size="sm"
           onClick={onCancel}
           disabled={!canCancel || isLoading}
-          title="Cancel workflow"
+          title={t("workflowControl.buttons.cancel")}
         >
           <XCircle className="h-4 w-4 mr-1" />
-          Cancel
+          {t("workflowControl.buttons.cancel")}
         </Button>
 
         <Button
@@ -93,10 +86,10 @@ export function OperationControls({
           size="sm"
           onClick={onRetry}
           disabled={!canRetry || isLoading}
-          title="Retry workflow"
+          title={t("workflowControl.buttons.retry")}
         >
           <RotateCcw className="h-4 w-4 mr-1" />
-          Retry
+          {t("workflowControl.buttons.retry")}
         </Button>
 
         <Button
@@ -104,10 +97,10 @@ export function OperationControls({
           size="sm"
           onClick={onDryRun}
           disabled={isLoading}
-          title="Dry run (simulation)"
+          title={t("workflowControl.buttons.dryRun")}
         >
           <PlayCircle className="h-4 w-4 mr-1" />
-          Dry Run
+          {t("workflowControl.buttons.dryRun")}
         </Button>
       </div>
     </div>

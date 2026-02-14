@@ -7,10 +7,11 @@ This service aggregates and coordinates changes across:
 - Embedding and workflow control
 """
 
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any
 
 from venom_core.api.model_schemas.workflow_control import (
     AppliedChange,
@@ -24,13 +25,10 @@ from venom_core.api.model_schemas.workflow_control import (
     ResourceChange,
     ResourceType,
     SystemState,
-    WorkflowStatus,
 )
 from venom_core.services.config_manager import config_manager
 from venom_core.services.control_plane_audit import get_control_plane_audit_trail
-from venom_core.services.control_plane_compatibility import (
-    get_compatibility_validator,
-)
+from venom_core.services.control_plane_compatibility import get_compatibility_validator
 from venom_core.services.runtime_controller import runtime_controller
 from venom_core.utils.logger import get_logger
 
@@ -42,9 +40,20 @@ class ControlPlaneService:
 
     def __init__(self):
         """Initialize control plane service."""
-        self._pending_plans: dict[str, ControlPlanResponse] = {}
+        self._pending_plans: dict[str, dict[str, Any]] = {}
         self._compatibility_validator = get_compatibility_validator()
         self._audit_trail = get_control_plane_audit_trail()
+        self._lock = threading.Lock()
+        self._active_operations: set[str] = set()
+
+    RESOURCE_CONFIG_KEY_MAP: dict[ResourceType, str] = {
+        ResourceType.DECISION_STRATEGY: "AI_MODE",
+        ResourceType.INTENT_MODE: "INTENT_MODE",
+        ResourceType.KERNEL: "KERNEL",
+        ResourceType.RUNTIME: "WORKFLOW_RUNTIME",
+        ResourceType.PROVIDER: "ACTIVE_PROVIDER",
+        ResourceType.EMBEDDING_MODEL: "EMBEDDING_MODEL",
+    }
 
     def plan_changes(
         self, request: ControlPlanRequest, triggered_by: str
@@ -60,6 +69,27 @@ class ControlPlaneService:
         """
         start_time = time.time()
         execution_ticket = str(uuid.uuid4())
+        operation_id = f"plan:{execution_ticket}"
+
+        if not self._begin_operation(operation_id):
+            return ControlPlanResponse(
+                execution_ticket=execution_ticket,
+                valid=False,
+                reason_code=ReasonCode.OPERATION_IN_PROGRESS,
+                compatibility_report=CompatibilityReport(
+                    compatible=False,
+                    issues=[
+                        "Another plan operation is already in progress for this ticket"
+                    ],
+                    warnings=[],
+                    affected_services=[],
+                ),
+                planned_changes=[],
+                hot_swap_changes=[],
+                restart_required_services=[],
+                rejected_changes=["Operation already in progress"],
+                estimated_duration_seconds=0.0,
+            )
 
         try:
             # Validate and categorize changes
@@ -142,7 +172,12 @@ class ControlPlaneService:
 
             # Store plan for later apply
             if not request.dry_run:
-                self._pending_plans[execution_ticket] = response
+                with self._lock:
+                    self._pending_plans[execution_ticket] = {
+                        "response": response,
+                        "request": request,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    }
 
             # Log to audit trail
             duration_ms = (time.time() - start_time) * 1000
@@ -151,7 +186,10 @@ class ControlPlaneService:
                 operation_type="plan",
                 resource_type=ResourceType.CONFIG,
                 resource_id="system",
-                params={"changes_count": len(request.changes), "dry_run": request.dry_run},
+                params={
+                    "changes_count": len(request.changes),
+                    "dry_run": request.dry_run,
+                },
                 result="success" if overall_compatible else "rejected",
                 reason_code=reason_code,
                 duration_ms=duration_ms,
@@ -174,6 +212,8 @@ class ControlPlaneService:
                 error_message=str(e),
             )
             raise
+        finally:
+            self._end_operation(operation_id)
 
     def apply_changes(
         self, request: ControlApplyRequest, triggered_by: str
@@ -188,11 +228,25 @@ class ControlPlaneService:
             Apply response with results
         """
         start_time = time.time()
+        operation_id = f"apply:{request.execution_ticket}"
+
+        if not self._begin_operation(operation_id):
+            return ControlApplyResponse(
+                execution_ticket=request.execution_ticket,
+                apply_mode=ApplyMode.REJECTED,
+                reason_code=ReasonCode.OPERATION_IN_PROGRESS,
+                message="Apply operation already in progress for this ticket",
+                applied_changes=[],
+                pending_restart=[],
+                failed_changes=["Operation already in progress"],
+                rollback_available=True,
+            )
 
         try:
             # Retrieve the plan
-            plan = self._pending_plans.get(request.execution_ticket)
-            if not plan:
+            with self._lock:
+                pending = self._pending_plans.get(request.execution_ticket)
+            if not pending:
                 return ControlApplyResponse(
                     execution_ticket=request.execution_ticket,
                     apply_mode=ApplyMode.REJECTED,
@@ -202,6 +256,8 @@ class ControlPlaneService:
                     pending_restart=[],
                     failed_changes=["Invalid execution ticket"],
                 )
+            plan: ControlPlanResponse = pending["response"]
+            plan_request: ControlPlanRequest = pending["request"]
 
             if not plan.valid:
                 return ControlApplyResponse(
@@ -229,16 +285,33 @@ class ControlPlaneService:
             # Apply changes
             applied_changes: list[AppliedChange] = []
             failed_changes: list[str] = []
+            rollback_snapshot: dict[str, Any] = {}
+            rollback_attempted = False
+            rollback_success = False
 
-            for change in plan.planned_changes:
+            for change in plan_request.changes:
                 try:
-                    self._apply_single_change(change)
-                    applied_changes.append(change)
-                except Exception as e:
-                    logger.error(
-                        f"Failed to apply change {change.resource_id}: {e}"
+                    applied_change = self._apply_single_change(
+                        requested_change=change,
+                        rollback_snapshot=rollback_snapshot,
                     )
+                    applied_changes.append(applied_change)
+                except Exception as e:
+                    logger.error(f"Failed to apply change {change.resource_id}: {e}")
                     failed_changes.append(f"{change.resource_id}: {str(e)}")
+                    rollback_attempted = True
+                    rollback_success = self._rollback_config_changes(
+                        rollback_snapshot=rollback_snapshot,
+                        triggered_by=triggered_by,
+                        execution_ticket=request.execution_ticket,
+                    )
+                    if not rollback_success:
+                        failed_changes.append("Rollback failed for one or more keys")
+                    else:
+                        failed_changes.append(
+                            "Rollback completed for applied config changes"
+                        )
+                    break
 
             # Determine overall apply mode
             if len(failed_changes) > 0:
@@ -262,11 +335,12 @@ class ControlPlaneService:
                 applied_changes=applied_changes,
                 pending_restart=plan.restart_required_services,
                 failed_changes=failed_changes,
-                rollback_available=False,  # Rollback not yet implemented
+                rollback_available=rollback_attempted or bool(rollback_snapshot),
             )
 
             # Clean up pending plan
-            self._pending_plans.pop(request.execution_ticket, None)
+            with self._lock:
+                self._pending_plans.pop(request.execution_ticket, None)
 
             # Log to audit trail
             duration_ms = (time.time() - start_time) * 1000
@@ -283,6 +357,26 @@ class ControlPlaneService:
                 reason_code=reason_code,
                 duration_ms=duration_ms,
             )
+            if rollback_attempted:
+                self._audit_trail.log_operation(
+                    triggered_by=triggered_by,
+                    operation_type="rollback",
+                    resource_type=ResourceType.CONFIG,
+                    resource_id="system",
+                    params={"execution_ticket": request.execution_ticket},
+                    result="success" if rollback_success else "failure",
+                    reason_code=(
+                        ReasonCode.OPERATION_COMPLETED
+                        if rollback_success
+                        else ReasonCode.OPERATION_FAILED
+                    ),
+                    duration_ms=duration_ms,
+                    error_message=(
+                        None
+                        if rollback_success
+                        else "Rollback could not restore all configuration keys"
+                    ),
+                )
 
             return response
 
@@ -301,6 +395,8 @@ class ControlPlaneService:
                 error_message=str(e),
             )
             raise
+        finally:
+            self._end_operation(operation_id)
 
     def get_system_state(self) -> SystemState:
         """Get current state of the entire system.
@@ -324,21 +420,47 @@ class ControlPlaneService:
         # Get config
         config = config_manager.get_config(mask_secrets=False)
 
-        # Get actual workflow status from WorkflowOperationService
-        # Import here to avoid circular dependency
+        # Get latest workflow status from WorkflowOperationService
+        # Import here to avoid circular dependency.
         from venom_core.services.workflow_operations import get_workflow_service
+
         workflow_service = get_workflow_service()
-        workflow_status = WorkflowStatus.IDLE
-        try:
-            # Try to get status for main workflow
-            workflow = workflow_service._workflows.get("main-workflow")
-            if workflow:
-                workflow_status = WorkflowStatus(workflow["status"])
-        except (KeyError, ValueError):
-            # Default to IDLE if workflow not found or invalid status
-            pass
+        workflow_status = workflow_service.get_latest_workflow_status()
 
         # Build state
+        derived_runtime = self._resolve_runtime_from_config(config)
+        derived_provider = self._resolve_provider_from_config(config)
+        derived_model = self._resolve_model_from_config(config, derived_provider)
+        embedding_model = config.get(
+            "EMBEDDING_MODEL",
+            config.get("INTENT_EMBED_MODEL_NAME", "sentence-transformers"),
+        )
+
+        compatible, compatibility_issues = (
+            self._compatibility_validator.validate_full_stack(
+                kernel=str(config.get("KERNEL", "standard")),
+                runtime=derived_runtime,
+                provider=derived_provider,
+                model=derived_model,
+                embedding_model=str(embedding_model),
+                intent_mode=str(config.get("INTENT_MODE", "simple")),
+            )
+        )
+        health_overall = self._calculate_health_status(
+            runtime_status, compatible=compatible
+        )
+        health_checks = [
+            {"name": s.name, "status": s.status.value} for s in runtime_status
+        ]
+        if compatibility_issues:
+            health_checks.append(
+                {
+                    "name": "compatibility",
+                    "status": "degraded",
+                    "issues": compatibility_issues,
+                }
+            )
+
         state = SystemState(
             timestamp=datetime.now(timezone.utc),
             decision_strategy=config.get("AI_MODE", "standard"),
@@ -346,13 +468,17 @@ class ControlPlaneService:
             kernel=config.get("KERNEL", "standard"),
             runtime=runtime_dict,
             provider={
-                "active": config.get("ACTIVE_PROVIDER", "ollama"),
+                "active": derived_provider,
                 "available": ["ollama", "huggingface", "openai"],
             },
-            embedding_model=config.get("EMBEDDING_MODEL", "sentence-transformers"),
+            embedding_model=embedding_model,
             workflow_status=workflow_status,
-            active_operations=[],
-            health={"overall": "healthy", "checks": []},
+            active_operations=self._get_active_operations_snapshot(),
+            health={
+                "overall": health_overall,
+                "checks": health_checks,
+                "compatibility_issues": compatibility_issues,
+            },
         )
 
         return state
@@ -403,13 +529,17 @@ class ControlPlaneService:
         Returns:
             Tuple of (compatible, list of issues)
         """
+        config = config_manager.get_config(mask_secrets=False)
+
         # Extract values after changes would be applied
-        kernel = current_state.kernel
-        runtime = "python"  # Default
-        provider = current_state.provider.get("active", "ollama")
-        model = "llama2"  # Default
-        embedding_model = current_state.embedding_model
-        intent_mode = current_state.intent_mode
+        kernel = str(config.get("KERNEL", current_state.kernel))
+        runtime = self._resolve_runtime_from_config(config)
+        provider = self._resolve_provider_from_config(config)
+        model = self._resolve_model_from_config(config, provider)
+        embedding_model = str(
+            config.get("EMBEDDING_MODEL", current_state.embedding_model)
+        )
+        intent_mode = str(config.get("INTENT_MODE", current_state.intent_mode))
 
         # Apply changes to get projected state
         for change in changes:
@@ -434,18 +564,179 @@ class ControlPlaneService:
             intent_mode=intent_mode,
         )
 
-    def _apply_single_change(self, change: AppliedChange) -> None:
-        """Apply a single change to the system.
+    def _apply_single_change(
+        self,
+        requested_change: ResourceChange,
+        rollback_snapshot: dict[str, Any],
+    ) -> AppliedChange:
+        """Apply a single config change and update rollback snapshot."""
+        updates = self._resource_change_to_config_updates(requested_change)
+        if not updates:
+            raise ValueError(
+                f"No supported config updates for resource_type={requested_change.resource_type.value}"
+            )
 
-        Args:
-            change: Change to apply
-        """
-        logger.info(
-            f"Applying change: {change.resource_type.value} - {change.resource_id}"
+        current_config = config_manager.get_config(mask_secrets=False)
+        previous_values: dict[str, Any] = {}
+        for key in updates:
+            previous_values[key] = current_config.get(key, "")
+
+        update_result = config_manager.update_config(updates)
+        if not update_result.get("success"):
+            raise RuntimeError(
+                update_result.get("message", "Unknown config update error")
+            )
+
+        for key, value in previous_values.items():
+            if key not in rollback_snapshot:
+                rollback_snapshot[key] = value
+
+        restart_required = bool(update_result.get("restart_required"))
+        apply_mode = (
+            ApplyMode.RESTART_REQUIRED if restart_required else ApplyMode.HOT_SWAP
         )
-        # In production, this would actually apply the change
-        # For now, just log it
-        pass
+        reason_code = (
+            ReasonCode.SUCCESS_RESTART_PENDING
+            if restart_required
+            else ReasonCode.SUCCESS_HOT_SWAP
+        )
+
+        return AppliedChange(
+            resource_type=requested_change.resource_type,
+            resource_id=requested_change.resource_id,
+            action=requested_change.action,
+            apply_mode=apply_mode,
+            reason_code=reason_code,
+            message=update_result.get("message", "Change applied"),
+            timestamp=datetime.now(timezone.utc),
+        )
+
+    def _rollback_config_changes(
+        self,
+        rollback_snapshot: dict[str, Any],
+        triggered_by: str,
+        execution_ticket: str,
+    ) -> bool:
+        """Best-effort rollback for config changes."""
+        if not rollback_snapshot:
+            return True
+        try:
+            rollback_result = config_manager.update_config(rollback_snapshot)
+            if rollback_result.get("success"):
+                logger.warning(
+                    "Rollback succeeded for execution_ticket=%s keys=%s",
+                    execution_ticket,
+                    list(rollback_snapshot.keys()),
+                )
+                return True
+            logger.error(
+                "Rollback failed for execution_ticket=%s: %s",
+                execution_ticket,
+                rollback_result.get("message"),
+            )
+            return False
+        except Exception as exc:
+            logger.exception(
+                "Rollback exception for execution_ticket=%s by=%s: %s",
+                execution_ticket,
+                triggered_by,
+                exc,
+            )
+            return False
+
+    def _resource_change_to_config_updates(
+        self, change: ResourceChange
+    ) -> dict[str, Any]:
+        """Map a workflow resource change to config_manager updates."""
+        if change.action != "update":
+            raise ValueError(
+                f"Unsupported action '{change.action}' for control-plane apply"
+            )
+
+        effective_new_value = (
+            change.new_value if change.new_value is not None else change.resource_id
+        )
+
+        if change.resource_type == ResourceType.CONFIG:
+            if not change.resource_id:
+                raise ValueError("CONFIG changes require resource_id as config key")
+            return {change.resource_id: effective_new_value}
+
+        if change.resource_type == ResourceType.WORKFLOW:
+            raise ValueError(
+                "Workflow resource changes are handled via workflow operations API"
+            )
+
+        config_key = self.RESOURCE_CONFIG_KEY_MAP.get(change.resource_type)
+        if not config_key:
+            raise ValueError(f"Unsupported resource type: {change.resource_type.value}")
+
+        return {config_key: effective_new_value}
+
+    def _resolve_runtime_from_config(self, config: dict[str, Any]) -> str:
+        runtime = str(config.get("WORKFLOW_RUNTIME", "")).strip().lower()
+        if runtime:
+            return runtime
+
+        llm_service_type = str(config.get("LLM_SERVICE_TYPE", "")).strip().lower()
+        if llm_service_type in {"hybrid"}:
+            return "hybrid"
+        if llm_service_type in {"vllm", "docker"}:
+            return "docker"
+        return "python"
+
+    def _resolve_provider_from_config(self, config: dict[str, Any]) -> str:
+        provider = str(config.get("ACTIVE_PROVIDER", "")).strip().lower()
+        if provider:
+            return provider
+        hybrid_provider = str(config.get("HYBRID_CLOUD_PROVIDER", "")).strip().lower()
+        if hybrid_provider:
+            return hybrid_provider
+        return "ollama"
+
+    def _resolve_model_from_config(self, config: dict[str, Any], provider: str) -> str:
+        model = str(config.get("LLM_MODEL_NAME", "")).strip()
+        if model:
+            return model
+        for key in ("HYBRID_LOCAL_MODEL", "HYBRID_CLOUD_MODEL", "LAST_MODEL_OLLAMA"):
+            val = str(config.get(key, "")).strip()
+            if val:
+                return val
+        fallback_models = self._compatibility_validator.matrix.provider_models.get(
+            provider, []
+        )
+        return fallback_models[0] if fallback_models else "llama2"
+
+    def _calculate_health_status(
+        self, runtime_statuses: list[Any], compatible: bool
+    ) -> str:
+        has_error = False
+        for service in runtime_statuses:
+            status_obj = getattr(service, "status", None)
+            status_value = getattr(status_obj, "value", status_obj)
+            if str(status_value).lower() == "error":
+                has_error = True
+                break
+        if has_error:
+            return "critical"
+        if not compatible:
+            return "degraded"
+        return "healthy"
+
+    def _begin_operation(self, operation_id: str) -> bool:
+        with self._lock:
+            if operation_id in self._active_operations:
+                return False
+            self._active_operations.add(operation_id)
+            return True
+
+    def _end_operation(self, operation_id: str) -> None:
+        with self._lock:
+            self._active_operations.discard(operation_id)
+
+    def _get_active_operations_snapshot(self) -> list[str]:
+        with self._lock:
+            return sorted(self._active_operations)
 
     def _estimate_duration(self, changes: list[AppliedChange]) -> float:
         """Estimate duration for applying changes.

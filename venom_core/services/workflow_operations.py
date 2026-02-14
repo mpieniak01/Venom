@@ -5,8 +5,17 @@ This module provides operations for managing workflow execution:
 - cancel running workflows
 - retry from specific steps
 - dry-run execution paths
+
+Supported state transitions:
+- IDLE → RUNNING
+- RUNNING → PAUSED | COMPLETED | FAILED | CANCELLED
+- PAUSED → RUNNING | CANCELLED
+- COMPLETED → IDLE (restart)
+- FAILED → RUNNING (retry) | IDLE (reset)
+- CANCELLED → IDLE (reset) | RUNNING (retry)
 """
 
+import threading
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -95,6 +104,24 @@ class WorkflowOperationService:
         """Initialize workflow operation service."""
         self._workflows: dict[str, dict[str, Any]] = {}
         self._audit_trail = get_control_plane_audit_trail()
+        self._lock = threading.Lock()  # Thread-safe access to workflows
+
+    def _validate_and_parse_uuid(self, workflow_id: str) -> uuid.UUID:
+        """Validate and parse workflow ID as UUID.
+        
+        Args:
+            workflow_id: String to validate as UUID
+            
+        Returns:
+            Parsed UUID object
+            
+        Raises:
+            ValueError: If workflow_id is not a valid UUID
+        """
+        try:
+            return uuid.UUID(workflow_id)
+        except (ValueError, AttributeError) as e:
+            raise ValueError(f"Invalid workflow_id format: {workflow_id}. Must be a valid UUID.") from e
 
     def pause_workflow(
         self, workflow_id: str, triggered_by: str, metadata: Optional[dict[str, Any]] = None
@@ -110,20 +137,61 @@ class WorkflowOperationService:
             WorkflowOperationResponse with result
 
         Raises:
-            StateTransitionError: If transition is invalid
+            ValueError: If workflow_id is not a valid UUID
         """
-        workflow = self._get_or_create_workflow(workflow_id)
-        current_state = WorkflowStatus(workflow["status"])
-
-        # Validate transition
-        if not WorkflowStateMachine.is_valid_transition(
-            current_state, WorkflowStatus.PAUSED
-        ):
-            reason_code = ReasonCode.FORBIDDEN_TRANSITION
-            message = (
-                f"Cannot pause workflow in state {current_state.value}. "
-                f"Allowed states: {[s.value for s in WorkflowStateMachine.get_allowed_transitions(current_state)]}"
+        # Validate UUID first
+        try:
+            workflow_uuid = self._validate_and_parse_uuid(workflow_id)
+        except ValueError as e:
+            return WorkflowOperationResponse(
+                workflow_id=uuid.uuid4(),  # Dummy UUID for error response
+                operation=WorkflowOperation.PAUSE,
+                status=WorkflowStatus.IDLE,
+                reason_code=ReasonCode.INVALID_CONFIGURATION,
+                message=str(e),
+                timestamp=datetime.now(timezone.utc),
+                metadata=metadata or {},
             )
+        
+        with self._lock:
+            workflow = self._get_or_create_workflow(workflow_id)
+            current_state = WorkflowStatus(workflow["status"])
+
+            # Validate transition
+            if not WorkflowStateMachine.is_valid_transition(
+                current_state, WorkflowStatus.PAUSED
+            ):
+                reason_code = ReasonCode.FORBIDDEN_TRANSITION
+                message = (
+                    f"Cannot pause workflow in state {current_state.value}. "
+                    f"Allowed states: {[s.value for s in WorkflowStateMachine.get_allowed_transitions(current_state)]}"
+                )
+
+                # Log to audit trail
+                self._audit_trail.log_operation(
+                    triggered_by=triggered_by,
+                    operation_type="pause",
+                    resource_type=ResourceType.WORKFLOW,
+                    resource_id=workflow_id,
+                    params=metadata or {},
+                    result="failure",
+                    reason_code=reason_code,
+                )
+
+                return WorkflowOperationResponse(
+                    workflow_id=workflow_uuid,
+                    operation=WorkflowOperation.PAUSE,
+                    status=current_state,
+                    reason_code=reason_code,
+                    message=message,
+                    timestamp=datetime.now(timezone.utc),
+                    metadata=metadata or {},
+                )
+
+            # Perform pause
+            workflow["status"] = WorkflowStatus.PAUSED.value
+            workflow["paused_at"] = datetime.now(timezone.utc).isoformat()
+            workflow["paused_by"] = triggered_by
 
             # Log to audit trail
             self._audit_trail.log_operation(
@@ -132,47 +200,21 @@ class WorkflowOperationService:
                 resource_type=ResourceType.WORKFLOW,
                 resource_id=workflow_id,
                 params=metadata or {},
-                result="failure",
-                reason_code=reason_code,
+                result="success",
+                reason_code=ReasonCode.OPERATION_COMPLETED,
             )
 
+            logger.info(f"Workflow {workflow_id} paused by {triggered_by}")
+
             return WorkflowOperationResponse(
-                workflow_id=uuid.UUID(workflow_id),
+                workflow_id=workflow_uuid,
                 operation=WorkflowOperation.PAUSE,
-                status=current_state,
-                reason_code=reason_code,
-                message=message,
+                status=WorkflowStatus.PAUSED,
+                reason_code=ReasonCode.OPERATION_COMPLETED,
+                message="Workflow paused successfully",
                 timestamp=datetime.now(timezone.utc),
                 metadata=metadata or {},
             )
-
-        # Perform pause
-        workflow["status"] = WorkflowStatus.PAUSED.value
-        workflow["paused_at"] = datetime.now(timezone.utc).isoformat()
-        workflow["paused_by"] = triggered_by
-
-        # Log to audit trail
-        self._audit_trail.log_operation(
-            triggered_by=triggered_by,
-            operation_type="pause",
-            resource_type=ResourceType.WORKFLOW,
-            resource_id=workflow_id,
-            params=metadata or {},
-            result="success",
-            reason_code=ReasonCode.OPERATION_COMPLETED,
-        )
-
-        logger.info(f"Workflow {workflow_id} paused by {triggered_by}")
-
-        return WorkflowOperationResponse(
-            workflow_id=uuid.UUID(workflow_id),
-            operation=WorkflowOperation.PAUSE,
-            status=WorkflowStatus.PAUSED,
-            reason_code=ReasonCode.OPERATION_COMPLETED,
-            message="Workflow paused successfully",
-            timestamp=datetime.now(timezone.utc),
-            metadata=metadata or {},
-        )
 
     def resume_workflow(
         self, workflow_id: str, triggered_by: str, metadata: Optional[dict[str, Any]] = None

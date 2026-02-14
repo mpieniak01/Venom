@@ -9,7 +9,7 @@ This module provides endpoints for:
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from venom_core.api.model_schemas.workflow_control import (
     ControlApplyRequest,
@@ -173,8 +173,8 @@ async def get_audit_trail(
     resource_type: Optional[ResourceType] = None,
     triggered_by: Optional[str] = None,
     result: Optional[str] = None,
-    page: int = 1,
-    page_size: int = 50,
+    page: int = Query(1, ge=1, description="Page number (minimum 1)"),
+    page_size: int = Query(50, ge=1, le=100, description="Items per page (1-100)"),
 ):
     """Get audit trail of control plane operations.
 

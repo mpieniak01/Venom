@@ -90,9 +90,6 @@ async def pause_workflow(request: Request, operation_request: WorkflowOperationR
             triggered_by=user,
             metadata=operation_request.metadata,
         )
-    except StateTransitionError as e:
-        logger.warning(f"Invalid state transition for pause: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.exception("Failed to pause workflow")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -128,9 +125,6 @@ async def resume_workflow(request: Request, operation_request: WorkflowOperation
             triggered_by=user,
             metadata=operation_request.metadata,
         )
-    except StateTransitionError as e:
-        logger.warning(f"Invalid state transition for resume: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.exception("Failed to resume workflow")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -166,9 +160,6 @@ async def cancel_workflow(request: Request, operation_request: WorkflowOperation
             triggered_by=user,
             metadata=operation_request.metadata,
         )
-    except StateTransitionError as e:
-        logger.warning(f"Invalid state transition for cancel: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.exception("Failed to cancel workflow")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -205,9 +196,6 @@ async def retry_workflow(request: Request, operation_request: WorkflowOperationR
             step_id=operation_request.step_id,
             metadata=operation_request.metadata,
         )
-    except StateTransitionError as e:
-        logger.warning(f"Invalid state transition for retry: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.exception("Failed to retry workflow")
         raise HTTPException(status_code=500, detail=str(e)) from e

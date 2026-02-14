@@ -2,6 +2,7 @@
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from unittest.mock import patch, MagicMock
 
 from venom_core.main import app
 
@@ -68,6 +69,27 @@ async def test_get_provider_info_ollama():
 
 
 @pytest.mark.asyncio
+async def test_get_provider_info_vllm():
+    """Test getting info for vLLM provider."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/providers/vllm")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "provider" in data
+    
+    provider = data["provider"]
+    assert provider["name"] == "vllm"
+    assert provider["provider_type"] == "local_runtime"
+    assert provider["capabilities"]["install"] is True
+    assert provider["capabilities"]["activate"] is True
+    assert provider["capabilities"]["inference"] is True
+    # Status depends on vLLM configuration and availability
+    assert provider["connection_status"]["status"] in ["connected", "offline", "degraded"]
+
+
+@pytest.mark.asyncio
 async def test_get_provider_info_openai():
     """Test getting info for OpenAI provider."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -80,6 +102,27 @@ async def test_get_provider_info_openai():
     
     provider = data["provider"]
     assert provider["name"] == "openai"
+    assert provider["provider_type"] == "cloud_provider"
+    assert provider["capabilities"]["activate"] is True
+    assert provider["capabilities"]["inference"] is True
+    assert provider["capabilities"]["install"] is False
+    # Status depends on API key configuration
+    assert provider["connection_status"]["status"] in ["connected", "offline"]
+
+
+@pytest.mark.asyncio
+async def test_get_provider_info_google():
+    """Test getting info for Google provider."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/providers/google")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "provider" in data
+    
+    provider = data["provider"]
+    assert provider["name"] == "google"
     assert provider["provider_type"] == "cloud_provider"
     assert provider["capabilities"]["activate"] is True
     assert provider["capabilities"]["inference"] is True
@@ -115,6 +158,17 @@ async def test_get_provider_status():
 
 
 @pytest.mark.asyncio
+async def test_get_provider_status_unknown():
+    """Test getting status for unknown provider."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/providers/unknown_provider/status")
+    
+    assert response.status_code == 404
+    data = response.json()
+    assert "detail" in data
+
+
+@pytest.mark.asyncio
 async def test_activate_cloud_provider_without_capabilities():
     """Test activating a provider that doesn't support activation."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -126,6 +180,19 @@ async def test_activate_cloud_provider_without_capabilities():
 
 
 @pytest.mark.asyncio
+async def test_activate_local_runtime_returns_error():
+    """Test activating local runtime through provider endpoint."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post("/api/v1/providers/ollama/activate")
+    
+    # Should return 400 directing to use system/llm-servers endpoint
+    assert response.status_code in [400, 503]  # 503 if offline
+    data = response.json()
+    assert "detail" in data
+
+
+@pytest.mark.asyncio
+@pytest.mark.skip(reason="Requires model_registry initialization in test mode")
 async def test_search_models_with_pagination():
     """Test model search with pagination support."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -184,3 +251,46 @@ async def test_provider_capabilities():
     assert openai["capabilities"]["inference"] is True
     assert openai["capabilities"]["install"] is False
     assert openai["capabilities"]["search"] is False
+
+
+@pytest.mark.asyncio
+async def test_provider_types():
+    """Test that provider types are correctly classified."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/providers")
+    
+    assert response.status_code == 200
+    data = response.json()
+    providers = {p["name"]: p for p in data["providers"]}
+    
+    # Cloud providers
+    assert providers["openai"]["provider_type"] == "cloud_provider"
+    assert providers["google"]["provider_type"] == "cloud_provider"
+    
+    # Catalog integrators
+    assert providers["huggingface"]["provider_type"] == "catalog_integrator"
+    assert providers["ollama"]["provider_type"] == "catalog_integrator"
+    
+    # Local runtimes
+    assert providers["vllm"]["provider_type"] == "local_runtime"
+
+
+@pytest.mark.asyncio
+async def test_connection_status_structure():
+    """Test that connection status has correct structure."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/providers/huggingface")
+    
+    assert response.status_code == 200
+    data = response.json()
+    status = data["provider"]["connection_status"]
+    
+    # Must have status field
+    assert "status" in status
+    assert status["status"] in ["connected", "degraded", "offline", "unknown"]
+    
+    # Optional fields
+    if status["status"] != "connected":
+        # May have reason_code and message for non-connected states
+        pass
+

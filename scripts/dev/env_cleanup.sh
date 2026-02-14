@@ -11,7 +11,6 @@ PROTECTED_PATTERNS=(
   "models"
   ".venv"
   "data"
-  "data/"
 )
 
 SAFE_TARGETS=(
@@ -57,11 +56,11 @@ rm_target() {
   fi
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    echo "[dry-run] rm -rf $abs"
+    echo "[dry-run] rm -rf -- $abs"
     return 0
   fi
 
-  rm -rf "$abs"
+  rm -rf -- "$abs"
   echo "🧹 Removed: $rel"
 }
 

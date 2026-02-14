@@ -1153,6 +1153,10 @@ export const en = {
       title: "Model Overview",
       description: "Monitor trends, manage installations, and maintain active runtime without context switching. cached data from Ollama and HuggingFace with automatic offline fallback.",
     },
+    tabs: {
+      news: "News",
+      models: "Models",
+    },
     runtime: {
       title: "Runtime Control",
       description: "Select server and model, then activate. Below you see the currently running runtime.",
@@ -1208,10 +1212,12 @@ export const en = {
       recommended: {
         title: "RECOMMENDED",
         subtitle: "Trending models selected for you (cached).",
+        description: "Short list of trends and recommendations curated for your workflow.",
       },
       catalog: {
         title: "CATALOG",
         subtitle: "Browsing models from providers.",
+        description: "Broader collection of models from various providers and sources.",
       },
       installed: {
         title: "INSTALLED",

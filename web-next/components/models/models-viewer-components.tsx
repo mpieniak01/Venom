@@ -14,6 +14,7 @@ import {
 export const SectionHeader = ({
     title,
     subtitle,
+    description,
     badge,
     actionLabel,
     onAction,
@@ -24,6 +25,7 @@ export const SectionHeader = ({
 }: {
     title: string;
     subtitle?: string;
+    description?: string;
     badge?: string;
     actionLabel?: string;
     onAction?: () => void;
@@ -39,6 +41,7 @@ export const SectionHeader = ({
                 <div className="flex flex-col">
                     <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">{title}</p>
                     {subtitle && <p className="mt-0.5 text-xs text-slate-300">{subtitle}</p>}
+                    {description && <p className="mt-1 text-[11px] text-slate-400 italic">{description}</p>}
                 </div>
                 <div className="flex items-center gap-3">
                     {extra && <div className="flex items-center gap-2">{extra}</div>}

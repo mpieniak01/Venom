@@ -63,11 +63,19 @@ export function inferModelRole(
   const nameLower = modelName.toLowerCase();
   const tagsLower = tags?.map((t) => t.toLowerCase()) || [];
 
-  // Check for embedding models
+  // Check for embedding models by name patterns
   if (
     nameLower.includes("embed") ||
-    nameLower.includes("bge-") ||
+    nameLower.includes("bge") ||
     nameLower.includes("e5-") ||
+    nameLower.includes("sentence-transformers") ||
+    nameLower.includes("all-minilm")
+  ) {
+    return "intent-embedding";
+  }
+
+  // Check for embedding models by tags
+  if (
     tagsLower.includes("embedding") ||
     tagsLower.includes("sentence-similarity") ||
     tagsLower.includes("feature-extraction")

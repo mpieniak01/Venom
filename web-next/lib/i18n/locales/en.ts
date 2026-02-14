@@ -1278,6 +1278,33 @@ export const en = {
       removeError: "Failed to delete model.",
     },
   },
+  providers: {
+    status: {
+      connected: "Connected",
+      degraded: "Degraded",
+      offline: "Offline",
+      unknown: "Unknown",
+    },
+    types: {
+      cloudProvider: "Cloud Provider",
+      catalogIntegrator: "Catalog Integrator",
+      localRuntime: "Local Runtime",
+    },
+    capabilities: {
+      search: "Search",
+      install: "Install",
+      activate: "Activate",
+      inference: "Inference",
+      trainable: "Trainable",
+    },
+    labels: {
+      noProviders: "No providers available",
+      active: "Active",
+      endpoint: "Endpoint:",
+      activating: "Activating...",
+      activate: "Activate",
+    },
+  },
   benchmark: {
     page: {
       eyebrow: "Benchmark Control",

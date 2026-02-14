@@ -1320,6 +1320,33 @@ export const pl = {
       removeError: "Nie udało się usunąć modelu.",
     },
   },
+  providers: {
+    status: {
+      connected: "Połączony",
+      degraded: "Ograniczony",
+      offline: "Offline",
+      unknown: "Nieznany",
+    },
+    types: {
+      cloudProvider: "Dostawca Chmury",
+      catalogIntegrator: "Integrator Katalogu",
+      localRuntime: "Środowisko Lokalne",
+    },
+    capabilities: {
+      search: "Wyszukiwanie",
+      install: "Instalacja",
+      activate: "Aktywacja",
+      inference: "Wnioskowanie",
+      trainable: "Trening",
+    },
+    labels: {
+      noProviders: "Brak dostępnych dostawców",
+      active: "Aktywny",
+      endpoint: "Endpoint:",
+      activating: "Aktywacja...",
+      activate: "Aktywuj",
+    },
+  },
   benchmark: {
     page: {
       eyebrow: "Benchmark Control",

@@ -236,6 +236,15 @@ export interface GitStatus {
   status?: string;
 }
 
+// Model Domain v2: Source types
+export type ModelSourceType = "local-runtime" | "cloud-api" | "integrator-catalog";
+
+// Model Domain v2: Roles
+export type ModelRole = "llm-engine" | "intent-embedding";
+
+// Model Domain v2: Trainability status
+export type ModelTrainabilityStatus = "trainable" | "not-trainable";
+
 export interface ModelInfo {
   name: string;
   size_gb?: number;
@@ -257,6 +266,33 @@ export interface ModelCatalogEntry {
   tags?: string[];
   downloads?: number | null;
   likes?: number | null;
+}
+
+// Model Domain v2: Unified view model with domain classifications
+export interface EnrichedModelInfo {
+  // Base model information
+  name: string;
+  display_name?: string;
+  size_gb?: number | null;
+  provider: string;
+  runtime?: string;
+  
+  // Installation/activation state
+  installed?: boolean;
+  active?: boolean;
+  
+  // Domain classifications (v2)
+  source_type: ModelSourceType;
+  model_role: ModelRole;
+  academy_trainable: ModelTrainabilityStatus;
+  trainability_reason?: string | null;
+  
+  // Additional metadata
+  tags?: string[];
+  downloads?: number | null;
+  likes?: number | null;
+  quantization?: string;
+  path?: string;
 }
 
 export interface ModelCatalogResponse {

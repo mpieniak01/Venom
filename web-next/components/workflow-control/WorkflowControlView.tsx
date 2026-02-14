@@ -1,0 +1,98 @@
+"use client";
+
+import { useState, useCallback, useEffect } from "react";
+import { WorkflowCanvas } from "./WorkflowCanvas";
+import { ControlPanels } from "./ControlPanels";
+import { OperationControls } from "./OperationControls";
+import { ApplyResultsModal } from "./ApplyResultsModal";
+import { useWorkflowState } from "@/hooks/useWorkflowState";
+
+export function WorkflowControlView() {
+  const {
+    systemState,
+    isLoading,
+    error,
+    refresh,
+    planChanges,
+    applyChanges,
+    pauseWorkflow,
+    resumeWorkflow,
+    cancelWorkflow,
+    retryWorkflow,
+    dryRun,
+  } = useWorkflowState();
+
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [applyResults, setApplyResults] = useState<any>(null);
+
+  const handleApply = useCallback(
+    async (changes: any) => {
+      const planResult = await planChanges(changes);
+      if (planResult?.valid) {
+        const applyResult = await applyChanges(planResult.execution_ticket);
+        setApplyResults(applyResult);
+        setShowResultsModal(true);
+        refresh();
+      }
+    },
+    [planChanges, applyChanges, refresh]
+  );
+
+  return (
+    <div className="flex flex-col h-screen bg-background">
+      <header className="border-b p-4">
+        <h1 className="text-2xl font-bold">Workflow Control Plane</h1>
+        <p className="text-sm text-muted-foreground">
+          Unified control for system configuration and workflow management
+        </p>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Panel: Control Panels */}
+        <aside className="w-96 border-r overflow-y-auto p-4">
+          <ControlPanels
+            systemState={systemState}
+            onApply={handleApply}
+            isLoading={isLoading}
+          />
+        </aside>
+
+        {/* Center: Workflow Visualization */}
+        <main className="flex-1 flex flex-col">
+          <div className="flex-1 relative">
+            <WorkflowCanvas systemState={systemState} />
+          </div>
+
+          {/* Bottom: Operation Controls */}
+          <footer className="border-t p-4">
+            <OperationControls
+              workflowStatus={systemState?.workflow_status}
+              onPause={pauseWorkflow}
+              onResume={resumeWorkflow}
+              onCancel={cancelWorkflow}
+              onRetry={retryWorkflow}
+              onDryRun={dryRun}
+              isLoading={isLoading}
+            />
+          </footer>
+        </main>
+      </div>
+
+      {/* Apply Results Modal */}
+      {showResultsModal && applyResults && (
+        <ApplyResultsModal
+          results={applyResults}
+          onClose={() => setShowResultsModal(false)}
+        />
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="fixed bottom-4 right-4 bg-destructive text-destructive-foreground p-4 rounded-lg shadow-lg">
+          <p className="font-semibold">Error</p>
+          <p className="text-sm">{error}</p>
+        </div>
+      )}
+    </div>
+  );
+}

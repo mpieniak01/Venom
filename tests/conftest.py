@@ -1,10 +1,22 @@
+import os
 import shutil
 import subprocess
+import tempfile
 import warnings
+from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# Ustaw izolowane ścieżki artefaktów zanim testy zaimportują moduły runtime.
+_PYTEST_ARTIFACTS_ROOT = Path(tempfile.gettempdir()) / "venom-pytest-artifacts"
+os.environ.setdefault(
+    "CHRONOS_TIMELINES_DIR", str(_PYTEST_ARTIFACTS_ROOT / "data" / "timelines")
+)
+os.environ.setdefault(
+    "DREAMING_OUTPUT_DIR", str(_PYTEST_ARTIFACTS_ROOT / "data" / "synthetic_training")
+)
 
 warnings.filterwarnings(
     "ignore",
@@ -121,6 +133,9 @@ def configure_local_settings(tmp_path_factory) -> Dict[str, Any]:
 
     tmp_state_dir = tmp_path_factory.mktemp("state")
     overrides["STATE_FILE_PATH"] = str(tmp_state_dir / "state_dump.json")
+    # Izoluj artefakty chronosa/snienia od repozytorium podczas testów.
+    overrides["CHRONOS_TIMELINES_DIR"] = str(tmp_state_dir / "timelines")
+    overrides["DREAMING_OUTPUT_DIR"] = str(tmp_state_dir / "synthetic_training")
 
     original_values = {attr: getattr(SETTINGS, attr) for attr in overrides}
 

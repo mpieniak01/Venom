@@ -7,7 +7,7 @@ import time
 from typing import Any, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from venom_core.config import SETTINGS
@@ -22,6 +22,46 @@ router = APIRouter(prefix="/api/v1", tags=["providers"])
 
 # Valid provider names
 VALID_PROVIDERS = {"huggingface", "ollama", "vllm", "openai", "google"}
+
+
+def _extract_user_from_request(request: Request) -> str:
+    """
+    Extract user identifier from request for audit logging.
+
+    Attempts to identify the user from:
+    1. Authenticated user in request.state (set by auth middleware)
+    2. Common identity headers (X-Authenticated-User, X-User, X-Admin-User)
+    3. Falls back to "unknown" if no user can be determined
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        User identifier string
+    """
+    try:
+        # Try user set by authentication middleware on request.state
+        if hasattr(request, "state") and hasattr(request.state, "user"):
+            user = request.state.user
+            if user:
+                return str(user)
+
+        # Fallback to common identity headers
+        if hasattr(request, "headers"):
+            for header_name in (
+                "X-Authenticated-User",
+                "X-User",
+                "X-Admin-User",
+            ):
+                header_value = request.headers.get(header_name)
+                if header_value:
+                    return header_value
+
+    except Exception as exc:
+        # Never let user extraction errors break the endpoint
+        logger.warning(f"Failed to extract user from request: {exc}")
+
+    return "unknown"
 
 
 class ProviderCapability(BaseModel):
@@ -639,4 +679,263 @@ async def get_alerts(
         "alerts": alerts_data,
         "summary": summary,
         "count": len(alerts_data),
+    }
+
+
+@router.post("/providers/{provider_name}/test-connection")
+async def test_provider_connection(
+    provider_name: str, request: Request
+) -> dict[str, Any]:
+    """
+    Test connection to a provider (admin endpoint).
+
+    This is an idempotent operation safe for retry.
+    Performs a connection test and returns detailed diagnostics.
+
+    Args:
+        provider_name: Provider identifier
+        request: FastAPI request object
+
+    Returns:
+        Connection test results with error mappings and runbook links
+    """
+    from venom_core.core.admin_audit import get_audit_trail
+    from venom_core.core.error_mappings import (
+        get_admin_message_key,
+        get_recovery_hint_key,
+        get_runbook_path,
+        get_severity,
+        get_user_message_key,
+    )
+
+    provider_name = provider_name.lower()
+
+    # Validate provider
+    if provider_name not in VALID_PROVIDERS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown provider: {provider_name}",
+        )
+
+    # Audit the test
+    audit_trail = get_audit_trail()
+    user = _extract_user_from_request(request)
+
+    try:
+        # Perform connection test
+        status = await _check_provider_connection(provider_name)
+
+        # Build enriched response with error mappings
+        response = {
+            "status": "success" if status.status == "connected" else "failure",
+            "provider": provider_name,
+            "connection_status": status.status,
+            "latency_ms": status.latency_ms,
+            "message": status.message,
+        }
+
+        # Add error mapping if not connected
+        if status.reason_code:
+            response["error_info"] = {
+                "reason_code": status.reason_code,
+                "user_message_key": get_user_message_key(status.reason_code),
+                "admin_message_key": get_admin_message_key(status.reason_code),
+                "recovery_hint_key": get_recovery_hint_key(status.reason_code),
+                "runbook_path": get_runbook_path(status.reason_code),
+                "severity": get_severity(status.reason_code),
+            }
+
+        # Log to audit trail
+        audit_trail.log_action(
+            action="test_connection",
+            user=user,
+            provider=provider_name,
+            details={"status": status.status, "latency_ms": status.latency_ms},
+            result="success" if status.status == "connected" else "failure",
+            error_message=status.message if status.status != "connected" else None,
+        )
+
+        return response
+
+    except Exception as exc:
+        logger.exception(f"Failed to test provider {provider_name} connection")
+        audit_trail.log_action(
+            action="test_connection",
+            user=user,
+            provider=provider_name,
+            details={},
+            result="failure",
+            error_message=str(exc),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Connection test failed: {str(exc)}",
+        ) from exc
+
+
+@router.post("/providers/{provider_name}/preflight")
+async def provider_preflight_check(
+    provider_name: str, request: Request
+) -> dict[str, Any]:
+    """
+    Perform preflight validation for a provider (admin endpoint).
+
+    Checks:
+    - Connection status
+    - Credentials configuration
+    - Capabilities
+    - Current metrics
+
+    Args:
+        provider_name: Provider identifier
+        request: FastAPI request object
+
+    Returns:
+        Comprehensive preflight check results
+    """
+    from venom_core.core.admin_audit import get_audit_trail
+
+    provider_name = provider_name.lower()
+
+    # Validate provider
+    if provider_name not in VALID_PROVIDERS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown provider: {provider_name}",
+        )
+
+    audit_trail = get_audit_trail()
+    user = _extract_user_from_request(request)
+
+    try:
+        # Gather all preflight checks
+        checks = {}
+
+        # 1. Connection check
+        connection_status = await _check_provider_connection(provider_name)
+        checks["connection"] = {
+            "status": connection_status.status,
+            "passed": connection_status.status == "connected",
+            "message": connection_status.message,
+            "reason_code": connection_status.reason_code,
+        }
+
+        # 2. Credentials check
+        creds_ok = False
+        creds_msg = "Not required"
+        if provider_name == "openai":
+            creds_ok = bool(SETTINGS.OPENAI_API_KEY)
+            creds_msg = "Configured" if creds_ok else "Missing OPENAI_API_KEY"
+        elif provider_name == "google":
+            creds_ok = bool(SETTINGS.GOOGLE_API_KEY)
+            creds_msg = "Configured" if creds_ok else "Missing GOOGLE_API_KEY"
+        else:
+            creds_ok = True  # Local runtimes don't need API keys
+
+        checks["credentials"] = {
+            "status": "configured" if creds_ok else "missing",
+            "passed": creds_ok,
+            "message": creds_msg,
+        }
+
+        # 3. Capabilities check
+        capabilities = _get_provider_capabilities(provider_name)
+        checks["capabilities"] = {
+            "status": "available",
+            "passed": True,
+            "capabilities": capabilities.model_dump(),
+        }
+
+        # 4. Endpoint check
+        endpoint = _get_provider_endpoint(provider_name)
+        checks["endpoint"] = {
+            "status": "configured" if endpoint else "not_required",
+            "passed": True,
+            "endpoint": endpoint,
+        }
+
+        # Overall result
+        all_passed = all(check["passed"] for check in checks.values())
+        overall_status = "ready" if all_passed else "not_ready"
+
+        # Audit
+        audit_trail.log_action(
+            action="preflight_check",
+            user=user,
+            provider=provider_name,
+            details={"overall_status": overall_status},
+            result="success",
+        )
+
+        return {
+            "status": "success",
+            "provider": provider_name,
+            "overall_status": overall_status,
+            "checks": checks,
+            "ready_for_activation": all_passed,
+        }
+
+    except Exception as exc:
+        logger.exception(f"Preflight check failed for {provider_name}")
+        audit_trail.log_action(
+            action="preflight_check",
+            user=user,
+            provider=provider_name,
+            details={},
+            result="failure",
+            error_message=str(exc),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Preflight check failed: {str(exc)}",
+        ) from exc
+
+
+@router.get("/admin/audit")
+async def get_admin_audit_log(
+    action: Optional[str] = None,
+    provider: Optional[str] = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """
+    Get admin audit log (admin endpoint).
+
+    Args:
+        action: Filter by action type
+        provider: Filter by provider
+        limit: Maximum number of entries (default 50, max 200)
+
+    Returns:
+        Audit log entries
+    """
+    from venom_core.core.admin_audit import get_audit_trail
+
+    # Cap limit
+    limit = min(limit, 200)
+
+    audit_trail = get_audit_trail()
+    entries = audit_trail.get_entries(
+        action=action,
+        provider=provider,
+        limit=limit,
+    )
+
+    # Convert to dict
+    entries_data = [
+        {
+            "timestamp": entry.timestamp.isoformat(),
+            "action": entry.action,
+            "user": entry.user,
+            "provider": entry.provider,
+            "details": entry.details,
+            "result": entry.result,
+            "error_message": entry.error_message,
+        }
+        for entry in entries
+    ]
+
+    return {
+        "status": "success",
+        "entries": entries_data,
+        "count": len(entries_data),
     }

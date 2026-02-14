@@ -307,7 +307,7 @@ class ControlPlaneService:
         Returns:
             Current system state
         """
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         # Get runtime status
         runtime_status = runtime_controller.get_all_services_status()
@@ -323,11 +323,11 @@ class ControlPlaneService:
         }
 
         # Get config
-        config = config_manager.get_runtime_config()
+        config = config_manager.get_config(mask_secrets=False)
 
         # Build state
         state = SystemState(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             decision_strategy=config.get("AI_MODE", "standard"),
             intent_mode=config.get("INTENT_MODE", "simple"),
             kernel=config.get("KERNEL", "standard"),
@@ -353,7 +353,7 @@ class ControlPlaneService:
         Returns:
             Validation result dict
         """
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         # Simple validation - in production this would be more sophisticated
         valid = True
@@ -377,7 +377,7 @@ class ControlPlaneService:
             "message": message,
             "restart_services": restart_services,
             "affected_services": affected_services,
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(timezone.utc),
         }
 
     def _validate_full_stack_compatibility(

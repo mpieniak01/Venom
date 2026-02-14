@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import ReactFlow, {
   Node,
   Edge,
@@ -144,8 +144,8 @@ export function WorkflowCanvas({ systemState }: WorkflowCanvasProps) {
     return getLayoutedElements(nodes, edges);
   }, [systemState]);
 
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   return (
     <div className="w-full h-full">

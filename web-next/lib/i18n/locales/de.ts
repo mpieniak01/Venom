@@ -1188,6 +1188,10 @@ export const de = {
       title: "Modellübersicht",
       description: "Überwachen Sie Trends, verwalten Sie Installationen und halten Sie die Laufzeit aktiv. Cache-Daten von Ollama und HuggingFace mit automatischem Offline-Fallback.",
     },
+    tabs: {
+      news: "Neuigkeiten",
+      models: "Modelle",
+    },
     runtime: {
       title: "Laufzeitsteuerung",
       description: "Wählen Sie Server und Modell, dann aktivieren. Unten sehen Sie die aktuell laufende Runtime.",
@@ -1243,10 +1247,12 @@ export const de = {
       recommended: {
         title: "EMPFOHLEN",
         subtitle: "Trendmodelle für Sie ausgewählt (cached).",
+        description: "Kürzere Liste von Trends und Empfehlungen für Ihren Workflow.",
       },
       catalog: {
         title: "KATALOG",
         subtitle: "Modelle von Anbietern durchsuchen.",
+        description: "Breitere Sammlung von Modellen von verschiedenen Anbietern und Quellen.",
       },
       installed: {
         title: "INSTALLIERT",

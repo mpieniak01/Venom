@@ -1195,6 +1195,10 @@ export const pl = {
       title: "Przegląd Modeli",
       description: "Monitoruj trendy, zarządzaj instalacjami i utrzymuj aktywny runtime bez przełączania kontekstu. Pamięć podręczna z Ollama i HuggingFace z automatycznym fallbackiem offline.",
     },
+    tabs: {
+      news: "Nowości",
+      models: "Modele",
+    },
     runtime: {
       title: "Sterowanie Runtime",
       description: "Wybierz serwer i model, następnie aktywuj. Poniżej widzisz aktualnie pracujący runtime.",
@@ -1250,10 +1254,12 @@ export const pl = {
       recommended: {
         title: "POLECANE",
         subtitle: "Trendujące modele wybrane dla Ciebie (cached).",
+        description: "Krótsza lista trendów i rekomendacji dostosowanych do Twojego workflow.",
       },
       catalog: {
         title: "KATALOG",
         subtitle: "Przeglądaj modele od dostawców.",
+        description: "Szerszy spis modeli od różnych dostawców i źródeł.",
       },
       installed: {
         title: "ZAINSTALOWANE",

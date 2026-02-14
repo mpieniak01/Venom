@@ -363,6 +363,7 @@ export function RecommendedAndCatalog({
                 <SectionHeader
                     title={t("models.sections.recommended.title")}
                     subtitle={t("models.sections.recommended.subtitle")}
+                    description={t("models.sections.recommended.description")}
                     actionLabel={t("models.ui.refresh")}
                     actionDisabled={trendingHf.loading || trendingOllama.loading}
                     onAction={refreshTrending}
@@ -394,6 +395,7 @@ export function RecommendedAndCatalog({
                 <SectionHeader
                     title={t("models.sections.catalog.title")}
                     subtitle={t("models.sections.catalog.subtitle")}
+                    description={t("models.sections.catalog.description")}
                     actionLabel={t("models.ui.refresh")}
                     actionDisabled={catalogHf.loading || catalogOllama.loading}
                     onAction={refreshCatalog}

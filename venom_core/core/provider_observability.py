@@ -90,6 +90,8 @@ class Alert:
             # Generate fingerprint based on provider, alert_type, and hour
             hour_key = self.timestamp.strftime("%Y%m%d%H")
             fp_str = f"{self.provider}:{self.alert_type.value}:{hour_key}"
+            # MD5 is safe here: fingerprints are only used for alert deduplication,
+            # not for cryptographic purposes or security validation.
             self.fingerprint = hashlib.md5(fp_str.encode()).hexdigest()
 
         if not self.expires_at:

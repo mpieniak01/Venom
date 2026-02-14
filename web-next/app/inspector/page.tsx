@@ -353,6 +353,9 @@ export default function InspectorPage() {
     setMermaidError(null);
     try {
       const flow = await fetchFlowTrace(requestId);
+      if (!flow) {
+        throw new Error("Flow trace response is empty");
+      }
       const flowSteps = (flow.steps || []) as HistoryStep[];
       setSteps(flowSteps);
       let diagramSource: string | null = null;
@@ -369,6 +372,9 @@ export default function InspectorPage() {
       );
       try {
         const detail = await fetchHistoryDetail(requestId);
+        if (!detail) {
+          throw new Error("History detail response is empty");
+        }
         const detailSteps = detail.steps || [];
         setSteps(detailSteps);
         setDiagram(detailSteps.length > 0 ? buildFlowchartDiagram(detailSteps) : DEFAULT_DIAGRAM);

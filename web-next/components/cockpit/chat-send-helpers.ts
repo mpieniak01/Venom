@@ -149,7 +149,7 @@ export const buildSimpleRequestSteps = (
     timing: { historyMs?: number; ttftMs?: number } | undefined,
     timestamp: string,
 ): HistoryRequestDetail["steps"] | undefined => {
-    const steps = [
+    const rawSteps = [
         timing?.historyMs !== undefined
             ? {
                 component: "UI",
@@ -168,7 +168,10 @@ export const buildSimpleRequestSteps = (
                 details: `ttft_ms=${Math.round(timing.ttftMs)}`,
             }
             : null,
-    ].filter((step): step is NonNullable<HistoryRequestDetail["steps"]>[number] => step !== null);
+    ];
+    const steps = rawSteps.filter(
+        (step): step is NonNullable<typeof rawSteps[number]> => step !== null,
+    );
     return steps.length > 0 ? steps : undefined;
 };
 

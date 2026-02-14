@@ -97,5 +97,3 @@ docs_dev/
 data/benchmarks/
 .mypy_cache/
 data/training/
-data/training/*.json
-data/training/*.jsonl

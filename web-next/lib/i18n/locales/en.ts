@@ -857,6 +857,14 @@ export const en = {
       epochs: "Epochs",
       lora: "LoRA",
       logs: "Logs",
+      status: {
+        queued: "Queued",
+        preparing: "Preparing",
+        running: "Running",
+        finished: "Finished",
+        failed: "Failed",
+        cancelled: "Cancelled",
+      },
     },
     adapters: {
       title: "LoRA Adapters",

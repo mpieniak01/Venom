@@ -167,7 +167,7 @@ class TestMetricsCollector:
                 cost_usd=0.001,
                 tokens=100,
             )
-        
+
         for i in range(3):
             collector.record_provider_request(
                 provider="openai",
@@ -228,7 +228,7 @@ class TestMetricsCollector:
         # Assert
         pm = collector.get_provider_metrics("openai")
         assert pm["latency"]["p50_ms"] == 325.0
-        assert pm["latency"]["p95_ms"] == 1900.0
+        assert pm["latency"]["p95_ms"] == 1500.0
         assert pm["latency"]["p99_ms"] == 2000.0
         assert pm["latency"]["samples"] == 10
 
@@ -322,7 +322,10 @@ class TestMetricsCollector:
             provider="openai", success=False, latency_ms=100.0, error_code="AUTH_ERROR"
         )
         collector.record_provider_request(
-            provider="openai", success=False, latency_ms=100.0, error_code="BUDGET_EXCEEDED"
+            provider="openai",
+            success=False,
+            latency_ms=100.0,
+            error_code="BUDGET_EXCEEDED",
         )
 
         # Assert

@@ -69,12 +69,12 @@ export function AlertsList({ alerts, providerFilter, severityFilter }: AlertsLis
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1) return t("providers.alerts.timestamp.justNow");
+    if (diffMins < 60) return t("providers.alerts.timestamp.minutesAgo", { minutes: diffMins });
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffHours < 24) return t("providers.alerts.timestamp.hoursAgo", { hours: diffHours });
     const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}d ago`;
+    return t("providers.alerts.timestamp.daysAgo", { days: diffDays });
   };
 
   const formatAlertMessage = (alert: Alert): string => {
@@ -159,26 +159,26 @@ export function AlertsSummary({ summary }: AlertsSummaryProps) {
       
       <div className="grid grid-cols-4 gap-3 mb-4">
         <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-          <p className="text-xs text-zinc-400">Total</p>
+          <p className="text-xs text-zinc-400">{t("providers.alerts.summary.total")}</p>
           <p className="text-2xl font-semibold">{summary.total_active}</p>
         </div>
         <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-          <p className="text-xs text-blue-400">Info</p>
+          <p className="text-xs text-blue-400">{t("providers.alerts.severity.info")}</p>
           <p className="text-2xl font-semibold text-blue-400">{summary.by_severity.info}</p>
         </div>
         <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-          <p className="text-xs text-yellow-400">Warning</p>
+          <p className="text-xs text-yellow-400">{t("providers.alerts.severity.warning")}</p>
           <p className="text-2xl font-semibold text-yellow-400">{summary.by_severity.warning}</p>
         </div>
         <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-          <p className="text-xs text-red-400">Critical</p>
+          <p className="text-xs text-red-400">{t("providers.alerts.severity.critical")}</p>
           <p className="text-2xl font-semibold text-red-400">{summary.by_severity.critical}</p>
         </div>
       </div>
 
       {Object.keys(summary.by_provider).length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">By Provider</p>
+          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{t("providers.alerts.summary.byProvider")}</p>
           {Object.entries(summary.by_provider).map(([provider, count]) => (
             <div key={provider} className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
               <span className="text-xs text-zinc-400">{provider}</span>

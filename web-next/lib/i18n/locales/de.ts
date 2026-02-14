@@ -1343,8 +1343,11 @@ export const de = {
       title: "Provider-Metriken",
       latency: {
         p50: "P50 Latenz (ms)",
+        p50Label: "P50",
         p95: "P95 Latenz (ms)",
+        p95Label: "P95",
         p99: "P99 Latenz (ms)",
+        p99Label: "P99",
       },
       throughput: "Anfragen/Sek",
       errorRate: "Fehlerrate (%)",
@@ -1356,6 +1359,12 @@ export const de = {
       healthScore: "Gesundheitswert",
       availability: "Verfügbarkeit",
       noData: "Keine Metrikdaten verfügbar",
+      errors: {
+        total: "Gesamtfehler",
+        timeouts: "Zeitüberschreitungen",
+        authErrors: "Authentifizierungsfehler",
+        budgetErrors: "Budgetfehler",
+      },
     },
     alerts: {
       title: "Aktive Warnungen",
@@ -1379,6 +1388,16 @@ export const de = {
       budgetCritical: "Budget überschritten: ${{current}} / ${{limit}}",
       availabilityDrop: "Verfügbarkeit gesunken: {{availability}}% < {{target}}%",
       sloBreached: "SLO verletzt: {{metric}}",
+      summary: {
+        total: "Gesamt",
+        byProvider: "Nach Provider",
+      },
+      timestamp: {
+        justNow: "gerade eben",
+        minutesAgo: "vor {{minutes}} Min.",
+        hoursAgo: "vor {{hours}} Std.",
+        daysAgo: "vor {{days}} Tagen",
+      },
     },
     health: {
       status: {

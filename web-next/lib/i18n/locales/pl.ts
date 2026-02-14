@@ -1350,8 +1350,11 @@ export const pl = {
       title: "Metryki Providera",
       latency: {
         p50: "P50 Opóźnienie (ms)",
+        p50Label: "P50",
         p95: "P95 Opóźnienie (ms)",
+        p95Label: "P95",
         p99: "P99 Opóźnienie (ms)",
+        p99Label: "P99",
       },
       throughput: "Żądania/sek",
       errorRate: "Wskaźnik Błędów (%)",
@@ -1363,6 +1366,12 @@ export const pl = {
       healthScore: "Wskaźnik Zdrowia",
       availability: "Dostępność",
       noData: "Brak danych metryk",
+      errors: {
+        total: "Wszystkie Błędy",
+        timeouts: "Przekroczenia Czasu",
+        authErrors: "Błędy Autoryzacji",
+        budgetErrors: "Błędy Budżetu",
+      },
     },
     alerts: {
       title: "Aktywne Alerty",
@@ -1386,6 +1395,16 @@ export const pl = {
       budgetCritical: "Budżet przekroczony: ${{current}} / ${{limit}}",
       availabilityDrop: "Dostępność spadła: {{availability}}% < {{target}}%",
       sloBreached: "Naruszenie SLO: {{metric}}",
+      summary: {
+        total: "Razem",
+        byProvider: "Według Providera",
+      },
+      timestamp: {
+        justNow: "teraz",
+        minutesAgo: "{{minutes}} min temu",
+        hoursAgo: "{{hours}} godz. temu",
+        daysAgo: "{{days}} dni temu",
+      },
     },
     health: {
       status: {

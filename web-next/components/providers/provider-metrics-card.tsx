@@ -89,15 +89,15 @@ export function ProviderMetricsCard({ provider, metrics }: ProviderMetricsCardPr
         </p>
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-            <p className="text-xs text-zinc-400">P50</p>
+            <p className="text-xs text-zinc-400">{t("providers.metrics.latency.p50Label")}</p>
             <p className="text-lg font-semibold">{formatLatency(metrics.latency.p50_ms)}</p>
           </div>
           <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-            <p className="text-xs text-zinc-400">P95</p>
+            <p className="text-xs text-zinc-400">{t("providers.metrics.latency.p95Label")}</p>
             <p className="text-lg font-semibold">{formatLatency(metrics.latency.p95_ms)}</p>
           </div>
           <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-            <p className="text-xs text-zinc-400">P99</p>
+            <p className="text-xs text-zinc-400">{t("providers.metrics.latency.p99Label")}</p>
             <p className="text-lg font-semibold">{formatLatency(metrics.latency.p99_ms)}</p>
           </div>
         </div>
@@ -129,24 +129,24 @@ export function ProviderMetricsCard({ provider, metrics }: ProviderMetricsCardPr
           </p>
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-              <span className="text-xs text-zinc-400">Total Errors</span>
+              <span className="text-xs text-zinc-400">{t("providers.metrics.errors.total")}</span>
               <span className="text-sm font-semibold text-red-400">{metrics.errors.total}</span>
             </div>
             {metrics.errors.timeouts > 0 && (
               <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-                <span className="text-xs text-zinc-400">Timeouts</span>
+                <span className="text-xs text-zinc-400">{t("providers.metrics.errors.timeouts")}</span>
                 <span className="text-sm font-semibold">{metrics.errors.timeouts}</span>
               </div>
             )}
             {metrics.errors.auth_errors > 0 && (
               <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-                <span className="text-xs text-zinc-400">Auth Errors</span>
+                <span className="text-xs text-zinc-400">{t("providers.metrics.errors.authErrors")}</span>
                 <span className="text-sm font-semibold">{metrics.errors.auth_errors}</span>
               </div>
             )}
             {metrics.errors.budget_errors > 0 && (
               <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-                <span className="text-xs text-zinc-400">Budget Errors</span>
+                <span className="text-xs text-zinc-400">{t("providers.metrics.errors.budgetErrors")}</span>
                 <span className="text-sm font-semibold">{metrics.errors.budget_errors}</span>
               </div>
             )}

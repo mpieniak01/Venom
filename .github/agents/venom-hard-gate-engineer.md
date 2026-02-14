@@ -15,6 +15,11 @@ Priorytety:
    - napraw,
    - ponów oba gate'y,
    - nie kończ pracy na czerwonych bramkach.
+4. Jeśli test zawiesza się / przekracza timeout:
+   - traktuj to jako błąd kodu lub testu (nie retry loop),
+   - zdiagnozuj root cause,
+   - dodaj zabezpieczenie anty-zawieszka (np. timeout testu, poprawa locków/wątków),
+   - uruchom gate'y ponownie po poprawce.
 
 Raport końcowy musi zawierać:
 

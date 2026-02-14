@@ -2,6 +2,7 @@ import { useNews } from "./hooks/use-news";
 import { useModelCatalog } from "./hooks/use-model-catalog";
 import { useTrendingModels } from "./hooks/use-trending-models";
 import { useRuntime } from "./hooks/use-runtime";
+import { useTrainableModels } from "./hooks/use-trainable-models";
 import { useLanguage } from "@/lib/i18n";
 
 export function useModelsViewerLogic() {
@@ -12,6 +13,7 @@ export function useModelsViewerLogic() {
     const catalog = useModelCatalog();
     const trending = useTrendingModels();
     const runtime = useRuntime();
+    const trainable = useTrainableModels();
 
     return {
         t, language,
@@ -44,6 +46,12 @@ export function useModelsViewerLogic() {
         serverOptions: runtime.serverOptions, modelOptions: runtime.modelOptions,
         installedBuckets: runtime.installedBuckets, installedModels: runtime.installedModels,
         handleActivate: runtime.handleActivate, handleRemove: runtime.handleRemove,
+
+        // Trainable Models (v2)
+        trainableModels: trainable.trainableModels,
+        trainableLoading: trainable.loading,
+        trainableError: trainable.error,
+        refreshTrainable: trainable.refresh,
 
         // Unified pending actions
         pendingActions: { ...catalog.pendingActions, ...runtime.pendingActions },

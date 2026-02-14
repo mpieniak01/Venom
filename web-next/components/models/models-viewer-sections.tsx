@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SelectMenu } from "@/components/ui/select-menu";
 import {
     SectionHeader,
-    CatalogCard,
+    EnrichedCatalogCard,
     InstalledCard,
     OperationRow
 } from "./models-viewer-components";
@@ -15,6 +15,7 @@ import {
 import type { ModelCatalogEntry, ModelInfo, ModelOperation } from "@/lib/types";
 import type { NewsItem } from "./models-helpers";
 import { useModelsViewerLogic } from "./use-models-viewer-logic";
+import { enrichCatalogModel } from "@/lib/model-domain-mapper";
 
 type ModelsViewerLogic = ReturnType<typeof useModelsViewerLogic>;
 
@@ -131,6 +132,7 @@ interface SearchSectionProps {
     readonly handleSearch: ModelsViewerLogic["handleSearch"];
     readonly handleInstall: ModelsViewerLogic["handleInstall"];
     readonly pendingActions: ModelsViewerLogic["pendingActions"];
+    readonly trainableModels: ModelsViewerLogic["trainableModels"];
     readonly t: ModelsViewerLogic["t"];
 }
 
@@ -145,6 +147,7 @@ export function SearchSection({
     handleSearch,
     handleInstall,
     pendingActions,
+    trainableModels,
     t
 }: SearchSectionProps) {
     return (
@@ -193,15 +196,18 @@ export function SearchSection({
                         )}
                         {searchResults.data.length > 0 && (
                             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                                {searchResults.data.map((model: ModelCatalogEntry) => (
-                                    <CatalogCard
-                                        key={`${model.provider}-${model.model_name}`}
-                                        model={model}
-                                        actionLabel={t("models.actions.install")}
-                                        pending={pendingActions[`install:${model.provider}:${model.model_name}`]}
-                                        onAction={() => handleInstall(model)}
-                                    />
-                                ))}
+                                {searchResults.data.map((model: ModelCatalogEntry) => {
+                                    const enriched = enrichCatalogModel(model, trainableModels);
+                                    return (
+                                        <EnrichedCatalogCard
+                                            key={`${model.provider}-${model.model_name}`}
+                                            model={enriched}
+                                            actionLabel={t("models.actions.install")}
+                                            pending={pendingActions[`install:${model.provider}:${model.model_name}`]}
+                                            onAction={() => handleInstall(model)}
+                                        />
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -348,13 +354,14 @@ interface RecommendedAndCatalogProps {
     readonly refreshCatalog: ModelsViewerLogic["refreshCatalog"];
     readonly handleInstall: ModelsViewerLogic["handleInstall"];
     readonly pendingActions: ModelsViewerLogic["pendingActions"];
+    readonly trainableModels: ModelsViewerLogic["trainableModels"];
     readonly t: ModelsViewerLogic["t"];
 }
 
 export function RecommendedAndCatalog({
     trendingCollapsed, setTrendingCollapsed, trendingHf, trendingOllama, refreshTrending,
     catalogCollapsed, setCatalogCollapsed, catalogHf, catalogOllama, refreshCatalog,
-    handleInstall, pendingActions,
+    handleInstall, pendingActions, trainableModels,
     t
 }: RecommendedAndCatalogProps) {
     return (
@@ -380,9 +387,18 @@ export function RecommendedAndCatalog({
                                 </div>
                                 {p.res.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> : (
                                     <div className="grid gap-4">
-                                        {p.res.data.slice(0, 4).map((m: ModelCatalogEntry) => (
-                                            <CatalogCard key={m.model_name} model={m} actionLabel={t("models.actions.install")} pending={pendingActions[`install:${m.provider}:${m.model_name}`]} onAction={() => handleInstall(m)} />
-                                        ))}
+                                        {p.res.data.slice(0, 4).map((m: ModelCatalogEntry) => {
+                                            const enriched = enrichCatalogModel(m, trainableModels);
+                                            return (
+                                                <EnrichedCatalogCard 
+                                                    key={m.model_name} 
+                                                    model={enriched} 
+                                                    actionLabel={t("models.actions.install")} 
+                                                    pending={pendingActions[`install:${m.provider}:${m.model_name}`]} 
+                                                    onAction={() => handleInstall(m)} 
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -409,9 +425,18 @@ export function RecommendedAndCatalog({
                                 <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold">{p.label}</h3>
                                 {p.res.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> : (
                                     <div className="grid gap-4">
-                                        {p.res.data.slice(0, 6).map((m: ModelCatalogEntry) => (
-                                            <CatalogCard key={m.model_name} model={m} actionLabel="Zainstaluj" pending={pendingActions[`install:${m.provider}:${m.model_name}`]} onAction={() => handleInstall(m)} />
-                                        ))}
+                                        {p.res.data.slice(0, 6).map((m: ModelCatalogEntry) => {
+                                            const enriched = enrichCatalogModel(m, trainableModels);
+                                            return (
+                                                <EnrichedCatalogCard 
+                                                    key={m.model_name} 
+                                                    model={enriched} 
+                                                    actionLabel={t("models.actions.install")} 
+                                                    pending={pendingActions[`install:${m.provider}:${m.model_name}`]} 
+                                                    onAction={() => handleInstall(m)} 
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>

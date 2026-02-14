@@ -74,7 +74,7 @@ export const ModelsViewer = () => {
           <div className="flex flex-col gap-10">
             <NewsSection {...logic} />
 
-            <RecommendedAndCatalog {...logic} />
+            <RecommendedAndCatalog {...logic} trainableModels={logic.trainableModels} />
           </div>
         )}
 
@@ -90,7 +90,7 @@ export const ModelsViewer = () => {
             </div>
 
             <div className="flex flex-col gap-10 mt-10">
-              <SearchSection {...logic} />
+              <SearchSection {...logic} trainableModels={logic.trainableModels} />
 
               <InstalledAndOperations {...logic} />
             </div>

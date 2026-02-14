@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import ReactFlow, {
   Node,
   Edge,
@@ -13,9 +13,35 @@ import ReactFlow, {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
+import type { SystemState } from "@/types/workflow-control";
 
 interface WorkflowCanvasProps {
-  systemState: any;
+  systemState: SystemState | null;
+}
+
+interface DecisionNodeData {
+  strategy?: string;
+  intentMode?: string;
+}
+
+interface KernelNodeData {
+  kernel?: string;
+}
+
+interface RuntimeNodeData {
+  runtime?: {
+    services?: string[];
+  };
+}
+
+interface ProviderNodeData {
+  provider?: {
+    active?: string;
+  };
+}
+
+interface EmbeddingNodeData {
+  model?: string;
 }
 
 // Node types
@@ -118,8 +144,8 @@ export function WorkflowCanvas({ systemState }: WorkflowCanvasProps) {
     return getLayoutedElements(nodes, edges);
   }, [systemState]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, , onNodesChange] = useNodesState(initialNodes);
+  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
 
   return (
     <div className="w-full h-full">
@@ -140,7 +166,7 @@ export function WorkflowCanvas({ systemState }: WorkflowCanvasProps) {
 }
 
 // Custom node components
-function DecisionNode({ data }: { data: any }) {
+function DecisionNode({ data }: { data: DecisionNodeData }) {
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-blue-50 dark:bg-blue-950 border-2 border-blue-500">
       <div className="font-bold text-sm mb-1">Decision & Intent</div>
@@ -152,7 +178,7 @@ function DecisionNode({ data }: { data: any }) {
   );
 }
 
-function KernelNode({ data }: { data: any }) {
+function KernelNode({ data }: { data: KernelNodeData }) {
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-green-50 dark:bg-green-950 border-2 border-green-500">
       <div className="font-bold text-sm mb-1">Kernel</div>
@@ -161,7 +187,7 @@ function KernelNode({ data }: { data: any }) {
   );
 }
 
-function RuntimeNode({ data }: { data: any }) {
+function RuntimeNode({ data }: { data: RuntimeNodeData }) {
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-purple-50 dark:bg-purple-950 border-2 border-purple-500">
       <div className="font-bold text-sm mb-1">Runtime</div>
@@ -172,7 +198,7 @@ function RuntimeNode({ data }: { data: any }) {
   );
 }
 
-function ProviderNode({ data }: { data: any }) {
+function ProviderNode({ data }: { data: ProviderNodeData }) {
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-orange-50 dark:bg-orange-950 border-2 border-orange-500">
       <div className="font-bold text-sm mb-1">Provider</div>
@@ -183,7 +209,7 @@ function ProviderNode({ data }: { data: any }) {
   );
 }
 
-function EmbeddingNode({ data }: { data: any }) {
+function EmbeddingNode({ data }: { data: EmbeddingNodeData }) {
   return (
     <div className="px-4 py-3 shadow-lg rounded-lg bg-pink-50 dark:bg-pink-950 border-2 border-pink-500">
       <div className="font-bold text-sm mb-1">Embedding</div>

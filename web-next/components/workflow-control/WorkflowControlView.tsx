@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { ControlPanels } from "./ControlPanels";
 import { OperationControls } from "./OperationControls";
 import { ApplyResultsModal } from "./ApplyResultsModal";
 import { useWorkflowState } from "@/hooks/useWorkflowState";
+import type { ApplyResults, PlanRequest } from "@/types/workflow-control";
 
 export function WorkflowControlView() {
   const {
@@ -23,10 +24,10 @@ export function WorkflowControlView() {
   } = useWorkflowState();
 
   const [showResultsModal, setShowResultsModal] = useState(false);
-  const [applyResults, setApplyResults] = useState<any>(null);
+  const [applyResults, setApplyResults] = useState<ApplyResults | null>(null);
 
   const handleApply = useCallback(
-    async (changes: any) => {
+    async (changes: PlanRequest) => {
       const planResult = await planChanges(changes);
       if (planResult?.valid) {
         const applyResult = await applyChanges(planResult.execution_ticket);

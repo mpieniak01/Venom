@@ -1313,6 +1313,33 @@ export const de = {
       removeError: "Modell konnte nicht gelöscht werden.",
     },
   },
+  providers: {
+    status: {
+      connected: "Verbunden",
+      degraded: "Eingeschränkt",
+      offline: "Offline",
+      unknown: "Unbekannt",
+    },
+    types: {
+      cloudProvider: "Cloud-Anbieter",
+      catalogIntegrator: "Katalog-Integrator",
+      localRuntime: "Lokale Laufzeit",
+    },
+    capabilities: {
+      search: "Suche",
+      install: "Installation",
+      activate: "Aktivierung",
+      inference: "Inferenz",
+      trainable: "Trainierbar",
+    },
+    labels: {
+      noProviders: "Keine Anbieter verfügbar",
+      active: "Aktiv",
+      endpoint: "Endpunkt:",
+      activating: "Aktivierung...",
+      activate: "Aktivieren",
+    },
+  },
   benchmark: {
     page: {
       eyebrow: "Benchmark Control",

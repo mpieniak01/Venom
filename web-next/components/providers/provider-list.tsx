@@ -5,6 +5,7 @@
 import React from "react";
 import { ProviderInfo } from "@/lib/types";
 import { ProviderStatusIndicator } from "./provider-status-indicator";
+import { useTranslation } from "@/lib/i18n";
 
 interface ProviderListProps {
   providers: ProviderInfo[];
@@ -12,17 +13,13 @@ interface ProviderListProps {
   isActivating?: boolean;
 }
 
-const providerTypeLabels: Record<string, string> = {
-  cloud_provider: "Cloud Provider",
-  catalog_integrator: "Catalog Integrator",
-  local_runtime: "Local Runtime",
-};
-
 export function ProviderList({ providers, onActivate, isActivating }: ProviderListProps) {
+  const { t } = useTranslation();
+  
   if (!providers || providers.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-        No providers available
+        {t("providers.labels.noProviders")}
       </div>
     );
   }
@@ -46,13 +43,13 @@ export function ProviderList({ providers, onActivate, isActivating }: ProviderLi
                 </h3>
                 {provider.is_active && (
                   <span className="px-2 py-1 text-xs bg-blue-500 text-white rounded">
-                    Active
+                    {t("providers.labels.active")}
                   </span>
                 )}
               </div>
               
               <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                {providerTypeLabels[provider.provider_type] || provider.provider_type}
+                {t(`providers.types.${provider.provider_type.split("_").map((word, i) => i === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)).join("")}`)}
               </div>
               
               <div className="mt-3">
@@ -66,34 +63,34 @@ export function ProviderList({ providers, onActivate, isActivating }: ProviderLi
               <div className="mt-3 flex flex-wrap gap-2">
                 {provider.capabilities.search && (
                   <span className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded">
-                    Search
+                    {t("providers.capabilities.search")}
                   </span>
                 )}
                 {provider.capabilities.install && (
                   <span className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded">
-                    Install
+                    {t("providers.capabilities.install")}
                   </span>
                 )}
                 {provider.capabilities.activate && (
                   <span className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded">
-                    Activate
+                    {t("providers.capabilities.activate")}
                   </span>
                 )}
                 {provider.capabilities.inference && (
                   <span className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded">
-                    Inference
+                    {t("providers.capabilities.inference")}
                   </span>
                 )}
                 {provider.capabilities.trainable && (
                   <span className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded">
-                    Trainable
+                    {t("providers.capabilities.trainable")}
                   </span>
                 )}
               </div>
 
               {provider.endpoint && (
                 <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  Endpoint: {provider.endpoint}
+                  {t("providers.labels.endpoint")} {provider.endpoint}
                 </div>
               )}
             </div>
@@ -108,7 +105,7 @@ export function ProviderList({ providers, onActivate, isActivating }: ProviderLi
                     disabled={isActivating}
                     className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
-                    {isActivating ? "Activating..." : "Activate"}
+                    {isActivating ? t("providers.labels.activating") : t("providers.labels.activate")}
                   </button>
                 )}
             </div>

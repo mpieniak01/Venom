@@ -45,6 +45,7 @@ from venom_core.api.routes import system_services as system_services_routes
 from venom_core.api.routes import system_status as system_status_routes
 from venom_core.api.routes import system_storage as system_storage_routes
 from venom_core.api.routes import tasks as tasks_routes
+from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.config import SETTINGS
 from venom_core.core.llm_server_controller import LlmServerController
@@ -1167,6 +1168,7 @@ app.include_router(strategy_routes.router)
 app.include_router(models_routes.router)
 app.include_router(providers_routes.router)
 app.include_router(flow_routes.router)
+app.include_router(workflow_control_routes.router)
 app.include_router(benchmark_routes.router)
 app.include_router(calendar_routes.router)
 

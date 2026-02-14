@@ -5,7 +5,7 @@ This module tracks all control plane operations for compliance and debugging.
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from threading import Lock
 from typing import Any, Optional
 
@@ -77,7 +77,7 @@ class ControlPlaneAuditTrail:
 
         entry = ControlPlaneAuditEntry(
             operation_id=operation_id,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             triggered_by=triggered_by,
             operation_type=operation_type,
             resource_type=resource_type,
@@ -185,7 +185,7 @@ class ControlPlaneAuditTrail:
         """
         from datetime import timedelta
 
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         with self._lock:
             self._entries = [e for e in self._entries if e.timestamp >= cutoff]

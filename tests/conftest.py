@@ -1,16 +1,31 @@
+import json
 import os
 import shutil
 import subprocess
 import tempfile
 import warnings
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+# --- Test Artifact Strategy: CLEAN vs PRESERVE ---
+# Polityka w docs/TEST_ARTIFACTS_POLICY.md i docs/PL/TEST_ARTIFACTS_POLICY.md
+
+_ARTIFACT_MODE = os.environ.get("VENOM_TEST_ARTIFACT_MODE", "clean").lower()
+_ARTIFACT_DIR_OVERRIDE = os.environ.get("VENOM_TEST_ARTIFACT_DIR")
+
+if _ARTIFACT_DIR_OVERRIDE:
+    _PYTEST_ARTIFACTS_ROOT = Path(_ARTIFACT_DIR_OVERRIDE)
+else:
+    session_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    _PYTEST_ARTIFACTS_ROOT = (
+        Path("test-results") / "tmp" / f"session-{session_timestamp}"
+    )
+
 # Ustaw izolowane ścieżki artefaktów zanim testy zaimportują moduły runtime.
-_PYTEST_ARTIFACTS_ROOT = Path(tempfile.gettempdir()) / "venom-pytest-artifacts"
 os.environ.setdefault(
     "CHRONOS_TIMELINES_DIR", str(_PYTEST_ARTIFACTS_ROOT / "data" / "timelines")
 )
@@ -330,3 +345,60 @@ def mock_lifespan_deps():
             "orchestrator": mock_orch,
             "graph_store": mock_graph,
         }
+
+
+# --- Test Artifact Management Fixtures ---
+
+
+@pytest.fixture(scope="session")
+def test_artifact_session_dir() -> Path:
+    """
+    Globalny katalog artefaktów dla sesji testowej.
+    W trybie CLEAN: usuwany po sesji.
+    W trybie PRESERVE: zachowany do analizy.
+    """
+    artifact_dir = _PYTEST_ARTIFACTS_ROOT
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    # Zapisz metadane sesji
+    metadata = {
+        "type": "test_artifact_session",
+        "mode": _ARTIFACT_MODE,
+        "timestamp": datetime.now().isoformat(),
+        "artifact_dir": str(artifact_dir),
+    }
+    metadata_file = artifact_dir / "session_metadata.json"
+    metadata_file.write_text(json.dumps(metadata, indent=2))
+
+    yield artifact_dir
+
+    # Cleanup w trybie CLEAN
+    if _ARTIFACT_MODE == "clean":
+        if artifact_dir.exists():
+            shutil.rmtree(artifact_dir, ignore_errors=True)
+    else:
+        print(f"\n📁 Artefakty testowe zachowane w: {artifact_dir}")
+
+
+@pytest.fixture
+def test_artifact_dir(test_artifact_session_dir, request) -> Path:
+    """
+    Katalog artefaktów dla pojedynczego testu.
+    Każdy test otrzymuje własny podkatalog w ramach sesji.
+    """
+    # Utwórz unikalny katalog dla tego testu
+    test_name = request.node.name
+    test_dir = test_artifact_session_dir / test_name
+    test_dir.mkdir(parents=True, exist_ok=True)
+
+    # Zapisz metadane testu
+    metadata = {
+        "type": "test_artifact",
+        "test_name": test_name,
+        "test_path": request.node.nodeid,
+        "timestamp": datetime.now().isoformat(),
+    }
+    metadata_file = test_dir / "test_metadata.json"
+    metadata_file.write_text(json.dumps(metadata, indent=2))
+
+    return test_dir

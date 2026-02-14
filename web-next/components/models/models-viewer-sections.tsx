@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { SelectMenu } from "@/components/ui/select-menu";
 import {
     SectionHeader,
-    CatalogCard,
     EnrichedCatalogCard,
     InstalledCard,
     OperationRow

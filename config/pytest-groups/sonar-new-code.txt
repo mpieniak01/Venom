@@ -74,5 +74,7 @@ tests/test_metrics.py
 tests/test_academy_api.py
 tests/test_gpu_habitat.py
 tests/test_session_store.py
+tests/test_providers_api.py
+tests/test_providers_api_edges.py
 
 # AUTO-ADDED by pre-commit (staged backend/test changes)

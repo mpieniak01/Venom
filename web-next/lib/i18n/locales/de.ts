@@ -41,6 +41,7 @@ export const de = {
       strategy: "Strategie",
       models: "Modelle",
       academy: "Akademie",
+      workflowControl: "Workflow",
       calendar: "Kalender",
       benchmark: "Benchmark",
       config: "Konfiguration",
@@ -1864,6 +1865,10 @@ export const de = {
     description: "Einheitliche Kontrollebene für Stack-Konfiguration",
     loading: "Systemzustand wird geladen...",
     error: "Fehler beim Laden des Systemzustands",
+    common: {
+      na: "k. A.",
+      errorTitle: "Fehler",
+    },
     sections: {
       decision: "Entscheidungs- & Intent-Steuerung",
       kernel: "Kernel- & Embedding-Steuerung",
@@ -1880,6 +1885,7 @@ export const de = {
       newEmbedding: "Neues Embedding",
       currentProvider: "Aktueller Provider",
       newProvider: "Neuer Provider",
+      runtimeServices: "Runtime-Dienste",
       selectStrategy: "Entscheidungsstrategie wählen",
       selectIntent: "Intent-Modus wählen",
       selectKernel: "Kernel-Typ wählen",
@@ -1914,6 +1920,7 @@ export const de = {
     },
     buttons: {
       planApply: "Änderungen planen & anwenden",
+      applying: "Wird angewendet...",
       pause: "Pausieren",
       resume: "Fortsetzen",
       cancel: "Abbrechen",
@@ -1932,8 +1939,12 @@ export const de = {
       title: "Workflow-Operationen",
       currentStatus: "Aktueller Status",
     },
+    canvas: {
+      servicesCount: "{{count}} Dienste",
+    },
     apply: {
       title: "Anwendungsergebnisse",
+      description: "Konfigurationsänderungen wurden verarbeitet",
       close: "Schließen",
       hotSwap: "Angewendet (Hot-swap)",
       restartRequired: "Neustart erforderlich",
@@ -1941,6 +1952,9 @@ export const de = {
       rollback: "Rollback verfügbar",
       noRollback: "Kein Rollback",
       noChanges: "Keine Änderungen in dieser Kategorie",
+      appliedChanges: "Übernommene Änderungen ({{count}})",
+      pendingRestart: "Dienste mit Neustartbedarf ({{count}})",
+      failedChanges: "Fehlgeschlagene Änderungen ({{count}})",
     },
     messages: {
       planSuccess: "Änderungen erfolgreich geplant",
@@ -1957,6 +1971,7 @@ export const de = {
       retryError: "Fehler beim Wiederholen des Workflows",
       dryRunSuccess: "Probelauf abgeschlossen",
       dryRunError: "Fehler beim Probelauf",
+      invalidStatePayload: "Ungültige Workflow-Statusdaten aus der API",
     },
   },
 };

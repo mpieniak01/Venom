@@ -41,6 +41,7 @@ export const en = {
       strategy: "Strategy",
       models: "Models",
       academy: "Academy",
+      workflowControl: "Workflow",
       calendar: "Calendar",
       benchmark: "Benchmark",
       config: "Configuration",
@@ -1829,6 +1830,10 @@ export const en = {
     description: "Unified control plane for stack configuration",
     loading: "Loading system state...",
     error: "Failed to load system state",
+    common: {
+      na: "N/A",
+      errorTitle: "Error",
+    },
     sections: {
       decision: "Decision & Intent Control",
       kernel: "Kernel & Embedding Control",
@@ -1845,6 +1850,7 @@ export const en = {
       newEmbedding: "New Embedding",
       currentProvider: "Current Provider",
       newProvider: "New Provider",
+      runtimeServices: "Runtime Services",
       selectStrategy: "Select decision strategy",
       selectIntent: "Select intent mode",
       selectKernel: "Select kernel type",
@@ -1879,6 +1885,7 @@ export const en = {
     },
     buttons: {
       planApply: "Plan & Apply Changes",
+      applying: "Applying...",
       pause: "Pause",
       resume: "Resume",
       cancel: "Cancel",
@@ -1897,8 +1904,12 @@ export const en = {
       title: "Workflow Operations",
       currentStatus: "Current Status",
     },
+    canvas: {
+      servicesCount: "{{count}} services",
+    },
     apply: {
       title: "Apply Results",
+      description: "Configuration changes have been processed",
       close: "Close",
       hotSwap: "Applied (Hot-swap)",
       restartRequired: "Restart Required",
@@ -1906,6 +1917,9 @@ export const en = {
       rollback: "Rollback Available",
       noRollback: "No Rollback",
       noChanges: "No changes in this category",
+      appliedChanges: "Applied Changes ({{count}})",
+      pendingRestart: "Services Requiring Restart ({{count}})",
+      failedChanges: "Failed Changes ({{count}})",
     },
     messages: {
       planSuccess: "Changes planned successfully",
@@ -1922,6 +1936,7 @@ export const en = {
       retryError: "Failed to retry workflow",
       dryRunSuccess: "Dry run completed",
       dryRunError: "Failed to perform dry run",
+      invalidStatePayload: "Invalid workflow state payload from API",
     },
   },
 };

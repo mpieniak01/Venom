@@ -33,7 +33,7 @@ export function canActivateProvider(provider: ProviderInfo, hasActivateHandler: 
 }
 
 export function ProviderList({ providers, onActivate, isActivating }: ProviderListProps) {
-  const { t } = useTranslation();
+  const t = useTranslation();
 
   if (!providers || providers.length === 0) {
     return (

@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useTranslation } from "@/lib/i18n";
 import type { SystemState, PlanRequest } from "@/types/workflow-control";
 
 interface ControlPanelsProps {
@@ -30,6 +31,7 @@ export function ControlPanels({
   onApply,
   isLoading,
 }: ControlPanelsProps) {
+  const t = useTranslation();
   const [decisionStrategy, setDecisionStrategy] = useState("");
   const [intentMode, setIntentMode] = useState("");
   const [kernel, setKernel] = useState("");
@@ -99,53 +101,53 @@ export function ControlPanels({
       {/* Decision & Intent Control */}
       <Card>
         <CardHeader>
-          <CardTitle>Decision & Intent Control</CardTitle>
+          <CardTitle>{t("workflowControl.sections.decision")}</CardTitle>
           <CardDescription>
-            Configure decision strategy and intent mode
+            {t("workflowControl.sections.decision")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Current Strategy</Label>
+            <p className="text-sm font-medium">{t("workflowControl.labels.currentStrategy")}</p>
             <div className="text-sm font-mono p-2 bg-muted rounded">
-              {systemState?.decision_strategy || "N/A"}
+              {systemState?.decision_strategy || t("workflowControl.common.na")}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="decision-strategy">New Strategy</Label>
+            <Label htmlFor="decision-strategy">{t("workflowControl.labels.newStrategy")}</Label>
             <Select
               value={decisionStrategy}
               onValueChange={setDecisionStrategy}
             >
               <SelectTrigger id="decision-strategy">
-                <SelectValue placeholder="Select strategy" />
+                <SelectValue placeholder={t("workflowControl.labels.selectStrategy")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="standard">Standard</SelectItem>
-                <SelectItem value="advanced">Advanced</SelectItem>
-                <SelectItem value="expert">Expert</SelectItem>
+                <SelectItem value="standard">{t("workflowControl.strategies.standard")}</SelectItem>
+                <SelectItem value="advanced">{t("workflowControl.strategies.advanced")}</SelectItem>
+                <SelectItem value="expert">{t("workflowControl.strategies.expert")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
-            <Label>Current Intent Mode</Label>
+            <p className="text-sm font-medium">{t("workflowControl.labels.currentIntent")}</p>
             <div className="text-sm font-mono p-2 bg-muted rounded">
-              {systemState?.intent_mode || "N/A"}
+              {systemState?.intent_mode || t("workflowControl.common.na")}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="intent-mode">New Intent Mode</Label>
+            <Label htmlFor="intent-mode">{t("workflowControl.labels.newIntent")}</Label>
             <Select value={intentMode} onValueChange={setIntentMode}>
               <SelectTrigger id="intent-mode">
-                <SelectValue placeholder="Select mode" />
+                <SelectValue placeholder={t("workflowControl.labels.selectIntent")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="simple">Simple</SelectItem>
-                <SelectItem value="advanced">Advanced</SelectItem>
-                <SelectItem value="expert">Expert</SelectItem>
+                <SelectItem value="simple">{t("workflowControl.intentModes.simple")}</SelectItem>
+                <SelectItem value="advanced">{t("workflowControl.intentModes.advanced")}</SelectItem>
+                <SelectItem value="expert">{t("workflowControl.intentModes.expert")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -155,55 +157,55 @@ export function ControlPanels({
       {/* Kernel & Embedding Control */}
       <Card>
         <CardHeader>
-          <CardTitle>Kernel & Embedding Control</CardTitle>
+          <CardTitle>{t("workflowControl.sections.kernel")}</CardTitle>
           <CardDescription>
-            Configure kernel type and embedding model
+            {t("workflowControl.sections.kernel")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Current Kernel</Label>
+            <p className="text-sm font-medium">{t("workflowControl.labels.currentKernel")}</p>
             <div className="text-sm font-mono p-2 bg-muted rounded">
-              {systemState?.kernel || "N/A"}
+              {systemState?.kernel || t("workflowControl.common.na")}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="kernel">New Kernel</Label>
+            <Label htmlFor="kernel">{t("workflowControl.labels.newKernel")}</Label>
             <Select value={kernel} onValueChange={setKernel}>
               <SelectTrigger id="kernel">
-                <SelectValue placeholder="Select kernel" />
+                <SelectValue placeholder={t("workflowControl.labels.selectKernel")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="standard">Standard</SelectItem>
-                <SelectItem value="optimized">Optimized</SelectItem>
-                <SelectItem value="minimal">Minimal</SelectItem>
+                <SelectItem value="standard">{t("workflowControl.kernelTypes.standard")}</SelectItem>
+                <SelectItem value="optimized">{t("workflowControl.kernelTypes.optimized")}</SelectItem>
+                <SelectItem value="minimal">{t("workflowControl.kernelTypes.minimal")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
-            <Label>Current Embedding Model</Label>
+            <p className="text-sm font-medium">{t("workflowControl.labels.currentEmbedding")}</p>
             <div className="text-sm font-mono p-2 bg-muted rounded">
-              {systemState?.embedding_model || "N/A"}
+              {systemState?.embedding_model || t("workflowControl.common.na")}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="embedding">New Embedding Model</Label>
+            <Label htmlFor="embedding">{t("workflowControl.labels.newEmbedding")}</Label>
             <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
               <SelectTrigger id="embedding">
-                <SelectValue placeholder="Select model" />
+                <SelectValue placeholder={t("workflowControl.labels.selectEmbedding")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="sentence-transformers">
-                  Sentence Transformers
+                  {t("workflowControl.embeddingModels.sentenceTransformers")}
                 </SelectItem>
                 <SelectItem value="openai-embeddings">
-                  OpenAI Embeddings
+                  {t("workflowControl.embeddingModels.openai")}
                 </SelectItem>
                 <SelectItem value="google-embeddings">
-                  Google Embeddings
+                  {t("workflowControl.embeddingModels.google")}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -214,37 +216,39 @@ export function ControlPanels({
       {/* Runtime & Provider Control */}
       <Card>
         <CardHeader>
-          <CardTitle>Runtime & Provider Control</CardTitle>
+          <CardTitle>{t("workflowControl.sections.runtime")}</CardTitle>
           <CardDescription>
-            Configure runtime and provider settings
+            {t("workflowControl.sections.runtime")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Runtime Status</Label>
+            <p className="text-sm font-medium">{t("workflowControl.labels.runtimeServices")}</p>
             <div className="text-sm font-mono p-2 bg-muted rounded">
-              {systemState?.runtime?.services?.length || 0} services running
+              {t("workflowControl.canvas.servicesCount", {
+                count: systemState?.runtime?.services?.length || 0,
+              })}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label>Current Provider</Label>
+            <p className="text-sm font-medium">{t("workflowControl.labels.currentProvider")}</p>
             <div className="text-sm font-mono p-2 bg-muted rounded">
-              {systemState?.provider?.active || "N/A"}
+              {systemState?.provider?.active || t("workflowControl.common.na")}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="provider">New Provider</Label>
+            <Label htmlFor="provider">{t("workflowControl.labels.newProvider")}</Label>
             <Select value={provider} onValueChange={setProvider}>
               <SelectTrigger id="provider">
-                <SelectValue placeholder="Select provider" />
+                <SelectValue placeholder={t("workflowControl.labels.selectProvider")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ollama">Ollama</SelectItem>
-                <SelectItem value="huggingface">HuggingFace</SelectItem>
-                <SelectItem value="openai">OpenAI</SelectItem>
-                <SelectItem value="google">Google</SelectItem>
+                <SelectItem value="ollama">{t("workflowControl.providers.ollama")}</SelectItem>
+                <SelectItem value="huggingface">{t("workflowControl.providers.huggingface")}</SelectItem>
+                <SelectItem value="openai">{t("workflowControl.providers.openai")}</SelectItem>
+                <SelectItem value="google">{t("workflowControl.providers.google")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -256,9 +260,8 @@ export function ControlPanels({
         onClick={handleApply}
         disabled={isLoading}
         className="w-full"
-        size="lg"
       >
-        {isLoading ? "Applying..." : "Plan & Apply Changes"}
+        {isLoading ? t("workflowControl.buttons.applying") : t("workflowControl.buttons.planApply")}
       </Button>
     </div>
   );

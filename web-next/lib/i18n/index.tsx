@@ -53,7 +53,7 @@ function resolvePath(locale: Record<string, unknown>, path: string): string | nu
 }
 
 function escapeRegexSpecialChars(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function applyReplacements(value: string, replacements?: Record<string, string | number>) {

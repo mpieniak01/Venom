@@ -16,7 +16,7 @@ type ApiOptions = RequestInit & { skipBaseUrl?: boolean };
 export async function apiFetch<T = unknown>(
   path: string,
   options: ApiOptions = {},
-): Promise<T | undefined> {
+): Promise<T> {
   const { skipBaseUrl, headers, cache, ...rest } = options;
   const baseUrl = skipBaseUrl ? "" : getApiBaseUrl();
   const target = baseUrl ? `${baseUrl}${path}` : path;
@@ -56,7 +56,7 @@ export async function apiFetch<T = unknown>(
   }
 
   if (response.status === 204) {
-    return undefined;
+    return undefined as T;
   }
 
   const json = await response.json();

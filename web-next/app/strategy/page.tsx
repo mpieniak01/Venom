@@ -169,7 +169,7 @@ export default function StrategyPage() {
       }
       try {
         const res = await requestRoadmapStatus();
-        const reportText = res.report || "Brak danych z Executive.";
+        const reportText = res?.report || "Brak danych z Executive.";
         setStatusReport(reportText);
         persistStatusReport(reportText);
         if (!silent) {
@@ -380,7 +380,7 @@ export default function StrategyPage() {
     setActionMessage(null);
     try {
       const res = await startCampaign();
-      showToast("success", res.message || t("strategy.messages.campaignSuccess"));
+      showToast("success", res?.message || t("strategy.messages.campaignSuccess"));
       // Automatycznie odśwież dane po uruchomieniu kampanii
       if (campaignRefreshTimer.current) {
         clearTimeout(campaignRefreshTimer.current);

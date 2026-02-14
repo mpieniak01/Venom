@@ -1363,6 +1363,8 @@ export const de = {
       credentialsInvalid: "Provider {{provider}} hat ungültige Anmeldeinformationen",
       switchedProvider: "Zu {{provider}} gewechselt",
       noFallbackAvailable: "Kein Fallback-Provider verfügbar",
+      limitUpdated: "Limit erfolgreich aktualisiert",
+      usageReset: "Nutzungszähler erfolgreich zurückgesetzt",
     },
     labels: {
       costLimits: "Kostenlimits",

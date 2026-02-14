@@ -124,7 +124,8 @@ async def test_update_provider_specific_limit():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert "openai" in data["message"].lower()
+    # Message is now an i18n key
+    assert "governance.messages" in data["message"]
 
 
 @pytest.mark.asyncio
@@ -151,7 +152,8 @@ async def test_reset_usage_all():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert "all" in data["message"].lower()
+    # Message is now an i18n key
+    assert "governance.messages" in data["message"]
 
 
 @pytest.mark.asyncio
@@ -163,7 +165,8 @@ async def test_reset_usage_specific_scope():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert "openai" in data["message"].lower()
+    # Message is now an i18n key
+    assert "governance.messages" in data["message"]
 
 
 @pytest.mark.asyncio
@@ -190,3 +193,76 @@ async def test_governance_integration_with_usage():
         
         # Usage should have increased
         assert updated_usage > initial_usage
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "override",
+    [
+        # Negative soft limit
+        {"soft_limit_usd": -1.0, "hard_limit_usd": 10.0},
+        # Zero soft limit
+        {"soft_limit_usd": 0.0, "hard_limit_usd": 10.0},
+        # Negative hard limit
+        {"soft_limit_usd": 10.0, "hard_limit_usd": -1.0},
+        # Zero hard limit
+        {"soft_limit_usd": 10.0, "hard_limit_usd": 0.0},
+    ],
+)
+async def test_update_cost_limit_invalid_values(override):
+    """Test that invalid cost limit values are rejected."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        payload = {
+            "limit_type": "cost",
+            "scope": "global",
+            "soft_limit_usd": 10.0,
+            "hard_limit_usd": 20.0,
+        }
+        payload.update(override)
+        response = await ac.post("/api/v1/governance/limits", json=payload)
+
+    assert response.status_code == 422  # Pydantic validation error
+
+
+@pytest.mark.asyncio
+async def test_update_cost_limit_soft_greater_than_hard():
+    """Test that soft limit greater than hard limit is rejected."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        payload = {
+            "limit_type": "cost",
+            "scope": "global",
+            "soft_limit_usd": 20.0,
+            "hard_limit_usd": 10.0,
+        }
+        response = await ac.post("/api/v1/governance/limits", json=payload)
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "override",
+    [
+        # Negative request rate limit
+        {"max_requests_per_minute": -1, "max_tokens_per_minute": 1000},
+        # Zero request rate limit
+        {"max_requests_per_minute": 0, "max_tokens_per_minute": 1000},
+        # Negative token rate limit
+        {"max_requests_per_minute": 60, "max_tokens_per_minute": -1},
+        # Zero token rate limit
+        {"max_requests_per_minute": 60, "max_tokens_per_minute": 0},
+    ],
+)
+async def test_update_rate_limit_invalid_values(override):
+    """Test that invalid rate limit values are rejected."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        payload = {
+            "limit_type": "rate",
+            "scope": "global",
+            "max_requests_per_minute": 60,
+            "max_tokens_per_minute": 1000,
+        }
+        payload.update(override)
+        response = await ac.post("/api/v1/governance/limits", json=payload)
+
+    assert response.status_code == 422  # Pydantic validation error

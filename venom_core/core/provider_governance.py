@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -41,14 +41,6 @@ class LimitType(str, Enum):
     GLOBAL = "global"
     PER_PROVIDER = "per_provider"
     PER_MODEL = "per_model"
-
-
-class LimitAction(str, Enum):
-    """Akcja przy przekroczeniu limitu."""
-
-    BLOCK = "block"
-    WARN = "warn"
-    FALLBACK = "fallback"
 
 
 @dataclass
@@ -156,6 +148,7 @@ class ProviderGovernance:
         self.cost_limits: Dict[str, CostLimit] = {}
         self.rate_limits: Dict[str, RateLimit] = {}
         self.fallback_history: List[FallbackEvent] = []
+        self._lock = threading.Lock()  # Thread safety for concurrent access
 
         # Inicjalizuj domyślne limity globalne
         self._init_default_limits()
@@ -288,32 +281,33 @@ class ProviderGovernance:
         Returns:
             Tuple (allowed, reason_code, message)
         """
-        # Reset counters if period expired (1 minute window)
-        global_limit = self.rate_limits.get("global")
-        if global_limit:
-            if (datetime.now() - global_limit.period_start) > timedelta(minutes=1):
-                global_limit.current_requests = 0
-                global_limit.current_tokens = 0
-                global_limit.period_start = datetime.now()
+        with self._lock:
+            # Reset counters if period expired (1 minute window)
+            global_limit = self.rate_limits.get("global")
+            if global_limit:
+                if (datetime.now() - global_limit.period_start) > timedelta(minutes=1):
+                    global_limit.current_requests = 0
+                    global_limit.current_tokens = 0
+                    global_limit.period_start = datetime.now()
 
-            if global_limit.current_requests + 1 > global_limit.max_requests_per_minute:
-                return (
-                    False,
-                    "RATE_LIMIT_REQUESTS_EXCEEDED",
-                    f"Global request rate limit exceeded: {global_limit.current_requests + 1} > {global_limit.max_requests_per_minute}/min",
-                )
+                if global_limit.current_requests + 1 > global_limit.max_requests_per_minute:
+                    return (
+                        False,
+                        "RATE_LIMIT_REQUESTS_EXCEEDED",
+                        f"Global request rate limit exceeded: {global_limit.current_requests + 1} > {global_limit.max_requests_per_minute}/min",
+                    )
 
-            if (
-                global_limit.current_tokens + estimated_tokens
-                > global_limit.max_tokens_per_minute
-            ):
-                return (
-                    False,
-                    "RATE_LIMIT_TOKENS_EXCEEDED",
-                    f"Global token rate limit exceeded: {global_limit.current_tokens + estimated_tokens} > {global_limit.max_tokens_per_minute}/min",
-                )
+                if (
+                    global_limit.current_tokens + estimated_tokens
+                    > global_limit.max_tokens_per_minute
+                ):
+                    return (
+                        False,
+                        "RATE_LIMIT_TOKENS_EXCEEDED",
+                        f"Global token rate limit exceeded: {global_limit.current_tokens + estimated_tokens} > {global_limit.max_tokens_per_minute}/min",
+                    )
 
-        return (True, None, None)
+            return (True, None, None)
 
     def record_usage(
         self, provider: str, cost_usd: float, tokens: int, requests: int = 1
@@ -327,27 +321,28 @@ class ProviderGovernance:
             tokens: Liczba tokenów
             requests: Liczba requestów (domyślnie 1)
         """
-        # Update global cost
-        global_cost = self.cost_limits.get("global")
-        if global_cost:
-            global_cost.current_usage_usd += cost_usd
+        with self._lock:
+            # Update global cost
+            global_cost = self.cost_limits.get("global")
+            if global_cost:
+                global_cost.current_usage_usd += cost_usd
 
-        # Update provider cost
-        provider_key = f"provider:{provider}"
-        if provider_key not in self.cost_limits:
-            self.cost_limits[provider_key] = CostLimit(
-                limit_type=LimitType.PER_PROVIDER,
-                scope=provider,
-                soft_limit_usd=5.0,
-                hard_limit_usd=25.0,
-            )
-        self.cost_limits[provider_key].current_usage_usd += cost_usd
+            # Update provider cost
+            provider_key = f"provider:{provider}"
+            if provider_key not in self.cost_limits:
+                self.cost_limits[provider_key] = CostLimit(
+                    limit_type=LimitType.PER_PROVIDER,
+                    scope=provider,
+                    soft_limit_usd=5.0,
+                    hard_limit_usd=25.0,
+                )
+            self.cost_limits[provider_key].current_usage_usd += cost_usd
 
-        # Update global rate
-        global_rate = self.rate_limits.get("global")
-        if global_rate:
-            global_rate.current_requests += requests
-            global_rate.current_tokens += tokens
+            # Update global rate
+            global_rate = self.rate_limits.get("global")
+            if global_rate:
+                global_rate.current_requests += requests
+                global_rate.current_tokens += tokens
 
     def select_provider_with_fallback(
         self, preferred_provider: Optional[str] = None, reason: Optional[str] = None
@@ -406,7 +401,7 @@ class ProviderGovernance:
         Znajduje alternatywny provider zgodnie z fallback policy.
 
         Args:
-            failed_provider: Provider który zawił
+            failed_provider: Provider który zawiódł
             reason: Powód awarii
 
         Returns:
@@ -518,6 +513,7 @@ class ProviderGovernance:
 
 # Global instance (singleton pattern)
 _governance_instance: Optional[ProviderGovernance] = None
+_governance_lock = threading.Lock()
 
 
 def get_provider_governance() -> ProviderGovernance:
@@ -529,5 +525,8 @@ def get_provider_governance() -> ProviderGovernance:
     """
     global _governance_instance
     if _governance_instance is None:
-        _governance_instance = ProviderGovernance()
+        with _governance_lock:
+            # Double-check locking pattern
+            if _governance_instance is None:
+                _governance_instance = ProviderGovernance()
     return _governance_instance

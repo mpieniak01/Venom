@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { render, screen } from "@testing-library/react";
 import { ProviderMetricsCard } from "../components/providers/provider-metrics-card";
@@ -8,7 +7,7 @@ import { AlertsList, AlertsSummary } from "../components/providers/alerts-list";
 // Mock useTranslation hook
 jest.mock("../lib/i18n", () => ({
   useTranslation: () => ({
-    t: (key: string, params?: any) => {
+    t: (key: string, params?: Record<string, unknown>) => {
       // Simple mock translation
       if (key.includes("noData")) return "No metrics data available";
       if (key.includes("title")) return "Provider Metrics";
@@ -47,6 +46,7 @@ jest.mock("../lib/i18n", () => ({
 describe("ProviderMetricsCard", () => {
   it("renders no data message when metrics is null", () => {
     render(<ProviderMetricsCard provider="openai" metrics={null} />);
+    // @ts-expect-error - Testing library types
     expect(screen.getByText("No metrics data available")).toBeInTheDocument();
   });
 

@@ -19,7 +19,7 @@ function readCache(): TrainableModelInfo[] | null {
   if (typeof window === "undefined") return null;
   
   try {
-    const cached = window.localStorage.getItem(CACHE_KEY);
+    const cached = globalThis.window.localStorage.getItem(CACHE_KEY);
     if (!cached) return null;
     
     const parsed = JSON.parse(cached) as TrainableModelsCache;
@@ -31,7 +31,7 @@ function readCache(): TrainableModelInfo[] | null {
     }
     
     // Cache expired, remove it
-    window.localStorage.removeItem(CACHE_KEY);
+    globalThis.window.localStorage.removeItem(CACHE_KEY);
     return null;
   } catch {
     return null;
@@ -46,7 +46,7 @@ function writeCache(data: TrainableModelInfo[]) {
       data,
       timestamp: Date.now(),
     };
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    globalThis.window.localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
   } catch {
     // Ignore cache write errors
   }

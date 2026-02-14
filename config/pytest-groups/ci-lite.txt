@@ -37,3 +37,9 @@ tests/test_policy_gate_integration.py
 tests/test_resolve_sonar_new_code_tests.py
 tests/test_stack_manager_safety.py
 tests/test_url_policy.py
+
+# Dev environment hygiene scripts
+tests/test_env_audit.py
+tests/test_env_cleanup.py
+tests/test_env_report_diff.py
+tests/test_docker_cleanup_script.py

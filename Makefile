@@ -33,7 +33,8 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage sonar-reports-backend-new-code pr-fast \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
-	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend
+	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend \
+	env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff
 
 lint:
 	pre-commit run --all-files
@@ -146,6 +147,8 @@ test-ci-lite:
 audit-ci-lite:
 	@echo "🔍 Audyt zależności w testach CI Lite..."
 	@python3 scripts/audit_lite_deps.py --import-smoke
+	@echo "🔍 Lekka walidacja polityki zależności..."
+	@python3 scripts/dev/env_audit.py --ci-check
 
 install-hooks:
 	pre-commit install
@@ -564,6 +567,26 @@ monitor:
 		echo "❌ Skrypt scripts/diagnostics/system_snapshot.sh nie istnieje"; \
 		exit 1; \
 	fi
+
+# =============================================================================
+# Odchudzanie środowiska (Repo + Docker)
+# =============================================================================
+
+env-audit:
+	@python3 scripts/dev/env_audit.py
+
+env-clean-safe:
+	@bash scripts/dev/env_cleanup.sh safe
+
+env-clean-docker-safe:
+	@bash scripts/dev/docker_cleanup.sh safe
+
+env-clean-deep:
+	@bash scripts/dev/env_cleanup.sh deep
+	@bash scripts/dev/docker_cleanup.sh deep
+
+env-report-diff:
+	@python3 scripts/dev/env_report_diff.py
 
 # =============================================================================
 # Konserwacja MCP

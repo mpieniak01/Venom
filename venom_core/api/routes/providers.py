@@ -10,9 +10,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from venom_core.api.routes.models_dependencies import get_model_registry
 from venom_core.config import SETTINGS
-from venom_core.core.model_registry import ModelProvider
 from venom_core.services.config_manager import config_manager
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -149,13 +147,13 @@ async def _check_ollama_status() -> ProviderStatus:
     """Check Ollama server status."""
     endpoint = build_http_url("localhost", 11434)
     health_url = f"{endpoint}/api/tags"
-    
+
     try:
         start = time.perf_counter()
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(health_url)
         latency_ms = (time.perf_counter() - start) * 1000
-        
+
         if response.status_code == 200:
             return ProviderStatus(
                 status="connected",
@@ -187,15 +185,15 @@ async def _check_vllm_status() -> ProviderStatus:
             reason_code="no_endpoint",
             message="VLLM_ENDPOINT not configured",
         )
-    
+
     health_url = f"{endpoint}/health"
-    
+
     try:
         start = time.perf_counter()
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(health_url)
         latency_ms = (time.perf_counter() - start) * 1000
-        
+
         if response.status_code == 200:
             return ProviderStatus(
                 status="connected",
@@ -261,13 +259,15 @@ def _get_provider_endpoint(provider: str) -> Optional[str]:
 async def list_providers() -> dict[str, Any]:
     """
     List all available providers with their capabilities and status.
-    
+
     Returns information about cloud providers, catalog integrators, and local runtimes.
     """
     # Get active runtime info
     active_runtime = get_active_llm_runtime()
-    active_provider = active_runtime.provider.lower() if active_runtime.provider else None
-    
+    active_provider = (
+        active_runtime.provider.lower() if active_runtime.provider else None
+    )
+
     # Define all providers
     provider_names = [
         "huggingface",
@@ -276,11 +276,11 @@ async def list_providers() -> dict[str, Any]:
         "openai",
         "google",
     ]
-    
+
     # Check status for all providers in parallel
     status_tasks = [_check_provider_connection(p) for p in provider_names]
     statuses = await asyncio.gather(*status_tasks)
-    
+
     providers = []
     for provider_name, status in zip(provider_names, statuses):
         provider_info = ProviderInfo(
@@ -294,7 +294,7 @@ async def list_providers() -> dict[str, Any]:
             endpoint=_get_provider_endpoint(provider_name),
         )
         providers.append(provider_info.model_dump())
-    
+
     return {
         "status": "success",
         "providers": providers,
@@ -307,19 +307,19 @@ async def list_providers() -> dict[str, Any]:
 async def get_provider_info(provider_name: str) -> dict[str, Any]:
     """
     Get detailed information about a specific provider.
-    
+
     Args:
         provider_name: Provider identifier (huggingface, ollama, vllm, openai, google)
     """
     provider_name = provider_name.lower()
-    
+
     # Validate provider
     if provider_name not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown provider: {provider_name}",
         )
-    
+
     # Get active runtime
     active_runtime = get_active_llm_runtime()
     is_active = (
@@ -327,10 +327,10 @@ async def get_provider_info(provider_name: str) -> dict[str, Any]:
         if active_runtime.provider
         else False
     )
-    
+
     # Check connection status
     status = await _check_provider_connection(provider_name)
-    
+
     provider_info = ProviderInfo(
         name=provider_name,
         display_name=provider_name.title(),
@@ -341,7 +341,7 @@ async def get_provider_info(provider_name: str) -> dict[str, Any]:
         is_active=is_active,
         endpoint=_get_provider_endpoint(provider_name),
     )
-    
+
     return {
         "status": "success",
         "provider": provider_info.model_dump(),
@@ -355,20 +355,20 @@ async def activate_provider(
 ) -> dict[str, Any]:
     """
     Activate a provider/runtime.
-    
+
     Args:
         provider_name: Provider to activate (huggingface, ollama, vllm, openai, google)
         request: Optional activation parameters
     """
     provider_name = provider_name.lower()
-    
+
     # Validate provider
     if provider_name not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown provider: {provider_name}",
         )
-    
+
     # Check if provider supports activation
     capabilities = _get_provider_capabilities(provider_name)
     if not capabilities.activate:
@@ -376,7 +376,7 @@ async def activate_provider(
             status_code=400,
             detail=f"Provider {provider_name} does not support activation",
         )
-    
+
     # Check provider status
     status = await _check_provider_connection(provider_name)
     if status.status == "offline":
@@ -384,32 +384,40 @@ async def activate_provider(
             status_code=503,
             detail=f"Provider {provider_name} is offline: {status.message}",
         )
-    
+
     # Activate based on provider type
     if provider_name in ("openai", "google"):
         # Cloud providers - update runtime config
         try:
             if provider_name == "openai":
                 model = (
-                    request.model if request and request.model else SETTINGS.OPENAI_GPT4O_MODEL
+                    request.model
+                    if request and request.model
+                    else SETTINGS.OPENAI_GPT4O_MODEL
                 )
                 # Update config atomically through config_manager only
-                config_manager.update_config({
-                    "LLM_SERVICE_TYPE": "openai",
-                    "LLM_MODEL_NAME": model,
-                    "ACTIVE_LLM_SERVER": "openai",
-                })
+                config_manager.update_config(
+                    {
+                        "LLM_SERVICE_TYPE": "openai",
+                        "LLM_MODEL_NAME": model,
+                        "ACTIVE_LLM_SERVER": "openai",
+                    }
+                )
             else:  # google
                 model = (
-                    request.model if request and request.model else SETTINGS.GOOGLE_GEMINI_PRO_MODEL
+                    request.model
+                    if request and request.model
+                    else SETTINGS.GOOGLE_GEMINI_PRO_MODEL
                 )
                 # Update config atomically through config_manager only
-                config_manager.update_config({
-                    "LLM_SERVICE_TYPE": "google",
-                    "LLM_MODEL_NAME": model,
-                    "ACTIVE_LLM_SERVER": "google",
-                })
-            
+                config_manager.update_config(
+                    {
+                        "LLM_SERVICE_TYPE": "google",
+                        "LLM_MODEL_NAME": model,
+                        "ACTIVE_LLM_SERVER": "google",
+                    }
+                )
+
             return {
                 "status": "success",
                 "message": f"Provider {provider_name} activated successfully",
@@ -422,7 +430,7 @@ async def activate_provider(
                 status_code=500,
                 detail=f"Failed to activate provider: {str(exc)}",
             ) from exc
-    
+
     elif provider_name in ("ollama", "vllm"):
         # Local runtimes - delegate to system_llm endpoint
         # This is handled by /system/llm-servers/active endpoint
@@ -430,7 +438,7 @@ async def activate_provider(
             status_code=400,
             detail=f"Local runtime {provider_name} activation should use /system/llm-servers/active endpoint",
         )
-    
+
     else:
         raise HTTPException(
             status_code=400,
@@ -442,21 +450,21 @@ async def activate_provider(
 async def get_provider_status(provider_name: str) -> dict[str, Any]:
     """
     Get connection status for a specific provider.
-    
+
     Args:
         provider_name: Provider identifier
     """
     provider_name = provider_name.lower()
-    
+
     # Validate provider
     if provider_name not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown provider: {provider_name}",
         )
-    
+
     status = await _check_provider_connection(provider_name)
-    
+
     return {
         "status": "success",
         "provider": provider_name,
@@ -468,31 +476,25 @@ async def get_provider_status(provider_name: str) -> dict[str, Any]:
 async def get_provider_metrics(provider_name: str) -> dict[str, Any]:
     """
     Get performance metrics for a specific provider.
-    
+
     Returns latency percentiles, error rates, cost, and throughput.
-    
+
     Args:
         provider_name: Provider identifier
     """
-    from venom_core.core.metrics import metrics_collector
-    
+    from venom_core.core.metrics import get_metrics_collector
+
     provider_name = provider_name.lower()
-    
+
     # Validate provider
     if provider_name not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown provider: {provider_name}",
         )
-    
-    if not metrics_collector:
-        raise HTTPException(
-            status_code=503,
-            detail="Metrics collector not initialized",
-        )
-    
-    provider_metrics = metrics_collector.get_provider_metrics(provider_name)
-    
+
+    provider_metrics = get_metrics_collector().get_provider_metrics(provider_name)
+
     if not provider_metrics:
         # Return empty metrics structure
         return {
@@ -523,7 +525,7 @@ async def get_provider_metrics(provider_name: str) -> dict[str, Any]:
                 },
             },
         }
-    
+
     return {
         "status": "success",
         "provider": provider_name,
@@ -535,32 +537,26 @@ async def get_provider_metrics(provider_name: str) -> dict[str, Any]:
 async def get_provider_health(provider_name: str) -> dict[str, Any]:
     """
     Get SLO status and health score for a specific provider.
-    
+
     Args:
         provider_name: Provider identifier
     """
-    from venom_core.core.metrics import metrics_collector
+    from venom_core.core.metrics import get_metrics_collector
     from venom_core.core.provider_observability import get_provider_observability
-    
+
     provider_name = provider_name.lower()
-    
+
     # Validate provider
     if provider_name not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown provider: {provider_name}",
         )
-    
-    if not metrics_collector:
-        raise HTTPException(
-            status_code=503,
-            detail="Metrics collector not initialized",
-        )
-    
+
     observability = get_provider_observability()
-    provider_metrics = metrics_collector.get_provider_metrics(provider_name)
+    provider_metrics = get_metrics_collector().get_provider_metrics(provider_name)
     slo_status = observability.calculate_slo_status(provider_name, provider_metrics)
-    
+
     return {
         "status": "success",
         "provider": provider_name,
@@ -589,15 +585,15 @@ async def get_alerts(
 ) -> dict[str, Any]:
     """
     Get active alerts for providers.
-    
+
     Args:
         provider: Optional provider filter
         severity: Optional severity filter (info, warning, critical)
     """
     from venom_core.core.provider_observability import get_provider_observability
-    
+
     observability = get_provider_observability()
-    
+
     # Get active alerts (optionally filtered by provider)
     if provider:
         provider = provider.lower()
@@ -606,9 +602,9 @@ async def get_alerts(
                 status_code=404,
                 detail=f"Unknown provider: {provider}",
             )
-    
+
     active_alerts = observability.get_active_alerts(provider)
-    
+
     # Filter by severity if specified
     if severity:
         severity = severity.lower()
@@ -618,10 +614,10 @@ async def get_alerts(
                 detail=f"Invalid severity: {severity}. Must be info, warning, or critical",
             )
         active_alerts = [a for a in active_alerts if a.severity.value == severity]
-    
+
     # Get summary
     summary = observability.get_alert_summary()
-    
+
     # Convert alerts to dict
     alerts_data = [
         {
@@ -637,11 +633,10 @@ async def get_alerts(
         }
         for alert in active_alerts
     ]
-    
+
     return {
         "status": "success",
         "alerts": alerts_data,
         "summary": summary,
         "count": len(alerts_data),
     }
-

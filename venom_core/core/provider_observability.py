@@ -91,7 +91,7 @@ class Alert:
             hour_key = self.timestamp.strftime("%Y%m%d%H")
             fp_str = f"{self.provider}:{self.alert_type.value}:{hour_key}"
             self.fingerprint = hashlib.md5(fp_str.encode()).hexdigest()
-        
+
         if not self.expires_at:
             # Default expiry: 1 hour for info, 3 hours for warning, 6 hours for critical
             hours = {"info": 1, "warning": 3, "critical": 6}[self.severity.value]
@@ -101,7 +101,7 @@ class Alert:
 class ProviderObservability:
     """
     Manager dla observability providerów: SLO tracking, health scoring, alerting.
-    
+
     Integruje się z MetricsCollector i ProviderGovernance.
     """
 
@@ -110,11 +110,13 @@ class ProviderObservability:
         self.slo_targets: Dict[str, SLOTarget] = {}
         self.active_alerts: Dict[str, Alert] = {}  # fingerprint -> Alert
         self.alert_history: List[Alert] = []  # Last 100 alerts
-        self._lock = threading.Lock()
-        
+        # Reentrant lock prevents self-deadlocks when helper methods call each other
+        # under synchronization (e.g. get_alert_summary -> get_active_alerts).
+        self._lock = threading.RLock()
+
         # Initialize default SLO targets for common providers
         self._init_default_slo_targets()
-        
+
         logger.info("ProviderObservability initialized")
 
     def _init_default_slo_targets(self) -> None:
@@ -128,7 +130,7 @@ class ProviderObservability:
                 error_rate_target=0.01,
                 cost_budget_usd=50.0,
             )
-        
+
         # Local runtimes - more relaxed SLO
         for provider in ["ollama", "vllm"]:
             self.slo_targets[provider] = SLOTarget(
@@ -138,7 +140,7 @@ class ProviderObservability:
                 error_rate_target=0.05,
                 cost_budget_usd=0.0,  # No cost for local
             )
-        
+
         # Catalog integrators
         self.slo_targets["huggingface"] = SLOTarget(
             provider="huggingface",
@@ -151,7 +153,7 @@ class ProviderObservability:
     def set_slo_target(self, provider: str, target: SLOTarget) -> None:
         """
         Ustaw SLO target dla providera.
-        
+
         Args:
             provider: Nazwa providera
             target: SLO target
@@ -165,19 +167,17 @@ class ProviderObservability:
     ) -> SLOStatus:
         """
         Oblicza aktualny status SLO providera.
-        
+
         Args:
             provider: Nazwa providera
             provider_metrics: Metryki providera z MetricsCollector
-            
+
         Returns:
             SLOStatus z obliczonym health score i statusem
         """
         with self._lock:
-            target = self.slo_targets.get(
-                provider, SLOTarget(provider=provider)
-            )
-            
+            target = self.slo_targets.get(provider, SLOTarget(provider=provider))
+
             if not provider_metrics:
                 return SLOStatus(
                     provider=provider,
@@ -190,41 +190,41 @@ class ProviderObservability:
                     health_score=0.0,
                     health_status=HealthStatus.UNKNOWN,
                 )
-            
+
             # Extract current metrics
             availability = provider_metrics.get("success_rate", 0.0) / 100.0
             latency_p99 = provider_metrics.get("latency", {}).get("p99_ms")
             error_rate = provider_metrics.get("error_rate", 0.0) / 100.0
             cost_usage = provider_metrics.get("cost", {}).get("total_usd", 0.0)
-            
+
             # Check for SLO breaches
             breaches = []
             health_score = 100.0
-            
+
             # Availability check
             if availability < target.availability_target:
-                breach = f"availability_{availability*100:.1f}%_below_{target.availability_target*100:.1f}%"
+                breach = f"availability_{availability * 100:.1f}%_below_{target.availability_target * 100:.1f}%"
                 breaches.append(breach)
                 health_score -= 30.0
-            
+
             # Latency check
             if latency_p99 and latency_p99 > target.latency_p99_ms:
                 breach = f"latency_p99_{latency_p99:.0f}ms_above_{target.latency_p99_ms:.0f}ms"
                 breaches.append(breach)
                 health_score -= 25.0
-            
+
             # Error rate check
             if error_rate > target.error_rate_target:
-                breach = f"error_rate_{error_rate*100:.1f}%_above_{target.error_rate_target*100:.1f}%"
+                breach = f"error_rate_{error_rate * 100:.1f}%_above_{target.error_rate_target * 100:.1f}%"
                 breaches.append(breach)
                 health_score -= 25.0
-            
+
             # Cost check
             if target.cost_budget_usd > 0 and cost_usage > target.cost_budget_usd:
                 breach = f"cost_${cost_usage:.2f}_above_${target.cost_budget_usd:.2f}"
                 breaches.append(breach)
                 health_score -= 20.0
-            
+
             # Determine health status
             health_score = max(0.0, health_score)
             if health_score >= 80:
@@ -233,7 +233,7 @@ class ProviderObservability:
                 health_status = HealthStatus.DEGRADED
             else:
                 health_status = HealthStatus.CRITICAL
-            
+
             return SLOStatus(
                 provider=provider,
                 availability=availability,
@@ -249,30 +249,34 @@ class ProviderObservability:
     def emit_alert(self, alert: Alert) -> bool:
         """
         Emituje alert z deduplication.
-        
+
         Args:
             alert: Alert do wyemitowania
-            
+
         Returns:
             True jeśli alert został dodany, False jeśli zdeduplikowany
         """
         with self._lock:
             # Check if alert with same fingerprint exists and is not expired
             existing = self.active_alerts.get(alert.fingerprint)
-            if existing and existing.expires_at and existing.expires_at > datetime.now():
+            if (
+                existing
+                and existing.expires_at
+                and existing.expires_at > datetime.now()
+            ):
                 logger.debug(
                     f"Alert deduplicated: {alert.alert_type.value} for {alert.provider}"
                 )
                 return False
-            
+
             # Add/update alert
             self.active_alerts[alert.fingerprint] = alert
             self.alert_history.append(alert)
-            
+
             # Keep only last 100 alerts in history
             if len(self.alert_history) > 100:
                 self.alert_history = self.alert_history[-100:]
-            
+
             logger.warning(
                 f"Alert emitted: {alert.severity.value} - {alert.alert_type.value} for {alert.provider}"
             )
@@ -283,19 +287,22 @@ class ProviderObservability:
     ) -> List[Alert]:
         """
         Sprawdza warunki i emituje alerty dla providera.
-        
+
         Args:
             provider: Nazwa providera
             slo_status: Aktualny status SLO
             provider_metrics: Metryki providera
-            
+
         Returns:
             Lista wyemitowanych alertów
         """
         emitted_alerts = []
-        
+
         # High latency alert
-        if slo_status.latency_p99_ms and slo_status.latency_p99_ms > slo_status.slo_target.latency_p99_ms:
+        if (
+            slo_status.latency_p99_ms
+            and slo_status.latency_p99_ms > slo_status.slo_target.latency_p99_ms
+        ):
             alert = Alert(
                 id=f"{provider}_latency_{datetime.now().timestamp()}",
                 severity=AlertSeverity.WARNING,
@@ -310,7 +317,7 @@ class ProviderObservability:
             )
             if self.emit_alert(alert):
                 emitted_alerts.append(alert)
-        
+
         # Error spike alert
         if slo_status.error_rate > slo_status.slo_target.error_rate_target:
             severity = (
@@ -324,7 +331,7 @@ class ProviderObservability:
                 alert_type=AlertType.ERROR_SPIKE,
                 provider=provider,
                 message="providers.alerts.errorSpike",
-                technical_details=f"error_rate={slo_status.error_rate*100:.1f}% threshold={slo_status.slo_target.error_rate_target*100:.1f}%",
+                technical_details=f"error_rate={slo_status.error_rate * 100:.1f}% threshold={slo_status.slo_target.error_rate_target * 100:.1f}%",
                 metadata={
                     "rate": slo_status.error_rate * 100,
                     "threshold": slo_status.slo_target.error_rate_target * 100,
@@ -332,7 +339,7 @@ class ProviderObservability:
             )
             if self.emit_alert(alert):
                 emitted_alerts.append(alert)
-        
+
         # Budget warning
         if slo_status.slo_target.cost_budget_usd > 0:
             budget_usage_pct = (
@@ -340,10 +347,14 @@ class ProviderObservability:
             )
             if budget_usage_pct > 80:
                 severity = (
-                    AlertSeverity.CRITICAL if budget_usage_pct > 100 else AlertSeverity.WARNING
+                    AlertSeverity.CRITICAL
+                    if budget_usage_pct > 100
+                    else AlertSeverity.WARNING
                 )
                 alert_type = (
-                    AlertType.BUDGET_CRITICAL if budget_usage_pct > 100 else AlertType.BUDGET_WARNING
+                    AlertType.BUDGET_CRITICAL
+                    if budget_usage_pct > 100
+                    else AlertType.BUDGET_WARNING
                 )
                 alert = Alert(
                     id=f"{provider}_budget_{datetime.now().timestamp()}",
@@ -359,7 +370,7 @@ class ProviderObservability:
                 )
                 if self.emit_alert(alert):
                     emitted_alerts.append(alert)
-        
+
         # Availability drop
         if slo_status.availability < slo_status.slo_target.availability_target:
             alert = Alert(
@@ -368,7 +379,7 @@ class ProviderObservability:
                 alert_type=AlertType.AVAILABILITY_DROP,
                 provider=provider,
                 message="providers.alerts.availabilityDrop",
-                technical_details=f"availability={slo_status.availability*100:.1f}% target={slo_status.slo_target.availability_target*100:.1f}%",
+                technical_details=f"availability={slo_status.availability * 100:.1f}% target={slo_status.slo_target.availability_target * 100:.1f}%",
                 metadata={
                     "availability": slo_status.availability * 100,
                     "target": slo_status.slo_target.availability_target * 100,
@@ -376,7 +387,7 @@ class ProviderObservability:
             )
             if self.emit_alert(alert):
                 emitted_alerts.append(alert)
-        
+
         # SLO breach
         if slo_status.breaches:
             alert = Alert(
@@ -393,23 +404,23 @@ class ProviderObservability:
             )
             if self.emit_alert(alert):
                 emitted_alerts.append(alert)
-        
+
         return emitted_alerts
 
     def get_active_alerts(self, provider: Optional[str] = None) -> List[Alert]:
         """
         Zwraca aktywne (nie wygasłe) alerty.
-        
+
         Args:
             provider: Opcjonalnie filtruj po providerze
-            
+
         Returns:
             Lista aktywnych alertów
         """
         with self._lock:
             now = datetime.now()
             active = []
-            
+
             # Clean up expired alerts
             expired_fingerprints = []
             for fingerprint, alert in self.active_alerts.items():
@@ -417,23 +428,23 @@ class ProviderObservability:
                     expired_fingerprints.append(fingerprint)
                 elif provider is None or alert.provider == provider:
                     active.append(alert)
-            
+
             # Remove expired
             for fp in expired_fingerprints:
                 del self.active_alerts[fp]
-            
+
             return sorted(active, key=lambda a: a.timestamp, reverse=True)
 
     def get_alert_summary(self) -> Dict:
         """
         Zwraca podsumowanie alertów.
-        
+
         Returns:
             Dict z licznikami alertów per severity i provider
         """
         with self._lock:
             active = self.get_active_alerts()
-            
+
             summary = {
                 "total_active": len(active),
                 "by_severity": {
@@ -443,14 +454,14 @@ class ProviderObservability:
                 },
                 "by_provider": {},
             }
-            
+
             for alert in active:
                 summary["by_severity"][alert.severity.value] += 1
-                
+
                 if alert.provider not in summary["by_provider"]:
                     summary["by_provider"][alert.provider] = 0
                 summary["by_provider"][alert.provider] += 1
-            
+
             return summary
 
 
@@ -462,7 +473,7 @@ _observability_lock = threading.Lock()
 def get_provider_observability() -> ProviderObservability:
     """
     Zwraca globalną instancję ProviderObservability (singleton).
-    
+
     Returns:
         ProviderObservability instance
     """

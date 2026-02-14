@@ -2,6 +2,7 @@
 
 import threading
 from datetime import datetime
+from math import ceil, floor
 from typing import Dict, List, Optional
 
 from venom_core.utils.logger import get_logger
@@ -35,10 +36,14 @@ class MetricsCollector:
         self.tool_usage: Dict[str, int] = {}
         self.agent_usage: Dict[str, int] = {}
         self.start_time = datetime.now()
-        self._lock = threading.Lock()
-        
+        # Reentrant lock prevents self-deadlocks in methods that call other
+        # synchronized helpers (e.g. get_all_provider_metrics -> get_provider_metrics).
+        self._lock = threading.RLock()
+
         # Provider observability metrics
-        self.provider_metrics: Dict[str, Dict[str, any]] = {}  # provider -> metrics dict
+        self.provider_metrics: Dict[
+            str, Dict[str, any]
+        ] = {}  # provider -> metrics dict
 
     def increment_task_created(self):
         """Inkrementuje licznik utworzonych zadań."""
@@ -175,7 +180,7 @@ class MetricsCollector:
     def _init_provider_metrics(self, provider: str) -> None:
         """
         Inicjalizuje strukturę metryk dla providera (internal helper).
-        
+
         Args:
             provider: Nazwa providera
         """
@@ -204,7 +209,7 @@ class MetricsCollector:
     ) -> None:
         """
         Rejestruje pojedynczy request do providera z metrykami.
-        
+
         Args:
             provider: Nazwa providera
             success: Czy request zakończył się sukcesem
@@ -216,24 +221,24 @@ class MetricsCollector:
         with self._lock:
             self._init_provider_metrics(provider)
             pm = self.provider_metrics[provider]
-            
+
             pm["total_requests"] += 1
             if success:
                 pm["successful_requests"] += 1
             else:
                 pm["failed_requests"] += 1
-                
+
             # Track latency (keep last 1000 samples for percentile calculation)
             pm["latency_samples"].append(latency_ms)
             if len(pm["latency_samples"]) > 1000:
                 pm["latency_samples"] = pm["latency_samples"][-1000:]
-            
+
             # Track error codes
             if error_code:
                 if error_code not in pm["error_codes"]:
                     pm["error_codes"][error_code] = 0
                 pm["error_codes"][error_code] += 1
-                
+
                 # Increment specific error counters
                 if "timeout" in error_code.lower():
                     pm["timeouts"] += 1
@@ -241,53 +246,82 @@ class MetricsCollector:
                     pm["auth_errors"] += 1
                 elif "budget" in error_code.lower():
                     pm["budget_errors"] += 1
-            
+
             pm["total_cost_usd"] += cost_usd
             pm["total_tokens"] += tokens
 
-    def _calculate_percentile(self, samples: List[float], percentile: float) -> Optional[float]:
+    def _calculate_percentile(
+        self, samples: List[float], percentile: float
+    ) -> Optional[float]:
         """
         Oblicza percentyl z listy próbek.
-        
+
         Args:
             samples: Lista wartości
             percentile: Percentyl (0.0-1.0)
-            
+
         Returns:
             Wartość percentyla lub None jeśli brak danych
         """
         if not samples:
             return None
         sorted_samples = sorted(samples)
-        idx = int(len(sorted_samples) * percentile)
-        if idx >= len(sorted_samples):
-            idx = len(sorted_samples) - 1
-        return round(sorted_samples[idx], 2)
+
+        # For tiny sample sets, p99 should stay conservative and report top tail.
+        if percentile >= 0.99:
+            return round(sorted_samples[-1], 2)
+
+        n = len(sorted_samples)
+        rank = percentile * n
+
+        if rank <= 1:
+            return round(sorted_samples[0], 2)
+        if rank >= n:
+            return round(sorted_samples[-1], 2)
+
+        lower = floor(rank)
+        upper = ceil(rank)
+        lower_value = sorted_samples[lower - 1]
+        upper_value = sorted_samples[upper - 1]
+
+        if lower == upper:
+            # Exact rank for even-sized distributions: midpoint between adjacent
+            # order statistics keeps p50 as a true median.
+            next_idx = min(lower, n - 1)
+            return round((lower_value + sorted_samples[next_idx]) / 2.0, 2)
+
+        fraction = rank - lower
+        value = lower_value + fraction * (upper_value - lower_value)
+        return round(value, 2)
 
     def get_provider_metrics(self, provider: str) -> Optional[Dict]:
         """
         Zwraca metryki dla konkretnego providera.
-        
+
         Args:
             provider: Nazwa providera
-            
+
         Returns:
             Dict z metrykami providera lub None jeśli brak danych
         """
         with self._lock:
             if provider not in self.provider_metrics:
                 return None
-            
+
             pm = self.provider_metrics[provider]
             total = pm["total_requests"]
-            
+
             return {
                 "provider": provider,
                 "total_requests": total,
                 "successful_requests": pm["successful_requests"],
                 "failed_requests": pm["failed_requests"],
-                "success_rate": round(pm["successful_requests"] / total * 100, 2) if total > 0 else 0.0,
-                "error_rate": round(pm["failed_requests"] / total * 100, 2) if total > 0 else 0.0,
+                "success_rate": round(pm["successful_requests"] / total * 100, 2)
+                if total > 0
+                else 0.0,
+                "error_rate": round(pm["failed_requests"] / total * 100, 2)
+                if total > 0
+                else 0.0,
                 "latency": {
                     "p50_ms": self._calculate_percentile(pm["latency_samples"], 0.50),
                     "p95_ms": self._calculate_percentile(pm["latency_samples"], 0.95),
@@ -310,7 +344,7 @@ class MetricsCollector:
     def get_all_provider_metrics(self) -> Dict[str, Dict]:
         """
         Zwraca metryki dla wszystkich providerów.
-        
+
         Returns:
             Dict z metrykami per provider
         """
@@ -412,3 +446,14 @@ def init_metrics_collector():
     global metrics_collector
     metrics_collector = MetricsCollector()
     logger.info("MetricsCollector initialized")
+
+
+def get_metrics_collector() -> MetricsCollector:
+    """
+    Zwraca globalny collector metryk, inicjalizując go leniwie jeśli potrzeba.
+    """
+    global metrics_collector
+    if metrics_collector is None:
+        metrics_collector = MetricsCollector()
+        logger.info("MetricsCollector lazily initialized")
+    return metrics_collector

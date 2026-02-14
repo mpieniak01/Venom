@@ -19,7 +19,7 @@ def test_artifact_dir_fixture_creates_directory(test_artifact_dir):
     """Test weryfikuje że fixture test_artifact_dir tworzy katalog dla testu."""
     assert test_artifact_dir.exists()
     assert test_artifact_dir.is_dir()
-    
+
     # Sprawdź metadane testu
     metadata_file = test_artifact_dir / "test_metadata.json"
     assert metadata_file.exists()

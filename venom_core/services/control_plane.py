@@ -9,6 +9,7 @@ This service aggregates and coordinates changes across:
 
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional, TYPE_CHECKING
 
 from venom_core.api.model_schemas.workflow_control import (
@@ -307,8 +308,6 @@ class ControlPlaneService:
         Returns:
             Current system state
         """
-        from datetime import datetime, timezone
-
         # Get runtime status
         runtime_status = runtime_controller.get_all_services_status()
         runtime_dict = {
@@ -367,8 +366,6 @@ class ControlPlaneService:
         Returns:
             Validation result dict
         """
-        from datetime import datetime, timezone
-
         # Simple validation - in production this would be more sophisticated
         valid = True
         apply_mode = ApplyMode.HOT_SWAP

@@ -22,6 +22,9 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["providers"])
 
+# Valid provider names
+VALID_PROVIDERS = {"huggingface", "ollama", "vllm", "openai", "google"}
+
 
 class ProviderCapability(BaseModel):
     """Provider capabilities."""
@@ -69,7 +72,6 @@ class ProviderInfo(BaseModel):
 class ProviderActivateRequest(BaseModel):
     """Request to activate a provider."""
 
-    provider: str = Field(..., description="Provider to activate")
     runtime: Optional[str] = Field(
         default=None, description="Optional runtime override"
     )
@@ -168,10 +170,11 @@ async def _check_ollama_status() -> ProviderStatus:
                 latency_ms=latency_ms,
             )
     except Exception as exc:
+        logger.warning(f"Failed to check Ollama status: {exc}")
         return ProviderStatus(
             status="offline",
             reason_code="connection_failed",
-            message=str(exc),
+            message="Unable to connect to Ollama server",
         )
 
 
@@ -207,10 +210,11 @@ async def _check_vllm_status() -> ProviderStatus:
                 latency_ms=latency_ms,
             )
     except Exception as exc:
+        logger.warning(f"Failed to check vLLM status: {exc}")
         return ProviderStatus(
             status="offline",
             reason_code="connection_failed",
-            message=str(exc),
+            message="Unable to connect to vLLM server",
         )
 
 
@@ -310,8 +314,7 @@ async def get_provider_info(provider_name: str) -> dict[str, Any]:
     provider_name = provider_name.lower()
     
     # Validate provider
-    valid_providers = {"huggingface", "ollama", "vllm", "openai", "google"}
-    if provider_name not in valid_providers:
+    if provider_name not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown provider: {provider_name}",
@@ -360,8 +363,7 @@ async def activate_provider(
     provider_name = provider_name.lower()
     
     # Validate provider
-    valid_providers = {"huggingface", "ollama", "vllm", "openai", "google"}
-    if provider_name not in valid_providers:
+    if provider_name not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown provider: {provider_name}",
@@ -391,9 +393,7 @@ async def activate_provider(
                 model = (
                     request.model if request and request.model else SETTINGS.OPENAI_GPT4O_MODEL
                 )
-                SETTINGS.LLM_SERVICE_TYPE = "openai"
-                SETTINGS.LLM_MODEL_NAME = model
-                SETTINGS.ACTIVE_LLM_SERVER = "openai"
+                # Update config atomically through config_manager only
                 config_manager.update_config({
                     "LLM_SERVICE_TYPE": "openai",
                     "LLM_MODEL_NAME": model,
@@ -403,9 +403,7 @@ async def activate_provider(
                 model = (
                     request.model if request and request.model else SETTINGS.GOOGLE_GEMINI_PRO_MODEL
                 )
-                SETTINGS.LLM_SERVICE_TYPE = "google"
-                SETTINGS.LLM_MODEL_NAME = model
-                SETTINGS.ACTIVE_LLM_SERVER = "google"
+                # Update config atomically through config_manager only
                 config_manager.update_config({
                     "LLM_SERVICE_TYPE": "google",
                     "LLM_MODEL_NAME": model,
@@ -451,8 +449,7 @@ async def get_provider_status(provider_name: str) -> dict[str, Any]:
     provider_name = provider_name.lower()
     
     # Validate provider
-    valid_providers = {"huggingface", "ollama", "vllm", "openai", "google"}
-    if provider_name not in valid_providers:
+    if provider_name not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown provider: {provider_name}",

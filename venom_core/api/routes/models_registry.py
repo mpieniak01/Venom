@@ -255,11 +255,13 @@ async def search_models(
             )
 
         result = await model_registry.search_external_models(
-            provider=provider_enum, query=query, limit=limit
+            provider=provider_enum, query=query, limit=limit * page
         )
         models = result.get("models", [])
         
-        # Apply pagination
+        # Apply pagination in memory
+        # Note: This fetches (limit * page) models to implement pagination
+        # A future optimization would be to add native pagination support to model_registry
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
         paginated_models = models[start_idx:end_idx]

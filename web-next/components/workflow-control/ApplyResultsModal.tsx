@@ -9,9 +9,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertCircle, XCircle } from "lucide-react";
+import type { ApplyResults, AppliedChange } from "@/types/workflow-control";
 
 interface ApplyResultsModalProps {
-  results: any;
+  results: ApplyResults;
   onClose: () => void;
 }
 
@@ -64,7 +65,7 @@ export function ApplyResultsModal({
                 Applied Changes ({appliedChanges.length})
               </h3>
               <div className="space-y-1">
-                {appliedChanges.map((change: any, idx: number) => (
+                {appliedChanges.map((change: AppliedChange, idx: number) => (
                   <div
                     key={idx}
                     className="p-2 rounded bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-sm"

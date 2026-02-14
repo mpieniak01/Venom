@@ -1,11 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import type {
+  SystemState,
+  PlanRequest,
+  PlanResponse,
+  ApplyResults,
+} from "@/types/workflow-control";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export function useWorkflowState() {
-  const [systemState, setSystemState] = useState<any>(null);
+  const [systemState, setSystemState] = useState<SystemState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +38,7 @@ export function useWorkflowState() {
   }, [fetchSystemState]);
 
   // Plan changes
-  const planChanges = useCallback(async (changes: any) => {
+  const planChanges = useCallback(async (changes: PlanRequest): Promise<PlanResponse | null> => {
     setIsLoading(true);
     setError(null);
     try {
@@ -57,7 +63,7 @@ export function useWorkflowState() {
   }, []);
 
   // Apply changes
-  const applyChanges = useCallback(async (executionTicket: string) => {
+  const applyChanges = useCallback(async (executionTicket: string): Promise<ApplyResults | null> => {
     setIsLoading(true);
     setError(null);
     try {

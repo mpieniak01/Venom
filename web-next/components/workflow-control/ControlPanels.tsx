@@ -17,10 +17,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { SystemState, PlanRequest } from "@/types/workflow-control";
 
 interface ControlPanelsProps {
-  systemState: any;
-  onApply: (changes: any) => Promise<void>;
+  systemState: SystemState | null;
+  onApply: (changes: PlanRequest) => Promise<void>;
   isLoading: boolean;
 }
 

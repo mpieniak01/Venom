@@ -136,9 +136,16 @@ class CompatibilityValidator:
         if provider not in self.matrix.provider_models:
             return False, f"Unknown provider type: {provider}"
 
-        # For now, we just check if provider is known
-        # In production, this would validate specific model availability
-        return True, "Provider supports model"
+        # Validate model against provider's supported models
+        compatible_models = self.matrix.provider_models[provider]
+        if model not in compatible_models:
+            return (
+                False,
+                f"Provider '{provider}' not compatible with model '{model}'. "
+                f"Compatible models: {', '.join(compatible_models)}",
+            )
+
+        return True, "Provider and model are compatible"
 
     def validate_embedding_model(
         self, embedding_model: str, provider: str

@@ -9,7 +9,7 @@ This service aggregates and coordinates changes across:
 
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 from venom_core.api.model_schemas.workflow_control import (
     AppliedChange,
@@ -101,8 +101,8 @@ class ControlPlaneService:
             # Check overall compatibility
             overall_compatible = len(rejected_changes) == 0
 
-            if overall_compatible and not request.dry_run:
-                # Perform full stack validation
+            if overall_compatible:
+                # Perform full stack validation (even for dry-run)
                 current_state = self._get_current_state()
                 compatible, issues = self._validate_full_stack_compatibility(
                     current_state, request.changes
@@ -261,7 +261,7 @@ class ControlPlaneService:
                 applied_changes=applied_changes,
                 pending_restart=plan.restart_required_services,
                 failed_changes=failed_changes,
-                rollback_available=len(applied_changes) > 0,
+                rollback_available=False,  # Rollback not yet implemented
             )
 
             # Clean up pending plan
@@ -325,6 +325,20 @@ class ControlPlaneService:
         # Get config
         config = config_manager.get_config(mask_secrets=False)
 
+        # Get actual workflow status from WorkflowOperationService
+        # Import here to avoid circular dependency
+        from venom_core.services.workflow_operations import get_workflow_service
+        workflow_service = get_workflow_service()
+        workflow_status = WorkflowStatus.IDLE
+        try:
+            # Try to get status for main workflow
+            workflow = workflow_service._workflows.get("main-workflow")
+            if workflow:
+                workflow_status = WorkflowStatus(workflow["status"])
+        except (KeyError, ValueError):
+            # Default to IDLE if workflow not found or invalid status
+            pass
+
         # Build state
         state = SystemState(
             timestamp=datetime.now(timezone.utc),
@@ -337,7 +351,7 @@ class ControlPlaneService:
                 "available": ["ollama", "huggingface", "openai"],
             },
             embedding_model=config.get("EMBEDDING_MODEL", "sentence-transformers"),
-            workflow_status=WorkflowStatus.IDLE,
+            workflow_status=workflow_status,
             active_operations=[],
             health={"overall": "healthy", "checks": []},
         )

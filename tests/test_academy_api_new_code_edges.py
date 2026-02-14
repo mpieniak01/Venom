@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
@@ -197,3 +198,181 @@ def test_cleanup_terminal_job_container_logs_without_user_data():
     warning_mock.assert_called_once()
     assert "user-controlled" not in str(warning_mock.call_args.args)
     assert warning_mock.call_args.kwargs.get("exc_info") is True
+
+
+def test_load_uploads_metadata_returns_empty_when_missing(tmp_path):
+    with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
+        assert academy_routes._load_uploads_metadata() == []
+
+
+@patch("venom_core.config.SETTINGS")
+def test_upload_helper_path_and_size_validations(mock_settings, tmp_path):
+    mock_settings.ACADEMY_MAX_UPLOAD_SIZE_MB = 1
+
+    base = tmp_path.resolve()
+    inside = (tmp_path / "uploads" / "file.txt").resolve()
+    outside = tmp_path.parent.resolve() / "other.txt"
+
+    assert academy_routes._is_path_within_base(inside, base) is True
+    assert academy_routes._is_path_within_base(outside, base) is False
+
+    assert academy_routes._validate_file_size(1024) is True
+    assert academy_routes._validate_file_size(2 * 1024 * 1024) is False
+
+
+def test_save_upload_metadata_propagates_write_error(tmp_path):
+    with (
+        patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)),
+        patch("pathlib.Path.touch"),
+        patch("builtins.open", side_effect=OSError("disk full")),
+    ):
+        with pytest.raises(OSError):
+            academy_routes._save_upload_metadata({"id": "x"})
+
+
+def test_delete_upload_metadata_noop_when_metadata_missing(tmp_path):
+    with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
+        academy_routes._delete_upload_metadata("missing-id")
+        metadata_file = academy_routes._get_uploads_metadata_file()
+        assert not metadata_file.exists()
+
+
+def test_upload_metadata_helpers_and_hashes_roundtrip(tmp_path):
+    payload = (
+        b'{"instruction":"long enough instruction","output":"long enough output"}\n'
+    )
+    upload_path = tmp_path / "sample.jsonl"
+    upload_path.write_bytes(payload)
+
+    with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
+        hash_from_file = academy_routes._compute_file_hash(upload_path)
+        hash_from_bytes = academy_routes._compute_bytes_hash(payload)
+        assert hash_from_file == hash_from_bytes
+
+        academy_routes._save_upload_metadata({"id": "u1", "name": "a.jsonl"})
+        academy_routes._save_upload_metadata({"id": "u2", "name": "b.jsonl"})
+        uploads = academy_routes._load_uploads_metadata()
+        assert {item["id"] for item in uploads} == {"u1", "u2"}
+
+        academy_routes._delete_upload_metadata("u1")
+        uploads = academy_routes._load_uploads_metadata()
+        assert len(uploads) == 1
+        assert uploads[0]["id"] == "u2"
+
+
+@pytest.mark.parametrize(
+    ("filename", "content", "expected"),
+    [
+        ("a.jsonl", b'{"x":1}\n\n{"x":2}\n', 2),
+        ("a.json", b'[{"x":1},{"x":2}]', 2),
+        ("a.json", b'{"x":1}', 1),
+        ("a.md", b"q1\n\na1\n\nq2\n\na2", 4),
+        ("a.txt", b"q1\n\na1", 2),
+        ("a.csv", b"a,b\n1,2\n", 1),
+    ],
+)
+def test_estimate_records_from_content_parametrized(filename, content, expected):
+    assert academy_routes._estimate_records_from_content(filename, content) == expected
+
+
+def test_estimate_records_from_content_returns_zero_on_invalid_json():
+    with pytest.raises(Exception):
+        academy_routes._estimate_records_from_content("bad.json", b"{")
+
+
+@patch("venom_core.config.SETTINGS")
+def test_upload_endpoint_skip_non_file_and_empty_name(mock_settings, tmp_path):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_MAX_UPLOADS_PER_REQUEST = 5
+    mock_settings.ACADEMY_MAX_UPLOAD_SIZE_MB = 1
+    mock_settings.ACADEMY_ALLOWED_EXTENSIONS = [
+        ".jsonl",
+        ".json",
+        ".md",
+        ".txt",
+        ".csv",
+    ]
+
+    class _Form:
+        def getlist(self, key):
+            assert key == "files"
+            return [object(), SimpleNamespace(filename="")]
+
+        def get(self, _key, default=""):
+            return default
+
+    class _Req:
+        async def form(self):
+            return _Form()
+
+    with (
+        patch("venom_core.api.routes.academy.require_localhost_request"),
+        patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path),
+    ):
+        result = asyncio.run(academy_routes.upload_dataset_files(_Req()))
+
+    assert result["success"] is False
+    assert result["uploaded"] == 0
+    assert result["failed"] == 0
+
+
+@patch("venom_core.config.SETTINGS")
+def test_preview_dataset_upload_path_traversal_warning(mock_settings):
+    mock_settings.ENABLE_ACADEMY = True
+    client = _make_client()
+    with patch(
+        "venom_core.api.routes.academy._get_dataset_curator",
+        return_value=SimpleNamespace(
+            clear=lambda: None,
+            collect_from_lessons=lambda limit=1000: 0,
+            collect_from_git_history=lambda max_commits=100: 0,
+            collect_from_task_history=lambda max_tasks=100: 0,
+            filter_low_quality=lambda: 0,
+            get_statistics=lambda: {"total_examples": 0},
+            examples=[],
+        ),
+    ):
+        resp = client.post(
+            "/api/v1/academy/dataset/preview",
+            json={
+                "include_lessons": False,
+                "include_git": False,
+                "upload_ids": ["../bad.jsonl"],
+            },
+        )
+
+    assert resp.status_code == 200
+    warnings = resp.json()["warnings"]
+    assert any("path traversal" in warning.lower() for warning in warnings)
+
+
+@patch("venom_core.config.SETTINGS")
+def test_curate_dataset_handles_unexpected_exception(mock_settings):
+    mock_settings.ENABLE_ACADEMY = True
+    client = _make_client()
+
+    broken_curator = SimpleNamespace(clear=lambda: None)
+    with patch(
+        "venom_core.api.routes.academy._get_dataset_curator",
+        return_value=broken_curator,
+    ):
+        resp = client.post(
+            "/api/v1/academy/dataset",
+            json={"include_lessons": True, "include_git": False},
+        )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["success"] is False
+    assert "Failed to curate dataset" in payload["message"]
+
+
+@patch("venom_core.config.SETTINGS")
+def test_trainable_models_endpoint_contains_trainable_and_non_trainable(mock_settings):
+    mock_settings.ENABLE_ACADEMY = True
+    client = _make_client()
+    resp = client.get("/api/v1/academy/models/trainable")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert any(item["trainable"] for item in payload)
+    assert any(not item["trainable"] for item in payload)

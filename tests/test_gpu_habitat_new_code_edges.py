@@ -523,3 +523,52 @@ def test_is_pid_owned_by_current_user_handles_read_errors(monkeypatch):
 
     monkeypatch.setattr(gpu_habitat_mod, "Path", _ExplodingPath)
     assert habitat._is_pid_owned_by_current_user(1234) is False
+
+
+def test_check_local_gpu_availability_true(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    monkeypatch.setattr(
+        gpu_habitat_mod.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+    assert habitat._check_local_gpu_availability() is True
+
+
+def test_check_local_dependencies_sets_unsloth_flag(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    habitat.enable_gpu = True
+
+    imported = {"unsloth": False}
+
+    def _fake_import(name):
+        if name == "unsloth":
+            imported["unsloth"] = True
+            return object()
+        return object()
+
+    monkeypatch.setattr(gpu_habitat_mod.importlib, "import_module", _fake_import)
+    habitat._check_local_dependencies()
+    assert habitat._has_unsloth is True
+    assert imported["unsloth"] is True
+
+
+def test_cleanup_docker_job_handles_legacy_stop_remove(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    called = {"stop": 0, "remove": 0}
+
+    class _Container:
+        def stop(self, timeout=None):
+            called["stop"] += 1
+            if timeout == 10:
+                raise TypeError("legacy")
+
+        def remove(self, force=None):
+            called["remove"] += 1
+            if force:
+                raise TypeError("legacy")
+
+    monkeypatch.setattr(habitat, "_get_job_container", lambda _job_name: _Container())
+    habitat._cleanup_docker_job("job-x")
+    assert called["stop"] == 2
+    assert called["remove"] == 2

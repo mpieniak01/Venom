@@ -76,5 +76,18 @@ tests/test_gpu_habitat.py
 tests/test_session_store.py
 tests/test_providers_api.py
 tests/test_providers_api_edges.py
+tests/test_provider_admin.py
+tests/test_provider_governance.py
+tests/test_provider_observability.py
+tests/test_provider_observability_api.py
+tests/test_governance_api.py
+tests/test_control_plane_compatibility.py
+tests/test_workflow_control_api.py
+tests/test_workflow_control_contract.py
+tests/test_workflow_operations.py
+tests/test_workflow_operations_api.py
+tests/test_admin_audit.py
+tests/test_error_mappings.py
+tests/test_control_plane_audit.py
 
 # AUTO-ADDED by pre-commit (staged backend/test changes)

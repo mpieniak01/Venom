@@ -462,6 +462,37 @@ config/env-history/.env-YYYYMMDD-HHMMSS
 
 Venom offers tools for quick diagnostics of system resource usage.
 
+### 🧹 Dev Environment Hygiene (Repo + Docker)
+
+Use these commands to audit and safely clean rebuildable artifacts in local dev environment:
+
+```bash
+# 1) Generate dependency/artifact audit (JSON + Markdown)
+make env-audit
+
+# 2) Safe cleanup (repo artifacts only)
+make env-clean-safe
+
+# 3) Safe Docker cleanup (dangling/build cache)
+make env-clean-docker-safe
+
+# 4) Deep cleanup (explicit opt-in)
+CONFIRM_DEEP_CLEAN=1 make env-clean-deep
+
+# 5) Compare latest two audit reports
+make env-report-diff
+```
+
+Safety defaults:
+- protected (not removed by default): `models/`, `data/*`, `.venv/`
+- safe mode removes only rebuildable caches/build artifacts
+- deep mode requires `CONFIRM_DEEP_CLEAN=1`
+
+Dependency policy:
+- Python: critical shared pins must stay aligned between `requirements.txt` and `requirements-ci-lite.txt`
+- Node: `web-next/package-lock.json` root deps/devDeps must match `web-next/package.json`
+- Lightweight policy validation runs in `make audit-ci-lite`
+
 #### System Snapshot
 ```bash
 # Generate diagnostic report (processes, memory, CPU, service status)

@@ -71,7 +71,7 @@ tavily-python           # Tavily AI Search API - nowoczesna wyszukiwarka dla AI
 beautifulsoup4          # Parsowanie HTML
 trafilatura             # Ekstrakcja tekstu z stron WWW (lepsze czyszczenie niż BS4)
 PyGithub                # GitHub API wrapper (External Discovery - GitHub Scanner)
-huggingface_hub         # Hugging Face Hub API (External Discovery - Model Explorer)
+huggingface_hub>=0.35.3 # Hugging Face Hub API (External Discovery - Model Explorer), aligned with CI-lite baseline
 
 # Google Calendar Integration (THE_CALENDAR)
 google-auth>=2.23.0     # Google OAuth2 authentication
@@ -103,7 +103,7 @@ tqdm==4.67.1            # Paski postępu (pin zgodny z profilem CI Lite)
 docker                  # Docker SDK dla Python (Docker Sandbox)
 gitpython==3.1.46       # Git operations (Git Skill) (pin zgodny z profilem CI Lite)
 apscheduler             # Advanced Python Scheduler (background jobs)
-watchdog                # File system monitoring
+watchdog>=6.0.0         # File system monitoring, aligned with CI-lite baseline
 radon                   # Code complexity analysis
 psutil==5.9.8           # System and process utilities (pin zgodny z profilem CI Lite)
 websockets==15.0.1      # WebSocket client/server (pin zgodny z profilem CI Lite)

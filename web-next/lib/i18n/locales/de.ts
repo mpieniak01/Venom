@@ -1340,6 +1340,42 @@ export const de = {
       activate: "Aktivieren",
     },
   },
+  governance: {
+    status: {
+      configured: "Konfiguriert",
+      missingCredentials: "Fehlende Anmeldeinformationen",
+      invalidCredentials: "Ungültige Anmeldeinformationen",
+    },
+    errors: {
+      budgetHardLimitExceeded: "Hartes Budgetlimit überschritten",
+      providerBudgetExceeded: "Provider-Budget überschritten",
+      rateLimitRequestsExceeded: "Anfragenlimit überschritten",
+      rateLimitTokensExceeded: "Token-Limit überschritten",
+      noProviderAvailable: "Kein Provider verfügbar",
+      fallbackAuthError: "Provider wegen Authentifizierungsfehler gewechselt",
+      fallbackTimeout: "Provider wegen Zeitüberschreitung gewechselt",
+      fallbackBudgetExceeded: "Provider wegen Budgetüberschreitung gewechselt",
+      fallbackDegraded: "Provider wegen Degradation gewechselt",
+    },
+    messages: {
+      credentialsConfigured: "Provider {{provider}} ist ordnungsgemäß konfiguriert",
+      credentialsMissing: "Provider {{provider}} hat fehlende Anmeldeinformationen",
+      credentialsInvalid: "Provider {{provider}} hat ungültige Anmeldeinformationen",
+      switchedProvider: "Zu {{provider}} gewechselt",
+      noFallbackAvailable: "Kein Fallback-Provider verfügbar",
+    },
+    labels: {
+      costLimits: "Kostenlimits",
+      rateLimits: "Ratenlimits",
+      softLimit: "Soft Limit",
+      hardLimit: "Hard Limit",
+      currentUsage: "Aktuelle Nutzung",
+      maxRequests: "Max. Anfragen/Min",
+      maxTokens: "Max. Token/Min",
+      recentFallbacks: "Letzte Fallbacks",
+      fallbackPolicy: "Fallback-Richtlinie",
+    },
+  },
   benchmark: {
     page: {
       eyebrow: "Benchmark Control",

@@ -74,9 +74,7 @@ export const ModelsViewer = () => {
           <div className="flex flex-col gap-10">
             <NewsSection {...logic} />
 
-            <section className="grid gap-10 lg:grid-cols-[2.2fr_1fr]">
-              <RecommendedAndCatalog {...logic} />
-            </section>
+            <RecommendedAndCatalog {...logic} />
           </div>
         )}
 

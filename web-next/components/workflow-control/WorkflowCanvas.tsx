@@ -4,6 +4,7 @@ import { useMemo, useEffect } from "react";
 import {
   ReactFlow,
   Node,
+  NodeProps,
   MiniMap,
   useNodesState,
   useEdgesState,
@@ -230,6 +231,22 @@ function NodeActions() {
   );
 }
 
+function SelectedNodePulse({
+  selected,
+  glowClass,
+}: {
+  selected: boolean;
+  glowClass: string;
+}) {
+  if (!selected) return null;
+  return (
+    <div
+      aria-hidden="true"
+      className={`pointer-events-none absolute inset-0 rounded-xl border-2 ${glowClass} opacity-70 motion-safe:animate-pulse motion-reduce:animate-none`}
+    />
+  );
+}
+
 // Swimlane Styling Map - Increased Contrast
 const SWIMLANE_STYLES: Record<string, { bg: string; border: string; text: string; bgContent: string }> = {
   decision: { bg: 'bg-blue-900/40', border: 'border-slate-700', text: 'text-blue-400', bgContent: 'bg-blue-900/5' },
@@ -258,10 +275,11 @@ function SwimlaneNode({ data }: { data: { label: string, index: number } }) {
   );
 }
 
-function DecisionNode() {
+function DecisionNode({ selected = false }: NodeProps) {
   const t = useTranslation();
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-blue-500 text-blue-100 min-w-[210px] relative">
+      <SelectedNodePulse selected={selected} glowClass="border-blue-300/90 shadow-[0_0_24px_rgba(96,165,250,0.45)]" />
       <Handle type="source" position={Position.Bottom} className="!bg-blue-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-blue-400 truncate text-center">{t("workflowControl.sections.decision")}</div>
@@ -269,10 +287,11 @@ function DecisionNode() {
   );
 }
 
-function KernelNode() {
+function KernelNode({ selected = false }: NodeProps) {
   const t = useTranslation();
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(34,197,94,0.3)] hover:shadow-[0_0_25px_rgba(34,197,94,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-green-500 text-green-100 min-w-[210px] relative">
+      <SelectedNodePulse selected={selected} glowClass="border-green-300/90 shadow-[0_0_24px_rgba(74,222,128,0.45)]" />
       <Handle type="target" position={Position.Left} className="!bg-green-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
       <NodeActions />
@@ -281,10 +300,11 @@ function KernelNode() {
   );
 }
 
-function RuntimeNode() {
+function RuntimeNode({ selected = false }: NodeProps) {
   const t = useTranslation();
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-purple-500 text-purple-100 min-w-[210px] relative">
+      <SelectedNodePulse selected={selected} glowClass="border-purple-300/90 shadow-[0_0_24px_rgba(196,181,253,0.45)]" />
       <Handle type="target" position={Position.Left} className="!bg-purple-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-purple-500 !w-3 !h-3" />
       <NodeActions />
@@ -293,10 +313,11 @@ function RuntimeNode() {
   );
 }
 
-function ProviderNode() {
+function ProviderNode({ selected = false }: NodeProps) {
   const t = useTranslation();
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-orange-500 text-orange-100 min-w-[210px] relative">
+      <SelectedNodePulse selected={selected} glowClass="border-orange-300/90 shadow-[0_0_24px_rgba(253,186,116,0.45)]" />
       <Handle type="target" position={Position.Left} className="!bg-orange-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-orange-400 truncate text-center">{t("workflowControl.labels.currentProvider")}</div>
@@ -304,10 +325,11 @@ function ProviderNode() {
   );
 }
 
-function EmbeddingNode() {
+function EmbeddingNode({ selected = false }: NodeProps) {
   const t = useTranslation();
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(236,72,153,0.3)] hover:shadow-[0_0_25px_rgba(236,72,153,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-pink-500 text-pink-100 min-w-[210px] relative">
+      <SelectedNodePulse selected={selected} glowClass="border-pink-300/90 shadow-[0_0_24px_rgba(249,168,212,0.45)]" />
       <Handle type="target" position={Position.Left} className="!bg-pink-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-pink-500 !w-3 !h-3" />
       <NodeActions />
@@ -316,10 +338,11 @@ function EmbeddingNode() {
   );
 }
 
-function IntentNode() {
+function IntentNode({ selected = false }: NodeProps) {
   const t = useTranslation();
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:shadow-[0_0_25px_rgba(234,179,8,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-yellow-500 text-yellow-100 min-w-[210px] relative">
+      <SelectedNodePulse selected={selected} glowClass="border-yellow-300/90 shadow-[0_0_24px_rgba(253,224,71,0.45)]" />
       <Handle type="target" position={Position.Left} className="!bg-yellow-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-yellow-500 !w-3 !h-3" />
       <NodeActions />

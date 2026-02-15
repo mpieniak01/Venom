@@ -92,3 +92,7 @@ class ExecutionPlan(BaseModel):
     current_step: int = Field(
         default=0, description="Indeks aktualnie wykonywanego kroku"
     )
+
+
+# Backward-compatible exports for modules still importing task DTOs from core.models.
+# Canonical API DTO definitions live in venom_core.api.schemas.tasks.

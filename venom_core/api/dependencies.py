@@ -6,6 +6,7 @@ from typing import Optional
 
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
+from venom_core.core.tracer import RequestTracer
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
@@ -24,6 +25,7 @@ _vector_store: Optional[VectorStore] = None
 _graph_store: Optional[CodeGraphStore] = None
 _lessons_store: Optional[LessonsStore] = None
 _session_store: Optional[SessionStore] = None
+_request_tracer: Optional[RequestTracer] = None
 
 
 def set_orchestrator(orchestrator: Orchestrator):
@@ -66,6 +68,13 @@ def set_session_store(session_store: SessionStore):
     global _session_store
     _session_store = session_store
     get_session_store.cache_clear()
+
+
+def set_request_tracer(request_tracer: RequestTracer):
+    """Ustaw globalną instancję request tracer."""
+    global _request_tracer
+    _request_tracer = request_tracer
+    get_request_tracer.cache_clear()
 
 
 @lru_cache()
@@ -183,3 +192,23 @@ def get_session_store() -> SessionStore:
         else:
             raise RuntimeError("SessionStore nie jest dostępny")
     return _session_store
+
+
+@lru_cache()
+def get_request_tracer() -> RequestTracer:
+    """
+    Pobierz instancję RequestTracer (dependency injection).
+
+    Returns:
+        RequestTracer: Instancja request tracer
+
+    Raises:
+        RuntimeError: Jeśli request tracer nie został zainicjalizowany
+    """
+    global _request_tracer
+    if _request_tracer is None:
+        if is_testing_mode():
+            _request_tracer = RequestTracer()
+        else:
+            raise RuntimeError("RequestTracer nie jest dostępny")
+    return _request_tracer

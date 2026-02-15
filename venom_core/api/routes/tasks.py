@@ -6,13 +6,20 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncGenerator, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from venom_core.api.dependencies import (
+    get_orchestrator,
+    get_request_tracer,
+    get_state_manager,
+)
 from venom_core.api.schemas.tasks import HistoryRequestDetail, HistoryRequestSummary
 from venom_core.core import metrics as metrics_module
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus, VenomTask
-from venom_core.core.tracer import TraceStatus
+from venom_core.core.orchestrator import Orchestrator
+from venom_core.core.state_manager import StateManager
+from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -48,18 +55,26 @@ HISTORY_DETAIL_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-# Dependency - będzie ustawione w main.py
-_orchestrator = None
-_state_manager = None
-_request_tracer = None
-
-
 def set_dependencies(orchestrator, state_manager, request_tracer):
-    """Ustaw zależności dla routera."""
-    global _orchestrator, _state_manager, _request_tracer
-    _orchestrator = orchestrator
-    _state_manager = state_manager
-    _request_tracer = request_tracer
+    """
+    Ustaw zależności dla routera.
+    
+    DEPRECATED: Use venom_core.api.dependencies setters instead.
+    This function is maintained for backward compatibility with tests.
+    """
+    from venom_core.api.dependencies import (
+        set_orchestrator,
+        set_request_tracer,
+        set_state_manager,
+    )
+
+    if orchestrator is not None:
+        set_orchestrator(orchestrator)
+    if state_manager is not None:
+        set_state_manager(state_manager)
+    if request_tracer is not None:
+        set_request_tracer(request_tracer)
+
 
 
 def _get_llm_runtime(task: VenomTask) -> dict:
@@ -227,10 +242,10 @@ def _resolve_poll_interval(
     return poll_interval_seconds
 
 
-def _assert_task_available_for_stream(task_id: UUID) -> None:
-    if _state_manager is None:
-        raise HTTPException(status_code=503, detail=STATE_MANAGER_UNAVAILABLE)
-    if _state_manager.get_task(task_id) is None:
+def _assert_task_available_for_stream(
+    task_id: UUID, state_manager: StateManager
+) -> None:
+    if state_manager.get_task(task_id) is None:
         raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
 
 
@@ -247,7 +262,9 @@ def _is_terminal_status(status: TaskStatus) -> bool:
     return status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
 
 
-async def _task_stream_generator(task_id: UUID) -> AsyncGenerator[str, None]:
+async def _task_stream_generator(
+    task_id: UUID, state_manager: StateManager
+) -> AsyncGenerator[str, None]:
     poll_interval_seconds = 0.25
     fast_poll_interval_seconds = 0.05
     heartbeat_every_ticks = 10
@@ -257,17 +274,6 @@ async def _task_stream_generator(task_id: UUID) -> AsyncGenerator[str, None]:
     ticks_since_emit = 0
 
     while True:
-        state_manager = _state_manager
-        if state_manager is None:
-            payload = {
-                "task_id": str(task_id),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "event": "service_unavailable",
-                "detail": STATE_MANAGER_UNAVAILABLE,
-            }
-            yield f"event:service_unavailable\ndata:{json.dumps(payload)}\n\n"
-            break
-
         task: Optional[VenomTask] = state_manager.get_task(task_id)
         if task is None:
             payload = _build_missing_task_payload(task_id)
@@ -344,12 +350,16 @@ def _bootstrap_orchestrator_if_testing():
     status_code=201,
     responses=TASK_CREATE_RESPONSES,
 )
-async def create_task(request: TaskRequest):
+async def create_task(
+    request: TaskRequest,
+    orchestrator: Orchestrator = Depends(get_orchestrator),
+):
     """
     Tworzy nowe zadanie i uruchamia je w tle.
 
     Args:
         request: Żądanie z treścią zadania
+        orchestrator: Orchestrator injected via Depends
 
     Returns:
         Odpowiedź z ID zadania i statusem
@@ -357,18 +367,13 @@ async def create_task(request: TaskRequest):
     Raises:
         HTTPException: 400 przy błędnym body, 500 przy błędzie wewnętrznym
     """
-    _bootstrap_orchestrator_if_testing()
-
-    if _orchestrator is None:
-        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
-
     try:
         # Inkrementuj licznik zadań
         collector = metrics_module.metrics_collector
         if collector:
             collector.increment_task_created()
 
-        response = await _orchestrator.submit_task(request)
+        response = await orchestrator.submit_task(request)
         return response
     except Exception as e:
         logger.exception("Błąd podczas tworzenia zadania")
@@ -378,12 +383,16 @@ async def create_task(request: TaskRequest):
 
 
 @router.get("/tasks/{task_id}", response_model=VenomTask, responses=TASK_GET_RESPONSES)
-def get_task(task_id: UUID):
+def get_task(
+    task_id: UUID,
+    state_manager: StateManager = Depends(get_state_manager),
+):
     """
     Pobiera szczegóły zadania po ID.
 
     Args:
         task_id: UUID zadania
+        state_manager: StateManager injected via Depends
 
     Returns:
         Szczegóły zadania
@@ -391,45 +400,46 @@ def get_task(task_id: UUID):
     Raises:
         HTTPException: 404 jeśli zadanie nie istnieje
     """
-    if _state_manager is None:
-        raise HTTPException(status_code=503, detail=STATE_MANAGER_UNAVAILABLE)
-
-    task = _state_manager.get_task(task_id)
+    task = state_manager.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
     return task
 
 
 @router.get("/tasks/{task_id}/stream", responses=TASK_STREAM_RESPONSES)
-def stream_task(task_id: UUID):
+def stream_task(
+    task_id: UUID,
+    state_manager: StateManager = Depends(get_state_manager),
+):
     """
     Strumieniuje zmiany zadania jako Server-Sent Events (SSE).
 
     Args:
         task_id: UUID zadania
+        state_manager: StateManager injected via Depends
 
     Returns:
         StreamingResponse z wydarzeniami `task_update`/`heartbeat`
     """
 
-    _assert_task_available_for_stream(task_id)
+    _assert_task_available_for_stream(task_id, state_manager)
     return StreamingResponse(
-        _task_stream_generator(task_id), media_type="text/event-stream"
+        _task_stream_generator(task_id, state_manager), media_type="text/event-stream"
     )
 
 
 @router.get("/tasks", response_model=list[VenomTask], responses=TASKS_LIST_RESPONSES)
-def get_all_tasks():
+def get_all_tasks(state_manager: StateManager = Depends(get_state_manager)):
     """
     Pobiera listę wszystkich zadań.
+
+    Args:
+        state_manager: StateManager injected via Depends
 
     Returns:
         Lista wszystkich zadań w systemie
     """
-    if _state_manager is None:
-        raise HTTPException(status_code=503, detail=STATE_MANAGER_UNAVAILABLE)
-
-    return _state_manager.get_all_tasks()
+    return state_manager.get_all_tasks()
 
 
 @router.get(
@@ -448,6 +458,7 @@ def get_request_history(
             description="Filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)"
         ),
     ] = None,
+    request_tracer: RequestTracer = Depends(get_request_tracer),
 ):
     """
     Pobiera listę requestów z historii (paginowana).
@@ -464,12 +475,9 @@ def get_request_history(
         HTTPException: 400 jeśli podano nieprawidłowy status
         HTTPException: 503 jeśli RequestTracer nie jest dostępny
     """
-    if _request_tracer is None:
-        raise HTTPException(status_code=503, detail=REQUEST_TRACER_UNAVAILABLE)
-
     _validate_trace_status(status)
 
-    traces = _request_tracer.get_all_traces(
+    traces = request_tracer.get_all_traces(
         limit=limit, offset=offset, status_filter=status
     )
     return [_build_history_summary(trace) for trace in traces]
@@ -480,12 +488,16 @@ def get_request_history(
     response_model=HistoryRequestDetail,
     responses=HISTORY_DETAIL_RESPONSES,
 )
-def get_request_detail(request_id: UUID):
+def get_request_detail(
+    request_id: UUID,
+    request_tracer: RequestTracer = Depends(get_request_tracer),
+):
     """
     Pobiera szczegóły requestu z pełną listą kroków.
 
     Args:
         request_id: UUID requestu
+        request_tracer: RequestTracer injected via Depends
 
     Returns:
         Szczegółowe informacje o requestie wraz z timeline kroków
@@ -493,10 +505,7 @@ def get_request_detail(request_id: UUID):
     Raises:
         HTTPException: 404 jeśli request nie istnieje
     """
-    if _request_tracer is None:
-        raise HTTPException(status_code=503, detail=REQUEST_TRACER_UNAVAILABLE)
-
-    trace = _request_tracer.get_trace(request_id)
+    trace = request_tracer.get_trace(request_id)
     if trace is None:
         raise HTTPException(
             status_code=404, detail=f"Request {request_id} nie istnieje w historii"

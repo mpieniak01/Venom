@@ -23,10 +23,10 @@ describe("workflow canvas graph builder", () => {
     const nodeIds = graph.nodes.map((n) => n.id).sort();
     assert.deepEqual(
       nodeIds,
-      ["decision", "embedding", "kernel", "provider", "runtime"].sort()
+      ["decision", "intent", "embedding", "kernel", "provider", "runtime"].sort()
     );
 
     const edgeIds = graph.edges.map((e) => e.id).sort();
-    assert.deepEqual(edgeIds, ["e1", "e2", "e3", "e4"]);
+    assert.deepEqual(edgeIds, ["e1", "e2", "e3", "e4", "e5"]);
   });
 });

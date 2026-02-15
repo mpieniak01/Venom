@@ -251,6 +251,60 @@ export interface TrainableModelInfo {
   installed_local: boolean;
 }
 
+type ParsedErrorBody = {
+  message?: unknown;
+  detail?: unknown;
+  errors?: unknown;
+};
+
+function extractErrorMessageFromArray(items: unknown[]): string | null {
+  const messages: string[] = [];
+  for (const item of items) {
+    if (typeof item === "string") {
+      messages.push(item);
+      continue;
+    }
+    if (item && typeof item === "object") {
+      const obj = item as { msg?: unknown; message?: unknown; detail?: unknown };
+      const nested =
+        (typeof obj.msg === "string" && obj.msg) ||
+        (typeof obj.message === "string" && obj.message) ||
+        (typeof obj.detail === "string" && obj.detail);
+      if (nested) messages.push(nested);
+    }
+  }
+  return messages.length > 0 ? messages.join("; ") : null;
+}
+
+function extractErrorMessage(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return extractErrorMessageFromArray(value);
+  if (value && typeof value === "object") {
+    const obj = value as { message?: unknown; detail?: unknown };
+    if (typeof obj.message === "string") return obj.message;
+    if (typeof obj.detail === "string") return obj.detail;
+  }
+  return null;
+}
+
+function parseErrorBody(text: string): ParsedErrorBody | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as ParsedErrorBody;
+  } catch {
+    return null;
+  }
+}
+
+function resolveErrorMessage(body: ParsedErrorBody): string | null {
+  return (
+    extractErrorMessage(body.message) ||
+    extractErrorMessage(body.detail) ||
+    extractErrorMessage(body.errors)
+  );
+}
+
 /**
  * Upload user dataset files to Academy
  */
@@ -259,62 +313,9 @@ async function parseUploadErrorMessage(response: Response): Promise<string> {
   try {
     const text = await response.text();
     if (!text || !text.trim()) return defaultError;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text) as unknown;
-    } catch {
-      return text;
-    }
-
-    if (!parsed || typeof parsed !== "object") {
-      return text;
-    }
-
-    type ParsedErrorBody = {
-      message?: unknown;
-      detail?: unknown;
-      errors?: unknown;
-    };
-
-    const body = parsed as ParsedErrorBody;
-    const extractMessage = (value: unknown): string | null => {
-      if (typeof value === "string") return value;
-      if (Array.isArray(value)) {
-        const messages: string[] = [];
-        for (const item of value) {
-          if (typeof item === "string") {
-            messages.push(item);
-            continue;
-          }
-          if (item && typeof item === "object") {
-            const obj = item as { msg?: unknown; message?: unknown; detail?: unknown };
-            const nested =
-              (typeof obj.msg === "string" && obj.msg) ||
-              (typeof obj.message === "string" && obj.message) ||
-              (typeof obj.detail === "string" && obj.detail);
-            if (nested) messages.push(nested);
-          }
-        }
-        return messages.length > 0 ? messages.join("; ") : null;
-      }
-      if (value && typeof value === "object") {
-        const obj = value as { message?: unknown; detail?: unknown };
-        if (typeof obj.message === "string") return obj.message;
-        if (typeof obj.detail === "string") return obj.detail;
-      }
-      return null;
-    };
-
-    const fromMessage = extractMessage(body.message);
-    if (fromMessage) return fromMessage;
-
-    const fromDetail = extractMessage(body.detail);
-    if (fromDetail) return fromDetail;
-
-    const fromErrors = extractMessage(body.errors);
-    if (fromErrors) return fromErrors;
-
-    return text;
+    const body = parseErrorBody(text);
+    if (!body) return text;
+    return resolveErrorMessage(body) || text;
   } catch {
     return defaultError;
   }

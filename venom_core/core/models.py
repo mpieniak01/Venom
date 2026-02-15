@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from venom_core.api.schemas.tasks import TaskExtraContext, TaskRequest, TaskResponse
 from venom_core.utils.helpers import get_utc_now
 
 
@@ -94,5 +95,14 @@ class ExecutionPlan(BaseModel):
     )
 
 
-# Backward-compatible exports for modules still importing task DTOs from core.models.
-# Canonical API DTO definitions live in venom_core.api.schemas.tasks.
+__all__ = [
+    "TaskStatus",
+    "ContextUsed",
+    "VenomTask",
+    "Intent",
+    "ExecutionStep",
+    "ExecutionPlan",
+    "TaskExtraContext",
+    "TaskRequest",
+    "TaskResponse",
+]

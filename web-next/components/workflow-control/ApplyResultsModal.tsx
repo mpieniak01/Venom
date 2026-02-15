@@ -67,9 +67,9 @@ export function ApplyResultsModal({
                 {t("workflowControl.apply.appliedChanges", { count: appliedChanges.length })}
               </h3>
               <div className="space-y-1">
-                {appliedChanges.map((change: AppliedChange, idx: number) => (
+                {appliedChanges.map((change: AppliedChange) => (
                   <div
-                    key={idx}
+                    key={`${change.resource_type}:${change.resource_id}:${change.message}`}
                     className="p-2 rounded bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-sm"
                   >
                     <div className="font-mono text-xs">
@@ -92,9 +92,9 @@ export function ApplyResultsModal({
                 {t("workflowControl.apply.pendingRestart", { count: pendingRestart.length })}
               </h3>
               <div className="space-y-1">
-                {pendingRestart.map((service: string, idx: number) => (
+                {pendingRestart.map((service: string) => (
                   <div
-                    key={idx}
+                    key={service}
                     className="p-2 rounded bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 text-sm"
                   >
                     <div className="font-mono text-xs">{service}</div>
@@ -112,9 +112,9 @@ export function ApplyResultsModal({
                 {t("workflowControl.apply.failedChanges", { count: failedChanges.length })}
               </h3>
               <div className="space-y-1">
-                {failedChanges.map((error: string, idx: number) => (
+                {failedChanges.map((error: string) => (
                   <div
-                    key={idx}
+                    key={error}
                     className="p-2 rounded bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-sm"
                   >
                     <div className="text-xs">{error}</div>

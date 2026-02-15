@@ -146,15 +146,7 @@ def _get_provider_capabilities(provider: str) -> ProviderCapability:
         return ProviderCapability(
             install=True, search=False, activate=True, inference=True, trainable=False
         )
-    elif provider == "openai":
-        return ProviderCapability(
-            install=False, search=False, activate=True, inference=True, trainable=False
-        )
-    elif provider == "google":
-        return ProviderCapability(
-            install=False, search=False, activate=True, inference=True, trainable=False
-        )
-    elif provider == "local":
+    elif provider in {"openai", "google", "local"}:
         return ProviderCapability(
             install=False, search=False, activate=True, inference=True, trainable=False
         )

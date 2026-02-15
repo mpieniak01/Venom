@@ -33,6 +33,12 @@ export function WorkflowFooter({
     const isRunning = status === "running";
     const isPaused = status === "paused";
     const isFailed = status === "failed";
+    let statusTextClass = "text-foreground";
+    if (isRunning) {
+        statusTextClass = "text-green-500";
+    } else if (isFailed) {
+        statusTextClass = "text-destructive";
+    }
 
     return (
         <div className="border-t bg-muted/40 p-1 flex items-center justify-between gap-4 h-10">
@@ -40,10 +46,7 @@ export function WorkflowFooter({
                 <span className="text-xs font-semibold text-muted-foreground uppercase">
                     {t("workflowControl.labels.systemStatus")}:
                 </span>
-                <span className={`text-sm font-mono ${isRunning ? "text-green-500" :
-                    isFailed ? "text-destructive" :
-                        "text-foreground"
-                    }`}>
+                <span className={`text-sm font-mono ${statusTextClass}`}>
                     {status || "UNKNOWN"}
                 </span>
             </div>

@@ -127,6 +127,11 @@ export function TrainingPanel() {
     return labels[status];
   };
 
+  let baseModelPlaceholder = t("academy.training.loadingModels");
+  if (!modelsLoading && trainableModels.length === 0) {
+    baseModelPlaceholder = t("academy.training.noTrainableModels");
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -157,10 +162,8 @@ export function TrainingPanel() {
               disabled={modelsLoading || trainableModels.length === 0}
               className="mt-2 flex h-10 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {modelsLoading ? (
-                <option value="">{t("academy.training.loadingModels")}</option>
-              ) : trainableModels.length === 0 ? (
-                <option value="">{t("academy.training.noTrainableModels")}</option>
+              {modelsLoading || trainableModels.length === 0 ? (
+                <option value="">{baseModelPlaceholder}</option>
               ) : (
                 trainableModels.map((model) => (
                   <option key={model.model_id} value={model.model_id}>

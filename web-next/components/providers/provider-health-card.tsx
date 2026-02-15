@@ -145,8 +145,8 @@ export function ProviderHealthCard({ provider, health }: ProviderHealthCardProps
             {t("providers.health.sloBreaches")}
           </p>
           <div className="space-y-1">
-            {health.slo_breaches.map((breach, idx) => (
-              <div key={idx} className="rounded-2xl bg-red-500/10 border border-red-500/20 px-3 py-2">
+            {health.slo_breaches.map((breach) => (
+              <div key={breach} className="rounded-2xl bg-red-500/10 border border-red-500/20 px-3 py-2">
                 <p className="text-xs text-red-400">{breach}</p>
               </div>
             ))}

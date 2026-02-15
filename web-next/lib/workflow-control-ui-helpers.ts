@@ -8,8 +8,13 @@ export function shouldShowApplyResultsModal(
   return showResultsModal && Boolean(applyResults);
 }
 
-export function getWorkflowStatusMeta(workflowStatus?: string) {
-  const normalized = workflowStatus || "idle";
+export function getWorkflowStatusMeta(workflowStatus = "idle") {
+  const normalized = workflowStatus;
+  const colorClasses: Record<string, string> = {
+    running: "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100",
+    paused: "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100",
+    failed: "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100",
+  };
   return {
     statusKey: normalized,
     canPause: normalized === "running",
@@ -17,13 +22,7 @@ export function getWorkflowStatusMeta(workflowStatus?: string) {
     canCancel: ["running", "paused"].includes(normalized),
     canRetry: ["failed", "cancelled"].includes(normalized),
     colorClass:
-      normalized === "running"
-        ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100"
-        : normalized === "paused"
-          ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100"
-          : normalized === "failed"
-            ? "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100"
-            : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100",
+      colorClasses[normalized] || "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100",
   };
 }
 

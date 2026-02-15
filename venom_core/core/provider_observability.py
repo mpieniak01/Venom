@@ -293,11 +293,13 @@ class ProviderObservability:
         Args:
             provider: Nazwa providera
             slo_status: Aktualny status SLO
-            provider_metrics: Metryki providera
-
         Returns:
             Lista wyemitowanych alertów
         """
+        if provider_metrics:
+            logger.debug(
+                f"Alert evaluation for {provider} with metrics: {', '.join(sorted(provider_metrics.keys()))}"
+            )
         emitted_alerts: List[Alert] = []
         candidate_alerts = [
             self._build_high_latency_alert(provider, slo_status),

@@ -281,8 +281,8 @@ function extractErrorMessage(value: unknown): string | null {
   if (Array.isArray(value)) return extractErrorMessageFromArray(value);
   if (value && typeof value === "object") {
     const obj = value as { message?: unknown; detail?: unknown };
-    if (typeof obj.message === "string") return obj.message;
-    if (typeof obj.detail === "string") return obj.detail;
+    if (typeof obj?.message === "string") return obj.message;
+    if (typeof obj?.detail === "string") return obj.detail;
   }
   return null;
 }
@@ -407,10 +407,7 @@ export async function previewDataset(
 export async function curateDatasetV2(
   params: DatasetScopeRequest
 ): Promise<DatasetResponse> {
-  return apiFetch<DatasetResponse>("/api/v1/academy/dataset", {
-    method: "POST",
-    body: JSON.stringify(params),
-  });
+  return curateDataset(params);
 }
 
 /**

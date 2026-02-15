@@ -1944,6 +1944,7 @@ export const de = {
     },
     embeddingModels: {
       sentenceTransformers: "Sentence Transformers",
+      "sentence-transformers": "Sentence Transformers",
       openai: "OpenAI",
       google: "Google",
       "gpt-4": "GPT-4 (Embedding)",

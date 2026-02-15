@@ -315,11 +315,51 @@ export function useWorkflowState() {
     return () => clearInterval(interval);
   }, [fetchSystemState]);
 
+  // Draft State Management
+  const [draftState, setDraftState] = useState<SystemState | null>(null);
+
+  // Sync draft with system state initially
+  useEffect(() => {
+    if (systemState && !draftState) {
+      setDraftState(JSON.parse(JSON.stringify(systemState)));
+    }
+  }, [systemState, draftState]);
+
+  const hasChanges = JSON.stringify(systemState) !== JSON.stringify(draftState);
+
+  const updateNode = useCallback((nodeId: string, data: unknown) => {
+    setDraftState((prev) => {
+      if (!prev) return null;
+      // Deep merge logic simplified for MVP - usually we'd use immer or similar
+      // Mapping node ID to state keys (simplified mapping)
+      const next = { ...prev };
+      const typedData = data as Record<string, unknown>;
+
+      if (nodeId === 'decision') next.decision_strategy = typedData.strategy as string;
+      if (nodeId === 'decision' && typedData.intentMode) next.intent_mode = typedData.intentMode as string;
+      if (nodeId === 'kernel') next.kernel = typedData.kernel as string;
+      if (nodeId === 'provider' && typedData.provider) next.provider = typedData.provider as { active: string };
+      if (nodeId === 'embedding') next.embedding_model = typedData.model as string;
+
+      return next;
+    });
+  }, []);
+
+  const reset = useCallback(() => {
+    if (systemState) {
+      setDraftState(JSON.parse(JSON.stringify(systemState)));
+    }
+  }, [systemState]);
+
   return {
     systemState,
+    draftState: draftState || systemState, // Fallback to system if draft not ready
+    hasChanges,
     isLoading,
     error,
     refresh,
+    updateNode,
+    reset,
     planChanges,
     applyChanges,
     pauseWorkflow,

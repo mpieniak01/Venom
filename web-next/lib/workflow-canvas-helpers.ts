@@ -15,6 +15,13 @@ export function buildWorkflowGraph(systemState: SystemState | null): {
       type: "decision",
       data: {
         strategy: systemState.decision_strategy,
+      },
+      position: { x: 0, y: 0 },
+    },
+    {
+      id: "intent",
+      type: "intent",
+      data: {
         intentMode: systemState.intent_mode,
       },
       position: { x: 0, y: 0 },
@@ -54,10 +61,11 @@ export function buildWorkflowGraph(systemState: SystemState | null): {
   ];
 
   const edges: Edge[] = [
-    { id: "e1", source: "decision", target: "kernel", animated: true },
-    { id: "e2", source: "kernel", target: "runtime", animated: true },
-    { id: "e3", source: "runtime", target: "provider", animated: true },
-    { id: "e4", source: "decision", target: "embedding", animated: true },
+    { id: "e1", source: "decision", target: "intent", animated: true },
+    { id: "e2", source: "intent", target: "kernel", animated: true },
+    { id: "e3", source: "kernel", target: "runtime", animated: true },
+    { id: "e4", source: "runtime", target: "embedding", animated: true },
+    { id: "e5", source: "embedding", target: "provider", animated: true },
   ];
 
   return { nodes, edges };

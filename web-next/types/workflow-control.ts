@@ -1,5 +1,3 @@
-// Workflow Control Plane Types
-
 export interface SystemState {
   kernel?: string;
   decision_strategy?: string;
@@ -13,6 +11,8 @@ export interface SystemState {
   embedding_model?: string;
   workflow_status?: string;
 }
+
+export type WorkflowStatus = "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
 
 export interface AppliedChange {
   resource_type: string;
@@ -33,8 +33,8 @@ export interface ConfigurationChange {
   resource_type: string;
   resource_id: string;
   action: string;
-  current_value?: string;
-  new_value: string;
+  current_value?: unknown;
+  new_value: unknown;
 }
 
 export interface PlanRequest {

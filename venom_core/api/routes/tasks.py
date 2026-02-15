@@ -14,9 +14,14 @@ from venom_core.api.dependencies import (
     get_request_tracer,
     get_state_manager,
 )
-from venom_core.api.schemas.tasks import HistoryRequestDetail, HistoryRequestSummary
+from venom_core.api.schemas.tasks import (
+    HistoryRequestDetail,
+    HistoryRequestSummary,
+    TaskRequest,
+    TaskResponse,
+)
 from venom_core.core import metrics as metrics_module
-from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus, VenomTask
+from venom_core.core.models import TaskStatus, VenomTask
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
 from venom_core.core.tracer import RequestTracer, TraceStatus
@@ -53,27 +58,6 @@ HISTORY_DETAIL_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": REQUEST_TRACER_UNAVAILABLE},
     404: {"description": "Request o podanym ID nie istnieje"},
 }
-
-
-def set_dependencies(orchestrator, state_manager, request_tracer):
-    """
-    Ustaw zależności dla routera.
-    
-    DEPRECATED: Use venom_core.api.dependencies setters instead.
-    This function is maintained for backward compatibility with tests.
-    """
-    from venom_core.api.dependencies import (
-        set_orchestrator,
-        set_request_tracer,
-        set_state_manager,
-    )
-
-    if orchestrator is not None:
-        set_orchestrator(orchestrator)
-    if state_manager is not None:
-        set_state_manager(state_manager)
-    if request_tracer is not None:
-        set_request_tracer(request_tracer)
 
 
 def _get_llm_runtime(task: VenomTask) -> dict:
@@ -328,21 +312,6 @@ async def _task_stream_generator(
             raise
 
 
-def _bootstrap_orchestrator_if_testing():
-    """
-    Zachowane dla kompatybilności wstecznej.
-
-    Pierwotnie inicjalizowało orchestrator "ad-hoc" w trybie testowym na podstawie
-    venom_core.main, co powodowało mutację globalnego stanu i ryzyko zależności
-    cyklicznych. Obecnie nie wykonuje żadnej logiki – zależności muszą być
-    wstrzyknięte jawnie przez `set_dependencies` (np. w lifespan lub w fixture'ach).
-
-    DEPRECATED: Ta funkcja będzie usunięta w przyszłych wersjach.
-    Używaj dependency injection przez set_dependencies() zamiast tego.
-    """
-    # Funkcja celowo pusta - inicjalizacja powinna odbywać się przez set_dependencies
-
-
 @router.post(
     "/tasks",
     response_model=TaskResponse,
@@ -490,6 +459,7 @@ def get_request_history(
 def get_request_detail(
     request_id: UUID,
     request_tracer: RequestTracer = Depends(get_request_tracer),
+    state_manager: StateManager = Depends(get_state_manager),
 ):
     """
     Pobiera szczegóły requestu z pełną listą kroków.
@@ -515,7 +485,7 @@ def get_request_detail(
         if trace.finished_at
         else None
     )
-    task = _state_manager.get_task(request_id) if _state_manager is not None else None
+    task = state_manager.get_task(request_id)
     context = _extract_task_context(task)
     context_preview = _extract_context_preview(trace.steps)
 

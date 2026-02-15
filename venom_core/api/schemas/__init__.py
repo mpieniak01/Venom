@@ -38,6 +38,20 @@ from venom_core.api.schemas.providers import (
 from venom_core.api.schemas.tasks import (
     HistoryRequestDetail,
     HistoryRequestSummary,
+    TaskExtraContext,
+    TaskRequest,
+    TaskResponse,
+)
+from venom_core.api.schemas.workflow_control import (
+    AuditEntry,
+    ControlApplyRequest,
+    ControlApplyResponse,
+    ControlAuditResponse,
+    ControlOptionsResponse,
+    ControlPlanRequest,
+    ControlPlanResponse,
+    ControlStateResponse,
+    ResourceType,
 )
 
 __all__ = [
@@ -69,6 +83,19 @@ __all__ = [
     "ProviderInfo",
     "ProviderActivateRequest",
     # Tasks
+    "TaskExtraContext",
+    "TaskRequest",
+    "TaskResponse",
     "HistoryRequestSummary",
     "HistoryRequestDetail",
+    # Workflow control
+    "ControlPlanRequest",
+    "ControlPlanResponse",
+    "ControlApplyRequest",
+    "ControlApplyResponse",
+    "ControlStateResponse",
+    "ControlOptionsResponse",
+    "AuditEntry",
+    "ControlAuditResponse",
+    "ResourceType",
 ]

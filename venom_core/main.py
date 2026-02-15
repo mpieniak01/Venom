@@ -1061,6 +1061,8 @@ def setup_router_dependencies():
         api_deps.set_lessons_store(lessons_store)
     if session_store:
         api_deps.set_session_store(session_store)
+    if request_tracer:
+        api_deps.set_request_tracer(request_tracer)
 
     if service_monitor:
         service_monitor.set_orchestrator(orchestrator)
@@ -1075,7 +1077,6 @@ def setup_router_dependencies():
         hardware_bridge,
         orchestrator,
     )
-    tasks_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     feedback_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     queue_routes.set_dependencies(orchestrator)
     # TokenEconomist zainicjalizowany w _initialize_token_economist()

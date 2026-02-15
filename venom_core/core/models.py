@@ -1,4 +1,4 @@
-"""Modele danych dla systemu zadań Venom."""
+"""Modele domenowe systemu zadań Venom."""
 
 from datetime import datetime, timezone
 from enum import Enum
@@ -58,63 +58,6 @@ class VenomTask(BaseModel):
         return v
 
 
-class TaskExtraContext(BaseModel):
-    """Dodatkowe dane kontekstowe przekazywane do modelu."""
-
-    files: Optional[List[str]] = None
-    links: Optional[List[str]] = None
-    paths: Optional[List[str]] = None
-    notes: Optional[List[str]] = None
-
-
-class TaskRequest(BaseModel):
-    """DTO dla żądania utworzenia zadania."""
-
-    content: str
-    preferred_language: Optional[str] = Field(
-        default=None, description="Preferowany jezyk odpowiedzi (pl/en/de)"
-    )
-    session_id: Optional[str] = Field(
-        default=None, description="Identyfikator sesji czatu (dla utrzymania kontekstu)"
-    )
-    preference_scope: Optional[str] = Field(
-        default=None, description="Zakres preferencji: session/global"
-    )
-    tone: Optional[str] = Field(
-        default=None,
-        description="Preferowany ton odpowiedzi (concise/detailed/neutral)",
-    )
-    style_notes: Optional[str] = Field(
-        default=None, description="Dodatkowe wskazówki stylu odpowiedzi"
-    )
-    forced_tool: Optional[str] = Field(
-        default=None, description="Wymuszone narzędzie/skill (np. 'git', 'docs')"
-    )
-    forced_provider: Optional[str] = Field(
-        default=None, description="Wymuszony provider LLM (np. 'gpt', 'gem')"
-    )
-    forced_intent: Optional[str] = Field(
-        default=None,
-        description="Wymuszona intencja (np. GENERAL_CHAT, COMPLEX_PLANNING)",
-    )
-    images: Optional[List[str]] = None  # Lista base64 lub URL obrazów
-    store_knowledge: bool = Field(
-        default=True, description="Czy zapisywać lekcje i wnioski z tego zadania"
-    )
-    generation_params: Optional[Dict[str, Any]] = Field(
-        default=None, description="Parametry generacji (temperature, max_tokens, etc.)"
-    )
-    expected_config_hash: Optional[str] = Field(
-        default=None, description="Oczekiwany hash konfiguracji LLM z UI"
-    )
-    expected_runtime_id: Optional[str] = Field(
-        default=None, description="Oczekiwany runtime_id LLM z UI"
-    )
-    extra_context: Optional[TaskExtraContext] = Field(
-        default=None, description="Dodatkowe dane przekazywane do kontekstu zadania"
-    )
-
-
 class Intent(BaseModel):
     """Reprezentacja sparsowanej intencji użytkownika."""
 
@@ -123,21 +66,6 @@ class Intent(BaseModel):
     params: Dict[str, Any] = Field(
         default_factory=dict
     )  # Dodatkowe parametry wyciągnięte z tekstu
-
-
-class TaskResponse(BaseModel):
-    """DTO dla odpowiedzi po utworzeniu zadania."""
-
-    model_config = ConfigDict(use_enum_values=True)
-
-    task_id: UUID
-    status: TaskStatus
-    llm_provider: Optional[str] = None
-    llm_model: Optional[str] = None
-    llm_endpoint: Optional[str] = None
-    policy_blocked: bool = False
-    reason_code: Optional[str] = None
-    user_message: Optional[str] = None
 
 
 class ExecutionStep(BaseModel):

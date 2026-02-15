@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from venom_core.api import dependencies as api_deps
 from venom_core.core.tracer import RequestTracer
 from venom_core.main import app
 
@@ -17,9 +18,7 @@ def tracer():
 
 @pytest.fixture
 def client(tracer):
-    from venom_core.api.routes import tasks as tasks_routes
-
-    tasks_routes.set_dependencies(None, None, tracer)
+    api_deps.set_request_tracer(tracer)
     return TestClient(app)
 
 

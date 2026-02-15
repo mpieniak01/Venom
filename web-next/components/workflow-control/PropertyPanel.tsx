@@ -58,6 +58,34 @@ const DEFAULT_OPTIONS: Required<NonNullable<PropertyPanelProps["availableOptions
   },
 };
 
+function resolveAvailableOptions(
+  options?: PropertyPanelProps["availableOptions"]
+): Required<NonNullable<PropertyPanelProps["availableOptions"]>> {
+  if (!options) return DEFAULT_OPTIONS;
+  return {
+    strategies: Array.isArray(options.strategies) ? options.strategies : DEFAULT_OPTIONS.strategies,
+    kernels: Array.isArray(options.kernels) ? options.kernels : DEFAULT_OPTIONS.kernels,
+    providers: Array.isArray(options.providers) ? options.providers : DEFAULT_OPTIONS.providers,
+    models: Array.isArray(options.models) ? options.models : DEFAULT_OPTIONS.models,
+    providersBySource: {
+      local: Array.isArray(options.providersBySource?.local)
+        ? options.providersBySource.local
+        : DEFAULT_OPTIONS.providersBySource.local,
+      cloud: Array.isArray(options.providersBySource?.cloud)
+        ? options.providersBySource.cloud
+        : DEFAULT_OPTIONS.providersBySource.cloud,
+    },
+    modelsBySource: {
+      local: Array.isArray(options.modelsBySource?.local)
+        ? options.modelsBySource.local
+        : DEFAULT_OPTIONS.modelsBySource.local,
+      cloud: Array.isArray(options.modelsBySource?.cloud)
+        ? options.modelsBySource.cloud
+        : DEFAULT_OPTIONS.modelsBySource.cloud,
+    },
+  };
+}
+
 const NODE_VISUALS: Record<WorkflowNodeType, NodeVisualMeta> = {
   decision: {
     icon: GitFork,
@@ -446,9 +474,10 @@ function EmbeddingEditor({
 export function PropertyPanel({
   selectedNode,
   onUpdateNode,
-  availableOptions = DEFAULT_OPTIONS,
+  availableOptions,
 }: PropertyPanelProps) {
   const t = useTranslation();
+  const resolvedOptions = resolveAvailableOptions(availableOptions);
 
   if (!selectedNode) {
     return (
@@ -473,21 +502,21 @@ export function PropertyPanel({
   const editor = (() => {
     if (!isWorkflowNodeType(nodeType)) return null;
     if (nodeType === "decision") {
-      return <DecisionEditor data={data} options={availableOptions} onUpdate={handleUpdate} t={t} />;
+      return <DecisionEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
     }
     if (nodeType === "intent") {
       return <IntentEditor data={data} onUpdate={handleUpdate} t={t} />;
     }
     if (nodeType === "kernel") {
-      return <KernelEditor data={data} options={availableOptions} onUpdate={handleUpdate} t={t} />;
+      return <KernelEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
     }
     if (nodeType === "runtime") {
       return <RuntimeEditor data={data} t={t} />;
     }
     if (nodeType === "provider") {
-      return <ProviderEditor data={data} options={availableOptions} onUpdate={handleUpdate} t={t} />;
+      return <ProviderEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
     }
-    return <EmbeddingEditor data={data} options={availableOptions} onUpdate={handleUpdate} t={t} />;
+    return <EmbeddingEditor data={data} options={resolvedOptions} onUpdate={handleUpdate} t={t} />;
   })();
 
   return (

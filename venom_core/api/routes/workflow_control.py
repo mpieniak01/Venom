@@ -16,6 +16,7 @@ from venom_core.api.model_schemas.workflow_control import (
     ControlApplyRequest,
     ControlApplyResponse,
     ControlAuditResponse,
+    ControlOptionsResponse,
     ControlPlanRequest,
     ControlPlanResponse,
     ControlStateResponse,
@@ -158,6 +159,24 @@ async def get_system_state():
         )
     except Exception as e:
         logger.exception("Failed to get system state")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get(
+    "/options",
+    response_model=ControlOptionsResponse,
+    responses={
+        500: {"description": "Internal server error"},
+    },
+)
+async def get_control_options():
+    """Get local/cloud option catalogs for provider and embedding selectors."""
+    try:
+        service = get_control_plane_service()
+        options = service.get_control_options()
+        return ControlOptionsResponse(**options)
+    except Exception as e:
+        logger.exception("Failed to get control options")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

@@ -390,6 +390,30 @@ class TestStateEndpoint:
         assert state["health"]["overall"] in {"healthy", "degraded", "critical"}
 
 
+class TestOptionsEndpoint:
+    """Test /api/v1/workflow/control/options endpoint."""
+
+    def test_get_control_options(self, client):
+        response = client.get("/api/v1/workflow/control/options")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["provider_sources"] == ["local", "cloud"]
+        assert data["embedding_sources"] == ["local", "cloud"]
+
+        assert "providers" in data
+        assert "embeddings" in data
+        assert "active" in data
+
+        assert isinstance(data["providers"]["local"], list)
+        assert isinstance(data["providers"]["cloud"], list)
+        assert isinstance(data["embeddings"]["local"], list)
+        assert isinstance(data["embeddings"]["cloud"], list)
+
+        assert data["active"]["provider_source"] in {"local", "cloud"}
+        assert data["active"]["embedding_source"] in {"local", "cloud"}
+
+
 class TestAuditEndpoint:
     """Test /api/v1/workflow/control/audit endpoint."""
 

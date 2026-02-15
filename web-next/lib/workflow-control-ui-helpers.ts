@@ -30,6 +30,8 @@ export function getWorkflowStatusMeta(workflowStatus?: string) {
 // Compare two SystemState objects and generate ConfigurationChange list
 export function generatePlanRequest(original: SystemState, draft: SystemState): PlanRequest {
   const changes: ConfigurationChange[] = [];
+  const providerActive = (provider: SystemState["provider"]): string | undefined =>
+    provider && typeof provider === "object" ? provider.active : undefined;
 
   // Helper to compare and push change
   const compareAndPush = (
@@ -56,7 +58,12 @@ export function generatePlanRequest(original: SystemState, draft: SystemState): 
 
     // Deep compare for objects (simplified json stringify for MVP)
     compareAndPush("runtime", "runtime", original.runtime, draft.runtime);
-    compareAndPush("provider", "provider", original.provider, draft.provider);
+    compareAndPush(
+      "provider",
+      "provider",
+      providerActive(original.provider),
+      providerActive(draft.provider)
+    );
     compareAndPush("embedding_model", "embedding", original.embedding_model, draft.embedding_model);
   }
 

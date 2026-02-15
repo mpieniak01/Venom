@@ -54,6 +54,19 @@ class ControlPlaneService:
         ResourceType.PROVIDER: "ACTIVE_PROVIDER",
         ResourceType.EMBEDDING_MODEL: "EMBEDDING_MODEL",
     }
+    CLOUD_PROVIDERS = {
+        "openai",
+        "google",
+        "anthropic",
+        "azure-openai",
+        "azure",
+        "cohere",
+        "mistral",
+        "together",
+        "groq",
+        "bedrock",
+        "gemini",
+    }
 
     def plan_changes(
         self, request: ControlPlanRequest, triggered_by: str
@@ -799,6 +812,75 @@ class ControlPlaneService:
             provider, []
         )
         return fallback_models[0] if fallback_models else "llama2"
+
+    def _classify_provider_source(self, provider: str) -> str:
+        normalized = (provider or "").strip().lower()
+        return "cloud" if normalized in self.CLOUD_PROVIDERS else "local"
+
+    def _classify_embedding_source(self, embedding_model: str) -> str:
+        model_key = (embedding_model or "").strip()
+        if not model_key:
+            return "local"
+        compatibility = (
+            self._compatibility_validator.matrix.embedding_compatibility.get(model_key)
+        )
+        if not compatibility:
+            return "local"
+        if any(
+            self._classify_provider_source(provider) == "cloud"
+            for provider in compatibility
+        ):
+            return "cloud"
+        return "local"
+
+    def get_control_options(self) -> dict[str, Any]:
+        """Return option catalogs for provider/embedding split into local/cloud."""
+        provider_models = self._compatibility_validator.matrix.provider_models
+        embedding_compatibility = (
+            self._compatibility_validator.matrix.embedding_compatibility
+        )
+
+        providers_local: list[str] = []
+        providers_cloud: list[str] = []
+        for provider in sorted(provider_models.keys()):
+            if self._classify_provider_source(provider) == "cloud":
+                providers_cloud.append(provider)
+            else:
+                providers_local.append(provider)
+
+        embeddings_local: list[str] = []
+        embeddings_cloud: list[str] = []
+        for embedding_model, compatible_providers in sorted(
+            embedding_compatibility.items()
+        ):
+            if any(
+                self._classify_provider_source(provider) == "cloud"
+                for provider in compatible_providers
+            ):
+                embeddings_cloud.append(embedding_model)
+            else:
+                embeddings_local.append(embedding_model)
+
+        state = self.get_system_state()
+        active_provider = str((state.provider or {}).get("active", "ollama"))
+        active_embedding = str(state.embedding_model or "")
+
+        return {
+            "provider_sources": ["local", "cloud"],
+            "embedding_sources": ["local", "cloud"],
+            "providers": {
+                "local": providers_local,
+                "cloud": providers_cloud,
+            },
+            "embeddings": {
+                "local": embeddings_local,
+                "cloud": embeddings_cloud,
+            },
+            "active": {
+                "provider_source": self._classify_provider_source(active_provider),
+                "embedding_source": self._classify_embedding_source(active_embedding),
+            },
+        }
 
     def _calculate_health_status(
         self, runtime_statuses: list[Any], compatible: bool

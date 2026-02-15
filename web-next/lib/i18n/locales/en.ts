@@ -1862,6 +1862,7 @@ export const en = {
       currentStrategy: "Current Strategy",
       newStrategy: "New Strategy",
       strategy: "Strategy",
+      sourceType: "Source",
       currentIntent: "Current Intent Mode",
       newIntent: "New Intent Mode",
       intentMode: "Intent Mode",
@@ -1917,6 +1918,7 @@ export const en = {
     providers: {
       ollama: "Ollama",
       huggingface: "Hugging Face",
+      vllm: "vLLM",
       openai: "OpenAI",
       google: "Google",
       anthropic: "Anthropic",

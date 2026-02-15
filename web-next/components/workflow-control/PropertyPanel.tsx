@@ -28,11 +28,14 @@ interface PropertyPanelProps {
     kernels?: string[];
     providers?: string[];
     models?: string[];
+    providersBySource?: { local: string[]; cloud: string[] };
+    modelsBySource?: { local: string[]; cloud: string[] };
   };
 }
 
 type RuntimeService = string | { name?: string; id?: string; [key: string]: unknown };
 type WorkflowNodeType = "decision" | "intent" | "kernel" | "runtime" | "provider" | "embedding";
+type SourceType = "local" | "cloud";
 
 type NodeVisualMeta = {
   icon: LucideIcon;
@@ -45,6 +48,14 @@ const DEFAULT_OPTIONS: Required<NonNullable<PropertyPanelProps["availableOptions
   kernels: ["default", "optimized", "legacy"],
   providers: ["openai", "google", "anthropic", "ollama"],
   models: ["gpt-4", "gemini-pro", "claude-3-opus", "llama3"],
+  providersBySource: {
+    local: ["huggingface", "ollama", "vllm"],
+    cloud: ["openai", "google"],
+  },
+  modelsBySource: {
+    local: ["sentence-transformers"],
+    cloud: ["openai-embeddings", "google-embeddings"],
+  },
 };
 
 const NODE_VISUALS: Record<WorkflowNodeType, NodeVisualMeta> = {
@@ -297,7 +308,15 @@ function ProviderEditor({
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
 }) {
-  const provider = (data.provider as { active?: string } | undefined) ?? {};
+  const provider = (data.provider as { active?: string; sourceType?: SourceType } | undefined) ?? {};
+  const providerBySource = options.providersBySource ?? DEFAULT_OPTIONS.providersBySource;
+  const inferSource = (value: string | undefined): SourceType => {
+    if (value && providerBySource.cloud.includes(value)) return "cloud";
+    return "local";
+  };
+  const sourceType: SourceType = provider.sourceType ?? inferSource(provider.active);
+  const sourceProviders = providerBySource[sourceType];
+  const safeActive = provider.active && sourceProviders.includes(provider.active) ? provider.active : "";
 
   return (
     <SectionCard
@@ -307,14 +326,38 @@ function ProviderEditor({
       description={t("workflowControl.descriptions.provider")}
     >
       <Label htmlFor="provider" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
+        {t("workflowControl.labels.sourceType")}
+      </Label>
+      <Select
+        value={sourceType}
+        onValueChange={(val) => {
+          const nextSource = val as SourceType;
+          const nextProviders = providerBySource[nextSource];
+          const nextActive = provider.active && nextProviders.includes(provider.active) ? provider.active : "";
+          onUpdate("provider", { active: nextActive, sourceType: nextSource });
+        }}
+      >
+        <SelectTrigger id="provider-source" className="bg-slate-900/80 border-orange-500/30 text-orange-100 focus:ring-orange-500/50 mb-2.5">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="bg-slate-900 border-orange-500/30 text-orange-100">
+          <SelectItem value="local" className="focus:bg-orange-500/20">
+            {t("workflowControl.labels.installedLocal")}
+          </SelectItem>
+          <SelectItem value="cloud" className="focus:bg-orange-500/20">
+            {t("workflowControl.labels.cloud")}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <Label htmlFor="provider" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
         {t("workflowControl.labels.activeProvider")}
       </Label>
-      <Select value={provider.active ?? ""} onValueChange={(val) => onUpdate("provider", { active: val })}>
+      <Select value={safeActive} onValueChange={(val) => onUpdate("provider", { active: val, sourceType })}>
         <SelectTrigger id="provider" className="bg-slate-900/80 border-orange-500/30 text-orange-100 focus:ring-orange-500/50">
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="bg-slate-900 border-orange-500/30 text-orange-100">
-          {options.providers.map((opt) => (
+          {sourceProviders.map((opt) => (
             <SelectItem key={opt} value={opt} className="focus:bg-orange-500/20">
               {t(`workflowControl.providers.${opt}`) || opt}
             </SelectItem>
@@ -336,6 +379,17 @@ function EmbeddingEditor({
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
 }) {
+  const modelsBySource = options.modelsBySource ?? DEFAULT_OPTIONS.modelsBySource;
+  const inferSource = (value: string | undefined): SourceType => {
+    if (value && modelsBySource.cloud.includes(value)) return "cloud";
+    return "local";
+  };
+  const sourceType: SourceType = (
+    (data.sourceType as SourceType | undefined) ?? inferSource(data.model as string | undefined)
+  );
+  const sourceModels = modelsBySource[sourceType];
+  const safeModel = (data.model as string | undefined) && sourceModels.includes(data.model as string) ? (data.model as string) : "";
+
   return (
     <SectionCard
       type="embedding"
@@ -344,14 +398,41 @@ function EmbeddingEditor({
       description={t("workflowControl.descriptions.embedding")}
     >
       <Label htmlFor="model" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
+        {t("workflowControl.labels.sourceType")}
+      </Label>
+      <Select
+        value={sourceType}
+        onValueChange={(val) => {
+          const nextSource = val as SourceType;
+          const nextModels = modelsBySource[nextSource];
+          const nextModel = (data.model as string | undefined) && nextModels.includes(data.model as string)
+            ? (data.model as string)
+            : "";
+          onUpdate("sourceType", nextSource);
+          onUpdate("model", nextModel);
+        }}
+      >
+        <SelectTrigger id="embedding-source" className="bg-slate-900/80 border-pink-500/30 text-pink-100 focus:ring-pink-500/50 mb-2.5">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="bg-slate-900 border-pink-500/30 text-pink-100">
+          <SelectItem value="local" className="focus:bg-pink-500/20">
+            {t("workflowControl.labels.installedLocal")}
+          </SelectItem>
+          <SelectItem value="cloud" className="focus:bg-pink-500/20">
+            {t("workflowControl.labels.cloud")}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <Label htmlFor="model" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block px-0.5">
         {t("workflowControl.labels.currentEmbedding")}
       </Label>
-      <Select value={(data.model as string) ?? ""} onValueChange={(val) => onUpdate("model", val)}>
+      <Select value={safeModel} onValueChange={(val) => onUpdate("model", val)}>
         <SelectTrigger id="model" className="bg-slate-900/80 border-pink-500/30 text-pink-100 focus:ring-pink-500/50">
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="bg-slate-900 border-pink-500/30 text-pink-100">
-          {options.models.map((opt) => (
+          {sourceModels.map((opt) => (
             <SelectItem key={opt} value={opt} className="focus:bg-pink-500/20">
               {t(`workflowControl.embeddingModels.${opt}`) || opt}
             </SelectItem>

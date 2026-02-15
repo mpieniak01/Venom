@@ -23,6 +23,13 @@ export function BrainDetailsSheetContent({
     onClearSession,
 }: BrainDetailsSheetContentProps) {
     const t = useTranslation();
+    const selectedLabel =
+        typeof selected?.label === "string"
+            ? selected.label
+            : typeof selected?.id === "string"
+                ? selected.id
+                : "Node";
+    const selectedType = typeof selected?.type === "string" ? selected.type : "n/a";
 
     if (!selected) {
         return <p className="text-hint p-6">{t("brain.details.selectNode")}</p>;
@@ -31,9 +38,9 @@ export function BrainDetailsSheetContent({
     return (
         <SheetContent className="bg-zinc-950/95 text-white">
             <SheetHeader>
-                <SheetTitle>{String(selected.label || selected.id || "Node")}</SheetTitle>
+                <SheetTitle>{selectedLabel}</SheetTitle>
                 <SheetDescription>
-                    {t("brain.details.type")}: {String(selected.type || "n/a")}
+                    {t("brain.details.type")}: {selectedType}
                 </SheetDescription>
             </SheetHeader>
             <div className="space-y-4 text-sm text-zinc-300 mt-6">

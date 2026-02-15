@@ -185,12 +185,9 @@ export function useCockpitSectionProps() {
   const telemetryFeed = logic.telemetry.entries.map(e => ({
     id: e.id,
     timestamp: new Date(e.ts).toISOString(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tone: (e.payload as any)?.tone || "neutral",
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    type: (e.payload as any)?.type || "info",
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    message: (e.payload as any)?.message || "",
+    tone: ((e.payload as Record<string, unknown> | undefined)?.tone as string) || "neutral",
+    type: ((e.payload as Record<string, unknown> | undefined)?.type as string) || "info",
+    message: ((e.payload as Record<string, unknown> | undefined)?.message as string) || "",
   }));
 
   const usageMetrics = data.modelsUsageResponse?.usage || null;

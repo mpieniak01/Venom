@@ -159,10 +159,10 @@ export function parseSimpleResponse(historyDetail: HistoryRequestDetail | null) 
         }
     }
 
-    const responseMatch = raw.match(/response=([\s\S]*)$/);
+    const responseMatch = /response=([\s\S]*)$/.exec(raw);
     if (responseMatch?.[1]) return { text: responseMatch[1].trim(), truncated: false };
 
-    const previewMatch = raw.match(/preview=([\s\S]*)$/);
+    const previewMatch = /preview=([\s\S]*)$/.exec(raw);
     if (previewMatch?.[1]) return { text: previewMatch[1].trim(), truncated: true };
 
     return null;

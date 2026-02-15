@@ -38,12 +38,13 @@ export function WorkflowConsole({
     onRetry,
     onDryRun,
     isLoading
-}: WorkflowConsoleProps) {
+}: Readonly<WorkflowConsoleProps>) {
     const t = useTranslation();
 
     const isRunning = status === "running";
     const isPaused = status === "paused";
     const isFailed = status === "failed";
+    const showResume = isRunning === false;
     let statusColorClass = "text-slate-400";
     if (isRunning) {
         statusColorClass = "text-green-500";
@@ -108,7 +109,7 @@ export function WorkflowConsole({
             <div className="space-y-3">
                 <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{t("workflowControl.labels.runtimeControl")}</span>
                 <div className="grid grid-cols-2 gap-3">
-                    {!isRunning ? (
+                    {showResume ? (
                         <Button
                             id="workflow-action-resume"
                             variant="secondary"

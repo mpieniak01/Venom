@@ -312,7 +312,7 @@ async function parseUploadErrorMessage(response: Response): Promise<string> {
   const defaultError = "Upload failed";
   try {
     const text = await response.text();
-    if (!text || !text.trim()) return defaultError;
+    if (!text?.trim()) return defaultError;
     const body = parseErrorBody(text);
     if (!body) return text;
     return resolveErrorMessage(body) || text;
@@ -350,9 +350,7 @@ export async function uploadDatasetFiles(params: {
   }
 
   // Use custom fetch for multipart/form-data (apiFetch sets application/json by default)
-  const baseUrl = typeof window !== "undefined"
-    ? window.location.origin
-    : "http://localhost:8000";
+  const baseUrl = globalThis.window?.location?.origin ?? "http://localhost:8000";
 
   const response = await fetch(`${baseUrl}/api/v1/academy/dataset/upload`, {
     method: "POST",

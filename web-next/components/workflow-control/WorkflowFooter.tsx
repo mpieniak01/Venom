@@ -27,7 +27,7 @@ export function WorkflowFooter({
     onRetry,
     onDryRun,
     isLoading
-}: WorkflowFooterProps) {
+}: Readonly<WorkflowFooterProps>) {
     const t = useTranslation();
 
     const isRunning = status === "running";

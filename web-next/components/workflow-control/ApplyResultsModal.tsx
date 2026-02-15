@@ -20,7 +20,7 @@ interface ApplyResultsModalProps {
 export function ApplyResultsModal({
   results,
   onClose,
-}: ApplyResultsModalProps) {
+}: Readonly<ApplyResultsModalProps>) {
   const t = useTranslation();
   const applyMode = results?.apply_mode;
   const appliedChanges = results?.applied_changes || [];

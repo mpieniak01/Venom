@@ -10,6 +10,13 @@ interface BrainSelectionSummaryProps {
 
 export function BrainSelectionSummary({ selected, relations, onOpenDetails }: BrainSelectionSummaryProps) {
     const t = useTranslation();
+    const selectedLabel =
+        typeof selected?.label === "string"
+            ? selected.label
+            : typeof selected?.id === "string"
+                ? selected.id
+                : "n/a";
+    const selectedType = typeof selected?.type === "string" ? selected.type : "n/a";
 
     if (!selected) {
         return (
@@ -27,13 +34,13 @@ export function BrainSelectionSummary({ selected, relations, onOpenDetails }: Br
                 <p>
                     <span className="text-zinc-400">{t("brain.selection.node")}:</span>{" "}
                     <span className="font-semibold text-white">
-                        {String(selected.label || selected.id || "n/a")}
+                        {selectedLabel}
                     </span>
                 </p>
                 <p>
                     <span className="text-zinc-400">{t("brain.selection.type")}:</span>{" "}
                     <span className="font-semibold text-emerald-300">
-                        {String(selected.type || "n/a")}
+                        {selectedType}
                     </span>
                 </p>
                 <p>

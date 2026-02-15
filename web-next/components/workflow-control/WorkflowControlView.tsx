@@ -98,21 +98,17 @@ export function WorkflowControlView() {
             <PropertyPanel
               selectedNode={selectedNode}
               onUpdateNode={handleUpdateNode}
-              availableOptions={
-                controlOptions
-                  ? {
-                    providersBySource: controlOptions.providers,
-                    modelsBySource: controlOptions.embeddings,
-                  }
-                  : undefined
-              }
+              availableOptions={controlOptions ? {
+                providersBySource: controlOptions.providers,
+                modelsBySource: controlOptions.embeddings,
+              } : undefined}
             />
           </div>
           <WorkflowConsole
             hasChanges={hasChanges}
             onPlanRequest={handlePlanRequest}
             onReset={reset}
-            status={systemState?.workflow_status || "unknown"}
+            status={systemState?.workflow_status ?? "unknown"}
             onPause={pauseWorkflow}
             onResume={resumeWorkflow}
             onCancel={cancelWorkflow}

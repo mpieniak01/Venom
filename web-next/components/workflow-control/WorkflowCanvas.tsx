@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useCallback } from "react";
 import {
   ReactFlow,
   Node,
@@ -17,7 +17,6 @@ import {
   Position,
   NodeToolbar,
 } from "@xyflow/react";
-import { useCallback } from "react";
 import { useToast } from "@/components/ui/toast";
 import "@xyflow/react/dist/style.css";
 import { useTranslation } from "@/lib/i18n";
@@ -31,6 +30,10 @@ import { Settings, Info } from "lucide-react";
 
 interface WorkflowCanvasProps {
   systemState: SystemState | null;
+  onNodeClick?: (node: Node) => void;
+  onEdgesChange?: (changes: unknown) => void;
+  onNodesChange?: (changes: unknown) => void;
+  readOnly?: boolean;
 }
 
 // Node types
@@ -53,12 +56,7 @@ export function WorkflowCanvas({
   onEdgesChange: onEdgesChangeProp,
   onNodesChange: onNodesChangeProp,
   readOnly = false
-}: WorkflowCanvasProps & {
-  onNodeClick?: (node: Node) => void;
-  onEdgesChange?: (changes: unknown) => void;
-  onNodesChange?: (changes: unknown) => void;
-  readOnly?: boolean;
-}) {
+}: Readonly<WorkflowCanvasProps>) {
   const t = useTranslation();
 
   // Generate nodes and edges from system state
@@ -242,10 +240,10 @@ function NodeActions() {
 function SelectedNodePulse({
   selected,
   glowClass,
-}: {
+}: Readonly<{
   selected: boolean;
   glowClass: string;
-}) {
+}>) {
   if (!selected) return null;
   return (
     <div
@@ -255,7 +253,7 @@ function SelectedNodePulse({
   );
 }
 
-function SourceBadge({ sourceTag }: { sourceTag: "local" | "cloud" }) {
+function SourceBadge({ sourceTag }: Readonly<{ sourceTag: "local" | "cloud" }>) {
   const t = useTranslation();
   const isCloud = sourceTag === "cloud";
   return (
@@ -272,7 +270,7 @@ function SourceBadge({ sourceTag }: { sourceTag: "local" | "cloud" }) {
   );
 }
 
-function ValueBadge({ value }: { value: string }) {
+function ValueBadge({ value }: Readonly<{ value: string }>) {
   return (
     <span className="absolute right-2 top-2 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-100">
       {value}
@@ -326,7 +324,7 @@ const SWIMLANE_STYLES: Record<string, { bg: string; border: string; text: string
   embedding: { bg: 'bg-pink-900/40', border: 'border-slate-700', text: 'text-pink-400', bgContent: 'bg-pink-900/5' },
 };
 
-function SwimlaneNode({ data }: { data: { label: string, index: number } }) {
+function SwimlaneNode({ data }: Readonly<{ data: { label: string; index: number } }>) {
   const t = useTranslation();
   const style = SWIMLANE_STYLES[data.label] || { bg: 'bg-slate-900/20', border: 'border-slate-800', text: 'text-slate-500', bgContent: 'transparent' };
 

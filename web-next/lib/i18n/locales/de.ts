@@ -1869,6 +1869,7 @@ export const de = {
     error: "Fehler beim Laden des Systemzustands",
     common: {
       na: "k. A.",
+      auto: "auto",
       missing: "fehlt",
       errorTitle: "Fehler",
     },

@@ -34,7 +34,7 @@ export function formatComputationContent(content: string) {
 }
 
 export function isComputationContent(content: string) {
-  const fenceMatch = content.match(/```(?:json)?\n([\s\S]*?)```/);
+  const fenceMatch = /```(?:json)?\n([\s\S]*?)```/.exec(content);
   if (fenceMatch?.[1]) {
     try {
       JSON.parse(fenceMatch[1].trim());
@@ -149,7 +149,7 @@ function replaceMathTokens(segment: string, tokens: MathToken[]) {
 function extractJsonCandidate(content: string) {
   const trimmed = content.trim();
   if (trimmed.startsWith("```") && trimmed.endsWith("```")) {
-    const match = trimmed.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+    const match = /```[a-zA-Z]*\n([\s\S]*?)```/.exec(trimmed);
     if (match?.[1]) {
       return match[1].trim();
     }
@@ -174,12 +174,12 @@ function formatJsonValue(value: unknown): string {
       );
     }
     if (value.every((entry) => isPlainObject(entry))) {
-      return formatObjectTable(value as Record<string, unknown>[]);
+      return formatObjectTable(value);
     }
     return value.map((item) => `- ${formatCell(item)}`).join("\n");
   }
   if (isPlainObject(value)) {
-    return formatObjectTable([value as Record<string, unknown>]);
+    return formatObjectTable([value]);
   }
   return String(value);
 }

@@ -6,7 +6,7 @@
 
 ## 0. Introduction – Target Vision (Venom v2.0)
 > [!NOTE]
-> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.4) serves as the foundation (Foundation Layer) implementing key orchestration and memory functions.
+> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.5) serves as the foundation (Foundation Layer) implementing key orchestration, **workflow management**, authentication, memory, and learning functions.
 Venom is a project to create an artificial intelligence organism that develops, supervises, and designs other AI systems.
 It's a meta-intelligence layer operating above Rider-PC (logic, code, AI) and Rider-Pi (physical world, sensors, movement).
 Venom can in the future encompass any other module in your ecosystem.
@@ -31,7 +31,7 @@ Venom treats:
 Venom is a meta-brain, artificial intelligence organism, code architect, agent orchestrator, knowledge manager, policy guardian, and AI that creates AI.
 
 > [!NOTE]
-> **Process Evolution:** In v1.4, the organism operates based on *built-in* autonomous processes (Internal Processes). In v2.0, the user will gain tools for *explicit modeling* of these processes (User-Configurable Processes), taking on the role of a flow engineer.
+> **Process Evolution:** In v1.5, the organism operates based on *built-in* autonomous processes (Internal Processes) with a visual **Workflow Control Plane** for stack management. In v2.0, the user will gain tools for *explicit modeling* of these processes (User-Configurable Processes), taking on the role of a flow engineer.
 
 ## 1. Technical definition – what is Venom as a system
 Venom is a local meta-intelligence layer that takes user intent and transforms it into a working solution through:
@@ -55,6 +55,8 @@ Oracle Models (cloud) are optional and work only in selected policies.
 <tr><td>Oracle</td><td>Deep thinking</td><td>Difficult problems</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td></tr>
 <tr><td>Extended intelligence</td><td>External sense</td><td>Internet knowledge</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td></tr>
 <tr><td>Hippocampus</td><td>Memory</td><td>Knowledge map</td><td>GraphRAG + LanceDB</td><td>v1.0</td></tr>
+<tr><td>Cerebellum</td><td>Learning (Fine-tuning)</td><td>Muscle memory, reflexes</td><td>The Academy (LoRA/QLoRA)</td><td>v1.5</td></tr>
+<tr><td>Prefrontal Cortex</td><td>Control</td><td>Conscious planning</td><td>Workflow Control Plane</td><td>v1.5</td></tr>
 <tr><td>Hands</td><td>Action</td><td>Files, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td></tr>
 <tr><td>Tool synapses (MCP)</td><td>Tool extensions</td><td>Git tool import, integration standardization</td><td>McpManagerSkill + MCP Proxy Generator</td><td>v1.0</td></tr>
 <tr><td>Eyes (digital)</td><td>UI perception</td><td>Screenshot analysis (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td></tr>
@@ -99,6 +101,7 @@ In practice, Large Language Model (LLM) engineering necessitated a hybrid approa
 - Intent Manager
 - Policy Engine
 - Task Log / State
+- **Workflow Control Plane** (Stack composition)
 
 ### 3.2. Memory layer (Memory Layer)
 GraphRAG + LanceDB – repository structure, dependencies, project knowledge.
@@ -148,7 +151,8 @@ Venom learns through:
 - logs,
 - errors,
 - retry loops,
-- external knowledge analysis.
+- external knowledge analysis,
+- **The Academy (LoRA fine-tuning)**.
 
 Improves:
 - heuristics,

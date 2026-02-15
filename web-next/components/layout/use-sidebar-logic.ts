@@ -33,8 +33,8 @@ export function useSidebarLogic(t: (key: string, options?: Record<string, string
             return {
                 level,
                 name: details.name,
-                risk: t(`sidebar.autonomy.risks.${details.riskKey}` as string),
-                description: t(`sidebar.autonomy.descriptions.${details.descriptionKey}` as string),
+                risk: t(`sidebar.autonomy.risks.${details.riskKey}`),
+                description: t(`sidebar.autonomy.descriptions.${details.descriptionKey}`),
             };
         },
         [t],

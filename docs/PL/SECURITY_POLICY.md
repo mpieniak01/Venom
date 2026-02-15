@@ -11,7 +11,7 @@ Polityka obejmuje:
 - założenia izolacji przestrzeni roboczej i wykonania,
 - minimalne bramki jakości i testy wymagane do blokowania regresji.
 
-Dla higieny zależności/CVE zobacz `docs/PL/SECURITY_FIXES.md`.
+Dla higieny zależności/CVE korzystaj z bieżących alertów bezpieczeństwa repozytorium (Dependabot/GitHub Security).
 
 ## Model bezpieczeństwa
 

@@ -1,6 +1,6 @@
 /**
  * Model Domain Badge Components v2
- * 
+ *
  * Visual badges for displaying model domain classifications:
  * - Source Type (local-runtime, cloud-api, integrator-catalog)
  * - Model Role (llm-engine, intent-embedding)
@@ -19,17 +19,17 @@ interface BadgeProps {
   className?: string;
 }
 
-interface SourceTypeBadgeProps extends BadgeProps {
+interface SourceTypeBadgeProps extends Readonly<BadgeProps> {
   sourceType: ModelSourceType;
   label: string;
 }
 
-interface ModelRoleBadgeProps extends BadgeProps {
+interface ModelRoleBadgeProps extends Readonly<BadgeProps> {
   role: ModelRole;
   label: string;
 }
 
-interface TrainabilityBadgeProps extends BadgeProps {
+interface TrainabilityBadgeProps extends Readonly<BadgeProps> {
   status: ModelTrainabilityStatus;
   label: string;
   reason?: string | null;
@@ -39,7 +39,7 @@ interface TrainabilityBadgeProps extends BadgeProps {
 /**
  * Source Type Badge
  */
-export function SourceTypeBadge({ sourceType, label, className }: SourceTypeBadgeProps) {
+export function SourceTypeBadge({ sourceType, label, className }: Readonly<SourceTypeBadgeProps>) {
   const styles = {
     "local-runtime": "bg-blue-500/10 text-blue-300 border-blue-500/30",
     "cloud-api": "bg-purple-500/10 text-purple-300 border-purple-500/30",
@@ -62,7 +62,7 @@ export function SourceTypeBadge({ sourceType, label, className }: SourceTypeBadg
 /**
  * Model Role Badge
  */
-export function ModelRoleBadge({ role, label, className }: ModelRoleBadgeProps) {
+export function ModelRoleBadge({ role, label, className }: Readonly<ModelRoleBadgeProps>) {
   const styles = {
     "llm-engine": "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
     "intent-embedding": "bg-cyan-500/10 text-cyan-300 border-cyan-500/30",
@@ -90,7 +90,7 @@ export function TrainabilityBadge({
   reason,
   showTooltip = true,
   className,
-}: TrainabilityBadgeProps) {
+}: Readonly<TrainabilityBadgeProps>) {
   const styles = {
     trainable: "bg-green-500/10 text-green-300 border-green-500/30",
     "not-trainable": "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
@@ -135,7 +135,7 @@ export function DomainBadges({
   trainabilityLabel,
   trainabilityReason,
   className,
-}: DomainBadgesProps) {
+}: Readonly<DomainBadgesProps>) {
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
       <SourceTypeBadge sourceType={sourceType} label={sourceTypeLabel} />

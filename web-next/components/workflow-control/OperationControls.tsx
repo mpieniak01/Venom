@@ -29,7 +29,7 @@ export function OperationControls({
   onRetry,
   onDryRun,
   isLoading,
-}: OperationControlsProps) {
+}: Readonly<OperationControlsProps>) {
   const t = useTranslation();
   const statusMeta = getWorkflowStatusMeta(workflowStatus);
   const { canPause, canResume, canCancel, canRetry } = statusMeta;

@@ -696,11 +696,11 @@ function buildLiveTaskStats(tasks: Task[] | null | undefined, t: (path: string, 
   ];
 }
 
-type GradientProgressProps = {
+type GradientProgressProps = Readonly<{
   value?: number;
   tone?: "violet" | "indigo" | "emerald";
   className?: string;
-};
+}>;
 
 const progressToneClasses: Record<NonNullable<GradientProgressProps["tone"]>, string> = {
   violet: "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 shadow-[0_0_15px_rgba(167,139,250,0.6)]",

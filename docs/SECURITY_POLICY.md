@@ -11,7 +11,7 @@ This policy covers:
 - workspace and execution isolation assumptions,
 - minimum testing and quality gates required to prevent regressions.
 
-For dependency/CVE hygiene, see `docs/SECURITY_FIXES.md`.
+For dependency/CVE hygiene, use current repository security alerts (Dependabot/GitHub Security).
 
 ## Security Model
 

@@ -114,7 +114,7 @@ export default function InspectorPage() {
     [history, selectedId],
   );
   const focusedStep = useMemo(
-    () => (focusedIndex !== null ? filteredSteps[focusedIndex] : null),
+    () => (focusedIndex === null ? null : filteredSteps[focusedIndex]),
     [filteredSteps, focusedIndex],
   );
   const inspectorStats = useMemo(() => buildInspectorStats(history, tasks), [history, tasks]);
@@ -948,11 +948,11 @@ function buildSequenceDiagram(flow?: FlowTrace | null) {
 
     const message = details ? `${action}: ${details}` : action;
     const arrow = statusToArrow(step.status);
-    if (component !== lastComponent) {
+    if (component === lastComponent) {
+      lines.push(`    Note right of ${component}: ${message}`);
+    } else {
       lines.push(`    ${lastComponent}${arrow}${component}: ${message}`);
       lastComponent = component;
-    } else {
-      lines.push(`    Note right of ${component}: ${message}`);
     }
   });
 
@@ -1030,7 +1030,7 @@ function buildFlowchartDiagram(steps: HistoryStep[]) {
     const nodeId = `S${idx}`;
     const safeComponent = sanitizeMermaidText(step.component || `Step ${idx + 1}`);
     const safeAction = sanitizeMermaidText(step.action || step.details || "");
-    const label = safeAction ? `${safeComponent}\\n${safeAction}` : safeComponent;
+    const label = safeAction ? String.raw`${safeComponent}\n${safeAction}` : safeComponent;
     const statusClass = isExecutionContractStep(step)
       ? "contract"
       : statusToMermaidClass(step.status);
@@ -1085,7 +1085,16 @@ function formatErrorDetails(details: Record<string, unknown>): string[] {
       }
       return;
     }
-    entries.push(`${key}: ${String(value)}`);
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean" ||
+      typeof value === "bigint"
+    ) {
+      entries.push(`${key}: ${String(value)}`);
+      return;
+    }
+    entries.push(`${key}: [unserializable]`);
   });
   return entries.slice(0, 6);
 }
@@ -1141,12 +1150,12 @@ function formatTimestamp(value?: string | null) {
   return date.toLocaleString();
 }
 
-type HeroStatProps = {
+type HeroStatProps = Readonly<{
   icon: ReactNode;
   label: string;
   primary: string;
   hint: string;
-};
+}>;
 
 function HeroStat({ icon, label, primary, hint }: HeroStatProps) {
   return (

@@ -31,7 +31,7 @@ const CardTitle = React.forwardRef<
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, children, ...props }, ref) => {
   const hasVisibleContent =
-    !(children === undefined || children === null || children === "");
+    children !== undefined && children !== null && children !== "";
 
   return (
     <h3
@@ -40,9 +40,9 @@ const CardTitle = React.forwardRef<
       {...props}
     >
       {hasVisibleContent ? children : null}
-      {!hasVisibleContent ? (
+      {hasVisibleContent ? null : (
         <span className="sr-only">Card title</span>
-      ) : null}
+      )}
     </h3>
   );
 });

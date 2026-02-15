@@ -37,7 +37,7 @@ export function ProviderStatusIndicator({
   status,
   message,
   latency_ms,
-}: ProviderStatusIndicatorProps) {
+}: Readonly<ProviderStatusIndicatorProps>) {
   const t = useTranslation();
 
   return (

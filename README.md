@@ -1,4 +1,4 @@
-# Venom v1.4 🐍
+# Venom v1.5 🐍
 
 [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml)
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
@@ -32,6 +32,10 @@
 - 🎓 **Academy hardening** — API routes were cleaned up for maintainability/security (exception handling, reduced complexity, safer logs).
 - 🧭 **Runtime monitoring extended** — Config/runtime screens now include Academy and Intent Embedding Router service signals.
 - 🧪 **Intent Router + RAG Boost rollout path** — feature flags and docs are aligned for staged enablement (`ENABLE_INTENT_EMBEDDING_ROUTER`, `ENABLE_RAG_RETRIEVAL_BOOST`).
+- 🎛️ **Workflow Control Plane** — New visual composer for stack management and experimentation with "swimlanes" for Decision/Kernel/Runtime.
+- 🛡️ **Provider Governance** — Added cost limits, rate limiting, and fallback policies for LLM providers.
+- 🧹 **Test Artifacts Policy** — Introduced `CLEAN` (default) vs `PRESERVE` modes for test data management to keep runtime clean.
+- 📑 **Models UI v2** — Redesigned `/models` page with "News" and "Models" tabs, clear distinction between "Featured" and "Catalog".
 
 See `docs/` for architecture, frontend guide, and testing policy.
 
@@ -132,10 +136,17 @@ venom_core/
 - **WorkflowStore** - Procedure repository with editing capability
 - **GhostAgent Integration** - Executing generated workflows
 
-#### 6. **Orchestration**
+#### 6. **Orchestration & Control**
 - **Orchestrator** - Main system coordinator
 - **IntentManager** - Intent classification (5 types: CODE_GENERATION, RESEARCH, COMPLEX_PLANNING, KNOWLEDGE_SEARCH, GENERAL_CHAT)
 - **TaskDispatcher** - Task routing to appropriate agents
+- **Workflow Control Plane** - Visual composer for stack management and experimentation (Swimlanes, Connection Rules)
+
+#### 7. **The Academy** 🎓
+- **LessonStore** - Database of experiences and corrections
+- **Training Pipeline** - LoRA/QLoRA fine-tuning on collected data
+- **Adapter Management** - Hot-swapping model adapters based on task type
+- **Genealogy** - Tracking model evolution and performance metrics
 
 #### 7. **Runtime Services (operational)**
 - **Backend API** (FastAPI/uvicorn) and **Next.js UI** – basic processes.
@@ -670,7 +681,6 @@ make run
 - [Flow Inspector](docs/FLOW_INSPECTOR_GUIDE.md)
 - [Dream Engine](docs/DREAM_ENGINE_GUIDE.md)
 - [Memory Layer](docs/MEMORY_LAYER_GUIDE.md)
-- [Google Search Grounding](docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
 
 ### DevOps and Deployment
 - [Deployment (Next.js)](docs/DEPLOYMENT_NEXT.md)
@@ -874,18 +884,14 @@ See [`docs/THE_ACADEMY.md`](docs/THE_ACADEMY.md) for detailed documentation, arc
 
 ## 🎯 Roadmap
 
-### ✅ v1.4 (current)
-- [x] Planning Layer (ArchitectAgent)
-- [x] Knowledge Expansion (ResearcherAgent + WebSearchSkill)
-- [x] Internet Integration
-- [x] Long-term memory
-- [x] Comprehensive tests
-- [x] **NEW: External integrations (PlatformSkill)** 🤖
-  - [x] GitHub integration (Issues, pull requests)
-  - [x] Discord/Slack notifications
-  - [x] Issue → PR process
+### ✅ v1.5 (current)
+- [x] All v1.4 features (Planning, Knowledge, Memory, Integrations)
+- [x] **The Academy** - Autonomous model fine-tuning with LoRA/QLoRA
+- [x] **Workflow Control Plane** - Visual stack composer
+- [x] **Provider Governance** - Cost and rate limits for LLMs
+- [x] **Academy Hardening** - Improved security and observability
 
-### 🚧 v1.2 (planned)
+### 🚧 v1.6 (planned)
 - [ ] Background polling for GitHub Issues
 - [ ] Dashboard panel for external integrations
 - [ ] Recursive summarization of long documents
@@ -893,7 +899,7 @@ See [`docs/THE_ACADEMY.md`](docs/THE_ACADEMY.md) for detailed documentation, arc
 - [ ] Plan validation and optimization
 - [ ] Better error recovery
 
-### 🔮 v1.2 (future)
+### 🔮 v2.0 (future)
 - [ ] Webhook support for GitHub
 - [ ] MS Teams integration
 - [ ] Multi-source verification

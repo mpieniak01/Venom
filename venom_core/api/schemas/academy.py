@@ -1,6 +1,6 @@
 """API schemas for Academy (model training) endpoints."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -18,16 +18,16 @@ class DatasetResponse(BaseModel):
     """Response z wygenerowanego datasetu."""
 
     success: bool
-    dataset_path: Optional[str] = None
-    statistics: Dict[str, Any] = Field(default_factory=dict)
+    dataset_path: str | None = None
+    statistics: dict[str, Any] = Field(default_factory=dict)
     message: str = ""
 
 
 class TrainingRequest(BaseModel):
     """Request do rozpoczęcia treningu."""
 
-    dataset_path: Optional[str] = None
-    base_model: Optional[str] = None
+    dataset_path: str | None = None
+    base_model: str | None = None
     lora_rank: int = Field(default=16, ge=4, le=64)
     learning_rate: float = Field(default=2e-4, gt=0, le=1e-2)
     num_epochs: int = Field(default=3, ge=1, le=20)
@@ -46,9 +46,9 @@ class TrainingResponse(BaseModel):
     """Response po rozpoczęciu treningu."""
 
     success: bool
-    job_id: Optional[str] = None
+    job_id: str | None = None
     message: str = ""
-    parameters: Dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class JobStatusResponse(BaseModel):
@@ -57,10 +57,10 @@ class JobStatusResponse(BaseModel):
     job_id: str
     status: str  # queued, preparing, running, finished, failed, cancelled
     logs: str = ""
-    started_at: Optional[str] = None
-    finished_at: Optional[str] = None
-    adapter_path: Optional[str] = None
-    error: Optional[str] = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    adapter_path: str | None = None
+    error: str | None = None
 
 
 class AdapterInfo(BaseModel):
@@ -70,7 +70,7 @@ class AdapterInfo(BaseModel):
     adapter_path: str
     base_model: str
     created_at: str
-    training_params: Dict[str, Any] = Field(default_factory=dict)
+    training_params: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = False
 
 
@@ -92,7 +92,7 @@ class UploadFileInfo(BaseModel):
     status: str  # "validating", "ready", "failed"
     records_estimate: int = 0
     sha256: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class DatasetScopeRequest(BaseModel):
@@ -105,7 +105,7 @@ class DatasetScopeRequest(BaseModel):
     # New fields for scope selection
     include_lessons: bool = Field(default=True)
     include_git: bool = Field(default=True)
-    upload_ids: List[str] = Field(default_factory=list)
+    upload_ids: list[str] = Field(default_factory=list)
     quality_profile: str = Field(
         default="balanced", pattern="^(strict|balanced|lenient)$"
     )
@@ -115,10 +115,10 @@ class DatasetPreviewResponse(BaseModel):
     """Response z preview datasetu przed curate."""
 
     total_examples: int
-    by_source: Dict[str, int]
+    by_source: dict[str, int]
     removed_low_quality: int
-    warnings: List[str] = Field(default_factory=list)
-    samples: List[Dict[str, Any]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    samples: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class TrainableModelInfo(BaseModel):
@@ -128,6 +128,6 @@ class TrainableModelInfo(BaseModel):
     label: str
     provider: str
     trainable: bool
-    reason_if_not_trainable: Optional[str] = None
+    reason_if_not_trainable: str | None = None
     recommended: bool = False
     installed_local: bool = False

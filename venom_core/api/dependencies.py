@@ -47,7 +47,6 @@ def get_control_plane_audit_trail():
     return _get_audit()
 
 
-
 def is_testing_mode() -> bool:
     """Sprawdza dynamicznie, czy Venom działa w trybie testowym."""
     return bool(os.getenv("PYTEST_CURRENT_TEST"))

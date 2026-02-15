@@ -76,7 +76,6 @@ def set_dependencies(orchestrator, state_manager, request_tracer):
         set_request_tracer(request_tracer)
 
 
-
 def _get_llm_runtime(task: VenomTask) -> dict:
     """Wyciąga informacje o runtime LLM zapisane w zadaniu."""
     context = getattr(task, "context_history", {}) or {}

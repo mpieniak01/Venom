@@ -447,7 +447,10 @@ class ControlPlaneService:
                 )
                 applied_changes.append(applied_change)
             except Exception as e:
-                logger.error(f"Failed to apply change {change.resource_id}: {e}")
+                logger.error(
+                    "Failed to apply requested change (error_type=%s)",
+                    type(e).__name__,
+                )
                 failed_changes.append(f"{change.resource_id}: {str(e)}")
                 rollback_attempted = True
                 rollback_success = self._rollback_config_changes(

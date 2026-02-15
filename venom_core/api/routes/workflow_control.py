@@ -26,6 +26,8 @@ from venom_core.api.schemas.workflow_control import (
     ControlStateResponse,
     ResourceType,
 )
+from venom_core.services.control_plane import ControlPlaneService
+from venom_core.services.control_plane_audit import ControlPlaneAuditTrail
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -78,7 +80,7 @@ def _extract_user_from_request(request: Request) -> str:
 async def plan_changes(
     request: Request,
     plan_request: ControlPlanRequest,
-    service=Depends(get_control_plane_service),
+    service: Annotated[ControlPlaneService, Depends(get_control_plane_service)],
 ):
     """Plan configuration changes and validate compatibility.
 
@@ -115,7 +117,7 @@ async def plan_changes(
 async def apply_changes(
     request: Request,
     apply_request: ControlApplyRequest,
-    service=Depends(get_control_plane_service),
+    service: Annotated[ControlPlaneService, Depends(get_control_plane_service)],
 ):
     """Apply previously planned changes.
 
@@ -145,7 +147,9 @@ async def apply_changes(
         500: {"description": "Internal server error"},
     },
 )
-async def get_system_state(service=Depends(get_control_plane_service)):
+async def get_system_state(
+    service: Annotated[ControlPlaneService, Depends(get_control_plane_service)],
+):
     """Get current state of the entire system.
 
     Returns comprehensive system state including:
@@ -181,7 +185,9 @@ async def get_system_state(service=Depends(get_control_plane_service)):
         500: {"description": "Internal server error"},
     },
 )
-async def get_control_options(service=Depends(get_control_plane_service)):
+async def get_control_options(
+    service: Annotated[ControlPlaneService, Depends(get_control_plane_service)],
+):
     """Get local/cloud option catalogs for provider and embedding selectors.
 
     Args:
@@ -203,6 +209,9 @@ async def get_control_options(service=Depends(get_control_plane_service)):
     },
 )
 async def get_audit_trail(
+    audit_trail: Annotated[
+        ControlPlaneAuditTrail, Depends(get_control_plane_audit_trail)
+    ],
     operation_type: Optional[str] = None,
     resource_type: Optional[ResourceType] = None,
     triggered_by: Optional[str] = None,
@@ -211,7 +220,6 @@ async def get_audit_trail(
     page_size: Annotated[
         int, Query(ge=1, le=100, description="Items per page (1-100)")
     ] = 50,
-    audit_trail=Depends(get_control_plane_audit_trail),
 ):
     """Get audit trail of control plane operations.
 

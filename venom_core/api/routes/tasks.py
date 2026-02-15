@@ -320,7 +320,7 @@ async def _task_stream_generator(
 )
 async def create_task(
     request: TaskRequest,
-    orchestrator: Orchestrator = Depends(get_orchestrator),
+    orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
 ):
     """
     Tworzy nowe zadanie i uruchamia je w tle.
@@ -353,7 +353,7 @@ async def create_task(
 @router.get("/tasks/{task_id}", response_model=VenomTask, responses=TASK_GET_RESPONSES)
 def get_task(
     task_id: UUID,
-    state_manager: StateManager = Depends(get_state_manager),
+    state_manager: Annotated[StateManager, Depends(get_state_manager)],
 ):
     """
     Pobiera szczegóły zadania po ID.
@@ -377,7 +377,7 @@ def get_task(
 @router.get("/tasks/{task_id}/stream", responses=TASK_STREAM_RESPONSES)
 def stream_task(
     task_id: UUID,
-    state_manager: StateManager = Depends(get_state_manager),
+    state_manager: Annotated[StateManager, Depends(get_state_manager)],
 ):
     """
     Strumieniuje zmiany zadania jako Server-Sent Events (SSE).
@@ -397,7 +397,7 @@ def stream_task(
 
 
 @router.get("/tasks", response_model=list[VenomTask], responses=TASKS_LIST_RESPONSES)
-def get_all_tasks(state_manager: StateManager = Depends(get_state_manager)):
+def get_all_tasks(state_manager: Annotated[StateManager, Depends(get_state_manager)]):
     """
     Pobiera listę wszystkich zadań.
 
@@ -416,6 +416,7 @@ def get_all_tasks(state_manager: StateManager = Depends(get_state_manager)):
     responses=HISTORY_LIST_RESPONSES,
 )
 def get_request_history(
+    request_tracer: Annotated[RequestTracer, Depends(get_request_tracer)],
     limit: Annotated[
         int, Query(ge=1, le=1000, description="Maksymalna liczba wyników")
     ] = 50,
@@ -426,7 +427,6 @@ def get_request_history(
             description="Filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)"
         ),
     ] = None,
-    request_tracer: RequestTracer = Depends(get_request_tracer),
 ):
     """
     Pobiera listę requestów z historii (paginowana).
@@ -458,8 +458,8 @@ def get_request_history(
 )
 def get_request_detail(
     request_id: UUID,
-    request_tracer: RequestTracer = Depends(get_request_tracer),
-    state_manager: StateManager = Depends(get_state_manager),
+    request_tracer: Annotated[RequestTracer, Depends(get_request_tracer)],
+    state_manager: Annotated[StateManager, Depends(get_state_manager)],
 ):
     """
     Pobiera szczegóły requestu z pełną listą kroków.

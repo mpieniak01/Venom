@@ -37,6 +37,20 @@ export function WorkflowControlView() {
   const [applyResults, setApplyResults] = useState<ApplyResults | null>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
+  const handleUpdateNode = useCallback(
+    (nodeId: string, data: unknown) => {
+      updateNode(nodeId, data);
+      setSelectedNode((prev) => {
+        if (!prev || prev.id !== nodeId) return prev;
+        return {
+          ...prev,
+          data: data as Node["data"],
+        };
+      });
+    },
+    [updateNode]
+  );
+
   // When clicking Plan Changes
   const handlePlanRequest = useCallback(async () => {
     if (!systemState || !draftState) return;
@@ -83,7 +97,7 @@ export function WorkflowControlView() {
           <div className="flex-1 overflow-y-auto">
             <PropertyPanel
               selectedNode={selectedNode}
-              onUpdateNode={updateNode}
+              onUpdateNode={handleUpdateNode}
               availableOptions={
                 controlOptions
                   ? {

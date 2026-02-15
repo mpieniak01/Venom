@@ -1910,7 +1910,7 @@ export const pl = {
       currentEmbedding: "Bieżący embedding",
       newEmbedding: "Nowy embedding",
       currentProvider: "Bieżący dostawca",
-      installedLocal: "installed_local",
+      installedLocal: "lokalne",
       cloud: "chmura",
       activeProvider: "Aktywny dostawca",
       newProvider: "Nowy dostawca",

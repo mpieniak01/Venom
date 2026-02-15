@@ -36,6 +36,7 @@ interface PropertyPanelProps {
 type RuntimeService = string | { name?: string; id?: string; [key: string]: unknown };
 type WorkflowNodeType = "decision" | "intent" | "kernel" | "runtime" | "provider" | "embedding";
 type SourceType = "local" | "cloud";
+type SourceTypeLike = SourceType | "installed_local" | "installed-local";
 
 type NodeVisualMeta = {
   icon: LucideIcon;
@@ -159,6 +160,20 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function isWorkflowNodeType(value: string | undefined): value is WorkflowNodeType {
   return value === "decision" || value === "intent" || value === "kernel" || value === "runtime" || value === "provider" || value === "embedding";
+}
+
+function normalizeSourceType(value: SourceTypeLike | string | undefined): SourceType {
+  if (!value) return "local";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "cloud") return "cloud";
+  if (
+    normalized === "local" ||
+    normalized === "installed_local" ||
+    normalized === "installed-local"
+  ) {
+    return "local";
+  }
+  return "local";
 }
 
 function SectionCard({
@@ -336,13 +351,15 @@ function ProviderEditor({
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
 }) {
-  const provider = (data.provider as { active?: string; sourceType?: SourceType } | undefined) ?? {};
+  const provider = (data.provider as { active?: string; sourceType?: SourceTypeLike } | undefined) ?? {};
   const providerBySource = options.providersBySource ?? DEFAULT_OPTIONS.providersBySource;
   const inferSource = (value: string | undefined): SourceType => {
     if (value && providerBySource.cloud.includes(value)) return "cloud";
     return "local";
   };
-  const sourceType: SourceType = provider.sourceType ?? inferSource(provider.active);
+  const sourceType: SourceType = provider.sourceType
+    ? normalizeSourceType(provider.sourceType)
+    : inferSource(provider.active);
   const sourceProviders = providerBySource[sourceType];
   const safeActive = provider.active && sourceProviders.includes(provider.active) ? provider.active : "";
 
@@ -359,7 +376,7 @@ function ProviderEditor({
       <Select
         value={sourceType}
         onValueChange={(val) => {
-          const nextSource = val as SourceType;
+          const nextSource = normalizeSourceType(val);
           const nextProviders = providerBySource[nextSource];
           const nextActive = provider.active && nextProviders.includes(provider.active) ? provider.active : "";
           onUpdate("provider", { active: nextActive, sourceType: nextSource });
@@ -412,9 +429,9 @@ function EmbeddingEditor({
     if (value && modelsBySource.cloud.includes(value)) return "cloud";
     return "local";
   };
-  const sourceType: SourceType = (
-    (data.sourceType as SourceType | undefined) ?? inferSource(data.model as string | undefined)
-  );
+  const sourceType: SourceType = (data.sourceType as SourceTypeLike | undefined)
+    ? normalizeSourceType(data.sourceType as SourceTypeLike)
+    : inferSource(data.model as string | undefined);
   const sourceModels = modelsBySource[sourceType];
   const safeModel = (data.model as string | undefined) && sourceModels.includes(data.model as string) ? (data.model as string) : "";
 
@@ -431,7 +448,7 @@ function EmbeddingEditor({
       <Select
         value={sourceType}
         onValueChange={(val) => {
-          const nextSource = val as SourceType;
+          const nextSource = normalizeSourceType(val);
           const nextModels = modelsBySource[nextSource];
           const nextModel = (data.model as string | undefined) && nextModels.includes(data.model as string)
             ? (data.model as string)

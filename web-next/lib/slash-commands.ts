@@ -46,7 +46,7 @@ export function parseSlashCommand(input: string): ParsedSlashCommand {
   if (!trimmed.startsWith("/")) {
     return { cleaned: input };
   }
-  const match = trimmed.match(/^\/([a-zA-Z0-9_-]+)\b/);
+  const match = /^\/([a-zA-Z0-9_-]+)\b/.exec(trimmed);
   if (!match) return { cleaned: input };
   const token = match[1];
   const rest = trimmed.slice(match[0].length).trimStart();

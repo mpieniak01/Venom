@@ -37,7 +37,7 @@ function toTranslationReplacements(
   return result;
 }
 
-export function AlertsList({ alerts, providerFilter, severityFilter }: AlertsListProps) {
+export function AlertsList({ alerts, providerFilter, severityFilter }: Readonly<AlertsListProps>) {
   const t = useTranslation();
 
   // Filter alerts
@@ -160,7 +160,7 @@ interface AlertsSummaryProps {
   };
 }
 
-export function AlertsSummary({ summary }: AlertsSummaryProps) {
+export function AlertsSummary({ summary }: Readonly<AlertsSummaryProps>) {
   const t = useTranslation();
 
   return (

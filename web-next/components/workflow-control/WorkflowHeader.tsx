@@ -15,7 +15,7 @@ export function WorkflowHeader({
     onPlanRequest,
     onReset,
     isLoading
-}: WorkflowHeaderProps) {
+}: Readonly<WorkflowHeaderProps>) {
     const t = useTranslation();
 
     return (

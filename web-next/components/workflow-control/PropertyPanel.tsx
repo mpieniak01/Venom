@@ -162,7 +162,7 @@ function isWorkflowNodeType(value: string | undefined): value is WorkflowNodeTyp
   return value === "decision" || value === "intent" || value === "kernel" || value === "runtime" || value === "provider" || value === "embedding";
 }
 
-function normalizeSourceType(value: SourceTypeLike | string | undefined): SourceType {
+function normalizeSourceType(value: SourceTypeLike | undefined): SourceType {
   if (!value) return "local";
   const normalized = value.trim().toLowerCase();
   if (normalized === "cloud") return "cloud";
@@ -182,13 +182,13 @@ function SectionCard({
   title,
   description,
   children,
-}: {
+}: Readonly<{
   type: WorkflowNodeType;
   icon: LucideIcon;
   title: string;
   description: string;
   children: ReactNode;
-}) {
+}>) {
   return (
     <div className={`p-4 rounded-2xl border ${SECTION_STYLES[type]}`}>
       <div className="flex items-center gap-3 mb-3 border-b border-white/10 pb-2">
@@ -210,12 +210,12 @@ function DecisionEditor({
   options,
   onUpdate,
   t,
-}: {
+}: Readonly<{
   data: Record<string, unknown>;
   options: Required<NonNullable<PropertyPanelProps["availableOptions"]>>;
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
-}) {
+}>) {
   return (
     <SectionCard
       type="decision"
@@ -246,11 +246,11 @@ function IntentEditor({
   data,
   onUpdate,
   t,
-}: {
+}: Readonly<{
   data: Record<string, unknown>;
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
-}) {
+}>) {
   return (
     <SectionCard
       type="intent"
@@ -279,12 +279,12 @@ function KernelEditor({
   options,
   onUpdate,
   t,
-}: {
+}: Readonly<{
   data: Record<string, unknown>;
   options: Required<NonNullable<PropertyPanelProps["availableOptions"]>>;
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
-}) {
+}>) {
   return (
     <SectionCard
       type="kernel"
@@ -311,7 +311,7 @@ function KernelEditor({
   );
 }
 
-function RuntimeEditor({ data, t }: { data: Record<string, unknown>; t: (path: string) => string }) {
+function RuntimeEditor({ data, t }: Readonly<{ data: Record<string, unknown>; t: (path: string) => string }>) {
   const runtime = (data.runtime as { services?: RuntimeService[] } | undefined) ?? {};
   const services = runtime.services ?? [];
 
@@ -345,12 +345,12 @@ function ProviderEditor({
   options,
   onUpdate,
   t,
-}: {
+}: Readonly<{
   data: Record<string, unknown>;
   options: Required<NonNullable<PropertyPanelProps["availableOptions"]>>;
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
-}) {
+}>) {
   const provider = (data.provider as { active?: string; sourceType?: SourceTypeLike } | undefined) ?? {};
   const providerBySource = options.providersBySource ?? DEFAULT_OPTIONS.providersBySource;
   const inferSource = (value: string | undefined): SourceType => {
@@ -376,7 +376,7 @@ function ProviderEditor({
       <Select
         value={sourceType}
         onValueChange={(val) => {
-          const nextSource = normalizeSourceType(val);
+          const nextSource = normalizeSourceType(val as SourceTypeLike);
           const nextProviders = providerBySource[nextSource];
           const nextActive = provider.active && nextProviders.includes(provider.active) ? provider.active : "";
           onUpdate("provider", { active: nextActive, sourceType: nextSource });
@@ -418,12 +418,12 @@ function EmbeddingEditor({
   options,
   onUpdate,
   t,
-}: {
+}: Readonly<{
   data: Record<string, unknown>;
   options: Required<NonNullable<PropertyPanelProps["availableOptions"]>>;
   onUpdate: (key: string, value: unknown) => void;
   t: (path: string) => string;
-}) {
+}>) {
   const modelsBySource = options.modelsBySource ?? DEFAULT_OPTIONS.modelsBySource;
   const inferSource = (value: string | undefined): SourceType => {
     if (value && modelsBySource.cloud.includes(value)) return "cloud";
@@ -448,7 +448,7 @@ function EmbeddingEditor({
       <Select
         value={sourceType}
         onValueChange={(val) => {
-          const nextSource = normalizeSourceType(val);
+          const nextSource = normalizeSourceType(val as SourceTypeLike);
           const nextModels = modelsBySource[nextSource];
           const nextModel = (data.model as string | undefined) && nextModels.includes(data.model as string)
             ? (data.model as string)
@@ -492,7 +492,7 @@ export function PropertyPanel({
   selectedNode,
   onUpdateNode,
   availableOptions,
-}: PropertyPanelProps) {
+}: Readonly<PropertyPanelProps>) {
   const t = useTranslation();
   const resolvedOptions = resolveAvailableOptions(availableOptions);
 

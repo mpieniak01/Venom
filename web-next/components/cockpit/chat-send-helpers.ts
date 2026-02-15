@@ -146,32 +146,28 @@ export const upsertHistoryEntry = (
 };
 
 export const buildSimpleRequestSteps = (
-    timing: { historyMs?: number; ttftMs?: number } | undefined,
-    timestamp: string,
+  timing: { historyMs?: number; ttftMs?: number } | undefined,
+  timestamp: string,
 ): HistoryRequestDetail["steps"] | undefined => {
-    const rawSteps = [
-        timing?.historyMs !== undefined
-            ? {
-                component: "UI",
-                action: "submit_to_history",
-                status: "OK",
-                timestamp,
-                details: `history_ms=${Math.round(timing.historyMs)}`,
-            }
-            : null,
-        timing?.ttftMs !== undefined
-            ? {
-                component: "UI",
-                action: "ttft",
-                status: "OK",
-                timestamp,
-                details: `ttft_ms=${Math.round(timing.ttftMs)}`,
-            }
-            : null,
-    ];
-    const steps = rawSteps.filter(
-        (step): step is NonNullable<typeof rawSteps[number]> => step !== null,
-    );
+    const steps: NonNullable<HistoryRequestDetail["steps"]> = [];
+    if (timing?.historyMs !== undefined) {
+        steps.push({
+            component: "UI",
+            action: "submit_to_history",
+            status: "OK",
+            timestamp,
+            details: `history_ms=${Math.round(timing.historyMs)}`,
+        });
+    }
+    if (timing?.ttftMs !== undefined) {
+        steps.push({
+            component: "UI",
+            action: "ttft",
+            status: "OK",
+            timestamp,
+            details: `ttft_ms=${Math.round(timing.ttftMs)}`,
+        });
+    }
     return steps.length > 0 ? steps : undefined;
 };
 

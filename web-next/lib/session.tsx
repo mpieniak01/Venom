@@ -41,7 +41,7 @@ const createSessionId = () => {
   return `session-${Date.now()}-${rand}`;
 };
 
-export function SessionProvider({ children }: { children: React.ReactNode }) {
+export function SessionProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [sessionId, setSessionIdState] = useState<string>("");
 
   const setSessionId = useCallback((value: string) => {

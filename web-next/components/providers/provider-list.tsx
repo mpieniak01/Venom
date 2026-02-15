@@ -32,7 +32,7 @@ export function canActivateProvider(provider: ProviderInfo, hasActivateHandler: 
   );
 }
 
-export function ProviderList({ providers, onActivate, isActivating }: ProviderListProps) {
+export function ProviderList({ providers, onActivate, isActivating }: Readonly<ProviderListProps>) {
   const t = useTranslation();
 
   if (!providers || providers.length === 0) {

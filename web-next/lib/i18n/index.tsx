@@ -66,7 +66,7 @@ function applyReplacements(value: string, replacements?: Record<string, string |
   }, value);
 }
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
+export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [language, setLanguage] = useState<LanguageCode>("pl");
 
   useEffect(() => {

@@ -28,7 +28,7 @@ export async function apiFetch<T = unknown>(
       cache: cache ?? "no-store",
       headers: {
         "Content-Type": "application/json",
-        ...(headers || {}),
+        ...(headers ?? {}),
       },
     });
   } catch (error) {
@@ -38,7 +38,7 @@ export async function apiFetch<T = unknown>(
         cache: cache ?? "no-store",
         headers: {
           "Content-Type": "application/json",
-          ...(headers || {}),
+          ...(headers ?? {}),
         },
       });
     } else {

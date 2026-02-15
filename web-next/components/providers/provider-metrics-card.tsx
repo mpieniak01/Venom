@@ -37,7 +37,7 @@ interface ProviderMetricsCardProps {
   metrics: ProviderMetrics | null;
 }
 
-export function ProviderMetricsCard({ provider, metrics }: ProviderMetricsCardProps) {
+export function ProviderMetricsCard({ provider, metrics }: Readonly<ProviderMetricsCardProps>) {
   const t = useTranslation();
 
   if (!metrics) {

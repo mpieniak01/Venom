@@ -28,5 +28,34 @@ describe("workflow canvas graph builder", () => {
 
     const edgeIds = graph.edges.map((e) => e.id).sort();
     assert.deepEqual(edgeIds, ["e1", "e2", "e3", "e4", "e5"]);
+
+    const providerNode = graph.nodes.find((node) => node.id === "provider");
+    const embeddingNode = graph.nodes.find((node) => node.id === "embedding");
+    assert.equal(
+      (providerNode?.data as { sourceTag?: string } | undefined)?.sourceTag,
+      "local"
+    );
+    assert.equal(
+      (embeddingNode?.data as { sourceTag?: string } | undefined)?.sourceTag,
+      "local"
+    );
+  });
+
+  it("marks provider/embedding as cloud when cloud provider is active", () => {
+    const graph = buildWorkflowGraph({
+      provider: { active: "openai" },
+      embedding_model: "text-embedding-3-large",
+    });
+
+    const providerNode = graph.nodes.find((node) => node.id === "provider");
+    const embeddingNode = graph.nodes.find((node) => node.id === "embedding");
+    assert.equal(
+      (providerNode?.data as { sourceTag?: string } | undefined)?.sourceTag,
+      "cloud"
+    );
+    assert.equal(
+      (embeddingNode?.data as { sourceTag?: string } | undefined)?.sourceTag,
+      "cloud"
+    );
   });
 });

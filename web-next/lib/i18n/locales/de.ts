@@ -1904,6 +1904,8 @@ export const de = {
       currentEmbedding: "Aktuelles Embedding",
       newEmbedding: "Neues Embedding",
       currentProvider: "Aktueller Provider",
+      installedLocal: "installed_local",
+      cloud: "cloud",
       activeProvider: "Aktiver Provider",
       newProvider: "Neuer Provider",
       runtimeServices: "Runtime-Dienste",

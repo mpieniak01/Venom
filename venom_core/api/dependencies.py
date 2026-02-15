@@ -13,6 +13,41 @@ from venom_core.memory.vector_store import VectorStore
 from venom_core.services.session_store import SessionStore
 
 
+def get_control_plane_service():
+    """
+    Get control plane service instance (dependency injection wrapper).
+    
+    This is a thin wrapper around the service's singleton getter to maintain
+    consistency with FastAPI's Depends pattern.
+    
+    Returns:
+        ControlPlaneService: Instancja control plane service
+    """
+    from venom_core.services.control_plane import (
+        get_control_plane_service as _get_service,
+    )
+
+    return _get_service()
+
+
+def get_control_plane_audit_trail():
+    """
+    Get control plane audit trail instance (dependency injection wrapper).
+    
+    This is a thin wrapper around the service's singleton getter to maintain
+    consistency with FastAPI's Depends pattern.
+    
+    Returns:
+        ControlPlaneAuditTrail: Instancja audit trail
+    """
+    from venom_core.services.control_plane_audit import (
+        get_control_plane_audit_trail as _get_audit,
+    )
+
+    return _get_audit()
+
+
+
 def is_testing_mode() -> bool:
     """Sprawdza dynamicznie, czy Venom działa w trybie testowym."""
     return bool(os.getenv("PYTEST_CURRENT_TEST"))

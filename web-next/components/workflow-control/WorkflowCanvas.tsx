@@ -247,6 +247,31 @@ function SelectedNodePulse({
   );
 }
 
+function SourceBadge({ sourceTag }: { sourceTag: "local" | "cloud" }) {
+  const t = useTranslation();
+  const isCloud = sourceTag === "cloud";
+  return (
+    <span
+      className={[
+        "absolute right-2 top-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        isCloud
+          ? "border-cyan-300/50 bg-cyan-500/15 text-cyan-200"
+          : "border-emerald-300/50 bg-emerald-500/15 text-emerald-200",
+      ].join(" ")}
+    >
+      {isCloud ? t("workflowControl.labels.cloud") : t("workflowControl.labels.installedLocal")}
+    </span>
+  );
+}
+
+function readSourceTag(data: unknown): "local" | "cloud" {
+  if (!data || typeof data !== "object") {
+    return "local";
+  }
+  const sourceTag = (data as { sourceTag?: unknown }).sourceTag;
+  return sourceTag === "cloud" ? "cloud" : "local";
+}
+
 // Swimlane Styling Map - Increased Contrast
 const SWIMLANE_STYLES: Record<string, { bg: string; border: string; text: string; bgContent: string }> = {
   decision: { bg: 'bg-blue-900/40', border: 'border-slate-700', text: 'text-blue-400', bgContent: 'bg-blue-900/5' },
@@ -313,11 +338,13 @@ function RuntimeNode({ selected = false }: NodeProps) {
   );
 }
 
-function ProviderNode({ selected = false }: NodeProps) {
+function ProviderNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const sourceTag = readSourceTag(data);
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-orange-500 text-orange-100 min-w-[210px] relative">
       <SelectedNodePulse selected={selected} glowClass="border-orange-300/90 shadow-[0_0_24px_rgba(253,186,116,0.45)]" />
+      <SourceBadge sourceTag={sourceTag} />
       <Handle type="target" position={Position.Left} className="!bg-orange-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-orange-400 truncate text-center">{t("workflowControl.labels.currentProvider")}</div>
@@ -325,11 +352,13 @@ function ProviderNode({ selected = false }: NodeProps) {
   );
 }
 
-function EmbeddingNode({ selected = false }: NodeProps) {
+function EmbeddingNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const sourceTag = readSourceTag(data);
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(236,72,153,0.3)] hover:shadow-[0_0_25px_rgba(236,72,153,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-pink-500 text-pink-100 min-w-[210px] relative">
       <SelectedNodePulse selected={selected} glowClass="border-pink-300/90 shadow-[0_0_24px_rgba(249,168,212,0.45)]" />
+      <SourceBadge sourceTag={sourceTag} />
       <Handle type="target" position={Position.Left} className="!bg-pink-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-pink-500 !w-3 !h-3" />
       <NodeActions />

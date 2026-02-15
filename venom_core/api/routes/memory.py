@@ -4,7 +4,6 @@ import inspect
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 
 from venom_core.api.dependencies import (
     get_lessons_store,
@@ -12,6 +11,12 @@ from venom_core.api.dependencies import (
     get_state_manager,
     get_vector_store,
     is_testing_mode,
+)
+from venom_core.api.schemas.memory import (
+    LearningToggleRequest,
+    MemoryIngestRequest,
+    MemoryIngestResponse,
+    MemorySearchRequest,
 )
 from venom_core.core.knowledge_contract import KnowledgeKind
 from venom_core.core.knowledge_ttl import compute_expires_at, resolve_ttl_days
@@ -408,38 +413,6 @@ def _append_flow_edges(
                 }
             }
         )
-
-
-# Modele
-class MemoryIngestRequest(BaseModel):
-    """Model żądania ingestion do pamięci."""
-
-    text: str
-    category: str = "general"
-    collection: str = "default"
-    session_id: str | None = None
-    user_id: str | None = None
-    pinned: bool | None = None
-    memory_type: str | None = None
-    scope: str | None = None
-    topic: str | None = None
-    timestamp: str | None = None
-
-
-class MemoryIngestResponse(BaseModel):
-    """Model odpowiedzi po ingestion."""
-
-    status: str
-    message: str
-    chunks_count: int = 0
-
-
-class MemorySearchRequest(BaseModel):
-    """Model żądania wyszukiwania w pamięci."""
-
-    query: str
-    limit: int = 3
-    collection: str = "default"
 
 
 # Modele i Stałe
@@ -899,10 +872,6 @@ async def purge_all_lessons(
 
     result = knowledge_purge(force=force, lessons_store=lessons_store)
     return await _resolve_maybe_await(result)
-
-
-class LearningToggleRequest(BaseModel):
-    enabled: bool
 
 
 @router.get("/lessons/learning/status", responses=LESSONS_READ_RESPONSES)

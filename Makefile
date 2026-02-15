@@ -33,7 +33,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage sonar-reports-backend-new-code pr-fast \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
-	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend \
+	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types \
 	env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff
 
 lint:
@@ -149,6 +149,12 @@ sonar-reports-frontend:
 	$(NPM) --prefix $(WEB_DIR) run test:unit:coverage
 
 sonar-reports: sonar-reports-backend sonar-reports-frontend
+
+openapi-export:
+	python3 scripts/export_openapi.py --output openapi/openapi.json
+
+openapi-codegen-types: openapi-export
+	npx --yes openapi-typescript@7.10.1 openapi/openapi.json -o web-next/lib/generated/api-types.d.ts
 
 pytest:
 	VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh

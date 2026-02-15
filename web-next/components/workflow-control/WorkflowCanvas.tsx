@@ -32,30 +32,6 @@ interface WorkflowCanvasProps {
   systemState: SystemState | null;
 }
 
-interface DecisionNodeData {
-  strategy?: string;
-}
-
-interface KernelNodeData {
-  kernel?: string;
-}
-
-interface RuntimeNodeData {
-  runtime?: {
-    services?: string[];
-  };
-}
-
-interface ProviderNodeData {
-  provider?: {
-    active?: string;
-  };
-}
-
-interface EmbeddingNodeData {
-  model?: string;
-}
-
 // Node types
 const nodeTypes = {
   decision: DecisionNode,
@@ -254,13 +230,6 @@ function NodeActions() {
   );
 }
 
-function textOrNa(value: string | undefined, t: ReturnType<typeof useTranslation>) {
-  if (!value || value.trim().length === 0) {
-    return t("workflowControl.common.na");
-  }
-  return value;
-}
-
 // Swimlane Styling Map - Increased Contrast
 const SWIMLANE_STYLES: Record<string, { bg: string; border: string; text: string; bgContent: string }> = {
   decision: { bg: 'bg-blue-900/40', border: 'border-slate-700', text: 'text-blue-400', bgContent: 'bg-blue-900/5' },
@@ -289,90 +258,72 @@ function SwimlaneNode({ data }: { data: { label: string, index: number } }) {
   );
 }
 
-function DecisionNode({ data }: { data: DecisionNodeData }) {
+function DecisionNode() {
   const t = useTranslation();
-  const strategy = textOrNa(data.strategy, t);
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-blue-500 text-blue-100 min-w-[210px] relative">
       <Handle type="source" position={Position.Bottom} className="!bg-blue-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-blue-400 truncate text-center">{t("workflowControl.sections.decision")}</div>
-      <div className="text-[10px] font-semibold text-blue-200/90 truncate text-center mt-1">{strategy}</div>
     </div>
   );
 }
 
-function KernelNode({ data }: { data: KernelNodeData }) {
+function KernelNode() {
   const t = useTranslation();
-  const kernel = textOrNa(data.kernel, t);
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(34,197,94,0.3)] hover:shadow-[0_0_25px_rgba(34,197,94,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-green-500 text-green-100 min-w-[210px] relative">
       <Handle type="target" position={Position.Left} className="!bg-green-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-green-400 truncate text-center">{t("workflowControl.labels.currentKernel")}</div>
-      <div className="text-[10px] font-semibold text-green-200/90 truncate text-center mt-1">{kernel}</div>
     </div>
   );
 }
 
-function RuntimeNode({ data }: { data: RuntimeNodeData }) {
+function RuntimeNode() {
   const t = useTranslation();
-  const servicesCount = data.runtime?.services?.length ?? 0;
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-purple-500 text-purple-100 min-w-[210px] relative">
       <Handle type="target" position={Position.Left} className="!bg-purple-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-purple-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-purple-400 truncate text-center">{t("workflowControl.labels.runtimeServices")}</div>
-      <div className="text-[10px] font-semibold text-purple-200/90 truncate text-center mt-1">
-        {t("workflowControl.canvas.servicesCount", { count: servicesCount })}
-      </div>
     </div>
   );
 }
 
-function ProviderNode({ data }: { data: ProviderNodeData }) {
+function ProviderNode() {
   const t = useTranslation();
-  const provider = textOrNa(data.provider?.active, t);
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-orange-500 text-orange-100 min-w-[210px] relative">
       <Handle type="target" position={Position.Left} className="!bg-orange-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-orange-400 truncate text-center">{t("workflowControl.labels.currentProvider")}</div>
-      <div className="text-[10px] font-semibold text-orange-200/90 truncate text-center mt-1">{provider}</div>
     </div>
   );
 }
 
-function EmbeddingNode({ data }: { data: EmbeddingNodeData }) {
+function EmbeddingNode() {
   const t = useTranslation();
-  const model = textOrNa(data.model, t);
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(236,72,153,0.3)] hover:shadow-[0_0_25px_rgba(236,72,153,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-pink-500 text-pink-100 min-w-[210px] relative">
       <Handle type="target" position={Position.Left} className="!bg-pink-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-pink-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-pink-400 truncate text-center">{t("workflowControl.labels.currentEmbedding")}</div>
-      <div className="text-[10px] font-semibold text-pink-200/90 truncate text-center mt-1">{model}</div>
     </div>
   );
 }
 
-interface IntentNodeData {
-  intentMode?: string;
-}
-
-function IntentNode({ data }: { data: IntentNodeData }) {
+function IntentNode() {
   const t = useTranslation();
-  const mode = textOrNa(data.intentMode, t);
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:shadow-[0_0_25px_rgba(234,179,8,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-yellow-500 text-yellow-100 min-w-[210px] relative">
       <Handle type="target" position={Position.Left} className="!bg-yellow-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-yellow-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-yellow-400 truncate text-center">{t("workflowControl.sections.intent")}</div>
-      <div className="text-[10px] font-semibold text-yellow-200/90 truncate text-center mt-1">{mode}</div>
     </div>
   );
 }

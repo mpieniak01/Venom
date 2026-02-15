@@ -82,6 +82,7 @@ tests/test_provider_observability.py
 tests/test_provider_observability_api.py
 tests/test_governance_api.py
 tests/test_control_plane_compatibility.py
+tests/test_control_plane_service_edges.py
 tests/test_workflow_control_api.py
 tests/test_workflow_control_contract.py
 tests/test_workflow_operations.py

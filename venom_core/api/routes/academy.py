@@ -615,7 +615,6 @@ def _ingest_uploads_for_curate(curator: Any, upload_ids: List[str]) -> int:
 
 @router.post(
     "/dataset",
-    response_model=DatasetResponse,
     responses={
         503: RESP_503_ACADEMY_UNAVAILABLE,
     },
@@ -696,7 +695,6 @@ async def curate_dataset(
 
 @router.post(
     "/train",
-    response_model=TrainingResponse,
     responses={
         400: RESP_400_DATASET_REQUIRED,
         403: RESP_403_LOCALHOST_ONLY,
@@ -895,7 +893,6 @@ def _cleanup_terminal_job_container(
 
 @router.get(
     "/train/{job_id}/status",
-    response_model=JobStatusResponse,
     responses={
         404: RESP_404_JOB_NOT_FOUND,
         500: RESP_500_INTERNAL,
@@ -1129,7 +1126,6 @@ async def list_jobs(
 
 @router.get(
     "/adapters",
-    response_model=List[AdapterInfo],
     responses={
         500: RESP_500_INTERNAL,
         503: RESP_503_ACADEMY_UNAVAILABLE,
@@ -1209,7 +1205,6 @@ async def list_adapters() -> List[AdapterInfo]:
 
 @router.post(
     "/adapters/activate",
-    response_model=Dict[str, Any],
     responses={
         403: RESP_403_LOCALHOST_ONLY,
         404: RESP_404_ADAPTER_NOT_FOUND,
@@ -1279,7 +1274,6 @@ async def activate_adapter(
 
 @router.post(
     "/adapters/deactivate",
-    response_model=Dict[str, Any],
     responses={
         403: RESP_403_LOCALHOST_ONLY,
         500: RESP_500_INTERNAL,
@@ -1332,7 +1326,6 @@ async def deactivate_adapter(req: Request) -> Dict[str, Any]:
 
 @router.delete(
     "/train/{job_id}",
-    response_model=Dict[str, Any],
     responses={
         403: RESP_403_LOCALHOST_ONLY,
         404: RESP_404_JOB_NOT_FOUND,
@@ -1396,7 +1389,6 @@ async def cancel_training(job_id: str, req: Request) -> Dict[str, Any]:
 
 @router.get(
     "/status",
-    response_model=Dict[str, Any],
     responses={
         500: RESP_500_INTERNAL,
     },
@@ -1661,7 +1653,6 @@ def _build_upload_response(
 
 @router.post(
     "/dataset/upload",
-    response_model=Dict[str, Any],
     responses={
         400: {
             "description": "Invalid request payload (e.g., no files, too many files)."
@@ -1726,7 +1717,7 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
     return _build_upload_response(uploaded_files, failed_files)
 
 
-@router.get("/dataset/uploads", response_model=List[UploadFileInfo])
+@router.get("/dataset/uploads")
 async def list_dataset_uploads() -> List[UploadFileInfo]:
     """
     Lista uploadowanych plików użytkownika.
@@ -1745,7 +1736,6 @@ async def list_dataset_uploads() -> List[UploadFileInfo]:
 
 @router.delete(
     "/dataset/uploads/{file_id}",
-    response_model=Dict[str, Any],
     responses={
         400: {"description": "Invalid upload identifier."},
         403: RESP_403_LOCALHOST_ONLY,
@@ -1858,7 +1848,6 @@ def _build_preview_samples(curator: Any) -> List[Dict[str, str]]:
 
 @router.post(
     "/dataset/preview",
-    response_model=DatasetPreviewResponse,
     responses={
         500: RESP_500_INTERNAL,
         503: RESP_503_ACADEMY_UNAVAILABLE,
@@ -2120,7 +2109,7 @@ def _ensure_default_model_visible(
     )
 
 
-@router.get("/models/trainable", response_model=List[TrainableModelInfo])
+@router.get("/models/trainable")
 async def get_trainable_models() -> List[TrainableModelInfo]:
     """
     Lista modeli trenowalnych dla Academy.

@@ -119,11 +119,55 @@ jobs:
         timeout-minutes: 5
         run: npm --prefix web-next run test:unit
 
+  openapi-contract:
+    name: OpenAPI Contract (export + TS codegen)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    needs: [forbidden-paths]
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-ci-lite.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.19.1"
+
+      - name: Export OpenAPI
+        run: |
+          mkdir -p test-results/openapi
+          python3 scripts/export_openapi.py --output test-results/openapi/openapi.json
+
+      - name: Generate TypeScript types from OpenAPI
+        run: |
+          npx --yes openapi-typescript@7.10.1 test-results/openapi/openapi.json -o test-results/openapi/api-types.d.ts
+
+      - name: Upload OpenAPI contract artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-contract
+          path: test-results/openapi/**
+          if-no-files-found: error
+
   sonar:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [backend-lite, frontend-lite]
+    needs: [backend-lite, frontend-lite, openapi-contract]
     # secrets context is not available in job-level `if`, so gate by event/repo only.
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     env:

@@ -1906,7 +1906,7 @@ export const de = {
       currentEmbedding: "Aktuelles Embedding",
       newEmbedding: "Neues Embedding",
       currentProvider: "Aktueller Provider",
-      installedLocal: "installed_local",
+      installedLocal: "lokal",
       cloud: "cloud",
       activeProvider: "Aktiver Provider",
       newProvider: "Neuer Provider",

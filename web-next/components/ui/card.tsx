@@ -27,15 +27,29 @@ const CardHeader = React.forwardRef<
 CardHeader.displayName = "CardHeader";
 
 const CardTitle = React.forwardRef<
-  HTMLParagraphElement,
+  HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-  <h3
-    ref={ref}
-    className={`text-2xl font-semibold leading-none tracking-tight ${className || ""}`}
-    {...props}
-  />
-));
+>(({ className, children, ...props }, ref) => {
+  const hasAccessibleLabel =
+    typeof props["aria-label"] === "string" ||
+    typeof props["aria-labelledby"] === "string" ||
+    typeof props.title === "string";
+  const hasVisibleContent =
+    !(children === undefined || children === null || children === "");
+
+  return (
+    <h3
+      ref={ref}
+      className={`text-2xl font-semibold leading-none tracking-tight ${className || ""}`}
+      {...props}
+    >
+      {hasVisibleContent ? children : null}
+      {!hasVisibleContent && !hasAccessibleLabel ? (
+        <span className="sr-only">Card title</span>
+      ) : null}
+    </h3>
+  );
+});
 CardTitle.displayName = "CardTitle";
 
 const CardDescription = React.forwardRef<

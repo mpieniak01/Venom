@@ -1,6 +1,5 @@
 """API schemas for tasks and history endpoints."""
 
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -12,26 +11,26 @@ class HistoryRequestSummary(BaseModel):
     request_id: UUID
     prompt: str
     status: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
     created_at: str
-    finished_at: Optional[str] = None
-    duration_seconds: Optional[float] = None
-    llm_provider: Optional[str] = None
-    llm_model: Optional[str] = None
-    llm_endpoint: Optional[str] = None
-    llm_config_hash: Optional[str] = None
-    llm_runtime_id: Optional[str] = None
-    forced_tool: Optional[str] = None
-    forced_provider: Optional[str] = None
-    forced_intent: Optional[str] = None
-    error_code: Optional[str] = None
-    error_class: Optional[str] = None
-    error_message: Optional[str] = None
-    error_details: Optional[dict] = None
-    error_stage: Optional[str] = None
-    error_retryable: Optional[bool] = None
-    feedback: Optional[dict] = None
-    result: Optional[str] = None
+    finished_at: str | None = None
+    duration_seconds: float | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    llm_endpoint: str | None = None
+    llm_config_hash: str | None = None
+    llm_runtime_id: str | None = None
+    forced_tool: str | None = None
+    forced_provider: str | None = None
+    forced_intent: str | None = None
+    error_code: str | None = None
+    error_class: str | None = None
+    error_message: str | None = None
+    error_details: dict | None = None
+    error_stage: str | None = None
+    error_retryable: bool | None = None
+    feedback: dict | None = None
+    result: str | None = None
 
 
 class HistoryRequestDetail(BaseModel):
@@ -40,30 +39,30 @@ class HistoryRequestDetail(BaseModel):
     request_id: UUID
     prompt: str
     status: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
     created_at: str
-    finished_at: Optional[str] = None
-    duration_seconds: Optional[float] = None
+    finished_at: str | None = None
+    duration_seconds: float | None = None
     steps: list
-    llm_provider: Optional[str] = None
-    llm_model: Optional[str] = None
-    llm_endpoint: Optional[str] = None
-    llm_config_hash: Optional[str] = None
-    llm_runtime_id: Optional[str] = None
-    forced_tool: Optional[str] = None
-    forced_provider: Optional[str] = None
-    forced_intent: Optional[str] = None
-    first_token: Optional[dict] = None
-    streaming: Optional[dict] = None
-    context_preview: Optional[dict] = None
-    generation_params: Optional[dict] = None
-    llm_runtime: Optional[dict] = None
-    context_used: Optional[dict] = None
-    error_code: Optional[str] = None
-    error_class: Optional[str] = None
-    error_message: Optional[str] = None
-    error_details: Optional[dict] = None
-    error_stage: Optional[str] = None
-    error_retryable: Optional[bool] = None
-    result: Optional[str] = None
-    feedback: Optional[dict] = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    llm_endpoint: str | None = None
+    llm_config_hash: str | None = None
+    llm_runtime_id: str | None = None
+    forced_tool: str | None = None
+    forced_provider: str | None = None
+    forced_intent: str | None = None
+    first_token: dict | None = None
+    streaming: dict | None = None
+    context_preview: dict | None = None
+    generation_params: dict | None = None
+    llm_runtime: dict | None = None
+    context_used: dict | None = None
+    error_code: str | None = None
+    error_class: str | None = None
+    error_message: str | None = None
+    error_details: dict | None = None
+    error_stage: str | None = None
+    error_retryable: bool | None = None
+    result: str | None = None
+    feedback: dict | None = None

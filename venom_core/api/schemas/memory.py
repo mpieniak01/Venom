@@ -1,7 +1,5 @@
 """API schemas for memory and knowledge management endpoints."""
 
-from typing import Optional
-
 from pydantic import BaseModel
 
 
@@ -11,13 +9,13 @@ class MemoryIngestRequest(BaseModel):
     text: str
     category: str = "general"
     collection: str = "default"
-    session_id: Optional[str] = None
-    user_id: Optional[str] = None
-    pinned: Optional[bool] = None
-    memory_type: Optional[str] = None
-    scope: Optional[str] = None
-    topic: Optional[str] = None
-    timestamp: Optional[str] = None
+    session_id: str | None = None
+    user_id: str | None = None
+    pinned: bool | None = None
+    memory_type: str | None = None
+    scope: str | None = None
+    topic: str | None = None
+    timestamp: str | None = None
 
 
 class MemoryIngestResponse(BaseModel):
@@ -37,6 +35,6 @@ class MemorySearchRequest(BaseModel):
 
 
 class LearningToggleRequest(BaseModel):
-    """Request to toggle learning mode."""
+    """Request do przełączenia trybu uczenia."""
 
     enabled: bool

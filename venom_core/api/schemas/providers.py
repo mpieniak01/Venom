@@ -1,7 +1,5 @@
 """API schemas for provider management endpoints."""
 
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -22,13 +20,13 @@ class ProviderStatus(BaseModel):
         ...,
         description="Connection status: connected, degraded, offline, unknown",
     )
-    reason_code: Optional[str] = Field(
+    reason_code: str | None = Field(
         default=None, description="Reason code for non-connected status"
     )
-    message: Optional[str] = Field(
+    message: str | None = Field(
         default=None, description="Human-readable status message"
     )
-    latency_ms: Optional[float] = Field(
+    latency_ms: float | None = Field(
         default=None, description="Connection latency in milliseconds"
     )
 
@@ -45,13 +43,13 @@ class ProviderInfo(BaseModel):
     capabilities: ProviderCapability
     connection_status: ProviderStatus
     is_active: bool = Field(default=False, description="Is currently active")
-    endpoint: Optional[str] = Field(default=None, description="Provider endpoint")
+    endpoint: str | None = Field(default=None, description="Provider endpoint")
 
 
 class ProviderActivateRequest(BaseModel):
     """Request to activate a provider."""
 
-    runtime: Optional[str] = Field(
+    runtime: str | None = Field(
         default=None, description="Optional runtime override"
     )
-    model: Optional[str] = Field(default=None, description="Optional model name")
+    model: str | None = Field(default=None, description="Optional model name")

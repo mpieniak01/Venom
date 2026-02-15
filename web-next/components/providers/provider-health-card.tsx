@@ -28,7 +28,7 @@ interface ProviderHealthCardProps {
   health: ProviderHealth | null;
 }
 
-export function ProviderHealthCard({ provider, health }: ProviderHealthCardProps) {
+export function ProviderHealthCard({ provider, health }: Readonly<ProviderHealthCardProps>) {
   const t = useTranslation();
 
   if (!health) {

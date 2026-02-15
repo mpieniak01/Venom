@@ -1,4 +1,4 @@
-# Venom v1.4 🐍
+# Venom v1.5 🐍
 
 [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml)
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
@@ -32,6 +32,10 @@
 - 🎓 **Wzmocnienie Academy** — trasy API uporządkowano pod utrzymanie i bezpieczeństwo (obsługa wyjątków, redukcja złożoności, bezpieczniejsze logowanie).
 - 🧭 **Rozszerzony monitoring runtime** — ekrany config/runtime obejmują sygnały dla Academy i Intent Embedding Router.
 - 🧪 **Ścieżka rollout Intent Router + RAG Boost** — flagi i dokumentacja są zsynchronizowane pod wdrożenie etapowe (`ENABLE_INTENT_EMBEDDING_ROUTER`, `ENABLE_RAG_RETRIEVAL_BOOST`).
+- 🎛️ **Workflow Control Plane** — Nowy wizualny kompozytor do zarządzania stosem i eksperymentami z "torami" (swimlanes) dla Decyzji/Jądra/Runtime.
+- 🛡️ **Provider Governance** — Dodano limity kosztów, rate limiting i polityki fallback dla dostawców LLM.
+- 🧹 **Polityka Artefaktów Testowych** — Wprowadzono tryby `CLEAN` (domyślny) vs `PRESERVE` dla zarządzania danymi testowymi, aby utrzymać czystość runtime.
+- 📑 **Modele UI v2** — Przebudowana strona `/models` z zakładkami "Nowości" i "Modele", z jasnym podziałem na "Polecane" i "Katalog".
 
 Szczegóły architektury, frontendu i testów: `docs/`.
 
@@ -132,10 +136,17 @@ venom_core/
 - **WorkflowStore** - Magazyn procedur z możliwością edycji
 - **Integracja z GhostAgent** - Wykonywanie wygenerowanych przepływów pracy
 
-#### 6. **Orkiestracja**
+#### 6. **Orkiestracja i Kontrola**
 - **Orchestrator** - Główny koordynator systemu
 - **IntentManager** - Klasyfikacja intencji (5 typów: CODE_GENERATION, RESEARCH, COMPLEX_PLANNING, KNOWLEDGE_SEARCH, GENERAL_CHAT)
 - **TaskDispatcher** - Routing zadań do odpowiednich agentów
+- **Workflow Control Plane** - Wizualny kompozytor do zarządzania stosem i eksperymentami (Swimlanes, Zasady Połączeń)
+
+#### 7. **The Academy** 🎓
+- **LessonStore** - Baza doświadczeń i korekt
+- **Training Pipeline** - Dostrajanie (fine-tuning) LoRA/QLoRA na zebranych danych
+- **Adapter Management** - Hot-swapping adapterów modeli w zależności od typu zadania
+- **Genealogy** - Śledzenie ewolucji modeli i metryk wydajności
 
 #### 7. **Usługi runtime (operacyjne)**
 - **Backend API** (FastAPI/uvicorn) i **Next.js UI** – podstawowe procesy.
@@ -704,7 +715,6 @@ make run
 - [Dream Engine](docs/PL/DREAM_ENGINE_GUIDE.md) *(Przesunięte do v2.0)*
 - [Process Engine](docs/PL/PROCESS_ENGINE_CONCEPT.md) *(Planowany dla v2.0)*
 - [Warstwa pamięci](docs/PL/MEMORY_LAYER_GUIDE.md)
-- [Google Search Grounding](docs/PL/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
 
 ### DevOps i Deployment
 - [Deployment (Next.js)](docs/PL/DEPLOYMENT_NEXT.md)
@@ -779,6 +789,78 @@ export VENOM_ENABLE_GPU=auto   # domyślnie; fallback do CPU gdy brak runtime
 scripts/docker/run-release.sh restart
 ```
 
+## 🎓 THE ACADEMY - Trenowanie i Dostrajanie Modeli (Opcjonalne)
+
+Venom może autonomicznie ulepszać się poprzez dostrajanie (fine-tuning) modeli z adapterami LoRA/QLoRA na podstawie zebranych doświadczeń (LessonsStore, historia zadań, commity Git).
+
+### Szybki Start
+
+1. **Zainstaluj zależności Academy:**
+   ```bash
+   pip install -r requirements-academy.txt
+   ```
+
+2. **Konfiguracja GPU (Zalecane):**
+   ```bash
+   # Zainstaluj nvidia-container-toolkit (Ubuntu/Debian)
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+     sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+   sudo systemctl restart docker
+
+   # Zweryfikuj dostęp do GPU
+   docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+   ```
+
+3. **Włącz Academy w `.env`:**
+   ```bash
+   ENABLE_ACADEMY=true
+   ACADEMY_ENABLE_GPU=true
+   ACADEMY_MIN_LESSONS=100
+   ```
+
+4. **Dostęp do UI Academy:**
+   - Przejdź do `http://localhost:3000/academy`
+   - Zobacz statystyki datasetu z LessonsStore
+   - Rozpocznij trening z własnymi parametrami
+   - Monitoruj postęp treningu i logi
+   - Aktywuj wytrenowane adaptery (hot-swap bez restartu)
+
+### Funkcje
+
+- **Kuracja Datasetu:** Automatyczne zbieranie z LessonsStore, historii Git, ukończonych zadań
+- **Dostrajanie LoRA:** Szybki, oszczędny pamięciowo trening z Unsloth
+- **Akceleracja GPU:** Trening w Dockerze ze wsparciem NVIDIA GPU (fallback do CPU dostępny)
+- **Hot Swap:** Aktywacja nowych adapterów bez restartu backendu
+- **Genealogia Modeli:** Śledzenie ewolucji modeli i poprawy wydajności
+- **Web UI:** Pełne zarządzanie treningiem z dashboardu
+
+### Endpointy API
+
+```bash
+# Kuracja datasetu
+POST /api/v1/academy/dataset
+
+# Start treningu
+POST /api/v1/academy/train
+
+# Sprawdź status treningu
+GET /api/v1/academy/train/{job_id}/status
+
+# Lista wszystkich zadań
+GET /api/v1/academy/jobs
+
+# Lista adapterów
+GET /api/v1/academy/adapters
+
+# Aktywuj adapter
+POST /api/v1/academy/adapters/activate
+```
+
+Zobacz [`docs/PL/THE_ACADEMY.md`](docs/PL/THE_ACADEMY.md) dla szczegółowej dokumentacji, architektury i najlepszych praktyk.
+
 ## 🛠️ Narzędzia deweloperskie
 
 ### Bramy jakości i bezpieczeństwa
@@ -836,18 +918,16 @@ takie jak `models/` i `models_cache/`.
 
 ## 🎯 Mapa drogowa
 
-### ✅ v1.4 (obecnie)
-- [x] Warstwa Planowania (ArchitectAgent)
-- [x] Ekspansja Wiedzy (ResearcherAgent + WebSearchSkill)
-- [x] Integracja z Internetem
-- [x] Pamięć długoterminowa
-- [x] Kompleksowe testy
-- [x] **NOWE: Integracje zewnętrzne (PlatformSkill)** 🤖
-  - [x] Integracja GitHub (zgłoszenia Issue, pull requesty)
-  - [x] Powiadomienia Discord/Slack
-  - [x] Proces Issue → PR
+## 🎯 Mapa drogowa
 
-### 🚧 v1.2 (planowane)
+### ✅ v1.5 (obecnie)
+- [x] Wszystkie funkcje v1.4 (Planowanie, Wiedza, Pamięć, Integracje)
+- [x] **The Academy** - Autonomiczne dostrajanie modeli z LoRA/QLoRA
+- [x] **Workflow Control Plane** - Wizualny kompozytor stosu
+- [x] **Provider Governance** - Limity kosztów i rate dla LLM
+- [x] **Academy Hardening** - Ulepszone bezpieczeństwo i obserwowalność
+
+### 🚧 v1.6 (planowane)
 - [ ] Odpytywanie w tle dla zgłoszeń GitHub Issues
 - [ ] Panel dashboardu dla integracji zewnętrznych
 - [ ] Rekurencyjne streszczanie długich dokumentów
@@ -855,7 +935,7 @@ takie jak `models/` i `models_cache/`.
 - [ ] Walidacja i optymalizacja planu
 - [ ] Lepsze odzyskiwanie po błędach
 
-### 🔮 v1.2 (w przyszłości)
+### 🔮 v2.0 (w przyszłości)
 - [ ] Obsługa webhooków dla GitHub
 - [ ] Integracja MS Teams
 - [ ] Weryfikacja wieloźródłowa

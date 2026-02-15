@@ -62,33 +62,8 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
       }
     }
 
-    // Fallback for older browsers using textarea selection
-    // Note: document.execCommand('copy') is deprecated but kept as last resort
-    // for legacy browser support where navigator.clipboard is unavailable
-    try {
-      const textarea = document.createElement("textarea");
-      textarea.value = commitValue;
-      textarea.setAttribute("readonly", "");
-      textarea.style.position = "absolute";
-      textarea.style.left = "-9999px";
-      document.body.appendChild(textarea);
-      try {
-        textarea.select();
-        // Deprecated API - only used as fallback when modern API unavailable
-        const success = document.execCommand("copy");
-        if (success) {
-          markCopied();
-        } else {
-          console.error("Clipboard copy failed: execCommand returned false");
-          setCommitCopied(false);
-        }
-      } finally {
-        textarea.remove();
-      }
-    } catch (err) {
-      console.error("Clipboard copy failed:", err);
-      setCommitCopied(false);
-    }
+    console.error("Clipboard copy failed: navigator.clipboard API unavailable");
+    setCommitCopied(false);
   }, [commitValue]);
 
   useEffect(() => {

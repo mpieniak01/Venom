@@ -30,7 +30,7 @@ export function ControlPanels({
   systemState,
   onApply,
   isLoading,
-}: ControlPanelsProps) {
+}: Readonly<ControlPanelsProps>) {
   const t = useTranslation();
   const [decisionStrategy, setDecisionStrategy] = useState("");
   const [intentMode, setIntentMode] = useState("");

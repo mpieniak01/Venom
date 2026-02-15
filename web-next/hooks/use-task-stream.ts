@@ -78,7 +78,11 @@ function toStringOrNull(value: unknown): string | null {
   if (typeof value === "string") {
     return value;
   }
-  if (value != null) {
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
     return String(value);
   }
   return null;
@@ -189,7 +193,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
   }, []);
 
   useEffect(() => {
-    if (globalThis.window === undefined) return undefined;
+    if (typeof globalThis.window === "undefined") return undefined;
     if (!enabled) {
       sourcesRef.current.forEach((s) => s.close());
       sourcesRef.current.clear();
@@ -206,9 +210,9 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     const emitEvent = (event: TaskStreamEvent) => {
       setLastEvent(event);
       onEventRef.current?.(event);
-      if (typeof window !== "undefined") {
+      if (typeof globalThis.window !== "undefined") {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const win = window as any;
+        const win = globalThis.window as any;
         win.__lastTaskStreamEvent = event;
         win.__taskStreamEvents = [...(win.__taskStreamEvents ?? []), event].slice(-25);
       }
@@ -306,13 +310,14 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       const runtime = extractRuntime(payload);
       const contextUsed = (payload.context_used as Record<string, unknown>) || null;
 
+      const resolvedTimestamp = timestamp ?? new Date().toISOString();
       const entry: TaskStreamEvent = {
         taskId: derivedTaskId,
         event: eventName,
         status,
         logs,
         result,
-        timestamp: timestamp as string | null,
+        timestamp: resolvedTimestamp,
         llmProvider: runtime.provider,
         llmModel: runtime.model,
         llmEndpoint: runtime.endpoint,
@@ -324,7 +329,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
 
       if (eventName === "heartbeat") {
         scheduleUpdate(taskId, {
-          heartbeatAt: (timestamp as string | null) ?? new Date().toISOString(),
+          heartbeatAt: resolvedTimestamp,
           connected: true,
           error: null,
           llmProvider: runtime.provider,
@@ -341,7 +346,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         status: status ?? null,
         logs,
         result: result ?? null,
-        lastEventAt: (timestamp as string | null) ?? new Date().toISOString(),
+        lastEventAt: resolvedTimestamp,
         connected: true,
         error: null,
         llmProvider: runtime.provider,

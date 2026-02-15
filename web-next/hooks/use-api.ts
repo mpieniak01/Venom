@@ -78,6 +78,7 @@ type PollingEntry<T> = {
 
 const pollingRegistry = new Map<string, PollingEntry<unknown>>();
 const SERVICE_UNAVAILABLE_CODES = new Set([502, 503, 504]);
+type GenerationParamValue = number | string | boolean | null | undefined;
 const OFFLINE_BACKOFF_MS = 15000;
 
 
@@ -972,7 +973,7 @@ export async function fetchModelConfig(modelName: string) {
     success: boolean;
     model_name: string;
     generation_schema: GenerationSchema;
-    current_values?: Record<string, number | string | boolean | null | undefined>;
+    current_values?: Record<string, GenerationParamValue>;
     runtime?: string;
   }>(`/api/v1/models/${encodeURIComponent(modelName)}/config`);
 }
@@ -981,14 +982,14 @@ export async function updateModelConfig(
   modelName: string,
   payload: {
     runtime?: string;
-    params: Record<string, number | string | boolean | null | undefined>;
+    params: Record<string, GenerationParamValue>;
   },
 ) {
   return apiFetch<{
     success: boolean;
     model_name: string;
     runtime?: string;
-    params?: Record<string, number | string | boolean | null | undefined>;
+    params?: Record<string, GenerationParamValue>;
   }>(`/api/v1/models/${encodeURIComponent(modelName)}/config`, {
     method: "POST",
     body: JSON.stringify(payload),

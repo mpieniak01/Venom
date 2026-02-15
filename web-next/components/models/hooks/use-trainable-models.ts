@@ -1,6 +1,6 @@
 /**
  * Hook for managing trainable models data
- * 
+ *
  * Fetches and caches trainable models from Academy API
  */
 
@@ -16,20 +16,20 @@ interface TrainableModelsCache {
 }
 
 function readCache(): TrainableModelInfo[] | null {
-  if (typeof window === "undefined") return null;
-  
+  if (typeof globalThis.window === "undefined") return null;
+
   try {
     const cached = globalThis.window.localStorage.getItem(CACHE_KEY);
     if (!cached) return null;
-    
+
     const parsed = JSON.parse(cached) as TrainableModelsCache;
     const now = Date.now();
-    
+
     // Check if cache is still valid
     if (now - parsed.timestamp < CACHE_DURATION_MS) {
       return parsed.data;
     }
-    
+
     // Cache expired, remove it
     globalThis.window.localStorage.removeItem(CACHE_KEY);
     return null;
@@ -39,8 +39,8 @@ function readCache(): TrainableModelInfo[] | null {
 }
 
 function writeCache(data: TrainableModelInfo[]) {
-  if (typeof window === "undefined") return;
-  
+  if (typeof globalThis.window === "undefined") return;
+
   try {
     const cache: TrainableModelsCache = {
       data,

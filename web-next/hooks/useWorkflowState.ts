@@ -43,18 +43,14 @@ function createUuidV4(): string {
 // Generate a valid UUID v4 for the workflow
 // In production, this should come from the backend or be persisted
 const getOrCreateWorkflowId = (): string => {
-  if (typeof window === "undefined") return DEFAULT_WORKFLOW_ID;
+  if (typeof globalThis.window === "undefined") return DEFAULT_WORKFLOW_ID;
 
-  const stored = localStorage.getItem(WORKFLOW_STORAGE_KEY);
+  const stored = globalThis.window.localStorage.getItem(WORKFLOW_STORAGE_KEY);
   if (stored) return stored;
 
-  if (typeof window !== "undefined") {
-    const uuid = createUuidV4();
-    localStorage.setItem(WORKFLOW_STORAGE_KEY, uuid);
-    return uuid;
-  }
-
-  return DEFAULT_WORKFLOW_ID;
+  const uuid = createUuidV4();
+  globalThis.window.localStorage.setItem(WORKFLOW_STORAGE_KEY, uuid);
+  return uuid;
 };
 
 export async function readApiErrorMessage(response: Response, fallback: string): Promise<string> {
@@ -79,6 +75,13 @@ export function extractSystemStateFromPayload(payload: unknown): SystemState | n
     return (payload as { system_state: SystemState }).system_state;
   }
   return null;
+}
+
+function cloneState(state: SystemState): SystemState {
+  if (typeof globalThis.structuredClone === "function") {
+    return globalThis.structuredClone(state);
+  }
+  return JSON.parse(JSON.stringify(state)) as SystemState;
 }
 
 export function useWorkflowState() {
@@ -339,7 +342,7 @@ export function useWorkflowState() {
   // Sync draft with system state initially
   useEffect(() => {
     if (systemState && !draftState) {
-      setDraftState(JSON.parse(JSON.stringify(systemState)));
+      setDraftState(cloneState(systemState));
     }
   }, [systemState, draftState]);
 
@@ -365,7 +368,7 @@ export function useWorkflowState() {
 
   const reset = useCallback(() => {
     if (systemState) {
-      setDraftState(JSON.parse(JSON.stringify(systemState)));
+      setDraftState(cloneState(systemState));
     }
   }, [systemState]);
 

@@ -190,6 +190,7 @@ class CompatibilityValidator:
             return False, f"Unknown intent mode: {intent_mode}"
 
         requirements = self.matrix.intent_mode_requirements[intent_mode]
+        _ = model_size  # Reserved for future per-size intent constraints
 
         if requirements.get("requires_embedding") and not has_embedding:
             return (

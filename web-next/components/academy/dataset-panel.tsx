@@ -415,8 +415,8 @@ export function DatasetPanel() {
 
               {preview.warnings.length > 0 && (
                 <div className="mt-4 space-y-2">
-                  {preview.warnings.map((warning, idx) => (
-                    <div key={idx} className="flex items-start gap-2 text-sm text-yellow-400">
+                  {preview.warnings.map((warning) => (
+                    <div key={warning} className="flex items-start gap-2 text-sm text-yellow-400">
                       <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                       <p>{warning}</p>
                     </div>
@@ -428,8 +428,11 @@ export function DatasetPanel() {
                 <div className="mt-4">
                   <p className="text-sm font-medium text-zinc-300 mb-2">{t("academy.dataset.sampleRecords")}</p>
                   <div className="space-y-2">
-                    {preview.samples.slice(0, 3).map((sample, idx) => (
-                      <div key={idx} className="rounded-lg bg-black/20 p-3 text-xs">
+                    {preview.samples.slice(0, 3).map((sample) => (
+                      <div
+                        key={`${sample.instruction}:${sample.input}:${sample.output}`}
+                        className="rounded-lg bg-black/20 p-3 text-xs"
+                      >
                         <p className="text-blue-300 font-medium">📝 {sample.instruction}</p>
                         {sample.input && <p className="text-zinc-400 mt-1">➡️ {sample.input}</p>}
                         <p className="text-zinc-300 mt-1">✓ {sample.output}</p>

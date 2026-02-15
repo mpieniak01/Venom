@@ -41,7 +41,7 @@ export function WorkflowControlView() {
     (nodeId: string, data: unknown) => {
       updateNode(nodeId, data);
       setSelectedNode((prev) => {
-        if (!prev || prev.id !== nodeId) return prev;
+        if (prev?.id !== nodeId) return prev;
         return {
           ...prev,
           data: data as Node["data"],

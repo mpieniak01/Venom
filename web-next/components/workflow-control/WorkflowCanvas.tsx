@@ -159,8 +159,16 @@ export function WorkflowCanvas({
       if (sourceNode && targetNode) {
         const validation = validateConnection(sourceNode, targetNode);
         if (!validation.isValid) {
+          const reasonKey = validation.reason
+            ? `workflowControl.messages.${validation.reason}`
+            : null;
+          const translatedReason = reasonKey ? t(reasonKey) : "";
+          const reasonText =
+            reasonKey && translatedReason !== reasonKey
+              ? translatedReason
+              : validation.reason || "unknown";
           pushToast(
-            `${t("workflowControl.messages.connectionRejected")}: ${t(`workflowControl.messages.${validation.reason}`) || validation.reason}`,
+            `${t("workflowControl.messages.connectionRejected")}: ${reasonText}`,
             "error"
           );
           return;

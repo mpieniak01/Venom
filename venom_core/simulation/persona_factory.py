@@ -252,9 +252,9 @@ class PersonaFactory:
 Imię: {persona.name}
 Wiek: {persona.age}
 Znajomość tech: {tech_level[persona.tech_literacy]}
-Cierpliwość: {'wysoka' if persona.patience > self.PATIENCE_HIGH_THRESHOLD else 'niska'}
+Cierpliwość: {"wysoka" if persona.patience > self.PATIENCE_HIGH_THRESHOLD else "niska"}
 Cel: {persona.goal}
-Cechy: {', '.join(persona.traits)}
+Cechy: {", ".join(persona.traits)}
 
 Napisz 2-3 zdaniowy opis tej persony, który nadaje jej charakteru i kontekstu.
 Nie zmieniaj podanych faktów - tylko dodaj koloryt i tło.
@@ -264,24 +264,21 @@ Odpowiedź: tylko opis, bez dodatkowych komentarzy."""
                 chat_service = self.kernel.get_service()
                 chat_history = ChatHistory()
                 chat_history.add_message(
-                    ChatMessageContent(
-                        role=AuthorRole.USER,
-                        content=prompt
-                    )
+                    ChatMessageContent(role=AuthorRole.USER, content=prompt)
                 )
 
                 # Ustawienia wykonania - krótka odpowiedź
                 settings = OpenAIChatPromptExecutionSettings(
-                    temperature=0.8,
-                    max_tokens=150
+                    temperature=0.8, max_tokens=150
                 )
 
                 # Wywołaj asynchronicznie - zawsze używamy asyncio.run
                 # (wywołanie synchroniczne zawsze tworzy nowy loop)
-                response = asyncio.run(chat_service.get_chat_message_content(
-                    chat_history=chat_history,
-                    settings=settings
-                ))
+                response = asyncio.run(
+                    chat_service.get_chat_message_content(
+                        chat_history=chat_history, settings=settings
+                    )
+                )
 
                 enriched_description = str(response).strip()
 
@@ -296,11 +293,15 @@ Odpowiedź: tylko opis, bez dodatkowych komentarzy."""
                     logger.info(f"Wzbogacono personę {persona.name} przez LLM")
                     return persona
                 else:
-                    logger.warning(f"LLM zwrócił pusty/zbyt krótki opis lub bez imienia, używam szablonu")
+                    logger.warning(
+                        "LLM zwrócił pusty/zbyt krótki opis lub bez imienia, używam szablonu"
+                    )
                     # Fallback do szablonu
-                    
+
             except Exception as e:
-                logger.warning(f"Błąd podczas wzbogacania persony przez LLM: {e}, używam szablonu")
+                logger.warning(
+                    f"Błąd podczas wzbogacania persony przez LLM: {e}, używam szablonu"
+                )
                 # Fallback do szablonu
 
         # Szablon fallback (bez LLM lub w razie błędu)

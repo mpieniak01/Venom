@@ -44,6 +44,12 @@ export function WorkflowConsole({
     const isRunning = status === "running";
     const isPaused = status === "paused";
     const isFailed = status === "failed";
+    let statusColorClass = "text-slate-400";
+    if (isRunning) {
+        statusColorClass = "text-green-500";
+    } else if (isFailed) {
+        statusColorClass = "text-red-500";
+    }
 
     return (
         <div className="border border-white/10 bg-slate-900/50 backdrop-blur-xl p-6 flex flex-col gap-6 rounded-xl shadow-2xl">
@@ -55,8 +61,7 @@ export function WorkflowConsole({
                 </h3>
                 <div className="flex items-center gap-2">
                     <Activity className={`w-3.5 h-3.5 ${isRunning ? "text-green-500 animate-pulse" : "text-slate-500"}`} />
-                    <span className={`text-[10px] font-mono uppercase font-bold tracking-tight ${isRunning ? "text-green-500" : isFailed ? "text-red-500" : "text-slate-400"
-                        }`}>
+                    <span className={`text-[10px] font-mono uppercase font-bold tracking-tight ${statusColorClass}`}>
                         {status}
                     </span>
                 </div>

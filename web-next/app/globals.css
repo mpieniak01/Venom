@@ -216,7 +216,7 @@ a {
 
 .box-base {
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(2, 6, 23, 0.58);
   color: #f8fafc;
   box-shadow: var(--shadow-card);
 }
@@ -347,26 +347,26 @@ a {
 
 .status-pill--success {
   border-color: rgba(16, 185, 129, 0.3);
-  background: rgba(16, 185, 129, 0.10);
-  color: #d1fae5;
+  background: rgba(6, 78, 59, 0.55);
+  color: #ecfdf5;
 }
 
 .status-pill--warning {
   border-color: rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.10);
-  color: #fde68a;
+  background: rgba(120, 53, 15, 0.55);
+  color: #fef3c7;
 }
 
 .status-pill--danger {
   border-color: rgba(244, 63, 94, 0.35);
-  background: rgba(244, 63, 94, 0.10);
-  color: #fecdd3;
+  background: rgba(136, 19, 55, 0.55);
+  color: #ffe4e6;
 }
 
 .status-pill--neutral {
   border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  color: #f4f4f5;
+  background: rgba(15, 23, 42, 0.58);
+  color: #fafafa;
 }
 
 .status-pill-label {

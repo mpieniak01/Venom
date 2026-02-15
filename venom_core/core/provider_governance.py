@@ -275,7 +275,6 @@ class ProviderGovernance:
         Sprawdza czy request mieści się w limitach częstotliwości.
 
         Args:
-            provider: Nazwa providera
             estimated_tokens: Szacowana liczba tokenów
 
         Returns:
@@ -290,11 +289,15 @@ class ProviderGovernance:
                     global_limit.current_tokens = 0
                     global_limit.period_start = datetime.now()
 
-                if global_limit.current_requests + 1 > global_limit.max_requests_per_minute:
+                if (
+                    global_limit.current_requests + 1
+                    > global_limit.max_requests_per_minute
+                ):
                     return (
                         False,
                         "RATE_LIMIT_REQUESTS_EXCEEDED",
-                        f"Global request rate limit exceeded: {global_limit.current_requests + 1} > {global_limit.max_requests_per_minute}/min",
+                        f"Global request rate limit exceeded for {provider}: "
+                        f"{global_limit.current_requests + 1} > {global_limit.max_requests_per_minute}/min",
                     )
 
                 if (
@@ -304,7 +307,8 @@ class ProviderGovernance:
                     return (
                         False,
                         "RATE_LIMIT_TOKENS_EXCEEDED",
-                        f"Global token rate limit exceeded: {global_limit.current_tokens + estimated_tokens} > {global_limit.max_tokens_per_minute}/min",
+                        f"Global token rate limit exceeded for {provider}: "
+                        f"{global_limit.current_tokens + estimated_tokens} > {global_limit.max_tokens_per_minute}/min",
                     )
 
             return (True, None, None)
@@ -353,7 +357,6 @@ class ProviderGovernance:
         Args:
             preferred_provider: Preferowany provider (None = użyj policy default)
             reason: Powód fallback (jeśli znany)
-
         Returns:
             GovernanceDecision z wybranym providerem
         """
@@ -371,7 +374,11 @@ class ProviderGovernance:
                     target_provider,
                     fallback_provider,
                     FallbackReasonCode.AUTH_ERROR,
-                    f"Credentials not configured for {target_provider}",
+                    (
+                        f"Credentials not configured for {target_provider}"
+                        if not reason
+                        else f"Credentials not configured for {target_provider}. Context: {reason}"
+                    ),
                 )
                 return GovernanceDecision(
                     allowed=True,
@@ -408,13 +415,25 @@ class ProviderGovernance:
             Nazwa alternatywnego providera lub None
         """
         # Check if fallback enabled for this reason
-        if reason == FallbackReasonCode.TIMEOUT and not self.fallback_policy.enable_timeout_fallback:
+        if (
+            reason == FallbackReasonCode.TIMEOUT
+            and not self.fallback_policy.enable_timeout_fallback
+        ):
             return None
-        if reason == FallbackReasonCode.AUTH_ERROR and not self.fallback_policy.enable_auth_fallback:
+        if (
+            reason == FallbackReasonCode.AUTH_ERROR
+            and not self.fallback_policy.enable_auth_fallback
+        ):
             return None
-        if reason == FallbackReasonCode.BUDGET_EXCEEDED and not self.fallback_policy.enable_budget_fallback:
+        if (
+            reason == FallbackReasonCode.BUDGET_EXCEEDED
+            and not self.fallback_policy.enable_budget_fallback
+        ):
             return None
-        if reason == FallbackReasonCode.PROVIDER_DEGRADED and not self.fallback_policy.enable_degraded_fallback:
+        if (
+            reason == FallbackReasonCode.PROVIDER_DEGRADED
+            and not self.fallback_policy.enable_degraded_fallback
+        ):
             return None
 
         # Find next available provider in fallback order

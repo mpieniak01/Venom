@@ -30,10 +30,6 @@ const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, children, ...props }, ref) => {
-  const hasAccessibleLabel =
-    typeof props["aria-label"] === "string" ||
-    typeof props["aria-labelledby"] === "string" ||
-    typeof props.title === "string";
   const hasVisibleContent =
     !(children === undefined || children === null || children === "");
 
@@ -44,7 +40,7 @@ const CardTitle = React.forwardRef<
       {...props}
     >
       {hasVisibleContent ? children : null}
-      {!hasVisibleContent && !hasAccessibleLabel ? (
+      {!hasVisibleContent ? (
         <span className="sr-only">Card title</span>
       ) : null}
     </h3>

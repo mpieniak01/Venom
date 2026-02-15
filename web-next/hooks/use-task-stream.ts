@@ -75,19 +75,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function toStringOrNull(value: unknown): string | null {
-  return typeof value === "string" ? value : value != null ? String(value) : null;
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value != null) {
+    return String(value);
+  }
+  return null;
 }
 
 function extractRuntime(payload: Record<string, unknown>) {
   const runtimeRaw = payload.active_runtime || payload.runtime;
   const runtime = isRecord(runtimeRaw) ? runtimeRaw : {};
+  let context: Record<string, unknown> | null = null;
+  if (isRecord(payload.context)) {
+    context = payload.context;
+  } else if (isRecord(runtime.context)) {
+    context = runtime.context;
+  }
   return {
     provider: toStringOrNull(payload.llm_provider ?? runtime.provider),
     model: toStringOrNull(payload.llm_model ?? runtime.model),
     endpoint: toStringOrNull(payload.llm_endpoint ?? runtime.endpoint),
     status: toStringOrNull(payload.llm_status ?? runtime.status),
     error: toStringOrNull(payload.llm_error ?? runtime.error),
-    context: isRecord(payload.context) ? payload.context : isRecord(runtime.context) ? runtime.context : null,
+    context,
   };
 }
 

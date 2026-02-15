@@ -8,6 +8,7 @@ import { useCockpitRuntimeSectionProps } from "@/components/cockpit/cockpit-runt
 import { PROMPT_PRESETS } from "@/components/cockpit/cockpit-prompts";
 import { useTranslation } from "@/lib/i18n";
 import { useCockpitContext } from "@/components/cockpit/cockpit-context";
+import { mapTelemetryTone, type TelemetryFeedEntry } from "@/components/cockpit/cockpit-utils";
 
 
 
@@ -182,13 +183,25 @@ export function useCockpitSectionProps() {
   const tokenTrendLabel = "vs 1h";
   const totalTokens = data.tokenMetrics?.total_tokens || 0;
 
-  const telemetryFeed = logic.telemetry.entries.map(e => ({
-    id: e.id,
-    timestamp: new Date(e.ts).toISOString(),
-    tone: ((e.payload as Record<string, unknown> | undefined)?.tone as string) || "neutral",
-    type: ((e.payload as Record<string, unknown> | undefined)?.type as string) || "info",
-    message: ((e.payload as Record<string, unknown> | undefined)?.message as string) || "",
-  }));
+  const telemetryFeed = useMemo<TelemetryFeedEntry[]>(() => {
+    const isTelemetryTone = (
+      value: unknown,
+    ): value is TelemetryFeedEntry["tone"] =>
+      value === "success" || value === "warning" || value === "danger" || value === "neutral";
+
+    return logic.telemetry.entries.map((e) => {
+      const payload = e.payload as Record<string, unknown> | undefined;
+      const type = typeof payload?.type === "string" ? payload.type : "info";
+      const rawTone = payload?.tone;
+      return {
+        id: e.id,
+        timestamp: new Date(e.ts).toISOString(),
+        tone: isTelemetryTone(rawTone) ? rawTone : mapTelemetryTone(type),
+        type,
+        message: typeof payload?.message === "string" ? payload.message : "",
+      };
+    });
+  }, [logic.telemetry.entries]);
 
   const usageMetrics = data.modelsUsageResponse?.usage || null;
   const cpuUsageValue = data.modelsUsageResponse?.usage?.cpu_usage_percent || 0;

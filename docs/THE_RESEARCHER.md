@@ -6,7 +6,7 @@ Researcher Agent is a research expert in the Venom system, specializing in findi
 
 ## Responsibilities
 
-- **Information search** - Finding current data on the Internet (DuckDuckGo, Google Grounding)
+- **Information search** - Finding current data on the Internet (DuckDuckGo)
 - **Content extraction** - Downloading and cleaning text from web pages (trafilatura)
 - **Knowledge synthesis** - Aggregating information from multiple sources into coherent response
 - **Repository search** - Finding libraries and tools on GitHub
@@ -36,47 +36,7 @@ Researcher Agent is a research expert in the Venom system, specializing in findi
 - `save_fact(content, tags)` - Saves knowledge to LanceDB
 - `search_memory(query)` - Searches vector memory
 
-### 2. Google Grounding Integration (Gemini)
-
-Researcher can use **Google Search Grounding** when Gemini API is available:
-
-```python
-# Automatic source addition to response
-response_metadata = {
-  "grounding_metadata": {
-    "grounding_chunks": [
-      {"title": "FastAPI Documentation", "uri": "https://fastapi.tiangolo.com/"},
-      {"title": "Pydantic V2", "uri": "https://docs.pydantic.dev/"}
-    ]
-  }
-}
-
-# Output format:
-"""
-Agent response...
-
----
-📚 Sources (Google Grounding):
-[1] FastAPI Documentation - https://fastapi.tiangolo.com/
-[2] Pydantic V2 - https://docs.pydantic.dev/
-"""
-```
-
-**Google Grounding Advantages:**
-- Always current results (Google Index)
-- Automatic source citation
-- Higher quality responses than DuckDuckGo
-- Zero extraction costs (scraping) - text already in context
-
-**Configuration:**
-```bash
-# In .env
-GOOGLE_API_KEY=your_key_here
-AI_MODE=HYBRID  # or CLOUD
-HYBRID_CLOUD_PROVIDER=google
-```
-
-### 3. Usage Examples
+### 2. Usage Examples
 
 **Example 1: Library documentation**
 ```
@@ -104,15 +64,6 @@ Action:
 1. search_models("sentiment analysis", task="text-classification")
 2. get_model_details(top_model)
 3. Return description + usage instructions
-```
-
-**Example 4: Current price/information**
-```
-User: "What's the current price of Bitcoin?"
-Action (with Google Grounding):
-1. LLM Gemini with tools=[google_search_retrieval]
-2. Automatic search + synthesis
-3. Return response with sources
 ```
 
 ## System Integration
@@ -148,12 +99,8 @@ CoderAgent uses knowledge for implementation
 # In .env
 # Search mode
 AI_MODE=LOCAL               # DuckDuckGo only
-AI_MODE=HYBRID              # DuckDuckGo + optionally Google Grounding
-AI_MODE=CLOUD               # Google Grounding preference
-
-# Google Grounding (Gemini)
-GOOGLE_API_KEY=your_key
-HYBRID_CLOUD_PROVIDER=google
+AI_MODE=HYBRID              # DuckDuckGo + optional cloud routing
+AI_MODE=CLOUD               # Cloud preference
 
 # Tavily AI (optional, better results than DuckDuckGo)
 TAVILY_API_KEY=your_key
@@ -173,12 +120,7 @@ GITHUB_TOKEN=ghp_your_token
 - **Cons**: Fewer results than Google, sometimes outdated
 - **Use**: LOCAL mode, backup for HYBRID
 
-### 2. Google Grounding (Gemini API)
-- **Pros**: Best results, automatic sources, always current
-- **Cons**: Requires API key, costs per request
-- **Use**: HYBRID/CLOUD mode, factual questions
-
-### 3. Tavily AI (Optional)
+### 2. Tavily AI (Optional)
 - **Pros**: AI-optimized search, higher quality than DDG
 - **Cons**: Paid, API limits
 - **Use**: Professional deployments
@@ -190,7 +132,6 @@ GITHUB_TOKEN=ghp_your_token
 - Average number of sources per response
 - Cache usage rate (memory hit rate)
 - Search + scraping time (average)
-- Google Grounding vs DuckDuckGo ratio (in HYBRID mode)
 
 ## Best Practices
 
@@ -198,13 +139,12 @@ GITHUB_TOKEN=ghp_your_token
 2. **Verify sources** - Check publication date (prefer <1 year)
 3. **Aggregate knowledge** - Don't copy raw text, synthesize key points
 4. **Tag appropriately** - Use consistent tags for easier searching
-5. **Google for facts** - Questions about price/news → Google Grounding
+5. **Prefer fresh sources** - For price/news questions, prioritize latest publish dates
 
 ## Known Limitations
 
 - DuckDuckGo has rate-limit restrictions (usually not a problem)
 - Scraping can fail for JavaScript sites (trafilatura doesn't render JS)
-- Google Grounding requires Gemini API (costs)
 - No support for paid sources (paywalls, subscriptions)
 
 ## See also
@@ -212,5 +152,4 @@ GITHUB_TOKEN=ghp_your_token
 - [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planning with knowledge utilization
 - [THE_CODER.md](THE_CODER.md) - Implementation based on documentation
 - [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md)
-- [GOOGLE_SEARCH_GROUNDING_INTEGRATION.md](../GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) - Google Grounding
 - [HYBRID_AI_ENGINE.md](HYBRID_AI_ENGINE.md) - LOCAL/HYBRID/CLOUD routing

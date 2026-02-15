@@ -1873,6 +1873,7 @@ export const pl = {
     error: "Nie udało się załadować stanu systemu",
     common: {
       na: "N/A",
+      missing: "brak",
       errorTitle: "Błąd",
     },
     panels: {

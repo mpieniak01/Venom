@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -313,10 +314,10 @@ class ProviderObservability:
     def _build_high_latency_alert(
         self, provider: str, slo_status: SLOStatus
     ) -> Optional[Alert]:
-        if (
-            not slo_status.latency_p99_ms
-            or slo_status.latency_p99_ms <= slo_status.slo_target.latency_p99_ms
-        ):
+        latency_p99_ms = slo_status.latency_p99_ms
+        if latency_p99_ms is None or not math.isfinite(latency_p99_ms):
+            return None
+        if latency_p99_ms <= slo_status.slo_target.latency_p99_ms:
             return None
         return Alert(
             id=f"{provider}_latency_{datetime.now().timestamp()}",
@@ -325,11 +326,11 @@ class ProviderObservability:
             provider=provider,
             message="providers.alerts.highLatency",
             technical_details=(
-                f"p99={slo_status.latency_p99_ms:.0f}ms "
+                f"p99={latency_p99_ms:.0f}ms "
                 f"threshold={slo_status.slo_target.latency_p99_ms:.0f}ms"
             ),
             metadata={
-                "latency": slo_status.latency_p99_ms,
+                "latency": latency_p99_ms,
                 "threshold": slo_status.slo_target.latency_p99_ms,
             },
         )

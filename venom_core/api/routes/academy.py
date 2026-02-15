@@ -1600,14 +1600,25 @@ async def _persist_uploaded_file(
     return size_bytes, b"".join(collected_chunks)
 
 
-async def _process_uploaded_file(
-    file: Any, uploads_dir: Path, tag: str, description: str
-) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, str]]]:
-    import mimetypes
-    from datetime import datetime
+def _cleanup_uploaded_file(file_path: Path) -> None:
+    if not file_path.exists():
+        return
+    try:
+        file_path.unlink()
+    except OSError as cleanup_error:
+        logger.warning(
+            "Failed to cleanup orphan upload file (error=%s)",
+            type(cleanup_error).__name__,
+        )
 
-    from venom_core.config import SETTINGS
 
+def _upload_error(filename: str, message: str) -> tuple[None, Dict[str, str]]:
+    return None, {"name": filename, "error": message}
+
+
+def _validate_upload_filename(
+    file: Any, settings: Any
+) -> tuple[Optional[str], Optional[Dict[str, str]]]:
     if not hasattr(file, "filename") or not file.filename:
         return None, None
 
@@ -1617,73 +1628,124 @@ async def _process_uploaded_file(
     if not _validate_file_extension(filename):
         return None, {
             "name": filename,
-            "error": f"Invalid file extension. Allowed: {SETTINGS.ACADEMY_ALLOWED_EXTENSIONS}",
+            "error": (
+                "Invalid file extension. Allowed: "
+                f"{settings.ACADEMY_ALLOWED_EXTENSIONS}"
+            ),
         }
+    return filename, None
 
-    file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
-    file_path = uploads_dir / file_id
+
+async def _persist_with_limits(
+    file: Any,
+    file_path: Path,
+    filename: str,
+    settings: Any,
+) -> tuple[Optional[tuple[int, bytes]], Optional[Dict[str, str]]]:
     try:
-        max_size_bytes = SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB * 1024 * 1024
+        max_size_bytes = settings.ACADEMY_MAX_UPLOAD_SIZE_MB * 1024 * 1024
         size_bytes, content_bytes = await _persist_uploaded_file(
             file=file, file_path=file_path, max_size_bytes=max_size_bytes
         )
+        return (size_bytes, content_bytes), None
     except ValueError as e:
-        if file_path.exists():
-            file_path.unlink()
+        _cleanup_uploaded_file(file_path)
         if str(e).startswith("FILE_TOO_LARGE:"):
             size_bytes = int(str(e).split(":", 1)[1])
             return None, {
                 "name": filename,
                 "error": (
                     f"File too large ({size_bytes} bytes, "
-                    f"max {SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)"
+                    f"max {settings.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)"
                 ),
             }
-        return None, {"name": filename, "error": f"Failed to save file: {str(e)}"}
+        return _upload_error(filename, f"Failed to save file: {str(e)}")
     except Exception as e:
-        if file_path.exists():
-            file_path.unlink()
+        _cleanup_uploaded_file(file_path)
         logger.error(
             "Failed to persist uploaded file (error=%s)",
             type(e).__name__,
         )
-        return None, {"name": filename, "error": f"Failed to save file: {str(e)}"}
+        return _upload_error(filename, f"Failed to save file: {str(e)}")
+
+
+def _build_upload_info(
+    file_id: str,
+    filename: str,
+    size_bytes: int,
+    content_bytes: bytes,
+    tag: str,
+    description: str,
+) -> Dict[str, Any]:
+    import mimetypes
+    from datetime import datetime
+
+    sha256_hash = _compute_bytes_hash(content_bytes)
+    mime_type, _ = mimetypes.guess_type(filename)
+    mime_type = mime_type or "application/octet-stream"
+    records_estimate = 0
+    try:
+        records_estimate = _estimate_records_from_content(filename, content_bytes)
+    except Exception as e:
+        logger.warning(
+            "Failed to estimate records for uploaded file (error=%s)",
+            type(e).__name__,
+        )
+
+    return {
+        "id": file_id,
+        "name": filename,
+        "size_bytes": size_bytes,
+        "mime": mime_type,
+        "created_at": datetime.now().isoformat(),
+        "status": "ready",
+        "records_estimate": records_estimate,
+        "sha256": sha256_hash,
+        "tag": tag,
+        "description": description,
+    }
+
+
+async def _process_uploaded_file(
+    file: Any, uploads_dir: Path, tag: str, description: str
+) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, str]]]:
+    from datetime import datetime
+
+    from venom_core.config import SETTINGS
+
+    filename, filename_error = _validate_upload_filename(file, SETTINGS)
+    if filename_error:
+        return None, filename_error
+    if not filename:
+        return None, None
+
+    file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
+    file_path = uploads_dir / file_id
+    persisted, persist_error = await _persist_with_limits(
+        file=file,
+        file_path=file_path,
+        filename=filename,
+        settings=SETTINGS,
+    )
+    if persist_error:
+        return None, persist_error
+    if not persisted:
+        return _upload_error(filename, "Failed to persist file")
+    size_bytes, content_bytes = persisted
 
     try:
-        sha256_hash = _compute_bytes_hash(content_bytes)
-        mime_type, _ = mimetypes.guess_type(filename)
-        mime_type = mime_type or "application/octet-stream"
-        records_estimate = 0
-        try:
-            records_estimate = _estimate_records_from_content(filename, content_bytes)
-        except Exception as e:
-            logger.warning(
-                "Failed to estimate records for uploaded file (error=%s)",
-                type(e).__name__,
-            )
-        upload_info = {
-            "id": file_id,
-            "name": filename,
-            "size_bytes": size_bytes,
-            "mime": mime_type,
-            "created_at": datetime.now().isoformat(),
-            "status": "ready",
-            "records_estimate": records_estimate,
-            "sha256": sha256_hash,
-            "tag": tag,
-            "description": description,
-        }
+        upload_info = _build_upload_info(
+            file_id=file_id,
+            filename=filename,
+            size_bytes=size_bytes,
+            content_bytes=content_bytes,
+            tag=tag,
+            description=description,
+        )
         _save_upload_metadata(upload_info)
         return upload_info, None
     except Exception as e:
-        if file_path.exists():
-            try:
-                file_path.unlink()
-            except OSError as cleanup_error:
-                logger.warning(
-                    "Failed to cleanup orphan upload file (error=%s)",
-                    type(cleanup_error).__name__,
-                )
+        _cleanup_uploaded_file(file_path)
         logger.error(
             "Unexpected error while processing uploaded file (error=%s)",
             type(e).__name__,

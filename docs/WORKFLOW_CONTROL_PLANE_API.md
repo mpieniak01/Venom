@@ -1,8 +1,29 @@
-# Workflow Control Plane - API Contract
+# Workflow Control Plane & Composer
 
 ## Overview
 
-This document defines the API contract for the Workflow Control Plane, which provides centralized management of the entire Venom stack configuration.
+This document defines the API contract for the Workflow Control Plane and the Visual Composer interface. It provides centralized management of the entire Venom stack configuration.
+
+## Visual Composer (UX)
+
+The Workflow Control screen introduces a **Visual Composer** based on React Flow.
+
+### Swimlanes
+The diagram is organized into domains:
+1. **Decision & Intent**: Strategy (Heuristic/LLM) and Intent Classification.
+2. **Kernel & Embedding**: Execution Engine (Python/Docker) and Vector Embeddings.
+3. **Runtime & Provider**: LLM Server (Ollama/vLLM) and Model Provider (Local/Cloud).
+
+### Connection Rules
+The Composer enforces valid connections:
+- `decision_strategy` -> `intent_mode`
+- `intent_mode` -> `embedding_model` (if required)
+- `runtime` -> `provider`
+- `provider` -> `model`
+
+Invalid connections are blocked with specific `reason_code`.
+
+## API Contract
 
 ## Base URL
 

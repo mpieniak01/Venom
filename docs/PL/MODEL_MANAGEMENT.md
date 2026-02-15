@@ -2,7 +2,10 @@
 
 ## Przegląd
 
-System zarządzania modelami w Venom zapewnia centralny, zautomatyzowany sposób instalacji, usuwania i przełączania modeli AI z różnych źródeł (HuggingFace, Ollama).
+System zarządzania modelami w Venom zapewnia centralny, zautomatyzowany sposób instalacji, usuwania i przełączania modeli AI. Obsługuje trzy typy domenowe:
+- **Local Runtime**: Modele uruchamiane lokalnie przez Ollama lub vLLM.
+- **Cloud API**: Modele dostępne przez zewnętrzne API (OpenAI, Google Gemini).
+- **Integrator Catalog**: Modele dostępne do pobrania/instalacji (HuggingFace, Biblioteka Ollama).
 
 ## Architektura
 
@@ -669,6 +672,25 @@ metadata = ModelMetadata(
 registry.manifest["model-name"] = metadata
 registry._save_manifest()
 ```
+
+## Zarządzanie Providerami (Governance) i Obserwowalność
+
+Venom zawiera warstwę governance do zarządzania kosztami, bezpieczeństwem i niezawodnością dostawców LLM.
+
+### Funkcje Governance
+- **Limity Kosztów**: Sprawdzanie globalne i per-provider (Limity Soft/Hard).
+- **Rate Limits**: Limity zapytań/tokenów na minutę.
+- **Polityka Fallback**: Automatyczne przełączanie na zapasowych dostawców w przypadku awarii (Timeout, Błąd Autoryzacji, Przekroczenie Budżetu).
+- **Maskowanie Sekretów**: Klucze API nigdy nie są logowane ani zwracane w odpowiedziach API.
+
+Szczegółowe zasady i kody przyczyny opisano w [Provider Governance](PROVIDER_GOVERNANCE.md).
+
+### Obserwowalność
+System śledzi metryki dla każdej interakcji z providerem:
+- **Opóźnienia (Latency)**: Czasy odpowiedzi P50/P95/P99.
+- **Wskaźnik Sukcesu**: Śledzenie błędów ze standardowym `reason_code`.
+- **Śledzenie Kosztów**: Zużycie tokenów i estymacja kosztów w czasie rzeczywistym.
+- **Health Score**: Automatyczne wykrywanie degradacji usług.
 
 ## Future Enhancements
 

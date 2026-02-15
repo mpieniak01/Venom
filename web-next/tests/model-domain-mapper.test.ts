@@ -80,6 +80,7 @@ describe("model-domain-mapper", () => {
         provider: "huggingface",
         trainable: true,
         recommended: true,
+        installed_local: false,
       },
       {
         model_id: "gpt-4",
@@ -88,6 +89,7 @@ describe("model-domain-mapper", () => {
         trainable: false,
         reason_if_not_trainable: "Model is not in Academy trainable families list",
         recommended: false,
+        installed_local: false,
       },
     ];
 
@@ -146,6 +148,7 @@ describe("model-domain-mapper", () => {
         provider: "huggingface",
         trainable: true,
         recommended: true,
+        installed_local: false,
       },
     ];
 
@@ -192,6 +195,7 @@ describe("model-domain-mapper", () => {
         provider: "vllm",
         trainable: true,
         recommended: true,
+        installed_local: true,
       },
     ];
 

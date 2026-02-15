@@ -895,6 +895,8 @@ export const pl = {
         baseModelHint: "Do treningu Academy można użyć tylko modeli z listy trenowalnych.",
         loadingModels: "Ładowanie modeli trenowalnych...",
         noTrainableModels: "Brak dostępnych modeli trenowalnych",
+        modelLocal: "installed_local",
+        modelCloud: "chmura",
         loraHint: "4-64 (wyższy = więcej parametrów)",
         learningRate: "Learning Rate",
         batchSizeHint: "1-32 (mniejszy = mniej VRAM)",

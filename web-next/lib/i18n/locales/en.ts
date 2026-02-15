@@ -846,6 +846,8 @@ export const en = {
       baseModelHint: "Only models from the trainable list can be used for Academy training.",
       loadingModels: "Loading trainable models...",
       noTrainableModels: "No trainable models available",
+      modelLocal: "installed_local",
+      modelCloud: "cloud",
       loraHint: "4-64 (higher = more parameters)",
       learningRate: "Learning Rate",
       batchSizeHint: "1-32 (smaller = less VRAM)",

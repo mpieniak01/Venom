@@ -164,7 +164,7 @@ export function TrainingPanel() {
               ) : (
                 trainableModels.map((model) => (
                   <option key={model.model_id} value={model.model_id}>
-                    {model.label} ({model.provider})
+                    {model.label} • {model.installed_local ? t("academy.training.modelLocal") : t("academy.training.modelCloud")}
                   </option>
                 ))
               )}

@@ -196,6 +196,30 @@ class ControlStateResponse(BaseModel):
     pending_changes: list[str] = Field(default_factory=list)
 
 
+class ControlOptionsCatalog(BaseModel):
+    """Catalog of available options grouped by source type."""
+
+    local: list[str] = Field(default_factory=list)
+    cloud: list[str] = Field(default_factory=list)
+
+
+class ControlOptionsActive(BaseModel):
+    """Active source types inferred from current state."""
+
+    provider_source: str = "local"
+    embedding_source: str = "local"
+
+
+class ControlOptionsResponse(BaseModel):
+    """Response with workflow control option catalogs."""
+
+    provider_sources: list[str] = Field(default_factory=lambda: ["local", "cloud"])
+    embedding_sources: list[str] = Field(default_factory=lambda: ["local", "cloud"])
+    providers: ControlOptionsCatalog
+    embeddings: ControlOptionsCatalog
+    active: ControlOptionsActive
+
+
 class WorkflowOperationResponse(BaseModel):
     """Response from workflow operation."""
 

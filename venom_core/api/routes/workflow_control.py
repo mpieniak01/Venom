@@ -9,8 +9,12 @@ This module provides endpoints for:
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from venom_core.api.dependencies import (
+    get_control_plane_audit_trail,
+    get_control_plane_service,
+)
 from venom_core.api.model_schemas.workflow_control import AuditEntry as AuditEntryModel
 from venom_core.api.model_schemas.workflow_control import (
     ControlApplyRequest,
@@ -22,8 +26,6 @@ from venom_core.api.model_schemas.workflow_control import (
     ControlStateResponse,
     ResourceType,
 )
-from venom_core.services.control_plane import get_control_plane_service
-from venom_core.services.control_plane_audit import get_control_plane_audit_trail
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -73,7 +75,11 @@ def _extract_user_from_request(request: Request) -> str:
         500: {"description": "Internal server error"},
     },
 )
-async def plan_changes(request: Request, plan_request: ControlPlanRequest):
+async def plan_changes(
+    request: Request,
+    plan_request: ControlPlanRequest,
+    service=Depends(get_control_plane_service),
+):
     """Plan configuration changes and validate compatibility.
 
     This endpoint analyzes requested changes and returns:
@@ -85,13 +91,13 @@ async def plan_changes(request: Request, plan_request: ControlPlanRequest):
     Args:
         request: FastAPI request
         plan_request: Plan request with desired changes
+        service: Control plane service injected via Depends
 
     Returns:
         Plan response with validation results
     """
     try:
         user = _extract_user_from_request(request)
-        service = get_control_plane_service()
         return service.plan_changes(plan_request, triggered_by=user)
     except Exception as e:
         logger.exception("Failed to plan changes")
@@ -106,7 +112,11 @@ async def plan_changes(request: Request, plan_request: ControlPlanRequest):
         500: {"description": "Internal server error"},
     },
 )
-async def apply_changes(request: Request, apply_request: ControlApplyRequest):
+async def apply_changes(
+    request: Request,
+    apply_request: ControlApplyRequest,
+    service=Depends(get_control_plane_service),
+):
     """Apply previously planned changes.
 
     This endpoint executes changes that were previously validated
@@ -115,13 +125,13 @@ async def apply_changes(request: Request, apply_request: ControlApplyRequest):
     Args:
         request: FastAPI request
         apply_request: Apply request with execution ticket
+        service: Control plane service injected via Depends
 
     Returns:
         Apply response with results
     """
     try:
         user = _extract_user_from_request(request)
-        service = get_control_plane_service()
         return service.apply_changes(apply_request, triggered_by=user)
     except Exception as e:
         logger.exception("Failed to apply changes")
@@ -135,7 +145,7 @@ async def apply_changes(request: Request, apply_request: ControlApplyRequest):
         500: {"description": "Internal server error"},
     },
 )
-async def get_system_state():
+async def get_system_state(service=Depends(get_control_plane_service)):
     """Get current state of the entire system.
 
     Returns comprehensive system state including:
@@ -146,11 +156,13 @@ async def get_system_state():
     - Workflow status
     - Active operations
 
+    Args:
+        service: Control plane service injected via Depends
+
     Returns:
         Current system state
     """
     try:
-        service = get_control_plane_service()
         system_state = service.get_system_state()
         return ControlStateResponse(
             system_state=system_state,
@@ -169,10 +181,13 @@ async def get_system_state():
         500: {"description": "Internal server error"},
     },
 )
-async def get_control_options():
-    """Get local/cloud option catalogs for provider and embedding selectors."""
+async def get_control_options(service=Depends(get_control_plane_service)):
+    """Get local/cloud option catalogs for provider and embedding selectors.
+    
+    Args:
+        service: Control plane service injected via Depends
+    """
     try:
-        service = get_control_plane_service()
         options = service.get_control_options()
         return ControlOptionsResponse(**options)
     except Exception as e:
@@ -196,6 +211,7 @@ async def get_audit_trail(
     page_size: Annotated[
         int, Query(ge=1, le=100, description="Items per page (1-100)")
     ] = 50,
+    audit_trail=Depends(get_control_plane_audit_trail),
 ):
     """Get audit trail of control plane operations.
 
@@ -212,13 +228,12 @@ async def get_audit_trail(
         result: Filter by result
         page: Page number (1-based)
         page_size: Number of entries per page
+        audit_trail: Audit trail service injected via Depends
 
     Returns:
         Audit trail entries
     """
     try:
-        audit_trail = get_control_plane_audit_trail()
-
         # Calculate offset
         offset = (page - 1) * page_size
         limit = page_size

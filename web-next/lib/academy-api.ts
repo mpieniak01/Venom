@@ -248,6 +248,7 @@ export interface TrainableModelInfo {
   trainable: boolean;
   reason_if_not_trainable?: string;
   recommended: boolean;
+  installed_local: boolean;
 }
 
 /**

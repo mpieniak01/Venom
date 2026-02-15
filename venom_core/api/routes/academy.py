@@ -284,6 +284,7 @@ class TrainableModelInfo(BaseModel):
     trainable: bool
     reason_if_not_trainable: Optional[str] = None
     recommended: bool = False
+    installed_local: bool = False
 
 
 # ==================== Helpers ====================
@@ -2156,6 +2157,7 @@ def _add_trainable_model_from_catalog(
     label: str,
     default_model: str,
     reason: Optional[str] = None,
+    installed_local: bool = False,
 ) -> None:
     if not model_id or model_id in seen:
         return
@@ -2167,6 +2169,7 @@ def _add_trainable_model_from_catalog(
             trainable=reason is None,
             reason_if_not_trainable=reason,
             recommended=(model_id == default_model),
+            installed_local=installed_local,
         )
     )
     seen.add(model_id)
@@ -2193,6 +2196,7 @@ async def _collect_local_trainable_models(
             ),
             default_model=default_model,
             reason=reason,
+            installed_local=True,
         )
 
 

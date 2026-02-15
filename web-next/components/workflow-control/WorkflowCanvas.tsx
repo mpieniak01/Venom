@@ -299,11 +299,11 @@ function resolveDisplayValue(
 
 function runtimeBadgeValue(data: unknown, t: ReturnType<typeof useTranslation>): string {
   if (!data || typeof data !== "object") {
-    return t("workflowControl.common.missing");
+    return t("workflowControl.common.auto");
   }
   const runtime = (data as { runtime?: { services?: unknown } }).runtime;
   const services = Array.isArray(runtime?.services) ? runtime.services.filter((service) => typeof service === "string" && service.trim().length > 0) : [];
-  if (services.length === 0) return t("workflowControl.common.missing");
+  if (services.length === 0) return t("workflowControl.common.auto");
   if (services.length === 1) return String(services[0]);
   return t("workflowControl.canvas.servicesCount", { count: services.length });
 }

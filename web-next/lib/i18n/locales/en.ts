@@ -1834,6 +1834,7 @@ export const en = {
     error: "Failed to load system state",
     common: {
       na: "N/A",
+      auto: "auto",
       missing: "missing",
       errorTitle: "Error",
     },

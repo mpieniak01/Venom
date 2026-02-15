@@ -989,7 +989,7 @@ async def lifespan(app: FastAPI):
     await _shutdown_runtime_components()
 
 
-app = FastAPI(title="Venom Core", version="1.4.0", lifespan=lifespan)
+app = FastAPI(title="Venom Core", version="1.5.0", lifespan=lifespan)
 
 # CORS dla lokalnego UI (bezpośredni dostęp do API, bez proxy Next).
 app.add_middleware(

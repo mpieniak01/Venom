@@ -715,7 +715,6 @@ make run
 - [Dream Engine](docs/PL/DREAM_ENGINE_GUIDE.md) *(Przesunięte do v2.0)*
 - [Process Engine](docs/PL/PROCESS_ENGINE_CONCEPT.md) *(Planowany dla v2.0)*
 - [Warstwa pamięci](docs/PL/MEMORY_LAYER_GUIDE.md)
-- [Google Search Grounding](docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
 
 ### DevOps i Deployment
 - [Deployment (Next.js)](docs/PL/DEPLOYMENT_NEXT.md)

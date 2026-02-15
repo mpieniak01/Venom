@@ -681,7 +681,6 @@ make run
 - [Flow Inspector](docs/FLOW_INSPECTOR_GUIDE.md)
 - [Dream Engine](docs/DREAM_ENGINE_GUIDE.md)
 - [Memory Layer](docs/MEMORY_LAYER_GUIDE.md)
-- [Google Search Grounding](docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
 
 ### DevOps and Deployment
 - [Deployment (Next.js)](docs/DEPLOYMENT_NEXT.md)

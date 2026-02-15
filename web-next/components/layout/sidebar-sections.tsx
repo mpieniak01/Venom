@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useAppMeta } from "@/lib/app-meta";
 import { navItems, AUTONOMY_LEVELS, AutonomySnapshot } from "./sidebar-helpers";
 
 export function BrandSection({
@@ -20,6 +21,9 @@ export function BrandSection({
     onToggle: () => void;
     t: (key: string) => string;
 }>) {
+    const appMeta = useAppMeta();
+    const versionBadge = appMeta?.version ? `v${appMeta.version}` : "v...";
+
     return (
         <div className="flex flex-col gap-6">
             <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between")}>
@@ -30,7 +34,9 @@ export function BrandSection({
                     <div className={cn(isSynced && "transition-all duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 overflow-hidden" : "max-w-[200px] opacity-100 ml-3")}>
                         <div className="flex items-center gap-2 whitespace-nowrap">
                             <p className="eyebrow">{t("sidebar.brand.caption")}</p>
-                            <span className="pill-badge">v1.4</span>
+                            <span className="pill-badge" data-testid="sidebar-brand-version" suppressHydrationWarning>
+                                {versionBadge}
+                            </span>
                         </div>
                     </div>
                 </div>

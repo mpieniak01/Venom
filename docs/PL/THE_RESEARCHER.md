@@ -212,5 +212,5 @@ GITHUB_TOKEN=ghp_your_token
 - [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planowanie z wykorzystaniem wiedzy
 - [THE_CODER.md](THE_CODER.md) - Implementacja bazująca na dokumentacji
 - [MEMORY_LAYER_GUIDE.md](MEMORY_LAYER_GUIDE.md) - Pamięć długoterminowa
-- [GOOGLE_SEARCH_GROUNDING_INTEGRATION.md](GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) - Google Grounding
+- [GOOGLE_SEARCH_GROUNDING_INTEGRATION.md](../GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) - Google Grounding
 - [HYBRID_AI_ENGINE.md](HYBRID_AI_ENGINE.md) - Routing LOCAL/HYBRID/CLOUD

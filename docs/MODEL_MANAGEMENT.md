@@ -2,7 +2,10 @@
 
 ## Overview
 
-The model management system in Venom provides a centralized, automated way to install, remove, and switch AI models from multiple sources (HuggingFace, Ollama).
+The model management system in Venom provides a centralized, automated way to install, remove, and switch AI models. It supports three domain types:
+- **Local Runtime**: Models running locally via Ollama or vLLM.
+- **Cloud API**: Models accessed via external APIs (OpenAI, Google Gemini).
+- **Integrator Catalog**: Models available for download/installation (HuggingFace, Ollama Library).
 
 ## Architecture
 
@@ -659,6 +662,25 @@ metadata = ModelMetadata(
 registry.manifest["model-name"] = metadata
 registry._save_manifest()
 ```
+
+## Provider Governance and Observability
+
+Venom includes a governance layer to manage costs, security, and reliability of LLM providers.
+
+### Governance Features
+- **Cost Limits**: Global and per-provider checks (Soft/Hard limits).
+- **Rate Limits**: Request/Token limits per minute.
+- **Fallback Policy**: Automated switching to backup providers on failure (Timeout, Auth Error, Budget Exceeded).
+- **Secret Masking**: API keys are never logged or exposed in API responses.
+
+For detailed rules and reason codes, see [Provider Governance](PROVIDER_GOVERNANCE.md).
+
+### Observability
+The system tracks metrics for every provider interaction:
+- **Latency**: P50/P95/P99 response times.
+- **Success Rate**: Error tracking with standardized `reason_code`.
+- **Cost Tracking**: Real-time token usage and cost estimation.
+- **Health Score**: Automated degradation detection.
 
 ## Future Enhancements
 

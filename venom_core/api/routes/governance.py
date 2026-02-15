@@ -194,27 +194,56 @@ def _resolve_scope_key(scope: str) -> tuple[LimitType, str]:
     return limit_type, key
 
 
+def _resolve_cost_limit_values(
+    request: UpdateLimitRequest,
+    current_limit: Optional[CostLimit],
+) -> tuple[float, float]:
+    if current_limit is None:
+        return (
+            request.soft_limit_usd if request.soft_limit_usd is not None else 10.0,
+            request.hard_limit_usd if request.hard_limit_usd is not None else 50.0,
+        )
+
+    return (
+        request.soft_limit_usd
+        if request.soft_limit_usd is not None
+        else current_limit.soft_limit_usd,
+        request.hard_limit_usd
+        if request.hard_limit_usd is not None
+        else current_limit.hard_limit_usd,
+    )
+
+
+def _apply_cost_limit_values(
+    governance: Any,
+    key: str,
+    request: UpdateLimitRequest,
+    limit_type: LimitType,
+    current_limit: Optional[CostLimit],
+    new_soft_limit: float,
+    new_hard_limit: float,
+) -> CostLimit:
+    if current_limit is None:
+        limit = CostLimit(
+            limit_type=limit_type,
+            scope=request.scope,
+            soft_limit_usd=new_soft_limit,
+            hard_limit_usd=new_hard_limit,
+        )
+        governance.cost_limits[key] = limit
+        return limit
+
+    if request.soft_limit_usd is not None:
+        current_limit.soft_limit_usd = request.soft_limit_usd
+    if request.hard_limit_usd is not None:
+        current_limit.hard_limit_usd = request.hard_limit_usd
+    return current_limit
+
+
 def _update_cost_limit(governance: Any, request: UpdateLimitRequest) -> Dict[str, Any]:
     limit_type, key = _resolve_scope_key(request.scope)
     current_limit = governance.cost_limits.get(key)
-    if current_limit is None:
-        new_soft_limit = (
-            request.soft_limit_usd if request.soft_limit_usd is not None else 10.0
-        )
-        new_hard_limit = (
-            request.hard_limit_usd if request.hard_limit_usd is not None else 50.0
-        )
-    else:
-        new_soft_limit = (
-            request.soft_limit_usd
-            if request.soft_limit_usd is not None
-            else current_limit.soft_limit_usd
-        )
-        new_hard_limit = (
-            request.hard_limit_usd
-            if request.hard_limit_usd is not None
-            else current_limit.hard_limit_usd
-        )
+    new_soft_limit, new_hard_limit = _resolve_cost_limit_values(request, current_limit)
 
     if new_soft_limit > new_hard_limit:
         raise HTTPException(
@@ -222,30 +251,27 @@ def _update_cost_limit(governance: Any, request: UpdateLimitRequest) -> Dict[str
             detail="Soft limit cannot be greater than hard limit",
         )
 
-    if current_limit is None:
-        governance.cost_limits[key] = CostLimit(
-            limit_type=limit_type,
-            scope=request.scope,
-            soft_limit_usd=new_soft_limit,
-            hard_limit_usd=new_hard_limit,
-        )
-    else:
-        if request.soft_limit_usd is not None:
-            current_limit.soft_limit_usd = request.soft_limit_usd
-        if request.hard_limit_usd is not None:
-            current_limit.hard_limit_usd = request.hard_limit_usd
+    limit = _apply_cost_limit_values(
+        governance,
+        key,
+        request,
+        limit_type,
+        current_limit,
+        new_soft_limit,
+        new_hard_limit,
+    )
 
     logger.info(
         f"Updated cost limit for {request.scope}: "
-        f"soft=${governance.cost_limits[key].soft_limit_usd}, "
-        f"hard=${governance.cost_limits[key].hard_limit_usd}"
+        f"soft=${limit.soft_limit_usd}, "
+        f"hard=${limit.hard_limit_usd}"
     )
     return {
         "status": "success",
         "message": "governance.messages.limitUpdated",
         "limit": {
-            "soft_limit_usd": governance.cost_limits[key].soft_limit_usd,
-            "hard_limit_usd": governance.cost_limits[key].hard_limit_usd,
+            "soft_limit_usd": limit.soft_limit_usd,
+            "hard_limit_usd": limit.hard_limit_usd,
         },
     }
 

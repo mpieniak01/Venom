@@ -684,6 +684,7 @@ def test_get_trainable_models(client):
     assert "provider" in model
     assert "trainable" in model
     assert "recommended" in model
+    assert "installed_local" in model
 
 
 def test_get_trainable_models_marks_ollama_as_non_trainable(client, mock_model_manager):
@@ -712,7 +713,9 @@ def test_get_trainable_models_marks_ollama_as_non_trainable(client, mock_model_m
     by_id = {item["model_id"]: item for item in data}
     assert by_id["gemma3:latest"]["trainable"] is False
     assert "ollama" in (by_id["gemma3:latest"]["reason_if_not_trainable"] or "").lower()
+    assert by_id["gemma3:latest"]["installed_local"] is True
     assert by_id["unsloth/Phi-3-mini-4k-instruct"]["trainable"] is True
+    assert by_id["unsloth/Phi-3-mini-4k-instruct"]["installed_local"] is True
 
 
 def test_get_trainable_models_uses_fallback_when_model_catalog_fails(
@@ -727,6 +730,11 @@ def test_get_trainable_models_uses_fallback_when_model_catalog_fails(
 
     assert any(item["model_id"] == "unsloth/Phi-3-mini-4k-instruct" for item in data)
     assert any(item["trainable"] for item in data)
+    assert any(
+        item["model_id"] == "unsloth/Phi-3-mini-4k-instruct"
+        and item["installed_local"] is False
+        for item in data
+    )
 
 
 # ==================== Curate with Scope Tests ====================

@@ -7,19 +7,20 @@ This module provides endpoints for:
 - Audit trail access
 """
 
-from typing import Any, Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from venom_core.api.model_schemas.workflow_control import AuditEntry as AuditEntryModel
 from venom_core.api.model_schemas.workflow_control import (
     ControlApplyRequest,
     ControlApplyResponse,
     ControlAuditResponse,
+    ControlOptionsResponse,
     ControlPlanRequest,
     ControlPlanResponse,
     ControlStateResponse,
     ResourceType,
-    AuditEntry as AuditEntryModel,
 )
 from venom_core.services.control_plane import get_control_plane_service
 from venom_core.services.control_plane_audit import get_control_plane_audit_trail
@@ -162,6 +163,24 @@ async def get_system_state():
 
 
 @router.get(
+    "/options",
+    response_model=ControlOptionsResponse,
+    responses={
+        500: {"description": "Internal server error"},
+    },
+)
+async def get_control_options():
+    """Get local/cloud option catalogs for provider and embedding selectors."""
+    try:
+        service = get_control_plane_service()
+        options = service.get_control_options()
+        return ControlOptionsResponse(**options)
+    except Exception as e:
+        logger.exception("Failed to get control options")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get(
     "/audit",
     response_model=ControlAuditResponse,
     responses={
@@ -173,8 +192,10 @@ async def get_audit_trail(
     resource_type: Optional[ResourceType] = None,
     triggered_by: Optional[str] = None,
     result: Optional[str] = None,
-    page: int = Query(1, ge=1, description="Page number (minimum 1)"),
-    page_size: int = Query(50, ge=1, le=100, description="Items per page (1-100)"),
+    page: Annotated[int, Query(ge=1, description="Page number (minimum 1)")] = 1,
+    page_size: Annotated[
+        int, Query(ge=1, le=100, description="Items per page (1-100)")
+    ] = 50,
 ):
     """Get audit trail of control plane operations.
 

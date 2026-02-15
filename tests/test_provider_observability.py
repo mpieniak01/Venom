@@ -1,5 +1,6 @@
 """Tests for provider observability: metrics, SLO, and alerting."""
 
+import math
 import threading
 from datetime import datetime, timedelta
 
@@ -427,6 +428,22 @@ class TestProviderObservability:
 
         assert len(emitted) >= 1
         assert any(a.alert_type == AlertType.HIGH_LATENCY for a in emitted)
+
+    def test_check_and_emit_alerts_ignores_nan_latency(self):
+        """NaN latency should not emit a high-latency alert."""
+        obs = ProviderObservability()
+
+        metrics = {
+            "success_rate": 99.5,
+            "error_rate": 0.5,
+            "latency": {"p99_ms": math.nan},
+            "cost": {"total_usd": 10.0},
+        }
+
+        slo_status = obs.calculate_slo_status("openai", metrics)
+        emitted = obs.check_and_emit_alerts("openai", slo_status, metrics)
+
+        assert all(a.alert_type != AlertType.HIGH_LATENCY for a in emitted)
 
     def test_check_and_emit_alerts_error_spike(self):
         """Test alerting for error spike."""

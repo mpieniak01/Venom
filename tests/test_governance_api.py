@@ -1,8 +1,9 @@
 """Tests for governance API endpoints."""
 
+from unittest.mock import patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import patch
 
 from venom_core.main import app
 
@@ -10,9 +11,11 @@ from venom_core.main import app
 @pytest.mark.asyncio
 async def test_get_governance_status():
     """Test getting governance status."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         response = await ac.get("/api/v1/governance/status")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -25,15 +28,17 @@ async def test_get_governance_status():
 @pytest.mark.asyncio
 async def test_get_limits_config():
     """Test getting limits configuration."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         response = await ac.get("/api/v1/governance/limits")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
     assert "cost_limits" in data
     assert "rate_limits" in data
-    
+
     # Check structure of cost limits
     if "global" in data["cost_limits"]:
         global_cost = data["cost_limits"]["global"]
@@ -44,9 +49,11 @@ async def test_get_limits_config():
 @pytest.mark.asyncio
 async def test_get_provider_credential_status_configured():
     """Test checking credential status for configured provider."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         response = await ac.get("/api/v1/governance/providers/ollama/credentials")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["provider"] == "ollama"
@@ -59,10 +66,12 @@ async def test_get_provider_credential_status_missing():
     """Test checking credential status for provider with missing credentials."""
     with patch("venom_core.core.provider_governance.SETTINGS") as mock_settings:
         mock_settings.OPENAI_API_KEY = ""
-        
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
             response = await ac.get("/api/v1/governance/providers/openai/credentials")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["provider"] == "openai"
@@ -72,7 +81,9 @@ async def test_get_provider_credential_status_missing():
 @pytest.mark.asyncio
 async def test_update_cost_limit():
     """Test updating cost limit."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         payload = {
             "limit_type": "cost",
             "scope": "global",
@@ -80,7 +91,7 @@ async def test_update_cost_limit():
             "hard_limit_usd": 100.0,
         }
         response = await ac.post("/api/v1/governance/limits", json=payload)
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -92,7 +103,9 @@ async def test_update_cost_limit():
 @pytest.mark.asyncio
 async def test_update_rate_limit():
     """Test updating rate limit."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         payload = {
             "limit_type": "rate",
             "scope": "global",
@@ -100,7 +113,7 @@ async def test_update_rate_limit():
             "max_tokens_per_minute": 200000,
         }
         response = await ac.post("/api/v1/governance/limits", json=payload)
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -112,7 +125,9 @@ async def test_update_rate_limit():
 @pytest.mark.asyncio
 async def test_update_provider_specific_limit():
     """Test updating provider-specific limit."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         payload = {
             "limit_type": "cost",
             "scope": "openai",
@@ -120,7 +135,7 @@ async def test_update_provider_specific_limit():
             "hard_limit_usd": 25.0,
         }
         response = await ac.post("/api/v1/governance/limits", json=payload)
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -131,14 +146,16 @@ async def test_update_provider_specific_limit():
 @pytest.mark.asyncio
 async def test_update_limit_invalid_type():
     """Test updating limit with invalid type."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         payload = {
             "limit_type": "invalid",
             "scope": "global",
             "soft_limit_usd": 10.0,
         }
         response = await ac.post("/api/v1/governance/limits", json=payload)
-    
+
     assert response.status_code == 400
     assert "invalid" in response.json()["detail"].lower()
 
@@ -146,9 +163,11 @@ async def test_update_limit_invalid_type():
 @pytest.mark.asyncio
 async def test_reset_usage_all():
     """Test resetting all usage counters."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         response = await ac.post("/api/v1/governance/reset-usage")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -159,9 +178,11 @@ async def test_reset_usage_all():
 @pytest.mark.asyncio
 async def test_reset_usage_specific_scope():
     """Test resetting usage for specific scope."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         response = await ac.post("/api/v1/governance/reset-usage?scope=openai")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -172,25 +193,28 @@ async def test_reset_usage_specific_scope():
 @pytest.mark.asyncio
 async def test_governance_integration_with_usage():
     """Test governance status reflects usage updates."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         # First, reset usage
         await ac.post("/api/v1/governance/reset-usage")
-        
+
         # Get initial status
         response1 = await ac.get("/api/v1/governance/status")
         data1 = response1.json()
         initial_usage = data1["cost_limits"]["global"]["current_usage_usd"]
-        
+
         # Simulate usage by directly calling governance (in real scenario would be via inference)
         from venom_core.core.provider_governance import get_provider_governance
+
         governance = get_provider_governance()
         governance.record_usage("openai", cost_usd=2.5, tokens=500, requests=1)
-        
+
         # Get updated status
         response2 = await ac.get("/api/v1/governance/status")
         data2 = response2.json()
         updated_usage = data2["cost_limits"]["global"]["current_usage_usd"]
-        
+
         # Usage should have increased
         assert updated_usage > initial_usage
 
@@ -211,7 +235,9 @@ async def test_governance_integration_with_usage():
 )
 async def test_update_cost_limit_invalid_values(override):
     """Test that invalid cost limit values are rejected."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         payload = {
             "limit_type": "cost",
             "scope": "global",
@@ -227,7 +253,9 @@ async def test_update_cost_limit_invalid_values(override):
 @pytest.mark.asyncio
 async def test_update_cost_limit_soft_greater_than_hard():
     """Test that soft limit greater than hard limit is rejected."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         payload = {
             "limit_type": "cost",
             "scope": "global",
@@ -237,6 +265,58 @@ async def test_update_cost_limit_soft_greater_than_hard():
         response = await ac.post("/api/v1/governance/limits", json=payload)
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_cost_limit_rejects_partial_soft_above_existing_hard():
+    """Reject soft-only update when final soft limit would exceed existing hard limit."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        setup_payload = {
+            "limit_type": "cost",
+            "scope": "global",
+            "soft_limit_usd": 10.0,
+            "hard_limit_usd": 20.0,
+        }
+        setup_response = await ac.post("/api/v1/governance/limits", json=setup_payload)
+        assert setup_response.status_code == 200
+
+        invalid_partial = {
+            "limit_type": "cost",
+            "scope": "global",
+            "soft_limit_usd": 30.0,
+        }
+        response = await ac.post("/api/v1/governance/limits", json=invalid_partial)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Soft limit cannot be greater than hard limit"
+
+
+@pytest.mark.asyncio
+async def test_update_cost_limit_rejects_partial_hard_below_existing_soft():
+    """Reject hard-only update when final hard limit would be below existing soft limit."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        setup_payload = {
+            "limit_type": "cost",
+            "scope": "global",
+            "soft_limit_usd": 25.0,
+            "hard_limit_usd": 40.0,
+        }
+        setup_response = await ac.post("/api/v1/governance/limits", json=setup_payload)
+        assert setup_response.status_code == 200
+
+        invalid_partial = {
+            "limit_type": "cost",
+            "scope": "global",
+            "hard_limit_usd": 20.0,
+        }
+        response = await ac.post("/api/v1/governance/limits", json=invalid_partial)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Soft limit cannot be greater than hard limit"
 
 
 @pytest.mark.asyncio
@@ -255,7 +335,9 @@ async def test_update_cost_limit_soft_greater_than_hard():
 )
 async def test_update_rate_limit_invalid_values(override):
     """Test that invalid rate limit values are rejected."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         payload = {
             "limit_type": "rate",
             "scope": "global",

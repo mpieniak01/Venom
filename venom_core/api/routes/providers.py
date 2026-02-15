@@ -23,6 +23,11 @@ router = APIRouter(prefix="/api/v1", tags=["providers"])
 # Valid provider names
 VALID_PROVIDERS = {"huggingface", "ollama", "vllm", "openai", "google"}
 
+RESP_400_BAD_REQUEST = {"description": "Invalid provider request."}
+RESP_404_PROVIDER_NOT_FOUND = {"description": "Unknown provider."}
+RESP_500_PROVIDER_OPERATION_FAILED = {"description": "Provider operation failed."}
+RESP_503_PROVIDER_OFFLINE = {"description": "Provider is offline."}
+
 
 def _extract_user_from_request(request: Request) -> str:
     """
@@ -155,6 +160,46 @@ def _get_provider_capabilities(provider: str) -> ProviderCapability:
         )
     else:
         return ProviderCapability()
+
+
+def _validate_provider_or_404(provider_name: str) -> str:
+    normalized = provider_name.lower()
+    if normalized not in VALID_PROVIDERS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown provider: {normalized}",
+        )
+    return normalized
+
+
+def _resolve_cloud_model(
+    provider_name: str, request: Optional[ProviderActivateRequest]
+) -> str:
+    if provider_name == "openai":
+        return (
+            request.model if request and request.model else SETTINGS.OPENAI_GPT4O_MODEL
+        )
+    return (
+        request.model if request and request.model else SETTINGS.GOOGLE_GEMINI_PRO_MODEL
+    )
+
+
+def _activate_cloud_provider(
+    provider_name: str, request: Optional[ProviderActivateRequest]
+) -> dict[str, Any]:
+    model = _resolve_cloud_model(provider_name, request)
+    provider_config = {
+        "LLM_SERVICE_TYPE": provider_name,
+        "LLM_MODEL_NAME": model,
+        "ACTIVE_LLM_SERVER": provider_name,
+    }
+    config_manager.update_config(provider_config)
+    return {
+        "status": "success",
+        "message": f"Provider {provider_name} activated successfully",
+        "provider": provider_name,
+        "model": model,
+    }
 
 
 async def _check_provider_connection(provider: str) -> ProviderStatus:
@@ -343,7 +388,10 @@ async def list_providers() -> dict[str, Any]:
     }
 
 
-@router.get("/providers/{provider_name}")
+@router.get(
+    "/providers/{provider_name}",
+    responses={404: RESP_404_PROVIDER_NOT_FOUND},
+)
 async def get_provider_info(provider_name: str) -> dict[str, Any]:
     """
     Get detailed information about a specific provider.
@@ -351,14 +399,7 @@ async def get_provider_info(provider_name: str) -> dict[str, Any]:
     Args:
         provider_name: Provider identifier (huggingface, ollama, vllm, openai, google)
     """
-    provider_name = provider_name.lower()
-
-    # Validate provider
-    if provider_name not in VALID_PROVIDERS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown provider: {provider_name}",
-        )
+    provider_name = _validate_provider_or_404(provider_name)
 
     # Get active runtime
     active_runtime = get_active_llm_runtime()
@@ -388,7 +429,15 @@ async def get_provider_info(provider_name: str) -> dict[str, Any]:
     }
 
 
-@router.post("/providers/{provider_name}/activate")
+@router.post(
+    "/providers/{provider_name}/activate",
+    responses={
+        400: RESP_400_BAD_REQUEST,
+        404: RESP_404_PROVIDER_NOT_FOUND,
+        500: RESP_500_PROVIDER_OPERATION_FAILED,
+        503: RESP_503_PROVIDER_OFFLINE,
+    },
+)
 async def activate_provider(
     provider_name: str,
     request: Optional[ProviderActivateRequest] = None,
@@ -400,14 +449,7 @@ async def activate_provider(
         provider_name: Provider to activate (huggingface, ollama, vllm, openai, google)
         request: Optional activation parameters
     """
-    provider_name = provider_name.lower()
-
-    # Validate provider
-    if provider_name not in VALID_PROVIDERS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown provider: {provider_name}",
-        )
+    provider_name = _validate_provider_or_404(provider_name)
 
     # Check if provider supports activation
     capabilities = _get_provider_capabilities(provider_name)
@@ -427,43 +469,8 @@ async def activate_provider(
 
     # Activate based on provider type
     if provider_name in ("openai", "google"):
-        # Cloud providers - update runtime config
         try:
-            if provider_name == "openai":
-                model = (
-                    request.model
-                    if request and request.model
-                    else SETTINGS.OPENAI_GPT4O_MODEL
-                )
-                # Update config atomically through config_manager only
-                config_manager.update_config(
-                    {
-                        "LLM_SERVICE_TYPE": "openai",
-                        "LLM_MODEL_NAME": model,
-                        "ACTIVE_LLM_SERVER": "openai",
-                    }
-                )
-            else:  # google
-                model = (
-                    request.model
-                    if request and request.model
-                    else SETTINGS.GOOGLE_GEMINI_PRO_MODEL
-                )
-                # Update config atomically through config_manager only
-                config_manager.update_config(
-                    {
-                        "LLM_SERVICE_TYPE": "google",
-                        "LLM_MODEL_NAME": model,
-                        "ACTIVE_LLM_SERVER": "google",
-                    }
-                )
-
-            return {
-                "status": "success",
-                "message": f"Provider {provider_name} activated successfully",
-                "provider": provider_name,
-                "model": model,
-            }
+            return _activate_cloud_provider(provider_name, request)
         except Exception as exc:
             logger.exception(f"Failed to activate provider {provider_name}")
             raise HTTPException(
@@ -486,7 +493,10 @@ async def activate_provider(
         )
 
 
-@router.get("/providers/{provider_name}/status")
+@router.get(
+    "/providers/{provider_name}/status",
+    responses={404: RESP_404_PROVIDER_NOT_FOUND},
+)
 async def get_provider_status(provider_name: str) -> dict[str, Any]:
     """
     Get connection status for a specific provider.
@@ -494,14 +504,7 @@ async def get_provider_status(provider_name: str) -> dict[str, Any]:
     Args:
         provider_name: Provider identifier
     """
-    provider_name = provider_name.lower()
-
-    # Validate provider
-    if provider_name not in VALID_PROVIDERS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown provider: {provider_name}",
-        )
+    provider_name = _validate_provider_or_404(provider_name)
 
     status = await _check_provider_connection(provider_name)
 
@@ -512,7 +515,10 @@ async def get_provider_status(provider_name: str) -> dict[str, Any]:
     }
 
 
-@router.get("/providers/{provider_name}/metrics")
+@router.get(
+    "/providers/{provider_name}/metrics",
+    responses={404: RESP_404_PROVIDER_NOT_FOUND},
+)
 async def get_provider_metrics(provider_name: str) -> dict[str, Any]:
     """
     Get performance metrics for a specific provider.
@@ -524,14 +530,7 @@ async def get_provider_metrics(provider_name: str) -> dict[str, Any]:
     """
     from venom_core.core.metrics import get_metrics_collector
 
-    provider_name = provider_name.lower()
-
-    # Validate provider
-    if provider_name not in VALID_PROVIDERS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown provider: {provider_name}",
-        )
+    provider_name = _validate_provider_or_404(provider_name)
 
     provider_metrics = get_metrics_collector().get_provider_metrics(provider_name)
 
@@ -573,7 +572,10 @@ async def get_provider_metrics(provider_name: str) -> dict[str, Any]:
     }
 
 
-@router.get("/providers/{provider_name}/health")
+@router.get(
+    "/providers/{provider_name}/health",
+    responses={404: RESP_404_PROVIDER_NOT_FOUND},
+)
 async def get_provider_health(provider_name: str) -> dict[str, Any]:
     """
     Get SLO status and health score for a specific provider.
@@ -584,14 +586,7 @@ async def get_provider_health(provider_name: str) -> dict[str, Any]:
     from venom_core.core.metrics import get_metrics_collector
     from venom_core.core.provider_observability import get_provider_observability
 
-    provider_name = provider_name.lower()
-
-    # Validate provider
-    if provider_name not in VALID_PROVIDERS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown provider: {provider_name}",
-        )
+    provider_name = _validate_provider_or_404(provider_name)
 
     observability = get_provider_observability()
     provider_metrics = get_metrics_collector().get_provider_metrics(provider_name)
@@ -618,7 +613,13 @@ async def get_provider_health(provider_name: str) -> dict[str, Any]:
     }
 
 
-@router.get("/alerts")
+@router.get(
+    "/alerts",
+    responses={
+        400: RESP_400_BAD_REQUEST,
+        404: RESP_404_PROVIDER_NOT_FOUND,
+    },
+)
 async def get_alerts(
     provider: Optional[str] = None,
     severity: Optional[str] = None,
@@ -682,7 +683,13 @@ async def get_alerts(
     }
 
 
-@router.post("/providers/{provider_name}/test-connection")
+@router.post(
+    "/providers/{provider_name}/test-connection",
+    responses={
+        404: RESP_404_PROVIDER_NOT_FOUND,
+        500: RESP_500_PROVIDER_OPERATION_FAILED,
+    },
+)
 async def test_provider_connection(
     provider_name: str, request: Request
 ) -> dict[str, Any]:
@@ -708,14 +715,7 @@ async def test_provider_connection(
         get_user_message_key,
     )
 
-    provider_name = provider_name.lower()
-
-    # Validate provider
-    if provider_name not in VALID_PROVIDERS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown provider: {provider_name}",
-        )
+    provider_name = _validate_provider_or_404(provider_name)
 
     # Audit the test
     audit_trail = get_audit_trail()
@@ -773,7 +773,13 @@ async def test_provider_connection(
         ) from exc
 
 
-@router.post("/providers/{provider_name}/preflight")
+@router.post(
+    "/providers/{provider_name}/preflight",
+    responses={
+        404: RESP_404_PROVIDER_NOT_FOUND,
+        500: RESP_500_PROVIDER_OPERATION_FAILED,
+    },
+)
 async def provider_preflight_check(
     provider_name: str, request: Request
 ) -> dict[str, Any]:
@@ -795,14 +801,7 @@ async def provider_preflight_check(
     """
     from venom_core.core.admin_audit import get_audit_trail
 
-    provider_name = provider_name.lower()
-
-    # Validate provider
-    if provider_name not in VALID_PROVIDERS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown provider: {provider_name}",
-        )
+    provider_name = _validate_provider_or_404(provider_name)
 
     audit_trail = get_audit_trail()
     user = _extract_user_from_request(request)

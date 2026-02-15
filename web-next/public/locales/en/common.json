@@ -1,0 +1,64 @@
+{
+  "workflowControl": {
+    "title": "Workflow Control Composer",
+    "description": "Interactive control plane for managing agent workflow execution and configuration.",
+    "status": {
+      "draft": "Draft Mode"
+    },
+    "panels": {
+      "propertyInspector": "Property Inspector"
+    },
+    "actions": {
+      "reset": "Reset",
+      "planChanges": "Plan Changes",
+      "pause": "Pause",
+      "resume": "Resume",
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "dryRun": "Dry Run",
+      "details": "Details",
+      "edit": "Edit",
+      "stop": "Stop"
+    },
+    "labels": {
+      "systemStatus": "System Status",
+      "strategy": "Decision Strategy",
+      "intentMode": "Intent Mode",
+      "activeProvider": "Active Provider",
+      "rawData": "Raw Data",
+      "currentStrategy": "Current Strategy",
+      "currentIntent": "Current Intent",
+      "currentKernel": "Current Kernel",
+      "runtimeServices": "Runtime Services",
+      "currentProvider": "Current Provider",
+      "currentEmbedding": "Current Embedding"
+    },
+    "sections": {
+      "decision": "Decision",
+      "intent": "Intent",
+      "kernel": "Kernel",
+      "runtime": "Runtime",
+      "provider": "Provider",
+      "embedding": "Embedding"
+    },
+    "messages": {
+      "selectNode": "Select a node to edit its properties.",
+      "planError": "Failed to plan changes.",
+      "applyError": "Failed to apply changes.",
+      "pauseError": "Failed to pause workflow.",
+      "resumeError": "Failed to resume workflow.",
+      "cancelError": "Failed to cancel workflow.",
+      "retryError": "Failed to retry workflow.",
+      "dryRunError": "Failed to execute dry run.",
+      "invalidStatePayload": "Invalid system state payload received.",
+      "connectionRejected": "Connection Rejected"
+    },
+    "common": {
+      "na": "N/A",
+      "errorTitle": "Error"
+    },
+    "canvas": {
+      "servicesCount": "{{count}} Services"
+    }
+  }
+}

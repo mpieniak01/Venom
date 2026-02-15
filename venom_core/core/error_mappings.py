@@ -19,13 +19,18 @@ class ErrorMapping:
 
 
 # Provider error mappings
+RUNBOOK_PROVIDER_OFFLINE = "/docs/runbooks/provider-offline.md"
+RUNBOOK_AUTH_FAILURES = "/docs/runbooks/auth-failures.md"
+RUNBOOK_LATENCY_SPIKE = "/docs/runbooks/latency-spike.md"
+
+
 PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
     # Connection errors
     "connection_failed": ErrorMapping(
         reason_code="connection_failed",
         user_message_key="errors.provider.connection_failed.user",
         admin_message_key="errors.provider.connection_failed.admin",
-        runbook_path="/docs/runbooks/provider-offline.md",
+        runbook_path=RUNBOOK_PROVIDER_OFFLINE,
         recovery_hint_key="errors.provider.connection_failed.hint",
         severity="critical",
     ),
@@ -33,7 +38,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="offline",
         user_message_key="errors.provider.offline.user",
         admin_message_key="errors.provider.offline.admin",
-        runbook_path="/docs/runbooks/provider-offline.md",
+        runbook_path=RUNBOOK_PROVIDER_OFFLINE,
         recovery_hint_key="errors.provider.offline.hint",
         severity="critical",
     ),
@@ -41,7 +46,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="PROVIDER_OFFLINE",
         user_message_key="errors.provider.offline.user",
         admin_message_key="errors.provider.offline.admin",
-        runbook_path="/docs/runbooks/provider-offline.md",
+        runbook_path=RUNBOOK_PROVIDER_OFFLINE,
         recovery_hint_key="errors.provider.offline.hint",
         severity="critical",
     ),
@@ -50,7 +55,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="missing_api_key",
         user_message_key="errors.provider.missing_api_key.user",
         admin_message_key="errors.provider.missing_api_key.admin",
-        runbook_path="/docs/runbooks/auth-failures.md",
+        runbook_path=RUNBOOK_AUTH_FAILURES,
         recovery_hint_key="errors.provider.missing_api_key.hint",
         severity="warning",
     ),
@@ -58,7 +63,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="AUTH_ERROR",
         user_message_key="errors.provider.auth_error.user",
         admin_message_key="errors.provider.auth_error.admin",
-        runbook_path="/docs/runbooks/auth-failures.md",
+        runbook_path=RUNBOOK_AUTH_FAILURES,
         recovery_hint_key="errors.provider.auth_error.hint",
         severity="critical",
     ),
@@ -66,7 +71,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="invalid_credentials",
         user_message_key="errors.provider.invalid_credentials.user",
         admin_message_key="errors.provider.invalid_credentials.admin",
-        runbook_path="/docs/runbooks/auth-failures.md",
+        runbook_path=RUNBOOK_AUTH_FAILURES,
         recovery_hint_key="errors.provider.invalid_credentials.hint",
         severity="critical",
     ),
@@ -75,7 +80,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="no_endpoint",
         user_message_key="errors.provider.no_endpoint.user",
         admin_message_key="errors.provider.no_endpoint.admin",
-        runbook_path="/docs/runbooks/provider-offline.md",
+        runbook_path=RUNBOOK_PROVIDER_OFFLINE,
         recovery_hint_key="errors.provider.no_endpoint.hint",
         severity="warning",
     ),
@@ -83,7 +88,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="http_error",
         user_message_key="errors.provider.http_error.user",
         admin_message_key="errors.provider.http_error.admin",
-        runbook_path="/docs/runbooks/provider-offline.md",
+        runbook_path=RUNBOOK_PROVIDER_OFFLINE,
         recovery_hint_key="errors.provider.http_error.hint",
         severity="warning",
     ),
@@ -92,7 +97,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="TIMEOUT",
         user_message_key="errors.provider.timeout.user",
         admin_message_key="errors.provider.timeout.admin",
-        runbook_path="/docs/runbooks/latency-spike.md",
+        runbook_path=RUNBOOK_LATENCY_SPIKE,
         recovery_hint_key="errors.provider.timeout.hint",
         severity="warning",
     ),
@@ -100,7 +105,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="PROVIDER_DEGRADED",
         user_message_key="errors.provider.degraded.user",
         admin_message_key="errors.provider.degraded.admin",
-        runbook_path="/docs/runbooks/latency-spike.md",
+        runbook_path=RUNBOOK_LATENCY_SPIKE,
         recovery_hint_key="errors.provider.degraded.hint",
         severity="warning",
     ),
@@ -117,7 +122,7 @@ PROVIDER_ERROR_MAPPINGS: Dict[str, ErrorMapping] = {
         reason_code="RATE_LIMIT_EXCEEDED",
         user_message_key="errors.provider.rate_limit.user",
         admin_message_key="errors.provider.rate_limit.admin",
-        runbook_path="/docs/runbooks/latency-spike.md",
+        runbook_path=RUNBOOK_LATENCY_SPIKE,
         recovery_hint_key="errors.provider.rate_limit.hint",
         severity="warning",
     ),

@@ -54,6 +54,19 @@ class ControlPlaneService:
         ResourceType.PROVIDER: "ACTIVE_PROVIDER",
         ResourceType.EMBEDDING_MODEL: "EMBEDDING_MODEL",
     }
+    CLOUD_PROVIDERS = {
+        "openai",
+        "google",
+        "anthropic",
+        "azure-openai",
+        "azure",
+        "cohere",
+        "mistral",
+        "together",
+        "groq",
+        "bedrock",
+        "gemini",
+    }
 
     def plan_changes(
         self, request: ControlPlanRequest, triggered_by: str
@@ -72,112 +85,36 @@ class ControlPlaneService:
         operation_id = f"plan:{execution_ticket}"
 
         if not self._begin_operation(operation_id):
-            return ControlPlanResponse(
-                execution_ticket=execution_ticket,
-                valid=False,
-                reason_code=ReasonCode.OPERATION_IN_PROGRESS,
-                compatibility_report=CompatibilityReport(
-                    compatible=False,
-                    issues=[
-                        "Another plan operation is already in progress for this ticket"
-                    ],
-                    warnings=[],
-                    affected_services=[],
-                ),
-                planned_changes=[],
-                hot_swap_changes=[],
-                restart_required_services=[],
-                rejected_changes=["Operation already in progress"],
-                estimated_duration_seconds=0.0,
-            )
+            return self._build_plan_in_progress_response(execution_ticket)
 
         try:
-            # Validate and categorize changes
-            planned_changes: list[AppliedChange] = []
-            hot_swap_changes: list[str] = []
-            restart_required_services: list[str] = []
-            rejected_changes: list[str] = []
-
-            compatibility_issues: list[str] = []
-            compatibility_warnings: list[str] = []
-            affected_services: set[str] = set()
-
-            for change in request.changes:
-                result = self._validate_change(change)
-
-                if result["valid"]:
-                    applied_change = AppliedChange(
-                        resource_type=change.resource_type,
-                        resource_id=change.resource_id,
-                        action=change.action,
-                        apply_mode=result["apply_mode"],
-                        reason_code=result["reason_code"],
-                        message=result["message"],
-                        timestamp=result["timestamp"],
-                    )
-                    planned_changes.append(applied_change)
-
-                    if result["apply_mode"] == ApplyMode.HOT_SWAP:
-                        hot_swap_changes.append(change.resource_id)
-                    elif result["apply_mode"] == ApplyMode.RESTART_REQUIRED:
-                        restart_required_services.extend(result["restart_services"])
-
-                    affected_services.update(result.get("affected_services", []))
-                else:
-                    rejected_changes.append(
-                        f"{change.resource_id}: {result['message']}"
-                    )
-                    compatibility_issues.append(result["message"])
-
-            # Check overall compatibility
-            overall_compatible = len(rejected_changes) == 0
-
-            if overall_compatible:
-                # Perform full stack validation (even for dry-run)
-                current_state = self._get_current_state()
-                compatible, issues = self._validate_full_stack_compatibility(
-                    current_state, request.changes
-                )
-
-                if not compatible:
-                    overall_compatible = False
-                    compatibility_issues.extend(issues)
-
-            compatibility_report = CompatibilityReport(
-                compatible=overall_compatible,
-                issues=compatibility_issues,
-                warnings=compatibility_warnings,
-                affected_services=list(affected_services),
+            prepared_plan = self._prepare_plan(request)
+            reason_code = self._resolve_plan_reason_code(
+                overall_compatible=prepared_plan["overall_compatible"],
+                restart_required_services=prepared_plan["restart_required_services"],
             )
-
-            reason_code = (
-                ReasonCode.SUCCESS_HOT_SWAP
-                if overall_compatible and len(restart_required_services) == 0
-                else ReasonCode.SUCCESS_RESTART_PENDING
-                if overall_compatible
-                else ReasonCode.INVALID_CONFIGURATION
-            )
-
             response = ControlPlanResponse(
                 execution_ticket=execution_ticket,
-                valid=overall_compatible,
+                valid=prepared_plan["overall_compatible"],
                 reason_code=reason_code,
-                compatibility_report=compatibility_report,
-                planned_changes=planned_changes,
-                hot_swap_changes=hot_swap_changes,
-                restart_required_services=list(set(restart_required_services)),
-                rejected_changes=rejected_changes,
-                estimated_duration_seconds=self._estimate_duration(planned_changes),
+                compatibility_report=CompatibilityReport(
+                    compatible=prepared_plan["overall_compatible"],
+                    issues=prepared_plan["compatibility_issues"],
+                    warnings=prepared_plan["compatibility_warnings"],
+                    affected_services=prepared_plan["affected_services"],
+                ),
+                planned_changes=prepared_plan["planned_changes"],
+                hot_swap_changes=prepared_plan["hot_swap_changes"],
+                restart_required_services=prepared_plan["restart_required_services"],
+                rejected_changes=prepared_plan["rejected_changes"],
+                estimated_duration_seconds=self._estimate_duration(
+                    prepared_plan["planned_changes"]
+                ),
             )
 
             # Store plan for later apply
             if not request.dry_run:
-                with self._lock:
-                    self._pending_plans[execution_ticket] = {
-                        "response": response,
-                        "request": request,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    }
+                self._store_pending_plan(execution_ticket, response, request)
 
             # Log to audit trail
             duration_ms = (time.time() - start_time) * 1000
@@ -190,7 +127,7 @@ class ControlPlaneService:
                     "changes_count": len(request.changes),
                     "dry_run": request.dry_run,
                 },
-                result="success" if overall_compatible else "rejected",
+                result="success" if prepared_plan["overall_compatible"] else "rejected",
                 reason_code=reason_code,
                 duration_ms=duration_ms,
             )
@@ -231,111 +168,35 @@ class ControlPlaneService:
         operation_id = f"apply:{request.execution_ticket}"
 
         if not self._begin_operation(operation_id):
-            return ControlApplyResponse(
-                execution_ticket=request.execution_ticket,
-                apply_mode=ApplyMode.REJECTED,
-                reason_code=ReasonCode.OPERATION_IN_PROGRESS,
-                message="Apply operation already in progress for this ticket",
-                applied_changes=[],
-                pending_restart=[],
-                failed_changes=["Operation already in progress"],
-                rollback_available=True,
-            )
+            return self._build_apply_in_progress_response(request.execution_ticket)
 
         try:
-            # Retrieve the plan
-            with self._lock:
-                pending = self._pending_plans.get(request.execution_ticket)
-            if not pending:
-                return ControlApplyResponse(
-                    execution_ticket=request.execution_ticket,
-                    apply_mode=ApplyMode.REJECTED,
-                    reason_code=ReasonCode.INVALID_CONFIGURATION,
-                    message="Invalid or expired execution ticket",
-                    applied_changes=[],
-                    pending_restart=[],
-                    failed_changes=["Invalid execution ticket"],
-                )
-            plan: ControlPlanResponse = pending["response"]
-            plan_request: ControlPlanRequest = pending["request"]
+            plan, plan_request, early_response = self._get_pending_plan_for_apply(
+                request
+            )
+            if early_response:
+                return early_response
+            assert plan is not None
+            assert plan_request is not None
 
-            if not plan.valid:
-                return ControlApplyResponse(
-                    execution_ticket=request.execution_ticket,
-                    apply_mode=ApplyMode.REJECTED,
-                    reason_code=ReasonCode.INVALID_CONFIGURATION,
-                    message="Cannot apply invalid plan",
-                    applied_changes=[],
-                    pending_restart=[],
-                    failed_changes=["Plan validation failed"],
-                )
+            early_restart_response = self._check_restart_confirmation(
+                plan=plan, request=request
+            )
+            if early_restart_response:
+                return early_restart_response
 
-            # Check restart confirmation
-            if plan.restart_required_services and not request.confirm_restart:
-                return ControlApplyResponse(
-                    execution_ticket=request.execution_ticket,
-                    apply_mode=ApplyMode.RESTART_REQUIRED,
-                    reason_code=ReasonCode.SUCCESS_RESTART_PENDING,
-                    message="Restart required but not confirmed",
-                    applied_changes=[],
-                    pending_restart=plan.restart_required_services,
-                    failed_changes=[],
-                )
-
-            # Apply changes
-            applied_changes: list[AppliedChange] = []
-            failed_changes: list[str] = []
-            rollback_snapshot: dict[str, Any] = {}
-            rollback_attempted = False
-            rollback_success = False
-
-            for change in plan_request.changes:
-                try:
-                    applied_change = self._apply_single_change(
-                        requested_change=change,
-                        rollback_snapshot=rollback_snapshot,
-                    )
-                    applied_changes.append(applied_change)
-                except Exception as e:
-                    logger.error(f"Failed to apply change {change.resource_id}: {e}")
-                    failed_changes.append(f"{change.resource_id}: {str(e)}")
-                    rollback_attempted = True
-                    rollback_success = self._rollback_config_changes(
-                        rollback_snapshot=rollback_snapshot,
-                        triggered_by=triggered_by,
-                        execution_ticket=request.execution_ticket,
-                    )
-                    if not rollback_success:
-                        failed_changes.append("Rollback failed for one or more keys")
-                    else:
-                        failed_changes.append(
-                            "Rollback completed for applied config changes"
-                        )
-                    break
-
-            # Determine overall apply mode
-            if len(failed_changes) > 0:
-                apply_mode = ApplyMode.REJECTED
-                reason_code = ReasonCode.OPERATION_FAILED
-                message = f"Applied {len(applied_changes)}/{len(plan.planned_changes)} changes"
-            elif len(plan.restart_required_services) > 0:
-                apply_mode = ApplyMode.RESTART_REQUIRED
-                reason_code = ReasonCode.SUCCESS_RESTART_PENDING
-                message = "Changes applied, restart required"
-            else:
-                apply_mode = ApplyMode.HOT_SWAP
-                reason_code = ReasonCode.SUCCESS_HOT_SWAP
-                message = "All changes applied successfully"
-
-            response = ControlApplyResponse(
+            apply_result = self._apply_plan_changes(
+                plan_request=plan_request,
+                triggered_by=triggered_by,
                 execution_ticket=request.execution_ticket,
-                apply_mode=apply_mode,
-                reason_code=reason_code,
-                message=message,
-                applied_changes=applied_changes,
-                pending_restart=plan.restart_required_services,
-                failed_changes=failed_changes,
-                rollback_available=rollback_attempted or bool(rollback_snapshot),
+            )
+            response = self._build_apply_response(
+                execution_ticket=request.execution_ticket,
+                plan=plan,
+                applied_changes=apply_result["applied_changes"],
+                failed_changes=apply_result["failed_changes"],
+                rollback_attempted=apply_result["rollback_attempted"],
+                rollback_snapshot=apply_result["rollback_snapshot"],
             )
 
             # Clean up pending plan
@@ -353,27 +214,27 @@ class ControlPlaneService:
                     "execution_ticket": request.execution_ticket,
                     "confirm_restart": request.confirm_restart,
                 },
-                result="success" if len(failed_changes) == 0 else "partial",
-                reason_code=reason_code,
+                result="success" if len(response.failed_changes) == 0 else "partial",
+                reason_code=response.reason_code,
                 duration_ms=duration_ms,
             )
-            if rollback_attempted:
+            if apply_result["rollback_attempted"]:
                 self._audit_trail.log_operation(
                     triggered_by=triggered_by,
                     operation_type="rollback",
                     resource_type=ResourceType.CONFIG,
                     resource_id="system",
                     params={"execution_ticket": request.execution_ticket},
-                    result="success" if rollback_success else "failure",
+                    result="success" if apply_result["rollback_success"] else "failure",
                     reason_code=(
                         ReasonCode.OPERATION_COMPLETED
-                        if rollback_success
+                        if apply_result["rollback_success"]
                         else ReasonCode.OPERATION_FAILED
                     ),
                     duration_ms=duration_ms,
                     error_message=(
                         None
-                        if rollback_success
+                        if apply_result["rollback_success"]
                         else "Rollback could not restore all configuration keys"
                     ),
                 )
@@ -397,6 +258,251 @@ class ControlPlaneService:
             raise
         finally:
             self._end_operation(operation_id)
+
+    def _build_plan_in_progress_response(
+        self, execution_ticket: str
+    ) -> ControlPlanResponse:
+        return ControlPlanResponse(
+            execution_ticket=execution_ticket,
+            valid=False,
+            reason_code=ReasonCode.OPERATION_IN_PROGRESS,
+            compatibility_report=CompatibilityReport(
+                compatible=False,
+                issues=[
+                    "Another plan operation is already in progress for this ticket"
+                ],
+                warnings=[],
+                affected_services=[],
+            ),
+            planned_changes=[],
+            hot_swap_changes=[],
+            restart_required_services=[],
+            rejected_changes=["Operation already in progress"],
+            estimated_duration_seconds=0.0,
+        )
+
+    def _prepare_plan(self, request: ControlPlanRequest) -> dict[str, Any]:
+        planned_changes: list[AppliedChange] = []
+        hot_swap_changes: list[str] = []
+        restart_required_services: list[str] = []
+        rejected_changes: list[str] = []
+        compatibility_issues: list[str] = []
+        compatibility_warnings: list[str] = []
+        affected_services: set[str] = set()
+
+        for change in request.changes:
+            result = self._validate_change(change)
+            if result["valid"]:
+                planned_changes.append(
+                    AppliedChange(
+                        resource_type=change.resource_type,
+                        resource_id=change.resource_id,
+                        action=change.action,
+                        apply_mode=result["apply_mode"],
+                        reason_code=result["reason_code"],
+                        message=result["message"],
+                        timestamp=result["timestamp"],
+                    )
+                )
+                if result["apply_mode"] == ApplyMode.HOT_SWAP:
+                    hot_swap_changes.append(change.resource_id)
+                elif result["apply_mode"] == ApplyMode.RESTART_REQUIRED:
+                    restart_required_services.extend(result["restart_services"])
+                affected_services.update(result.get("affected_services", []))
+                continue
+
+            rejected_changes.append(f"{change.resource_id}: {result['message']}")
+            compatibility_issues.append(result["message"])
+
+        overall_compatible = len(rejected_changes) == 0
+        if overall_compatible:
+            current_state = self._get_current_state()
+            compatible, issues = self._validate_full_stack_compatibility(
+                current_state, request.changes
+            )
+            if not compatible:
+                overall_compatible = False
+                compatibility_issues.extend(issues)
+
+        return {
+            "planned_changes": planned_changes,
+            "hot_swap_changes": hot_swap_changes,
+            "restart_required_services": list(set(restart_required_services)),
+            "rejected_changes": rejected_changes,
+            "compatibility_issues": compatibility_issues,
+            "compatibility_warnings": compatibility_warnings,
+            "affected_services": list(affected_services),
+            "overall_compatible": overall_compatible,
+        }
+
+    def _resolve_plan_reason_code(
+        self, overall_compatible: bool, restart_required_services: list[str]
+    ) -> ReasonCode:
+        if not overall_compatible:
+            return ReasonCode.INVALID_CONFIGURATION
+        if restart_required_services:
+            return ReasonCode.SUCCESS_RESTART_PENDING
+        return ReasonCode.SUCCESS_HOT_SWAP
+
+    def _store_pending_plan(
+        self,
+        execution_ticket: str,
+        response: ControlPlanResponse,
+        request: ControlPlanRequest,
+    ) -> None:
+        with self._lock:
+            self._pending_plans[execution_ticket] = {
+                "response": response,
+                "request": request,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+    def _build_apply_in_progress_response(
+        self, execution_ticket: str
+    ) -> ControlApplyResponse:
+        return ControlApplyResponse(
+            execution_ticket=execution_ticket,
+            apply_mode=ApplyMode.REJECTED,
+            reason_code=ReasonCode.OPERATION_IN_PROGRESS,
+            message="Apply operation already in progress for this ticket",
+            applied_changes=[],
+            pending_restart=[],
+            failed_changes=["Operation already in progress"],
+            rollback_available=True,
+        )
+
+    def _get_pending_plan_for_apply(
+        self, request: ControlApplyRequest
+    ) -> tuple[
+        ControlPlanResponse | None,
+        ControlPlanRequest | None,
+        ControlApplyResponse | None,
+    ]:
+        with self._lock:
+            pending = self._pending_plans.get(request.execution_ticket)
+        if not pending:
+            return (
+                None,
+                None,
+                ControlApplyResponse(
+                    execution_ticket=request.execution_ticket,
+                    apply_mode=ApplyMode.REJECTED,
+                    reason_code=ReasonCode.INVALID_CONFIGURATION,
+                    message="Invalid or expired execution ticket",
+                    applied_changes=[],
+                    pending_restart=[],
+                    failed_changes=["Invalid execution ticket"],
+                ),
+            )
+        plan: ControlPlanResponse = pending["response"]
+        plan_request: ControlPlanRequest = pending["request"]
+        if not plan.valid:
+            return (
+                None,
+                None,
+                ControlApplyResponse(
+                    execution_ticket=request.execution_ticket,
+                    apply_mode=ApplyMode.REJECTED,
+                    reason_code=ReasonCode.INVALID_CONFIGURATION,
+                    message="Cannot apply invalid plan",
+                    applied_changes=[],
+                    pending_restart=[],
+                    failed_changes=["Plan validation failed"],
+                ),
+            )
+        return plan, plan_request, None
+
+    def _check_restart_confirmation(
+        self, plan: ControlPlanResponse, request: ControlApplyRequest
+    ) -> ControlApplyResponse | None:
+        if not plan.restart_required_services or request.confirm_restart:
+            return None
+        return ControlApplyResponse(
+            execution_ticket=request.execution_ticket,
+            apply_mode=ApplyMode.RESTART_REQUIRED,
+            reason_code=ReasonCode.SUCCESS_RESTART_PENDING,
+            message="Restart required but not confirmed",
+            applied_changes=[],
+            pending_restart=plan.restart_required_services,
+            failed_changes=[],
+        )
+
+    def _apply_plan_changes(
+        self,
+        plan_request: ControlPlanRequest,
+        triggered_by: str,
+        execution_ticket: str,
+    ) -> dict[str, Any]:
+        applied_changes: list[AppliedChange] = []
+        failed_changes: list[str] = []
+        rollback_snapshot: dict[str, Any] = {}
+        rollback_attempted = False
+        rollback_success = False
+
+        for change in plan_request.changes:
+            try:
+                applied_change = self._apply_single_change(
+                    requested_change=change,
+                    rollback_snapshot=rollback_snapshot,
+                )
+                applied_changes.append(applied_change)
+            except Exception as e:
+                logger.error(f"Failed to apply change {change.resource_id}: {e}")
+                failed_changes.append(f"{change.resource_id}: {str(e)}")
+                rollback_attempted = True
+                rollback_success = self._rollback_config_changes(
+                    rollback_snapshot=rollback_snapshot,
+                    triggered_by=triggered_by,
+                    execution_ticket=execution_ticket,
+                )
+                failed_changes.append(
+                    "Rollback completed for applied config changes"
+                    if rollback_success
+                    else "Rollback failed for one or more keys"
+                )
+                break
+
+        return {
+            "applied_changes": applied_changes,
+            "failed_changes": failed_changes,
+            "rollback_snapshot": rollback_snapshot,
+            "rollback_attempted": rollback_attempted,
+            "rollback_success": rollback_success,
+        }
+
+    def _build_apply_response(
+        self,
+        execution_ticket: str,
+        plan: ControlPlanResponse,
+        applied_changes: list[AppliedChange],
+        failed_changes: list[str],
+        rollback_attempted: bool,
+        rollback_snapshot: dict[str, Any],
+    ) -> ControlApplyResponse:
+        if failed_changes:
+            apply_mode = ApplyMode.REJECTED
+            reason_code = ReasonCode.OPERATION_FAILED
+            message = (
+                f"Applied {len(applied_changes)}/{len(plan.planned_changes)} changes"
+            )
+        elif plan.restart_required_services:
+            apply_mode = ApplyMode.RESTART_REQUIRED
+            reason_code = ReasonCode.SUCCESS_RESTART_PENDING
+            message = "Changes applied, restart required"
+        else:
+            apply_mode = ApplyMode.HOT_SWAP
+            reason_code = ReasonCode.SUCCESS_HOT_SWAP
+            message = "All changes applied successfully"
+        return ControlApplyResponse(
+            execution_ticket=execution_ticket,
+            apply_mode=apply_mode,
+            reason_code=reason_code,
+            message=message,
+            applied_changes=applied_changes,
+            pending_restart=plan.restart_required_services,
+            failed_changes=failed_changes,
+            rollback_available=rollback_attempted or bool(rollback_snapshot),
+        )
 
     def get_system_state(self) -> SystemState:
         """Get current state of the entire system.
@@ -706,6 +812,75 @@ class ControlPlaneService:
             provider, []
         )
         return fallback_models[0] if fallback_models else "llama2"
+
+    def _classify_provider_source(self, provider: str) -> str:
+        normalized = (provider or "").strip().lower()
+        return "cloud" if normalized in self.CLOUD_PROVIDERS else "local"
+
+    def _classify_embedding_source(self, embedding_model: str) -> str:
+        model_key = (embedding_model or "").strip()
+        if not model_key:
+            return "local"
+        compatibility = (
+            self._compatibility_validator.matrix.embedding_compatibility.get(model_key)
+        )
+        if not compatibility:
+            return "local"
+        if any(
+            self._classify_provider_source(provider) == "cloud"
+            for provider in compatibility
+        ):
+            return "cloud"
+        return "local"
+
+    def get_control_options(self) -> dict[str, Any]:
+        """Return option catalogs for provider/embedding split into local/cloud."""
+        provider_models = self._compatibility_validator.matrix.provider_models
+        embedding_compatibility = (
+            self._compatibility_validator.matrix.embedding_compatibility
+        )
+
+        providers_local: list[str] = []
+        providers_cloud: list[str] = []
+        for provider in sorted(provider_models.keys()):
+            if self._classify_provider_source(provider) == "cloud":
+                providers_cloud.append(provider)
+            else:
+                providers_local.append(provider)
+
+        embeddings_local: list[str] = []
+        embeddings_cloud: list[str] = []
+        for embedding_model, compatible_providers in sorted(
+            embedding_compatibility.items()
+        ):
+            if any(
+                self._classify_provider_source(provider) == "cloud"
+                for provider in compatible_providers
+            ):
+                embeddings_cloud.append(embedding_model)
+            else:
+                embeddings_local.append(embedding_model)
+
+        state = self.get_system_state()
+        active_provider = str((state.provider or {}).get("active", "ollama"))
+        active_embedding = str(state.embedding_model or "")
+
+        return {
+            "provider_sources": ["local", "cloud"],
+            "embedding_sources": ["local", "cloud"],
+            "providers": {
+                "local": providers_local,
+                "cloud": providers_cloud,
+            },
+            "embeddings": {
+                "local": embeddings_local,
+                "cloud": embeddings_cloud,
+            },
+            "active": {
+                "provider_source": self._classify_provider_source(active_provider),
+                "embedding_source": self._classify_embedding_source(active_embedding),
+            },
+        }
 
     def _calculate_health_status(
         self, runtime_statuses: list[Any], compatible: bool

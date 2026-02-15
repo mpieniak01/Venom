@@ -6,8 +6,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from venom_core.core.provider_governance import (
+    CostLimit,
     CredentialStatus,
-    FallbackPolicy,
+    LimitType,
+    RateLimit,
     get_provider_governance,
 )
 from venom_core.utils.logger import get_logger
@@ -15,6 +17,10 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["governance"])
+INTERNAL_SERVER_ERROR_DETAIL = "Internal server error"
+
+RESP_400_INVALID_LIMIT = {"description": "Invalid governance limit request."}
+RESP_500_INTERNAL = {"description": INTERNAL_SERVER_ERROR_DETAIL}
 
 
 class GovernanceStatusResponse(BaseModel):
@@ -46,12 +52,8 @@ class ProviderCredentialStatusResponse(BaseModel):
 class UpdateLimitRequest(BaseModel):
     """Request do aktualizacji limitu."""
 
-    limit_type: str = Field(
-        ..., description="Typ limitu: 'cost' lub 'rate'"
-    )
-    scope: str = Field(
-        ..., description="Zakres: 'global', nazwa providera lub modelu"
-    )
+    limit_type: str = Field(..., description="Typ limitu: 'cost' lub 'rate'")
+    scope: str = Field(..., description="Zakres: 'global', nazwa providera lub modelu")
     soft_limit_usd: Optional[float] = Field(
         None, description="Soft limit w USD (dla cost)", gt=0
     )
@@ -68,9 +70,9 @@ class UpdateLimitRequest(BaseModel):
 
 @router.get(
     "/governance/status",
-    response_model=GovernanceStatusResponse,
     summary="Pobierz status governance",
     description="Zwraca aktywne limity, zużycie i ostatnie zdarzenia fallback",
+    responses={500: RESP_500_INTERNAL},
 )
 def get_governance_status() -> GovernanceStatusResponse:
     """
@@ -96,16 +98,14 @@ def get_governance_status() -> GovernanceStatusResponse:
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu governance")
-        raise HTTPException(
-            status_code=500, detail="Internal server error"
-        ) from e
+        raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL) from e
 
 
 @router.get(
     "/governance/limits",
-    response_model=LimitsConfigResponse,
     summary="Pobierz konfigurację limitów",
     description="Zwraca aktualne ustawienia limitów kosztowych i rate",
+    responses={500: RESP_500_INTERNAL},
 )
 def get_limits_config() -> LimitsConfigResponse:
     """
@@ -140,18 +140,18 @@ def get_limits_config() -> LimitsConfigResponse:
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania konfiguracji limitów")
-        raise HTTPException(
-            status_code=500, detail="Internal server error"
-        ) from e
+        raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL) from e
 
 
 @router.get(
     "/governance/providers/{provider_name}/credentials",
-    response_model=ProviderCredentialStatusResponse,
     summary="Sprawdź status credentiali providera",
     description="Waliduje konfigurację credentiali providera bez ujawniania sekretów",
+    responses={500: RESP_500_INTERNAL},
 )
-def get_provider_credential_status(provider_name: str) -> ProviderCredentialStatusResponse:
+def get_provider_credential_status(
+    provider_name: str,
+) -> ProviderCredentialStatusResponse:
     """
     Endpoint walidacji credentiali.
 
@@ -176,22 +176,137 @@ def get_provider_credential_status(provider_name: str) -> ProviderCredentialStat
         return ProviderCredentialStatusResponse(
             provider=provider_name,
             credential_status=status.value,
-            message=message_map.get(status, "governance.messages.credentialsConfigured"),
+            message=message_map.get(
+                status, "governance.messages.credentialsConfigured"
+            ),
         )
 
     except Exception as e:
         logger.exception(
             f"Błąd podczas walidacji credentiali dla providera {provider_name}"
         )
+        raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL) from e
+
+
+def _resolve_scope_key(scope: str) -> tuple[LimitType, str]:
+    limit_type = LimitType.GLOBAL if scope == "global" else LimitType.PER_PROVIDER
+    key = scope if scope == "global" else f"provider:{scope}"
+    return limit_type, key
+
+
+def _update_cost_limit(governance: Any, request: UpdateLimitRequest) -> Dict[str, Any]:
+    limit_type, key = _resolve_scope_key(request.scope)
+    current_limit = governance.cost_limits.get(key)
+    if current_limit is None:
+        new_soft_limit = (
+            request.soft_limit_usd if request.soft_limit_usd is not None else 10.0
+        )
+        new_hard_limit = (
+            request.hard_limit_usd if request.hard_limit_usd is not None else 50.0
+        )
+    else:
+        new_soft_limit = (
+            request.soft_limit_usd
+            if request.soft_limit_usd is not None
+            else current_limit.soft_limit_usd
+        )
+        new_hard_limit = (
+            request.hard_limit_usd
+            if request.hard_limit_usd is not None
+            else current_limit.hard_limit_usd
+        )
+
+    if new_soft_limit > new_hard_limit:
         raise HTTPException(
-            status_code=500, detail="Internal server error"
-        ) from e
+            status_code=400,
+            detail="Soft limit cannot be greater than hard limit",
+        )
+
+    if current_limit is None:
+        governance.cost_limits[key] = CostLimit(
+            limit_type=limit_type,
+            scope=request.scope,
+            soft_limit_usd=new_soft_limit,
+            hard_limit_usd=new_hard_limit,
+        )
+    else:
+        if request.soft_limit_usd is not None:
+            current_limit.soft_limit_usd = request.soft_limit_usd
+        if request.hard_limit_usd is not None:
+            current_limit.hard_limit_usd = request.hard_limit_usd
+
+    logger.info(
+        f"Updated cost limit for {request.scope}: "
+        f"soft=${governance.cost_limits[key].soft_limit_usd}, "
+        f"hard=${governance.cost_limits[key].hard_limit_usd}"
+    )
+    return {
+        "status": "success",
+        "message": "governance.messages.limitUpdated",
+        "limit": {
+            "soft_limit_usd": governance.cost_limits[key].soft_limit_usd,
+            "hard_limit_usd": governance.cost_limits[key].hard_limit_usd,
+        },
+    }
+
+
+def _update_rate_limit(governance: Any, request: UpdateLimitRequest) -> Dict[str, Any]:
+    limit_type, key = _resolve_scope_key(request.scope)
+    if key not in governance.rate_limits:
+        governance.rate_limits[key] = RateLimit(
+            limit_type=limit_type,
+            scope=request.scope,
+            max_requests_per_minute=request.max_requests_per_minute or 100,
+            max_tokens_per_minute=request.max_tokens_per_minute or 100000,
+        )
+    else:
+        if request.max_requests_per_minute is not None:
+            governance.rate_limits[
+                key
+            ].max_requests_per_minute = request.max_requests_per_minute
+        if request.max_tokens_per_minute is not None:
+            governance.rate_limits[
+                key
+            ].max_tokens_per_minute = request.max_tokens_per_minute
+
+    logger.info(
+        f"Updated rate limit for {request.scope}: "
+        f"requests={governance.rate_limits[key].max_requests_per_minute}/min, "
+        f"tokens={governance.rate_limits[key].max_tokens_per_minute}/min"
+    )
+    return {
+        "status": "success",
+        "message": "governance.messages.limitUpdated",
+        "limit": {
+            "max_requests_per_minute": governance.rate_limits[
+                key
+            ].max_requests_per_minute,
+            "max_tokens_per_minute": governance.rate_limits[key].max_tokens_per_minute,
+        },
+    }
+
+
+def _perform_limit_update(
+    governance: Any, request: UpdateLimitRequest
+) -> Dict[str, Any]:
+    if request.limit_type == "cost":
+        return _update_cost_limit(governance, request)
+    if request.limit_type == "rate":
+        return _update_rate_limit(governance, request)
+    raise HTTPException(
+        status_code=400,
+        detail=f"Invalid limit_type: {request.limit_type}. Use 'cost' or 'rate'",
+    )
 
 
 @router.post(
     "/governance/limits",
     summary="Aktualizuj limity",
     description="Aktualizuje limity kosztowe lub rate dla danego scope",
+    responses={
+        400: RESP_400_INVALID_LIMIT,
+        500: RESP_500_INTERNAL,
+    },
 )
 def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
     """
@@ -207,120 +322,20 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
     """
     try:
         governance = get_provider_governance()
-
-        if request.limit_type == "cost":
-            # Validate cost limits
-            if request.soft_limit_usd is not None and request.hard_limit_usd is not None:
-                if request.soft_limit_usd > request.hard_limit_usd:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Soft limit cannot be greater than hard limit",
-                    )
-            
-            # Update cost limit
-            from venom_core.core.provider_governance import CostLimit, LimitType
-
-            limit_type = (
-                LimitType.GLOBAL
-                if request.scope == "global"
-                else LimitType.PER_PROVIDER
-            )
-            key = request.scope if request.scope == "global" else f"provider:{request.scope}"
-
-            if key not in governance.cost_limits:
-                governance.cost_limits[key] = CostLimit(
-                    limit_type=limit_type,
-                    scope=request.scope,
-                    soft_limit_usd=request.soft_limit_usd or 10.0,
-                    hard_limit_usd=request.hard_limit_usd or 50.0,
-                )
-            else:
-                if request.soft_limit_usd is not None:
-                    governance.cost_limits[key].soft_limit_usd = request.soft_limit_usd
-                if request.hard_limit_usd is not None:
-                    governance.cost_limits[key].hard_limit_usd = request.hard_limit_usd
-
-            logger.info(
-                f"Updated cost limit for {request.scope}: "
-                f"soft=${governance.cost_limits[key].soft_limit_usd}, "
-                f"hard=${governance.cost_limits[key].hard_limit_usd}"
-            )
-
-            return {
-                "status": "success",
-                "message": "governance.messages.limitUpdated",
-                "limit": {
-                    "soft_limit_usd": governance.cost_limits[key].soft_limit_usd,
-                    "hard_limit_usd": governance.cost_limits[key].hard_limit_usd,
-                },
-            }
-
-        elif request.limit_type == "rate":
-            # Update rate limit
-            from venom_core.core.provider_governance import RateLimit, LimitType
-
-            limit_type = (
-                LimitType.GLOBAL
-                if request.scope == "global"
-                else LimitType.PER_PROVIDER
-            )
-            key = request.scope if request.scope == "global" else f"provider:{request.scope}"
-
-            if key not in governance.rate_limits:
-                governance.rate_limits[key] = RateLimit(
-                    limit_type=limit_type,
-                    scope=request.scope,
-                    max_requests_per_minute=request.max_requests_per_minute or 100,
-                    max_tokens_per_minute=request.max_tokens_per_minute or 100000,
-                )
-            else:
-                if request.max_requests_per_minute is not None:
-                    governance.rate_limits[
-                        key
-                    ].max_requests_per_minute = request.max_requests_per_minute
-                if request.max_tokens_per_minute is not None:
-                    governance.rate_limits[
-                        key
-                    ].max_tokens_per_minute = request.max_tokens_per_minute
-
-            logger.info(
-                f"Updated rate limit for {request.scope}: "
-                f"requests={governance.rate_limits[key].max_requests_per_minute}/min, "
-                f"tokens={governance.rate_limits[key].max_tokens_per_minute}/min"
-            )
-
-            return {
-                "status": "success",
-                "message": "governance.messages.limitUpdated",
-                "limit": {
-                    "max_requests_per_minute": governance.rate_limits[
-                        key
-                    ].max_requests_per_minute,
-                    "max_tokens_per_minute": governance.rate_limits[
-                        key
-                    ].max_tokens_per_minute,
-                },
-            }
-
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid limit_type: {request.limit_type}. Use 'cost' or 'rate'",
-            )
+        return _perform_limit_update(governance, request)
 
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("Błąd podczas aktualizacji limitu")
-        raise HTTPException(
-            status_code=500, detail="Internal server error"
-        ) from e
+        raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL) from e
 
 
 @router.post(
     "/governance/reset-usage",
     summary="Resetuj liczniki zużycia",
     description="Resetuje liczniki zużycia dla wszystkich lub wybranego scope",
+    responses={500: RESP_500_INTERNAL},
 )
 def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -367,6 +382,4 @@ def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
 
     except Exception as e:
         logger.exception("Błąd podczas resetowania liczników")
-        raise HTTPException(
-            status_code=500, detail="Internal server error"
-        ) from e
+        raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL) from e

@@ -1901,6 +1901,7 @@ export const pl = {
       currentStrategy: "Bieżąca strategia",
       newStrategy: "Nowa strategia",
       strategy: "Strategia",
+      sourceType: "Źródło",
       currentIntent: "Bieżący tryb intencji",
       newIntent: "Nowy tryb intencji",
       intentMode: "Tryb intencji",
@@ -1956,6 +1957,7 @@ export const pl = {
     providers: {
       ollama: "Ollama",
       huggingface: "Hugging Face",
+      vllm: "vLLM",
       openai: "OpenAI",
       google: "Google",
       anthropic: "Anthropic",

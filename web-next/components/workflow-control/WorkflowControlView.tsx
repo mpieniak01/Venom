@@ -17,6 +17,7 @@ export function WorkflowControlView() {
   const {
     systemState,
     draftState,
+    controlOptions,
     hasChanges,
     isLoading,
     error,
@@ -83,6 +84,14 @@ export function WorkflowControlView() {
             <PropertyPanel
               selectedNode={selectedNode}
               onUpdateNode={updateNode}
+              availableOptions={
+                controlOptions
+                  ? {
+                    providersBySource: controlOptions.providers,
+                    modelsBySource: controlOptions.embeddings,
+                  }
+                  : undefined
+              }
             />
           </div>
           <WorkflowConsole

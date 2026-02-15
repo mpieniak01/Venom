@@ -41,6 +41,22 @@ export interface PlanRequest {
   changes: ConfigurationChange[];
 }
 
+export interface WorkflowControlSourceCatalog {
+  local: string[];
+  cloud: string[];
+}
+
+export interface WorkflowControlOptions {
+  provider_sources: string[];
+  embedding_sources: string[];
+  providers: WorkflowControlSourceCatalog;
+  embeddings: WorkflowControlSourceCatalog;
+  active: {
+    provider_source: "local" | "cloud";
+    embedding_source: "local" | "cloud";
+  };
+}
+
 export interface PlanResponse {
   execution_ticket: string;
   valid: boolean;

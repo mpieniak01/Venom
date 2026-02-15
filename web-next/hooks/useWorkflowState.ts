@@ -8,6 +8,7 @@ import type {
   PlanRequest,
   PlanResponse,
   ApplyResults,
+  WorkflowControlOptions,
 } from "@/types/workflow-control";
 
 const WORKFLOW_STORAGE_KEY = "workflow_control_id";
@@ -85,6 +86,21 @@ export function useWorkflowState() {
   const [systemState, setSystemState] = useState<SystemState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [controlOptions, setControlOptions] =
+    useState<WorkflowControlOptions | null>(null);
+
+  const fetchControlOptions = useCallback(async () => {
+    try {
+      const response = await fetch(buildApiUrl("/api/v1/workflow/control/options"));
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, t("workflowControl.error")));
+      }
+      const data = (await response.json()) as WorkflowControlOptions;
+      setControlOptions(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("workflowControl.error"));
+    }
+  }, [t]);
 
   // Fetch system state
   const fetchSystemState = useCallback(async () => {
@@ -112,7 +128,8 @@ export function useWorkflowState() {
   // Refresh state
   const refresh = useCallback(() => {
     fetchSystemState();
-  }, [fetchSystemState]);
+    fetchControlOptions();
+  }, [fetchSystemState, fetchControlOptions]);
 
   // Plan changes
   const planChanges = useCallback(async (changes: PlanRequest): Promise<PlanResponse | null> => {
@@ -310,10 +327,11 @@ export function useWorkflowState() {
   // Initial load and polling
   useEffect(() => {
     fetchSystemState();
+    fetchControlOptions();
     // Poll every 5 seconds
     const interval = setInterval(fetchSystemState, 5000);
     return () => clearInterval(interval);
-  }, [fetchSystemState]);
+  }, [fetchSystemState, fetchControlOptions]);
 
   // Draft State Management
   const [draftState, setDraftState] = useState<SystemState | null>(null);
@@ -338,7 +356,7 @@ export function useWorkflowState() {
       if (nodeId === 'decision') next.decision_strategy = typedData.strategy as string;
       if (nodeId === 'decision' && typedData.intentMode) next.intent_mode = typedData.intentMode as string;
       if (nodeId === 'kernel') next.kernel = typedData.kernel as string;
-      if (nodeId === 'provider' && typedData.provider) next.provider = typedData.provider as { active: string };
+      if (nodeId === 'provider' && typedData.provider) next.provider = typedData.provider as { active: string; sourceType?: string };
       if (nodeId === 'embedding') next.embedding_model = typedData.model as string;
 
       return next;
@@ -357,6 +375,7 @@ export function useWorkflowState() {
     hasChanges,
     isLoading,
     error,
+    controlOptions,
     refresh,
     updateNode,
     reset,

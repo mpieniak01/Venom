@@ -264,12 +264,48 @@ function SourceBadge({ sourceTag }: { sourceTag: "local" | "cloud" }) {
   );
 }
 
+function ValueBadge({ value }: { value: string }) {
+  return (
+    <span className="absolute right-2 top-2 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-100">
+      {value}
+    </span>
+  );
+}
+
 function readSourceTag(data: unknown): "local" | "cloud" {
   if (!data || typeof data !== "object") {
     return "local";
   }
   const sourceTag = (data as { sourceTag?: unknown }).sourceTag;
   return sourceTag === "cloud" ? "cloud" : "local";
+}
+
+function resolveDisplayValue(
+  value: unknown,
+  t: ReturnType<typeof useTranslation>,
+  fallbackKey?: string
+): string {
+  if (typeof value === "string" && value.trim().length > 0) {
+    if (fallbackKey) {
+      const translated = t(`${fallbackKey}.${value}` as never);
+      if (translated && translated !== `${fallbackKey}.${value}`) {
+        return translated;
+      }
+    }
+    return value;
+  }
+  return t("workflowControl.common.missing");
+}
+
+function runtimeBadgeValue(data: unknown, t: ReturnType<typeof useTranslation>): string {
+  if (!data || typeof data !== "object") {
+    return t("workflowControl.common.missing");
+  }
+  const runtime = (data as { runtime?: { services?: unknown } }).runtime;
+  const services = Array.isArray(runtime?.services) ? runtime.services.filter((service) => typeof service === "string" && service.trim().length > 0) : [];
+  if (services.length === 0) return t("workflowControl.common.missing");
+  if (services.length === 1) return String(services[0]);
+  return t("workflowControl.canvas.servicesCount", { count: services.length });
 }
 
 // Swimlane Styling Map - Increased Contrast
@@ -300,11 +336,17 @@ function SwimlaneNode({ data }: { data: { label: string, index: number } }) {
   );
 }
 
-function DecisionNode({ selected = false }: NodeProps) {
+function DecisionNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const badgeValue = resolveDisplayValue(
+    (data as { strategy?: unknown } | undefined)?.strategy,
+    t,
+    "workflowControl.strategies"
+  );
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-blue-500 text-blue-100 min-w-[210px] relative">
       <SelectedNodePulse selected={selected} glowClass="border-blue-300/90 shadow-[0_0_24px_rgba(96,165,250,0.45)]" />
+      <ValueBadge value={badgeValue} />
       <Handle type="source" position={Position.Bottom} className="!bg-blue-500 !w-3 !h-3" />
       <NodeActions />
       <div className="font-bold text-xl text-blue-400 truncate text-center">{t("workflowControl.sections.decision")}</div>
@@ -312,11 +354,17 @@ function DecisionNode({ selected = false }: NodeProps) {
   );
 }
 
-function KernelNode({ selected = false }: NodeProps) {
+function KernelNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const badgeValue = resolveDisplayValue(
+    (data as { kernel?: unknown } | undefined)?.kernel,
+    t,
+    "workflowControl.kernelTypes"
+  );
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(34,197,94,0.3)] hover:shadow-[0_0_25px_rgba(34,197,94,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-green-500 text-green-100 min-w-[210px] relative">
       <SelectedNodePulse selected={selected} glowClass="border-green-300/90 shadow-[0_0_24px_rgba(74,222,128,0.45)]" />
+      <ValueBadge value={badgeValue} />
       <Handle type="target" position={Position.Left} className="!bg-green-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
       <NodeActions />
@@ -325,11 +373,13 @@ function KernelNode({ selected = false }: NodeProps) {
   );
 }
 
-function RuntimeNode({ selected = false }: NodeProps) {
+function RuntimeNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const badgeValue = runtimeBadgeValue(data, t);
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-purple-500 text-purple-100 min-w-[210px] relative">
       <SelectedNodePulse selected={selected} glowClass="border-purple-300/90 shadow-[0_0_24px_rgba(196,181,253,0.45)]" />
+      <ValueBadge value={badgeValue} />
       <Handle type="target" position={Position.Left} className="!bg-purple-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-purple-500 !w-3 !h-3" />
       <NodeActions />
@@ -367,11 +417,17 @@ function EmbeddingNode({ selected = false, data }: NodeProps) {
   );
 }
 
-function IntentNode({ selected = false }: NodeProps) {
+function IntentNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const badgeValue = resolveDisplayValue(
+    (data as { intentMode?: unknown } | undefined)?.intentMode,
+    t,
+    "workflowControl.intentModes"
+  );
   return (
     <div className="group px-8 py-6 h-[80px] flex flex-col justify-center shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:shadow-[0_0_25px_rgba(234,179,8,0.5)] transition-shadow duration-300 rounded-xl bg-slate-900 border-2 border-yellow-500 text-yellow-100 min-w-[210px] relative">
       <SelectedNodePulse selected={selected} glowClass="border-yellow-300/90 shadow-[0_0_24px_rgba(253,224,71,0.45)]" />
+      <ValueBadge value={badgeValue} />
       <Handle type="target" position={Position.Left} className="!bg-yellow-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Bottom} className="!bg-yellow-500 !w-3 !h-3" />
       <NodeActions />

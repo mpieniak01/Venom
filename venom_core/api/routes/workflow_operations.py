@@ -9,7 +9,7 @@ This module provides endpoints for workflow control operations:
 
 from fastapi import APIRouter, HTTPException, Request
 
-from venom_core.api.model_schemas.workflow_control import (
+from venom_core.api.schemas.workflow_control import (
     WorkflowOperationRequest,
     WorkflowOperationResponse,
 )

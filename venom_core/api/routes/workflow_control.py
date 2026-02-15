@@ -15,8 +15,8 @@ from venom_core.api.dependencies import (
     get_control_plane_audit_trail,
     get_control_plane_service,
 )
-from venom_core.api.model_schemas.workflow_control import AuditEntry as AuditEntryModel
-from venom_core.api.model_schemas.workflow_control import (
+from venom_core.api.schemas.workflow_control import AuditEntry as AuditEntryModel
+from venom_core.api.schemas.workflow_control import (
     ControlApplyRequest,
     ControlApplyResponse,
     ControlAuditResponse,
@@ -183,7 +183,7 @@ async def get_system_state(service=Depends(get_control_plane_service)):
 )
 async def get_control_options(service=Depends(get_control_plane_service)):
     """Get local/cloud option catalogs for provider and embedding selectors.
-    
+
     Args:
         service: Control plane service injected via Depends
     """

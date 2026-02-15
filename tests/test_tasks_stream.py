@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from venom_core.api.routes import tasks as tasks_routes
+from venom_core.api import dependencies as api_deps
 from venom_core.core.models import TaskStatus, VenomTask
 from venom_core.main import app
 
@@ -38,15 +38,13 @@ def streaming_client():
     )
     state_manager = DummyStateManager({task_id: task})
 
-    tasks_routes.set_dependencies(
-        orchestrator=None, state_manager=state_manager, request_tracer=None
-    )
+    api_deps.set_state_manager(state_manager)
     client = TestClient(app)
 
     try:
         yield client, task_id
     finally:
-        tasks_routes.set_dependencies(None, None, None)
+        api_deps.set_state_manager(DummyStateManager({}))
 
 
 def test_task_stream_emits_update_and_finished(streaming_client):

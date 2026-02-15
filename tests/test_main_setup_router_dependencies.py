@@ -14,7 +14,6 @@ def test_setup_router_dependencies_wires_globals(monkeypatch):
 
         return SimpleNamespace(set_dependencies=set_dependencies, router=None)
 
-    monkeypatch.setattr(main_module, "tasks_routes", make_dummy("tasks"))
     monkeypatch.setattr(main_module, "feedback_routes", make_dummy("feedback"))
     monkeypatch.setattr(main_module, "queue_routes", make_dummy("queue"))
     monkeypatch.setattr(main_module, "metrics_routes", make_dummy("metrics"))
@@ -55,9 +54,9 @@ def test_setup_router_dependencies_wires_globals(monkeypatch):
 
     main_module.setup_router_dependencies()
 
-    assert calls["tasks"]["args"][0] is main_module.orchestrator
-    assert calls["tasks"]["args"][1] is main_module.state_manager
-    assert calls["tasks"]["args"][2] is main_module.request_tracer
+    assert calls["feedback"]["args"][0] is main_module.orchestrator
+    assert calls["feedback"]["args"][1] is main_module.state_manager
+    assert calls["feedback"]["args"][2] is main_module.request_tracer
     assert calls["system_deps"]["args"][0] is main_module.background_scheduler
     assert calls["system_deps"]["args"][1] is main_module.service_monitor
     assert calls["models"]["kwargs"]["model_registry"] is main_module.model_registry

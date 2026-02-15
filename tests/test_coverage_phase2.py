@@ -26,6 +26,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 # Target modules
+from venom_core.api import dependencies as api_deps  # noqa: E402
 from venom_core.api.routes import knowledge as knowledge_routes  # noqa: E402
 from venom_core.api.routes import memory as memory_routes  # noqa: E402
 from venom_core.api.routes import tasks as tasks_routes  # noqa: E402
@@ -144,9 +145,9 @@ async def test_tasks_routes(mock_app):
     mock_tracer = MagicMock()
     mock_tracer.get_all_traces.return_value = []
 
-    tasks_routes.set_dependencies(
-        orchestrator=mock_orch, state_manager=mock_state, request_tracer=mock_tracer
-    )
+    api_deps.set_orchestrator(mock_orch)
+    api_deps.set_state_manager(mock_state)
+    api_deps.set_request_tracer(mock_tracer)
     mock_app.app.include_router(tasks_routes.router)
 
     # Test Create Task
@@ -305,9 +306,9 @@ async def test_tasks_streaming_and_errors(mock_app):
         [task_processing] * 3, repeat(task_completed)
     )
 
-    tasks_routes.set_dependencies(
-        orchestrator=AsyncMock(), state_manager=mock_state, request_tracer=MagicMock()
-    )
+    api_deps.set_orchestrator(AsyncMock())
+    api_deps.set_state_manager(mock_state)
+    api_deps.set_request_tracer(MagicMock())
     mock_app.app.include_router(tasks_routes.router)
 
     # Test Stream Endpoint (SSE)

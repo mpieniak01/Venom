@@ -285,7 +285,7 @@ def _get_provider_endpoint(provider: str) -> Optional[str]:
     return None
 
 
-@router.get("/providers")
+@router.get("/providers", response_model=dict[str, Any])
 async def list_providers() -> dict[str, Any]:
     """
     List all available providers with their capabilities and status.
@@ -335,6 +335,7 @@ async def list_providers() -> dict[str, Any]:
 
 @router.get(
     "/providers/{provider_name}",
+    response_model=dict[str, Any],
     responses={404: RESP_404_PROVIDER_NOT_FOUND},
 )
 async def get_provider_info(provider_name: str) -> dict[str, Any]:
@@ -376,6 +377,7 @@ async def get_provider_info(provider_name: str) -> dict[str, Any]:
 
 @router.post(
     "/providers/{provider_name}/activate",
+    response_model=dict[str, Any],
     responses={
         400: RESP_400_BAD_REQUEST,
         404: RESP_404_PROVIDER_NOT_FOUND,
@@ -440,6 +442,7 @@ async def activate_provider(
 
 @router.get(
     "/providers/{provider_name}/status",
+    response_model=dict[str, Any],
     responses={404: RESP_404_PROVIDER_NOT_FOUND},
 )
 async def get_provider_status(provider_name: str) -> dict[str, Any]:
@@ -462,6 +465,7 @@ async def get_provider_status(provider_name: str) -> dict[str, Any]:
 
 @router.get(
     "/providers/{provider_name}/metrics",
+    response_model=dict[str, Any],
     responses={404: RESP_404_PROVIDER_NOT_FOUND},
 )
 async def get_provider_metrics(provider_name: str) -> dict[str, Any]:
@@ -519,6 +523,7 @@ async def get_provider_metrics(provider_name: str) -> dict[str, Any]:
 
 @router.get(
     "/providers/{provider_name}/health",
+    response_model=dict[str, Any],
     responses={404: RESP_404_PROVIDER_NOT_FOUND},
 )
 async def get_provider_health(provider_name: str) -> dict[str, Any]:
@@ -560,6 +565,7 @@ async def get_provider_health(provider_name: str) -> dict[str, Any]:
 
 @router.get(
     "/alerts",
+    response_model=dict[str, Any],
     responses={
         400: RESP_400_BAD_REQUEST,
         404: RESP_404_PROVIDER_NOT_FOUND,
@@ -630,6 +636,7 @@ async def get_alerts(
 
 @router.post(
     "/providers/{provider_name}/test-connection",
+    response_model=dict[str, Any],
     responses={
         404: RESP_404_PROVIDER_NOT_FOUND,
         500: RESP_500_PROVIDER_OPERATION_FAILED,
@@ -720,6 +727,7 @@ async def test_provider_connection(
 
 @router.post(
     "/providers/{provider_name}/preflight",
+    response_model=dict[str, Any],
     responses={
         404: RESP_404_PROVIDER_NOT_FOUND,
         500: RESP_500_PROVIDER_OPERATION_FAILED,
@@ -835,7 +843,7 @@ async def provider_preflight_check(
         ) from exc
 
 
-@router.get("/admin/audit")
+@router.get("/admin/audit", response_model=dict[str, Any])
 async def get_admin_audit_log(
     action: Optional[str] = None,
     provider: Optional[str] = None,

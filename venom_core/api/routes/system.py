@@ -52,53 +52,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
     # Define the Core Components and their route prefixes
     # This removes the hardcoded list of methods and relies on discovery
 
-    # Re-creating the connections but extracting methods dynamically
-
-    # 1. Frontend -> Backend (REST)
-    # The Backend exposes these APIs.
-    # Source: Frontend (Next.js) -> Target: Backend API.
-    # BUT existing code had Source="Backend API", Target="Frontend (Next.js)".
-    # AND methods were ["GET /api/v1/..."].
-    # This implies "Backend API OFFERS these methods TO Frontend".
-    # Let's stick to that semantics: Source = Component offering the API (or initiating? No, Usually Source->Target implies call direction).
-    # If Direction is BIDIRECTIONAL, it matters less.
-    # If methods are listed, they are usually "Endpionts available on Target".
-    # Existing code: Source="Backend API", Target="Frontend", Methods=["GET /api/v1..."].
-    # /api/v1/... exists ON Backend. So Backend is the Target of the call.
-    # So Source should be Frontend.
-    # Let's fix this logical inconsistency if we are refactoring.
-    # OR maintain compatibility if "Source" means "Where this node sits in the diagram".
-    # In a directional graph A -> B, usually A calls B.
-    # If Backend has methods, Backend is the SERVER. Frontend is the CLIENT.
-    # So Frontend -> Backend.
-    # The previous map might have been "Backend API" node connects to "Frontend" node.
-
-    # Let's look at the previous code:
-    # Source="Backend API", Target="Frontend", Methods=["GET ..."]
-    # This is weird. "Backend API" has the methods.
-    # If the arrow points to Frontend, it implies Backend calls Frontend.
-    # But methods are Backend's.
-
-    # Let's assume the user wants "Current State of API".
-    # I will mapping: "One Component" = "One Group of Routes".
-    # And show who consumes it? We don't know who consumes it dynamically.
-    # We only know what we expose.
-
-    # So we list "Internal System APIs" as nodes.
-    # And we assume "Frontend" or "User" connects to them.
-
-    # Refined Strategy:
-    # 1. Component: "System Status API". Methods: /api/v1/system/status...
-    #    Source: "Backend". Target: "System Status API". (Internal dependency?)
-    #    Or maybe just list the logical components of the monolith.
-
-    # Let's reproduce the previous list but with dynamic methods.
-
-    # Backend -> Frontend (HTTP)
-    # This was likely "Backend serving Frontend".
-
-    # Let's use the explicit list of "Internal Services" (logical) defined by valid route prefixes.
-
+    # Use the explicit list of "Internal Services" (logical) defined by valid route prefixes.
     # Logical Components hosted within this FastAPI instance:
 
     definitions = [
@@ -267,7 +221,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
             ApiConnection(
                 source_component="The Hive",
                 target_component="Redis",
-                protocol=ConnectionProtocol.HTTP,
+                protocol=ConnectionProtocol.TCP,
                 direction=ConnectionDirection.BIDIRECTIONAL,
                 auth_type=AuthType.NONE,
                 source_type=SourceType.LOCAL,

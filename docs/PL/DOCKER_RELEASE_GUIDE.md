@@ -5,7 +5,7 @@ Ten dokument opisuje oficjalny proces publikacji obrazów Docker dla Venom Minim
 ## Szybka odpowiedź
 
 - Tak: w trybie manualnym masz przycisk w GitHub UI: `Actions` -> `Docker Publish (Minimal)` -> `Run workflow`.
-- W trybie tagu: commit musi być na `main`, potem tworzysz i wysyłasz tag `vX.Y.Z`. Sam push taga uruchamia publikację.
+- W trybie tagu: commit musi być na `main`, potem tworzysz i wysyłasz tag `v1.5.0` (aktualny stable). Sam push taga uruchamia publikację.
 
 ## Zakres
 
@@ -16,7 +16,7 @@ Ten dokument opisuje oficjalny proces publikacji obrazów Docker dla Venom Minim
 ## Zasady bezpieczeństwa (obowiązkowe)
 
 1. Nie publikujemy paczek z gałęzi feature.
-2. Stabilny release robimy tagiem semver: `vMAJOR.MINOR.PATCH` (np. `v1.2.3`).
+2. Stabilny release robimy tagiem semver: `vMAJOR.MINOR.PATCH` (aktualny przykład: `v1.5.0`).
 3. Manualny publish działa tylko z `main`.
 4. Manualny publish wymaga jawnego potwierdzenia: `confirm_publish=true`.
 
@@ -39,14 +39,14 @@ git push origin main
 ```
 3. Utwórz i wypchnij tag release:
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.5.0
+git push origin v1.5.0
 ```
 4. GitHub Actions automatycznie uruchomi `Docker Publish (Minimal)`.
 
 Tagi publikowane do GHCR:
 - `sha-<short_sha>`
-- `v1.0.0`
+- `v1.5.0`
 - `latest`
 
 ### Tryb B: manualny publish (build testowy/RC)
@@ -76,8 +76,8 @@ Typowe tagi w trybie manualnym:
 3. Widać oczekiwane tagi.
 4. Szybki smoke pull z czystego hosta:
 ```bash
-docker pull ghcr.io/mpieniak01/venom-backend:<tag>
-docker pull ghcr.io/mpieniak01/venom-frontend:<tag>
+docker pull ghcr.io/mpieniak01/venom-backend:v1.5.0
+docker pull ghcr.io/mpieniak01/venom-frontend:v1.5.0
 ```
 
 ## Uruchomienie dla użytkownika końcowego (z gotowych obrazów)
@@ -89,8 +89,8 @@ git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 
 # opcjonalne nadpisania:
-# export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:vX.Y.Z
-# export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:vX.Y.Z
+# export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:v1.5.0
+# export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:v1.5.0
 # export OLLAMA_MODEL=gemma3:1b
 # export VENOM_ENABLE_GPU=auto
 

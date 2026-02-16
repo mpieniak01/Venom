@@ -540,6 +540,58 @@ export const en = {
         benchmark: "go to benchmarks",
       },
     },
+    apiMap: {
+      title: "API Map",
+      description: "Visualisation of system connections and integration status.",
+      internal: "Internal Components",
+      external: "External Providers",
+      legend: {
+        title: "Legend",
+        bidirectional: "Bidirectional",
+        outbound: "Outbound",
+        critical: "Critical",
+        optional: "Optional",
+      },
+      filters: {
+        type: {
+          label: "Type",
+          all: "All",
+          internal: "Internal",
+          external: "External",
+        },
+        source: {
+          label: "Source",
+          all: "All",
+          local: "Local",
+          cloud: "Cloud",
+          hybrid: "Hybrid",
+        },
+        status: {
+          label: "Status",
+          all: "All",
+          ok: "Healthy",
+          degraded: "Degraded",
+          down: "Down",
+          unknown: "Unknown",
+        },
+        protocol: {
+          label: "Protocol",
+          all: "All",
+        }
+      },
+      connection: {
+        protocol: "Protocol",
+        auth: "Auth",
+        status: "Status",
+        source: "Source",
+        target: "Target",
+      },
+      refresh: "Refresh Map",
+      methods: "Methods",
+      select: "Select an API to see details",
+      details: "Details",
+      no_methods: "No methods available",
+    },
   },
   cockpit: {
     runtime: {

@@ -1,17 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, Server, FileCode } from "lucide-react";
+import { Settings, Server, FileCode, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import { ServicesPanel } from "./services-panel";
 import { ParametersPanel } from "./parameters-panel";
+import { ApiMap } from "./api-map";
 
 export function ConfigHome() {
   const t = useTranslation();
-  const [activeTab, setActiveTab] = useState<"services" | "parameters">("services");
+  const [activeTab, setActiveTab] = useState<"services" | "parameters" | "apiMap">("services");
 
   return (
     <div className="space-y-6">
@@ -54,12 +55,27 @@ export function ConfigHome() {
           <FileCode className="h-4 w-4" />
           {t("config.tabs.parameters")}
         </Button>
+        <Button
+          onClick={() => setActiveTab("apiMap")}
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
+            activeTab === "apiMap"
+              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
+              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+          )}
+        >
+          <Network className="h-4 w-4" />
+          {t("config.apiMap.title")}
+        </Button>
       </div>
 
       {/* Content */}
       <div className="min-h-[500px]">
         {activeTab === "services" && <ServicesPanel />}
         {activeTab === "parameters" && <ParametersPanel />}
+        {activeTab === "apiMap" && <ApiMap />}
       </div>
     </div>
   );

@@ -172,6 +172,7 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
                 className="px-0 py-0 text-xs font-semibold text-white"
                 title={commitCopied ? t("statusBar.commitCopied") : t("statusBar.commitCopy")}
                 onClick={handleCommitCopy}
+                suppressHydrationWarning
               >
                 {versionDisplay}
               </Button>

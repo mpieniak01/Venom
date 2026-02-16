@@ -541,6 +541,58 @@ export const pl = {
         benchmark: "przejdź do benchmarków",
       },
     },
+    apiMap: {
+      title: "Mapa API",
+      description: "Wizualizacja połączeń systemowych i statusu integracji.",
+      internal: "Komponenty Wewnętrzne",
+      external: "Dostawcy Zewnętrzni",
+      legend: {
+        title: "Legenda",
+        bidirectional: "Dwukierunkowe",
+        outbound: "Wychodzące",
+        critical: "Krytyczne",
+        optional: "Opcjonalne",
+      },
+      filters: {
+        type: {
+          label: "Typ",
+          all: "Wszystkie",
+          internal: "Wewnętrzne",
+          external: "Zewnętrzne",
+        },
+        source: {
+          label: "Źródło",
+          all: "Wszystkie",
+          local: "Lokalne",
+          cloud: "Chmura",
+          hybrid: "Hybryda",
+        },
+        status: {
+          label: "Status",
+          all: "Wszystkie",
+          ok: "Zdrowy",
+          degraded: "Zdegradowany",
+          down: "Niedostępny",
+          unknown: "Nieznany",
+        },
+        protocol: {
+          label: "Protokół",
+          all: "Wszystkie",
+        }
+      },
+      connection: {
+        protocol: "Protokół",
+        auth: "Autoryzacja",
+        status: "Status",
+        source: "Źródło",
+        target: "Cel",
+      },
+      refresh: "Odśwież mapę",
+      methods: "Metody",
+      select: "Wybierz API, aby zobaczyć szczegóły",
+      details: "Szczegóły",
+      no_methods: "Brak dostępnych metod",
+    },
   },
   cockpit: {
     feedback: {

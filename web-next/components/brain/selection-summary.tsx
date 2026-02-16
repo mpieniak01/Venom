@@ -10,12 +10,12 @@ interface BrainSelectionSummaryProps {
 
 export function BrainSelectionSummary({ selected, relations, onOpenDetails }: BrainSelectionSummaryProps) {
     const t = useTranslation();
-    const selectedLabel =
-        typeof selected?.label === "string"
-            ? selected.label
-            : typeof selected?.id === "string"
-                ? selected.id
-                : "n/a";
+    let selectedLabel = "n/a";
+    if (typeof selected?.label === "string") {
+        selectedLabel = selected.label;
+    } else if (typeof selected?.id === "string") {
+        selectedLabel = selected.id;
+    }
     const selectedType = typeof selected?.type === "string" ? selected.type : "n/a";
 
     if (!selected) {

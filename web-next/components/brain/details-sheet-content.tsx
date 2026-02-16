@@ -23,12 +23,12 @@ export function BrainDetailsSheetContent({
     onClearSession,
 }: BrainDetailsSheetContentProps) {
     const t = useTranslation();
-    const selectedLabel =
-        typeof selected?.label === "string"
-            ? selected.label
-            : typeof selected?.id === "string"
-                ? selected.id
-                : "Node";
+    let selectedLabel = "Node";
+    if (typeof selected?.label === "string") {
+        selectedLabel = selected.label;
+    } else if (typeof selected?.id === "string") {
+        selectedLabel = selected.id;
+    }
     const selectedType = typeof selected?.type === "string" ? selected.type : "n/a";
 
     if (!selected) {

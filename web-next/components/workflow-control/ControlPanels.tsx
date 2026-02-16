@@ -18,7 +18,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
-import type { SystemState, PlanRequest } from "@/types/workflow-control";
+import type {
+  ConfigurationChange,
+  PlanRequest,
+  SystemState,
+} from "@/types/workflow-control";
 
 interface ControlPanelsProps {
   systemState: SystemState | null;
@@ -39,7 +43,7 @@ export function ControlPanels({
   const [provider, setProvider] = useState("");
 
   const handleApply = () => {
-    const changes = [];
+    const changes: ConfigurationChange[] = [];
 
     if (decisionStrategy && decisionStrategy !== systemState?.decision_strategy) {
       changes.push({
@@ -92,7 +96,7 @@ export function ControlPanels({
     }
 
     if (changes.length > 0) {
-      onApply({ changes });
+      onApply({ changes, dry_run: false, force: false });
     }
   };
 

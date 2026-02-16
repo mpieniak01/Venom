@@ -1,5 +1,10 @@
 
-import type { ApplyResults, PlanRequest, SystemState, ConfigurationChange } from "@/types/workflow-control";
+import type {
+  ApplyResults,
+  ConfigurationChange,
+  PlanRequest,
+  SystemState,
+} from "@/types/workflow-control";
 
 export function shouldShowApplyResultsModal(
   showResultsModal: boolean,
@@ -35,7 +40,7 @@ export function generatePlanRequest(original: SystemState, draft: SystemState): 
 
   // Helper to compare and push change
   const compareAndPush = (
-    type: string,
+    type: ConfigurationChange["resource_type"],
     id: string,
     originalVal: unknown,
     draftVal: unknown
@@ -52,7 +57,7 @@ export function generatePlanRequest(original: SystemState, draft: SystemState): 
   };
 
   compareAndPush("decision_strategy", "decision", original.decision_strategy, draft.decision_strategy);
-  compareAndPush("intent_mode", "decision", original.intent_mode, draft.intent_mode);
+  compareAndPush("intent_mode", "intent", original.intent_mode, draft.intent_mode);
   compareAndPush("kernel", "kernel", original.kernel, draft.kernel);
 
   // Deep compare for objects (simplified json stringify for MVP)
@@ -65,5 +70,5 @@ export function generatePlanRequest(original: SystemState, draft: SystemState): 
   );
   compareAndPush("embedding_model", "embedding", original.embedding_model, draft.embedding_model);
 
-  return { changes };
+  return { changes, dry_run: false, force: false };
 }

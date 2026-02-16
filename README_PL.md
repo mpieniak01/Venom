@@ -684,51 +684,52 @@ make run
 ## 📖 Dokumentacja
 
 ### Architektura i Wizja
-- [Architektura systemu](docs/PL/VENOM_MASTER_VISION_V1.md)
-- [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md)
-- [Architektura rozproszona (The Hive / Nexus)](docs/PL/THE_HIVE.md)
-- [System rozpoznawania intencji](docs/PL/INTENT_RECOGNITION.md)
-- [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md)
+- [Architektura systemu](docs/PL/VENOM_MASTER_VISION_V1.md) - pełna wizja systemu, warstwy i kierunek architektury.
+- [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md) - układ modułów backendu, przepływy i granice serwisów.
+- [Architektura rozproszona (The Hive / Nexus)](docs/PL/THE_HIVE.md) - model przetwarzania rozproszonego, role węzłów i założenia mesh.
+- [System rozpoznawania intencji](docs/PL/INTENT_RECOGNITION.md) - taksonomia intencji, logika routingu i obsługa confidence.
+- [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md) - tryby LOCAL/HYBRID/CLOUD, dobór providerów i reguły bezpieczeństwa.
 
 ### Agenci
-- [**Katalog agentów systemu** (34 agenty)](docs/PL/SYSTEM_AGENTS_CATALOG.md) 📋
-- [**Wytyczne dla agentów kodowania**](docs/PL/AGENTS.md) 🧭
-- [The Architect - Planowanie](docs/PL/THE_ARCHITECT.md)
-- [The Coder - Generowanie kodu](docs/PL/THE_CODER.md)
-- [The Researcher - Wyszukiwanie wiedzy](docs/PL/THE_RESEARCHER.md)
-- [The Chat - Asystent konwersacyjny](docs/PL/THE_CHAT.md)
-- [The Strategist - Analiza złożoności](docs/PL/THE_STRATEGIST.md) *(Przesunięte do v2.0)*
-- [The Critic - Weryfikacja kodu](docs/PL/THE_CRITIC.md)
-- [The Librarian - Zarządzanie plikami](docs/PL/THE_LIBRARIAN.md)
-- [The Integrator - Git & DevOps](docs/PL/THE_INTEGRATOR.md)
-- [The Forge (Toolmaker) - Tworzenie narzędzi](docs/PL/THE_FORGE.md)
+- [**Katalog agentów systemu** (34 agenty)](docs/PL/SYSTEM_AGENTS_CATALOG.md) 📋 - odpowiedzialności, wejścia/wyjścia i relacje agentów runtime.
+- [**Wytyczne dla agentów kodowania**](docs/PL/AGENTS.md) 🧭 - zasady pracy coding-agentów, bramki jakości i ograniczenia.
+- [The Architect - Planowanie](docs/PL/THE_ARCHITECT.md) - rola planisty i strategia dekompozycji zadań.
+- [The Coder - Generowanie kodu](docs/PL/THE_CODER.md) - zachowanie agenta implementacyjnego i standardy kodowania.
+- [The Researcher - Wyszukiwanie wiedzy](docs/PL/THE_RESEARCHER.md) - przebieg researchu, źródła i synteza wiedzy.
+- [The Chat - Asystent konwersacyjny](docs/PL/THE_CHAT.md) - rola czatu, kontekst i styl odpowiedzi.
+- [The Strategist - Analiza złożoności](docs/PL/THE_STRATEGIST.md) *(Przesunięte do v2.0)* - analiza złożoności i kryteria uruchamiania planowania.
+- [The Critic - Weryfikacja kodu](docs/PL/THE_CRITIC.md) - kryteria review i kontrola jakości zmian.
+- [The Librarian - Zarządzanie plikami](docs/PL/THE_LIBRARIAN.md) - polityka operacji na plikach i porządek repo.
+- [The Integrator - Git & DevOps](docs/PL/THE_INTEGRATOR.md) - workflow git/devops i zasady dostarczania zmian.
+- [The Forge (Toolmaker) - Tworzenie narzędzi](docs/PL/THE_FORGE.md) - sposób projektowania i integracji nowych narzędzi/skills.
 
 ### Frontend i UI
-- [Frontend Next.js](docs/PL/FRONTEND_NEXT_GUIDE.md)
-- [Panel konfiguracji](docs/PL/CONFIG_PANEL.md)
-- [Dashboard](docs/PL/DASHBOARD_GUIDE.md)
+- [Frontend Next.js](docs/PL/FRONTEND_NEXT_GUIDE.md) - struktura aplikacji, podział SCC/client i standardy frontendowe.
+- [Panel konfiguracji](docs/PL/CONFIG_PANEL.md) - zachowanie UI konfiguracji, zakres edycji i walidacje bezpieczeństwa.
+- [Dashboard](docs/PL/DASHBOARD_GUIDE.md) - układ kokpitu, widgety i oczekiwane zachowania UX.
 
 ### Narzędzia i Funkcjonalności
-- [Zarządzanie modelami](docs/PL/MODEL_MANAGEMENT.md)
-- [Strojenie modelu LLM](docs/PL/MODEL_TUNING_GUIDE.md)
-- [Flow Inspector](docs/PL/FLOW_INSPECTOR_GUIDE.md)
-- [Dream Engine](docs/PL/DREAM_ENGINE_GUIDE.md) *(Przesunięte do v2.0)*
-- [Process Engine](docs/PL/PROCESS_ENGINE_CONCEPT.md) *(Planowany dla v2.0)*
-- [Warstwa pamięci](docs/PL/MEMORY_LAYER_GUIDE.md)
+- [Zarządzanie modelami](docs/PL/MODEL_MANAGEMENT.md) - rejestr modeli, dostępność runtime i operacje na modelach.
+- [Strojenie modelu LLM](docs/PL/MODEL_TUNING_GUIDE.md) - workflow fine-tuningu, wymagania i notatki operacyjne.
+- [The Academy](docs/PL/THE_ACADEMY.md) - dedykowana referencja modułu: kuracja danych, pipeline treningu, API i UI.
+- [Flow Inspector](docs/PL/FLOW_INSPECTOR_GUIDE.md) - debugowanie przepływów, inspekcja stanu i ścieżka diagnozy.
+- [Dream Engine](docs/PL/DREAM_ENGINE_GUIDE.md) *(Przesunięte do v2.0)* - koncepcja, tryb działania i planowany zakres.
+- [Process Engine](docs/PL/PROCESS_ENGINE_CONCEPT.md) *(Planowany dla v2.0)* - docelowy model egzekucji procesów i założenia.
+- [Warstwa pamięci](docs/PL/MEMORY_LAYER_GUIDE.md) - architektura pamięci, warstwy storage i sposób retrievalu.
 
 ### DevOps i Deployment
-- [Deployment (Next.js)](docs/PL/DEPLOYMENT_NEXT.md)
-- [Integracje zewnętrzne](docs/PL/EXTERNAL_INTEGRATIONS.md)
-- [Guardian - Bezpieczeństwo](docs/PL/GUARDIAN_GUIDE.md)
-- [QA Delivery](docs/PL/QA_DELIVERY_GUIDE.md)
-- [Pakietowanie Docker Minimal (sanity + publish)](docs/PL/DEPLOYMENT_NEXT.md)
-- [Przewodnik wydawania paczek Docker](docs/PL/DOCKER_RELEASE_GUIDE.md)
-- [Instalacja Windows WSL na D: (Docker Release)](docs/PL/WINDOWS_WSL_D_DRIVE_INSTALL.md)
+- [Deployment (Next.js)](docs/PL/DEPLOYMENT_NEXT.md) - ścieżki deploymentu dev/prod i konfiguracja runtime.
+- [Integracje zewnętrzne](docs/PL/EXTERNAL_INTEGRATIONS.md) - integracje GitHub/Slack/inne i wymagane ustawienia.
+- [Guardian - Bezpieczeństwo](docs/PL/GUARDIAN_GUIDE.md) - kontrolki bezpieczeństwa, guardrails i hardening.
+- [QA Delivery](docs/PL/QA_DELIVERY_GUIDE.md) - proces jakości release, bramki i checklista weryfikacji.
+- [Pakietowanie Docker Minimal (sanity + publish)](docs/PL/DEPLOYMENT_NEXT.md) - minimalny workflow docker i sanity przed publikacją.
+- [Przewodnik wydawania paczek Docker](docs/PL/DOCKER_RELEASE_GUIDE.md) - procedura wydania obrazów/tagów i podstawy rollbacku.
+- [Instalacja Windows WSL na D: (Docker Release)](docs/PL/WINDOWS_WSL_D_DRIVE_INSTALL.md) - konfiguracja WSL-na-D pod deployment dockerowy.
 
 ### Współpraca
-- [Przewodnik współpracy](docs/PL/CONTRIBUTING.md)
-- [Polityka testów](docs/PL/TESTING_POLICY.md)
-- [Testowanie i wydajność](docs/PL/TESTING_CHAT_LATENCY.md)
+- [Przewodnik współpracy](docs/PL/CONTRIBUTING.md) - zasady wkładu, standardy kodu i oczekiwania review.
+- [Polityka testów](docs/PL/TESTING_POLICY.md) - typy testów, wymagane komendy i oczekiwania CI.
+- [Testowanie i wydajność](docs/PL/TESTING_CHAT_LATENCY.md) - scenariusze testów latency/performance i interpretacja wyników.
 
 ## 🧪 Testy
 
@@ -791,75 +792,12 @@ scripts/docker/run-release.sh restart
 
 ## 🎓 THE ACADEMY - Trenowanie i Dostrajanie Modeli (Opcjonalne)
 
-Venom może autonomicznie ulepszać się poprzez dostrajanie (fine-tuning) modeli z adapterami LoRA/QLoRA na podstawie zebranych doświadczeń (LessonsStore, historia zadań, commity Git).
+W README zostaje tylko ogólny opis Academy jako opcjonalnego modułu. Szczegóły
+konfiguracji, architektury, kontraktów API i operacji są utrzymywane w dedykowanej dokumentacji:
 
-### Szybki Start
-
-1. **Zainstaluj zależności Academy:**
-   ```bash
-   pip install -r requirements-academy.txt
-   ```
-
-2. **Konfiguracja GPU (Zalecane):**
-   ```bash
-   # Zainstaluj nvidia-container-toolkit (Ubuntu/Debian)
-   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-     sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-   sudo systemctl restart docker
-
-   # Zweryfikuj dostęp do GPU
-   docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
-   ```
-
-3. **Włącz Academy w `.env`:**
-   ```bash
-   ENABLE_ACADEMY=true
-   ACADEMY_ENABLE_GPU=true
-   ACADEMY_MIN_LESSONS=100
-   ```
-
-4. **Dostęp do UI Academy:**
-   - Przejdź do `http://localhost:3000/academy`
-   - Zobacz statystyki datasetu z LessonsStore
-   - Rozpocznij trening z własnymi parametrami
-   - Monitoruj postęp treningu i logi
-   - Aktywuj wytrenowane adaptery (hot-swap bez restartu)
-
-### Funkcje
-
-- **Kuracja Datasetu:** Automatyczne zbieranie z LessonsStore, historii Git, ukończonych zadań
-- **Dostrajanie LoRA:** Szybki, oszczędny pamięciowo trening z Unsloth
-- **Akceleracja GPU:** Trening w Dockerze ze wsparciem NVIDIA GPU (fallback do CPU dostępny)
-- **Hot Swap:** Aktywacja nowych adapterów bez restartu backendu
-- **Genealogia Modeli:** Śledzenie ewolucji modeli i poprawy wydajności
-- **Web UI:** Pełne zarządzanie treningiem z dashboardu
-
-### Endpointy API
-
-```bash
-# Kuracja datasetu
-POST /api/v1/academy/dataset
-
-# Start treningu
-POST /api/v1/academy/train
-
-# Sprawdź status treningu
-GET /api/v1/academy/train/{job_id}/status
-
-# Lista wszystkich zadań
-GET /api/v1/academy/jobs
-
-# Lista adapterów
-GET /api/v1/academy/adapters
-
-# Aktywuj adapter
-POST /api/v1/academy/adapters/activate
-```
-
-Zobacz [`docs/PL/THE_ACADEMY.md`](docs/PL/THE_ACADEMY.md) dla szczegółowej dokumentacji, architektury i najlepszych praktyk.
+- [`docs/PL/THE_ACADEMY.md`](docs/PL/THE_ACADEMY.md) - pełna dokumentacja modułu Academy (architektura, komponenty, przepływ treningu, API, UI).
+- [`docs/PL/MODEL_TUNING_GUIDE.md`](docs/PL/MODEL_TUNING_GUIDE.md) - praktyczny runbook strojenia modeli i wskazówki operacyjne.
+- [`docs/PL/DEPLOYMENT_NEXT.md`](docs/PL/DEPLOYMENT_NEXT.md) - wymagania deployment/runtime używane przez Academy (usługi, docker, env).
 
 ## 🛠️ Narzędzia deweloperskie
 

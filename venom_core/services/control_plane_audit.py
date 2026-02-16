@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Any, Optional
 
-from venom_core.api.model_schemas.workflow_control import ReasonCode, ResourceType
+from venom_core.api.schemas.workflow_control import ReasonCode, ResourceType
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

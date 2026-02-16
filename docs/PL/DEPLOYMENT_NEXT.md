@@ -76,8 +76,8 @@ Dla dockerowego onboardingu MVP używamy dwóch workflow:
    - dzięki temu nie publikujemy paczek po każdym drobnym commicie.
 
 Publikowane obrazy:
-- `ghcr.io/<owner>/venom-backend`
-- `ghcr.io/<owner>/venom-frontend`
+- `ghcr.io/mpieniak01/venom-backend`
+- `ghcr.io/mpieniak01/venom-frontend`
 
 Uwaga bezpieczeństwa (domyślnie dla MVP):
 - `compose/compose.minimal.yml` publikuje porty na interfejsach hosta, aby umożliwić testy z innego komputera w LAN.

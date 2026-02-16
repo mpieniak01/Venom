@@ -76,8 +76,8 @@ For Docker onboarding MVP we use two workflows:
    - avoids package rebuild/publish on every small commit.
 
 Published images:
-- `ghcr.io/<owner>/venom-backend`
-- `ghcr.io/<owner>/venom-frontend`
+- `ghcr.io/mpieniak01/venom-backend`
+- `ghcr.io/mpieniak01/venom-frontend`
 
 Security note (MVP default):
 - `compose/compose.minimal.yml` publishes ports on host interfaces to allow testing from another computer in LAN.

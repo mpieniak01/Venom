@@ -9,8 +9,8 @@ Ten dokument opisuje oficjalny proces publikacji obrazów Docker dla Venom Minim
 
 ## Zakres
 
-- Obraz backendu: `ghcr.io/<owner>/venom-backend`
-- Obraz frontendu: `ghcr.io/<owner>/venom-frontend`
+- Obraz backendu: `ghcr.io/mpieniak01/venom-backend`
+- Obraz frontendu: `ghcr.io/mpieniak01/venom-frontend`
 - Workflow: `.github/workflows/docker-publish.yml`
 
 ## Zasady bezpieczeństwa (obowiązkowe)
@@ -76,8 +76,8 @@ Typowe tagi w trybie manualnym:
 3. Widać oczekiwane tagi.
 4. Szybki smoke pull z czystego hosta:
 ```bash
-docker pull ghcr.io/<owner>/venom-backend:<tag>
-docker pull ghcr.io/<owner>/venom-frontend:<tag>
+docker pull ghcr.io/mpieniak01/venom-backend:<tag>
+docker pull ghcr.io/mpieniak01/venom-frontend:<tag>
 ```
 
 ## Uruchomienie dla użytkownika końcowego (z gotowych obrazów)
@@ -89,8 +89,8 @@ git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 
 # opcjonalne nadpisania:
-# export BACKEND_IMAGE=ghcr.io/<owner>/venom-backend:vX.Y.Z
-# export FRONTEND_IMAGE=ghcr.io/<owner>/venom-frontend:vX.Y.Z
+# export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:vX.Y.Z
+# export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:vX.Y.Z
 # export OLLAMA_MODEL=gemma3:1b
 # export VENOM_ENABLE_GPU=auto
 

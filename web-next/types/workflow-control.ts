@@ -1,73 +1,51 @@
-export interface SystemState {
-  kernel?: string;
-  decision_strategy?: string;
-  intent_mode?: string;
-  runtime?: {
-    services?: string[];
-  };
-  provider?: {
-    active?: string;
-  };
-  embedding_model?: string;
-  workflow_status?: string;
-}
+import type { components } from "@/lib/generated/api-types";
 
-export type WorkflowStatus = "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
+type ApiSchemas = components["schemas"];
+type ApiSystemState = ApiSchemas["SystemState"];
 
-export interface AppliedChange {
-  resource_type: string;
-  resource_id: string;
-  message: string;
-}
+type SourceType = "local" | "cloud";
 
-export interface ApplyResults {
-  apply_mode: "hot_swap" | "restart_required" | "rejected";
-  applied_changes?: AppliedChange[];
-  pending_restart?: string[];
-  failed_changes?: string[];
-  rollback_available?: boolean;
-  message?: string;
-}
+type RuntimeState = {
+  services?: string[];
+  [key: string]: unknown;
+};
 
-export interface ConfigurationChange {
-  resource_type: string;
-  resource_id: string;
-  action: string;
-  current_value?: unknown;
-  new_value: unknown;
-}
+type ProviderState = {
+  active?: string;
+  sourceType?: SourceType | string;
+  [key: string]: unknown;
+};
 
-export interface PlanRequest {
-  changes: ConfigurationChange[];
-}
+export type SystemState = Partial<Omit<ApiSystemState, "runtime" | "provider">> & {
+  runtime?: RuntimeState;
+  provider?: ProviderState;
+  provider_source?: SourceType | string;
+  embedding_source?: SourceType | string;
+};
 
-export interface WorkflowControlSourceCatalog {
-  local: string[];
-  cloud: string[];
-}
+export type WorkflowStatus = ApiSchemas["WorkflowStatus"];
 
-export interface WorkflowControlOptions {
-  provider_sources: string[];
-  embedding_sources: string[];
-  providers: WorkflowControlSourceCatalog;
-  embeddings: WorkflowControlSourceCatalog;
-  active: {
-    provider_source: "local" | "cloud";
-    embedding_source: "local" | "cloud";
-  };
-}
+export type AppliedChange = ApiSchemas["AppliedChange"];
 
-export interface PlanResponse {
-  execution_ticket: string;
-  valid: boolean;
-  compatibility_report?: unknown;
-  planned_changes?: unknown[];
-  hot_swap_changes?: unknown[];
-  restart_required_services?: string[];
-}
+export type ApplyResults = ApiSchemas["ControlApplyResponse"];
 
-export interface WorkflowOperationRequest {
-  workflow_id: string;
-  operation: string;
+export type ConfigurationChange = ApiSchemas["ResourceChange"];
+
+export type PlanRequest = Pick<ApiSchemas["ControlPlanRequest"], "changes"> & {
+  dry_run?: boolean;
+  force?: boolean;
   metadata?: Record<string, unknown>;
-}
+};
+
+export type WorkflowControlSourceCatalog = ApiSchemas["ControlOptionsCatalog"];
+
+export type WorkflowControlOptions = ApiSchemas["ControlOptionsResponse"] & {
+  active: {
+    provider_source: SourceType;
+    embedding_source: SourceType;
+  };
+};
+
+export type PlanResponse = ApiSchemas["ControlPlanResponse"];
+
+export type WorkflowOperationRequest = ApiSchemas["WorkflowOperationRequest"];

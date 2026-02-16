@@ -357,10 +357,23 @@ export function useWorkflowState() {
       const typedData = data as Record<string, unknown>;
 
       if (nodeId === 'decision') next.decision_strategy = typedData.strategy as string;
-      if (nodeId === 'decision' && typedData.intentMode) next.intent_mode = typedData.intentMode as string;
+      if (nodeId === "intent" && typedData.intentMode) {
+        next.intent_mode = typedData.intentMode as string;
+      }
       if (nodeId === 'kernel') next.kernel = typedData.kernel as string;
-      if (nodeId === 'provider' && typedData.provider) next.provider = typedData.provider as { active: string; sourceType?: string };
-      if (nodeId === 'embedding') next.embedding_model = typedData.model as string;
+      if (nodeId === "provider" && typedData.provider) {
+        const provider = typedData.provider as { active?: string; sourceType?: string };
+        next.provider = provider;
+        if (provider.sourceType) {
+          next.provider_source = provider.sourceType;
+        }
+      }
+      if (nodeId === "embedding") {
+        next.embedding_model = typedData.model as string;
+        if (typeof typedData.sourceType === "string") {
+          next.embedding_source = typedData.sourceType;
+        }
+      }
 
       return next;
     });

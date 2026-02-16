@@ -447,11 +447,14 @@ class ControlPlaneService:
                 )
                 applied_changes.append(applied_change)
             except Exception as e:
+                error_type = type(e).__name__
                 logger.error(
                     "Failed to apply requested change (error_type=%s)",
-                    type(e).__name__,
+                    error_type,
                 )
-                failed_changes.append(f"{change.resource_id}: {str(e)}")
+                failed_changes.append(
+                    f"{change.resource_id}: apply_failed ({error_type})"
+                )
                 rollback_attempted = True
                 rollback_success = self._rollback_config_changes(
                     rollback_snapshot=rollback_snapshot,
@@ -579,8 +582,11 @@ class ControlPlaneService:
             provider={
                 "active": derived_provider,
                 "available": ["ollama", "huggingface", "openai"],
+                "sourceType": self._classify_provider_source(derived_provider),
             },
             embedding_model=embedding_model,
+            provider_source=self._classify_provider_source(derived_provider),
+            embedding_source=self._classify_embedding_source(str(embedding_model)),
             workflow_status=workflow_status,
             active_operations=self._get_active_operations_snapshot(),
             health={

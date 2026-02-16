@@ -132,4 +132,11 @@ Typical situations you may encounter as an Operator:
 
 ---
 
+## 7. Related Workflow Docs
+
+1. `docs/THE_WORKFLOW_CONTROL.md` - operator guide for the workflow composer.
+2. `docs/WORKFLOW_CONTROL_PLANE_API.md` - API contract and reason codes.
+
+---
+
 *This document will be updated as new system features are added.*

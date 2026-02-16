@@ -4,6 +4,8 @@
 
 Ten dokument definiuje kontrakt API dla Workflow Control Plane oraz interfejs wizualnego Kompozytora. Zapewnia on centralne zarządzanie konfiguracją całego stosu Venom.
 
+Przewodnik operatorski (UX, źródła lokalne/chmura, troubleshooting): `docs/PL/THE_WORKFLOW_CONTROL.md`.
+
 ## Wizualny Kompozytor (UX)
 
 Ekran Workflow Control wprowadza **Wizualny Kompozytor** oparty o React Flow.

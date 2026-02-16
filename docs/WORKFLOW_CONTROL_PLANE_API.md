@@ -4,6 +4,8 @@
 
 This document defines the API contract for the Workflow Control Plane and the Visual Composer interface. It provides centralized management of the entire Venom stack configuration.
 
+Operator guide (UX flow, source semantics, troubleshooting): `docs/THE_WORKFLOW_CONTROL.md`.
+
 ## Visual Composer (UX)
 
 The Workflow Control screen introduces a **Visual Composer** based on React Flow.

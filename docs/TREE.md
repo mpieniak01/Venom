@@ -8,6 +8,7 @@
 │   ├── PL/                      # Polish documentation
 │   ├── PROCESS_ENGINE_CONCEPT.md # [v2.0] Process Engine (concept)
 │   ├── SECURITY_POLICY.md       # official runtime and autonomy security policy
+│   ├── THE_WORKFLOW_CONTROL.md  # workflow composer and operator flow
 │   ├── VENOM_DIAGRAM.md
 │   └── VENOM_MASTER_VISION_V1.md
 ├── docs_dev/                    # local dev docs (ignored)

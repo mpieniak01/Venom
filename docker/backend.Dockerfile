@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-ARG APP_VERSION=1.4.0
+ARG APP_VERSION=1.5.0
 LABEL org.opencontainers.image.title="venom-backend" \
       org.opencontainers.image.version="${APP_VERSION}"
 

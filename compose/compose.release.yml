@@ -6,10 +6,14 @@ name: venom-release
 # - intended for trusted/private networks only
 services:
   ollama:
-    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.16.1}
     container_name: venom-ollama-release
     ports:
       - "11434:11434"
+    environment:
+      OLLAMA_HOST: ${OLLAMA_HOST:-0.0.0.0}
+      OLLAMA_LOAD_TIMEOUT: ${OLLAMA_LOAD_TIMEOUT:-10m}
+      OLLAMA_NO_CLOUD: ${OLLAMA_NO_CLOUD:-1}
     volumes:
       - ollama-data:/root/.ollama
     healthcheck:

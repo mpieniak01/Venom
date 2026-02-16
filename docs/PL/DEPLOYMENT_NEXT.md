@@ -30,6 +30,10 @@ Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje 
    | `NEXT_PUBLIC_WS_BASE` | Endpoint WebSocket dla `/ws/events`. | `ws://localhost:8000/ws/events` |
    | `API_PROXY_TARGET` | Cel proxy w `next.config.ts` (SSR). | `http://localhost:8000` |
    | `NEXT_DISABLE_TURBOPACK` | W trybie dev ustawiane automatycznie przez Makefile. | `1` |
+   | `OLLAMA_IMAGE` | Tag obrazu Ollama używany w profilach compose. | `ollama/ollama:0.16.1` |
+   | `OLLAMA_HOST` | Adres nasłuchu Ollama wewnątrz kontenera. | `0.0.0.0` |
+   | `OLLAMA_LOAD_TIMEOUT` | Timeout ładowania modelu przekazywany do runtime Ollama. | `10m` |
+   | `OLLAMA_NO_CLOUD` | Wyłącza modele cloud w Ollama (tryb privacy/local-first). | `1` |
 
 ## Tryby uruchomień
 

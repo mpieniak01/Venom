@@ -506,7 +506,7 @@ export function ServicesPanel() {
                     <div className="flex min-w-0 items-center gap-2">
                       <h4 className="heading-h4 truncate">{getDisplayName(service.name)}</h4>
                       <span
-                        className="shrink-0 whitespace-nowrap text-[11px] font-mono text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.55)]"
+                        className="shrink-0 whitespace-nowrap text-[11px] font-mono text-emerald-400"
                         aria-label={`${t("config.services.info.version")}: ${service.runtime_version || t("config.services.info.versionUnknown")}`}
                       >
                         V {service.runtime_version || t("config.services.info.versionUnknown")}

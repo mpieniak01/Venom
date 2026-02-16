@@ -173,6 +173,10 @@ def _build_payload(
     if request.response_format is not None:
         payload["response_format"] = request.response_format
 
+    # Compatibility extraction for OpenAI-style response_format payloads:
+    # - prefer explicit request.format
+    # - otherwise try response_format.json_schema.schema
+    # - fallback to response_format.json_schema as the schema object itself
     output_format = request.format
     if output_format is None and isinstance(request.response_format, dict):
         schema_block = request.response_format.get("json_schema")

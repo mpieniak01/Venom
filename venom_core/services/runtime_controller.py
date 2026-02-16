@@ -9,7 +9,6 @@ Odpowiada za:
 """
 
 import json
-import re
 import subprocess
 import time
 import tomllib
@@ -19,10 +18,9 @@ from enum import Enum
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from urllib.error import URLError
-from urllib.request import urlopen
+from typing import Any, Callable, Dict, List, Optional
 
+import httpx
 import psutil
 
 from venom_core.config import SETTINGS
@@ -105,6 +103,9 @@ class RuntimeController:
         self._runtime_version_ttl_seconds = 3600.0
         self._backend_version: Optional[str] = None
         self._ui_version: Optional[str] = None
+        self._aux_runtime_version_resolvers: Dict[str, Callable[[], Optional[str]]] = (
+            self._build_aux_runtime_version_resolvers()
+        )
 
         # Inicjalizuj ProcessMonitor
         self.process_monitor = ProcessMonitor(self.project_root)
@@ -250,10 +251,31 @@ class RuntimeController:
     def _normalize_version(raw: Optional[str]) -> Optional[str]:
         if not raw:
             return None
-        match = re.search(r"\d+(?:\.\d+){1,3}", raw)
-        if match:
-            return match.group(0)
         cleaned = raw.strip()
+        if not cleaned:
+            return None
+
+        # Deterministic scan for semantic-like version fragments (x.y[.z[.w]])
+        # without regex backtracking.
+        token_chars: list[str] = []
+        started = False
+        for ch in cleaned:
+            if ch.isdigit():
+                token_chars.append(ch)
+                started = True
+                continue
+            if ch == "." and started:
+                token_chars.append(ch)
+                continue
+            if started:
+                break
+
+        token = "".join(token_chars).strip(".")
+        if token:
+            parts = [part for part in token.split(".") if part]
+            if len(parts) >= 2 and all(part.isdigit() for part in parts):
+                return ".".join(parts[:4])
+
         return cleaned or None
 
     def _run_version_command(self, cmd: List[str]) -> Optional[str]:
@@ -311,9 +333,19 @@ class RuntimeController:
 
         return self._ui_version
 
-    def _resolve_aux_runtime_version(self, service_name: str) -> Optional[str]:
-        normalized_name = service_name.strip().lower()
-        if normalized_name in {
+    def _read_lancedb_version(self) -> Optional[str]:
+        try:
+            return self._normalize_version(package_version("lancedb"))
+        except PackageNotFoundError:
+            return None
+
+    def _build_aux_runtime_version_resolvers(
+        self,
+    ) -> Dict[str, Callable[[], Optional[str]]]:
+        resolvers: Dict[str, Callable[[], Optional[str]]] = {}
+
+        backend_resolver = self._read_backend_version
+        for alias in {
             "backend",
             "backend api",
             "hive",
@@ -324,19 +356,32 @@ class RuntimeController:
             "semantic kernel",
             "silnik mcp",
         }:
-            return self._read_backend_version()
-        if normalized_name in {"next.js ui", "frontend", "ui"}:
+            resolvers[alias] = backend_resolver
+
+        def _ui_resolver() -> Optional[str]:
             return self._read_ui_version() or self._read_backend_version()
-        if normalized_name in {"docker daemon", "docker"}:
+
+        for alias in {"next.js ui", "frontend", "ui"}:
+            resolvers[alias] = _ui_resolver
+
+        def _docker_resolver() -> Optional[str]:
             return self._run_version_command(["docker", "--version"])
-        if normalized_name == "redis":
-            return self._run_version_command(["redis-server", "--version"])
-        if normalized_name == "lancedb":
-            try:
-                return self._normalize_version(package_version("lancedb"))
-            except PackageNotFoundError:
-                return None
-        return None
+
+        for alias in {"docker daemon", "docker"}:
+            resolvers[alias] = _docker_resolver
+
+        resolvers["redis"] = lambda: self._run_version_command(
+            ["redis-server", "--version"]
+        )
+        resolvers["lancedb"] = self._read_lancedb_version
+        return resolvers
+
+    def _resolve_aux_runtime_version(self, service_name: str) -> Optional[str]:
+        normalized_name = service_name.strip().lower()
+        resolver = self._aux_runtime_version_resolvers.get(normalized_name)
+        if resolver is None:
+            return None
+        return resolver()
 
     def get_aux_runtime_version(
         self, service_name: str, *, force: bool = False
@@ -376,17 +421,18 @@ class RuntimeController:
 
         version_url = "http://127.0.0.1:11434/api/version"
         try:
-            with urlopen(version_url, timeout=1.5) as response:
-                if response.status != 200:
+            with httpx.Client(timeout=1.5) as client:
+                response = client.get(version_url)
+                if response.status_code != 200:
                     return self._runtime_version_cache.get(cache_key)
-                payload = json.loads(response.read().decode("utf-8", errors="ignore"))
+                payload = response.json()
                 version = self._normalize_version(
                     payload.get("version") if isinstance(payload, dict) else None
                 )
                 if not version:
                     return self._runtime_version_cache.get(cache_key)
                 return self._set_cached_runtime_version(cache_key, version)
-        except (OSError, URLError, TimeoutError, ValueError):
+        except (httpx.HTTPError, ValueError):
             return self._runtime_version_cache.get(cache_key)
 
     def _update_config_managed_status(

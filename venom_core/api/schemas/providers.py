@@ -29,6 +29,9 @@ class ProviderStatus(BaseModel):
     latency_ms: float | None = Field(
         default=None, description="Connection latency in milliseconds"
     )
+    runtime_version: str | None = Field(
+        default=None, description="Detected runtime version, if available"
+    )
 
 
 class ProviderInfo(BaseModel):
@@ -49,7 +52,5 @@ class ProviderInfo(BaseModel):
 class ProviderActivateRequest(BaseModel):
     """Request to activate a provider."""
 
-    runtime: str | None = Field(
-        default=None, description="Optional runtime override"
-    )
+    runtime: str | None = Field(default=None, description="Optional runtime override")
     model: str | None = Field(default=None, description="Optional model name")

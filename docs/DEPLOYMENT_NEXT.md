@@ -30,6 +30,10 @@ For security operating assumptions and localhost admin policy, see `docs/SECURIT
    | `NEXT_PUBLIC_WS_BASE` | WebSocket endpoint for `/ws/events`. | `ws://localhost:8000/ws/events` |
    | `API_PROXY_TARGET` | Proxy target in `next.config.ts` (SSR). | `http://localhost:8000` |
    | `NEXT_DISABLE_TURBOPACK` | Set automatically by Makefile in dev mode. | `1` |
+   | `OLLAMA_IMAGE` | Ollama container image tag used by compose profiles. | `ollama/ollama:0.16.1` |
+   | `OLLAMA_HOST` | Bind address for Ollama inside container. | `0.0.0.0` |
+   | `OLLAMA_LOAD_TIMEOUT` | Model load timeout passed to Ollama runtime. | `10m` |
+   | `OLLAMA_NO_CLOUD` | Disable cloud models in Ollama (privacy-oriented local mode). | `1` |
 
 ## Launch Modes
 

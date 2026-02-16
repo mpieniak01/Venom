@@ -5,10 +5,14 @@ name: venom-minimal
 # Services are published on host interfaces to allow testing from another machine in LAN.
 services:
   ollama:
-    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.16.1}
     container_name: venom-ollama-minimal
     ports:
       - "11434:11434"
+    environment:
+      OLLAMA_HOST: ${OLLAMA_HOST:-0.0.0.0}
+      OLLAMA_LOAD_TIMEOUT: ${OLLAMA_LOAD_TIMEOUT:-10m}
+      OLLAMA_NO_CLOUD: ${OLLAMA_NO_CLOUD:-1}
     volumes:
       - ollama-data:/root/.ollama
     healthcheck:

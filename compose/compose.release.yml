@@ -41,6 +41,8 @@ services:
       LLM_LOCAL_ENDPOINT: ${LLM_HTTP_SCHEME:-http}://ollama:11434/v1
       LLM_MODEL_NAME: ${OLLAMA_MODEL:-gemma3:4b}
       VENOM_OLLAMA_PROFILE: ${VENOM_OLLAMA_PROFILE:-balanced-12-24gb}
+      # Backend uses 0/empty as sentinel => resolve from VENOM_OLLAMA_PROFILE.
+      # Container-level OLLAMA_* above tune the server defaults.
       OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-0}
       OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-0}
       OLLAMA_MAX_QUEUE: ${OLLAMA_MAX_QUEUE:-0}

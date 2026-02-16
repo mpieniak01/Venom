@@ -170,24 +170,31 @@ def _build_payload(
         payload["keep_alive"] = SETTINGS.LLM_KEEP_ALIVE
         payload["options"] = build_ollama_runtime_options(SETTINGS)
 
-    if request.response_format is not None:
-        payload["response_format"] = request.response_format
-
-    # Compatibility extraction for OpenAI-style response_format payloads:
-    # - prefer explicit request.format
-    # - otherwise try response_format.json_schema.schema
-    # - fallback to response_format.json_schema as the schema object itself
+    # Keep a deterministic precedence to avoid sending both `response_format` and
+    # `format` in one payload:
+    # 1) For Ollama we prefer `format` (native structured output support).
+    # 2) For non-Ollama providers we prefer client-provided `response_format`.
+    # 3) Fallback: `request.format` (if response_format is absent).
     output_format = request.format
     if output_format is None and isinstance(request.response_format, dict):
+        # Compatibility extraction for OpenAI-style shape:
+        # response_format.json_schema.schema -> schema object
         schema_block = request.response_format.get("json_schema")
         if isinstance(schema_block, dict):
             output_format = schema_block.get("schema")
             if output_format is None:
                 output_format = schema_block
-    if output_format is not None and (
-        runtime.provider != "ollama" or SETTINGS.OLLAMA_ENABLE_STRUCTURED_OUTPUTS
-    ):
-        payload["format"] = output_format
+
+    if runtime.provider == "ollama":
+        if output_format is not None and SETTINGS.OLLAMA_ENABLE_STRUCTURED_OUTPUTS:
+            payload["format"] = output_format
+        elif request.response_format is not None:
+            payload["response_format"] = request.response_format
+    else:
+        if request.response_format is not None:
+            payload["response_format"] = request.response_format
+        elif request.format is not None:
+            payload["format"] = request.format
 
     if request.tools and (
         runtime.provider != "ollama" or SETTINGS.OLLAMA_ENABLE_TOOL_CALLING
@@ -446,6 +453,7 @@ async def _stream_simple_chunks(
                             and chunk_count == 0
                         )
                         if can_retry:
+                            ollama_telemetry.clear()
                             await asyncio.sleep(retry_backoff * attempt)
                             continue
 
@@ -540,6 +548,7 @@ async def _stream_simple_chunks(
                 and chunk_count == 0
             )
             if can_retry:
+                ollama_telemetry.clear()
                 await asyncio.sleep(retry_backoff * attempt)
                 continue
 

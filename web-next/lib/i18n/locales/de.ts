@@ -549,6 +549,7 @@ export const de = {
         title: "Legende",
         bidirectional: "Bidirektional",
         outbound: "Ausgehend",
+        inbound: "Eingehend",
         critical: "Kritisch",
         optional: "Optional",
       },
@@ -577,6 +578,11 @@ export const de = {
         protocol: {
           label: "Protokoll",
           all: "Alle",
+          http: "HTTP",
+          https: "HTTPS",
+          ws: "WebSocket",
+          sse: "SSE",
+          tcp: "TCP",
         }
       },
       connection: {
@@ -586,11 +592,20 @@ export const de = {
         source: "Quelle",
         target: "Ziel",
       },
+      auth: {
+        none: "Keine",
+        api_key: "API-Schlüssel",
+        oauth: "OAuth",
+        service_token: "Service-Token",
+      },
       refresh: "Karte aktualisieren",
       methods: "Methoden",
       select: "Wählen Sie eine API, um Details zu sehen",
       details: "Details",
       no_methods: "Keine Methoden verfügbar",
+      noResults: "Keine Ergebnisse",
+      unknownError: "Unbekannter Fehler",
+      errorLoading: "Fehler beim Laden der Karte",
     },
   },
   cockpit: {

@@ -193,12 +193,15 @@ def test_caching_logic():
         # Reset cache in case other tests messed with it (though unrelated here, good practice)
         from venom_core.api.routes import system
 
-        system._API_MAP_CACHE = None
+        previous_cache = getattr(system, "_API_MAP_CACHE", None)
 
-        # First call: should generate
-        client.get("/api/v1/system/api-map")
-        assert mock_gen.call_count == 1
-
-        # Second call: should use cache, so generate NOT called again
-        client.get("/api/v1/system/api-map")
-        assert mock_gen.call_count == 1  # Still 1
+        try:
+            system._API_MAP_CACHE = None
+            # First call: should generate
+            client.get("/api/v1/system/api-map")
+            assert mock_gen.call_count == 1
+            # Second call: should use cache, so generate NOT called again
+            client.get("/api/v1/system/api-map")
+            assert mock_gen.call_count == 1  # Still 1
+        finally:
+            system._API_MAP_CACHE = previous_cache

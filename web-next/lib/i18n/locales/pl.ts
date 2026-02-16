@@ -550,6 +550,7 @@ export const pl = {
         title: "Legenda",
         bidirectional: "Dwukierunkowe",
         outbound: "Wychodzące",
+        inbound: "Przychodzące",
         critical: "Krytyczne",
         optional: "Opcjonalne",
       },
@@ -578,6 +579,11 @@ export const pl = {
         protocol: {
           label: "Protokół",
           all: "Wszystkie",
+          http: "HTTP",
+          https: "HTTPS",
+          ws: "WebSocket",
+          sse: "SSE",
+          tcp: "TCP",
         }
       },
       connection: {
@@ -587,11 +593,20 @@ export const pl = {
         source: "Źródło",
         target: "Cel",
       },
+      auth: {
+        none: "Brak",
+        api_key: "Klucz API",
+        oauth: "OAuth",
+        service_token: "Token Serwisu",
+      },
       refresh: "Odśwież mapę",
       methods: "Metody",
       select: "Wybierz API, aby zobaczyć szczegóły",
       details: "Szczegóły",
       no_methods: "Brak dostępnych metod",
+      noResults: "Brak wyników",
+      unknownError: "Nieznany błąd",
+      errorLoading: "Błąd ładowania mapy",
     },
   },
   cockpit: {

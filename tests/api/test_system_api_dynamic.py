@@ -1,3 +1,4 @@
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -194,14 +195,24 @@ def test_caching_logic():
         from venom_core.api.routes import system
 
         previous_cache = getattr(system, "_API_MAP_CACHE", None)
+        previous_time = getattr(system, "_LAST_CACHE_TIME", 0)
 
         try:
             system._API_MAP_CACHE = None
+            system._LAST_CACHE_TIME = 0
+
             # First call: should generate
             client.get("/api/v1/system/api-map")
             assert mock_gen.call_count == 1
-            # Second call: should use cache, so generate NOT called again
+
+            # Second call: should use cache
             client.get("/api/v1/system/api-map")
-            assert mock_gen.call_count == 1  # Still 1
+            assert mock_gen.call_count == 1
+
+            # Mock time moving forward past TTL
+            with patch("time.time", return_value=time.time() + system._CACHE_TTL + 1):
+                client.get("/api/v1/system/api-map")
+                assert mock_gen.call_count == 2
         finally:
             system._API_MAP_CACHE = previous_cache
+            system._LAST_CACHE_TIME = previous_time

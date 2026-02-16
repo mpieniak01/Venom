@@ -62,7 +62,7 @@ export function ApiMap() {
         try {
             const response = await fetch("/api/v1/system/api-map");
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw new Error(`${t("config.apiMap.errorLoading")}: ${response.status}`);
             }
             const jsonData = await response.json();
             setData(jsonData);
@@ -153,7 +153,7 @@ export function ApiMap() {
                                     {connection.target_component}
                                 </span>
                                 {connection.is_critical && (
-                                    <Shield className="h-3 w-3 text-red-400" aria-label="Critical" />
+                                    <Shield className="h-3 w-3 text-red-400" aria-label={t("config.apiMap.legend.critical")} />
                                 )}
                             </div>
                             <p className="text-xs text-zinc-500 line-clamp-1">{connection.description}</p>
@@ -273,10 +273,11 @@ export function ApiMap() {
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-950 border-white/10 text-zinc-300">
                             <SelectItem value="all">{t("config.apiMap.filters.protocol.all")}</SelectItem>
-                            <SelectItem value="http">HTTP</SelectItem>
-                            <SelectItem value="https">HTTPS</SelectItem>
-                            <SelectItem value="ws">WS</SelectItem>
-                            <SelectItem value="sse">SSE</SelectItem>
+                            <SelectItem value="http">{t("config.apiMap.filters.protocol.http")}</SelectItem>
+                            <SelectItem value="https">{t("config.apiMap.filters.protocol.https")}</SelectItem>
+                            <SelectItem value="ws">{t("config.apiMap.filters.protocol.ws")}</SelectItem>
+                            <SelectItem value="sse">{t("config.apiMap.filters.protocol.sse")}</SelectItem>
+                            <SelectItem value="tcp">{t("config.apiMap.filters.protocol.tcp")}</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -328,7 +329,7 @@ export function ApiMap() {
 
                         {filteredInternal.length === 0 && filteredExternal.length === 0 && (
                             <div className="text-center py-12 text-zinc-500">
-                                {t("config.apiMap.no_methods")}
+                                {t("config.apiMap.noResults")}
                             </div>
                         )}
                     </div>

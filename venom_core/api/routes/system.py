@@ -18,6 +18,8 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 
 # --- Cache for API Map Structure (Connections without status) ---
 _API_MAP_CACHE: Optional[ApiMapResponse] = None
+_LAST_CACHE_TIME: float = 0
+_CACHE_TTL: float = 60.0  # 60 seconds
 
 # --- Helper Functions ---
 
@@ -460,15 +462,19 @@ def _update_runtime_statuses(connections: List[ApiConnection], service_monitor) 
 @router.get("/system/api-map", response_model=ApiMapResponse)
 async def get_system_api_map(request: Request) -> ApiMapResponse:
     """Returns the map of internal and external API connections."""
-    global _API_MAP_CACHE
+    global _API_MAP_CACHE, _LAST_CACHE_TIME
+    import time
 
-    # Generate Structure if not cached
-    if _API_MAP_CACHE is None:
+    now = time.time()
+
+    # Generate Structure if not cached or expired
+    if _API_MAP_CACHE is None or (now - _LAST_CACHE_TIME > _CACHE_TTL):
         internal = _generate_internal_map(request)
         external = _generate_external_map()
         _API_MAP_CACHE = ApiMapResponse(
             internal_connections=internal, external_connections=external
         )
+        _LAST_CACHE_TIME = now
 
     # Clone from cache to update statuses without mutating cache structure per se
     # (though deepcopy is expensive, structure is small enough)

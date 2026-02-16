@@ -154,6 +154,15 @@ function formatRuntimeService(service: RuntimeService): string {
   return JSON.stringify(service);
 }
 
+function translateOption(
+  t: (path: string) => string,
+  key: string,
+  fallback: string
+): string {
+  const translated = t(key);
+  return translated === key ? fallback : translated;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return (value as Record<string, unknown>) ?? {};
 }
@@ -233,7 +242,7 @@ function DecisionEditor({
         <SelectContent className="bg-slate-900 border-cyan-500/30 text-cyan-100">
           {options.strategies.map((opt) => (
             <SelectItem key={opt} value={opt} className="focus:bg-cyan-500/20 focus:text-cyan-100">
-              {t(`workflowControl.strategies.${opt}`) || opt}
+              {translateOption(t, `workflowControl.strategies.${opt}`, opt)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -302,7 +311,7 @@ function KernelEditor({
         <SelectContent className="bg-slate-900 border-green-500/30 text-green-100">
           {options.kernels.map((opt) => (
             <SelectItem key={opt} value={opt} className="focus:bg-green-500/20">
-              {t(`workflowControl.kernelTypes.${opt}`) || opt}
+              {translateOption(t, `workflowControl.kernelTypes.${opt}`, opt)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -327,13 +336,13 @@ function RuntimeEditor({ data, t }: Readonly<{ data: Record<string, unknown>; t:
       </Label>
       <div id="runtime-services" className="flex flex-wrap gap-2">
         {services.length > 0 ? (
-          services.map((svc: RuntimeService, idx: number) => (
-            <span key={`svc-${idx}-${typeof svc === "string" ? svc : idx}`} className="text-xs font-mono bg-purple-500/20 text-purple-200 px-2 py-1.5 rounded border border-purple-500/40 shadow-[0_0_5px_rgba(168,85,247,0.2)]">
+          services.map((svc: RuntimeService, index: number) => (
+            <span key={`${formatRuntimeService(svc)}-${index}`} className="text-xs font-mono bg-purple-500/20 text-purple-200 px-2 py-1.5 rounded border border-purple-500/40 shadow-[0_0_5px_rgba(168,85,247,0.2)]">
               {formatRuntimeService(svc)}
             </span>
           ))
         ) : (
-          <span className="text-xs text-muted-foreground">-</span>
+          <span className="text-xs text-muted-foreground">{t("workflowControl.common.auto")}</span>
         )}
       </div>
     </SectionCard>
@@ -404,7 +413,7 @@ function ProviderEditor({
         <SelectContent className="bg-slate-900 border-orange-500/30 text-orange-100">
           {sourceProviders.map((opt) => (
             <SelectItem key={opt} value={opt} className="focus:bg-orange-500/20">
-              {t(`workflowControl.providers.${opt}`) || opt}
+              {translateOption(t, `workflowControl.providers.${opt}`, opt)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -479,7 +488,7 @@ function EmbeddingEditor({
         <SelectContent className="bg-slate-900 border-pink-500/30 text-pink-100">
           {sourceModels.map((opt) => (
             <SelectItem key={opt} value={opt} className="focus:bg-pink-500/20">
-              {t(`workflowControl.embeddingModels.${opt}`) || opt}
+              {translateOption(t, `workflowControl.embeddingModels.${opt}`, opt)}
             </SelectItem>
           ))}
         </SelectContent>

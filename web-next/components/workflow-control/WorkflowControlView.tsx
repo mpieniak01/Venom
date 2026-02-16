@@ -99,8 +99,14 @@ export function WorkflowControlView() {
               selectedNode={selectedNode}
               onUpdateNode={handleUpdateNode}
               availableOptions={controlOptions ? {
-                providersBySource: controlOptions.providers,
-                modelsBySource: controlOptions.embeddings,
+                providersBySource: {
+                  local: controlOptions.providers.local ?? [],
+                  cloud: controlOptions.providers.cloud ?? [],
+                },
+                modelsBySource: {
+                  local: controlOptions.embeddings.local ?? [],
+                  cloud: controlOptions.embeddings.cloud ?? [],
+                },
               } : undefined}
             />
           </div>

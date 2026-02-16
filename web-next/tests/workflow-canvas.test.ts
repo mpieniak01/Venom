@@ -58,4 +58,24 @@ describe("workflow canvas graph builder", () => {
       "cloud"
     );
   });
+
+  it("respects explicit provider/embedding source when present in state", () => {
+    const graph = buildWorkflowGraph({
+      provider: { active: "openai", sourceType: "local" },
+      provider_source: "local",
+      embedding_model: "text-embedding-3-large",
+      embedding_source: "local",
+    });
+
+    const providerNode = graph.nodes.find((node) => node.id === "provider");
+    const embeddingNode = graph.nodes.find((node) => node.id === "embedding");
+    assert.equal(
+      (providerNode?.data as { sourceTag?: string } | undefined)?.sourceTag,
+      "local"
+    );
+    assert.equal(
+      (embeddingNode?.data as { sourceTag?: string } | undefined)?.sourceTag,
+      "local"
+    );
+  });
 });

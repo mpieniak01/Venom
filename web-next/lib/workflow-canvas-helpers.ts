@@ -31,6 +31,22 @@ function isCloudProvider(provider: string | undefined): boolean {
   return CLOUD_PROVIDERS.has(provider.trim().toLowerCase());
 }
 
+function normalizeSourceTag(source: unknown): SourceTag | null {
+  if (typeof source !== "string") {
+    return null;
+  }
+  const normalized = source.trim().toLowerCase();
+  if (normalized === "cloud") return "cloud";
+  if (
+    normalized === "local" ||
+    normalized === "installed_local" ||
+    normalized === "installed-local"
+  ) {
+    return "local";
+  }
+  return null;
+}
+
 function resolveEmbeddingSource(
   embeddingModel: string | undefined,
   activeProvider: string | undefined
@@ -54,11 +70,13 @@ export function buildWorkflowGraph(systemState: SystemState | null): {
   }
 
   const activeProvider = systemState.provider?.active;
-  const providerSourceTag: SourceTag = isCloudProvider(activeProvider) ? "cloud" : "local";
-  const embeddingSourceTag: SourceTag = resolveEmbeddingSource(
-    systemState.embedding_model,
-    activeProvider
-  );
+  const providerSourceTag: SourceTag =
+    normalizeSourceTag(systemState.provider_source) ??
+    normalizeSourceTag(systemState.provider?.sourceType) ??
+    (isCloudProvider(activeProvider) ? "cloud" : "local");
+  const embeddingSourceTag: SourceTag =
+    normalizeSourceTag(systemState.embedding_source) ??
+    resolveEmbeddingSource(systemState.embedding_model, activeProvider);
 
   const nodes: Node[] = [
     {

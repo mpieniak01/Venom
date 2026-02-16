@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from venom_core.api.model_schemas.workflow_control import (
+from venom_core.api.schemas.workflow_control import (
     ReasonCode,
     ResourceType,
     WorkflowOperation,

@@ -499,19 +499,18 @@ export function ServicesPanel() {
               >
                 {/* Header */}
                 <div className="mb-3 flex items-start justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <div className={`${getStatusColor(service.status)}`}>
                       {getServiceIcon(service.service_type)}
                     </div>
-                    <div className="space-y-1">
-                      <h4 className="heading-h4">{getDisplayName(service.name)}</h4>
-                      <p
-                        className="inline-flex items-center rounded-full border border-emerald-400/70 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.55)]"
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h4 className="heading-h4 truncate">{getDisplayName(service.name)}</h4>
+                      <span
+                        className="shrink-0 whitespace-nowrap text-[11px] font-mono text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.55)]"
                         aria-label={`${t("config.services.info.version")}: ${service.runtime_version || t("config.services.info.versionUnknown")}`}
                       >
-                        {t("config.services.info.version")}:{" "}
-                        {service.runtime_version || t("config.services.info.versionUnknown")}
-                      </p>
+                        V {service.runtime_version || t("config.services.info.versionUnknown")}
+                      </span>
                     </div>
                   </div>
                   <span className={`pill-badge ${getStatusBadge(service.status)}`}>

@@ -155,8 +155,15 @@ def test_build_preview_messages_and_payload(monkeypatch):
     assert messages[1]["role"] == "user"
 
     monkeypatch.setattr(llm_simple_routes.SETTINGS, "LLM_KEEP_ALIVE", "30m")
+    monkeypatch.setattr(llm_simple_routes.SETTINGS, "OLLAMA_ENABLE_THINK", True)
     req = llm_simple_routes.SimpleChatRequest(
-        content="x", max_tokens=42, temperature=0.3
+        content="x",
+        max_tokens=42,
+        temperature=0.3,
+        response_format={"json_schema": {"schema": {"type": "object"}}},
+        tools=[{"type": "function", "function": {"name": "ping"}}],
+        tool_choice="auto",
+        think=True,
     )
     payload = llm_simple_routes._build_payload(
         req, DummyRuntime(provider="ollama"), "m1", messages
@@ -164,6 +171,11 @@ def test_build_preview_messages_and_payload(monkeypatch):
     assert payload["keep_alive"] == "30m"
     assert payload["max_tokens"] == 42
     assert payload["temperature"] == pytest.approx(0.3, abs=1e-12)
+    assert payload["format"] == {"type": "object"}
+    assert payload["tool_choice"] == "auto"
+    assert payload["think"] is True
+    assert payload["tools"][0]["function"]["name"] == "ping"
+    assert payload["options"]["num_ctx"] > 0
 
 
 def test_build_llm_http_error_and_stream_headers():
@@ -218,6 +230,20 @@ def test_extract_sse_contents_filters_invalid_packets():
         ]
     }
     assert llm_simple_routes._extract_sse_contents(packet) == ["A"]
+
+
+def test_extract_sse_tool_calls_and_telemetry():
+    packet = {
+        "choices": [{"delta": {"tool_calls": [{"id": "c1"}]}}],
+        "load_duration": 3_000_000,
+        "prompt_eval_count": 12,
+        "eval_count": 21,
+    }
+    tool_calls = llm_simple_routes._extract_sse_tool_calls(packet)
+    telemetry = llm_simple_routes._extract_ollama_telemetry(packet)
+    assert tool_calls == [{"id": "c1"}]
+    assert telemetry["prompt_eval_count"] == 12
+    assert llm_simple_routes._normalize_ns_to_ms(3_000_000) == 3.0
 
 
 @pytest.mark.asyncio

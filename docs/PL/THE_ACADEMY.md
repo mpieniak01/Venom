@@ -2,6 +2,10 @@
 
 ## Przegląd
 
+> Uwaga (źródło prawdy):
+> README zawiera tylko skrót modułu Academy. Ten dokument jest dedykowaną
+> referencją modułu: architektura, konfiguracja, API i operacje.
+
 THE ACADEMY to system uczenia maszynowego, który pozwala Venomowi na autonomiczne doskonalenie się poprzez:
 - **Destylację Wiedzy** - ekstrakcję cennych wzorców z historii działań
 - **Fine-tuning LoRA** - szybkie douczanie modelu bez nadpisywania bazowej wiedzy

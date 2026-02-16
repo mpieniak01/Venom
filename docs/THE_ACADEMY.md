@@ -2,6 +2,10 @@
 
 ## Overview
 
+> Source-of-truth note:
+> README contains only a short Academy overview. This document is the dedicated
+> module reference for architecture, setup, API, and operations.
+
 THE ACADEMY is a machine learning system that enables Venom to improve autonomously through:
 - **Knowledge Distillation** - extraction of valuable patterns from action history
 - **LoRA Fine-tuning** - rapid model training without overwriting base knowledge

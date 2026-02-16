@@ -5,9 +5,10 @@ type ApiSystemState = ApiSchemas["SystemState"];
 
 type SourceType = "local" | "cloud";
 
-type RuntimeState = {
-  services?: string[];
-  [key: string]: unknown;
+type RuntimeService = string | { name?: string; id?: string; [key: string]: unknown };
+
+type RuntimeState = ApiSystemState["runtime"] & {
+  services?: RuntimeService[];
 };
 
 type ProviderState = {
@@ -29,11 +30,7 @@ export type ApplyResults = ApiSchemas["ControlApplyResponse"];
 
 export type ConfigurationChange = ApiSchemas["ResourceChange"];
 
-export type PlanRequest = Pick<ApiSchemas["ControlPlanRequest"], "changes"> & {
-  dry_run?: boolean;
-  force?: boolean;
-  metadata?: Record<string, unknown>;
-};
+export type PlanRequest = ApiSchemas["ControlPlanRequest"];
 
 export type WorkflowControlSourceCatalog = ApiSchemas["ControlOptionsCatalog"];
 

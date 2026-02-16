@@ -250,34 +250,31 @@ def test_system_runtime_routes(mock_app):
     with patch(
         "venom_core.api.routes.system_runtime.runtime_controller", mock_runtime_ctrl
     ):
-        with patch(
-            "venom_core.api.routes.system_runtime._fetch_ollama_runtime_version",
-            return_value=None,
-        ):
-            # Test get_runtime_status
-            mock_service = MagicMock()
-            mock_service.name = "backend"
-            mock_service.service_type.value = "core"
-            mock_service.status.value = "running"
-            mock_service.pid = 123
-            mock_service.port = 8000
-            mock_service.cpu_percent = 1.0
-            mock_service.memory_mb = 100
-            mock_service.uptime_seconds = 1000
-            mock_service.last_log = "log"
-            mock_service.error_message = None
-            mock_service.actionable = True
+        # Test get_runtime_status
+        mock_service = MagicMock()
+        mock_service.name = "backend"
+        mock_service.service_type.value = "core"
+        mock_service.status.value = "running"
+        mock_service.pid = 123
+        mock_service.port = 8000
+        mock_service.cpu_percent = 1.0
+        mock_service.memory_mb = 100
+        mock_service.uptime_seconds = 1000
+        mock_service.last_log = "log"
+        mock_service.error_message = None
+        mock_service.runtime_version = None
+        mock_service.actionable = True
 
-            mock_runtime_ctrl.get_all_services_status.return_value = [mock_service]
+        mock_runtime_ctrl.get_all_services_status.return_value = [mock_service]
 
-            # Mock Service Monitor via system_deps
-            mock_monitor = MagicMock()
-            mock_system_deps.get_service_monitor.return_value = mock_monitor
-            mock_monitor.get_all_services.return_value = []  # Empty for simplicity
+        # Mock Service Monitor via system_deps
+        mock_monitor = MagicMock()
+        mock_system_deps.get_service_monitor.return_value = mock_monitor
+        mock_monitor.get_all_services.return_value = []  # Empty for simplicity
 
-            resp = mock_app.client.get("/api/v1/runtime/status")
-            assert resp.status_code == 200
-            assert resp.json()["services"][0]["name"] == "backend"
+        resp = mock_app.client.get("/api/v1/runtime/status")
+        assert resp.status_code == 200
+        assert resp.json()["services"][0]["name"] == "backend"
 
         # Test apply_runtime_profile
         mock_runtime_ctrl.apply_profile.return_value = {"status": "applied"}

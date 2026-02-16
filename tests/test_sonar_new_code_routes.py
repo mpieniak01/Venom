@@ -249,6 +249,7 @@ def test_routes_system_config_governance_runtime_scheduler_services_status(
         uptime_seconds=12,
         last_log=None,
         error_message=None,
+        runtime_version=None,
         actionable=True,
     )
     runtime_ctrl = MagicMock()

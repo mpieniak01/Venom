@@ -33,10 +33,6 @@ class TestRuntimeStatusAPI:
                 "venom_core.api.routes.system_runtime.runtime_controller"
             ) as mock_controller,
             patch("venom_core.api.routes.system_deps._service_monitor", None),
-            patch(
-                "venom_core.api.routes.system_runtime._fetch_ollama_runtime_version",
-                return_value=None,
-            ),
         ):
             # Mock service info
             mock_service = MagicMock()
@@ -50,6 +46,7 @@ class TestRuntimeStatusAPI:
             mock_service.uptime_seconds = 3600
             mock_service.last_log = "Server started"
             mock_service.error_message = None
+            mock_service.runtime_version = None
             mock_service.actionable = True
 
             mock_controller.get_all_services_status.return_value = [mock_service]
@@ -73,10 +70,6 @@ class TestRuntimeStatusAPI:
                 "venom_core.api.routes.system_runtime.runtime_controller"
             ) as mock_controller,
             patch("venom_core.api.routes.system_deps._service_monitor", None),
-            patch(
-                "venom_core.api.routes.system_runtime._fetch_ollama_runtime_version",
-                return_value=None,
-            ),
         ):
             # Mock actionable service (backend)
             mock_backend = MagicMock()
@@ -90,6 +83,7 @@ class TestRuntimeStatusAPI:
             mock_backend.uptime_seconds = 3600
             mock_backend.last_log = "Server started"
             mock_backend.error_message = None
+            mock_backend.runtime_version = None
             mock_backend.actionable = True
 
             # Mock non-actionable service (hive)
@@ -104,6 +98,7 @@ class TestRuntimeStatusAPI:
             mock_hive.uptime_seconds = None
             mock_hive.last_log = None
             mock_hive.error_message = None
+            mock_hive.runtime_version = None
             mock_hive.actionable = False
 
             mock_controller.get_all_services_status.return_value = [
@@ -135,10 +130,6 @@ class TestRuntimeStatusAPI:
                 "venom_core.api.routes.system_runtime.runtime_controller"
             ) as mock_controller,
             patch("venom_core.api.routes.system_deps._service_monitor", None),
-            patch(
-                "venom_core.api.routes.system_runtime._fetch_ollama_runtime_version",
-                return_value="0.16.1",
-            ),
         ):
             mock_ollama = MagicMock()
             mock_ollama.name = "Ollama"
@@ -151,6 +142,7 @@ class TestRuntimeStatusAPI:
             mock_ollama.uptime_seconds = None
             mock_ollama.last_log = None
             mock_ollama.error_message = None
+            mock_ollama.runtime_version = "0.16.1"
             mock_ollama.actionable = True
             mock_controller.get_all_services_status.return_value = [mock_ollama]
 

@@ -77,7 +77,7 @@ export function ApiMap() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [t]);
 
     useEffect(() => {
         fetchData();

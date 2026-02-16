@@ -96,7 +96,7 @@ export function ControlPanels({
     }
 
     if (changes.length > 0) {
-      onApply({ changes });
+      onApply({ changes, dry_run: false, force: false });
     }
   };
 

@@ -9,8 +9,8 @@ This document defines the official way to publish Docker images for Venom Minima
 
 ## Scope
 
-- Backend image: `ghcr.io/<owner>/venom-backend`
-- Frontend image: `ghcr.io/<owner>/venom-frontend`
+- Backend image: `ghcr.io/mpieniak01/venom-backend`
+- Frontend image: `ghcr.io/mpieniak01/venom-frontend`
 - Workflow: `.github/workflows/docker-publish.yml`
 
 ## Safety Rules (Mandatory)
@@ -76,8 +76,8 @@ Typical tags in manual mode:
 3. Expected tags are visible.
 4. Pull smoke test from clean host:
 ```bash
-docker pull ghcr.io/<owner>/venom-backend:<tag>
-docker pull ghcr.io/<owner>/venom-frontend:<tag>
+docker pull ghcr.io/mpieniak01/venom-backend:<tag>
+docker pull ghcr.io/mpieniak01/venom-frontend:<tag>
 ```
 
 ## End-user Run (from published images)
@@ -89,8 +89,8 @@ git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 
 # optional overrides:
-# export BACKEND_IMAGE=ghcr.io/<owner>/venom-backend:vX.Y.Z
-# export FRONTEND_IMAGE=ghcr.io/<owner>/venom-frontend:vX.Y.Z
+# export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:vX.Y.Z
+# export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:vX.Y.Z
 # export OLLAMA_MODEL=gemma3:1b
 # export VENOM_ENABLE_GPU=auto
 

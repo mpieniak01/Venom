@@ -336,8 +336,8 @@ function RuntimeEditor({ data, t }: Readonly<{ data: Record<string, unknown>; t:
       </Label>
       <div id="runtime-services" className="flex flex-wrap gap-2">
         {services.length > 0 ? (
-          services.map((svc: RuntimeService) => (
-            <span key={formatRuntimeService(svc)} className="text-xs font-mono bg-purple-500/20 text-purple-200 px-2 py-1.5 rounded border border-purple-500/40 shadow-[0_0_5px_rgba(168,85,247,0.2)]">
+          services.map((svc: RuntimeService, index: number) => (
+            <span key={`${formatRuntimeService(svc)}-${index}`} className="text-xs font-mono bg-purple-500/20 text-purple-200 px-2 py-1.5 rounded border border-purple-500/40 shadow-[0_0_5px_rgba(168,85,247,0.2)]">
               {formatRuntimeService(svc)}
             </span>
           ))

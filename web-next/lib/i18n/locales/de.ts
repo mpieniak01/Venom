@@ -540,6 +540,58 @@ export const de = {
         benchmark: "zu Benchmarks gehen",
       },
     },
+    apiMap: {
+      title: "API-Karte",
+      description: "Visualisierung von Systemverbindungen und Integrationsstatus.",
+      internal: "Interne Komponenten",
+      external: "Externe Anbieter",
+      legend: {
+        title: "Legende",
+        bidirectional: "Bidirektional",
+        outbound: "Ausgehend",
+        critical: "Kritisch",
+        optional: "Optional",
+      },
+      filters: {
+        type: {
+          label: "Typ",
+          all: "Alle",
+          internal: "Intern",
+          external: "Extern",
+        },
+        source: {
+          label: "Quelle",
+          all: "Alle",
+          local: "Lokal",
+          cloud: "Cloud",
+          hybrid: "Hybrid",
+        },
+        status: {
+          label: "Status",
+          all: "Alle",
+          ok: "OK",
+          degraded: "Eingeschränkt",
+          down: "Offline",
+          unknown: "Unbekannt",
+        },
+        protocol: {
+          label: "Protokoll",
+          all: "Alle",
+        }
+      },
+      connection: {
+        protocol: "Protokoll",
+        auth: "Auth",
+        status: "Status",
+        source: "Quelle",
+        target: "Ziel",
+      },
+      refresh: "Karte aktualisieren",
+      methods: "Methoden",
+      select: "Wählen Sie eine API, um Details zu sehen",
+      details: "Details",
+      no_methods: "Keine Methoden verfügbar",
+    },
   },
   cockpit: {
     newChat: "Neuer Chat",

@@ -2433,6 +2433,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/api-map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get System Api Map
+         * @description Returns the map of internal and external API connections.
+         */
+        get: operations["get_system_api_map_api_v1_system_api_map_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes": {
         parameters: {
             query?: never;
@@ -3876,6 +3896,58 @@ export interface components {
              */
             is_active: boolean;
         };
+        /** ApiConnection */
+        ApiConnection: {
+            /**
+             * Source Component
+             * @description Nazwa komponentu źródłowego
+             */
+            source_component: string;
+            /**
+             * Target Component
+             * @description Nazwa komponentu docelowego lub providera
+             */
+            target_component: string;
+            /** @description Protokół komunikacji */
+            protocol: components["schemas"]["ConnectionProtocol"];
+            /** @description Kierunek połączenia */
+            direction: components["schemas"]["ConnectionDirection"];
+            /** @description Typ uwierzytelniania */
+            auth_type: components["schemas"]["AuthType"];
+            /** @description Typ źródła (lokalne/chmura) */
+            source_type: components["schemas"]["SourceType"];
+            /** @description Status połączenia */
+            status: components["schemas"]["ConnectionStatus"];
+            /**
+             * Description
+             * @description Opis biznesowy połączenia
+             */
+            description?: string | null;
+            /**
+             * Is Critical
+             * @description Czy połączenie jest krytyczne dla działania systemu
+             * @default false
+             */
+            is_critical: boolean;
+            /**
+             * Methods
+             * @description Lista dostępnych metod/endpointów
+             */
+            methods?: string[];
+        };
+        /** ApiMapResponse */
+        ApiMapResponse: {
+            /**
+             * Internal Connections
+             * @description Lista połączeń wewnętrznych
+             */
+            internal_connections: components["schemas"]["ApiConnection"][];
+            /**
+             * External Connections
+             * @description Lista połączeń zewnętrznych
+             */
+            external_connections: components["schemas"]["ApiConnection"][];
+        };
         /**
          * AppliedChange
          * @description Record of an applied change.
@@ -3933,6 +4005,11 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
         };
+        /**
+         * AuthType
+         * @enum {string}
+         */
+        AuthType: "none" | "api_key" | "oauth" | "service_token";
         /**
          * AutonomyLevelRequest
          * @description Request do zmiany poziomu autonomii.
@@ -4082,6 +4159,21 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * ConnectionDirection
+         * @enum {string}
+         */
+        ConnectionDirection: "inbound" | "outbound" | "bidirectional";
+        /**
+         * ConnectionProtocol
+         * @enum {string}
+         */
+        ConnectionProtocol: "http" | "https" | "ws" | "sse";
+        /**
+         * ConnectionStatus
+         * @enum {string}
+         */
+        ConnectionStatus: "ok" | "degraded" | "down" | "unknown";
         /**
          * ContextUsed
          * @description Informacje o użytym kontekście w zadaniu.
@@ -5055,6 +5147,11 @@ export interface components {
             /** Session Id */
             session_id?: string | null;
         };
+        /**
+         * SourceType
+         * @enum {string}
+         */
+        SourceType: "local" | "cloud" | "hybrid";
         /**
          * SystemState
          * @description Current state of the entire system.
@@ -9939,6 +10036,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_system_api_map_api_v1_system_api_map_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiMapResponse"];
+                };
             };
         };
     };

@@ -347,13 +347,13 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
         layout:
           resolvedLayoutName === "cose"
             ? {
-                name: "cose",
-                animate: true,
-                fit: true,
-                padding: 30,
-                nodeRepulsion: 7000,
-                idealEdgeLength: 90,
-              }
+              name: "cose",
+              animate: true,
+              fit: true,
+              padding: 30,
+              nodeRepulsion: 7000,
+              idealEdgeLength: 90,
+            }
             : { name: "preset", fit: true, padding: 30 }
       });
 

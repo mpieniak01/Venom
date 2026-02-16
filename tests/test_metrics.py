@@ -381,3 +381,29 @@ class TestMetricsCollector:
 
         # Assert
         assert metrics["policy"]["block_rate"] == 0.0
+
+    def test_ollama_runtime_sample_is_exposed_in_metrics(self):
+        collector = MetricsCollector()
+
+        collector.record_ollama_runtime_sample(
+            load_duration_ms=15.5,
+            prompt_eval_count=12,
+            eval_count=20,
+            prompt_eval_duration_ms=8.2,
+            eval_duration_ms=10.7,
+        )
+        collector.record_ollama_runtime_sample(
+            load_duration_ms=5.5,
+            prompt_eval_count=3,
+            eval_count=9,
+            prompt_eval_duration_ms=2.0,
+            eval_duration_ms=4.0,
+        )
+
+        metrics = collector.get_metrics()
+        ollama = metrics["llm"]["ollama_runtime"]
+
+        assert ollama["samples"] == 2
+        assert ollama["prompt_eval_count_total"] == 15
+        assert ollama["eval_count_total"] == 29
+        assert ollama["load_duration_avg_ms"] == 10.0

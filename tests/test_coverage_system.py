@@ -262,6 +262,7 @@ def test_system_runtime_routes(mock_app):
         mock_service.uptime_seconds = 1000
         mock_service.last_log = "log"
         mock_service.error_message = None
+        mock_service.runtime_version = None
         mock_service.actionable = True
 
         mock_runtime_ctrl.get_all_services_status.return_value = [mock_service]

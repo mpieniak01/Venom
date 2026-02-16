@@ -217,7 +217,12 @@ def test_update_llm_status_stopped_and_running(monkeypatch):
     controller = RuntimeController()
     info = ServiceInfo("ollama", ServiceType.LLM_OLLAMA, ServiceStatus.UNKNOWN)
     monkeypatch.setattr(controller, "_check_port_listening", lambda _port: False)
-    controller._update_llm_status(info, port=11434, process_match="ollama")
+    controller._update_llm_status(
+        info,
+        port=11434,
+        process_match="ollama",
+        service_type=ServiceType.LLM_OLLAMA,
+    )
     assert info.status == ServiceStatus.STOPPED
 
     class DummyProc:
@@ -230,7 +235,12 @@ def test_update_llm_status_stopped_and_running(monkeypatch):
     monkeypatch.setattr(
         controller, "_apply_process_metrics", lambda _i, pid: setattr(_i, "pid", pid)
     )
-    controller._update_llm_status(info2, port=11434, process_match="ollama")
+    controller._update_llm_status(
+        info2,
+        port=11434,
+        process_match="ollama",
+        service_type=ServiceType.LLM_OLLAMA,
+    )
     assert info2.status == ServiceStatus.RUNNING
     assert info2.pid == 99
 

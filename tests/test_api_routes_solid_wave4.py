@@ -156,10 +156,12 @@ def test_runtime_status_enriches_with_service_monitor(monkeypatch) -> None:
         uptime_seconds=50,
         last_log="ok",
         error_message=None,
+        runtime_version=None,
         actionable=True,
     )
     controller = MagicMock()
     controller.get_all_services_status.return_value = [runtime_service]
+    controller.get_aux_runtime_version.return_value = None
     monkeypatch.setattr(runtime_routes, "runtime_controller", controller)
 
     monitor = MagicMock()
@@ -212,6 +214,7 @@ def test_runtime_actions_stop_restart_and_error_paths(monkeypatch) -> None:
     controller.restart_service.return_value = {"success": True, "action": "restart"}
     controller.apply_profile.side_effect = RuntimeError("profile failed")
     controller.get_history.side_effect = RuntimeError("history failed")
+    controller.get_aux_runtime_version.return_value = None
     monkeypatch.setattr(runtime_routes, "runtime_controller", controller)
 
     client = _client(runtime_routes.router)

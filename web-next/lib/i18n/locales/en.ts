@@ -365,6 +365,8 @@ export const en = {
         cpu: "CPU",
         ram: "RAM",
         uptime: "Uptime",
+        version: "Version",
+        versionUnknown: "unknown",
         lastLog: "Last log",
       },
       names: {

@@ -366,6 +366,8 @@ export const pl = {
         cpu: "CPU",
         ram: "RAM",
         uptime: "Uptime",
+        version: "Wersja",
+        versionUnknown: "nieznana",
         lastLog: "Ostatni log",
       },
       names: {

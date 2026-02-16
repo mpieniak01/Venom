@@ -55,6 +55,7 @@ async def get_runtime_status():
                 "uptime_seconds": s.uptime_seconds,
                 "last_log": s.last_log,
                 "error_message": s.error_message,
+                "runtime_version": s.runtime_version,
                 "actionable": s.actionable,
             }
             for s in services
@@ -97,6 +98,9 @@ async def get_runtime_status():
                         "uptime_seconds": None,
                         "last_log": None,
                         "error_message": svc.error_message,
+                        "runtime_version": runtime_controller.get_aux_runtime_version(
+                            svc.name
+                        ),
                         "latency_ms": getattr(svc, "latency_ms", 0.0),
                         "endpoint": svc.endpoint,
                         "actionable": False,

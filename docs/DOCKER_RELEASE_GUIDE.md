@@ -91,7 +91,9 @@ cd Venom
 # optional overrides:
 # export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:v1.5.0
 # export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:v1.5.0
+# export OLLAMA_IMAGE=ollama/ollama:0.16.1
 # export OLLAMA_MODEL=gemma3:1b
+# export OLLAMA_NO_CLOUD=1
 # export VENOM_ENABLE_GPU=auto
 
 scripts/docker/run-release.sh start

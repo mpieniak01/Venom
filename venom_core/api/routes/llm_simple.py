@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 from uuid import UUID, uuid4
 
 import httpx
@@ -14,11 +14,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from venom_core.config import SETTINGS
+from venom_core.core.metrics import get_metrics_collector
 from venom_core.core.tracer import TraceStatus
 from venom_core.utils.llm_runtime import (
     _build_chat_completions_url,
     get_active_llm_runtime,
 )
+from venom_core.utils.ollama_tuning import build_ollama_runtime_options
 from venom_core.utils.text import trim_to_char_limit
 
 router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
@@ -166,6 +168,47 @@ def _build_payload(
     }
     if runtime.provider == "ollama":
         payload["keep_alive"] = SETTINGS.LLM_KEEP_ALIVE
+        payload["options"] = build_ollama_runtime_options(SETTINGS)
+
+    # Keep a deterministic precedence to avoid sending both `response_format` and
+    # `format` in one payload:
+    # 1) For Ollama we prefer `format` (native structured output support).
+    # 2) For non-Ollama providers we prefer client-provided `response_format`.
+    # 3) Fallback: `request.format` (if response_format is absent).
+    output_format = request.format
+    if output_format is None and isinstance(request.response_format, dict):
+        # Compatibility extraction for OpenAI-style shape:
+        # response_format.json_schema.schema -> schema object
+        schema_block = request.response_format.get("json_schema")
+        if isinstance(schema_block, dict):
+            output_format = schema_block.get("schema")
+            if output_format is None:
+                output_format = schema_block
+
+    if runtime.provider == "ollama":
+        if output_format is not None and SETTINGS.OLLAMA_ENABLE_STRUCTURED_OUTPUTS:
+            payload["format"] = output_format
+        elif request.response_format is not None:
+            payload["response_format"] = request.response_format
+    else:
+        if request.response_format is not None:
+            payload["response_format"] = request.response_format
+        elif request.format is not None:
+            payload["format"] = request.format
+
+    if request.tools and (
+        runtime.provider != "ollama" or SETTINGS.OLLAMA_ENABLE_TOOL_CALLING
+    ):
+        payload["tools"] = request.tools
+    if request.tool_choice is not None and (
+        runtime.provider != "ollama" or SETTINGS.OLLAMA_ENABLE_TOOL_CALLING
+    ):
+        payload["tool_choice"] = request.tool_choice
+    if request.think is not None and (
+        runtime.provider != "ollama" or SETTINGS.OLLAMA_ENABLE_THINK
+    ):
+        payload["think"] = request.think
+
     if request.max_tokens is not None:
         payload["max_tokens"] = request.max_tokens
     if request.temperature is not None:
@@ -210,7 +253,45 @@ def _extract_sse_contents(packet: dict) -> list[str]:
     return contents
 
 
-async def _iter_stream_contents(resp: httpx.Response) -> AsyncIterator[str]:
+def _extract_sse_tool_calls(packet: dict) -> list[dict[str, Any]]:
+    tool_calls: list[dict[str, Any]] = []
+    choices = packet.get("choices") or []
+    for choice in choices:
+        delta = choice.get("delta") or {}
+        if not isinstance(delta, dict):
+            continue
+        delta_tool_calls = delta.get("tool_calls")
+        if isinstance(delta_tool_calls, list):
+            tool_calls.extend(
+                call for call in delta_tool_calls if isinstance(call, dict)
+            )
+    return tool_calls
+
+
+def _extract_ollama_telemetry(packet: dict) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for key in (
+        "load_duration",
+        "prompt_eval_count",
+        "eval_count",
+        "prompt_eval_duration",
+        "eval_duration",
+    ):
+        value = packet.get(key)
+        if isinstance(value, int):
+            out[key] = value
+    return out
+
+
+def _normalize_ns_to_ms(value: Optional[int]) -> Optional[float]:
+    if value is None:
+        return None
+    if value <= 0:
+        return 0.0
+    return round(value / 1_000_000.0, 2)
+
+
+async def _iter_stream_packets(resp: httpx.Response) -> AsyncIterator[dict]:
     async for line in resp.aiter_lines():
         if not line or not line.startswith("data:"):
             continue
@@ -223,6 +304,12 @@ async def _iter_stream_contents(resp: httpx.Response) -> AsyncIterator[str]:
             packet = json.loads(data)
         except json.JSONDecodeError:
             continue
+        if isinstance(packet, dict):
+            yield packet
+
+
+async def _iter_stream_contents(resp: httpx.Response) -> AsyncIterator[str]:
+    async for packet in _iter_stream_packets(resp):
         for content in _extract_sse_contents(packet):
             yield content
 
@@ -340,74 +427,178 @@ async def _stream_simple_chunks(
     chunk_count = 0
     stream_start = time.perf_counter()
     first_chunk_seen = False
+    ollama_telemetry: dict[str, int] = {}
 
     yield "event: start\ndata: {}\n\n"
 
-    try:
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream("POST", completions_url, json=payload) as resp:
-                try:
-                    resp.raise_for_status()
-                except httpx.HTTPStatusError as exc:
-                    response_text = await _read_http_error_response_text(exc.response)
-                    error_message, error_details, error_payload = _build_llm_http_error(
-                        exc, runtime, model_name, response_text=response_text
-                    )
-                    _record_simple_error(
-                        request_id,
-                        error_code="llm_http_error",
-                        error_message=error_message,
-                        error_details=error_details,
-                        error_class=exc.__class__.__name__,
-                        retryable=False,
-                    )
-                    yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
-                    return
+    max_attempts = (
+        max(1, int(SETTINGS.OLLAMA_RETRY_MAX_ATTEMPTS))
+        if runtime.provider == "ollama"
+        else 1
+    )
+    retry_backoff = max(0.0, float(SETTINGS.OLLAMA_RETRY_BACKOFF_SECONDS))
 
-                async for content in _iter_stream_contents(resp):
-                    chunk_count += 1
-                    chunks.append(content)
-                    if not first_chunk_seen:
-                        _trace_first_chunk(request_id, stream_start, content)
-                        first_chunk_seen = True
-                    event_payload = {"text": content}
-                    yield f"event: content\ndata: {json.dumps(event_payload)}\n\n"
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("POST", completions_url, json=payload) as resp:
+                    try:
+                        resp.raise_for_status()
+                    except httpx.HTTPStatusError as exc:
+                        status_code = exc.response.status_code if exc.response else None
+                        can_retry = (
+                            runtime.provider == "ollama"
+                            and status_code in {429, 500, 502, 503, 504}
+                            and attempt < max_attempts
+                            and chunk_count == 0
+                        )
+                        if can_retry:
+                            ollama_telemetry.clear()
+                            await asyncio.sleep(retry_backoff * attempt)
+                            continue
 
-        _trace_stream_completion(request_id, "".join(chunks), chunk_count, stream_start)
-        yield "event: done\ndata: {}\n\n"
+                        response_text = await _read_http_error_response_text(
+                            exc.response
+                        )
+                        error_message, error_details, error_payload = (
+                            _build_llm_http_error(
+                                exc, runtime, model_name, response_text=response_text
+                            )
+                        )
+                        _record_simple_error(
+                            request_id,
+                            error_code="llm_http_error",
+                            error_message=error_message,
+                            error_details=error_details,
+                            error_class=exc.__class__.__name__,
+                            retryable=False,
+                        )
+                        collector = get_metrics_collector()
+                        collector.record_provider_request(
+                            provider=runtime.provider,
+                            success=False,
+                            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+                            error_code=f"http_{status_code or 'error'}",
+                        )
+                        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+                        return
 
-    except httpx.HTTPError as exc:
-        _record_simple_error(
-            request_id,
-            error_code="llm_connection_error",
-            error_message=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
-            error_details={
-                "provider": runtime.provider,
-                "endpoint": runtime.endpoint,
-                "model": model_name,
-            },
-            error_class=exc.__class__.__name__,
-            retryable=True,
-        )
-        error_payload = {
-            "code": "llm_connection_error",
-            "message": f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
-        }
-        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
-    except Exception as exc:
-        if _request_tracer:
-            _request_tracer.add_step(
-                request_id,
-                _SIMPLE_MODE_STEP,
-                "error",
-                status="error",
-                details=str(exc),
+                    async for packet in _iter_stream_packets(resp):
+                        if runtime.provider == "ollama":
+                            telemetry = _extract_ollama_telemetry(packet)
+                            if telemetry:
+                                ollama_telemetry.update(telemetry)
+
+                        tool_calls = _extract_sse_tool_calls(packet)
+                        if tool_calls:
+                            yield (
+                                "event: tool_calls\ndata: "
+                                + json.dumps({"tool_calls": tool_calls})
+                                + "\n\n"
+                            )
+
+                        for content in _extract_sse_contents(packet):
+                            chunk_count += 1
+                            chunks.append(content)
+                            if not first_chunk_seen:
+                                _trace_first_chunk(request_id, stream_start, content)
+                                first_chunk_seen = True
+                            event_payload = {"text": content}
+                            yield (
+                                "event: content\ndata: "
+                                + json.dumps(event_payload)
+                                + "\n\n"
+                            )
+
+            _trace_stream_completion(
+                request_id, "".join(chunks), chunk_count, stream_start
             )
-        error_payload = {
-            "code": "internal_error",
-            "message": f"Nieoczekiwany błąd: {exc}",
-        }
-        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+            total_ms = (time.perf_counter() - stream_start) * 1000.0
+            collector = get_metrics_collector()
+            collector.record_provider_request(
+                provider=runtime.provider,
+                success=True,
+                latency_ms=total_ms,
+                tokens=(
+                    int(ollama_telemetry.get("prompt_eval_count", 0))
+                    + int(ollama_telemetry.get("eval_count", 0))
+                ),
+            )
+            if runtime.provider == "ollama":
+                collector.record_ollama_runtime_sample(
+                    load_duration_ms=_normalize_ns_to_ms(
+                        ollama_telemetry.get("load_duration")
+                    ),
+                    prompt_eval_count=ollama_telemetry.get("prompt_eval_count"),
+                    eval_count=ollama_telemetry.get("eval_count"),
+                    prompt_eval_duration_ms=_normalize_ns_to_ms(
+                        ollama_telemetry.get("prompt_eval_duration")
+                    ),
+                    eval_duration_ms=_normalize_ns_to_ms(
+                        ollama_telemetry.get("eval_duration")
+                    ),
+                )
+            yield "event: done\ndata: {}\n\n"
+            return
+
+        except httpx.HTTPError as exc:
+            can_retry = (
+                runtime.provider == "ollama"
+                and attempt < max_attempts
+                and chunk_count == 0
+            )
+            if can_retry:
+                ollama_telemetry.clear()
+                await asyncio.sleep(retry_backoff * attempt)
+                continue
+
+            _record_simple_error(
+                request_id,
+                error_code="llm_connection_error",
+                error_message=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+                error_details={
+                    "provider": runtime.provider,
+                    "endpoint": runtime.endpoint,
+                    "model": model_name,
+                },
+                error_class=exc.__class__.__name__,
+                retryable=True,
+            )
+            collector = get_metrics_collector()
+            collector.record_provider_request(
+                provider=runtime.provider,
+                success=False,
+                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+                error_code="connection_error",
+            )
+            error_payload = {
+                "code": "llm_connection_error",
+                "message": f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+            }
+            yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+            return
+        except Exception as exc:
+            if _request_tracer:
+                _request_tracer.add_step(
+                    request_id,
+                    _SIMPLE_MODE_STEP,
+                    "error",
+                    status="error",
+                    details=str(exc),
+                )
+            collector = get_metrics_collector()
+            collector.record_provider_request(
+                provider=runtime.provider,
+                success=False,
+                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+                error_code="internal_error",
+            )
+            error_payload = {
+                "code": "internal_error",
+                "message": f"Nieoczekiwany błąd: {exc}",
+            }
+            yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+            return
 
 
 class SimpleChatRequest(BaseModel):
@@ -415,6 +606,11 @@ class SimpleChatRequest(BaseModel):
     model: Optional[str] = None
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
+    response_format: Optional[dict[str, Any] | str] = None
+    format: Optional[dict[str, Any] | str] = None
+    tools: Optional[list[dict[str, Any]]] = None
+    tool_choice: Optional[dict[str, Any] | str] = None
+    think: Optional[bool] = None
     session_id: Optional[str] = None
 
 

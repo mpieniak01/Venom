@@ -33,6 +33,10 @@ class TestRuntimeStatusAPI:
                 "venom_core.api.routes.system_runtime.runtime_controller"
             ) as mock_controller,
             patch("venom_core.api.routes.system_deps._service_monitor", None),
+            patch(
+                "venom_core.api.routes.system_runtime._fetch_ollama_runtime_version",
+                return_value=None,
+            ),
         ):
             # Mock service info
             mock_service = MagicMock()
@@ -60,6 +64,7 @@ class TestRuntimeStatusAPI:
             assert data["services"][0]["status"] == "running"
             assert data["services"][0]["pid"] == 12345
             assert data["services"][0]["actionable"] is True
+            assert "runtime_version" in data["services"][0]
 
     def test_runtime_status_with_non_actionable_services(self, client):
         """Test statusu runtime z usługami non-actionable (Hive/Nexus/BackgroundTasks)."""
@@ -68,6 +73,10 @@ class TestRuntimeStatusAPI:
                 "venom_core.api.routes.system_runtime.runtime_controller"
             ) as mock_controller,
             patch("venom_core.api.routes.system_deps._service_monitor", None),
+            patch(
+                "venom_core.api.routes.system_runtime._fetch_ollama_runtime_version",
+                return_value=None,
+            ),
         ):
             # Mock actionable service (backend)
             mock_backend = MagicMock()
@@ -118,6 +127,38 @@ class TestRuntimeStatusAPI:
             # Check hive (non-actionable)
             hive_service = next(s for s in data["services"] if s["name"] == "hive")
             assert hive_service["actionable"] is False
+
+    def test_runtime_status_includes_ollama_version(self, client):
+        """Test że endpoint zwraca wykrytą wersję dla karty Ollama."""
+        with (
+            patch(
+                "venom_core.api.routes.system_runtime.runtime_controller"
+            ) as mock_controller,
+            patch("venom_core.api.routes.system_deps._service_monitor", None),
+            patch(
+                "venom_core.api.routes.system_runtime._fetch_ollama_runtime_version",
+                return_value="0.16.1",
+            ),
+        ):
+            mock_ollama = MagicMock()
+            mock_ollama.name = "Ollama"
+            mock_ollama.service_type = system_runtime.ServiceType.LLM_OLLAMA
+            mock_ollama.status.value = "running"
+            mock_ollama.pid = 123
+            mock_ollama.port = 11434
+            mock_ollama.cpu_percent = 0.0
+            mock_ollama.memory_mb = 0.0
+            mock_ollama.uptime_seconds = None
+            mock_ollama.last_log = None
+            mock_ollama.error_message = None
+            mock_ollama.actionable = True
+            mock_controller.get_all_services_status.return_value = [mock_ollama]
+
+            response = client.get("/api/v1/runtime/status")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["services"][0]["runtime_version"] == "0.16.1"
 
     def test_runtime_status_error(self, client):
         """Test błędu podczas pobierania statusu runtime."""

@@ -21,6 +21,12 @@ _API_MAP_CACHE: Optional[ApiMapResponse] = None
 _LAST_CACHE_TIME: float = 0
 _CACHE_TTL: float = 60.0  # 60 seconds
 
+# --- Reused component labels ---
+NODES_API_LABEL = "Nodes API"
+FRONTEND_NEXTJS_LABEL = "Frontend (Next.js)"
+MODEL_ROUTER_LABEL = "Model Router"
+OPENAI_API_LABEL = "OpenAI API"
+
 # --- Helper Functions ---
 
 
@@ -125,7 +131,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
             "critical": False,
         },
         {
-            "target": "Nodes API",
+            "target": NODES_API_LABEL,
             "prefix": "/api/v1/nodes",
             "desc": "Zarządzanie węzłami (Nexus)",
             "critical": False,
@@ -138,7 +144,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
         },
         # Chat/Models - Core
         {
-            "target": "Frontend (Next.js)",
+            "target": FRONTEND_NEXTJS_LABEL,
             "prefix": "/api/v1/chat",
             "desc": "Interfejs użytkownika (Chat)",
             "critical": True,
@@ -160,9 +166,9 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
         "Strategy API": "Strategist",
         "Governance API": "Governance",
         "Memory API": "Memory Projector",
-        "Nodes API": "Node Manager",
+        NODES_API_LABEL: "Node Manager",
         "Feedback API": "User Feedback",
-        "Frontend (Next.js)": "Backend API",
+        FRONTEND_NEXTJS_LABEL: "Backend API",
     }
 
     for item in definitions:
@@ -173,12 +179,12 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
         # Dynamic discovery of methods
         methods = _get_method_signatures(app, prefix)
 
-        if not methods and target != "Frontend (Next.js)":
+        if not methods and target != FRONTEND_NEXTJS_LABEL:
             # If no methods found for this prefix, skip it (Dynamic!)
             # But "Frontend (Next.js)" might have multiple prefixes like /api/v1/models
             continue
 
-        if target == "Frontend (Next.js)":
+        if target == FRONTEND_NEXTJS_LABEL:
             # Aggregate multiple prefixes for Frontend
             methods.extend(_get_method_signatures(app, "/api/v1/models"))
             # WS special case
@@ -261,7 +267,7 @@ def _generate_external_map() -> List[ApiConnection]:
     if SETTINGS.LLM_SERVICE_TYPE == "local":
         external.append(
             ApiConnection(
-                source_component="Model Router",
+                source_component=MODEL_ROUTER_LABEL,
                 target_component=f"Local LLM ({SETTINGS.ACTIVE_LLM_SERVER or 'auto'})",
                 protocol=ConnectionProtocol.HTTP,
                 direction=ConnectionDirection.BIDIRECTIONAL,
@@ -279,7 +285,7 @@ def _generate_external_map() -> List[ApiConnection]:
         provider = SETTINGS.HYBRID_CLOUD_PROVIDER
         external.append(
             ApiConnection(
-                source_component="Model Router",
+                source_component=MODEL_ROUTER_LABEL,
                 target_component=f"Cloud LLM ({provider.upper()})",
                 protocol=ConnectionProtocol.HTTPS,
                 direction=ConnectionDirection.OUTBOUND,
@@ -367,8 +373,8 @@ def _generate_external_map() -> List[ApiConnection]:
     if SETTINGS.OPENAI_API_KEY:
         external.append(
             ApiConnection(
-                source_component="Model Router",
-                target_component="OpenAI API",
+                source_component=MODEL_ROUTER_LABEL,
+                target_component=OPENAI_API_LABEL,
                 protocol=ConnectionProtocol.HTTPS,
                 direction=ConnectionDirection.OUTBOUND,
                 auth_type=AuthType.API_KEY,
@@ -388,7 +394,7 @@ def _generate_external_map() -> List[ApiConnection]:
     if SETTINGS.GOOGLE_API_KEY:
         external.append(
             ApiConnection(
-                source_component="Model Router",
+                source_component=MODEL_ROUTER_LABEL,
                 target_component="Google AI Studio",
                 protocol=ConnectionProtocol.HTTPS,
                 direction=ConnectionDirection.OUTBOUND,
@@ -430,10 +436,10 @@ def _update_runtime_statuses(connections: List[ApiConnection], service_monitor) 
 
     # Mapping Service Name -> Target Component Name
     service_map = {
-        "OpenAI API": "OpenAI API",
+        OPENAI_API_LABEL: OPENAI_API_LABEL,
         "Redis": "Redis",
         "LanceDB": "LanceDB",
-        "Docker Daemon": "Nodes API",
+        "Docker Daemon": NODES_API_LABEL,
         "Semantic Kernel": "Orchestrator",
     }
 
@@ -459,7 +465,7 @@ def _update_runtime_statuses(connections: List[ApiConnection], service_monitor) 
             # We don't change description to keep structure clean, but status is live.
 
 
-@router.get("/system/api-map", response_model=ApiMapResponse)
+@router.get("/system/api-map")
 async def get_system_api_map(request: Request) -> ApiMapResponse:
     """Returns the map of internal and external API connections."""
     global _API_MAP_CACHE, _LAST_CACHE_TIME

@@ -3,6 +3,7 @@
 import asyncio
 from typing import Any
 
+import aiohttp
 from fastapi import APIRouter, HTTPException
 
 from venom_core.api.routes import system_deps
@@ -35,6 +36,25 @@ def _track_background_task(task: asyncio.Task[Any]) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
+async def _fetch_ollama_runtime_version() -> str | None:
+    """Best-effort odczyt wersji Ollama z lokalnego endpointu runtime."""
+    version_url = "http://127.0.0.1:11434/api/version"
+    timeout = aiohttp.ClientTimeout(total=1.5)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(version_url) as response:
+                if response.status != 200:
+                    return None
+                payload = await response.json()
+                version = payload.get("version")
+                if isinstance(version, str):
+                    normalized = version.strip()
+                    return normalized or None
+    except Exception:
+        return None
+    return None
+
+
 @router.get("/runtime/status", responses=RUNTIME_STATUS_RESPONSES)
 async def get_runtime_status():
     """
@@ -42,6 +62,7 @@ async def get_runtime_status():
     """
     try:
         services = runtime_controller.get_all_services_status()
+        ollama_version = await _fetch_ollama_runtime_version()
 
         services_data = [
             {
@@ -55,6 +76,9 @@ async def get_runtime_status():
                 "uptime_seconds": s.uptime_seconds,
                 "last_log": s.last_log,
                 "error_message": s.error_message,
+                "runtime_version": (
+                    ollama_version if s.service_type == ServiceType.LLM_OLLAMA else None
+                ),
                 "actionable": s.actionable,
             }
             for s in services
@@ -97,6 +121,7 @@ async def get_runtime_status():
                         "uptime_seconds": None,
                         "last_log": None,
                         "error_message": svc.error_message,
+                        "runtime_version": None,
                         "latency_ms": getattr(svc, "latency_ms", 0.0),
                         "endpoint": svc.endpoint,
                         "actionable": False,

@@ -156,6 +156,7 @@ def test_runtime_status_enriches_with_service_monitor(monkeypatch) -> None:
         uptime_seconds=50,
         last_log="ok",
         error_message=None,
+        runtime_version=None,
         actionable=True,
     )
     controller = MagicMock()

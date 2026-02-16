@@ -8,6 +8,7 @@ Odpowiada za:
 - Wsparcie dla profili (Full stack, Light, LLM OFF)
 """
 
+import json
 import subprocess
 import time
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import psutil
 
@@ -62,6 +65,7 @@ class ServiceInfo:
     uptime_seconds: Optional[int] = None
     last_log: Optional[str] = None
     error_message: Optional[str] = None
+    runtime_version: Optional[str] = None
     actionable: bool = True  # Czy usługa ma realne akcje start/stop/restart
 
 
@@ -92,6 +96,9 @@ class RuntimeController:
         }
         self.history: List[ActionHistory] = []
         self.max_history = 100
+        self._runtime_version_cache: Dict[ServiceType, str] = {}
+        self._runtime_version_last_fetch: Dict[ServiceType, float] = {}
+        self._runtime_version_ttl_seconds = 3600.0
 
         # Inicjalizuj ProcessMonitor
         self.process_monitor = ProcessMonitor(self.project_root)
@@ -179,14 +186,21 @@ class RuntimeController:
             info.error_message = str(exc)
 
     def _update_llm_status(
-        self, info: ServiceInfo, *, port: int, process_match: str
+        self,
+        info: ServiceInfo,
+        *,
+        port: int,
+        process_match: str,
+        service_type: ServiceType,
     ) -> None:
         info.port = port
         if not self._check_port_listening(port):
             info.status = ServiceStatus.STOPPED
+            info.runtime_version = self._runtime_version_cache.get(service_type)
             return
 
         info.status = ServiceStatus.RUNNING
+        info.runtime_version = self._runtime_version_cache.get(service_type)
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
                 proc_name = (proc.info.get("name") or "").lower()
@@ -197,6 +211,37 @@ class RuntimeController:
                     break
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+        if service_type == ServiceType.LLM_OLLAMA:
+            info.runtime_version = self._refresh_ollama_runtime_version(force=False)
+
+    def _refresh_ollama_runtime_version(self, *, force: bool) -> Optional[str]:
+        now = time.time()
+        if not force:
+            cached = self._runtime_version_cache.get(ServiceType.LLM_OLLAMA)
+            last_fetch = self._runtime_version_last_fetch.get(ServiceType.LLM_OLLAMA)
+            if (
+                cached is not None
+                and last_fetch is not None
+                and (now - last_fetch) < self._runtime_version_ttl_seconds
+            ):
+                return cached
+
+        version_url = "http://127.0.0.1:11434/api/version"
+        try:
+            with urlopen(version_url, timeout=1.5) as response:
+                if response.status != 200:
+                    return self._runtime_version_cache.get(ServiceType.LLM_OLLAMA)
+                payload = json.loads(response.read().decode("utf-8", errors="ignore"))
+                version = payload.get("version")
+                if isinstance(version, str):
+                    version = version.strip()
+                if not version:
+                    return self._runtime_version_cache.get(ServiceType.LLM_OLLAMA)
+                self._runtime_version_cache[ServiceType.LLM_OLLAMA] = version
+                self._runtime_version_last_fetch[ServiceType.LLM_OLLAMA] = now
+                return version
+        except (OSError, URLError, TimeoutError, ValueError):
+            return self._runtime_version_cache.get(ServiceType.LLM_OLLAMA)
 
     def _update_config_managed_status(
         self, info: ServiceInfo, service_type: ServiceType
@@ -246,10 +291,20 @@ class RuntimeController:
             self._update_last_log(info, service_type)
             return info
         if service_type == ServiceType.LLM_OLLAMA:
-            self._update_llm_status(info, port=11434, process_match="ollama")
+            self._update_llm_status(
+                info,
+                port=11434,
+                process_match="ollama",
+                service_type=ServiceType.LLM_OLLAMA,
+            )
             return info
         if service_type == ServiceType.LLM_VLLM:
-            self._update_llm_status(info, port=8001, process_match="vllm")
+            self._update_llm_status(
+                info,
+                port=8001,
+                process_match="vllm",
+                service_type=ServiceType.LLM_VLLM,
+            )
             return info
         self._update_config_managed_status(info, service_type)
         return info
@@ -521,6 +576,7 @@ class RuntimeController:
                 time.sleep(3)
                 status = self.get_service_status(ServiceType.LLM_OLLAMA)
                 if status.status == ServiceStatus.RUNNING:
+                    self._refresh_ollama_runtime_version(force=True)
                     return {"success": True, "message": "Ollama uruchomiony"}
                 else:
                     return {

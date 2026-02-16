@@ -2,11 +2,13 @@
 
 [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml)
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
+[![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 
 **Quality Signals**
 - *Quick Validate:* GitHub fast checks (Python compile smoke, CI-lite dependency audit, frontend script sanity).
 - *GitGuardian:* secret detection and leak prevention for repository history and pull requests.
+- *OpenAPI Contract:* verifies OpenAPI export and TypeScript codegen sync, so backend schema and frontend API types stay aligned.
 - *Quality Gate Status:* SonarCloud quality gate for backend and frontend.
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**

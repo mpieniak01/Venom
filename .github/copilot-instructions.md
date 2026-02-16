@@ -9,6 +9,8 @@ Po zmianach w kodzie agent zawsze wykonuje:
 1. `make pr-fast`
 2. `make check-new-code-coverage`
 
+Wyjątek: jeśli zmiana jest **doc-only** (wszystkie zmienione pliki w `docs/**`, `docs_dev/**`, `README*.md` lub innych root `*.md`), ciężkie gate'y można pominąć.
+
 ### 2) Pętla naprawcza (obowiązkowa)
 
 Jeśli którykolwiek gate zakończy się błędem:
@@ -33,6 +35,8 @@ Raport musi zawierać:
 2. wynik pass/fail dla każdej komendy,
 3. changed-lines coverage z `make check-new-code-coverage`,
 4. znane ryzyka/skipy wraz z uzasadnieniem.
+
+Dla zmian doc-only raport musi zawierać jasną adnotację: "doc-only change, hard gates skipped by policy".
 
 Format sekcji raportowych: `.github/pull_request_template.md`.
 

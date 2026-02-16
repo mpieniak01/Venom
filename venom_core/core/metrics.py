@@ -32,6 +32,12 @@ class MetricsCollector:
             "llm_first_token_ms_total": 0,
             "llm_first_token_samples": 0,
             "policy_blocked_count": 0,
+            "ollama_load_duration_ms_total": 0,
+            "ollama_prompt_eval_count_total": 0,
+            "ollama_eval_count_total": 0,
+            "ollama_prompt_eval_duration_ms_total": 0,
+            "ollama_eval_duration_ms_total": 0,
+            "ollama_runtime_samples": 0,
         }
         self.tool_usage: Dict[str, int] = {}
         self.agent_usage: Dict[str, int] = {}
@@ -110,6 +116,37 @@ class MetricsCollector:
         """Inkrementuje licznik żądań zablokowanych przez policy gate."""
         with self._lock:
             self.metrics["policy_blocked_count"] += 1
+
+    def record_ollama_runtime_sample(
+        self,
+        *,
+        load_duration_ms: Optional[float] = None,
+        prompt_eval_count: Optional[int] = None,
+        eval_count: Optional[int] = None,
+        prompt_eval_duration_ms: Optional[float] = None,
+        eval_duration_ms: Optional[float] = None,
+    ) -> None:
+        """Dodaje próbkę metryk runtime zwracanych przez Ollama."""
+        with self._lock:
+            if load_duration_ms is not None:
+                self.metrics["ollama_load_duration_ms_total"] += int(
+                    max(load_duration_ms, 0.0)
+                )
+            if prompt_eval_count is not None:
+                self.metrics["ollama_prompt_eval_count_total"] += int(
+                    max(prompt_eval_count, 0)
+                )
+            if eval_count is not None:
+                self.metrics["ollama_eval_count_total"] += int(max(eval_count, 0))
+            if prompt_eval_duration_ms is not None:
+                self.metrics["ollama_prompt_eval_duration_ms_total"] += int(
+                    max(prompt_eval_duration_ms, 0.0)
+                )
+            if eval_duration_ms is not None:
+                self.metrics["ollama_eval_duration_ms_total"] += int(
+                    max(eval_duration_ms, 0.0)
+                )
+            self.metrics["ollama_runtime_samples"] += 1
 
     def increment_tool_usage(self, tool_name: str):
         """
@@ -384,6 +421,26 @@ class MetricsCollector:
                 if samples
                 else None
             )
+            ollama_samples = self.metrics["ollama_runtime_samples"]
+            avg_ollama_load = (
+                round(self.metrics["ollama_load_duration_ms_total"] / ollama_samples, 2)
+                if ollama_samples
+                else None
+            )
+            avg_ollama_prompt_eval_duration = (
+                round(
+                    self.metrics["ollama_prompt_eval_duration_ms_total"]
+                    / ollama_samples,
+                    2,
+                )
+                if ollama_samples
+                else None
+            )
+            avg_ollama_eval_duration = (
+                round(self.metrics["ollama_eval_duration_ms_total"] / ollama_samples, 2)
+                if ollama_samples
+                else None
+            )
 
             # Calculate policy block rate
             policy_blocked = self.metrics["policy_blocked_count"]
@@ -423,6 +480,16 @@ class MetricsCollector:
                 "llm": {
                     "first_token_samples": samples,
                     "first_token_avg_ms": avg_first_token,
+                    "ollama_runtime": {
+                        "samples": ollama_samples,
+                        "load_duration_avg_ms": avg_ollama_load,
+                        "prompt_eval_count_total": self.metrics[
+                            "ollama_prompt_eval_count_total"
+                        ],
+                        "eval_count_total": self.metrics["ollama_eval_count_total"],
+                        "prompt_eval_duration_avg_ms": avg_ollama_prompt_eval_duration,
+                        "eval_duration_avg_ms": avg_ollama_eval_duration,
+                    },
                 },
                 "tokens_used_session": self.metrics["tokens_used_session"],
                 "network": {

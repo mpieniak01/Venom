@@ -9,6 +9,7 @@ class ConnectionProtocol(str, Enum):
     HTTPS = "https"
     WS = "ws"
     SSE = "sse"
+    TCP = "tcp"
 
 
 class ConnectionDirection(str, Enum):

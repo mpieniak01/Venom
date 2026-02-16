@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 import type { components } from "@/lib/generated/api-types";
 
 type ApiMapResponse = components["schemas"]["ApiMapResponse"];
-export type ApiConnection = components["schemas"]["ApiConnection"] & { methods?: string[] };
+export type ApiConnection = components["schemas"]["ApiConnection"];
 
 export function shouldShowConnection(
     conn: ApiConnection,
@@ -326,7 +326,7 @@ export function ApiMap() {
 
                         {filteredInternal.length === 0 && filteredExternal.length === 0 && (
                             <div className="text-center py-12 text-zinc-500">
-                                {t("config.apiMap.no_methods") /* Reusing no_methods or add no_results */}
+                                {t("config.apiMap.no_methods")}
                             </div>
                         )}
                     </div>

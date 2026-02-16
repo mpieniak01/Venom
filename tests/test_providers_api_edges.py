@@ -11,16 +11,24 @@ from venom_core.api.routes import providers as providers_route
 
 
 class _DummyResponse:
-    def __init__(self, status_code: int):
+    def __init__(self, status_code: int, payload: dict | None = None):
         self.status_code = status_code
+        self._payload = payload or {}
+
+    def json(self):
+        return self._payload
 
 
 class _DummyAsyncClient:
     def __init__(
-        self, response: _DummyResponse | None = None, exc: Exception | None = None
+        self,
+        response: _DummyResponse | None = None,
+        exc: Exception | None = None,
+        responses_by_url: dict[str, _DummyResponse] | None = None,
     ):
         self._response = response
         self._exc = exc
+        self._responses_by_url = responses_by_url or {}
 
     async def __aenter__(self):
         return self
@@ -28,9 +36,11 @@ class _DummyAsyncClient:
     async def __aexit__(self, exc_type, exc, tb):
         return False
 
-    async def get(self, _url: str):
+    async def get(self, url: str):
         if self._exc:
             raise self._exc
+        if url in self._responses_by_url:
+            return self._responses_by_url[url]
         return self._response
 
 
@@ -121,6 +131,28 @@ async def test_check_ollama_status_exception(monkeypatch: pytest.MonkeyPatch) ->
     status = await providers_route._check_ollama_status()
     assert status.status == "offline"
     assert status.reason_code == "connection_failed"
+
+
+@pytest.mark.asyncio
+async def test_check_ollama_status_connected_includes_runtime_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        providers_route.httpx,
+        "AsyncClient",
+        lambda timeout=5.0: _DummyAsyncClient(
+            responses_by_url={
+                "http://localhost:11434/api/tags": _DummyResponse(200),
+                "http://localhost:11434/api/version": _DummyResponse(
+                    200, {"version": "0.16.1"}
+                ),
+            }
+        ),
+    )
+
+    status = await providers_route._check_ollama_status()
+    assert status.status == "connected"
+    assert status.runtime_version == "0.16.1"
 
 
 @pytest.mark.asyncio

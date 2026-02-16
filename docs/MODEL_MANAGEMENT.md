@@ -7,6 +7,33 @@ The model management system in Venom provides a centralized, automated way to in
 - **Cloud API**: Models accessed via external APIs (OpenAI, Google Gemini).
 - **Integrator Catalog**: Models available for download/installation (HuggingFace, Ollama Library).
 
+## Ollama Runtime Baseline (v1.5 / task 152)
+
+Current Venom baseline for local runtime:
+1. **Target Ollama line**: `0.16.x` (stable).
+2. **Default single-user profile**: `balanced-12-24gb`.
+3. **Configuration source of truth**: backend env/config (no frontend hardcodes).
+
+Recommended tuning variables:
+1. `VENOM_OLLAMA_PROFILE` (`balanced-12-24gb`, `low-vram-8-12gb`, `max-context-24gb-plus`)
+2. `OLLAMA_CONTEXT_LENGTH`
+3. `OLLAMA_NUM_PARALLEL`
+4. `OLLAMA_MAX_QUEUE`
+5. `OLLAMA_FLASH_ATTENTION`
+6. `OLLAMA_KV_CACHE_TYPE`
+7. `OLLAMA_KEEP_ALIVE`
+8. `OLLAMA_LOAD_TIMEOUT`
+9. `OLLAMA_NO_CLOUD` (optional privacy policy)
+
+Runtime capability usage in Venom integration:
+1. structured outputs: `format` / `response_format`,
+2. tool calling: `tools` / `tool_choice`,
+3. optional reasoning channel: `think` (feature-gated).
+
+Operational reference:
+1. deployment variables and examples: `docs/DEPLOYMENT_NEXT.md`,
+2. implementation scope and review checklist: `docs_dev/_to_do/152_aktualizacja_ollama_0_16_i_adaptacja_funkcji.md`.
+
 ## Architecture
 
 ### Components

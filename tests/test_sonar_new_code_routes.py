@@ -249,6 +249,7 @@ def test_routes_system_config_governance_runtime_scheduler_services_status(
         uptime_seconds=12,
         last_log=None,
         error_message=None,
+        runtime_version=None,
         actionable=True,
     )
     runtime_ctrl = MagicMock()
@@ -256,6 +257,7 @@ def test_routes_system_config_governance_runtime_scheduler_services_status(
     runtime_ctrl.apply_profile.return_value = {"status": "ok"}
     runtime_ctrl.start_service.return_value = {"status": "started"}
     runtime_ctrl.get_history.return_value = []
+    runtime_ctrl.get_aux_runtime_version.return_value = None
     monkeypatch.setattr(system_runtime, "runtime_controller", runtime_ctrl)
     runtime_client = _client_with_router(system_runtime.router)
     assert runtime_client.get("/api/v1/runtime/status").status_code == 200

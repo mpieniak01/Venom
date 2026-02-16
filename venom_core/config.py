@@ -90,6 +90,20 @@ class Settings(BaseSettings):
     OLLAMA_START_COMMAND: str = ""
     OLLAMA_STOP_COMMAND: str = ""
     OLLAMA_RESTART_COMMAND: str = ""
+    # Ollama 0.16.x tuning profile (single-user local)
+    VENOM_OLLAMA_PROFILE: str = "balanced-12-24gb"
+    OLLAMA_CONTEXT_LENGTH: int = 0  # 0 => use profile default
+    OLLAMA_NUM_PARALLEL: int = 0  # 0 => use profile default
+    OLLAMA_MAX_QUEUE: int = 0  # 0 => use profile default
+    OLLAMA_FLASH_ATTENTION: bool = True
+    OLLAMA_KV_CACHE_TYPE: str = ""  # empty => use profile default
+    OLLAMA_LOAD_TIMEOUT: str = "10m"
+    OLLAMA_NO_CLOUD: bool = True
+    OLLAMA_RETRY_MAX_ATTEMPTS: int = 2
+    OLLAMA_RETRY_BACKOFF_SECONDS: float = 0.35
+    OLLAMA_ENABLE_STRUCTURED_OUTPUTS: bool = True
+    OLLAMA_ENABLE_TOOL_CALLING: bool = True
+    OLLAMA_ENABLE_THINK: bool = False
     # Czy w trybach LOCAL/ECO zawsze wymuszać darmowe źródła (np. DuckDuckGo)
     LOW_COST_FORCE_DDG: bool = False
 

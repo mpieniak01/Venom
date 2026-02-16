@@ -177,11 +177,25 @@ async def _check_ollama_status() -> ProviderStatus:
     """Check Ollama server status."""
     endpoint = build_http_url("localhost", 11434)
     health_url = f"{endpoint}/api/tags"
+    version_url = f"{endpoint}/api/version"
 
     try:
         start = time.perf_counter()
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(health_url)
+            runtime_version = None
+            if response.status_code == 200:
+                try:
+                    version_response = await client.get(version_url)
+                    if version_response.status_code == 200:
+                        payload = version_response.json()
+                        if isinstance(payload, dict):
+                            version = payload.get("version")
+                            if isinstance(version, str) and version.strip():
+                                runtime_version = version.strip()
+                except Exception:
+                    # Version probe is best-effort and must not degrade the status check.
+                    runtime_version = None
         latency_ms = (time.perf_counter() - start) * 1000
 
         if response.status_code == 200:
@@ -189,6 +203,7 @@ async def _check_ollama_status() -> ProviderStatus:
                 status="connected",
                 message="Ollama server is running",
                 latency_ms=latency_ms,
+                runtime_version=runtime_version,
             )
         else:
             return ProviderStatus(

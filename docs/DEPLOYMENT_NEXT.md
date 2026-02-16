@@ -30,6 +30,18 @@ For security operating assumptions and localhost admin policy, see `docs/SECURIT
    | `NEXT_PUBLIC_WS_BASE` | WebSocket endpoint for `/ws/events`. | `ws://localhost:8000/ws/events` |
    | `API_PROXY_TARGET` | Proxy target in `next.config.ts` (SSR). | `http://localhost:8000` |
    | `NEXT_DISABLE_TURBOPACK` | Set automatically by Makefile in dev mode. | `1` |
+   | `OLLAMA_IMAGE` | Ollama container image tag used by compose profiles. | `ollama/ollama:0.16.1` |
+   | `OLLAMA_HOST` | Bind address for Ollama inside container. | `0.0.0.0` |
+   | `VENOM_OLLAMA_PROFILE` | Venom single-user tuning profile (`balanced-12-24gb`, `low-vram-8-12gb`, `max-context-24gb-plus`). | `balanced-12-24gb` |
+   | `OLLAMA_CONTEXT_LENGTH` | Explicit context override (`0` = profile default). | `0` |
+   | `OLLAMA_NUM_PARALLEL` | Explicit parallelism override (`0` = profile default). | `0` |
+   | `OLLAMA_MAX_QUEUE` | Explicit queue override (`0` = profile default). | `0` |
+   | `OLLAMA_FLASH_ATTENTION` | Enable flash attention. | `1` |
+   | `OLLAMA_KV_CACHE_TYPE` | KV cache type override (empty = profile default). | `` |
+   | `OLLAMA_LOAD_TIMEOUT` | Model load timeout passed to Ollama runtime. | `10m` |
+   | `OLLAMA_NO_CLOUD` | Disable cloud models in Ollama (privacy-oriented local mode). | `1` |
+   | `OLLAMA_RETRY_MAX_ATTEMPTS` | Retry attempts for transient Ollama errors (429/5xx). | `2` |
+   | `OLLAMA_RETRY_BACKOFF_SECONDS` | Backoff base for Ollama retries. | `0.35` |
 
 ## Launch Modes
 

@@ -29,6 +29,7 @@ interface ServiceInfo {
   uptime_seconds: number | null;
   last_log: string | null;
   error_message: string | null;
+  runtime_version?: string | null;
   actionable: boolean;
 }
 
@@ -498,11 +499,19 @@ export function ServicesPanel() {
               >
                 {/* Header */}
                 <div className="mb-3 flex items-start justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <div className={`${getStatusColor(service.status)}`}>
                       {getServiceIcon(service.service_type)}
                     </div>
-                    <h4 className="heading-h4">{getDisplayName(service.name)}</h4>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h4 className="heading-h4 truncate">{getDisplayName(service.name)}</h4>
+                      <span
+                        className="shrink-0 whitespace-nowrap text-[11px] font-mono text-emerald-400"
+                        aria-label={`${t("config.services.info.version")}: ${service.runtime_version || t("config.services.info.versionUnknown")}`}
+                      >
+                        V {service.runtime_version || t("config.services.info.versionUnknown")}
+                      </span>
+                    </div>
                   </div>
                   <span className={`pill-badge ${getStatusBadge(service.status)}`}>
                     {service.status}

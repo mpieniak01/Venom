@@ -19,8 +19,6 @@ type ProviderState = {
 export type SystemState = Partial<Omit<ApiSystemState, "runtime" | "provider">> & {
   runtime?: RuntimeState;
   provider?: ProviderState;
-  provider_source?: SourceType | string;
-  embedding_source?: SourceType | string;
 };
 
 export type WorkflowStatus = ApiSchemas["WorkflowStatus"];

@@ -5081,6 +5081,10 @@ export interface components {
             };
             /** Embedding Model */
             embedding_model: string;
+            /** Provider Source */
+            provider_source?: string | null;
+            /** Embedding Source */
+            embedding_source?: string | null;
             workflow_status: components["schemas"]["WorkflowStatus"];
             /** Active Operations */
             active_operations?: string[];

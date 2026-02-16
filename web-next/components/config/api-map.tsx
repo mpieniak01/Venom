@@ -73,7 +73,7 @@ export function ApiMap() {
                 setSelectedConnection(jsonData.external_connections[0]);
             }
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Unknown error");
+            setError(err instanceof Error ? err.message : t("config.apiMap.unknownError"));
         } finally {
             setLoading(false);
         }
@@ -89,15 +89,17 @@ export function ApiMap() {
             https: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
             ws: "bg-purple-500/10 text-purple-400 border-purple-500/20",
             sse: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+            tcp: "bg-orange-500/10 text-orange-400 border-orange-500/20",
         };
+        const key = protocol.toLowerCase();
         return (
             <span
                 className={cn(
                     "rounded-md border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider",
-                    colors[protocol.toLowerCase()] || "bg-zinc-800 text-zinc-400"
+                    colors[key] || "bg-zinc-800 text-zinc-400"
                 )}
             >
-                {protocol}
+                {t(`config.apiMap.filters.protocol.${key}`)}
             </span>
         );
     };
@@ -359,7 +361,7 @@ export function ApiMap() {
                                         selectedConnection.status === "unknown" && "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
                                     )}>
                                         {getStatusIcon(selectedConnection.status)}
-                                        <span className="uppercase">{selectedConnection.status}</span>
+                                        <span className="uppercase">{t(`config.apiMap.filters.status.${selectedConnection.status}`)}</span>
                                     </span>
                                     {selectedConnection.is_critical && (
                                         <span className="flex items-center gap-1 text-[10px] text-red-400 font-medium uppercase tracking-wider bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
@@ -383,7 +385,7 @@ export function ApiMap() {
                                         {selectedConnection.auth_type !== "none" ? (
                                             <span className="flex items-center gap-1.5 text-sm text-zinc-300">
                                                 <Lock className="h-3.5 w-3.5 text-zinc-500" />
-                                                <span className="uppercase">{selectedConnection.auth_type}</span>
+                                                <span className="uppercase">{t(`config.apiMap.auth.${selectedConnection.auth_type}`)}</span>
                                             </span>
                                         ) : (
                                             <span className="text-sm text-zinc-500">-</span>
@@ -392,11 +394,11 @@ export function ApiMap() {
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs text-zinc-500">{t("config.apiMap.connection.source")}</p>
-                                    <p className="text-sm text-zinc-300 uppercase">{selectedConnection.source_type}</p>
+                                    <p className="text-sm text-zinc-300 uppercase">{t(`config.apiMap.filters.source.${selectedConnection.source_type}`)}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-xs text-zinc-500">{t("config.apiMap.legend.outbound")}</p>
-                                    <p className="text-sm text-zinc-300 uppercase">{selectedConnection.direction}</p>
+                                    <p className="text-xs text-zinc-500">{t(`config.apiMap.legend.outbound`)}</p>
+                                    <p className="text-sm text-zinc-300 uppercase">{t(`config.apiMap.legend.${selectedConnection.direction}`)}</p>
                                 </div>
                             </div>
 

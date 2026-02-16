@@ -549,6 +549,7 @@ export const en = {
         title: "Legend",
         bidirectional: "Bidirectional",
         outbound: "Outbound",
+        inbound: "Inbound",
         critical: "Critical",
         optional: "Optional",
       },
@@ -577,6 +578,11 @@ export const en = {
         protocol: {
           label: "Protocol",
           all: "All",
+          http: "HTTP",
+          https: "HTTPS",
+          ws: "WebSocket",
+          sse: "SSE",
+          tcp: "TCP",
         }
       },
       connection: {
@@ -586,11 +592,20 @@ export const en = {
         source: "Source",
         target: "Target",
       },
+      auth: {
+        none: "None",
+        api_key: "API Key",
+        oauth: "OAuth",
+        service_token: "Service Token",
+      },
       refresh: "Refresh Map",
       methods: "Methods",
       select: "Select an API to see details",
       details: "Details",
       no_methods: "No methods available",
+      noResults: "No results",
+      unknownError: "Unknown error",
+      errorLoading: "Error loading map",
     },
   },
   cockpit: {

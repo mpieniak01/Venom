@@ -35,6 +35,24 @@ Tryb "partial done" przy failujących gate'ach jest zabroniony.
 1. ustaw `HARD_GATE_ENV_BLOCKER=1` dla wykonania hooka hard-gate,
 2. obowiązkowo opisz bloker i jego wpływ w sekcji ryzyk/ograniczeń PR.
 
+## Szybka ścieżka dla dokumentacji (wyjątek)
+
+Dla zadań wyłącznie dokumentacyjnych można pominąć ciężkie bramki lokalne.
+
+Zakres doc-only (wszystkie zmienione pliki muszą pasować):
+1. `docs/**`
+2. `docs_dev/**`
+3. `README.md`
+4. `README_PL.md`
+5. inne pliki `*.md` w katalogu głównym repo
+
+Zasady:
+1. Jeśli choć jeden zmieniony plik jest poza zakresem doc-only, obowiązuje pełna polityka hard-gate.
+2. Dla zakresu doc-only pomijamy:
+   - `make pr-fast`
+   - `make check-new-code-coverage`
+3. W raporcie końcowym obowiązkowo dopisać: "zmiana doc-only, hard gate pominięte zgodnie z polityką".
+
 ## Kontrakt raportu końcowego (obowiązkowy)
 
 Raport końcowy (oraz opis PR) musi zawierać:

@@ -23,6 +23,22 @@ For all coding-agent tasks in this repository:
    - changed-lines coverage percentage,
    - known risks/skips with justification.
 
+## Documentation-Only Fast Path (Exception)
+
+For tasks where **all changed files** are documentation-only, hard gates can be skipped.
+
+Allowed doc-only scope:
+- `docs/**`
+- `docs_dev/**`
+- `README.md`
+- `README_PL.md`
+- other `*.md` files in repository root
+
+Rules:
+1. If the change touches code/config/build/test/runtime files outside doc-only scope, full hard-gate policy applies.
+2. For doc-only scope, do not run `make pr-fast` / `make check-new-code-coverage`.
+3. In final summary, explicitly state: "doc-only change, hard gates skipped by policy".
+
 Canonical process details:
 - [docs/AGENTS.md](docs/AGENTS.md)
 - [.github/copilot-instructions.md](.github/copilot-instructions.md)

@@ -35,6 +35,24 @@ Environment blocker path:
 1. set `HARD_GATE_ENV_BLOCKER=1` for the hard-gate hook execution,
 2. include blocker details and impact in PR risks/limitations section.
 
+## Documentation-Only Fast Path (Exception)
+
+For documentation-only tasks, hard gates may be skipped to keep feedback fast.
+
+Doc-only scope (all changed files must match):
+1. `docs/**`
+2. `docs_dev/**`
+3. `README.md`
+4. `README_PL.md`
+5. other root `*.md` files
+
+Rules:
+1. If any changed file is outside doc-only scope, full hard-gate policy is mandatory.
+2. For doc-only scope, skip:
+   - `make pr-fast`
+   - `make check-new-code-coverage`
+3. Completion report must include explicit note: "doc-only change, hard gates skipped by policy".
+
 ## Completion Report Contract (Mandatory)
 
 Every agent-generated completion summary (and PR description) must include:

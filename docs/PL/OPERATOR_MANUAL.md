@@ -132,4 +132,11 @@ Typowe sytuacje, które możesz napotkać jako Operator:
 
 ---
 
+## 7. Powiązana dokumentacja Workflow
+
+1. `docs/PL/THE_WORKFLOW_CONTROL.md` - przewodnik operatorski kompozytora workflow.
+2. `docs/PL/WORKFLOW_CONTROL_PLANE_API.md` - kontrakt API i reason code.
+
+---
+
 *Dokument ten będzie rozwijany wraz z nowymi funkcjami systemu.*

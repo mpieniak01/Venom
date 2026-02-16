@@ -98,7 +98,9 @@ async def get_runtime_status():
                         "uptime_seconds": None,
                         "last_log": None,
                         "error_message": svc.error_message,
-                        "runtime_version": None,
+                        "runtime_version": runtime_controller.get_aux_runtime_version(
+                            svc.name
+                        ),
                         "latency_ms": getattr(svc, "latency_ms", 0.0),
                         "endpoint": svc.endpoint,
                         "actionable": False,

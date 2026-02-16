@@ -9,11 +9,15 @@ Odpowiada za:
 """
 
 import json
+import re
 import subprocess
 import time
+import tomllib
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.error import URLError
@@ -96,9 +100,11 @@ class RuntimeController:
         }
         self.history: List[ActionHistory] = []
         self.max_history = 100
-        self._runtime_version_cache: Dict[ServiceType, str] = {}
-        self._runtime_version_last_fetch: Dict[ServiceType, float] = {}
+        self._runtime_version_cache: Dict[str, str] = {}
+        self._runtime_version_last_fetch: Dict[str, float] = {}
         self._runtime_version_ttl_seconds = 3600.0
+        self._backend_version: Optional[str] = None
+        self._ui_version: Optional[str] = None
 
         # Inicjalizuj ProcessMonitor
         self.process_monitor = ProcessMonitor(self.project_root)
@@ -194,13 +200,12 @@ class RuntimeController:
         service_type: ServiceType,
     ) -> None:
         info.port = port
+        info.runtime_version = self._get_service_runtime_version(service_type)
         if not self._check_port_listening(port):
             info.status = ServiceStatus.STOPPED
-            info.runtime_version = self._runtime_version_cache.get(service_type)
             return
 
         info.status = ServiceStatus.RUNNING
-        info.runtime_version = self._runtime_version_cache.get(service_type)
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
                 proc_name = (proc.info.get("name") or "").lower()
@@ -214,34 +219,175 @@ class RuntimeController:
         if service_type == ServiceType.LLM_OLLAMA:
             info.runtime_version = self._refresh_ollama_runtime_version(force=False)
 
-    def _refresh_ollama_runtime_version(self, *, force: bool) -> Optional[str]:
-        now = time.time()
+    def _cache_key_for_service(self, service_type: ServiceType) -> str:
+        return f"service::{service_type.value}"
+
+    def _cache_key_for_aux(self, service_name: str) -> str:
+        return f"aux::{service_name.strip().lower()}"
+
+    def _get_cached_runtime_version(self, cache_key: str) -> Optional[str]:
+        last_fetch = self._runtime_version_last_fetch.get(cache_key)
+        cached = self._runtime_version_cache.get(cache_key)
+        if cached is None or last_fetch is None:
+            return None
+        if (time.time() - last_fetch) >= self._runtime_version_ttl_seconds:
+            return None
+        return cached
+
+    def _set_cached_runtime_version(
+        self, cache_key: str, value: Optional[str]
+    ) -> Optional[str]:
+        if not value:
+            return None
+        normalized = str(value).strip()
+        if not normalized:
+            return None
+        self._runtime_version_cache[cache_key] = normalized
+        self._runtime_version_last_fetch[cache_key] = time.time()
+        return normalized
+
+    @staticmethod
+    def _normalize_version(raw: Optional[str]) -> Optional[str]:
+        if not raw:
+            return None
+        match = re.search(r"\d+(?:\.\d+){1,3}", raw)
+        if match:
+            return match.group(0)
+        cleaned = raw.strip()
+        return cleaned or None
+
+    def _run_version_command(self, cmd: List[str]) -> Optional[str]:
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+                check=False,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            return None
+
+        output = (result.stdout or result.stderr or "").strip()
+        if result.returncode != 0 and not output:
+            return None
+        return self._normalize_version(output)
+
+    def _read_backend_version(self) -> Optional[str]:
+        if self._backend_version is not None:
+            return self._backend_version
+        pyproject_path = self.project_root / "pyproject.toml"
+        try:
+            with pyproject_path.open("rb") as handle:
+                pyproject_data = tomllib.load(handle)
+            self._backend_version = self._normalize_version(
+                str(pyproject_data.get("project", {}).get("version", "")).strip()
+            )
+        except Exception:
+            self._backend_version = None
+        return self._backend_version
+
+    def _read_ui_version(self) -> Optional[str]:
+        if self._ui_version is not None:
+            return self._ui_version
+
+        meta_path = self.project_root / "web-next" / "public" / "meta.json"
+        package_json_path = self.project_root / "web-next" / "package.json"
+        try:
+            if meta_path.exists():
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                self._ui_version = self._normalize_version(str(meta.get("version", "")))
+                if self._ui_version:
+                    return self._ui_version
+        except Exception:
+            pass
+
+        try:
+            if package_json_path.exists():
+                pkg = json.loads(package_json_path.read_text(encoding="utf-8"))
+                self._ui_version = self._normalize_version(str(pkg.get("version", "")))
+        except Exception:
+            self._ui_version = None
+
+        return self._ui_version
+
+    def _resolve_aux_runtime_version(self, service_name: str) -> Optional[str]:
+        normalized_name = service_name.strip().lower()
+        if normalized_name in {
+            "backend",
+            "backend api",
+            "hive",
+            "nexus",
+            "zadania w tle",
+            "academy",
+            "router embeddingów intencji",
+            "semantic kernel",
+            "silnik mcp",
+        }:
+            return self._read_backend_version()
+        if normalized_name in {"next.js ui", "frontend", "ui"}:
+            return self._read_ui_version() or self._read_backend_version()
+        if normalized_name in {"docker daemon", "docker"}:
+            return self._run_version_command(["docker", "--version"])
+        if normalized_name == "redis":
+            return self._run_version_command(["redis-server", "--version"])
+        if normalized_name == "lancedb":
+            try:
+                return self._normalize_version(package_version("lancedb"))
+            except PackageNotFoundError:
+                return None
+        return None
+
+    def get_aux_runtime_version(
+        self, service_name: str, *, force: bool = False
+    ) -> Optional[str]:
+        cache_key = self._cache_key_for_aux(service_name)
         if not force:
-            cached = self._runtime_version_cache.get(ServiceType.LLM_OLLAMA)
-            last_fetch = self._runtime_version_last_fetch.get(ServiceType.LLM_OLLAMA)
-            if (
-                cached is not None
-                and last_fetch is not None
-                and (now - last_fetch) < self._runtime_version_ttl_seconds
-            ):
+            cached = self._get_cached_runtime_version(cache_key)
+            if cached is not None:
+                return cached
+        resolved = self._resolve_aux_runtime_version(service_name)
+        return self._set_cached_runtime_version(cache_key, resolved)
+
+    def _get_service_runtime_version(self, service_type: ServiceType) -> Optional[str]:
+        cache_key = self._cache_key_for_service(service_type)
+        cached = self._get_cached_runtime_version(cache_key)
+        if cached is not None:
+            return cached
+
+        if service_type == ServiceType.LLM_OLLAMA:
+            return self._refresh_ollama_runtime_version(force=False)
+        if service_type == ServiceType.LLM_VLLM:
+            return self._set_cached_runtime_version(
+                cache_key, self._run_version_command(["vllm", "--version"])
+            )
+        if service_type == ServiceType.UI:
+            return self._set_cached_runtime_version(cache_key, self._read_ui_version())
+
+        # Pozostałe komponenty stacka to część backendu Venom (jedna wersja aplikacji)
+        return self._set_cached_runtime_version(cache_key, self._read_backend_version())
+
+    def _refresh_ollama_runtime_version(self, *, force: bool) -> Optional[str]:
+        cache_key = self._cache_key_for_service(ServiceType.LLM_OLLAMA)
+        if not force:
+            cached = self._get_cached_runtime_version(cache_key)
+            if cached is not None:
                 return cached
 
         version_url = "http://127.0.0.1:11434/api/version"
         try:
             with urlopen(version_url, timeout=1.5) as response:
                 if response.status != 200:
-                    return self._runtime_version_cache.get(ServiceType.LLM_OLLAMA)
+                    return self._runtime_version_cache.get(cache_key)
                 payload = json.loads(response.read().decode("utf-8", errors="ignore"))
-                version = payload.get("version")
-                if isinstance(version, str):
-                    version = version.strip()
+                version = self._normalize_version(
+                    payload.get("version") if isinstance(payload, dict) else None
+                )
                 if not version:
-                    return self._runtime_version_cache.get(ServiceType.LLM_OLLAMA)
-                self._runtime_version_cache[ServiceType.LLM_OLLAMA] = version
-                self._runtime_version_last_fetch[ServiceType.LLM_OLLAMA] = now
-                return version
+                    return self._runtime_version_cache.get(cache_key)
+                return self._set_cached_runtime_version(cache_key, version)
         except (OSError, URLError, TimeoutError, ValueError):
-            return self._runtime_version_cache.get(ServiceType.LLM_OLLAMA)
+            return self._runtime_version_cache.get(cache_key)
 
     def _update_config_managed_status(
         self, info: ServiceInfo, service_type: ServiceType
@@ -286,6 +432,7 @@ class RuntimeController:
     def get_service_status(self, service_type: ServiceType) -> ServiceInfo:
         """Pobiera status usługi."""
         info = self._base_service_info(service_type)
+        info.runtime_version = self._get_service_runtime_version(service_type)
         if service_type in {ServiceType.BACKEND, ServiceType.UI}:
             self._update_pid_file_service_status(info, service_type)
             self._update_last_log(info, service_type)

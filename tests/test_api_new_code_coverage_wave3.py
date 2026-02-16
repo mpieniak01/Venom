@@ -201,6 +201,7 @@ def test_runtime_action_and_history_error_paths(
     controller = MagicMock()
     controller.start_service.side_effect = RuntimeError("cannot start")
     controller.get_history.side_effect = RuntimeError("history failed")
+    controller.get_aux_runtime_version.return_value = None
     monkeypatch.setattr(runtime_routes, "runtime_controller", controller)
 
     assert client.post("/api/v1/runtime/backend/start").status_code == 500

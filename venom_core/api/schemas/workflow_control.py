@@ -183,6 +183,8 @@ class SystemState(BaseModel):
     runtime: dict[str, Any]
     provider: dict[str, Any]
     embedding_model: str
+    provider_source: Optional[str] = None
+    embedding_source: Optional[str] = None
     workflow_status: WorkflowStatus
     active_operations: list[str] = Field(default_factory=list)
     health: dict[str, Any] = Field(default_factory=dict)

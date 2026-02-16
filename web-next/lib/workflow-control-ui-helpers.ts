@@ -1,5 +1,10 @@
 
-import type { ApplyResults, PlanRequest, SystemState, ConfigurationChange } from "@/types/workflow-control";
+import type {
+  ApplyResults,
+  ConfigurationChange,
+  PlanRequest,
+  SystemState,
+} from "@/types/workflow-control";
 
 export function shouldShowApplyResultsModal(
   showResultsModal: boolean,
@@ -35,7 +40,7 @@ export function generatePlanRequest(original: SystemState, draft: SystemState): 
 
   // Helper to compare and push change
   const compareAndPush = (
-    type: string,
+    type: ConfigurationChange["resource_type"],
     id: string,
     originalVal: unknown,
     draftVal: unknown

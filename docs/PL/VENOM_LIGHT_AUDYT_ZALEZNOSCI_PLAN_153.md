@@ -132,7 +132,7 @@ Scenariusze:
 4. Rozjazd dokumentacji i implementacji.
    - Mitigacja: checklista synchronizacji docs i evidences w PR.
 
-## 8. Kontrakt wykonawczy fal
+## 8. Kontrakt wykonawczy fal (Wave 0-5)
 
 1. Wave 0: baseline i potwierdzenie niespójności `light` vs `llm_off`.
 2. Wave 1: semantyka profili runtime.

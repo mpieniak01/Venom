@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from venom_core.api.routes import academy as academy_routes
 
@@ -328,3 +330,40 @@ def test_delete_upload_metadata_cleanup_temp_on_replace_error(tmp_path):
             academy_routes._delete_upload_metadata("x")
 
         assert not tmp_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_upload_dataset_files_normalizes_non_string_tag_and_description(tmp_path):
+    class _Form:
+        def getlist(self, key):
+            if key == "files":
+                return [object()]
+            return []
+
+        def get(self, key, default=None):
+            if key == "tag":
+                return object()
+            if key == "description":
+                return object()
+            return default
+
+    class _Req:
+        async def form(self):
+            return _Form()
+
+    with (
+        patch("venom_core.api.routes.academy._ensure_academy_enabled"),
+        patch("venom_core.api.routes.academy.require_localhost_request"),
+        patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path),
+        patch(
+            "venom_core.api.routes.academy._process_uploaded_file",
+            new=AsyncMock(return_value=({"id": "f1"}, None)),
+        ) as process_mock,
+    ):
+        result = await academy_routes.upload_dataset_files(_Req())
+
+    assert result["success"] is True
+    process_mock.assert_awaited_once()
+    call_kwargs = process_mock.await_args.kwargs
+    assert call_kwargs["tag"] == "user-upload"
+    assert call_kwargs["description"] == ""

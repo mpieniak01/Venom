@@ -27,8 +27,7 @@ def test_compose_skill_initialization(compose_skill):
     assert compose_skill.stack_manager is not None
 
 
-@pytest.mark.asyncio
-async def test_create_environment_simple(compose_skill):
+def test_create_environment_simple(compose_skill):
     """Test tworzenia prostego środowiska."""
     compose_content = """
 version: '3.8'
@@ -39,16 +38,15 @@ services:
 """
     stack_name = "test-env"
 
-    result = await compose_skill.create_environment(compose_content, stack_name)
+    result = compose_skill.create_environment(compose_content, stack_name)
 
     assert "✅" in result or "utworzone" in result.lower()
 
     # Posprzątaj
-    await compose_skill.destroy_environment(stack_name)
+    compose_skill.destroy_environment(stack_name)
 
 
-@pytest.mark.asyncio
-async def test_create_environment_invalid_name(compose_skill):
+def test_create_environment_invalid_name(compose_skill):
     """Test tworzenia środowiska z nieprawidłową nazwą."""
     compose_content = """
 version: '3.8'
@@ -59,13 +57,12 @@ services:
     # Nazwa z wielkimi literami i spacjami - nieprawidłowa
     stack_name = "Invalid Stack Name!"
 
-    result = await compose_skill.create_environment(compose_content, stack_name)
+    result = compose_skill.create_environment(compose_content, stack_name)
 
     assert "Błąd" in result or "Nieprawidłowa" in result
 
 
-@pytest.mark.asyncio
-async def test_destroy_environment(compose_skill):
+def test_destroy_environment(compose_skill):
     """Test usuwania środowiska."""
     compose_content = """
 version: '3.8'
@@ -77,42 +74,38 @@ services:
     stack_name = "destroy-test"
 
     # Najpierw utwórz środowisko
-    await compose_skill.create_environment(compose_content, stack_name)
+    compose_skill.create_environment(compose_content, stack_name)
 
     # Następnie usuń
-    result = await compose_skill.destroy_environment(stack_name)
+    result = compose_skill.destroy_environment(stack_name)
 
     assert "✅" in result or "usunięte" in result.lower()
 
 
-@pytest.mark.asyncio
-async def test_destroy_environment_nonexistent(compose_skill):
+def test_destroy_environment_nonexistent(compose_skill):
     """Test usuwania nieistniejącego środowiska."""
-    result = await compose_skill.destroy_environment("nonexistent-env")
+    result = compose_skill.destroy_environment("nonexistent-env")
 
     assert "❌" in result or "nie istnieje" in result.lower()
 
 
-@pytest.mark.asyncio
-async def test_list_environments_empty(compose_skill):
+def test_list_environments_empty(compose_skill):
     """Test listowania środowisk gdy nie ma aktywnych."""
-    result = await compose_skill.list_environments()
+    result = compose_skill.list_environments()
 
     assert "Brak aktywnych środowisk" in result or "📦" in result
 
 
-@pytest.mark.asyncio
-async def test_get_environment_status_nonexistent(compose_skill):
+def test_get_environment_status_nonexistent(compose_skill):
     """Test pobierania statusu nieistniejącego środowiska."""
-    result = await compose_skill.get_environment_status("nonexistent-env")
+    result = compose_skill.get_environment_status("nonexistent-env")
 
     assert "❌" in result or "nie istnieje" in result.lower()
 
 
-@pytest.mark.asyncio
-async def test_check_service_health_nonexistent(compose_skill):
+def test_check_service_health_nonexistent(compose_skill):
     """Test sprawdzania zdrowia nieistniejącego serwisu."""
-    result = await compose_skill.check_service_health("nonexistent-env", "nonexistent")
+    result = compose_skill.check_service_health("nonexistent-env", "nonexistent")
 
     assert "❌" in result or "nie można" in result.lower()
 
@@ -204,8 +197,7 @@ services:
     assert result == ""
 
 
-@pytest.mark.asyncio
-async def test_create_environment_with_port_placeholder(compose_skill):
+def test_create_environment_with_port_placeholder(compose_skill):
     """Test integracyjny: tworzenie środowiska z placeholderem portu."""
     compose_content = """
 version: '3.8'
@@ -218,13 +210,13 @@ services:
 """
     stack_name = "port-test"
 
-    result = await compose_skill.create_environment(compose_content, stack_name)
+    result = compose_skill.create_environment(compose_content, stack_name)
 
     # Sprawdź czy środowisko zostało utworzone
     assert "✅" in result or "utworzone" in result.lower()
 
     # Posprzątaj
-    await compose_skill.destroy_environment(stack_name)
+    compose_skill.destroy_environment(stack_name)
 
 
 def test_compose_skill_has_kernel_functions(compose_skill):
@@ -346,8 +338,7 @@ services:
     assert result is False
 
 
-@pytest.mark.asyncio
-async def test_create_environment_with_secret_key(compose_skill):
+def test_create_environment_with_secret_key(compose_skill):
     """Test integracyjny: tworzenie środowiska z placeholderem SECRET_KEY."""
     compose_content = """
 version: '3.8'
@@ -360,10 +351,10 @@ services:
 """
     stack_name = "secret-test"
 
-    result = await compose_skill.create_environment(compose_content, stack_name)
+    result = compose_skill.create_environment(compose_content, stack_name)
 
     # Sprawdź czy środowisko zostało utworzone
     assert "✅" in result or "utworzone" in result.lower()
 
     # Posprzątaj
-    await compose_skill.destroy_environment(stack_name)
+    compose_skill.destroy_environment(stack_name)

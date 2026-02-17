@@ -1,99 +1,100 @@
 # Venom v1.5 🐍
-
 [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml)
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 
 **Quality Signals**
-- *Quick Validate:* GitHub fast checks (Python compile smoke, CI-lite dependency audit, frontend script sanity).
-- *GitGuardian:* secret detection and leak prevention for repository history and pull requests.
-- *OpenAPI Contract:* verifies OpenAPI export and TypeScript codegen sync, so backend schema and frontend API types stay aligned.
+- *Quick Validate:* fast GitHub checks (Python compile smoke, CI-lite dependency audit, frontend script checks).
+- *GitGuardian:* secret detection and leak prevention in repository history and pull requests.
+- *OpenAPI Contract:* validates OpenAPI export and TypeScript codegen synchronization.
 - *Quality Gate Status:* SonarCloud quality gate for backend and frontend.
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 
-**Venom** is an autonomous multi-agent engineering system with planning, tool execution, and persistent memory.
+**Venom** is a local AI platform for engineering automation that combines agent orchestration, tool execution, and organizational memory in one operational environment. It is designed to shorten delivery time from task analysis and planning to implementation and quality control. With a local-first approach, teams keep stronger control over data, costs, and runtime predictability.
 
-### Key Features
-- 🧠 **Strategic Planning** — Breaks complex goals into executable steps.
-- 🤖 **Agent Orchestration** — Routes tasks to specialized agents.
-- 🔌 **Tooling + MCP Import** — Uses local tools and imports MCP tools from Git.
-- 🧭 **Runtime LLM Selection** — Switches Ollama / vLLM from the UI.
-- 💾 **Long-term Memory** — Stores and reuses lessons and context.
-- 🎓 **Learning by Observation** — Records demonstrations and builds workflows.
-- 👍👎 **Quality Loop** — User feedback, logs, and response quality metrics.
-- 🧠 **Hidden Prompts** — Approved responses stored as contextual shortcuts.
-- 💬 **Chat Continuity** — Session history per `session_id` across restarts.
-- 🛠️ **Services Panel** — `/config` shows runtime status of local stack.
-- 🔒 **Policy Gate** — Global security and ethics gate for request validation.
+In practice, Venom acts as a decision-and-execution layer for technical teams: it automates repetitive work, structures project knowledge, and provides a consistent control point for runtime, configuration, and model governance. This makes scaling delivery easier without proportional growth in operational overhead.
 
-### Recent Updates (2026-02)
-- 🔒 **Policy Gate** — Added global security and ethics gate with feature flag for staged rollout (`ENABLE_POLICY_GATE`).
-- ⚙️ **Config Panel: effective values visibility** — parameters now clearly show whether value comes from `.env` or backend defaults (`env` vs `default`).
-- 🎓 **Academy hardening** — API routes were cleaned up for maintainability/security (exception handling, reduced complexity, safer logs).
-- 🧭 **Runtime monitoring extended** — Config/runtime screens now include Academy and Intent Embedding Router service signals.
-- 🧪 **Intent Router + RAG Boost rollout path** — feature flags and docs are aligned for staged enablement (`ENABLE_INTENT_EMBEDDING_ROUTER`, `ENABLE_RAG_RETRIEVAL_BOOST`).
-- 🎛️ **Workflow Control Plane** — New visual composer for stack management and experimentation with "swimlanes" for Decision/Kernel/Runtime.
-- 🛡️ **Provider Governance** — Added cost limits, rate limiting, and fallback policies for LLM providers.
-- 🧹 **Test Artifacts Policy** — Introduced `CLEAN` (default) vs `PRESERVE` modes for test data management to keep runtime clean.
-- 📑 **Models UI v2** — Redesigned `/models` page with "News" and "Models" tabs, clear distinction between "Featured" and "Catalog".
+## Why it matters for business
+- Reduces end-to-end delivery time for technical tasks (plan + execute + verify).
+- Lowers operating cost with local runtime and provider control.
+- Keeps organizational knowledge through long-term memory and lessons learned.
+- Improves operational control: service status, configuration, and model governance.
+- Standardizes team workflows and QA expectations.
 
-See `docs/` for architecture, frontend guide, and testing policy.
+## Key capabilities
+- 🤖 **Agent orchestration** - planning and execution through specialized roles.
+- 🧭 **Hybrid model runtime** - Ollama / vLLM / cloud switching with local-first behavior.
+- 💾 **Memory and knowledge** - persistent context, lessons learned, and knowledge reuse.
+- 🎓 **Workflow learning** - automation built from user demonstrations.
+- 🛠️ **Operations and governance** - service panel, policy gate, and provider cost control.
+- 🔌 **Extensibility** - local tools and MCP import from Git repositories.
 
-## 🖼️ UI Preview (snapshots)
+## Recent updates (2026-02)
+- Security and governance were hardened (`Policy Gate`, cost limits, fallback policies).
+- Operational layer was unified (`Workflow Control Plane`, config panel, runtime monitoring).
+- Quality and learning modules were strengthened (`Academy`, intent-router rollout, test-artifact policy).
 
-### 🧠 Knowledge Grid — memory & knowledge visualization
-<p align="center">
-  <img src="./docs/assets/wiedza.jpeg" width="900" />
-</p>
+## Documentation
+### Start and operations
+- [Deployment + startup](docs/DEPLOYMENT_NEXT.md) - Development/production startup flow and runtime requirements.
+- [Configuration panel](docs/CONFIG_PANEL.md) - What can be edited from UI and safe editing rules.
+- [Frontend Next.js](docs/FRONTEND_NEXT_GUIDE.md) - `web-next` structure, views, and implementation standards.
 
-### 🧪 Trace Analysis — request flow & orchestration diagnostics
-<p align="center">
-  <img src="./docs/assets/diagram.jpeg" width="900" />
-</p>
+### Architecture
+- [System vision](docs/VENOM_MASTER_VISION_V1.md) - Target platform direction and product assumptions.
+- [Backend architecture](docs/BACKEND_ARCHITECTURE.md) - Backend modules, responsibilities, and component flows.
+- [Hybrid AI engine](docs/HYBRID_AI_ENGINE.md) - LOCAL/HYBRID/CLOUD routing and local-first policy.
+- [Workflow Control](docs/THE_WORKFLOW_CONTROL.md) - Workflow control model, operations, and guardrails.
 
-### ⚙️ Configuration — runtime services & launch profiles
-<p align="center">
-  <img src="./docs/assets/konfiguracja.jpg" width="900" />
-</p>
+### Agents and capabilities
+- [System agents catalog](docs/SYSTEM_AGENTS_CATALOG.md) - Agent roles, inputs/outputs, and runtime cooperation.
+- [The Academy](docs/THE_ACADEMY.md) - Learning, tuning, and training data operationalization.
+- [Memory layer](docs/MEMORY_LAYER_GUIDE.md) - Vector/graph memory organization and retrieval rules.
+- [External integrations](docs/EXTERNAL_INTEGRATIONS.md) - GitHub/Slack and other integration setup.
 
-### 🎛️ AI Command Center — operational cockpit & session history
-<p align="center">
-  <img src="./docs/assets/chat.jpeg" width="900" />
-</p>
+### Quality and collaboration
+- [Coding-agent guidelines](docs/AGENTS.md) - Mandatory agent workflow and quality gates.
+- [Contributing](docs/CONTRIBUTING.md) - Contribution process and PR expectations.
+- [Testing policy](docs/TESTING_POLICY.md) - Test scope, validation commands, and quality requirements.
+- [QA Delivery Guide](docs/QA_DELIVERY_GUIDE.md) - Delivery checklist from validation to release readiness.
 
-### 🎯 Usage Examples
+## UI preview
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="./docs/assets/wiedza.jpeg" width="100%" alt="Knowledge Grid" />
+      <br />
+      <strong>Knowledge Grid</strong><br />
+      Memory and knowledge relation view.
+    </td>
+    <td align="center" width="50%">
+      <img src="./docs/assets/diagram.jpeg" width="100%" alt="Trace Analysis" />
+      <br />
+      <strong>Trace Analysis</strong><br />
+      Request flow and orchestration analysis.
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="./docs/assets/konfiguracja.jpg" width="100%" alt="Configuration" />
+      <br />
+      <strong>Configuration</strong><br />
+      Runtime and service management.
+    </td>
+    <td align="center" width="50%">
+      <img src="./docs/assets/chat.jpeg" width="100%" alt="AI Command Center" />
+      <br />
+      <strong>AI Command Center</strong><br />
+      Operations console and work history.
+    </td>
+  </tr>
+</table>
 
-```python
-# 1. Searching for current information
-"What is the current Bitcoin price?"
-→ System automatically searches the Internet and returns fresh data
-
-# 2. Complex projects with planning
-"Create a Snake game using PyGame"
-→ System:
-  1. Finds PyGame documentation (ResearcherAgent)
-  2. Creates game structure (CoderAgent)
-  3. Adds snake logic (CoderAgent)
-  4. Implements scoring (CoderAgent)
-
-# 3. Multi-file webpage
-"Create an HTML page with a digital clock and CSS styling"
-→ System creates separately: index.html, style.css, script.js
-
-# 4. NEW: Learning by demonstration
-"Venom, watch how I send a report to Slack"
-→ [User performs actions]
-→ System records, analyzes and generates workflow
-→ "Saved as skill 'send_slack_report'"
-→ Later: "Venom, send report to Slack" - executes automatically!
-```
-
-## 🏗️ Architecture
-
-### Project Structure
-```
+## Architecture
+### Project structure
+```text
 venom_core/
 ├── api/routes/          # REST API endpoints (agents, tasks, memory, nodes)
 ├── core/flows/          # Business flows and orchestration
@@ -104,646 +105,207 @@ venom_core/
 └── infrastructure/      # Infrastructure (hardware, cloud, message broker)
 ```
 
-### Main Components
+### Main components
+#### 1) Strategic layer
+- **ArchitectAgent** - breaks complex tasks into an execution plan.
+- **ExecutionPlan** - plan model with steps and dependencies.
 
-#### 1. **Strategic Layer** (Planning)
-- **ArchitectAgent** - Project manager, breaks down complex tasks into steps
-- **ExecutionPlan** - Execution plan model with defined steps and dependencies
+#### 2) Knowledge expansion
+- **ResearcherAgent** - gathers and synthesizes web knowledge.
+- **WebSearchSkill** - search and content extraction.
+- **MemorySkill** - long-term memory (LanceDB).
 
-#### 2. **Knowledge Expansion**
-- **ResearcherAgent** - Gathers and synthesizes knowledge from the Internet
-- **WebSearchSkill** - Search (DuckDuckGo) and scraping (trafilatura)
-- **MemorySkill** - Long-term memory (LanceDB)
+#### 3) Execution layer
+- **CoderAgent** - generates code based on available knowledge.
+- **CriticAgent** - verifies code quality.
+- **LibrarianAgent** - manages files and project structure.
+- **ChatAgent** - conversational assistant.
+- **GhostAgent** - GUI automation (RPA).
+- **ApprenticeAgent** - learns workflows by observation.
 
-#### 3. **Execution Layer**
-- **CoderAgent** - Generates code using knowledge
-- **CriticAgent** - Verifies code quality
-- **LibrarianAgent** - Manages files and project structure
-- **ChatAgent** - Conversation and assistant
-- **GhostAgent** - GUI automation (RPA - Robotic Process Automation)
-- **ApprenticeAgent** - Learning workflows through observation (NEW!)
+#### 4) Hybrid AI engine
+- **HybridModelRouter** (`venom_core/execution/model_router.py`) - local/cloud routing.
+- **Modes**: LOCAL, HYBRID, CLOUD.
+- **Local-first**: privacy and cost control first.
+- **Providers**: Ollama/vLLM (local), Gemini, OpenAI.
+- Sensitive data can be blocked from leaving local runtime.
 
-#### 4. **Hybrid AI Engine** 🧠
-- **HybridModelRouter** (`venom_core/execution/model_router.py`) - Intelligent routing between local LLM and cloud
-- **Operating Modes**: LOCAL (local only), HYBRID (mix), CLOUD (mainly cloud)
-- **Local First**: Privacy and $0 operational costs
-- **Providers**: Ollama/vLLM (local), Google Gemini, OpenAI
-- Sensitive data **NEVER** goes to the cloud
-- **Runtime as API**: model engine is treated as a replaceable HTTP server - we can run it or not, without impacting base logic. This allows using different model standards.
-- **LLM-first Direction (Ollama)**: in single-user mode and low query intensity, Ollama's performance is practically comparable to vLLM, and model switching is simpler. vLLM gains an advantage mainly with high parallelism and heavy load.
+#### 5) Learning by demonstration
+- **DemonstrationRecorder** - records user actions (mouse, keyboard, screen).
+- **DemonstrationAnalyzer** - behavioral analysis and pixel-to-semantic mapping.
+- **WorkflowStore** - editable procedure repository.
+- **GhostAgent integration** - execution of generated workflows.
 
-#### 5. **Learning by Demonstration** 🎓
-- **DemonstrationRecorder** - Recording user actions (mouse, keyboard, screenshots)
-- **DemonstrationAnalyzer** - Behavioral analysis and transformation pixels → semantics
-- **WorkflowStore** - Procedure repository with editing capability
-- **GhostAgent Integration** - Executing generated workflows
+#### 6) Orchestration and control
+- **Orchestrator** - core coordinator.
+- **IntentManager** - intent classification and path selection.
+- **TaskDispatcher** - routes tasks to agents.
+- **Workflow Control Plane** - visual workflow control.
 
-#### 6. **Orchestration & Control**
-- **Orchestrator** - Main system coordinator
-- **IntentManager** - Intent classification (5 types: CODE_GENERATION, RESEARCH, COMPLEX_PLANNING, KNOWLEDGE_SEARCH, GENERAL_CHAT)
-- **TaskDispatcher** - Task routing to appropriate agents
-- **Workflow Control Plane** - Visual composer for stack management and experimentation (Swimlanes, Connection Rules)
+#### 7) The Academy
+- **LessonStore** - repository of experience and corrections.
+- **Training Pipeline** - LoRA/QLoRA fine-tuning.
+- **Adapter Management** - model adapter hot-swapping.
+- **Genealogy** - model evolution and metric tracking.
 
-#### 7. **The Academy** 🎓
-- **LessonStore** - Database of experiences and corrections
-- **Training Pipeline** - LoRA/QLoRA fine-tuning on collected data
-- **Adapter Management** - Hot-swapping model adapters based on task type
-- **Genealogy** - Tracking model evolution and performance metrics
+#### 8) Runtime services
+- Backend API (FastAPI/uvicorn) and Next.js UI.
+- LLM servers: Ollama, vLLM.
+- LanceDB (embedded), Redis (optional).
+- Nexus and background tasks as optional processes.
 
-#### 7. **Runtime Services (operational)**
-- **Backend API** (FastAPI/uvicorn) and **Next.js UI** – basic processes.
-- **LLM Servers**: Ollama, vLLM – start/stop from services panel.
-- **LanceDB** – local vector memory (embedded); **Redis** – optional broker/locks (can be disabled).
-- **Nexus**, **Background Tasks** – optional spots for future processes (disabled by default, no start/stop actions; can be hidden/ignored if unused).
-
-**Note about vision/image:** perception currently uses local ONNX models (OCR/object recognition) and selected audio pipelines. Multimodal LLMs (Ollama/vLLM) are supported in theory, but are not wired as the vision runtime yet.
-
-### Data Flow
-
-```
-User Query
-    ↓
-IntentManager (intent classification)
-    ↓
-Orchestrator (flow decision)
-    ↓
-┌─────────────────────┬─────────────────────┬──────────────────────┐
-│  Simple code        │  Complex project    │  Search              │
-│  CODE_GENERATION    │  COMPLEX_PLANNING   │  RESEARCH            │
-├─────────────────────┼─────────────────────┼──────────────────────┤
-│    CoderAgent       │  ArchitectAgent     │   ResearcherAgent    │
-│         ↓           │         ↓           │        ↓             │
-│    CriticAgent      │  Plan creation      │   WebSearchSkill     │
-│         ↓           │         ↓           │        ↓             │
-│       Result        │  Plan execution     │   MemorySkill        │
-│                     │   (step by step)    │        ↓             │
-│                     │        ↓            │      Result          │
-│                     │      Result         │                      │
-└─────────────────────┴─────────────────────┴──────────────────────┘
-```
-
-## 🚀 Quick Start
-
-> 🔎 **New web-next dashboard**
-> Detailed description of data sources for Brain/Strategy views and test checklist can be found in `docs/FRONTEND_NEXT_GUIDE.md`. The document also defines entry criteria for the next stage of UI work.
-> Chat session documentation, Direct/Normal/Complex modes and memory behavior: `docs/CHAT_SESSION.md`.
-> Skills standards and MCP import: `docs/DEV_GUIDE_SKILLS.md`.
-
-## 🖥️ Frontend (Next.js – `web-next`)
-
-The new presentation layer runs on Next.js 15 (App Router, React 19). The interface consists of two types of components:
-- **SCC (Server/Client Components)** – by default we create server components (without `"use client"` directive), and mark interactive fragments as client. Thanks to this, Brain/Strategy and Cockpit views can stream data without additional queries.
-- **Shared layout** (`components/layout/*`) – TopBar, Sidebar, bottom status bar and overlays share graphic tokens and translations (`useTranslation`).
-
-### Key Commands
-
+## Quick start
 ```bash
-# install dependencies
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+pip install -r requirements.txt
+cp .env.example .env
+make start
+```
+
+After startup:
+- API: `http://localhost:8000`
+- UI: `http://localhost:3000`
+
+### Most common commands
+```bash
+make start       # backend + frontend (dev)
+make stop        # stop services
+make status      # process status
+make start-prod  # production mode
+```
+
+## Frontend (Next.js - `web-next`)
+The presentation layer runs on Next.js 15 (App Router, React 19).
+- **SCC (server/client components)** - server components by default, interactive parts as client components.
+- **Shared layout** (`components/layout/*`) - TopBar, Sidebar, status bar, overlays.
+
+### Frontend commands
+```bash
 npm --prefix web-next install
-
-# development environment (http://localhost:3000)
 npm --prefix web-next run dev
-
-# production build (generates meta versions + standalone)
 npm --prefix web-next run build
-
-# short E2E tests (Playwright, prod mode)
 npm --prefix web-next run test:e2e
-
-# validate translation consistency
 npm --prefix web-next run lint:locales
 ```
 
-The `predev/prebuild` script runs `scripts/generate-meta.mjs`, which saves `public/meta.json` (version + commit hash). All HTTP hooks use `lib/api-client.ts`; in local mode you can point to backend via variables:
-
-```
+### Local API variables
+```bash
 NEXT_PUBLIC_API_BASE=http://localhost:8000
 NEXT_PUBLIC_WS_BASE=ws://localhost:8000/ws/events
 API_PROXY_TARGET=http://localhost:8000
 ```
 
-> Details (directory architecture, SCC guidelines, view data sources) are described in `docs/FRONTEND_NEXT_GUIDE.md`.
-
-Note: Cockpit now has two views — `/` (production layout with selected boxes) and `/chat` (reference, full copy of previous layout).
-
-#### Slash Commands in Cockpit
+### Slash commands in Cockpit
 - Force tool: `/<tool>` (e.g. `/git`, `/web`).
-- Force providers: `/gpt` (OpenAI) and `/gem` (Gemini).
-- After detecting prefix, query content is cleaned of directive, and UI shows "Forced" label.
-- UI language setting (PL/EN/DE) is passed as `preferred_language` in `/api/v1/tasks`.
-- Context summary strategy (`SUMMARY_STRATEGY` in `.env`): `llm_with_fallback` (default, active model) or `heuristic_only`.
+- Force provider: `/gpt` (OpenAI) and `/gem` (Gemini).
+- UI shows a `Forced` label when a prefix is detected.
+- UI language is sent as `preferred_language` in `/api/v1/tasks`.
+- Summary strategy (`SUMMARY_STRATEGY`): `llm_with_fallback` or `heuristic_only`.
 
-### Installation
-
-```bash
-# Clone repository
-git clone https://github.com/mpieniak01/Venom.git
-cd Venom
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configuration (copy .env.example to .env and fill in)
-cp .env.example .env
-```
-
-### Required Dependencies
-
-```
+## Installation and dependencies
+### Requirements
+```text
 Python 3.10+ (recommended 3.11)
 ```
 
-### Key Packages:
-- `semantic-kernel>=1.9.0` - Agent orchestration
-- `ddgs>=1.0` - Search engine (successor to duckduckgo-search)
-- `trafilatura` - Text extraction from web pages
-- `beautifulsoup4` - HTML parsing
-- `lancedb` - Vector database for memory
-- `fastapi` - API server
-- `zeroconf` - mDNS service discovery for local network
-- `pynput` - User action recording (THE_APPRENTICE)
-- `google-genai` - Google Gemini (optional, preferred SDK)
-- `openai` / `anthropic` - LLM models (optional)
+### Key packages
+- `semantic-kernel>=1.9.0` - agent orchestration.
+- `ddgs>=1.0` - web search.
+- `trafilatura` - web text extraction.
+- `beautifulsoup4` - HTML parsing.
+- `lancedb` - vector memory database.
+- `fastapi` - API server.
+- `zeroconf` - mDNS service discovery.
+- `pynput` - user action recording.
+- `google-genai` - Gemini (optional).
+- `openai` / `anthropic` - LLM providers (optional).
 
-Full list in [requirements.txt](requirements.txt)
+Full list: [requirements.txt](requirements.txt)
 
-### Configuration
+## Running (FastAPI + Next.js)
+Full checklist: [`docs/DEPLOYMENT_NEXT.md`](docs/DEPLOYMENT_NEXT.md).
 
-Create `.env` file based on `.env.example`:
-
+### Development mode
 ```bash
-cp .env.example .env
-```
-
-## ⚙️ Running (FastAPI + Next.js)
-
-Full list of steps and deployment checklist can be found in [`docs/DEPLOYMENT_NEXT.md`](docs/DEPLOYMENT_NEXT.md). Quick summary below:
-
-### Development Mode
-```bash
-# backend (uvicorn --reload) + web-next (next dev, turbopack off)
-make start        # alias make start-dev
-
-# stop processes and clean ports 8000/3000
+make start
 make stop
-
-# PID status
 make status
 ```
 
-### Production Mode
+### Production mode
 ```bash
-make start-prod   # build next + uvicorn without reload
+make start-prod
 make stop
 ```
 
-- backend runs on `http://localhost:8000` (REST/SSE/WS),
-- Next.js serves UI on `http://localhost:3000`.
+### Lowest-memory configurations
+| Configuration | Commands | Estimated RAM | Use case |
+|--------------|----------|---------------|----------|
+| Minimal | `make api` | ~50 MB | API tests / backend-only |
+| Light with local LLM | `make api` + `make ollama-start` | ~450 MB | API + local model, no UI |
+| Light with UI | `make api` + `make web` | ~550 MB | Demo and quick UI validation |
+| Balanced | `make api` + `make web` + `make ollama-start` | ~950 MB | Day-to-day work without dev autoreload |
+| Heaviest (dev) | `make api-dev` + `make web-dev` + `make vllm-start` | ~2.8 GB | Full development and local model testing |
 
-### 🔧 Launch Profiles (light mode)
+## Key environment variables
+Full list: [.env.example](.env.example)
 
-Venom offers flexible modes for running components separately - ideal for development environments with limited resources (PC, laptop).
+## Configuration panel (UI)
+The panel at `http://localhost:3000/config` supports:
+- service status monitoring (backend, UI, LLM, Hive, Nexus),
+- start/stop/restart from UI,
+- realtime metrics (PID, port, CPU, RAM, uptime),
+- quick profiles: `Full Stack`, `Light`, `LLM OFF`.
 
-#### Running Components Separately
+### Parameter editing
+- type/range validation,
+- secret masking,
+- `.env` backup to `config/env-history/`,
+- restart hints after changes.
 
-| Command | Description | Resource Usage | When to Use |
-|---------|-------------|----------------|-------------|
-| `make api` | Backend (production, **without** auto-reload) | ~50 MB RAM, ~5% CPU | Working on frontend or not editing backend code |
-| `make api-dev` | Backend (development, **with** auto-reload) | ~110 MB RAM, ~70% CPU (spikes) | Active work on backend code |
-| `make api-stop` | Stop backend only | - | Frees port 8000 and backend memory |
-| `make web` | Frontend (production build + start) | ~500 MB RAM, ~3% CPU | Demo or not editing UI |
-| `make web-dev` | Frontend (dev server with auto-reload) | ~1.3 GB RAM, ~7% CPU | Active UI work |
-| `make web-stop` | Stop frontend only | - | Frees port 3000 and frontend memory |
-| `make vllm-start` | Start vLLM (local LLM model) | ~1.4 GB RAM, 13% RAM | Only when working with local models |
-| `make vllm-stop` | Stop vLLM | - | Frees ~1.4 GB RAM |
-| `make ollama-start` | Start Ollama | ~400 MB RAM | Alternative to vLLM |
-| `make ollama-stop` | Stop Ollama | - | Frees Ollama memory |
+### Panel security
+- editable parameter whitelist,
+- service dependency validation,
+- timestamped change history.
 
-#### Example Usage Scenarios
-
-**Scenario 1: Working only on API (Light)**
+## Monitoring and environment hygiene
+### Resource monitoring
 ```bash
-make api          # Backend without auto-reload (~50 MB)
-# Don't run web or LLM - save ~2.7 GB RAM
-```
-
-**Scenario 2: Working on frontend**
-```bash
-make api          # Backend in background (stable, no reload)
-make web-dev      # Frontend with auto-reload for UI work
-# Don't run LLM if not needed
-```
-
-**Scenario 3: Full stack development**
-```bash
-make api-dev      # Backend with auto-reload
-make web-dev      # Frontend with auto-reload
-make vllm-start   # LLM only if working with local models
-```
-
-**Scenario 4: Demo / presentation**
-```bash
-make start-prod   # Everything in production mode (lower CPU usage)
-```
-
-**Scenario 5: API testing only**
-```bash
-make api          # Backend without UI
-curl http://localhost:8000/health
-```
-
-#### 💡 Optimization Tips
-
-- **VS Code Server**: If working in CLI, close remote VS Code:
-  ```bash
-  # From WSL/Linux
-  pkill -f vscode-server
-  # Or if using code tunnel
-  code tunnel exit
-  ```
-
-- **Autoreload**: `--reload` in uvicorn spawns an additional watcher process. Use `make api` instead of `make api-dev` when not editing backend code.
-
-- **Next.js dev**: `next dev` uses ~1.3 GB RAM due to auto-reload. Use `make web` (production) when only testing, not editing UI.
-
-- **LLM Environment**: vLLM/Ollama use 1-2 GB RAM. Run them **only** when working with local models. In `AI_MODE=CLOUD` mode they are not needed.
-
-> All data and tests are treated as local experiments – Venom runs on user's private machine and **we don't encrypt artifacts**. Instead, directories with results (`**/test-results/`, `perf-artifacts/`, Playwright/Locust reports) go to `.gitignore` to avoid accidentally committing sensitive data. Transparency takes priority over formal "shadow data".
-
-#### Key Environment Variables:
-
-**AI Configuration (hybrid engine):**
-```bash
-# AI Mode: LOCAL (local only), HYBRID (mix), CLOUD (mainly cloud)
-AI_MODE=LOCAL
-
-# Local LLM (Ollama/vLLM)
-LLM_SERVICE_TYPE=local
-LLM_LOCAL_ENDPOINT=http://localhost:11434/v1
-LLM_MODEL_NAME=llama3
-
-# Cloud providers (optional, required for HYBRID/CLOUD)
-GOOGLE_API_KEY=your_key_here
-OPENAI_API_KEY=your_key_here
-
-# Hybrid settings
-HYBRID_CLOUD_PROVIDER=google        # google or openai
-HYBRID_LOCAL_MODEL=llama3
-HYBRID_CLOUD_MODEL=gemini-1.5-pro
-SENSITIVE_DATA_LOCAL_ONLY=true     # Sensitive data ALWAYS local
-```
-
-**Network and Discovery (local first):**
-```bash
-# mDNS (Zeroconf) for local network - venom.local
-# NOTE: Cloudflare has been removed, we use local discovery
-```
-
-**The Hive (distributed processing):**
-```bash
-ENABLE_HIVE=false
-HIVE_URL=https://hive.example.com:8080
-HIVE_REGISTRATION_TOKEN=your_token
-REDIS_HOST=localhost
-```
-
-**The Nexus (distributed mesh):**
-```bash
-ENABLE_NEXUS=false
-NEXUS_SHARED_TOKEN=your_secret_token
-NEXUS_PORT=8765
-```
-
-**External Integrations:**
-```bash
-GITHUB_TOKEN=ghp_your_token         # Personal access token
-GITHUB_REPO_NAME=username/repo      # Repository name
-DISCORD_WEBHOOK_URL=https://...     # Optional
-ENABLE_ISSUE_POLLING=false          # Enable automatic issue polling
-```
-
-📖 **Full variable list:** [.env.example](.env.example)
-📖 **External integrations documentation:** [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md)
-📖 **Hybrid AI engine documentation:** [docs/HYBRID_AI_ENGINE.md](docs/HYBRID_AI_ENGINE.md)
-
-### Configuration Panel (UI)
-
-Venom 2.0 introduces a **graphical configuration panel** available in the web interface at `http://localhost:3000/config`. The panel allows:
-
-#### Service Management
-- **Status monitoring** - Backend, UI, LLM (Ollama/vLLM), Hive, Nexus, background tasks
-- **Process control** - Start/stop/restart from UI without using terminal
-- **Real-time metrics** - PID, port, CPU%, RAM, uptime, recent logs
-- **Quick profiles**:
-  - `Full Stack` - All services active
-  - `Light` - Only Backend and UI (resource saving)
-  - `LLM OFF` - Everything except language models
-
-#### Parameter Editing
-The panel allows editing key runtime parameters from UI, with automatic:
-- **Range validation** - Ports (1-65535), confidence thresholds (0.0-1.0), boolean values
-- **Secret masking** - API keys, tokens, passwords are hidden by default
-- **Configuration backup** - Automatic `.env` backup to `config/env-history/` before each change
-- **Restart information** - System indicates which services require restart after change
-
-#### Available Parameter Sections:
-1. **AI Mode** - AI mode, LLM endpoint, API keys, model routing
-2. **Commands** - Start/stop commands for Ollama and vLLM
-3. **Hive** - Redis configuration, queues, timeouts
-4. **Nexus** - Distributed mesh, port, tokens, heartbeat
-5. **Tasks** - Background tasks (documentation, cleanup, memory consolidation)
-6. **Shadow** - Desktop awareness, confidence thresholds, privacy filter
-7. **Ghost** - GUI automation, verification, safety delays
-8. **Avatar** - Audio interface, Whisper, TTS, VAD
-
-#### Security
-- **Parameter whitelist** - Only defined parameters can be edited via UI
-- **Type and range validation** - Checking value correctness before saving
-- **Dependency checking** - System won't allow starting a service without meeting requirements (e.g. Nexus requires running backend)
-- **Change history** - Each `.env` modification is saved with timestamp (last 50 backups kept)
-
-#### Configuration Restore
-Panel offers function to restore `.env` from earlier backups:
-```bash
-# Backups are located in:
-config/env-history/.env-YYYYMMDD-HHMMSS
-```
-
-> 💡 **Tip**: Quick profiles are ideal for switching between work modes. Use `Light` during development on laptop, and `Full Stack` on workstation with GPU.
-
-### 📊 Resource Monitoring
-
-Venom offers tools for quick diagnostics of system resource usage.
-
-### 🧹 Dev Environment Hygiene (Repo + Docker)
-
-Use these commands to audit and safely clean rebuildable artifacts in local dev environment:
-
-```bash
-# 1) Generate dependency/artifact audit (JSON + Markdown)
-make env-audit
-
-# 2) Safe cleanup (repo artifacts only)
-make env-clean-safe
-
-# 3) Safe Docker cleanup (dangling/build cache)
-make env-clean-docker-safe
-
-# 4) Deep cleanup (explicit opt-in)
-CONFIRM_DEEP_CLEAN=1 make env-clean-deep
-
-# 5) Compare latest two audit reports
-make env-report-diff
-```
-
-Safety defaults:
-- protected (not removed by default): `models/`, `data/*`, `.venv/`
-- safe mode removes only rebuildable caches/build artifacts
-- deep mode requires `CONFIRM_DEEP_CLEAN=1`
-
-Dependency policy:
-- Python: critical shared pins must stay aligned between `requirements.txt` and `requirements-ci-lite.txt`
-- Node: `web-next/package-lock.json` root deps/devDeps must match `web-next/package.json`
-- Lightweight policy validation runs in `make audit-ci-lite`
-
-#### System Snapshot
-```bash
-# Generate diagnostic report (processes, memory, CPU, service status)
 make monitor
-
-# Manual run
 bash scripts/diagnostics/system_snapshot.sh
 ```
 
-The report will be saved to `logs/diag-YYYYMMDD-HHMMSS.txt` and contains:
-- Uptime and load average
-- Memory usage (free -h, /proc/meminfo)
-- Top 15 processes (CPU and RAM)
-- Venom process status (uvicorn, Next.js, vLLM, Ollama)
-- PID files status and open ports (8000, 3000, 8001, 11434)
+Report (`logs/diag-YYYYMMDD-HHMMSS.txt`) includes:
+- uptime and load average,
+- memory usage,
+- top CPU/RAM processes,
+- Venom process status,
+- open ports (8000, 3000, 8001, 11434).
 
-**Example usage:**
+### Dev environment hygiene (repo + Docker)
 ```bash
-# Before starting work - check baseline
-make monitor
-
-# After starting services - compare usage
-make api-dev
-make web-dev
-make monitor
-
-# After finishing - make sure everything stopped
-make stop
-make monitor
+make env-audit
+make env-clean-safe
+make env-clean-docker-safe
+CONFIRM_DEEP_CLEAN=1 make env-clean-deep
+make env-report-diff
 ```
 
-### 💾 WSL Memory Management (Windows)
-
-If you run Venom in WSL (Windows Subsystem for Linux), you may encounter issues with `vmmem` - a Windows process that reserves a lot of RAM despite small Linux-side usage.
-
-#### Checking Memory Usage
-```bash
-# Show detailed WSL memory statistics
-bash scripts/wsl/memory_check.sh
-```
-
-The script will display:
-- Memory summary (free -h)
-- Detailed info from /proc/meminfo
-- Top 10 RAM-consuming processes
-- Memory usage by individual Venom components
-
-#### Problem: vmmem occupies 20+ GB on Windows
-
-**Symptom:** Task Manager in Windows shows `vmmem` process occupying 20-30 GB RAM, even though `free -h` in WSL shows only 3-4 GB.
-
-**Cause:** WSL doesn't return memory to Windows immediately. Cache and buffers are kept "just in case".
-
-**Solution:**
-
-1. **Immediate:** WSL memory reset
-   ```bash
-   # From WSL (stops all Venom processes and executes shutdown)
-   bash scripts/wsl/reset_memory.sh
-
-   # OR from Windows (PowerShell/CMD)
-   wsl --shutdown
-   ```
-
-2. **Permanent:** Limit usage via `.wslconfig`
-
-   Create file `%USERPROFILE%\.wslconfig` (e.g. `C:\Users\YourName\.wslconfig`):
-   ```ini
-   [wsl2]
-   # Memory limit for WSL
-   memory=12GB
-
-   # Number of processors
-   processors=4
-
-   # Swap limit
-   swap=8GB
-   ```
-
-   Available example with comments:
-   ```bash
-   # See full configuration with examples
-   cat scripts/wsl/wslconfig.example
-
-   # Copy to Windows (from WSL)
-   cp scripts/wsl/wslconfig.example /mnt/c/Users/YourName/.wslconfig
-   ```
-
-   After saving `.wslconfig` execute:
-   ```powershell
-   # From Windows (PowerShell/CMD)
-   wsl --shutdown
-   ```
-
-   Then restart WSL terminal.
-
-#### Example .wslconfig Configurations
-
-**PC with 16 GB RAM (economical):**
-```ini
-[wsl2]
-memory=8GB
-processors=4
-swap=4GB
-```
-
-**PC with 32 GB RAM (balanced):**
-```ini
-[wsl2]
-memory=12GB
-processors=6
-swap=8GB
-```
-
-**Workstation with 64 GB RAM (performance):**
-```ini
-[wsl2]
-memory=32GB
-processors=12
-swap=16GB
-```
-
-#### Monitoring vmmem in Windows
-
-1. Open Task Manager (Ctrl+Shift+Esc)
-2. "Details" or "Processes" tab
-3. Find "vmmem" process - this is memory used by WSL
-4. Compare with `free -h` results in WSL
-
-If difference is significant (>50%), consider:
-- Running `wsl --shutdown` to free cache
-- Setting limits in `.wslconfig`
-- Using Light profiles (`make api` instead of `make start-dev`)
-
-### Running
-
-```bash
-# Start server
-uvicorn venom_core.main:app --reload
-
-# Or use make
-make run
-```
-
-## 📖 Documentation
-
-### Architecture and Vision
-- [System Architecture](docs/VENOM_MASTER_VISION_V1.md) - full system vision, layers, and long-term architecture direction.
-- [Backend Architecture](docs/BACKEND_ARCHITECTURE.md) - backend module layout, core flows, and service boundaries.
-- [Distributed Architecture (The Hive / Nexus)](docs/THE_HIVE.md) - distributed execution model, node roles, and mesh assumptions.
-- [Intent Recognition System](docs/INTENT_RECOGNITION.md) - intent taxonomy, routing logic, and confidence handling.
-- [Hybrid AI Engine](docs/HYBRID_AI_ENGINE.md) - LOCAL/HYBRID/CLOUD modes, provider selection, and safety rules.
-
-### Agents
-- [**System Agents Catalog** (34 agents)](docs/SYSTEM_AGENTS_CATALOG.md) 📋 - responsibilities, inputs/outputs, and interactions for runtime agents.
-- [**Coding Agents Guidelines**](docs/AGENTS.md) 🧭 - coding workflow rules, gates, and collaboration constraints for code agents.
-- [The Architect - Planning](docs/THE_ARCHITECT.md) - planning responsibilities and decomposition strategy.
-- [The Coder - Code Generation](docs/THE_CODER.md) - implementation agent behavior and coding expectations.
-- [The Researcher - Knowledge Search](docs/THE_RESEARCHER.md) - research flow, source usage, and synthesis patterns.
-- [The Chat - Conversational Assistant](docs/THE_CHAT.md) - conversation role, context use, and response style.
-- [The Strategist - Complexity Analysis](docs/THE_STRATEGIST.md) - complexity assessment and when strategic planning is triggered.
-- [The Critic - Code Verification](docs/THE_CRITIC.md) - review/check criteria and quality control responsibilities.
-- [The Librarian - File Management](docs/THE_LIBRARIAN.md) - file operations policy and repository organization behavior.
-- [The Integrator - Git & DevOps](docs/THE_INTEGRATOR.md) - git workflow and delivery/release automation responsibilities.
-- [The Forge (Toolmaker) - Tool Creation](docs/THE_FORGE.md) - how new tools/skills are designed and integrated.
-
-### Frontend and UI
-- [Frontend Next.js](docs/FRONTEND_NEXT_GUIDE.md) - app structure, SCC/client split, and frontend development standards.
-- [Configuration Panel](docs/CONFIG_PANEL.md) - config UI behavior, editable parameters, and safety/validation rules.
-- [Dashboard](docs/DASHBOARD_GUIDE.md) - cockpit/dashboard layout, widgets, and expected UX behavior.
-
-### Tools and Features
-- [Model Management](docs/MODEL_MANAGEMENT.md) - model registry, runtime availability, and model operations.
-- [LLM Model Tuning](docs/MODEL_TUNING_GUIDE.md) - fine-tuning workflow, prerequisites, and operational notes.
-- [The Academy](docs/THE_ACADEMY.md) - dedicated module reference for dataset curation, training pipeline, API, and UI.
-- [Flow Inspector](docs/FLOW_INSPECTOR_GUIDE.md) - flow debugging, state inspection, and troubleshooting path.
-- [Dream Engine](docs/DREAM_ENGINE_GUIDE.md) - concept, operating mode, and planned capability scope.
-- [Memory Layer](docs/MEMORY_LAYER_GUIDE.md) - memory architecture, storage layers, and retrieval behavior.
-
-### DevOps and Deployment
-- [Deployment (Next.js)](docs/DEPLOYMENT_NEXT.md) - production/development deployment paths and runtime setup.
-- [External Integrations](docs/EXTERNAL_INTEGRATIONS.md) - GitHub/Slack/other integrations and required configuration.
-- [Guardian - Security](docs/GUARDIAN_GUIDE.md) - security controls, guardrails, and hardening configuration.
-- [QA Delivery](docs/QA_DELIVERY_GUIDE.md) - release quality process, gates, and verification checklist.
-- [Docker Minimal Packaging (sanity + publish)](docs/DEPLOYMENT_NEXT.md) - minimal docker workflow and publish sanity path.
-- [Docker Package Release Guide](docs/DOCKER_RELEASE_GUIDE.md) - image/tag release procedure and rollback basics.
-- [Windows WSL Install on D: (Docker Release)](docs/WINDOWS_WSL_D_DRIVE_INSTALL.md) - WSL-on-D setup for docker-based deployment.
-
-### Collaboration
-- [Contribution Guide](docs/CONTRIBUTING.md) - contribution process, coding standards, and review expectations.
-- [Testing Policy](docs/TESTING_POLICY.md) - test taxonomy, required commands, and CI expectations.
-- [Testing and Performance](docs/TESTING_CHAT_LATENCY.md) - latency/performance testing scenarios and interpretation.
-
-## 🧪 Tests
-
-Testing policy and commands are centralized in:
-
-- [`docs/TESTING_POLICY.md`](docs/TESTING_POLICY.md)
-- [`docs/TESTING_CHAT_LATENCY.md`](docs/TESTING_CHAT_LATENCY.md) (performance/latency details)
-
-Quick local pre-PR path:
-
-```bash
-make pr-fast
-```
-
-Manual equivalent (if needed):
-
-```bash
-source .venv/bin/activate || true
-pre-commit run --all-files
-mypy venom_core
-make check-new-code-coverage
-```
-
-## 📦 Docker Package (End User)
-
-If you want to run Venom from published images (without local build), use release compose:
-
+## Docker package (end users)
+Run with prebuilt images:
 ```bash
 git clone https://github.com/mpieniak01/Venom.git
 cd Venom
-
-# optional overrides:
-# export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:v1.4.0
-# export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:v1.4.0
-# export OLLAMA_MODEL=gemma3:1b
-
 scripts/docker/run-release.sh start
 ```
 
-Compose profiles in this repository:
-- `compose/compose.release.yml` - end-user profile (pulls prebuilt backend/frontend from GHCR).
-- `compose/compose.minimal.yml` - developer profile (local build of backend/frontend).
-- `compose/compose.spores.yml.tmp` - temporary Spore nodes draft; currently unused and intentionally not an active compose profile.
+Compose profiles:
+- `compose/compose.release.yml` - end-user profile (pull prebuilt images).
+- `compose/compose.minimal.yml` - developer profile (local build).
+- `compose/compose.spores.yml.tmp` - Spore draft, currently inactive.
 
 Useful commands:
-
 ```bash
 scripts/docker/run-release.sh status
 scripts/docker/run-release.sh restart
@@ -752,146 +314,70 @@ scripts/docker/logs.sh
 ```
 
 Optional GPU mode:
-
 ```bash
-export VENOM_ENABLE_GPU=auto   # default; falls back to CPU if runtime is missing
+export VENOM_ENABLE_GPU=auto
 scripts/docker/run-release.sh restart
 ```
 
-## 🛠️ Development Tools
-
-### Quality and Security Gates
-
-- **SonarCloud (PR gate):** every pull request is analyzed for bugs, vulnerabilities, code smells, duplications and maintainability issues.
-- **Snyk (periodic scan):** dependency and container security scanning is executed periodically to catch newly disclosed CVEs.
-- **CI Lite:** fast checks on every PR (lint + selected unit tests) to keep feedback loop short.
-- **Docker package flow:** `docker-sanity` validates builds on PR; package publishing (`docker-publish`) runs only on `v*` tags or manual trigger.
-- **Docker Minimal network policy:** LAN testing from another machine is supported by default; run only in trusted/private networks.
-
-What this means for contributors and agents:
-- Keep functions small and readable (avoid high cognitive complexity).
-- Prefer explicit typing and pass `mypy venom_core`.
-- Avoid unused blocks/imports and dead code.
-- Treat warnings from `ruff`, `mypy`, and Sonar as release blockers for new code.
-
-### Pre-commit Hooks
+## Quality and security
+- CI: Quick Validate + OpenAPI Contract + SonarCloud.
+- Security: GitGuardian + periodic dependency scans.
+- `pre-commit run --all-files` runs: `block-docs-dev-staged`, `end-of-file-fixer`, `trailing-whitespace`, `check-added-large-files`, `check-yaml`, `debug-statements`, `ruff-check --fix`, `ruff-format`, `isort`.
+- Extra hooks outside this command: `block-docs-dev-tracked` (stage `pre-push`) and `update-sonar-new-code-group` (stage `manual`).
+- `pre-commit` can auto-fix files; rerun it until all hooks are `Passed`.
+- Treat `mypy venom_core` as a full typing audit; the repository may include historical typing backlog not related to your change.
+- Local PR sequence:
 
 ```bash
-# Installation
-pip install pre-commit
-pre-commit install
-
-# Manual run
-pre-commit run --all-files
-```
-
-### Linting and Formatting
-
-```bash
-cd /home/ubuntu/venom
 source .venv/bin/activate || true
-
-# Ruff (linter + formatter)
-ruff check . --fix
-ruff format .
-
-# isort (import sorting)
-isort .
-
-# mypy (type checking)
-mypy venom_core
+pre-commit run --all-files
+make pr-fast
+make check-new-code-coverage
 ```
 
-Tools use the repo configuration (`pyproject.toml`) and skip data directories
-such as `models/` and `models_cache/`.
-
-## 🎓 THE ACADEMY - Model Training & Fine-tuning (Optional)
-
-The README keeps Academy as a high-level optional capability. Detailed setup, architecture,
-API contracts, and operational workflows are maintained in dedicated docs:
-
-- [`docs/THE_ACADEMY.md`](docs/THE_ACADEMY.md) - complete Academy module documentation (architecture, components, training flow, API, UI).
-- [`docs/MODEL_TUNING_GUIDE.md`](docs/MODEL_TUNING_GUIDE.md) - practical model tuning runbook and operational guidance.
-- [`docs/DEPLOYMENT_NEXT.md`](docs/DEPLOYMENT_NEXT.md) - deployment/runtime prerequisites used by Academy (services, docker, env).
-
-## 📊 Project Statistics
-
-- **Lines of code:** 118,555 (non-empty lines; excluding `docs/`, `node_modules/`, `logs/`, `data/`)
-- **Number of agents:** 33 (modules `venom_core/agents/*`)
-- **Number of skills:** 19 executable (`venom_core/execution/skills/*`) + 4 helper (Memory/Voice/Whisper/Core)
-- **Number of tests:** 518 (pytest `def test_`) + 18 (Playwright `test(`)
-- **Test coverage:** 65%
-
-## 🎯 Roadmap
-
+## Roadmap
 ### ✅ v1.5 (current)
-- [x] All v1.4 features (Planning, Knowledge, Memory, Integrations)
-- [x] **The Academy** - Autonomous model fine-tuning with LoRA/QLoRA
-- [x] **Workflow Control Plane** - Visual stack composer
-- [x] **Provider Governance** - Cost and rate limits for LLMs
-- [x] **Academy Hardening** - Improved security and observability
+- [x] v1.4 features (planning, knowledge, memory, integrations).
+- [x] The Academy (LoRA/QLoRA).
+- [x] Workflow Control Plane.
+- [x] Provider Governance.
+- [x] Academy Hardening.
 
 ### 🚧 v1.6 (planned)
-- [ ] Background polling for GitHub Issues
-- [ ] Dashboard panel for external integrations
-- [ ] Recursive summarization of long documents
-- [ ] Search results cache
-- [ ] Plan validation and optimization
-- [ ] Better error recovery
+- [ ] Background polling for GitHub Issues.
+- [ ] Dashboard panel for external integrations.
+- [ ] Recursive long-document summarization.
+- [ ] Search result caching.
+- [ ] Plan validation and optimization.
+- [ ] Better error recovery.
 
 ### 🔮 v2.0 (future)
-- [ ] Webhook support for GitHub
-- [ ] MS Teams integration
-- [ ] Multi-source verification
-- [ ] Google Search API integration
-- [ ] Parallel plan step execution
-- [ ] Plan cache for similar tasks
-- [ ] GraphRAG integration
-
-## 🤝 Contributing
-
-Contributions are welcome! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) to learn how to get started.
-
-### Collaboration Process
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'feat: add new feature'`)
-4. Push branch (`git push origin feature/amazing-feature`)
-5. Open a PR
+- [ ] GitHub webhook handling.
+- [ ] MS Teams integration.
+- [ ] Multi-source verification.
+- [ ] Google Search API integration.
+- [ ] Parallel plan step execution.
+- [ ] Plan caching for similar tasks.
+- [ ] GraphRAG integration.
 
 ### Conventions
+- Code and comments: Polish or English.
+- Commit messages: Conventional Commits (`feat`, `fix`, `docs`, `test`, `refactor`).
+- Style: Black + Ruff + isort (via pre-commit).
+- Tests: required for new functionality.
+- Quality gates: SonarCloud must pass on PR.
 
-- **Code and comments:** English or Polish
-- **Commit messages:** Conventional Commits (feat, fix, docs, test, refactor)
-- **Style:** Black + Ruff + isort (automatic via pre-commit)
-- **Tests:** Required for new features
-- **Quality gates:** SonarCloud must pass on PR; security baseline is continuously monitored with periodic Snyk scans
+## Team
+- **Development lead:** mpieniak01.
+- **Architecture:** Venom Core Team.
+- **Contributors:** [Contributors list](https://github.com/mpieniak01/Venom/graphs/contributors).
 
-## 👥 Team
-
-- **Development Lead:** mpieniak01
-- **Architecture:** Venom Core Team
-- **Contributors:** [Contributors list](https://github.com/mpieniak01/Venom/graphs/contributors)
-
-## 🙏 Acknowledgments
-
-- Microsoft Semantic Kernel
-- Microsoft AutoGen
-- OpenAI / Anthropic / Google AI
-- pytest
-- Open Source Community
+## Thanks
+- Microsoft Semantic Kernel, Microsoft AutoGen, OpenAI / Anthropic / Google AI, pytest, open-source community.
 
 ---
+**Venom** - *Autonomous AI agent system for next-generation automation*
 
-**Venom** - *Autonomous AI agent system for next generation automation*
-
-🌟 If you like the project, leave a star on GitHub!
-
-## 📝 License
-
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
-
+## License
+This project is distributed under the MIT license. See [`LICENSE`](LICENSE).
 Copyright (c) 2025-2026 Maciej Pieniak
-
----

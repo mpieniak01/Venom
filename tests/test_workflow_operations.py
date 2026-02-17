@@ -1,7 +1,8 @@
 """Tests for workflow operations service and state machine."""
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from venom_core.api.model_schemas.workflow_control import (
     ReasonCode,
@@ -9,8 +10,8 @@ from venom_core.api.model_schemas.workflow_control import (
     WorkflowStatus,
 )
 from venom_core.services.workflow_operations import (
-    WorkflowStateMachine,
     WorkflowOperationService,
+    WorkflowStateMachine,
     get_workflow_operation_service,
 )
 
@@ -104,6 +105,7 @@ class TestWorkflowOperationService:
         response = service.pause_workflow(workflow_id, "test_user")
 
         from uuid import UUID
+
         assert response.workflow_id == UUID(workflow_id)
         assert response.operation == WorkflowOperation.PAUSE
         assert response.status == WorkflowStatus.PAUSED
@@ -208,9 +210,7 @@ class TestWorkflowOperationService:
         workflow["status"] = WorkflowStatus.FAILED.value
 
         # Retry from specific step
-        response = service.retry_workflow(
-            workflow_id, "test_user", step_id="step_123"
-        )
+        response = service.retry_workflow(workflow_id, "test_user", step_id="step_123")
 
         assert response.status == WorkflowStatus.RUNNING
         assert response.metadata.get("step_id") == "step_123"

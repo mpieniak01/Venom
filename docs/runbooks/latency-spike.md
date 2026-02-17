@@ -246,10 +246,10 @@ If latency remains high:
    ```bash
    # Metrics snapshot
    curl http://localhost:8000/api/v1/providers/{provider_name}/metrics > metrics.json
-   
+
    # Recent alerts
    curl http://localhost:8000/api/v1/alerts > alerts.json
-   
+
    # Audit log
    curl http://localhost:8000/api/v1/admin/audit?limit=50 > audit.json
    ```

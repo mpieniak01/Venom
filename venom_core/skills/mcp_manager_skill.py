@@ -2,7 +2,7 @@ import asyncio
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from semantic_kernel.functions import kernel_function
 
@@ -75,7 +75,7 @@ class McpManagerSkill(BaseSkill):
         self.generator = McpProxyGenerator()
 
     def _sanitize_env_for_mcp(
-        self, base_env: Optional[Dict[str, str]] = None
+        self, base_env: Optional[Mapping[str, str]] = None
     ) -> Dict[str, str]:
         """
         Sanityzuje zmienne środowiskowe do bezpiecznego przekazania do procesu MCP.

@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import List, Optional
+from typing import List, Optional, TypedDict
 
 from fastapi import APIRouter, FastAPI, Request
 
@@ -26,6 +26,14 @@ NODES_API_LABEL = "Nodes API"
 FRONTEND_NEXTJS_LABEL = "Frontend (Next.js)"
 MODEL_ROUTER_LABEL = "Model Router"
 OPENAI_API_LABEL = "OpenAI API"
+
+
+class _ApiDefinition(TypedDict):
+    target: str
+    prefix: str
+    desc: str
+    critical: bool
+
 
 # --- Helper Functions ---
 
@@ -63,7 +71,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
     # Use the explicit list of "Internal Services" (logical) defined by valid route prefixes.
     # Logical Components hosted within this FastAPI instance:
 
-    definitions = [
+    definitions: List[_ApiDefinition] = [
         {
             "target": "System Status API",
             "prefix": "/api/v1/system/status",

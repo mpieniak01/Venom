@@ -1,6 +1,6 @@
 /**
  * Model Domain Mapper v2
- * 
+ *
  * Maps models from various sources (catalog, installed, trainable) to a unified
  * domain model with source_type, model_role, and academy_trainable classifications.
  */

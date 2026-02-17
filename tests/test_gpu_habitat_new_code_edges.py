@@ -285,6 +285,7 @@ def test_validate_local_job_pid_rejects_mismatch_or_invalid(monkeypatch):
         is None
     )
     assert habitat._validate_local_job_pid({"pid": "bad"}) is None
+    assert habitat._validate_local_job_pid({"pid": None}) is None
 
 
 def test_signal_validated_local_job_sends_signal_only_when_pid_valid(monkeypatch):
@@ -471,6 +472,44 @@ def test_cleanup_job_local_pid_without_process_uses_validated_signal(monkeypatch
     habitat.cleanup_job("job-local")
     assert called and called[0][0] == "job-local"
     assert "job-local" not in habitat.training_containers
+
+
+def test_cleanup_local_job_uses_process_pid_fallback_when_job_pid_is_not_int():
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    captured = []
+    process = SimpleNamespace(pid=777)
+
+    def _fake_terminate(proc, pid):
+        captured.append((proc, pid))
+
+    habitat._terminate_local_process = _fake_terminate
+
+    habitat._cleanup_local_job("job-local", {"process": process, "pid": "bad"})
+
+    assert captured == [(process, 777)]
+
+
+def test_cleanup_local_job_skips_terminate_when_process_pid_missing(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    process = SimpleNamespace()
+    terminate_calls = []
+    warnings = []
+
+    monkeypatch.setattr(
+        habitat,
+        "_terminate_local_process",
+        lambda *_args, **_kwargs: terminate_calls.append("called"),
+    )
+    monkeypatch.setattr(
+        gpu_habitat_mod.logger,
+        "warning",
+        lambda msg, *args: warnings.append(msg % args if args else msg),
+    )
+
+    habitat._cleanup_local_job("job-local", {"process": process, "pid": "bad"})
+
+    assert terminate_calls == []
+    assert warnings
 
 
 def test_is_pid_owned_by_current_user_handles_guard_paths(monkeypatch):

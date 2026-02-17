@@ -390,12 +390,12 @@ export function RecommendedAndCatalog({
                                         {p.res.data.slice(0, 4).map((m: ModelCatalogEntry) => {
                                             const enriched = enrichCatalogModel(m, trainableModels);
                                             return (
-                                                <EnrichedCatalogCard 
-                                                    key={m.model_name} 
-                                                    model={enriched} 
-                                                    actionLabel={t("models.actions.install")} 
-                                                    pending={pendingActions[`install:${m.provider}:${m.model_name}`]} 
-                                                    onAction={() => handleInstall(m)} 
+                                                <EnrichedCatalogCard
+                                                    key={m.model_name}
+                                                    model={enriched}
+                                                    actionLabel={t("models.actions.install")}
+                                                    pending={pendingActions[`install:${m.provider}:${m.model_name}`]}
+                                                    onAction={() => handleInstall(m)}
                                                 />
                                             );
                                         })}
@@ -428,12 +428,12 @@ export function RecommendedAndCatalog({
                                         {p.res.data.slice(0, 6).map((m: ModelCatalogEntry) => {
                                             const enriched = enrichCatalogModel(m, trainableModels);
                                             return (
-                                                <EnrichedCatalogCard 
-                                                    key={m.model_name} 
-                                                    model={enriched} 
-                                                    actionLabel={t("models.actions.install")} 
-                                                    pending={pendingActions[`install:${m.provider}:${m.model_name}`]} 
-                                                    onAction={() => handleInstall(m)} 
+                                                <EnrichedCatalogCard
+                                                    key={m.model_name}
+                                                    model={enriched}
+                                                    actionLabel={t("models.actions.install")}
+                                                    pending={pendingActions[`install:${m.provider}:${m.model_name}`]}
+                                                    onAction={() => handleInstall(m)}
                                                 />
                                             );
                                         })}

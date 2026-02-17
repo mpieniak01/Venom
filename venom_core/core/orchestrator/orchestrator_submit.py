@@ -14,6 +14,7 @@ from venom_core.core.policy_gate import (
     PolicyEvaluationContext,
     policy_gate,
 )
+from venom_core.core.tracer import TraceStatus
 from venom_core.utils.helpers import get_utc_now, get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -113,7 +114,7 @@ async def _check_policy_before_provider(
         metrics_module.metrics_collector.increment_policy_blocked()
 
     if orch.request_tracer:
-        orch.request_tracer.update_status(task.id, "failed")
+        orch.request_tracer.update_status(task.id, TraceStatus.FAILED)
         orch.request_tracer.add_step(
             task.id,
             "PolicyGate",

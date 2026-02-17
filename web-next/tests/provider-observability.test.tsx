@@ -28,7 +28,7 @@ jest.mock("../lib/i18n", () => ({
       if (key.includes("severity.warning")) return "Warning";
       if (key.includes("severity.critical")) return "Critical";
       if (key.includes("types.HIGH_LATENCY")) return "High Latency";
-      
+
       // Handle parameterized messages
       if (params) {
         let result = key;
@@ -37,7 +37,7 @@ jest.mock("../lib/i18n", () => ({
         });
         return result;
       }
-      
+
       return key;
     },
   }),
@@ -77,7 +77,7 @@ describe("ProviderMetricsCard", () => {
     };
 
     render(<ProviderMetricsCard provider="openai" metrics={metrics} />);
-    
+
     expect(screen.getByText("1,000")).toBeInTheDocument(); // total requests
     expect(screen.getByText("95.0%")).toBeInTheDocument(); // success rate
     expect(screen.getByText("250ms")).toBeInTheDocument(); // p50
@@ -114,7 +114,7 @@ describe("ProviderMetricsCard", () => {
     };
 
     render(<ProviderMetricsCard provider="ollama" metrics={metrics} />);
-    
+
     const dashElements = screen.getAllByText("—");
     expect(dashElements).toHaveLength(3); // p50, p95, p99 all show —
   });
@@ -146,7 +146,7 @@ describe("ProviderMetricsCard", () => {
     };
 
     render(<ProviderMetricsCard provider="openai" metrics={metrics} />);
-    
+
     expect(screen.getByText("10")).toBeInTheDocument(); // total errors
     expect(screen.getByText("5")).toBeInTheDocument(); // timeouts
     expect(screen.getByText("3")).toBeInTheDocument(); // auth errors
@@ -178,7 +178,7 @@ describe("ProviderHealthCard", () => {
     };
 
     render(<ProviderHealthCard provider="openai" health={health} />);
-    
+
     expect(screen.getByText("Healthy")).toBeInTheDocument();
     expect(screen.getByText("100/100")).toBeInTheDocument();
     expect(screen.getByText("No SLO breaches")).toBeInTheDocument();
@@ -202,7 +202,7 @@ describe("ProviderHealthCard", () => {
     };
 
     render(<ProviderHealthCard provider="google" health={health} />);
-    
+
     expect(screen.getByText("Degraded")).toBeInTheDocument();
     expect(screen.getByText("75/100")).toBeInTheDocument();
     expect(screen.getByText("latency_p99_1500ms_above_1000ms")).toBeInTheDocument();
@@ -231,10 +231,10 @@ describe("ProviderHealthCard", () => {
     };
 
     render(<ProviderHealthCard provider="openai" health={health} />);
-    
+
     expect(screen.getByText("Critical")).toBeInTheDocument();
     expect(screen.getByText("20/100")).toBeInTheDocument();
-    
+
     // Check all breaches are displayed
     expect(screen.getByText(/availability.*90.*99/)).toBeInTheDocument();
     expect(screen.getByText(/latency.*3000.*1000/)).toBeInTheDocument();
@@ -260,7 +260,7 @@ describe("ProviderHealthCard", () => {
     };
 
     render(<ProviderHealthCard provider="openai" health={health} />);
-    
+
     expect(screen.getByText(/99\.80% \/ 99\.00%/)).toBeInTheDocument(); // availability
     expect(screen.getByText(/500ms \/ 1000ms/)).toBeInTheDocument(); // latency
     expect(screen.getByText(/0\.20% \/ 1\.00%/)).toBeInTheDocument(); // error rate
@@ -301,7 +301,7 @@ describe("AlertsList", () => {
     ];
 
     render(<AlertsList alerts={alerts} />);
-    
+
     expect(screen.getByText("Critical")).toBeInTheDocument();
     expect(screen.getByText("Warning")).toBeInTheDocument();
     expect(screen.getByText("High Latency")).toBeInTheDocument();
@@ -336,7 +336,7 @@ describe("AlertsList", () => {
     ];
 
     render(<AlertsList alerts={alerts} providerFilter="openai" />);
-    
+
     expect(screen.getByText("openai")).toBeInTheDocument();
     expect(screen.queryByText("google")).not.toBeInTheDocument();
   });
@@ -368,7 +368,7 @@ describe("AlertsList", () => {
     ];
 
     render(<AlertsList alerts={alerts} severityFilter="critical" />);
-    
+
     expect(screen.getByText("Critical")).toBeInTheDocument();
     expect(screen.queryByText("Warning")).not.toBeInTheDocument();
   });
@@ -390,7 +390,7 @@ describe("AlertsSummary", () => {
     };
 
     render(<AlertsSummary summary={summary} />);
-    
+
     expect(screen.getByText("10")).toBeInTheDocument(); // total
     expect(screen.getByText("3")).toBeInTheDocument(); // info
     expect(screen.getByText("5")).toBeInTheDocument(); // warning
@@ -413,7 +413,7 @@ describe("AlertsSummary", () => {
     };
 
     render(<AlertsSummary summary={summary} />);
-    
+
     const zeros = screen.getAllByText("0");
     expect(zeros.length).toBeGreaterThanOrEqual(4); // total + 3 severities
   });

@@ -120,7 +120,7 @@ curl -X POST http://localhost:8000/api/v1/providers/openai/activate \
    - Simple queries → Ollama (free)
    - Medium complexity → GPT-4o-mini (cheap)
    - Complex queries → GPT-4o (expensive)
-   
+
 2. Enable based on query complexity analysis
 
 **Option 3: Enable Caching**

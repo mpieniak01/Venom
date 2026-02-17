@@ -73,7 +73,7 @@ curl "http://localhost:8000/api/v1/admin/audit?action=test_connection&limit=10"
    ```bash
    # For OpenAI
    OPENAI_API_KEY=sk-your-key-here
-   
+
    # For Google
    GOOGLE_API_KEY=AIza-your-key-here
    ```
@@ -96,7 +96,7 @@ curl "http://localhost:8000/api/v1/admin/audit?action=test_connection&limit=10"
    - Click "Create new secret key"
    - Copy the key immediately (shown only once)
    - Update `.env` or UI config
-   
+
 2. **Google**: Visit https://makersuite.google.com/app/apikey
    - Create new API key
    - Copy the key

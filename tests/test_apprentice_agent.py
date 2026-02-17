@@ -281,22 +281,28 @@ class TestApprenticeAgent:
         # Mock chat service i odpowiedź
         mock_chat_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.__str__ = MagicMock(return_value="To jest odpowiedź LLM na zapytanie.")
-        
-        mock_chat_service.get_chat_message_content = AsyncMock(return_value=mock_response)
+        mock_response.__str__ = MagicMock(
+            return_value="To jest odpowiedź LLM na zapytanie."
+        )
+
+        mock_chat_service.get_chat_message_content = AsyncMock(
+            return_value=mock_response
+        )
         apprentice_agent.kernel.get_service = MagicMock(return_value=mock_chat_service)
-        
+
         # Mock hybrid router
         apprentice_agent.hybrid_router.get_routing_info_for_task = MagicMock(
             return_value={"provider": "openai", "model_name": "gpt-4"}
         )
-        
+
         # Mock recorder
         apprentice_agent.recorder.is_recording = False
-        apprentice_agent.recorder.list_sessions = MagicMock(return_value=["session1", "session2"])
-        
+        apprentice_agent.recorder.list_sessions = MagicMock(
+            return_value=["session1", "session2"]
+        )
+
         result = await apprentice_agent._llm_response_async("Jakie masz możliwości?")
-        
+
         # Sprawdź, że dostaliśmy odpowiedź LLM, nie placeholder
         assert "To jest odpowiedź LLM" in result
         assert mock_chat_service.get_chat_message_content.called
@@ -310,18 +316,18 @@ class TestApprenticeAgent:
             side_effect=Exception("LLM error")
         )
         apprentice_agent.kernel.get_service = MagicMock(return_value=mock_chat_service)
-        
+
         # Mock hybrid router
         apprentice_agent.hybrid_router.get_routing_info_for_task = MagicMock(
             return_value={"provider": "openai", "model_name": "gpt-4"}
         )
-        
+
         # Mock recorder
         apprentice_agent.recorder.is_recording = False
         apprentice_agent.recorder.list_sessions = MagicMock(return_value=[])
-        
+
         result = await apprentice_agent._llm_response_async("Test")
-        
+
         # Sprawdź, że dostaliśmy kontrolowany fallback, nie wyjątek
         assert "ApprenticeAgent" in result
         assert "czasowo niedostępny" in result or "trybu podstawowego" in result
@@ -333,24 +339,28 @@ class TestApprenticeAgent:
         # Mock chat service i odpowiedź
         mock_chat_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.__str__ = MagicMock(return_value="Odpowiedź z LLM na ogólne pytanie.")
-        
-        mock_chat_service.get_chat_message_content = AsyncMock(return_value=mock_response)
+        mock_response.__str__ = MagicMock(
+            return_value="Odpowiedź z LLM na ogólne pytanie."
+        )
+
+        mock_chat_service.get_chat_message_content = AsyncMock(
+            return_value=mock_response
+        )
         apprentice_agent.kernel.get_service = MagicMock(return_value=mock_chat_service)
-        
+
         # Mock hybrid router
         apprentice_agent.hybrid_router.get_routing_info_for_task = MagicMock(
             return_value={"provider": "openai", "model_name": "gpt-4"}
         )
-        
+
         # Mock recorder
         apprentice_agent.recorder.is_recording = False
         apprentice_agent.recorder.list_sessions = MagicMock(return_value=[])
-        
+
         # Wywołaj process() z żądaniem niespassującym do żadnego keywords
         # (nie: rozpocznij, stop, analizuj, generuj)
         result = await apprentice_agent.process("Co możesz dla mnie zrobić?")
-        
+
         # Sprawdź, że dostaliśmy odpowiedź LLM bez błędów runtime
         assert "Odpowiedź z LLM" in result
         assert mock_chat_service.get_chat_message_content.called

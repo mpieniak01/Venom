@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -686,7 +686,7 @@ async def test_provider_connection(
         status = await _check_provider_connection(provider_name)
 
         # Build enriched response with error mappings
-        response = {
+        response: dict[str, Any] = {
             "status": "success" if status.status == "connected" else "failure",
             "provider": provider_name,
             "connection_status": status.status,
@@ -696,14 +696,17 @@ async def test_provider_connection(
 
         # Add error mapping if not connected
         if status.reason_code:
-            response["error_info"] = {
-                "reason_code": status.reason_code,
-                "user_message_key": get_user_message_key(status.reason_code),
-                "admin_message_key": get_admin_message_key(status.reason_code),
-                "recovery_hint_key": get_recovery_hint_key(status.reason_code),
-                "runbook_path": get_runbook_path(status.reason_code),
-                "severity": get_severity(status.reason_code),
-            }
+            response["error_info"] = cast(
+                Any,
+                {
+                    "reason_code": status.reason_code,
+                    "user_message_key": get_user_message_key(status.reason_code),
+                    "admin_message_key": get_admin_message_key(status.reason_code),
+                    "recovery_hint_key": get_recovery_hint_key(status.reason_code),
+                    "runbook_path": get_runbook_path(status.reason_code),
+                    "severity": get_severity(status.reason_code),
+                },
+            )
 
         # Log to audit trail
         audit_trail.log_action(

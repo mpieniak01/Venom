@@ -109,7 +109,7 @@ async def _handle_policy_block_before_tool_execution(
         metrics_module.metrics_collector.increment_policy_blocked()
 
     if orch.request_tracer:
-        orch.request_tracer.update_status(task_id, "failed")
+        orch.request_tracer.update_status(task_id, TraceStatus.FAILED)
         orch.request_tracer.add_step(
             task_id,
             "PolicyGate",

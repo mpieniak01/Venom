@@ -3,7 +3,7 @@
 import threading
 from datetime import datetime
 from math import ceil, floor
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 from venom_core.utils.logger import get_logger
 
@@ -12,6 +12,18 @@ logger = get_logger(__name__)
 
 class MetricsCollector:
     """Zbiera metryki wydajności i użycia systemu."""
+
+    class ProviderMetricsBucket(TypedDict):
+        total_requests: int
+        successful_requests: int
+        failed_requests: int
+        latency_samples: List[float]
+        error_codes: Dict[str, int]
+        total_cost_usd: float
+        total_tokens: int
+        timeouts: int
+        auth_errors: int
+        budget_errors: int
 
     def __init__(self):
         """Inicjalizacja collectora metryk."""
@@ -47,9 +59,7 @@ class MetricsCollector:
         self._lock = threading.RLock()
 
         # Provider observability metrics
-        self.provider_metrics: Dict[
-            str, Dict[str, any]
-        ] = {}  # provider -> metrics dict
+        self.provider_metrics: Dict[str, MetricsCollector.ProviderMetricsBucket] = {}
 
     def increment_task_created(self):
         """Inkrementuje licznik utworzonych zadań."""
@@ -331,7 +341,7 @@ class MetricsCollector:
         value = lower_value + fraction * (upper_value - lower_value)
         return round(value, 2)
 
-    def get_provider_metrics(self, provider: str) -> Optional[Dict]:
+    def get_provider_metrics(self, provider: str) -> Optional[Dict[str, Any]]:
         """
         Zwraca metryki dla konkretnego providera.
 
@@ -378,7 +388,7 @@ class MetricsCollector:
                 },
             }
 
-    def get_all_provider_metrics(self) -> Dict[str, Dict]:
+    def get_all_provider_metrics(self) -> Dict[str, Dict[str, Any]]:
         """
         Zwraca metryki dla wszystkich providerów.
 
@@ -386,10 +396,12 @@ class MetricsCollector:
             Dict z metrykami per provider
         """
         with self._lock:
-            return {
-                provider: self.get_provider_metrics(provider)
-                for provider in self.provider_metrics.keys()
-            }
+            all_metrics: Dict[str, Dict[str, Any]] = {}
+            for provider in self.provider_metrics.keys():
+                provider_data = self.get_provider_metrics(provider)
+                if provider_data is not None:
+                    all_metrics[provider] = provider_data
+            return all_metrics
 
     def _calculate_success_rate(self) -> float:
         """

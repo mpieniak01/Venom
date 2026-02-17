@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from venom_core.utils.logger import get_logger
 
@@ -462,7 +462,7 @@ class ProviderObservability:
 
             return sorted(active, key=lambda a: a.timestamp, reverse=True)
 
-    def get_alert_summary(self) -> Dict:
+    def get_alert_summary(self) -> Dict[str, Any]:
         """
         Zwraca podsumowanie alertów.
 
@@ -472,14 +472,16 @@ class ProviderObservability:
         with self._lock:
             active = self.get_active_alerts()
 
-            summary = {
+            by_severity: Dict[str, int] = {
+                "info": 0,
+                "warning": 0,
+                "critical": 0,
+            }
+            by_provider: Dict[str, int] = {}
+            summary: Dict[str, Any] = {
                 "total_active": len(active),
-                "by_severity": {
-                    "info": 0,
-                    "warning": 0,
-                    "critical": 0,
-                },
-                "by_provider": {},
+                "by_severity": by_severity,
+                "by_provider": by_provider,
             }
 
             for alert in active:

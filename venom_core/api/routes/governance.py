@@ -1,6 +1,6 @@
 """Moduł: routes/governance - API endpointy dla Provider Governance."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -338,11 +338,11 @@ def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
 
         if scope is None:
             # Reset all
-            for limit in governance.cost_limits.values():
-                limit.current_usage_usd = 0.0
-            for limit in governance.rate_limits.values():
-                limit.current_requests = 0
-                limit.current_tokens = 0
+            for cost_limit in governance.cost_limits.values():
+                cost_limit.current_usage_usd = 0.0
+            for rate_limit in governance.rate_limits.values():
+                rate_limit.current_requests = 0
+                rate_limit.current_tokens = 0
 
             logger.info("Reset all usage counters")
             return {

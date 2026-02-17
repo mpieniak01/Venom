@@ -119,7 +119,13 @@ class MirrorWorld:
                 container = await asyncio.to_thread(
                     client.containers.get, container_name
                 )
-            except docker.errors.NotFound:
+            except Exception as e:
+                if not (
+                    docker is not None
+                    and hasattr(docker, "errors")
+                    and isinstance(e, docker.errors.NotFound)
+                ):
+                    raise
                 logger.info(f"Kontener {container_name} nie istnieje - już usunięty")
                 return True  # Uznajemy za sukces - kontener już nie istnieje
 
@@ -148,11 +154,15 @@ class MirrorWorld:
 
             return True
 
-        except docker.errors.NotFound:
-            # Kontener już nie istnieje (race condition)
-            logger.debug(f"Kontener {container_name} już nie istnieje")
-            return True
         except Exception as e:
+            if (
+                docker is not None
+                and hasattr(docker, "errors")
+                and isinstance(e, docker.errors.NotFound)
+            ):
+                # Kontener już nie istnieje (race condition)
+                logger.debug(f"Kontener {container_name} już nie istnieje")
+                return True
             logger.error(
                 f"❌ Błąd podczas zatrzymywania/usuwania kontenera {container_name}: {e}",
                 exc_info=True,

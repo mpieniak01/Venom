@@ -269,6 +269,33 @@ class TestMetricsCollector:
         assert all_metrics["google"]["total_requests"] == 1
         assert all_metrics["ollama"]["total_requests"] == 1
 
+    def test_get_all_provider_metrics_skips_none_entries(self):
+        """Test że get_all_provider_metrics pomija providera gdy helper zwraca None."""
+        collector = MetricsCollector()
+        collector.provider_metrics["openai"] = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "latency_samples": [],
+            "error_codes": {},
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "timeouts": 0,
+            "auth_errors": 0,
+            "budget_errors": 0,
+        }
+
+        original = collector.get_provider_metrics
+
+        def _fake_get_provider_metrics(provider):
+            if provider == "openai":
+                return None
+            return original(provider)
+
+        collector.get_provider_metrics = _fake_get_provider_metrics  # type: ignore[method-assign]
+
+        assert collector.get_all_provider_metrics() == {}
+
     def test_provider_metrics_thread_safety(self):
         """Test thread safety for provider metrics."""
         # Arrange

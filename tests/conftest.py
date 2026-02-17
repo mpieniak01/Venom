@@ -2,7 +2,6 @@ import json
 import os
 import shutil
 import subprocess
-import tempfile
 import warnings
 from datetime import datetime
 from pathlib import Path

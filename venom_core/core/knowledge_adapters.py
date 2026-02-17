@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, cast
 
 from venom_core.core.knowledge_contract import (
     KnowledgeKind,
@@ -68,6 +68,10 @@ def _build_retention(
     metadata: dict[str, Any],
     created_at: str | None,
 ) -> RetentionV1:
+    retention_scope: Literal["session", "global", "task"] = cast(
+        Literal["session", "global", "task"],
+        scope if scope in {"session", "global", "task"} else "global",
+    )
     ttl_days = resolve_ttl_days(kind, scope)
     expires_at = metadata.get("retention_expires_at") or compute_expires_at(
         created_at, ttl_days
@@ -76,7 +80,7 @@ def _build_retention(
         ttl_days=ttl_days if ttl_days > 0 else None,
         expires_at=_as_optional_str(expires_at),
         pinned=bool(metadata.get("pinned")),
-        scope=scope if scope in {"session", "global", "task"} else "global",
+        scope=retention_scope,
     )
 
 

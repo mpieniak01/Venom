@@ -6,7 +6,7 @@ który działa jako dodatkowa warstwa przed klasyfikacją LLM w IntentManager.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -45,7 +45,7 @@ class IntentEmbeddingRouter:
         )
         self.margin = margin if margin is not None else SETTINGS.INTENT_EMBED_MARGIN
 
-        self.model = None
+        self.model: Any = None
         self.intent_embeddings: Dict[str, np.ndarray] = {}
         self.intent_phrases: Dict[str, List[str]] = {}
         self._initialized = False
@@ -73,9 +73,7 @@ class IntentEmbeddingRouter:
 
         try:
             # Lazy import - nie chcemy blokować startu jeśli biblioteki nie ma
-            from sentence_transformers import (
-                SentenceTransformer,  # type: ignore[import-not-found]
-            )
+            from sentence_transformers import SentenceTransformer
 
             logger.info("Ładowanie modelu embeddingów: %s", self.model_name)
             self.model = SentenceTransformer(self.model_name)

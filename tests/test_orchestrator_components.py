@@ -30,6 +30,7 @@ from venom_core.core.orchestrator.task_pipeline.context_builder import (
     format_extra_context,
 )
 from venom_core.core.slash_commands import SlashCommandResult
+from venom_core.core.tracer import TraceStatus
 
 
 class DummyQueueManager:
@@ -612,3 +613,60 @@ async def test_spawn_background_task_logs_exception(monkeypatch):
 
     assert logged
     assert any("Task w tle zakończył się wyjątkiem" in call[0][0] for call in logged)
+
+
+@pytest.mark.asyncio
+async def test_check_policy_before_provider_updates_tracer_status_to_failed(
+    monkeypatch,
+):
+    task = SimpleNamespace(id=uuid4())
+    request = TaskRequest(content="blocked", session_id="s-1")
+
+    class DummyState:
+        async def update_status(self, *_args, **_kwargs):
+            return None
+
+        def add_log(self, *_args, **_kwargs):
+            return None
+
+        def update_context(self, *_args, **_kwargs):
+            return None
+
+    class DummyTracer:
+        def __init__(self):
+            self.status_calls = []
+
+        def update_status(self, request_id, status):
+            self.status_calls.append((request_id, status))
+
+        def add_step(self, *_args, **_kwargs):
+            return None
+
+    orch = SimpleNamespace(
+        state_manager=DummyState(),
+        request_tracer=DummyTracer(),
+        _append_session_history=lambda *_args, **_kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        orchestrator_submit_module,
+        "policy_gate",
+        SimpleNamespace(
+            enabled=True,
+            evaluate_before_provider_selection=lambda _ctx: SimpleNamespace(
+                decision=orchestrator_submit_module.PolicyDecision.BLOCK,
+                reason_code=None,
+                message="blocked by policy",
+            ),
+        ),
+    )
+
+    response = await orchestrator_submit_module._check_policy_before_provider(
+        orch=orch,
+        task=task,
+        request=request,
+        policy_context=SimpleNamespace(),
+    )
+
+    assert response is not None
+    assert orch.request_tracer.status_calls == [(task.id, TraceStatus.FAILED)]

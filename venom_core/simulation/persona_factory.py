@@ -5,7 +5,7 @@ import json
 import secrets
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Optional, TypedDict
+from typing import Any, Optional, TypedDict
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -261,7 +261,7 @@ Nie zmieniaj podanych faktów - tylko dodaj koloryt i tło.
 Odpowiedź: tylko opis, bez dodatkowych komentarzy."""
 
                 # Wywołaj LLM
-                chat_service = self.kernel.get_service()
+                chat_service: Any = self.kernel.get_service()
                 chat_history = ChatHistory()
                 chat_history.add_message(
                     ChatMessageContent(role=AuthorRole.USER, content=prompt)

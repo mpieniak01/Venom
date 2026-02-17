@@ -258,7 +258,7 @@ async def search_models(
             provider=provider_enum, query=query, limit=limit * page
         )
         models = result.get("models", [])
-        
+
         # Apply pagination in memory
         # Note: This fetches (limit * page) models to implement pagination
         # A future optimization would be to add native pagination support to model_registry

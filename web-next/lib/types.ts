@@ -276,17 +276,17 @@ export interface EnrichedModelInfo {
   size_gb?: number | null;
   provider: string;
   runtime?: string;
-  
+
   // Installation/activation state
   installed?: boolean;
   active?: boolean;
-  
+
   // Domain classifications (v2)
   source_type: ModelSourceType;
   model_role: ModelRole;
   academy_trainable: ModelTrainabilityStatus;
   trainability_reason?: string | null;
-  
+
   // Additional metadata
   tags?: string[];
   downloads?: number | null;

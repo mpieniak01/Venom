@@ -385,6 +385,7 @@ class ProviderGovernance:
                     provider=fallback_provider,
                     reason_code="FALLBACK_AUTH_ERROR",
                     user_message=f"Switched to {fallback_provider} due to missing credentials",
+                    technical_details=f"Preferred provider credentials missing: {target_provider}",
                     fallback_applied=True,
                 )
             else:
@@ -393,12 +394,15 @@ class ProviderGovernance:
                     provider=None,
                     reason_code="NO_PROVIDER_AVAILABLE",
                     user_message=f"No provider available: {target_provider} credentials missing and no fallback",
+                    technical_details=f"Credential status for {target_provider}: {cred_status.value}",
                 )
 
         return GovernanceDecision(
             allowed=True,
             provider=target_provider,
+            reason_code="PRIMARY_PROVIDER_SELECTED",
             user_message=f"Using provider: {target_provider}",
+            technical_details=None,
         )
 
     def _find_fallback_provider(

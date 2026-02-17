@@ -152,7 +152,7 @@ export const EnrichedCatalogCard = ({
                 </div>
                 <Badge tone="neutral">{model.runtime || "vllm"}</Badge>
             </div>
-            
+
             {/* Domain Badges v2 */}
             <div className="mt-3">
                 <DomainBadges

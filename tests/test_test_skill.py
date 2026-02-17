@@ -6,23 +6,12 @@ from pathlib import Path
 import pytest
 
 from venom_core.execution.skills.test_skill import TestSkill
-from venom_core.infrastructure.docker_habitat import DockerHabitat
 
 
 @pytest.fixture
 def test_skill():
-    """Fixture dla TestSkill (Docker jeśli dostępny, inaczej fallback lokalny)."""
-    try:
-        habitat = DockerHabitat()
-    except RuntimeError:
-        habitat = None
-
-    skill = TestSkill(habitat=habitat, allow_local_execution=True)
-    try:
-        yield skill
-    finally:
-        if habitat is not None:
-            habitat.cleanup()
+    """Fixture dla TestSkill wymuszający ścieżkę lokalną (stabilne testy jednostkowe)."""
+    yield TestSkill(habitat=None, allow_local_execution=True)
 
 
 @pytest.mark.asyncio

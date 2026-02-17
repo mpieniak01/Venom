@@ -908,6 +908,9 @@ class RuntimeController:
         services = [ServiceType.BACKEND, ServiceType.UI]
         if profile_name == "full":
             services.append(ServiceType.LLM_OLLAMA)
+        elif profile_name == "light":
+            services.append(ServiceType.LLM_OLLAMA)
+            self.stop_service(ServiceType.LLM_VLLM)
         else:
             self.stop_service(ServiceType.LLM_OLLAMA)
             self.stop_service(ServiceType.LLM_VLLM)

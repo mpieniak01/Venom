@@ -161,6 +161,25 @@ def test_aggregate_metrics_multiple():
     assert result["progress_percent"] == pytest.approx(100.0)
 
 
+def test_aggregate_metrics_without_loss_values():
+    """Test agregacji metryk bez loss - brak sekcji statystyk loss."""
+    parser = TrainingMetricsParser()
+
+    metrics_list = [
+        TrainingMetrics(epoch=2, total_epochs=5, learning_rate=0.001),
+        TrainingMetrics(epoch=3, total_epochs=5, progress_percent=60.0),
+    ]
+
+    result = parser.aggregate_metrics(metrics_list)
+
+    assert result["current_epoch"] == 3
+    assert result["total_epochs"] == 5
+    assert result["latest_loss"] is None
+    assert "min_loss" not in result
+    assert "avg_loss" not in result
+    assert "loss_history" not in result
+
+
 def test_parse_real_world_unsloth_log():
     """Test parsowania prawdziwego logu z Unsloth."""
     parser = TrainingMetricsParser()

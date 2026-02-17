@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"
 
     # Konfiguracja LLM (Local-First Brain)
+    VENOM_RUNTIME_PROFILE: str = "light"  # full|light|llm_off
     LLM_SERVICE_TYPE: str = "local"  # Opcje: "local", "openai", "azure", "google"
     LLM_LOCAL_ENDPOINT: str = _default_url("localhost", 11434, "/v1")  # Ollama/vLLM
     LLM_MODEL_NAME: str = "phi3:latest"

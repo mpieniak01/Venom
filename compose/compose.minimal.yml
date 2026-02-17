@@ -35,13 +35,15 @@ services:
       dockerfile: docker/backend.Dockerfile
     container_name: venom-backend-minimal
     environment:
+      VENOM_RUNTIME_PROFILE: ${VENOM_RUNTIME_PROFILE:-light}
       ENV: production
       URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
       AI_MODE: LOCAL
-      ACTIVE_LLM_SERVER: ollama
+      ACTIVE_LLM_SERVER: ${ACTIVE_LLM_SERVER:-ollama}
       LLM_SERVICE_TYPE: local
       LLM_LOCAL_ENDPOINT: ${LLM_HTTP_SCHEME:-http}://ollama:11434/v1
       LLM_MODEL_NAME: ${OLLAMA_MODEL:-gemma3:4b}
+      LLM_WARMUP_ON_STARTUP: ${LLM_WARMUP_ON_STARTUP:-true}
       VENOM_OLLAMA_PROFILE: ${VENOM_OLLAMA_PROFILE:-balanced-12-24gb}
       # Backend uses 0/empty as sentinel => resolve from VENOM_OLLAMA_PROFILE.
       # Container-level OLLAMA_* above tune the server defaults.
@@ -58,6 +60,7 @@ services:
         # Do not hard-block startup on healthcheck here.
         # Health is verified explicitly by installer/CI via HTTP checks.
         condition: service_started
+        required: false
     ports:
       - "8000:8000"
     volumes:

@@ -18,8 +18,7 @@ def temp_workspace():
         yield tmpdir
 
 
-@pytest.mark.asyncio
-async def test_full_stack_redis_integration(temp_workspace):
+def test_full_stack_redis_integration(temp_workspace):
     """
     Test integracyjny: Tworzenie pełnego stacka z Redis.
 
@@ -50,24 +49,23 @@ services:
     stack_name = "integration-redis-test"
 
     # 2. Wdróż stack
-    result = await compose_skill.create_environment(compose_content, stack_name)
+    result = compose_skill.create_environment(compose_content, stack_name)
     assert "✅" in result or "utworzone" in result.lower()
 
     # 3. Sprawdź status
-    status_result = await compose_skill.get_environment_status(stack_name)
+    status_result = compose_skill.get_environment_status(stack_name)
     assert stack_name in status_result
 
     # 4. Lista środowisk
-    list_result = await compose_skill.list_environments()
+    list_result = compose_skill.list_environments()
     assert stack_name in list_result or "Brak aktywnych" in list_result
 
     # 5. Posprzątaj
-    destroy_result = await compose_skill.destroy_environment(stack_name)
+    destroy_result = compose_skill.destroy_environment(stack_name)
     assert "✅" in destroy_result or "usunięte" in destroy_result.lower()
 
 
-@pytest.mark.asyncio
-async def test_full_stack_multi_service(temp_workspace):
+def test_full_stack_multi_service(temp_workspace):
     """
     Test integracyjny: Stack z wieloma serwisami.
 
@@ -96,17 +94,17 @@ services:
 
     try:
         # Wdróż stack
-        result = await compose_skill.create_environment(compose_content, stack_name)
+        result = compose_skill.create_environment(compose_content, stack_name)
         assert "✅" in result or "utworzone" in result.lower()
 
         # Sprawdź logi cache
-        health_result = await compose_skill.check_service_health(stack_name, "cache")
+        health_result = compose_skill.check_service_health(stack_name, "cache")
         # Może być sukces lub błąd w zależności od tego czy kontenery zdążyły wystartować
         assert "cache" in health_result or "błąd" in health_result.lower()
 
     finally:
         # Zawsze posprzątaj
-        await compose_skill.destroy_environment(stack_name)
+        compose_skill.destroy_environment(stack_name)
 
 
 def test_stack_manager_workflow(temp_workspace):
@@ -179,8 +177,7 @@ services:
     stack_manager.destroy_stack(stack2_name)
 
 
-@pytest.mark.asyncio
-async def test_port_conflict_handling(temp_workspace):
+def test_port_conflict_handling(temp_workspace):
     """
     Test obsługi konfliktów portów.
 
@@ -202,7 +199,7 @@ services:
     stack_name = "port-conflict-test"
 
     try:
-        result = await compose_skill.create_environment(compose_content, stack_name)
+        result = compose_skill.create_environment(compose_content, stack_name)
         # Upewnij się, że środowisko zostało utworzone poprawnie
         assert "✅" in result or "utworzone" in result.lower()
 
@@ -218,4 +215,4 @@ services:
         assert ":" in content
 
     finally:
-        await compose_skill.destroy_environment(stack_name)
+        compose_skill.destroy_environment(stack_name)

@@ -30,6 +30,12 @@ export function useRuntime() {
     const activeRuntime = installed.data?.active;
     const [selectedServer, setSelectedServer] = useState<string | null>(null);
     const [selectedModel, setSelectedModel] = useState<string | null>(null);
+    const allowedRuntimeProviders = useMemo(() => {
+        const providers = (llmServers.data ?? [])
+            .map((server) => normalizeProvider(server.provider ?? server.name))
+            .filter((provider) => provider === "ollama" || provider === "vllm");
+        return new Set(providers);
+    }, [llmServers.data]);
 
     const setPending = useCallback((key: string, value: boolean) => {
         setPendingActions((prev) => ({ ...prev, [key]: value }));
@@ -40,15 +46,20 @@ export function useRuntime() {
         const data = installed.data;
         if (!data) return { vllm: [], ollama: [] };
         const providers = data.providers ?? {};
-        const vllm = providers.vllm ?? [];
-        const ollama = providers.ollama ?? [];
+        const allowAll = allowedRuntimeProviders.size === 0;
+        const vllm = allowAll || allowedRuntimeProviders.has("vllm") ? (providers.vllm ?? []) : [];
+        const ollama = allowAll || allowedRuntimeProviders.has("ollama") ? (providers.ollama ?? []) : [];
         if (vllm.length || ollama.length) return { vllm, ollama };
         const fallback = Array.isArray(data.models) ? data.models : [];
         return {
-            vllm: fallback.filter((m) => normalizeProvider(m.provider) === "vllm"),
-            ollama: fallback.filter((m) => normalizeProvider(m.provider) === "ollama"),
+            vllm: (allowAll || allowedRuntimeProviders.has("vllm"))
+                ? fallback.filter((m) => normalizeProvider(m.provider) === "vllm")
+                : [],
+            ollama: (allowAll || allowedRuntimeProviders.has("ollama"))
+                ? fallback.filter((m) => normalizeProvider(m.provider) === "ollama")
+                : [],
         };
-    }, [installed.data]);
+    }, [installed.data, allowedRuntimeProviders]);
 
     const installedModels = useMemo(() => [...installedBuckets.vllm, ...installedBuckets.ollama], [installedBuckets]);
 
@@ -87,6 +98,18 @@ export function useRuntime() {
         const active = activeServer.data?.active_server;
         if (active) setSelectedServer(active);
     }, [activeServer.data?.active_server, selectedServer]);
+
+    useEffect(() => {
+        if (!selectedServer) return;
+        const exists = (llmServers.data ?? []).some((server) => server.name === selectedServer);
+        if (exists) return;
+        const active = activeServer.data?.active_server;
+        if (active && (llmServers.data ?? []).some((server) => server.name === active)) {
+            setSelectedServer(active);
+            return;
+        }
+        setSelectedServer((llmServers.data ?? [])[0]?.name ?? null);
+    }, [activeServer.data?.active_server, llmServers.data, selectedServer]);
 
     useEffect(() => {
         if (selectedModel) return;

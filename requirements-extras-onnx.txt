@@ -1,0 +1,15 @@
+# Venom optional extras: ONNX / voice-vision acceleration stack
+# Install only when ONNX-dependent features are needed.
+#
+# Example:
+#   pip install -r requirements-docker-minimal.txt -r requirements-extras-onnx.txt
+
+onnxruntime-gpu; platform_system != "Darwin"
+onnxruntime; platform_system == "Darwin"
+onnx>=1.14.0
+optimum
+accelerate
+
+# Audio/voice ONNX-adjacent extras
+faster-whisper
+piper-tts

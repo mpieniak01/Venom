@@ -906,16 +906,36 @@ class RuntimeController:
             return {"success": False, "message": f"Nieznany profil: {profile_name}"}
 
         services = [ServiceType.BACKEND, ServiceType.UI]
-        if profile_name == "full":
-            services.append(ServiceType.LLM_OLLAMA)
-        elif profile_name == "light":
-            services.append(ServiceType.LLM_OLLAMA)
-            self.stop_service(ServiceType.LLM_VLLM)
-        else:
-            self.stop_service(ServiceType.LLM_OLLAMA)
-            self.stop_service(ServiceType.LLM_VLLM)
-
         results = []
+
+        def _stop_and_record(service_type: ServiceType) -> None:
+            stop_result = self.stop_service(service_type)
+            results.append(
+                {
+                    "service": service_type.value,
+                    "success": stop_result["success"],
+                    "message": stop_result["message"],
+                }
+            )
+
+        if profile_name == "llm_off":
+            _stop_and_record(ServiceType.LLM_OLLAMA)
+            _stop_and_record(ServiceType.LLM_VLLM)
+        else:
+            active_llm = str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "")).strip().lower()
+            preferred_llm = (
+                ServiceType.LLM_VLLM
+                if profile_name == "full" and active_llm in {"vllm", "llm_vllm"}
+                else ServiceType.LLM_OLLAMA
+            )
+            services.append(preferred_llm)
+            opposite_llm = (
+                ServiceType.LLM_OLLAMA
+                if preferred_llm == ServiceType.LLM_VLLM
+                else ServiceType.LLM_VLLM
+            )
+            _stop_and_record(opposite_llm)
+
         for service_type in services:
             result = self.start_service(service_type)
             results.append(

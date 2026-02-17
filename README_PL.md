@@ -156,12 +156,20 @@ venom_core/
 
 
 ## Szybki start
+### Ścieżka A: instalacja ręczna z Git (dev)
 ```bash
 git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 pip install -r requirements.txt
 cp .env.example .env
 make start
+```
+
+### Ścieżka B: instalacja przez skrypt Docker (jedna komenda)
+```bash
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+scripts/docker/venom.sh
 ```
 
 Po uruchomieniu:
@@ -301,7 +309,7 @@ Uruchomienie z gotowych obrazów:
 ```bash
 git clone https://github.com/mpieniak01/Venom.git
 cd Venom
-scripts/docker/run-release.sh start
+scripts/docker/venom.sh
 ```
 
 Profile compose:
@@ -311,11 +319,20 @@ Profile compose:
 
 Przydatne komendy:
 ```bash
+scripts/docker/venom.sh
 scripts/docker/run-release.sh status
 scripts/docker/run-release.sh restart
 scripts/docker/run-release.sh stop
+scripts/docker/uninstall.sh --stack both --purge-volumes --purge-images
 scripts/docker/logs.sh
 ```
+
+Profil runtime (jedna paczka, wybierany tryb):
+```bash
+export VENOM_RUNTIME_PROFILE=light   # light|llm_off|full
+scripts/docker/run-release.sh start
+```
+`llm_off` oznacza brak lokalnego runtime LLM (Ollama/vLLM), ale backend i UI nadal mogą korzystać z zewnętrznych API LLM (np. OpenAI/Gemini) po konfiguracji kluczy.
 
 Opcjonalny tryb GPU:
 ```bash

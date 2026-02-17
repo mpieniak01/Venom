@@ -155,12 +155,20 @@ venom_core/
 - Nexus and background tasks as optional processes.
 
 ## Quick start
+### Path A: manual setup from Git (dev)
 ```bash
 git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 pip install -r requirements.txt
 cp .env.example .env
 make start
+```
+
+### Path B: Docker script setup (single command)
+```bash
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+scripts/docker/venom.sh
 ```
 
 After startup:
@@ -297,7 +305,7 @@ Run with prebuilt images:
 ```bash
 git clone https://github.com/mpieniak01/Venom.git
 cd Venom
-scripts/docker/run-release.sh start
+scripts/docker/venom.sh
 ```
 
 Compose profiles:
@@ -307,11 +315,20 @@ Compose profiles:
 
 Useful commands:
 ```bash
+scripts/docker/venom.sh
 scripts/docker/run-release.sh status
 scripts/docker/run-release.sh restart
 scripts/docker/run-release.sh stop
+scripts/docker/uninstall.sh --stack both --purge-volumes --purge-images
 scripts/docker/logs.sh
 ```
+
+Runtime profile (single package, selectable mode):
+```bash
+export VENOM_RUNTIME_PROFILE=light   # light|llm_off|full
+scripts/docker/run-release.sh start
+```
+`llm_off` means no local LLM runtime (Ollama/vLLM), but backend and UI can still use external LLM APIs (for example OpenAI/Gemini) after API key configuration.
 
 Optional GPU mode:
 ```bash

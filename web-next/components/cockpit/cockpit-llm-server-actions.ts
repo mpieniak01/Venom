@@ -182,6 +182,17 @@ export function useCockpitLlmServerActions({
   }, [activeServerInfo?.active_server, llmServers, selectedLlmServer, setSelectedLlmServer]);
 
   useEffect(() => {
+    if (!selectedLlmServer) return;
+    const exists = llmServers.some((server) => server.name === selectedLlmServer);
+    if (exists) return;
+    if (activeServerInfo?.active_server && llmServers.some((server) => server.name === activeServerInfo.active_server)) {
+      setSelectedLlmServer(activeServerInfo.active_server);
+      return;
+    }
+    setSelectedLlmServer(llmServers[0]?.name || "");
+  }, [activeServerInfo?.active_server, llmServers, selectedLlmServer, setSelectedLlmServer]);
+
+  useEffect(() => {
     if (!selectedLlmServer) {
       setSelectedLlmModel("");
       return;

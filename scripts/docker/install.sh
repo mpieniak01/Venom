@@ -9,8 +9,10 @@ MODEL="$MODEL_DEFAULT"
 OLLAMA_IMAGE_DEFAULT="ollama/ollama:latest"
 OLLAMA_IMAGE="$OLLAMA_IMAGE_DEFAULT"
 GPU_MODE="${VENOM_ENABLE_GPU:-auto}"
+RUNTIME_PROFILE="${VENOM_RUNTIME_PROFILE:-light}"
 QUICK=0
 SKIP_MODEL_PULL=0
+INSTALL_MODE="auto"
 
 usage() {
   cat <<USAGE
@@ -18,6 +20,8 @@ Usage: $(basename "$0") [options]
 
 Options:
   --quick             Run with defaults (no prompts)
+  --profile <name>    Runtime profile: light|llm_off|full (default: light)
+  --mode <name>       Install mode: auto|update|reinstall (default: auto)
   --model <name>      Ollama model to pull (default: ${MODEL_DEFAULT})
   --ollama-image <i>  Ollama image tag (default: ${OLLAMA_IMAGE_DEFAULT})
   --skip-model-pull   Do not pull model during install
@@ -36,6 +40,22 @@ while [[ "$#" -gt 0 ]]; do
       MODEL=${1:-}
       if [[ -z "$MODEL" ]]; then
         echo "[ERROR] --model requires a value." >&2
+        exit 1
+      fi
+      ;;
+    --profile)
+      shift
+      RUNTIME_PROFILE=${1:-}
+      if [[ -z "$RUNTIME_PROFILE" ]]; then
+        echo "[ERROR] --profile requires a value." >&2
+        exit 1
+      fi
+      ;;
+    --mode)
+      shift
+      INSTALL_MODE=${1:-}
+      if [[ -z "$INSTALL_MODE" ]]; then
+        echo "[ERROR] --mode requires a value." >&2
         exit 1
       fi
       ;;
@@ -62,6 +82,26 @@ while [[ "$#" -gt 0 ]]; do
   esac
   shift
 done
+
+case "$RUNTIME_PROFILE" in
+  light|llm_off|full) ;;
+  *)
+    echo "[ERROR] Unsupported profile: $RUNTIME_PROFILE (expected: light|llm_off|full)." >&2
+    exit 1
+    ;;
+esac
+
+case "$INSTALL_MODE" in
+  auto|update|reinstall) ;;
+  *)
+    echo "[ERROR] Unsupported --mode value: $INSTALL_MODE (expected: auto|update|reinstall)." >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
+  SKIP_MODEL_PULL=1
+fi
 
 step=0
 steps_total=7
@@ -91,8 +131,47 @@ require_cmd() {
 }
 
 compose_cmd() {
-  OLLAMA_IMAGE="$OLLAMA_IMAGE" OLLAMA_MODEL="$MODEL" docker compose "${COMPOSE_ARGS[@]}" "$@"
+  local active_llm_server="ollama"
+  local warmup_on_startup="true"
+  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
+    active_llm_server="none"
+    warmup_on_startup="false"
+  elif [[ "$RUNTIME_PROFILE" == "full" ]]; then
+    active_llm_server="${ACTIVE_LLM_SERVER:-ollama}"
+  fi
+
+  OLLAMA_IMAGE="$OLLAMA_IMAGE" \
+  OLLAMA_MODEL="$MODEL" \
+  VENOM_RUNTIME_PROFILE="$RUNTIME_PROFILE" \
+  ACTIVE_LLM_SERVER="$active_llm_server" \
+  LLM_WARMUP_ON_STARTUP="$warmup_on_startup" \
+  docker compose "${COMPOSE_ARGS[@]}" "$@"
   return $?
+}
+
+compose_pull_stack() {
+  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
+    compose_cmd pull backend frontend
+    return $?
+  fi
+  compose_cmd pull
+  return $?
+}
+
+compose_up_stack() {
+  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
+    compose_cmd up -d --no-deps backend frontend
+    return $?
+  fi
+  compose_cmd up -d
+  return $?
+}
+
+stack_exists() {
+  if docker compose "${COMPOSE_ARGS[@]}" ps -q | grep -q .; then
+    return 0
+  fi
+  return 1
 }
 
 wait_http() {
@@ -195,20 +274,52 @@ if [[ "$enable_gpu" -eq 1 ]]; then
 fi
 print_disk_hint
 
-print_step "Pulling remote images (Ollama and base layers)"
-compose_cmd pull
+if stack_exists; then
+  if [[ "$INSTALL_MODE" == "auto" && "$QUICK" -eq 0 ]]; then
+    echo "[WARN] Existing stack detected for compose.minimal."
+    echo "[INFO] Choose action:"
+    echo "  [U] Update/repair (keep containers/data; default)"
+    echo "  [R] Reinstall (stop and recreate containers, keep volumes)"
+    echo "  [C] Cancel"
+    read -r -p "Select action [U/r/c]: " install_ans
+    install_ans=${install_ans:-U}
+    case "$install_ans" in
+      [Rr]*) INSTALL_MODE="reinstall" ;;
+      [Cc]*) echo "[INFO] Installation canceled."; exit 0 ;;
+      *) INSTALL_MODE="update" ;;
+    esac
+  elif [[ "$INSTALL_MODE" == "auto" && "$QUICK" -eq 1 ]]; then
+    INSTALL_MODE="update"
+    echo "[INFO] Existing stack detected, QUICK mode -> install mode 'update'."
+  fi
+
+  if [[ "$INSTALL_MODE" == "reinstall" ]]; then
+    steps_total=$((steps_total + 1))
+    print_step "Reinstall mode: stopping existing stack"
+    compose_cmd down --remove-orphans
+  fi
+fi
+
+if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
+  print_step "Pulling remote images (backend + frontend)"
+else
+  print_step "Pulling remote images (Ollama and base layers)"
+fi
+compose_pull_stack
 
 print_step "Building Venom images (backend + frontend)"
 compose_cmd build backend frontend
 
 print_step "Starting minimal stack"
-compose_cmd up -d
+compose_up_stack
 
 print_step "Waiting for health checks"
-if ! wait_http "http://127.0.0.1:11434/api/tags" 180; then
-  echo "[ERROR] Ollama endpoint did not become ready. Last logs:" >&2
-  compose_cmd logs --tail=120 ollama >&2 || true
-  exit 1
+if [[ "$RUNTIME_PROFILE" != "llm_off" ]]; then
+  if ! wait_http "http://127.0.0.1:11434/api/tags" 180; then
+    echo "[ERROR] Ollama endpoint did not become ready. Last logs:" >&2
+    compose_cmd logs --tail=120 ollama >&2 || true
+    exit 1
+  fi
 fi
 wait_http "http://127.0.0.1:8000/healthz" 240
 wait_http "http://127.0.0.1:3000" 240
@@ -220,9 +331,12 @@ fi
 
 print_step "Done"
 echo "[OK] Venom minimal stack is ready."
+echo "[INFO] Profile: $RUNTIME_PROFILE"
 echo "[INFO] UI:      http://127.0.0.1:3000"
 echo "[INFO] Backend: http://127.0.0.1:8000"
 echo "[WARN] LAN access is enabled by default for this profile."
 echo "[WARN] Run only in trusted/private network."
 echo "[INFO] Logs:    scripts/docker/logs.sh"
 echo "[INFO] Stop:    scripts/docker/stack.sh stop"
+echo "[INFO] Uninstall (keep data): scripts/docker/uninstall.sh --stack minimal"
+echo "[INFO] Uninstall (full cleanup): scripts/docker/uninstall.sh --stack minimal --purge-volumes --purge-images"

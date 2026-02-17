@@ -44,6 +44,9 @@ LLM_RUNTIME_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 LLM_SERVER_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: {"description": "Nieznany serwer LLM lub brak konfiguracji"},
+    403: {
+        "description": "Wybrany serwer LLM jest niedostępny w aktualnym profilu runtime"
+    },
     503: {"description": "LLMController lub ModelManager nie jest dostępny"},
     500: {"description": "Błąd wewnętrzny podczas przełączania aktywnego serwera"},
 }
@@ -57,6 +60,37 @@ class ActiveLlmServerRequest(BaseModel):
 class LlmRuntimeActivateRequest(BaseModel):
     provider: str = Field(..., description="Docelowy provider runtime (openai/google)")
     model: str | None = Field(default=None, description="Opcjonalny model LLM")
+
+
+def _runtime_profile_name() -> str:
+    profile = (
+        str(getattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full") or "").strip().lower()
+    )
+    if profile in {"light", "llm_off", "full"}:
+        return profile
+    return "full"
+
+
+def _allowed_local_servers() -> set[str]:
+    profile = _runtime_profile_name()
+    if profile == "light":
+        return {"ollama"}
+    if profile == "llm_off":
+        return set()
+    return {"ollama", "vllm"}
+
+
+def _ensure_server_allowed(server_name: str) -> None:
+    allowed = _allowed_local_servers()
+    if server_name not in allowed:
+        profile = _runtime_profile_name()
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Serwer LLM '{server_name}' jest niedostępny w profilu '{profile}'. "
+                f"Dozwolone: {', '.join(sorted(allowed)) or 'brak'}."
+            ),
+        )
 
 
 async def _stop_other_servers(
@@ -308,7 +342,11 @@ async def get_llm_servers():
     if llm_controller is None:
         raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
 
-    servers = llm_controller.list_servers()
+    servers = [
+        server
+        for server in llm_controller.list_servers()
+        if server.get("name") in _allowed_local_servers()
+    ]
     _merge_monitor_status_into_servers(servers, service_monitor)
     await _probe_servers(servers)
 
@@ -323,6 +361,7 @@ async def control_llm_server(server_name: str, action: str):
     """
     Wykonuje akcję (start/stop/restart) na wskazanym serwerze LLM.
     """
+    _ensure_server_allowed(server_name)
     llm_controller = system_deps.get_llm_controller()
     if llm_controller is None:
         raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
@@ -463,6 +502,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     """
     Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.
     """
+    _ensure_server_allowed(request.server_name)
     llm_controller, model_manager, request_tracer = _validate_switch_dependencies()
 
     server_name = request.server_name

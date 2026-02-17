@@ -79,7 +79,7 @@ export function NavigationSection({
     t: (key: string) => string;
 }>) {
     return (
-        <nav className="mt-8 space-y-5">
+        <nav className="mt-4 space-y-4">
             <div>
                 <div className={cn(isSynced && "transition-all duration-300 ease-in-out", collapsed ? "opacity-0 max-h-0 overflow-hidden" : "opacity-100 max-h-12 mb-3")}>
                     <p className="eyebrow">{t("sidebar.modulesTitle")}</p>

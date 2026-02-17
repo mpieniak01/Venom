@@ -194,6 +194,8 @@ export function ParametersPanel() {
   const isSecret = (key: string) => {
     return key.includes("KEY") || key.includes("TOKEN") || key.includes("PASSWORD");
   };
+  const runtimeProfile = (config.VENOM_RUNTIME_PROFILE || "full").toLowerCase();
+  const vllmAvailableInProfile = runtimeProfile === "full";
 
   const renderInput = (key: string, value: string) => {
     const secret = isSecret(key);
@@ -331,9 +333,11 @@ export function ParametersPanel() {
             <p className="mt-2 text-sm text-zinc-300">
               {t("config.parameters.runtimeInfo.ollama")}
             </p>
-            <p className="mt-2 text-sm text-zinc-300">
-              {t("config.parameters.runtimeInfo.vllm")}
-            </p>
+            {vllmAvailableInProfile && (
+              <p className="mt-2 text-sm text-zinc-300">
+                {t("config.parameters.runtimeInfo.vllm")}
+              </p>
+            )}
             <p className="mt-3 text-hint">
               {t("config.parameters.runtimeInfo.hint")}{" "}
               <a href="/benchmark" className="text-emerald-400 hover:underline">
@@ -372,17 +376,21 @@ export function ParametersPanel() {
         t("config.parameters.sections.commands.title"),
         t("config.parameters.sections.commands.description"),
         [
-          "VLLM_START_COMMAND",
-          "VLLM_STOP_COMMAND",
-          "VLLM_RESTART_COMMAND",
-          "VLLM_ENDPOINT",
           "OLLAMA_START_COMMAND",
           "OLLAMA_STOP_COMMAND",
           "OLLAMA_RESTART_COMMAND",
+          ...(vllmAvailableInProfile
+            ? [
+              "VLLM_START_COMMAND",
+              "VLLM_STOP_COMMAND",
+              "VLLM_RESTART_COMMAND",
+              "VLLM_ENDPOINT",
+            ]
+            : []),
         ]
       )}
 
-      {renderSection(
+      {vllmAvailableInProfile && renderSection(
         t("config.parameters.sections.vllm_advanced.title"),
         t("config.parameters.sections.vllm_advanced.description"),
         [

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useGitStatus, useModelsUsage, useTokenMetrics } from "@/hooks/use-api";
 import {
   formatDiskSnapshot,
@@ -9,9 +9,7 @@ import {
   formatUsd,
   formatVramMetric,
 } from "@/lib/formatters";
-import { NOTIFICATIONS } from "@/lib/ui-config";
 import { useTranslation } from "@/lib/i18n";
-import { Button } from "@/components/ui/button";
 import { useAppMeta } from "@/lib/app-meta";
 import { cn } from "@/lib/utils";
 import type { GitStatus, ModelsUsageResponse, TokenMetrics } from "@/lib/types";
@@ -35,44 +33,6 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
   const gitLoading = gitLoadingLive && !liveGitStatus;
   const appMeta = useAppMeta();
   const t = useTranslation();
-  const commitValue = appMeta?.commit ?? null;
-  const [commitCopied, setCommitCopied] = useState(false);
-  const commitResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleCommitCopy = useCallback(async () => {
-    if (!commitValue) return;
-
-    const markCopied = () => {
-      setCommitCopied(true);
-      if (commitResetRef.current) {
-        clearTimeout(commitResetRef.current);
-      }
-      commitResetRef.current = setTimeout(() => setCommitCopied(false), NOTIFICATIONS.COMMIT_COPY_TIMEOUT_MS);
-    };
-
-    // Modern Clipboard API (preferred)
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(commitValue);
-        markCopied();
-        return;
-      } catch (err) {
-        console.warn("Modern clipboard API failed, using fallback:", err);
-        // Fallback below.
-      }
-    }
-
-    console.error("Clipboard copy failed: navigator.clipboard API unavailable");
-    setCommitCopied(false);
-  }, [commitValue]);
-
-  useEffect(() => {
-    return () => {
-      if (commitResetRef.current) {
-        clearTimeout(commitResetRef.current);
-      }
-    };
-  }, []);
 
   const costValue = formatUsd(tokenMetrics?.session_cost_usd);
   let gpuValue = "—";
@@ -133,10 +93,9 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
     ],
   );
 
-  const versionText = appMeta?.commit ?? appMeta?.version ?? t("statusBar.versionUnknown");
-  const versionDisplay = commitCopied ? t("statusBar.commitCopied") : versionText;
-  const repoState = resolveRepoStatus(gitStatus, gitLoading, t);
-  const repoTone = cn("font-semibold", repoState.tone);
+  const versionDisplay = formatVersionDisplay(appMeta?.version) ?? t("statusBar.versionUnknown");
+  const repoState = resolveRepoStatus(gitStatus, gitLoading, appMeta?.commit, t);
+  const repoTone = cn("font-medium", repoState.tone);
   const repoTitle = repoState.title;
 
   return (
@@ -158,43 +117,28 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
               </span>
             ))}
           </div>
-          <div
-            className="flex flex-wrap items-center gap-2 text-sm text-zinc-300 lg:justify-end lg:text-right"
-            aria-live="polite"
-          >
-            <span suppressHydrationWarning>{t("statusBar.versionLabel")}:</span>
-            {commitValue ? (
-              <Button
-                type="button"
-                data-testid="status-bar-version"
-                variant="ghost"
-                size="xs"
-                className="px-0 py-0 text-xs font-semibold text-white"
-                title={commitCopied ? t("statusBar.commitCopied") : t("statusBar.commitCopy")}
-                onClick={handleCommitCopy}
-                suppressHydrationWarning
-              >
-                {versionDisplay}
-              </Button>
-            ) : (
+          <div className="flex flex-col items-start gap-0.5 text-sm text-zinc-300 lg:items-end lg:text-right" aria-live="polite">
+            <div className="flex items-center gap-2">
+              <span suppressHydrationWarning>{t("statusBar.versionLabel")}:</span>
               <span data-testid="status-bar-version" className="font-semibold text-white" suppressHydrationWarning>
                 {versionDisplay}
               </span>
-            )}
-            <span className="text-zinc-600">•</span>
-            <span suppressHydrationWarning>{t("statusBar.repoLabel")}:</span>
-            <span
-              data-testid="status-bar-repo"
-              className={cn(repoTone, "cursor-help")}
-              title={repoTitle}
-              suppressHydrationWarning
-            >
-              {gitLoading ? (
-                <span className="text-emerald-300">…</span>
-              ) : (
-                repoState.text
-              )}
-            </span>
+            </div>
+            <div className="flex max-w-full items-center gap-1.5 text-[11px] text-zinc-400">
+              <span suppressHydrationWarning>{t("statusBar.repoLabel")}:</span>
+              <span
+                data-testid="status-bar-repo"
+                className={cn(repoTone, "max-w-[52vw] cursor-help truncate lg:max-w-[36vw]")}
+                title={repoTitle}
+                suppressHydrationWarning
+              >
+                {gitLoading ? (
+                  <span className="text-emerald-300/80">…</span>
+                ) : (
+                  repoState.text
+                )}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -244,15 +188,16 @@ function resolveRepoTone(compareStatus: string | undefined, hasChanges: boolean)
   const isClean = (!compareStatus && !hasChanges) || (compareStatus === "equal" && !hasChanges);
   return {
     "text-zinc-400": false,
-    "text-rose-300": isBehindOrDiverged,
-    "text-amber-300": isNeedsAttention,
-    "text-emerald-300": isClean,
+    "text-rose-300/80": isBehindOrDiverged,
+    "text-amber-300/75": isNeedsAttention,
+    "text-emerald-300/75": isClean,
   };
 }
 
 function resolveRepoStatus(
   gitStatus: GitStatus | null,
   gitLoading: boolean,
+  commit: string | undefined,
   t: ReturnType<typeof useTranslation>,
 ): RepoStatus {
   if (!gitStatus) {
@@ -274,13 +219,29 @@ function resolveRepoStatus(
   const hasChanges = gitStatus.has_changes ?? gitStatus.dirty ?? false;
   const compareStatus = gitStatus.compare_status;
   const baseText = resolveRepoBaseText(compareStatus, hasChanges, t);
+  const branch = gitStatus.branch?.trim() || "unknown";
+  const commitShort = commit?.trim() || "unknown";
+  const identityText = `${branch}@${commitShort}`;
 
-  const text = hasChanges ? `${baseText} ${t("statusBar.repoDirtySuffix")}` : baseText;
+  const text = hasChanges ? `${identityText} ${t("statusBar.repoDirtySuffix")}` : identityText;
   const tone = resolveRepoTone(compareStatus, hasChanges);
+  const statusTitle = getRepoStatusTitle(gitStatus);
+  const title = statusTitle ? `${baseText}\n${statusTitle}` : baseText;
 
   return {
     text,
     tone,
-    title: getRepoStatusTitle(gitStatus),
+    title,
   };
+}
+
+function formatVersionDisplay(version: string | undefined): string | null {
+  if (!version) return null;
+  const match = version.trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return version.trim();
+  const [, major, minor, patch] = match;
+  if (patch === "0") {
+    return `${major}.${minor}`;
+  }
+  return `${major}.${minor}.${patch}`;
 }

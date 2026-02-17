@@ -200,6 +200,60 @@ def test_apply_profile_llm_off_stops_all_llm_services(monkeypatch):
     assert ServiceType.LLM_VLLM in stopped
 
 
+def test_apply_profile_full_defaults_to_ollama_and_stops_vllm(monkeypatch):
+    controller = RuntimeController()
+    started = []
+    stopped = []
+
+    def fake_start(service_type):
+        started.append(service_type)
+        return {"success": True, "message": f"started {service_type.value}"}
+
+    def fake_stop(service_type):
+        stopped.append(service_type)
+        return {"success": True, "message": f"stopped {service_type.value}"}
+
+    monkeypatch.setattr(controller, "start_service", fake_start)
+    monkeypatch.setattr(controller, "stop_service", fake_stop)
+    monkeypatch.setattr(
+        runtime_controller, "SETTINGS", SimpleNamespace(ACTIVE_LLM_SERVER="")
+    )
+
+    result = controller.apply_profile("full")
+    assert result["success"] is True
+    assert ServiceType.BACKEND in started
+    assert ServiceType.UI in started
+    assert ServiceType.LLM_OLLAMA in started
+    assert ServiceType.LLM_VLLM in stopped
+
+
+def test_apply_profile_full_uses_vllm_when_active_server_is_vllm(monkeypatch):
+    controller = RuntimeController()
+    started = []
+    stopped = []
+
+    def fake_start(service_type):
+        started.append(service_type)
+        return {"success": True, "message": f"started {service_type.value}"}
+
+    def fake_stop(service_type):
+        stopped.append(service_type)
+        return {"success": True, "message": f"stopped {service_type.value}"}
+
+    monkeypatch.setattr(controller, "start_service", fake_start)
+    monkeypatch.setattr(controller, "stop_service", fake_stop)
+    monkeypatch.setattr(
+        runtime_controller, "SETTINGS", SimpleNamespace(ACTIVE_LLM_SERVER="vllm")
+    )
+
+    result = controller.apply_profile("full")
+    assert result["success"] is True
+    assert ServiceType.BACKEND in started
+    assert ServiceType.UI in started
+    assert ServiceType.LLM_VLLM in started
+    assert ServiceType.LLM_OLLAMA in stopped
+
+
 def test_update_pid_file_service_status_backend_and_ui(tmp_path):
     controller = RuntimeController()
     backend_pid = tmp_path / ".venom.pid"

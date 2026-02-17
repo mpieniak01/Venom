@@ -36,7 +36,7 @@ export default function RootLayout({
     <html lang="pl" suppressHydrationWarning>
       <body className={`${inter.variable} ${jetBrains.variable} font-sans antialiased`}>
         <Providers>
-          <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(0,184,255,0.18),_transparent_55%)] text-zinc-100">
+          <div className="relative min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(0,184,255,0.18),_transparent_55%)] text-zinc-100">
             <div className="pointer-events-none absolute inset-0 opacity-60 blur-3xl">
               <div className="absolute -left-10 top-10 h-64 w-64 rounded-full bg-emerald-500/10" />
               <div className="absolute bottom-10 right-10 h-72 w-72 rounded-full bg-violet-500/20" />
@@ -47,7 +47,7 @@ export default function RootLayout({
                 <Suspense fallback={<TopBarSkeleton />}>
                   <TopBarWrapper />
                 </Suspense>
-                <main className="flex-1 overflow-y-auto px-4 py-10 pb-28 sm:px-8 lg:px-10 lg:pb-32 xl:px-12">
+                <main className="px-4 py-10 pb-28 sm:px-8 lg:px-10 lg:pb-32 xl:px-12">
                   <div className="mr-auto w-full max-w-[1320px] xl:max-w-[1536px] 2xl:max-w-[85vw] space-y-6">
                     {children}
                   </div>

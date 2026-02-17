@@ -343,7 +343,7 @@ export const pl = {
       profiles: {
         title: "Profile szybkie",
         full: "Full Stack",
-        light: "Light (bez LLM)",
+        light: "Light (Ollama + Gemma)",
         llmOff: "LLM OFF",
         mcp: "Modele i Narzędzia MCP",
         description: "Profile szybko ustawiają zestaw usług",

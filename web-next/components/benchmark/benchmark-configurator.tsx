@@ -16,7 +16,16 @@ export function BenchmarkConfigurator({
   onStart,
   disabled = false,
 }: BenchmarkConfiguratorProps) {
-  const [runtime, setRuntime] = useState<"vllm" | "ollama">("vllm");
+  const hasOllamaModels = availableModels.some((model) => model.provider === "ollama");
+  const hasVllmModels = availableModels.some(
+    (model) => model.provider === "vllm" || model.provider === "huggingface",
+  );
+  const availableRuntimes: Array<"vllm" | "ollama"> = [
+    ...(hasOllamaModels ? (["ollama"] as const) : []),
+    ...(hasVllmModels ? (["vllm"] as const) : []),
+  ];
+  const defaultRuntime: "vllm" | "ollama" = availableRuntimes.includes("ollama") ? "ollama" : "vllm";
+  const [runtime, setRuntime] = useState<"vllm" | "ollama">(defaultRuntime);
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [numQuestions, setNumQuestions] = useState(5);
 
@@ -46,7 +55,7 @@ export function BenchmarkConfigurator({
     onStart(config);
   };
 
-  const isValid = selectedModels.length > 0 && numQuestions > 0;
+  const isValid = selectedModels.length > 0 && numQuestions > 0 && availableRuntimes.length > 0;
 
   return (
     <div className="space-y-4">
@@ -54,7 +63,8 @@ export function BenchmarkConfigurator({
       <fieldset className="space-y-2 border-0 p-0 m-0">
         <legend className="mb-2 block text-sm font-medium text-zinc-300">Runtime</legend>
         <div className="flex gap-2" role="radiogroup" aria-label="Wybór runtime">
-          <Button
+          {hasVllmModels && (
+            <Button
             type="button"
             role="radio"
             aria-checked={runtime === "vllm"}
@@ -75,7 +85,9 @@ export function BenchmarkConfigurator({
           >
             vLLM
           </Button>
-          <Button
+          )}
+          {hasOllamaModels && (
+            <Button
             type="button"
             role="radio"
             aria-checked={runtime === "ollama"}
@@ -96,6 +108,7 @@ export function BenchmarkConfigurator({
           >
             Ollama
           </Button>
+          )}
         </div>
       </fieldset>
 

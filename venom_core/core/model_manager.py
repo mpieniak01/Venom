@@ -392,7 +392,7 @@ PARAMETER top_k 40
 
             # Próbuj załadować adapter używając PEFT
             try:
-                from peft import PeftConfig, PeftModel  # type: ignore[import-not-found]
+                from peft import PeftConfig, PeftModel
                 from transformers import AutoModelForCausalLM, AutoTokenizer
 
                 logger.info(f"Ładowanie adaptera LoRA z {version.adapter_path}...")
@@ -405,7 +405,7 @@ PARAMETER top_k 40
 
                 # Sprawdź dostępność bitsandbytes i ustaw load_in_4bit jeśli możliwe
                 try:
-                    import bitsandbytes  # type: ignore[import-not-found] # noqa: F401
+                    import bitsandbytes  # noqa: F401
 
                     quantization_config = {"load_in_4bit": True}
                 except ImportError:

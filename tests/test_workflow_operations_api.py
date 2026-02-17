@@ -1,14 +1,15 @@
 """Integration tests for Workflow Operations API endpoints."""
 
-import pytest
 from uuid import uuid4
+
+import pytest
 from fastapi.testclient import TestClient
 
-from venom_core.main import app
 from venom_core.api.model_schemas.workflow_control import (
     WorkflowOperation,
     WorkflowStatus,
 )
+from venom_core.main import app
 
 
 @pytest.fixture
@@ -29,7 +30,9 @@ class TestPauseEndpoint:
     def test_pause_running_workflow(self, client, workflow_id):
         """Test pausing a running workflow via API."""
         # First, manually set workflow to RUNNING state
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)
@@ -67,7 +70,9 @@ class TestResumeEndpoint:
     def test_resume_paused_workflow(self, client, workflow_id):
         """Test resuming a paused workflow via API."""
         # Set workflow to PAUSED state
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)
@@ -88,7 +93,9 @@ class TestResumeEndpoint:
     def test_resume_running_workflow_returns_error(self, client, workflow_id):
         """Test that resuming RUNNING workflow returns error."""
         # Set workflow to RUNNING state
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)
@@ -109,7 +116,9 @@ class TestCancelEndpoint:
     def test_cancel_running_workflow(self, client, workflow_id):
         """Test cancelling a running workflow via API."""
         # Set workflow to RUNNING state
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)
@@ -130,7 +139,9 @@ class TestCancelEndpoint:
     def test_cancel_paused_workflow(self, client, workflow_id):
         """Test cancelling a paused workflow."""
         # Set workflow to PAUSED state
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)
@@ -151,7 +162,9 @@ class TestRetryEndpoint:
     def test_retry_failed_workflow(self, client, workflow_id):
         """Test retrying a failed workflow via API."""
         # Set workflow to FAILED state
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)
@@ -172,7 +185,9 @@ class TestRetryEndpoint:
     def test_retry_from_specific_step(self, client, workflow_id):
         """Test retrying from a specific step."""
         # Set workflow to FAILED state
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)
@@ -197,7 +212,9 @@ class TestRetryEndpoint:
     def test_retry_cancelled_workflow(self, client, workflow_id):
         """Test retrying a cancelled workflow."""
         # Set workflow to CANCELLED state
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)
@@ -232,7 +249,9 @@ class TestDryRunEndpoint:
     def test_dry_run_does_not_change_state(self, client, workflow_id):
         """Test that dry-run doesn't change workflow state."""
         # Set workflow to RUNNING state
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)
@@ -256,7 +275,9 @@ class TestWorkflowOperationsIntegration:
 
     def test_full_pause_resume_workflow(self, client, workflow_id):
         """Test full pause/resume cycle via API."""
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
 
@@ -265,7 +286,11 @@ class TestWorkflowOperationsIntegration:
         workflow["status"] = WorkflowStatus.RUNNING.value
 
         # Pause
-        pause_request = {"workflow_id": workflow_id, "operation": "pause", "metadata": {}}
+        pause_request = {
+            "workflow_id": workflow_id,
+            "operation": "pause",
+            "metadata": {},
+        }
         pause_response = client.post(
             "/api/v1/workflow/operations/pause", json=pause_request
         )
@@ -286,7 +311,9 @@ class TestWorkflowOperationsIntegration:
 
     def test_workflow_with_metadata(self, client, workflow_id):
         """Test workflow operations with metadata tracking."""
-        from venom_core.services.workflow_operations import get_workflow_operation_service
+        from venom_core.services.workflow_operations import (
+            get_workflow_operation_service,
+        )
 
         service = get_workflow_operation_service()
         workflow = service._get_or_create_workflow(workflow_id)

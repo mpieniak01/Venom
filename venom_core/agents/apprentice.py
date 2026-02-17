@@ -7,7 +7,7 @@ demonstracji użytkownika i generowanie skryptów automatyzacji.
 
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.contents import ChatHistory
@@ -463,7 +463,7 @@ Obecnie:
             )
 
             # Faktyczne wywołanie LLM przez kernel
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
             chat_history = ChatHistory()
 
             # Dodaj system prompt

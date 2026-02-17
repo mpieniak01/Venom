@@ -6,7 +6,7 @@ import os
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional, cast
 from unittest.mock import Mock
 
 import anyio
@@ -30,15 +30,20 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # Import platform-specific file locking
+fcntl: Any = None
+msvcrt: Any = None
+HAS_FCNTL = False
+HAS_MSVCRT = False
 try:
-    import fcntl
+    import fcntl as _fcntl
 
+    fcntl = _fcntl
     HAS_FCNTL = True
 except ImportError:
-    HAS_FCNTL = False
     try:
-        import msvcrt
+        import msvcrt as _msvcrt
 
+        msvcrt = _msvcrt
         HAS_MSVCRT = True
     except ImportError:
         HAS_MSVCRT = False
@@ -326,7 +331,7 @@ def _file_lock(file_path: Path, mode: str = "r"):
                 # Unix/Linux file locking
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                 locked = True
-            elif HAS_MSVCRT:
+            elif HAS_MSVCRT and msvcrt is not None:
                 # Windows file locking
                 msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
                 locked = True
@@ -336,7 +341,7 @@ def _file_lock(file_path: Path, mode: str = "r"):
             if locked:
                 if HAS_FCNTL:
                     fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                elif HAS_MSVCRT:
+                elif HAS_MSVCRT and msvcrt is not None:
                     msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
 
 
@@ -821,7 +826,7 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
             success=True,
             job_id=job_id,
             message=f"Training started successfully: {job_id}",
-            parameters=job_record["parameters"],
+            parameters=cast(Dict[str, Any], job_record["parameters"]),
         )
 
     except AcademyRouteError as e:
@@ -1041,7 +1046,7 @@ async def _stream_training_logs_events(job_id: str, job_name: str):
         from venom_core.learning.training_metrics_parser import TrainingMetricsParser
 
         parser = TrainingMetricsParser()
-        all_metrics = []
+        all_metrics: List[Any] = []
 
         # Wyślij początkowy event
         yield _sse_event({"type": "connected", "job_id": job_id})
@@ -1684,6 +1689,10 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
     files = form.getlist("files")
     tag = form.get("tag", "user-upload")
     description = form.get("description", "")
+    if not isinstance(tag, str):
+        tag = "user-upload"
+    if not isinstance(description, str):
+        description = ""
 
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -1884,7 +1893,7 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
         curator.clear()
 
         by_source = _collect_scope_counts(curator, request)
-        warnings = []
+        warnings: List[str] = []
 
         # Zbierz z uploadów
         if request.upload_ids:

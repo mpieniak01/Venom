@@ -193,7 +193,7 @@ class TrainingMetricsParser:
         latest_accuracy = None
         progress_percent = None
 
-        loss_values = []
+        loss_values: List[float] = []
 
         for m in metrics_list:
             if m.epoch is not None:
@@ -210,7 +210,7 @@ class TrainingMetricsParser:
             if m.progress_percent is not None:
                 progress_percent = m.progress_percent
 
-        result = {
+        result: Dict[str, Any] = {
             "current_epoch": latest_epoch,
             "total_epochs": total_epochs,
             "latest_loss": latest_loss,

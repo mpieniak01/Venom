@@ -16,10 +16,10 @@ from venom_core.services.session_store import SessionStore
 def get_control_plane_service():
     """
     Get control plane service instance (dependency injection wrapper).
-    
+
     This is a thin wrapper around the service's singleton getter to maintain
     consistency with FastAPI's Depends pattern.
-    
+
     Returns:
         ControlPlaneService: Instancja control plane service
     """
@@ -33,10 +33,10 @@ def get_control_plane_service():
 def get_control_plane_audit_trail():
     """
     Get control plane audit trail instance (dependency injection wrapper).
-    
+
     This is a thin wrapper around the service's singleton getter to maintain
     consistency with FastAPI's Depends pattern.
-    
+
     Returns:
         ControlPlaneAuditTrail: Instancja audit trail
     """

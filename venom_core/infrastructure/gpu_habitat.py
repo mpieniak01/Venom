@@ -456,6 +456,8 @@ class GPUHabitat(DockerHabitat):
         Zwraca PID tylko jeśli wskazuje na oczekiwany proces lokalnego treningu.
         """
         raw_pid = job_info.get("pid")
+        if raw_pid is None:
+            return None
         try:
             pid = int(raw_pid)
         except (TypeError, ValueError):
@@ -1011,9 +1013,12 @@ print("=" * 60)
         """
         process = job_info.get("process")
         pid = job_info.get("pid")
-        
+
         if process:
-            self._terminate_local_process(process, pid)
+            if isinstance(pid, int):
+                self._terminate_local_process(process, pid)
+            else:
+                self._terminate_local_process(process, int(getattr(process, "pid", 0)))
         elif pid:
             self._signal_validated_local_job(job_name, job_info, signal.SIGTERM)
 
@@ -1031,7 +1036,7 @@ print("=" * 60)
             container.stop(timeout=10)
         except TypeError:
             container.stop()
-        
+
         # Usuń kontener
         try:
             container.remove(force=True)

@@ -407,7 +407,8 @@ class EvolutionCoordinator:
                 repo = get_repo_fn()
                 try:
                     # repo.active_branch może zgłosić wyjątek np. przy detached HEAD
-                    current_branch = repo.active_branch.name  # type: ignore[attr-defined]
+                    active_branch = getattr(repo, "active_branch", None)
+                    current_branch = getattr(active_branch, "name", "unknown")
                 except Exception:
                     current_branch = "unknown"
             except Exception as exc:

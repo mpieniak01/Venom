@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Optional
 from uuid import UUID, uuid4
 
@@ -175,45 +176,77 @@ def _build_payload(
     # 1) For Ollama we prefer `format` (native structured output support).
     # 2) For non-Ollama providers we prefer client-provided `response_format`.
     # 3) Fallback: `request.format` (if response_format is absent).
-    output_format = request.format
-    if output_format is None and isinstance(request.response_format, dict):
-        # Compatibility extraction for OpenAI-style shape:
-        # response_format.json_schema.schema -> schema object
-        schema_block = request.response_format.get("json_schema")
-        if isinstance(schema_block, dict):
-            output_format = schema_block.get("schema")
-            if output_format is None:
-                output_format = schema_block
-
-    if runtime.provider == "ollama":
-        if output_format is not None and SETTINGS.OLLAMA_ENABLE_STRUCTURED_OUTPUTS:
-            payload["format"] = output_format
-        elif request.response_format is not None:
-            payload["response_format"] = request.response_format
-    else:
-        if request.response_format is not None:
-            payload["response_format"] = request.response_format
-        elif request.format is not None:
-            payload["format"] = request.format
-
-    if request.tools and (
-        runtime.provider != "ollama" or SETTINGS.OLLAMA_ENABLE_TOOL_CALLING
-    ):
-        payload["tools"] = request.tools
-    if request.tool_choice is not None and (
-        runtime.provider != "ollama" or SETTINGS.OLLAMA_ENABLE_TOOL_CALLING
-    ):
-        payload["tool_choice"] = request.tool_choice
-    if request.think is not None and (
-        runtime.provider != "ollama" or SETTINGS.OLLAMA_ENABLE_THINK
-    ):
-        payload["think"] = request.think
+    output_format = _resolve_output_format(request)
+    _apply_output_format_to_payload(
+        payload=payload,
+        request=request,
+        runtime=runtime,
+        output_format=output_format,
+    )
+    _apply_optional_features_to_payload(
+        payload=payload, request=request, runtime=runtime
+    )
 
     if request.max_tokens is not None:
         payload["max_tokens"] = request.max_tokens
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     return payload
+
+
+def _resolve_output_format(request: "SimpleChatRequest") -> Any:
+    output_format = request.format
+    if output_format is not None or not isinstance(request.response_format, dict):
+        return output_format
+
+    # Compatibility extraction for OpenAI-style shape:
+    # response_format.json_schema.schema -> schema object
+    schema_block = request.response_format.get("json_schema")
+    if not isinstance(schema_block, dict):
+        return output_format
+    return schema_block.get("schema") or schema_block
+
+
+def _apply_output_format_to_payload(
+    *,
+    payload: dict[str, Any],
+    request: "SimpleChatRequest",
+    runtime,
+    output_format: Any,
+) -> None:
+    if runtime.provider == "ollama":
+        if output_format is not None and SETTINGS.OLLAMA_ENABLE_STRUCTURED_OUTPUTS:
+            payload["format"] = output_format
+            return
+        if request.response_format is not None:
+            payload["response_format"] = request.response_format
+        return
+
+    if request.response_format is not None:
+        payload["response_format"] = request.response_format
+    elif request.format is not None:
+        payload["format"] = request.format
+
+
+def _ollama_feature_enabled(runtime, enabled_flag: bool) -> bool:
+    return runtime.provider != "ollama" or enabled_flag
+
+
+def _apply_optional_features_to_payload(
+    *, payload: dict[str, Any], request: "SimpleChatRequest", runtime
+) -> None:
+    if request.tools and _ollama_feature_enabled(
+        runtime, SETTINGS.OLLAMA_ENABLE_TOOL_CALLING
+    ):
+        payload["tools"] = request.tools
+    if request.tool_choice is not None and _ollama_feature_enabled(
+        runtime, SETTINGS.OLLAMA_ENABLE_TOOL_CALLING
+    ):
+        payload["tool_choice"] = request.tool_choice
+    if request.think is not None and _ollama_feature_enabled(
+        runtime, SETTINGS.OLLAMA_ENABLE_THINK
+    ):
+        payload["think"] = request.think
 
 
 def _trim_user_content_for_runtime(
@@ -415,6 +448,222 @@ def _build_streaming_headers(
     }
 
 
+@dataclass
+class _SimpleStreamState:
+    chunks: list[str]
+    chunk_count: int = 0
+    first_chunk_seen: bool = False
+    retry_requested: bool = False
+    failed: bool = False
+    completed: bool = False
+
+
+def _is_retryable_ollama_status(
+    *,
+    runtime,
+    status_code: Optional[int],
+    attempt: int,
+    max_attempts: int,
+    chunk_count: int,
+) -> bool:
+    return bool(
+        runtime.provider == "ollama"
+        and status_code in {429, 500, 502, 503, 504}
+        and attempt < max_attempts
+        and chunk_count == 0
+    )
+
+
+def _is_retryable_ollama_http_error(
+    *, runtime, attempt: int, max_attempts: int, chunk_count: int
+) -> bool:
+    return bool(
+        runtime.provider == "ollama" and attempt < max_attempts and chunk_count == 0
+    )
+
+
+async def _emit_http_status_error_and_mark_failed(
+    *,
+    exc: httpx.HTTPStatusError,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    stream_start: float,
+) -> str:
+    status_code = exc.response.status_code if exc.response else None
+    response_text = await _read_http_error_response_text(exc.response)
+    error_message, error_details, error_payload = _build_llm_http_error(
+        exc, runtime, model_name, response_text=response_text
+    )
+    _record_simple_error(
+        request_id,
+        error_code="llm_http_error",
+        error_message=error_message,
+        error_details=error_details,
+        error_class=exc.__class__.__name__,
+        retryable=False,
+    )
+    collector = get_metrics_collector()
+    collector.record_provider_request(
+        provider=runtime.provider,
+        success=False,
+        latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+        error_code=f"http_{status_code or 'error'}",
+    )
+    return f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+
+
+def _emit_connection_error_and_mark_failed(
+    *,
+    exc: httpx.HTTPError,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    stream_start: float,
+) -> str:
+    _record_simple_error(
+        request_id,
+        error_code="llm_connection_error",
+        error_message=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+        error_details={
+            "provider": runtime.provider,
+            "endpoint": runtime.endpoint,
+            "model": model_name,
+        },
+        error_class=exc.__class__.__name__,
+        retryable=True,
+    )
+    collector = get_metrics_collector()
+    collector.record_provider_request(
+        provider=runtime.provider,
+        success=False,
+        latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+        error_code="connection_error",
+    )
+    error_payload = {
+        "code": "llm_connection_error",
+        "message": f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+    }
+    return f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+
+
+def _emit_internal_error_and_mark_failed(
+    *, exc: Exception, runtime, request_id: UUID, stream_start: float
+) -> str:
+    if _request_tracer:
+        _request_tracer.add_step(
+            request_id,
+            _SIMPLE_MODE_STEP,
+            "error",
+            status="error",
+            details=str(exc),
+        )
+    collector = get_metrics_collector()
+    collector.record_provider_request(
+        provider=runtime.provider,
+        success=False,
+        latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+        error_code="internal_error",
+    )
+    error_payload = {
+        "code": "internal_error",
+        "message": f"Nieoczekiwany błąd: {exc}",
+    }
+    return f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+
+
+def _update_stream_state_from_packet(
+    *,
+    packet: dict[str, Any],
+    runtime,
+    state: _SimpleStreamState,
+    request_id: UUID,
+    stream_start: float,
+    ollama_telemetry: dict[str, int],
+) -> list[str]:
+    emitted_events: list[str] = []
+    if runtime.provider == "ollama":
+        telemetry = _extract_ollama_telemetry(packet)
+        if telemetry:
+            ollama_telemetry.update(telemetry)
+
+    tool_calls = _extract_sse_tool_calls(packet)
+    if tool_calls:
+        emitted_events.append(
+            "event: tool_calls\ndata: "
+            + json.dumps({"tool_calls": tool_calls})
+            + "\n\n"
+        )
+
+    for content in _extract_sse_contents(packet):
+        state.chunk_count += 1
+        state.chunks.append(content)
+        if not state.first_chunk_seen:
+            _trace_first_chunk(request_id, stream_start, content)
+            state.first_chunk_seen = True
+        event_payload = {"text": content}
+        emitted_events.append(
+            "event: content\ndata: " + json.dumps(event_payload) + "\n\n"
+        )
+
+    return emitted_events
+
+
+async def _stream_single_attempt(
+    *,
+    completions_url: str,
+    payload: dict,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    stream_start: float,
+    attempt: int,
+    max_attempts: int,
+    retry_backoff: float,
+    state: _SimpleStreamState,
+    ollama_telemetry: dict[str, int],
+) -> AsyncIterator[str]:
+    async with httpx.AsyncClient(timeout=None) as client:
+        async with client.stream("POST", completions_url, json=payload) as resp:
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code if exc.response else None
+                if _is_retryable_ollama_status(
+                    runtime=runtime,
+                    status_code=status_code,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    chunk_count=state.chunk_count,
+                ):
+                    state.retry_requested = True
+                    ollama_telemetry.clear()
+                    await asyncio.sleep(retry_backoff * attempt)
+                    return
+                state.failed = True
+                yield await _emit_http_status_error_and_mark_failed(
+                    exc=exc,
+                    runtime=runtime,
+                    request_id=request_id,
+                    model_name=model_name,
+                    stream_start=stream_start,
+                )
+                return
+
+            async for packet in _iter_stream_packets(resp):
+                for event in _update_stream_state_from_packet(
+                    packet=packet,
+                    runtime=runtime,
+                    state=state,
+                    request_id=request_id,
+                    stream_start=stream_start,
+                    ollama_telemetry=ollama_telemetry,
+                ):
+                    yield event
+
+    state.completed = True
+
+
 async def _stream_simple_chunks(
     *,
     completions_url: str,
@@ -423,10 +672,8 @@ async def _stream_simple_chunks(
     request_id: UUID,
     model_name: str,
 ) -> AsyncIterator[str]:
-    chunks: list[str] = []
-    chunk_count = 0
+    state = _SimpleStreamState(chunks=[])
     stream_start = time.perf_counter()
-    first_chunk_seen = False
     ollama_telemetry: dict[str, int] = {}
 
     yield "event: start\ndata: {}\n\n"
@@ -440,78 +687,33 @@ async def _stream_simple_chunks(
 
     for attempt in range(1, max_attempts + 1):
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("POST", completions_url, json=payload) as resp:
-                    try:
-                        resp.raise_for_status()
-                    except httpx.HTTPStatusError as exc:
-                        status_code = exc.response.status_code if exc.response else None
-                        can_retry = (
-                            runtime.provider == "ollama"
-                            and status_code in {429, 500, 502, 503, 504}
-                            and attempt < max_attempts
-                            and chunk_count == 0
-                        )
-                        if can_retry:
-                            ollama_telemetry.clear()
-                            await asyncio.sleep(retry_backoff * attempt)
-                            continue
+            state.retry_requested = False
+            state.failed = False
+            state.completed = False
+            async for event in _stream_single_attempt(
+                completions_url=completions_url,
+                payload=payload,
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+                stream_start=stream_start,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                retry_backoff=retry_backoff,
+                state=state,
+                ollama_telemetry=ollama_telemetry,
+            ):
+                yield event
 
-                        response_text = await _read_http_error_response_text(
-                            exc.response
-                        )
-                        error_message, error_details, error_payload = (
-                            _build_llm_http_error(
-                                exc, runtime, model_name, response_text=response_text
-                            )
-                        )
-                        _record_simple_error(
-                            request_id,
-                            error_code="llm_http_error",
-                            error_message=error_message,
-                            error_details=error_details,
-                            error_class=exc.__class__.__name__,
-                            retryable=False,
-                        )
-                        collector = get_metrics_collector()
-                        collector.record_provider_request(
-                            provider=runtime.provider,
-                            success=False,
-                            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
-                            error_code=f"http_{status_code or 'error'}",
-                        )
-                        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
-                        return
-
-                    async for packet in _iter_stream_packets(resp):
-                        if runtime.provider == "ollama":
-                            telemetry = _extract_ollama_telemetry(packet)
-                            if telemetry:
-                                ollama_telemetry.update(telemetry)
-
-                        tool_calls = _extract_sse_tool_calls(packet)
-                        if tool_calls:
-                            yield (
-                                "event: tool_calls\ndata: "
-                                + json.dumps({"tool_calls": tool_calls})
-                                + "\n\n"
-                            )
-
-                        for content in _extract_sse_contents(packet):
-                            chunk_count += 1
-                            chunks.append(content)
-                            if not first_chunk_seen:
-                                _trace_first_chunk(request_id, stream_start, content)
-                                first_chunk_seen = True
-                            event_payload = {"text": content}
-                            yield (
-                                "event: content\ndata: "
-                                + json.dumps(event_payload)
-                                + "\n\n"
-                            )
+            if state.retry_requested:
+                continue
+            if state.failed:
+                return
+            if not state.completed:
+                continue
 
             _trace_stream_completion(
-                request_id, "".join(chunks), chunk_count, stream_start
+                request_id, "".join(state.chunks), state.chunk_count, stream_start
             )
             total_ms = (time.perf_counter() - stream_start) * 1000.0
             collector = get_metrics_collector()
@@ -542,62 +744,31 @@ async def _stream_simple_chunks(
             return
 
         except httpx.HTTPError as exc:
-            can_retry = (
-                runtime.provider == "ollama"
-                and attempt < max_attempts
-                and chunk_count == 0
-            )
-            if can_retry:
+            if _is_retryable_ollama_http_error(
+                runtime=runtime,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                chunk_count=state.chunk_count,
+            ):
                 ollama_telemetry.clear()
                 await asyncio.sleep(retry_backoff * attempt)
                 continue
 
-            _record_simple_error(
-                request_id,
-                error_code="llm_connection_error",
-                error_message=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
-                error_details={
-                    "provider": runtime.provider,
-                    "endpoint": runtime.endpoint,
-                    "model": model_name,
-                },
-                error_class=exc.__class__.__name__,
-                retryable=True,
+            yield _emit_connection_error_and_mark_failed(
+                exc=exc,
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+                stream_start=stream_start,
             )
-            collector = get_metrics_collector()
-            collector.record_provider_request(
-                provider=runtime.provider,
-                success=False,
-                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
-                error_code="connection_error",
-            )
-            error_payload = {
-                "code": "llm_connection_error",
-                "message": f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
-            }
-            yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
             return
         except Exception as exc:
-            if _request_tracer:
-                _request_tracer.add_step(
-                    request_id,
-                    _SIMPLE_MODE_STEP,
-                    "error",
-                    status="error",
-                    details=str(exc),
-                )
-            collector = get_metrics_collector()
-            collector.record_provider_request(
-                provider=runtime.provider,
-                success=False,
-                latency_ms=(time.perf_counter() - stream_start) * 1000.0,
-                error_code="internal_error",
+            yield _emit_internal_error_and_mark_failed(
+                exc=exc,
+                runtime=runtime,
+                request_id=request_id,
+                stream_start=stream_start,
             )
-            error_payload = {
-                "code": "internal_error",
-                "message": f"Nieoczekiwany błąd: {exc}",
-            }
-            yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
             return
 
 

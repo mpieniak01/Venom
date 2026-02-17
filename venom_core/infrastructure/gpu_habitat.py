@@ -1015,26 +1015,30 @@ print("=" * 60)
         pid = job_info.get("pid")
 
         if process:
-            if isinstance(pid, int):
-                self._terminate_local_process(process, pid)
-            else:
-                process_pid_raw = getattr(process, "pid", None)
-                try:
-                    process_pid = (
-                        int(process_pid_raw) if process_pid_raw is not None else None
-                    )
-                except (TypeError, ValueError):
-                    process_pid = None
+            process_pid = self._resolve_positive_pid(pid)
+            if process_pid is None:
+                process_pid = self._resolve_positive_pid(getattr(process, "pid", None))
+            if process_pid is None:
+                logger.warning(
+                    "Cannot determine valid PID for local process in job %s",
+                    job_name,
+                )
+                return
+            self._terminate_local_process(process, process_pid)
+            return
 
-                if process_pid is not None and process_pid > 1:
-                    self._terminate_local_process(process, process_pid)
-                else:
-                    logger.warning(
-                        "Cannot determine valid PID for local process in job %s",
-                        job_name,
-                    )
-        elif pid:
+        if pid:
             self._signal_validated_local_job(job_name, job_info, signal.SIGTERM)
+
+    @staticmethod
+    def _resolve_positive_pid(pid_raw: Any) -> Optional[int]:
+        try:
+            pid = int(pid_raw)
+        except (TypeError, ValueError):
+            return None
+        if pid <= 1:
+            return None
+        return pid
 
     def _cleanup_docker_job(self, job_name: str) -> None:
         """

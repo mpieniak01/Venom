@@ -7,6 +7,17 @@ The model management system in Venom provides a centralized, automated way to in
 - **Cloud API**: Models accessed via external APIs (OpenAI, Google Gemini).
 - **Integrator Catalog**: Models available for download/installation (HuggingFace, Ollama Library).
 
+## Runtime Profiles (Single Package)
+
+The project currently uses one installation package with runtime profiles selected by `VENOM_RUNTIME_PROFILE`:
+1. `light`: backend + web-next + Ollama (Gemma), without vLLM.
+2. `llm_off`: backend + web-next, without local LLM runtime (external API providers such as OpenAI/Gemini can still be used after key setup).
+3. `full`: extended stack; Ollama and vLLM are available.
+
+Profile behavior notes:
+1. In `light`, runtime/API/UI expose only Ollama local runtime paths.
+2. vLLM remains an optional path for `full`, not a default requirement for light onboarding.
+
 ## Ollama Runtime Baseline (v1.5 / task 152)
 
 Current Venom baseline for local runtime:

@@ -7,6 +7,7 @@ COMPOSE_GPU_FILE="$ROOT_DIR/compose/compose.internal.gpu-override.yml"
 MODEL_DEFAULT="gemma3:4b"
 MODEL="${OLLAMA_MODEL:-$MODEL_DEFAULT}"
 GPU_MODE="${VENOM_ENABLE_GPU:-auto}"
+RUNTIME_PROFILE="${VENOM_RUNTIME_PROFILE:-light}"
 
 usage() {
   cat <<USAGE
@@ -18,8 +19,21 @@ Commands:
   restart    Restart the stack
   status     Show stack status
   pull       Pull remote images (e.g. Ollama)
+
+Environment:
+  VENOM_RUNTIME_PROFILE=light|llm_off|full (default: light)
 USAGE
   return 0
+}
+
+validate_runtime_profile() {
+  case "$RUNTIME_PROFILE" in
+    light|llm_off|full) ;;
+    *)
+      echo "[ERROR] Unsupported VENOM_RUNTIME_PROFILE='$RUNTIME_PROFILE' (expected: light|llm_off|full)." >&2
+      exit 1
+      ;;
+  esac
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -79,11 +93,38 @@ if [[ "$enable_gpu" -eq 1 ]]; then
 fi
 
 compose_cmd() {
-  OLLAMA_MODEL="$MODEL" docker compose "${COMPOSE_ARGS[@]}" "$@"
+  local active_llm_server="ollama"
+  local warmup_on_startup="true"
+
+  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
+    active_llm_server="none"
+    warmup_on_startup="false"
+  elif [[ "$RUNTIME_PROFILE" == "full" ]]; then
+    active_llm_server="${ACTIVE_LLM_SERVER:-ollama}"
+  fi
+
+  OLLAMA_MODEL="$MODEL" \
+  VENOM_RUNTIME_PROFILE="$RUNTIME_PROFILE" \
+  ACTIVE_LLM_SERVER="$active_llm_server" \
+  LLM_WARMUP_ON_STARTUP="$warmup_on_startup" \
+  docker compose "${COMPOSE_ARGS[@]}" "$@"
+  return $?
+}
+
+compose_up_stack() {
+  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
+    compose_cmd up -d --build --no-deps backend frontend
+    return $?
+  fi
+  compose_cmd up -d --build
   return $?
 }
 
 wait_for_ollama() {
+  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
+    echo "[INFO] Skipping Ollama readiness for profile: llm_off"
+    return 0
+  fi
   local timeout=${1:-180}
   local elapsed=0
   local interval=5
@@ -101,6 +142,10 @@ wait_for_ollama() {
 }
 
 ensure_model() {
+  if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
+    echo "[INFO] Skipping model pull for profile: llm_off"
+    return 0
+  fi
   if compose_cmd exec -T ollama ollama list | awk 'NR>1 {print $1}' | grep -Fxq "$MODEL"; then
     echo "[INFO] Ollama model already present: $MODEL"
     return 0
@@ -112,9 +157,10 @@ ensure_model() {
 }
 
 cmd=${1:-}
+validate_runtime_profile
 case "$cmd" in
   start)
-    compose_cmd up -d --build
+    compose_up_stack
     wait_for_ollama
     ensure_model
     ;;
@@ -123,7 +169,7 @@ case "$cmd" in
     ;;
   restart)
     compose_cmd down --remove-orphans
-    compose_cmd up -d --build
+    compose_up_stack
     wait_for_ollama
     ensure_model
     ;;

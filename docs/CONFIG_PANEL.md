@@ -41,8 +41,8 @@ Manages Venom process lifecycle:
 
 **Profiles:**
 - `full` - Starts backend, UI and Ollama
-- `light` - Backend and UI only
-- `llm_off` - Backend and UI, disables LLM
+- `light` - Starts backend, UI and Ollama (Gemma), without vLLM
+- `llm_off` - Backend and UI without local LLM runtime; external API providers (for example OpenAI/Gemini) remain available after key configuration
 
 #### Config Manager (`venom_core/services/config_manager.py`)
 Manages `.env` file:
@@ -202,8 +202,8 @@ UI displays warning with service list and CTA to "Services" tab.
 ### Applying Profile
 1. In "Services" tab click one of profiles:
    - **Full Stack**: Starts backend, UI, Ollama
-   - **Light**: Starts backend, UI (without LLM)
-   - **LLM OFF**: Starts backend, UI, stops LLM
+   - **Light**: Starts backend, UI, Ollama (Gemma), without vLLM
+   - **LLM OFF**: Starts backend, UI, stops local LLM runtime (external API providers can still be used if configured)
 2. System executes actions for all services in profile
 3. Banner shows operation result
 

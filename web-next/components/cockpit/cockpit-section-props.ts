@@ -86,9 +86,22 @@ export function useCockpitSectionProps() {
   const onActivateModel = useCallback((model: string) => handleActivateModel(model), [handleActivateModel]);
 
   const llmServerOptions = useMemo(() => data.llmServers?.map(s => ({ label: s.name, value: s.name })) || [], [data.llmServers]);
+  const allowedLlmProviders = useMemo(
+    () => new Set((data.llmServers || []).map((s) => (s.name || "").toLowerCase()).filter(Boolean)),
+    [data.llmServers],
+  );
+  const resolveModelProvider = useCallback((modelName: string, provider?: string | null) => {
+    const normalized = (provider || "").toLowerCase().trim();
+    if (normalized) return normalized;
+    return modelName.includes(":") ? "ollama" : "vllm";
+  }, []);
   const llmModelOptions = useMemo(() => data.models?.models
-    ?.filter(m => !selectedLlmServer || m.provider === selectedLlmServer)
-    ?.map(m => ({ label: m.name, value: m.name })) || [], [data.models?.models, selectedLlmServer]);
+    ?.filter((m) => {
+      const provider = resolveModelProvider(m.name || "", m.provider);
+      if (selectedLlmServer) return provider === selectedLlmServer.toLowerCase();
+      return allowedLlmProviders.size === 0 || allowedLlmProviders.has(provider);
+    })
+    ?.map(m => ({ label: m.name, value: m.name })) || [], [data.models?.models, selectedLlmServer, allowedLlmProviders, resolveModelProvider]);
   const hasModels = useMemo(() => ((data.models?.models?.length ?? 0) > 0), [data.models?.models]);
 
   const onOpenTuning = logic.chatUi.handleOpenTuning;
@@ -103,8 +116,12 @@ export function useCockpitSectionProps() {
   const llmModelOptionsPanel = llmModelOptions;
 
   const availableModelsForServer = useMemo(() => data.models?.models
-    ?.filter(m => !selectedLlmServer || m.provider === selectedLlmServer)
-    ?.map(m => ({ name: m.name })) || [], [data.models?.models, selectedLlmServer]);
+    ?.filter((m) => {
+      const provider = resolveModelProvider(m.name || "", m.provider);
+      if (selectedLlmServer) return provider === selectedLlmServer.toLowerCase();
+      return allowedLlmProviders.size === 0 || allowedLlmProviders.has(provider);
+    })
+    ?.map(m => ({ name: m.name })) || [], [data.models?.models, selectedLlmServer, allowedLlmProviders, resolveModelProvider]);
 
   const selectedServerEntry = useMemo(() => data.llmServers?.find(s => s.name === selectedLlmServer) || null, [data.llmServers, selectedLlmServer]);
 

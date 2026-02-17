@@ -41,8 +41,8 @@ Zarządza cyklem życia procesów Venom:
 
 **Profile:**
 - `full` - Uruchamia backend, UI i Ollama
-- `light` - Tylko backend i UI
-- `llm_off` - Backend i UI, wyłącza LLM
+- `light` - Uruchamia backend, UI i Ollama (Gemma), bez vLLM
+- `llm_off` - Backend i UI bez lokalnego runtime LLM; zewnętrzni providerzy API (np. OpenAI/Gemini) pozostają dostępni po konfiguracji kluczy
 
 #### Config Manager (`venom_core/services/config_manager.py`)
 Zarządza plikiem `.env`:
@@ -194,8 +194,8 @@ UI wyświetla ostrzeżenie z listą usług i CTA do zakładki "Usługi".
 ### Stosowanie profilu
 1. W zakładce "Usługi" kliknij jeden z profili:
    - **Full Stack**: Uruchamia backend, UI, Ollama
-   - **Light**: Uruchamia backend, UI (bez LLM)
-   - **LLM OFF**: Uruchamia backend, UI, zatrzymuje LLM
+   - **Light**: Uruchamia backend, UI, Ollama (Gemma), bez vLLM
+   - **LLM OFF**: Uruchamia backend, UI, zatrzymuje lokalny runtime LLM (zewnętrzne API nadal działają po konfiguracji)
 2. System wykonuje akcje dla wszystkich usług w profilu
 3. Banner pokazuje rezultat operacji
 

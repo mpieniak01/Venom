@@ -172,6 +172,30 @@ def test_apply_profile_light_starts_core_services(monkeypatch):
     assert result["success"] is True
     assert ServiceType.BACKEND in started
     assert ServiceType.UI in started
+    assert ServiceType.LLM_OLLAMA in started
+    assert ServiceType.LLM_VLLM in stopped
+
+
+def test_apply_profile_llm_off_stops_all_llm_services(monkeypatch):
+    controller = RuntimeController()
+    started = []
+    stopped = []
+
+    def fake_start(service_type):
+        started.append(service_type)
+        return {"success": True, "message": f"started {service_type.value}"}
+
+    def fake_stop(service_type):
+        stopped.append(service_type)
+        return {"success": True, "message": f"stopped {service_type.value}"}
+
+    monkeypatch.setattr(controller, "start_service", fake_start)
+    monkeypatch.setattr(controller, "stop_service", fake_stop)
+
+    result = controller.apply_profile("llm_off")
+    assert result["success"] is True
+    assert ServiceType.BACKEND in started
+    assert ServiceType.UI in started
     assert ServiceType.LLM_OLLAMA in stopped
     assert ServiceType.LLM_VLLM in stopped
 

@@ -118,24 +118,24 @@ validate_action() {
 read_profile_from_menu() {
   case "$LANG_CODE" in
     pl)
-      echo "Wybierz architekturę Venom:"
-      echo "  1) LIGHT (lokalnie: Ollama + Gemma 3 + Next.js) - Privacy First"
-      echo "  2) API   (cloud: OpenAI/Anthropic + Next.js) - Low Hardware Req"
-      echo "  3) FULL  (rozszerzony stack) - The Beast"
+      echo "Wybierz architekturę Venom:" >&2
+      echo "  1) LIGHT (lokalnie: Ollama + Gemma 3 + Next.js) - Privacy First" >&2
+      echo "  2) API   (cloud: OpenAI/Anthropic + Next.js) - Low Hardware Req" >&2
+      echo "  3) FULL  (rozszerzony stack) - The Beast" >&2
       read -r -p "Wybór [1/2/3] (domyślnie 1): " p
       ;;
     de)
-      echo "Waehle deine Venom-Architektur:"
-      echo "  1) LIGHT (lokal: Ollama + Gemma 3 + Next.js) - Privacy First"
-      echo "  2) API   (cloud: OpenAI/Anthropic + Next.js) - Low Hardware Req"
-      echo "  3) FULL  (erweiterter Stack) - The Beast"
+      echo "Waehle deine Venom-Architektur:" >&2
+      echo "  1) LIGHT (lokal: Ollama + Gemma 3 + Next.js) - Privacy First" >&2
+      echo "  2) API   (cloud: OpenAI/Anthropic + Next.js) - Low Hardware Req" >&2
+      echo "  3) FULL  (erweiterter Stack) - The Beast" >&2
       read -r -p "Auswahl [1/2/3] (Standard 1): " p
       ;;
     *)
-      echo "Select your Venom architecture:"
-      echo "  1) LIGHT (Local: Ollama + Gemma 3 + Next.js) - Privacy First"
-      echo "  2) API   (Cloud: OpenAI/Anthropic + Next.js) - Low Hardware Req"
-      echo "  3) FULL  (Extended stack) - The Beast"
+      echo "Select your Venom architecture:" >&2
+      echo "  1) LIGHT (Local: Ollama + Gemma 3 + Next.js) - Privacy First" >&2
+      echo "  2) API   (Cloud: OpenAI/Anthropic + Next.js) - Low Hardware Req" >&2
+      echo "  3) FULL  (Extended stack) - The Beast" >&2
       read -r -p "Choice [1/2/3] (default 1): " p
       ;;
   esac
@@ -153,10 +153,10 @@ read_profile_from_menu() {
 }
 
 read_lang_from_menu() {
-  echo "Select installer language / Wybierz jezyk instalatora / Sprache waehlen:"
-  echo "  1) English"
-  echo "  2) Polski"
-  echo "  3) Deutsch"
+  echo "Select installer language / Wybierz jezyk instalatora / Sprache waehlen:" >&2
+  echo "  1) English" >&2
+  echo "  2) Polski" >&2
+  echo "  3) Deutsch" >&2
   read -r -p "Choice [1/2/3] (default 1): " l
   l=${l:-1}
   case "$l" in
@@ -228,27 +228,27 @@ select_action_auto() {
 
   case "$LANG_CODE" in
     pl)
-      echo "[INFO] Wykryto istniejący stack release."
-      echo "  1) Start/Update"
-      echo "  2) Reinstall (odtworzenie kontenerów)"
-      echo "  3) Uninstall"
-      echo "  4) Anuluj"
+      echo "[INFO] Wykryto istniejący stack release." >&2
+      echo "  1) Start/Update" >&2
+      echo "  2) Reinstall (odtworzenie kontenerów)" >&2
+      echo "  3) Uninstall" >&2
+      echo "  4) Anuluj" >&2
       read -r -p "Wybór [1/2/3/4] (domyślnie 1): " a
       ;;
     de)
-      echo "[INFO] Vorhandener Release-Stack erkannt."
-      echo "  1) Start/Update"
-      echo "  2) Reinstall (Container neu erstellen)"
-      echo "  3) Uninstall"
-      echo "  4) Abbrechen"
+      echo "[INFO] Vorhandener Release-Stack erkannt." >&2
+      echo "  1) Start/Update" >&2
+      echo "  2) Reinstall (Container neu erstellen)" >&2
+      echo "  3) Uninstall" >&2
+      echo "  4) Abbrechen" >&2
       read -r -p "Auswahl [1/2/3/4] (Standard 1): " a
       ;;
     *)
-      echo "[INFO] Existing release stack detected."
-      echo "  1) Start/Update"
-      echo "  2) Reinstall (recreate containers)"
-      echo "  3) Uninstall"
-      echo "  4) Cancel"
+      echo "[INFO] Existing release stack detected." >&2
+      echo "  1) Start/Update" >&2
+      echo "  2) Reinstall (recreate containers)" >&2
+      echo "  3) Uninstall" >&2
+      echo "  4) Cancel" >&2
       read -r -p "Choice [1/2/3/4] (default 1): " a
       ;;
   esac

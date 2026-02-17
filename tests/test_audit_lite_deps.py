@@ -72,3 +72,18 @@ def test_audit_ignores_type_checking_only_imports(tmp_path: Path):
     result = _run_audit(tmp_path)
     assert result.returncode == 0
     assert "Wszystkie testy czyste" in result.stdout
+
+
+def test_audit_detects_forbidden_heavy_dependency_imports(tmp_path: Path):
+    _write(tmp_path / "requirements-ci-lite.txt", "pytest==9.0.2\n")
+    _write(tmp_path / "config/pytest-groups/ci-lite.txt", "tests/test_sample.py\n")
+    _write(
+        tmp_path / "tests/test_sample.py",
+        "import docker\nfrom onnx import ModelProto\n",
+    )
+
+    result = _run_audit(tmp_path)
+    assert result.returncode == 1
+    assert "NIEDOZWOLONE PAKIETY" in result.stdout
+    assert "docker" in result.stdout
+    assert "onnx" in result.stdout

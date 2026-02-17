@@ -26,6 +26,18 @@ NODES_API_LABEL = "Nodes API"
 FRONTEND_NEXTJS_LABEL = "Frontend (Next.js)"
 MODEL_ROUTER_LABEL = "Model Router"
 OPENAI_API_LABEL = "OpenAI API"
+_SERVICE_MAP = {
+    OPENAI_API_LABEL: OPENAI_API_LABEL,
+    "Redis": "Redis",
+    "LanceDB": "LanceDB",
+    "Docker Daemon": NODES_API_LABEL,
+    "Semantic Kernel": "Orchestrator",
+}
+_STATUS_MAP = {
+    "online": ConnectionStatus.OK,
+    "offline": ConnectionStatus.DOWN,
+    "degraded": ConnectionStatus.DEGRADED,
+}
 
 
 class _ApiDefinition(TypedDict):
@@ -441,36 +453,21 @@ def _update_runtime_statuses(connections: List[ApiConnection], service_monitor) 
         return
 
     real_services = {s.name: s for s in service_monitor.get_all_services()}
-
-    # Mapping Service Name -> Target Component Name
-    service_map = {
-        OPENAI_API_LABEL: OPENAI_API_LABEL,
-        "Redis": "Redis",
-        "LanceDB": "LanceDB",
-        "Docker Daemon": NODES_API_LABEL,
-        "Semantic Kernel": "Orchestrator",
-    }
-
-    def map_status(svc_status: str) -> ConnectionStatus:
-        if svc_status == "online":
-            return ConnectionStatus.OK
-        if svc_status == "offline":
-            return ConnectionStatus.DOWN
-        if svc_status == "degraded":
-            return ConnectionStatus.DEGRADED
-        return ConnectionStatus.UNKNOWN
+    target_to_service = {target: service for service, target in _SERVICE_MAP.items()}
 
     for conn in connections:
-        service_name_to_check = None
-        for svc_name, target_name in service_map.items():
-            if target_name == conn.target_component:
-                service_name_to_check = svc_name
-                break
+        service_name = target_to_service.get(conn.target_component)
+        if not service_name:
+            continue
+        svc = real_services.get(service_name)
+        if not svc:
+            continue
+        conn.status = _map_connection_status(svc.status.value)
+        # We don't change description to keep structure clean, but status is live.
 
-        if service_name_to_check and service_name_to_check in real_services:
-            svc = real_services[service_name_to_check]
-            conn.status = map_status(svc.status.value)
-            # We don't change description to keep structure clean, but status is live.
+
+def _map_connection_status(svc_status: str) -> ConnectionStatus:
+    return _STATUS_MAP.get(svc_status, ConnectionStatus.UNKNOWN)
 
 
 @router.get("/system/api-map")

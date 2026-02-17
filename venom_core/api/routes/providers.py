@@ -183,19 +183,11 @@ async def _check_ollama_status() -> ProviderStatus:
         start = time.perf_counter()
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(health_url)
-            runtime_version = None
-            if response.status_code == 200:
-                try:
-                    version_response = await client.get(version_url)
-                    if version_response.status_code == 200:
-                        payload = version_response.json()
-                        if isinstance(payload, dict):
-                            version = payload.get("version")
-                            if isinstance(version, str) and version.strip():
-                                runtime_version = version.strip()
-                except Exception:
-                    # Version probe is best-effort and must not degrade the status check.
-                    runtime_version = None
+            runtime_version = (
+                await _probe_ollama_runtime_version(client, version_url)
+                if response.status_code == 200
+                else None
+            )
         latency_ms = (time.perf_counter() - start) * 1000
 
         if response.status_code == 200:
@@ -219,6 +211,25 @@ async def _check_ollama_status() -> ProviderStatus:
             reason_code="connection_failed",
             message="Unable to connect to Ollama server",
         )
+
+
+async def _probe_ollama_runtime_version(
+    client: httpx.AsyncClient, version_url: str
+) -> Optional[str]:
+    """Best-effort probe for Ollama runtime version."""
+    try:
+        version_response = await client.get(version_url)
+        if version_response.status_code != 200:
+            return None
+        payload = version_response.json()
+        if not isinstance(payload, dict):
+            return None
+        version = payload.get("version")
+        if isinstance(version, str) and version.strip():
+            return version.strip()
+    except Exception:
+        return None
+    return None
 
 
 async def _check_vllm_status() -> ProviderStatus:

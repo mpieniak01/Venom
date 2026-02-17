@@ -489,6 +489,29 @@ def test_cleanup_local_job_uses_process_pid_fallback_when_job_pid_is_not_int():
     assert captured == [(process, 777)]
 
 
+def test_cleanup_local_job_skips_terminate_when_process_pid_missing(monkeypatch):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    process = SimpleNamespace()
+    terminate_calls = []
+    warnings = []
+
+    monkeypatch.setattr(
+        habitat,
+        "_terminate_local_process",
+        lambda *_args, **_kwargs: terminate_calls.append("called"),
+    )
+    monkeypatch.setattr(
+        gpu_habitat_mod.logger,
+        "warning",
+        lambda msg, *args: warnings.append(msg % args if args else msg),
+    )
+
+    habitat._cleanup_local_job("job-local", {"process": process, "pid": "bad"})
+
+    assert terminate_calls == []
+    assert warnings
+
+
 def test_is_pid_owned_by_current_user_handles_guard_paths(monkeypatch):
     habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
     assert habitat._is_pid_owned_by_current_user(1) is False

@@ -12,6 +12,7 @@ from venom_core.core.policy_gate import (
     PolicyEvaluationResult,
     PolicyReasonCode,
 )
+from venom_core.core.tracer import TraceStatus
 
 
 @pytest.fixture
@@ -235,5 +236,5 @@ async def test_policy_gate_tracer_step_on_block(mock_orchestrator):
                 mock_orchestrator.request_tracer.add_step.assert_called()
                 mock_orchestrator.request_tracer.update_status.assert_called_with(
                     mock_orchestrator.state_manager.create_task.return_value.id,
-                    "failed",
+                    TraceStatus.FAILED,
                 )

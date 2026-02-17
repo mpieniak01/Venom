@@ -1018,7 +1018,21 @@ print("=" * 60)
             if isinstance(pid, int):
                 self._terminate_local_process(process, pid)
             else:
-                self._terminate_local_process(process, int(getattr(process, "pid", 0)))
+                process_pid_raw = getattr(process, "pid", None)
+                try:
+                    process_pid = (
+                        int(process_pid_raw) if process_pid_raw is not None else None
+                    )
+                except (TypeError, ValueError):
+                    process_pid = None
+
+                if process_pid is not None and process_pid > 1:
+                    self._terminate_local_process(process, process_pid)
+                else:
+                    logger.warning(
+                        "Cannot determine valid PID for local process in job %s",
+                        job_name,
+                    )
         elif pid:
             self._signal_validated_local_job(job_name, job_info, signal.SIGTERM)
 

@@ -8,8 +8,12 @@ from uuid import UUID
 
 import aiofiles
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
 
+from venom_core.api.schemas.feedback import (
+    FeedbackLogsResponse,
+    FeedbackRequest,
+    FeedbackResponse,
+)
 from venom_core.core import metrics as metrics_module
 from venom_core.core.models import TaskRequest
 from venom_core.utils.helpers import get_utc_now_iso
@@ -61,18 +65,6 @@ def _matches_feedback_rating(entry: dict, rating: Optional[str]) -> bool:
     if rating is None:
         return True
     return entry.get("rating") == rating
-
-
-class FeedbackRequest(BaseModel):
-    task_id: UUID
-    rating: str = Field(description="up/down")
-    comment: Optional[str] = None
-
-
-class FeedbackResponse(BaseModel):
-    status: str
-    feedback_saved: bool
-    follow_up_task_id: Optional[str] = None
 
 
 def _validate_feedback_payload(payload: FeedbackRequest) -> str:
@@ -236,17 +228,18 @@ async def submit_feedback(payload: FeedbackRequest):
 
 @router.get(
     "/feedback/logs",
+    response_model=FeedbackLogsResponse,
     responses={
         400: {"description": "Nieprawidłowa wartość parametru rating"},
     },
 )
-async def get_feedback_logs(limit: int = 50, rating: Optional[str] = None) -> dict:
+async def get_feedback_logs(limit: int = 50, rating: Optional[str] = None) -> FeedbackLogsResponse:
     """Zwraca ostatnie wpisy feedbacku użytkownika."""
     limit = _clamp_feedback_limit(limit)
     _validate_feedback_rating(rating)
 
     if not FEEDBACK_LOG_PATH.exists():
-        return {"count": 0, "items": []}
+        return FeedbackLogsResponse(count=0, items=[])
 
     items = []
     try:
@@ -262,6 +255,6 @@ async def get_feedback_logs(limit: int = 50, rating: Optional[str] = None) -> di
             if len(items) >= limit:
                 break
     except Exception:
-        return {"count": 0, "items": []}
+        return FeedbackLogsResponse(count=0, items=[])
 
-    return {"count": len(items), "items": items}
+    return FeedbackLogsResponse(count=len(items), items=items)

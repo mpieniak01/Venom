@@ -3,9 +3,17 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
 from venom_core.api.routes import system_deps
+from venom_core.api.schemas.governance import (
+    AutonomyLevelRequest,
+    AutonomyLevelResponse,
+    AutonomyLevelSetResponse,
+    AutonomyLevelsResponse,
+    CostModeRequest,
+    CostModeResponse,
+    CostModeSetResponse,
+)
 from venom_core.config import SETTINGS
 from venom_core.core.permission_guard import permission_guard
 from venom_core.utils.logger import get_logger
@@ -30,19 +38,6 @@ AUTONOMY_SET_RESPONSES: dict[int | str, dict[str, Any]] = {
 AUTONOMY_LEVELS_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas pobierania listy poziomów"},
 }
-
-
-class CostModeRequest(BaseModel):
-    """Request do zmiany trybu kosztowego."""
-
-    enable: bool
-
-
-class CostModeResponse(BaseModel):
-    """Response z informacją o trybie kosztowym."""
-
-    enabled: bool
-    provider: str
 
 
 @router.get(
@@ -73,8 +68,12 @@ def get_cost_mode():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/system/cost-mode", responses=COST_MODE_RESPONSES)
-def set_cost_mode(request: CostModeRequest):
+@router.post(
+    "/system/cost-mode",
+    response_model=CostModeSetResponse,
+    responses=COST_MODE_RESPONSES,
+)
+def set_cost_mode(request: CostModeRequest) -> CostModeSetResponse:
     """
     Ustawia tryb kosztowy (Eco/Pro).
     """
@@ -90,41 +89,23 @@ def set_cost_mode(request: CostModeRequest):
             logger.warning(
                 "🔓 Paid Mode ENABLED przez API - użytkownik zaakceptował koszty"
             )
-            return {
-                "status": "success",
-                "message": "Paid Mode (Pro) włączony - dostęp do Cloud API otwarty",
-                "enabled": True,
-            }
+            return CostModeSetResponse(
+                status="success",
+                message="Paid Mode (Pro) włączony - dostęp do Cloud API otwarty",
+                enabled=True,
+            )
 
         state_manager.disable_paid_mode()
         logger.info("🔒 Paid Mode DISABLED przez API - tryb Eco aktywny")
-        return {
-            "status": "success",
-            "message": "Paid Mode (Pro) wyłączony - tylko lokalne modele",
-            "enabled": False,
-        }
+        return CostModeSetResponse(
+            status="success",
+            message="Paid Mode (Pro) wyłączony - tylko lokalne modele",
+            enabled=False,
+        )
 
     except Exception as e:
         logger.exception("Błąd podczas zmiany trybu kosztowego")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
-
-
-class AutonomyLevelRequest(BaseModel):
-    """Request do zmiany poziomu autonomii."""
-
-    level: int
-
-
-class AutonomyLevelResponse(BaseModel):
-    """Response z informacją o poziomie autonomii."""
-
-    current_level: int
-    current_level_name: str
-    color: str
-    color_name: str
-    description: str
-    permissions: dict
-    risk_level: str
 
 
 @router.get(
@@ -160,8 +141,12 @@ def get_autonomy_level():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/system/autonomy", responses=AUTONOMY_SET_RESPONSES)
-def set_autonomy_level(request: AutonomyLevelRequest):
+@router.post(
+    "/system/autonomy",
+    response_model=AutonomyLevelSetResponse,
+    responses=AUTONOMY_SET_RESPONSES,
+)
+def set_autonomy_level(request: AutonomyLevelRequest) -> AutonomyLevelSetResponse:
     """
     Ustawia nowy poziom autonomii.
     """
@@ -185,14 +170,14 @@ def set_autonomy_level(request: AutonomyLevelRequest):
                 detail="Nie można pobrać informacji o poziomie po zmianie",
             )
 
-        return {
-            "status": "success",
-            "message": f"Poziom autonomii zmieniony na {level_info.name}",
-            "level": request.level,
-            "level_name": level_info.name,
-            "color": level_info.color,
-            "permissions": level_info.permissions,
-        }
+        return AutonomyLevelSetResponse(
+            status="success",
+            message=f"Poziom autonomii zmieniony na {level_info.name}",
+            level=request.level,
+            level_name=level_info.name,
+            color=level_info.color,
+            permissions=level_info.permissions,
+        )
 
     except HTTPException:
         raise
@@ -201,8 +186,12 @@ def set_autonomy_level(request: AutonomyLevelRequest):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/system/autonomy/levels", responses=AUTONOMY_LEVELS_RESPONSES)
-def get_all_autonomy_levels():
+@router.get(
+    "/system/autonomy/levels",
+    response_model=AutonomyLevelsResponse,
+    responses=AUTONOMY_LEVELS_RESPONSES,
+)
+def get_all_autonomy_levels() -> AutonomyLevelsResponse:
     """
     Zwraca listę wszystkich dostępnych poziomów autonomii.
     """
@@ -223,7 +212,9 @@ def get_all_autonomy_levels():
             for level in levels.values()
         ]
 
-        return {"status": "success", "levels": levels_data, "count": len(levels_data)}
+        return AutonomyLevelsResponse(
+            status="success", levels=levels_data, count=len(levels_data)
+        )
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania listy poziomów")

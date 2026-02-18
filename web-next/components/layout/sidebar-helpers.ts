@@ -7,10 +7,19 @@ import {
     Calendar,
     Gauge,
     GraduationCap,
-    Settings
+    Settings,
+    type LucideIcon,
 } from "lucide-react";
 
-export const navItems = [
+export type NavItem = {
+    href: string;
+    label: string;
+    labelKey?: string;
+    icon: LucideIcon;
+    featureFlagEnv?: string;
+};
+
+export const coreNavItems: NavItem[] = [
     { href: "/", label: "Kokpit", labelKey: "sidebar.nav.cockpit", icon: Command },
     { href: "/inspector", label: "Inspektor", labelKey: "sidebar.nav.inspector", icon: BugPlay },
     { href: "/brain", label: "Graf wiedzy", labelKey: "sidebar.nav.brain", icon: Brain },
@@ -21,6 +30,35 @@ export const navItems = [
     { href: "/benchmark", label: "Benchmark", labelKey: "sidebar.nav.benchmark", icon: Gauge },
     { href: "/config", label: "Konfiguracja", labelKey: "sidebar.nav.config", icon: Settings },
 ];
+
+export const optionalNavItems: NavItem[] = [
+    {
+        href: "/module-example",
+        label: "Module Example",
+        labelKey: "sidebar.nav.moduleExample",
+        icon: Settings,
+        featureFlagEnv: "NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE",
+    },
+];
+
+function isEnvFlagEnabled(flagName: string): boolean {
+    const raw = process.env[flagName];
+    if (!raw) {
+        return false;
+    }
+    const normalized = raw.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+export function getNavigationItems(): NavItem[] {
+    const enabledOptional = optionalNavItems.filter((item) => {
+        if (!item.featureFlagEnv) {
+            return true;
+        }
+        return isEnvFlagEnabled(item.featureFlagEnv);
+    });
+    return [...coreNavItems, ...enabledOptional];
+}
 
 export const AUTONOMY_LEVELS = [0, 10, 20, 30, 40];
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -36,8 +37,8 @@ class PublishQueueItem(BaseModel):
     id: str = Field(..., description="Queue item ID")
     draft_id: str = Field(..., description="Draft bundle ID")
     target_channel: str = Field(..., description="Selected channel")
-    status: str = Field(
-        ..., description="draft|ready|queued|published|failed|cancelled"
+    status: Literal["draft", "ready", "queued", "published", "failed", "cancelled"] = (
+        Field(..., description="Publication status of the item.")
     )
     target_repo: str | None = Field(default=None)
     target_path: str | None = Field(default=None)

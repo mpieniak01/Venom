@@ -86,10 +86,6 @@ def build_routing_decision(
         routed_provider = str(routing_info.get("provider", "")).strip().lower()
         if routed_provider in {"openai", "google", "ollama", "vllm"}:
             preferred_provider = routed_provider
-        elif routed_provider == "local":
-            preferred_provider = (
-                str(getattr(runtime_info, "provider", "")).strip().lower() or "ollama"
-            )
         else:
             preferred_provider = (
                 str(getattr(runtime_info, "provider", "")).strip().lower() or "ollama"

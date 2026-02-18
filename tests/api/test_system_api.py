@@ -119,3 +119,11 @@ def test_get_api_map_connects_to_service_monitor():
         )
         if lancedb_conn:
             assert lancedb_conn.status == ConnectionStatus.DEGRADED
+
+
+def test_api_map_openapi_response_model_binding():
+    """Kontrakt OpenAPI: /api/v1/system/api-map musi wskazywać ApiMapResponse."""
+    schema = app.openapi()
+    get_op = schema["paths"]["/api/v1/system/api-map"]["get"]
+    content_schema = get_op["responses"]["200"]["content"]["application/json"]["schema"]
+    assert content_schema["$ref"] == "#/components/schemas/ApiMapResponse"

@@ -147,6 +147,26 @@ class HardwareBridge:
         self.connected = False
         logger.info("Rozłączono z Raspberry Pi")
 
+    async def reconnect(
+        self, retries: int = 3, delay_seconds: float = 1.0
+    ) -> dict[str, Any]:
+        """
+        Próbuje odtworzyć połączenie z Rider-Pi.
+
+        Returns:
+            Słownik z wynikiem i liczbą prób.
+        """
+        attempts = 0
+        if self.connected:
+            await self.disconnect()
+        for attempt in range(1, retries + 1):
+            attempts = attempt
+            if await self.connect():
+                return {"connected": True, "attempts": attempts}
+            if attempt < retries:
+                await asyncio.sleep(delay_seconds)
+        return {"connected": False, "attempts": attempts}
+
     async def execute_command(self, command: str) -> Dict[str, Any]:
         """
         Wykonuje komendę SSH na Raspberry Pi.

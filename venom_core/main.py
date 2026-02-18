@@ -1089,7 +1089,6 @@ def setup_router_dependencies():
     queue_routes.set_dependencies(orchestrator)
     # TokenEconomist zainicjalizowany w _initialize_token_economist()
     metrics_routes.set_dependencies(token_economist=token_economist)
-    llm_simple_routes.set_dependencies(request_tracer)
     git_routes.set_dependencies(git_skill)
     agents_routes.set_dependencies(
         gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
@@ -1106,7 +1105,6 @@ def setup_router_dependencies():
     nodes_routes.set_dependencies(node_manager)
     strategy_routes.set_dependencies(orchestrator)
     models_routes.set_dependencies(model_manager, model_registry=model_registry)
-    flow_routes.set_dependencies(request_tracer)
     benchmark_routes.set_dependencies(benchmark_service)
     calendar_routes.set_dependencies(google_calendar_skill)
     memory_projection_routes.set_dependencies(vector_store)

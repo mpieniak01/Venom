@@ -13,10 +13,19 @@ from venom_core.api.dependencies import (
     is_testing_mode,
 )
 from venom_core.api.schemas.memory import (
+    CacheFlushResponse,
+    GlobalMemoryClearResponse,
+    LearningStatusResponse,
     LearningToggleRequest,
+    LessonsMutationResponse,
+    MemoryEntryMutationResponse,
+    MemoryGraphResponse,
     MemoryIngestRequest,
     MemoryIngestResponse,
     MemorySearchRequest,
+    MemorySearchResponse,
+    SessionMemoryClearResponse,
+    SessionMemoryResponse,
 )
 from venom_core.core.knowledge_contract import KnowledgeKind
 from venom_core.core.knowledge_ttl import compute_expires_at, resolve_ttl_days
@@ -470,7 +479,7 @@ def ingest_to_memory(
 
 @router.post(
     "/search",
-    response_model=dict[str, Any],
+    response_model=MemorySearchResponse,
     responses={
         400: {"description": "Nieprawidłowe zapytanie"},
         500: {"description": "Błąd wewnętrzny podczas wyszukiwania"},
@@ -521,7 +530,7 @@ def search_memory(
 
 @router.delete(
     "/session/{session_id}",
-    response_model=dict[str, Any],
+    response_model=SessionMemoryClearResponse,
     responses={
         400: {"description": "Brak wymaganego session_id"},
     },
@@ -562,7 +571,7 @@ def clear_session_memory(
 
 @router.get(
     "/session/{session_id}",
-    response_model=dict[str, Any],
+    response_model=SessionMemoryResponse,
     responses={
         400: {"description": "Brak wymaganego session_id"},
         503: {"description": "SessionStore nie jest dostępny"},
@@ -591,7 +600,7 @@ def get_session_memory(
 
 @router.delete(
     "/global",
-    response_model=dict[str, Any],
+    response_model=GlobalMemoryClearResponse,
     responses={
         500: {"description": "Błąd podczas czyszczenia pamięci globalnej"},
     },
@@ -619,7 +628,11 @@ def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_store)])
     }
 
 
-@router.get("/graph", response_model=dict[str, Any], responses=INTERNAL_ERROR_RESPONSES)
+@router.get(
+    "/graph",
+    response_model=MemoryGraphResponse,
+    responses=INTERNAL_ERROR_RESPONSES,
+)
 def memory_graph(
     vector_store: Annotated[Any, Depends(get_vector_store)],
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
@@ -689,7 +702,7 @@ def memory_graph(
 
 @router.post(
     "/entry/{entry_id}/pin",
-    response_model=dict[str, Any],
+    response_model=MemoryEntryMutationResponse,
     responses={
         404: {"description": "Nie znaleziono wpisu pamięci"},
         500: {"description": "Błąd aktualizacji wpisu pamięci"},
@@ -719,7 +732,7 @@ def pin_memory_entry(
 
 @router.delete(
     "/entry/{entry_id}",
-    response_model=dict[str, Any],
+    response_model=MemoryEntryMutationResponse,
     responses={
         404: {"description": "Nie znaleziono wpisu do usunięcia"},
         500: {"description": "Błąd usuwania wpisu pamięci"},
@@ -755,7 +768,7 @@ def delete_memory_entry(
 
 @router.delete(
     "/cache/semantic",
-    response_model=dict[str, Any],
+    response_model=CacheFlushResponse,
     responses={
         500: {"description": "Błąd podczas czyszczenia Semantic Cache"},
     },
@@ -816,7 +829,7 @@ def flush_semantic_cache():
 
 @router.delete(
     "/lessons/prune/latest",
-    response_model=dict[str, Any],
+    response_model=LessonsMutationResponse,
     responses=LESSONS_MUTATION_RESPONSES,
 )
 async def prune_latest_lessons(
@@ -834,7 +847,7 @@ async def prune_latest_lessons(
 
 @router.delete(
     "/lessons/prune/range",
-    response_model=dict[str, Any],
+    response_model=LessonsMutationResponse,
     responses=LESSONS_MUTATION_RESPONSES,
 )
 async def prune_lessons_by_range(
@@ -853,7 +866,7 @@ async def prune_lessons_by_range(
 
 @router.delete(
     "/lessons/prune/tag",
-    response_model=dict[str, Any],
+    response_model=LessonsMutationResponse,
     responses=LESSONS_MUTATION_RESPONSES,
 )
 async def prune_lessons_by_tag(
@@ -869,7 +882,7 @@ async def prune_lessons_by_tag(
 
 @router.delete(
     "/lessons/prune/ttl",
-    response_model=dict[str, Any],
+    response_model=LessonsMutationResponse,
     responses=LESSONS_MUTATION_RESPONSES,
 )
 async def prune_lessons_by_ttl(
@@ -885,7 +898,7 @@ async def prune_lessons_by_ttl(
 
 @router.delete(
     "/lessons/purge",
-    response_model=dict[str, Any],
+    response_model=LessonsMutationResponse,
     responses=LESSONS_MUTATION_RESPONSES,
 )
 async def purge_all_lessons(
@@ -903,7 +916,7 @@ async def purge_all_lessons(
 
 @router.get(
     "/lessons/learning/status",
-    response_model=dict[str, Any],
+    response_model=LearningStatusResponse,
     responses=LESSONS_READ_RESPONSES,
 )
 async def get_learning_status():
@@ -915,7 +928,7 @@ async def get_learning_status():
 
 @router.post(
     "/lessons/learning/toggle",
-    response_model=dict[str, Any],
+    response_model=LearningStatusResponse,
     responses=LESSONS_MUTATION_RESPONSES,
 )
 async def toggle_learning(request: LearningToggleRequest):

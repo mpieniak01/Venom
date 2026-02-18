@@ -8,6 +8,7 @@ from uuid import UUID
 
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
+from venom_core.core import routing_integration
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.policy_gate import (
     PolicyDecision,
@@ -273,12 +274,23 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
 
     runtime_info = get_active_llm_runtime()
     runtime_context = _prepare_runtime_context(request, runtime_info)
-    orch.state_manager.update_context(task.id, {"llm_runtime": runtime_context})
+    routing_decision = routing_integration.build_routing_decision(
+        request=request,
+        runtime_info=runtime_info,
+        state_manager=orch.state_manager,
+    )
+    orch.state_manager.update_context(
+        task.id,
+        {
+            "llm_runtime": runtime_context,
+            "routing_decision": routing_decision.to_dict(),
+        },
+    )
 
     # Policy Gate: Check before provider selection
     policy_context = PolicyEvaluationContext(
         content=request.content,
-        planned_provider=request.forced_provider or runtime_info.provider,
+        planned_provider=request.forced_provider or routing_decision.provider,
         planned_tools=[request.forced_tool] if request.forced_tool else [],
         session_id=request.session_id,
         forced_tool=request.forced_tool,
@@ -292,6 +304,14 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
         return policy_response
 
     _init_request_trace(orch, task, request, runtime_context)
+    if orch.request_tracer:
+        orch.request_tracer.add_step(
+            task.id,
+            "RoutingDecision",
+            "compute",
+            status="ok",
+            details=str(routing_decision.to_dict()),
+        )
 
     log_message = f"Zadanie uruchomione: {get_utc_now_iso()}"
     orch.state_manager.add_log(task.id, log_message)

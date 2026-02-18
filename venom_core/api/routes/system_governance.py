@@ -70,7 +70,6 @@ def get_cost_mode():
 
 @router.post(
     "/system/cost-mode",
-    response_model=CostModeSetResponse,
     responses=COST_MODE_RESPONSES,
 )
 def set_cost_mode(request: CostModeRequest) -> CostModeSetResponse:
@@ -143,7 +142,6 @@ def get_autonomy_level():
 
 @router.post(
     "/system/autonomy",
-    response_model=AutonomyLevelSetResponse,
     responses=AUTONOMY_SET_RESPONSES,
 )
 def set_autonomy_level(request: AutonomyLevelRequest) -> AutonomyLevelSetResponse:
@@ -188,7 +186,6 @@ def set_autonomy_level(request: AutonomyLevelRequest) -> AutonomyLevelSetRespons
 
 @router.get(
     "/system/autonomy/levels",
-    response_model=AutonomyLevelsResponse,
     responses=AUTONOMY_LEVELS_RESPONSES,
 )
 def get_all_autonomy_levels() -> AutonomyLevelsResponse:

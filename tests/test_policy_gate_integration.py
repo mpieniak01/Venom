@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from venom_core.contracts.routing import ReasonCode, RoutingDecision, RuntimeTarget
 from venom_core.core.models import TaskRequest, TaskStatus
 from venom_core.core.orchestrator.orchestrator_submit import submit_task
 from venom_core.core.policy_gate import (
@@ -238,3 +239,147 @@ async def test_policy_gate_tracer_step_on_block(mock_orchestrator):
                     mock_orchestrator.state_manager.create_task.return_value.id,
                     TraceStatus.FAILED,
                 )
+
+
+@pytest.mark.asyncio
+async def test_submit_task_stores_routing_decision_in_task_context(mock_orchestrator):
+    """RoutingDecision powinien trafić do context payload w submit flow."""
+    with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "false"}):
+        from venom_core.core.policy_gate import policy_gate
+
+        policy_gate._initialized = False
+        policy_gate.__init__()
+
+        request = TaskRequest(content="test request")
+        decision = RoutingDecision(
+            target_runtime=RuntimeTarget.LOCAL_OLLAMA,
+            provider="ollama",
+            model="gemma3:4b",
+            reason_code=ReasonCode.DEFAULT_ECO_MODE,
+            fallback_applied=False,
+        )
+
+        with (
+            patch(
+                "venom_core.core.orchestrator.orchestrator_submit.get_active_llm_runtime"
+            ) as mock_runtime,
+            patch(
+                "venom_core.core.orchestrator.orchestrator_submit.routing_integration.build_routing_decision",
+                return_value=decision,
+            ),
+        ):
+            mock_runtime.return_value = MagicMock(
+                provider="ollama",
+                model_name="test-model",
+                endpoint="http://localhost",
+                to_payload=MagicMock(return_value={}),
+            )
+
+            await submit_task(mock_orchestrator, request)
+
+            update_calls = mock_orchestrator.state_manager.update_context.call_args_list
+            assert update_calls
+            payload = update_calls[0].args[1]
+            assert "routing_decision" in payload
+            assert payload["routing_decision"]["provider"] == "ollama"
+            assert payload["routing_decision"]["reason_code"] == "default_eco_mode"
+
+
+@pytest.mark.asyncio
+async def test_submit_task_uses_routing_decision_provider_for_policy_context(
+    mock_orchestrator,
+):
+    """planned_provider w PolicyEvaluationContext ma pochodzić z RoutingDecision."""
+    with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "true"}):
+        from venom_core.core.policy_gate import policy_gate
+
+        policy_gate._initialized = False
+        policy_gate.__init__()
+
+        request = TaskRequest(content="test request")
+        decision = RoutingDecision(
+            target_runtime=RuntimeTarget.CLOUD_OPENAI,
+            provider="openai",
+            model="gpt-4o-mini",
+            reason_code=ReasonCode.TASK_COMPLEXITY_HIGH,
+            fallback_applied=False,
+        )
+
+        seen_context = {}
+
+        def _capture_context(context):
+            seen_context["planned_provider"] = context.planned_provider
+            return PolicyEvaluationResult(
+                decision=PolicyDecision.ALLOW,
+                message="ok",
+            )
+
+        with (
+            patch(
+                "venom_core.core.orchestrator.orchestrator_submit.get_active_llm_runtime"
+            ) as mock_runtime,
+            patch(
+                "venom_core.core.orchestrator.orchestrator_submit.routing_integration.build_routing_decision",
+                return_value=decision,
+            ),
+            patch.object(
+                policy_gate,
+                "evaluate_before_provider_selection",
+                side_effect=_capture_context,
+            ),
+        ):
+            mock_runtime.return_value = MagicMock(
+                provider="ollama",
+                model_name="test-model",
+                endpoint="http://localhost",
+                to_payload=MagicMock(return_value={}),
+            )
+
+            await submit_task(mock_orchestrator, request)
+
+            assert seen_context["planned_provider"] == "openai"
+
+
+@pytest.mark.asyncio
+async def test_submit_task_persists_fallback_flag_from_routing_decision(
+    mock_orchestrator,
+):
+    """Fallback metadata z RoutingDecision ma być zapisywane do contextu."""
+    with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "false"}):
+        from venom_core.core.policy_gate import policy_gate
+
+        policy_gate._initialized = False
+        policy_gate.__init__()
+
+        request = TaskRequest(content="test request")
+        decision = RoutingDecision(
+            target_runtime=RuntimeTarget.LOCAL_VLLM,
+            provider="vllm",
+            model="model-x",
+            reason_code=ReasonCode.FALLBACK_AUTH_ERROR,
+            fallback_applied=True,
+            fallback_chain=["openai", "vllm"],
+        )
+
+        with (
+            patch(
+                "venom_core.core.orchestrator.orchestrator_submit.get_active_llm_runtime"
+            ) as mock_runtime,
+            patch(
+                "venom_core.core.orchestrator.orchestrator_submit.routing_integration.build_routing_decision",
+                return_value=decision,
+            ),
+        ):
+            mock_runtime.return_value = MagicMock(
+                provider="ollama",
+                model_name="test-model",
+                endpoint="http://localhost",
+                to_payload=MagicMock(return_value={}),
+            )
+
+            await submit_task(mock_orchestrator, request)
+            payload = mock_orchestrator.state_manager.update_context.call_args_list[
+                0
+            ].args[1]
+            assert payload["routing_decision"]["fallback_applied"] is True
+            assert payload["routing_decision"]["fallback_chain"] == ["openai", "vllm"]

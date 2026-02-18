@@ -13,3 +13,11 @@ class IoTStatusResponse(BaseModel):
     memory: Optional[str] = None
     disk: Optional[str] = None
     message: Optional[str] = None
+
+
+class IoTReconnectResponse(BaseModel):
+    """Response for Rider-Pi reconnect action."""
+
+    connected: bool
+    attempts: int
+    message: Optional[str] = None

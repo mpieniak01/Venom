@@ -1,4 +1,4 @@
-"""Schemas for Brand Studio modular API."""
+"""Schemas for Module Example modular API."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ class PublishResult(BaseModel):
     published_at: datetime | None = Field(default=None)
 
 
-class BrandStudioAuditEntry(BaseModel):
+class ModuleExampleAuditEntry(BaseModel):
     id: str = Field(..., description="Audit entry ID")
     action: str = Field(..., description="Action type")
     actor: str = Field(..., description="Actor identifier")
@@ -71,7 +71,7 @@ class QueueResponse(BaseModel):
 
 
 class AuditResponse(BaseModel):
-    items: list[BrandStudioAuditEntry] = Field(default_factory=list)
+    items: list[ModuleExampleAuditEntry] = Field(default_factory=list)
 
 
 class GenerateDraftsRequest(BaseModel):

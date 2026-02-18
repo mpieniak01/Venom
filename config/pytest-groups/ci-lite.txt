@@ -7,8 +7,8 @@ tests/test_config_paths.py
 tests/test_text_utils.py
 tests/test_generation_schema.py
 tests/test_api_dependencies.py
-tests/test_brand_studio_loader.py
-tests/test_brand_studio_routes.py
+tests/test_module_example_loader.py
+tests/test_module_example_routes.py
 tests/test_dispatcher.py
 tests/test_parse_intent.py
 tests/test_toolmaker_agent.py

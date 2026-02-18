@@ -1,4 +1,4 @@
-"""Brand Studio provider loader (modular extension boundary)."""
+"""Module Example provider loader (modular extension boundary)."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from threading import Lock
 from typing import Protocol
 from uuid import uuid4
 
-from venom_core.api.schemas.brand_studio import (
-    BrandStudioAuditEntry,
+from venom_core.api.schemas.module_example import (
     ContentCandidate,
     DraftBundle,
     DraftVariant,
+    ModuleExampleAuditEntry,
     PublishQueueItem,
     PublishResult,
 )
@@ -22,7 +22,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-class BrandStudioProvider(Protocol):
+class ModuleExampleProvider(Protocol):
     def list_candidates(
         self,
         *,
@@ -60,15 +60,15 @@ class BrandStudioProvider(Protocol):
 
     def list_queue(self) -> list[PublishQueueItem]: ...
 
-    def list_audit(self) -> list[BrandStudioAuditEntry]: ...
+    def list_audit(self) -> list[ModuleExampleAuditEntry]: ...
 
 
-class StubBrandStudioProvider:
+class StubModuleExampleProvider:
     """Safe public fallback provider for modular mode."""
 
     def __init__(self):
         self._queue: dict[str, PublishQueueItem] = {}
-        self._audit: list[BrandStudioAuditEntry] = []
+        self._audit: list[ModuleExampleAuditEntry] = []
         self._drafts: dict[str, DraftBundle] = {}
 
     def list_candidates(
@@ -131,7 +131,7 @@ class StubBrandStudioProvider:
         bundle = DraftBundle(id=bundle_id, candidate_id=candidate_id, variants=variants)
         self._drafts[bundle_id] = bundle
         self._audit.append(
-            BrandStudioAuditEntry(
+            ModuleExampleAuditEntry(
                 id=f"a-{uuid4().hex[:10]}",
                 action="draft_generated",
                 actor="system",
@@ -164,7 +164,7 @@ class StubBrandStudioProvider:
         )
         self._queue[item.id] = item
         self._audit.append(
-            BrandStudioAuditEntry(
+            ModuleExampleAuditEntry(
                 id=f"a-{uuid4().hex[:10]}",
                 action="queued",
                 actor="system",
@@ -189,7 +189,7 @@ class StubBrandStudioProvider:
         item.status = "published"
         item.updated_at = datetime.utcnow()
         self._audit.append(
-            BrandStudioAuditEntry(
+            ModuleExampleAuditEntry(
                 id=f"a-{uuid4().hex[:10]}",
                 action="published",
                 actor=actor,
@@ -207,24 +207,24 @@ class StubBrandStudioProvider:
     def list_queue(self) -> list[PublishQueueItem]:
         return sorted(self._queue.values(), key=lambda item: item.created_at)
 
-    def list_audit(self) -> list[BrandStudioAuditEntry]:
+    def list_audit(self) -> list[ModuleExampleAuditEntry]:
         return list(self._audit)
 
 
-_provider_instance: BrandStudioProvider | None = None
+_provider_instance: ModuleExampleProvider | None = None
 _provider_lock = Lock()
 
 
-def reset_brand_studio_provider_cache() -> None:
+def reset_module_example_provider_cache() -> None:
     global _provider_instance
     with _provider_lock:
         _provider_instance = None
 
 
-def _load_extension_provider(settings: Settings) -> BrandStudioProvider | None:
-    module_path = settings.BRAND_STUDIO_EXTENSION_MODULE.strip()
+def _load_extension_provider(settings: Settings) -> ModuleExampleProvider | None:
+    module_path = settings.MODULE_EXAMPLE_EXTENSION_MODULE.strip()
     if not module_path:
-        logger.warning("BRAND_STUDIO_MODE=extension but no module configured.")
+        logger.warning("MODULE_EXAMPLE_MODE=extension but no module configured.")
         return None
     try:
         module = importlib.import_module(module_path)
@@ -238,15 +238,15 @@ def _load_extension_provider(settings: Settings) -> BrandStudioProvider | None:
         return provider
     except Exception as exc:
         logger.warning(
-            "Failed to load Brand Studio extension module %s: %s", module_path, exc
+            "Failed to load Module Example extension module %s: %s", module_path, exc
         )
         return None
 
 
-def get_brand_studio_provider(
+def get_module_example_provider(
     settings: Settings = SETTINGS,
-) -> BrandStudioProvider | None:
-    mode = (settings.BRAND_STUDIO_MODE or "disabled").strip().lower()
+) -> ModuleExampleProvider | None:
+    mode = (settings.MODULE_EXAMPLE_MODE or "disabled").strip().lower()
     if mode == "disabled":
         return None
 
@@ -258,9 +258,9 @@ def get_brand_studio_provider(
         if mode == "extension":
             provider = _load_extension_provider(settings)
             if provider is None:
-                provider = StubBrandStudioProvider()
+                provider = StubModuleExampleProvider()
         else:
-            provider = StubBrandStudioProvider()
+            provider = StubModuleExampleProvider()
 
         _provider_instance = provider
         return _provider_instance

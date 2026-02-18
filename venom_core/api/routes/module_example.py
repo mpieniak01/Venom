@@ -1,10 +1,10 @@
-"""Brand Studio API (modular, extension-ready)."""
+"""Module Example API (modular, extension-ready)."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from venom_core.api.schemas.brand_studio import (
+from venom_core.api.schemas.module_example import (
     AuditResponse,
     CandidatesResponse,
     DraftBundle,
@@ -16,9 +16,9 @@ from venom_core.api.schemas.brand_studio import (
     QueueResponse,
 )
 from venom_core.config import SETTINGS
-from venom_core.services.brand_studio_loader import get_brand_studio_provider
+from venom_core.services.module_example_loader import get_module_example_provider
 
-router = APIRouter(prefix="/api/v1/brand-studio", tags=["brand-studio"])
+router = APIRouter(prefix="/api/v1/module-example", tags=["module-example"])
 
 
 def _extract_actor(
@@ -33,7 +33,7 @@ def _extract_actor(
 
 
 def _assert_allowed(actor: str) -> None:
-    raw = (SETTINGS.BRAND_STUDIO_ALLOWED_USERS or "").strip()
+    raw = (SETTINGS.MODULE_EXAMPLE_ALLOWED_USERS or "").strip()
     if not raw:
         return
     allowed = {item.strip() for item in raw.split(",") if item.strip()}
@@ -44,12 +44,12 @@ def _assert_allowed(actor: str) -> None:
 def _resolve_provider(
     actor: str,
 ):
-    if not SETTINGS.FEATURE_BRAND_STUDIO:
-        raise HTTPException(status_code=404, detail="Brand Studio feature disabled")
+    if not SETTINGS.FEATURE_MODULE_EXAMPLE:
+        raise HTTPException(status_code=404, detail="Module Example feature disabled")
     _assert_allowed(actor)
-    provider = get_brand_studio_provider()
+    provider = get_module_example_provider()
     if provider is None:
-        raise HTTPException(status_code=503, detail="Brand Studio mode is disabled")
+        raise HTTPException(status_code=503, detail="Module Example mode is disabled")
     return provider
 
 

@@ -17,7 +17,6 @@ from venom_core.api.audio_stream import AudioStreamHandler
 from venom_core.api.routes import academy as academy_routes
 from venom_core.api.routes import agents as agents_routes
 from venom_core.api.routes import benchmark as benchmark_routes
-from venom_core.api.routes import brand_studio as brand_studio_routes
 from venom_core.api.routes import calendar as calendar_routes
 from venom_core.api.routes import feedback as feedback_routes
 from venom_core.api.routes import flow as flow_routes
@@ -29,6 +28,7 @@ from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.api.routes import memory as memory_routes
 from venom_core.api.routes import memory_projection as memory_projection_routes
 from venom_core.api.routes import models as models_routes
+from venom_core.api.routes import module_example as module_example_routes
 from venom_core.api.routes import nodes as nodes_routes
 from venom_core.api.routes import providers as providers_routes
 from venom_core.api.routes import queue as queue_routes
@@ -1181,7 +1181,7 @@ app.include_router(workflow_control_routes.router)
 app.include_router(workflow_operations_routes.router)
 app.include_router(benchmark_routes.router)
 app.include_router(calendar_routes.router)
-app.include_router(brand_studio_routes.router)
+app.include_router(module_example_routes.router)
 
 
 @app.websocket("/ws/events")

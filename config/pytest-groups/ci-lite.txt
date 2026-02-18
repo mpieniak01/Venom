@@ -47,3 +47,4 @@ tests/test_docker_cleanup_script.py
 # Academy lightweight regression coverage
 tests/test_academy_api_coverage.py
 tests/test_academy_api_new_code_edges.py
+tests/test_coverage_fixes_wave4.py

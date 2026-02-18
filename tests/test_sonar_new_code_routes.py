@@ -151,9 +151,24 @@ def test_routes_system_config_governance_runtime_scheduler_services_status(
         {"mode": "local"},
         {"mode": "env"},
     )
-    config_mgr.update_config.return_value = {"status": "updated"}
-    config_mgr.get_backup_list.return_value = ["b1.env"]
-    config_mgr.restore_backup.return_value = {"status": "restored"}
+    config_mgr.update_config.return_value = {
+        "success": True,
+        "message": "updated",
+        "updated_keys": ["AI_MODE"],
+    }
+    config_mgr.get_backup_list.return_value = [
+        {
+            "filename": "b1.env",
+            "path": "/path/to/b1.env",
+            "size_bytes": 1024,
+            "created_at": "2024-01-01T00:00:00",
+        }
+    ]
+    config_mgr.restore_backup.return_value = {
+        "success": True,
+        "message": "restored",
+        "restored_file": "b1.env",
+    }
     monkeypatch.setattr(system_config, "config_manager", config_mgr)
     cfg_client = _client_with_router(system_config.router)
     assert cfg_client.get("/api/v1/config/runtime").status_code == 200

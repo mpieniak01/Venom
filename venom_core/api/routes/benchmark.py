@@ -1,10 +1,16 @@
 """Moduł: routes/benchmark - Endpointy API dla benchmarkingu modeli."""
 
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
 
+from venom_core.api.schemas.benchmark import (
+    BenchmarkDeleteResponse,
+    BenchmarkListResponse,
+    BenchmarkStartRequest,
+    BenchmarkStartResponse,
+    BenchmarkStatusResponse,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -14,43 +20,6 @@ BENCHMARK_SERVICE_UNAVAILABLE_DETAIL = "BenchmarkService nie jest dostępny"
 
 # Zależność - będzie ustawiona w main.py
 _benchmark_service = None
-
-
-class BenchmarkStartRequest(BaseModel):
-    """Request do rozpoczęcia benchmarku."""
-
-    models: List[str] = Field(
-        ..., description="Lista nazw modeli do przetestowania", min_length=1
-    )
-    num_questions: int = Field(
-        default=5,
-        description="Liczba pytań do zadania każdemu modelowi",
-        ge=1,
-        le=20,
-    )
-
-
-class BenchmarkStartResponse(BaseModel):
-    """Response po rozpoczęciu benchmarku."""
-
-    benchmark_id: str = Field(..., description="ID benchmarku do sprawdzania statusu")
-    message: str = Field(default="Benchmark uruchomiony")
-
-
-class BenchmarkStatusResponse(BaseModel):
-    """Response ze statusem benchmarku."""
-
-    benchmark_id: str
-    status: str
-    progress: str
-    current_model: Optional[str] = None
-    models: List[str]
-    num_questions: int
-    results: List[dict]
-    created_at: str
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    error_message: Optional[str] = None
 
 
 def set_dependencies(benchmark_service):
@@ -176,6 +145,7 @@ def get_benchmark_status(benchmark_id: str):
 
 @router.get(
     "/list",
+    response_model=BenchmarkListResponse,
     responses={
         503: {"description": BENCHMARK_SERVICE_UNAVAILABLE_DETAIL},
         500: {"description": "Błąd wewnętrzny podczas pobierania listy"},
@@ -201,7 +171,7 @@ def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
 
     try:
         benchmarks = _benchmark_service.list_benchmarks(limit=limit)
-        return {"benchmarks": benchmarks, "count": len(benchmarks)}
+        return BenchmarkListResponse(benchmarks=benchmarks, count=len(benchmarks))
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania listy benchmarków")
@@ -214,6 +184,7 @@ def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
 @router.delete(
     "/all",
     status_code=200,
+    response_model=BenchmarkDeleteResponse,
     responses={
         503: {"description": BENCHMARK_SERVICE_UNAVAILABLE_DETAIL},
         500: {"description": "Błąd wewnętrzny podczas czyszczenia benchmarków"},
@@ -236,7 +207,9 @@ def clear_all_benchmarks():
 
     try:
         count = _benchmark_service.clear_all_benchmarks()
-        return {"message": f"Usunięto {count} benchmarków", "count": count}
+        return BenchmarkDeleteResponse(
+            message=f"Usunięto {count} benchmarków", count=count
+        )
 
     except Exception as e:
         logger.exception("Błąd podczas czyszczenia benchmarków")
@@ -249,6 +222,7 @@ def clear_all_benchmarks():
 @router.delete(
     "/{benchmark_id}",
     status_code=200,
+    response_model=BenchmarkDeleteResponse,
     responses={
         503: {"description": BENCHMARK_SERVICE_UNAVAILABLE_DETAIL},
         404: {"description": "Benchmark nie został znaleziony"},
@@ -277,7 +251,9 @@ def delete_benchmark(benchmark_id: str):
             raise HTTPException(
                 status_code=404, detail=f"Benchmark {benchmark_id} nie znaleziony"
             )
-        return {"message": f"Benchmark {benchmark_id} został usunięty"}
+        return BenchmarkDeleteResponse(
+            message=f"Benchmark {benchmark_id} został usunięty"
+        )
 
     except HTTPException:
         raise

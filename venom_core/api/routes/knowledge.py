@@ -5,7 +5,6 @@ from pathlib import PurePosixPath
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 
 from venom_core.api.dependencies import (
     get_graph_store,
@@ -13,6 +12,7 @@ from venom_core.api.dependencies import (
     get_session_store,
     get_vector_store,
 )
+from venom_core.api.schemas.knowledge import LearningToggleRequest
 from venom_core.config import SETTINGS
 from venom_core.core.knowledge_adapters import (
     from_lesson,
@@ -888,10 +888,6 @@ def dedupe_lessons(
 def get_learning_status():
     """Zwraca status globalnego zapisu lekcji."""
     return {"status": "success", "enabled": SETTINGS.ENABLE_META_LEARNING}
-
-
-class LearningToggleRequest(BaseModel):
-    enabled: bool
 
 
 @router.post("/lessons/learning/toggle", responses=INTERNAL_ERROR_RESPONSES)

@@ -105,9 +105,8 @@ class TestConfigRuntimeAPI:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["success"] is True
-            assert "backend" in data["restart_required"]
-            assert len(data["changed_keys"]) == 2
+            assert data["status"] == "success"
+            assert len(data["updated_keys"]) == 2
 
     def test_update_config_validation_error(self, client):
         """Test błędu walidacji."""
@@ -127,7 +126,7 @@ class TestConfigRuntimeAPI:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["success"] is False
+            assert data["status"] == "error"
             assert "walidacji" in data["message"]
 
     def test_update_config_error(self, client):
@@ -220,8 +219,8 @@ class TestConfigRestoreAPI:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["success"] is True
-            assert "backend" in data["restart_required"]
+            assert data["status"] == "success"
+            assert data["message"]
 
     def test_restore_backup_not_found(self, client):
         """Test przywrócenia nieistniejącego backupu."""
@@ -240,7 +239,7 @@ class TestConfigRestoreAPI:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["success"] is False
+            assert data["status"] == "error"
             assert "nie istnieje" in data["message"]
 
     def test_restore_backup_error(self, client):

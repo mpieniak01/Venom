@@ -10,9 +10,12 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
 
 from venom_core.api.routes import system_deps
+from venom_core.api.schemas.system_llm import (
+    ActiveLlmServerRequest,
+    LlmRuntimeActivateRequest,
+)
 from venom_core.config import SETTINGS
 from venom_core.services.config_manager import config_manager
 from venom_core.utils.llm_runtime import (
@@ -50,16 +53,6 @@ LLM_SERVER_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "LLMController lub ModelManager nie jest dostępny"},
     500: {"description": "Błąd wewnętrzny podczas przełączania aktywnego serwera"},
 }
-
-
-class ActiveLlmServerRequest(BaseModel):
-    server_name: str
-    trace_id: Optional[UUID] = None
-
-
-class LlmRuntimeActivateRequest(BaseModel):
-    provider: str = Field(..., description="Docelowy provider runtime (openai/google)")
-    model: str | None = Field(default=None, description="Opcjonalny model LLM")
 
 
 def _runtime_profile_name() -> str:

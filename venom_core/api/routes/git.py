@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
+from venom_core.api.schemas.git import InitRepoRequest
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 from venom_core.utils.ttl_cache import TTLCache
@@ -24,12 +24,6 @@ DEFAULT_COMPARE_REF = "origin/main"
 
 # Dependency - będzie ustawione w main.py
 _git_skill = None
-
-
-class InitRepoRequest(BaseModel):
-    """Payload dla inicjalizacji repozytorium."""
-
-    url: Optional[str] = None
 
 
 def _workspace_not_git_response(message: str) -> dict:

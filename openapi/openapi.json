@@ -1353,7 +1353,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LearningToggleRequest"
+                "$ref": "#/components/schemas/venom_core__api__schemas__memory__LearningToggleRequest"
               }
             }
           },
@@ -1658,9 +1658,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Get Feedback Logs Api V1 Feedback Logs Get"
+                  "$ref": "#/components/schemas/FeedbackLogsResponse"
                 }
               }
             }
@@ -3315,7 +3313,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/venom_core__api__routes__knowledge__LearningToggleRequest"
+                "$ref": "#/components/schemas/LearningToggleRequest"
               }
             }
           },
@@ -3803,6 +3801,9 @@
           "404": {
             "description": "Nieznany serwer LLM lub brak konfiguracji"
           },
+          "403": {
+            "description": "Wybrany serwer LLM jest niedostępny w aktualnym profilu runtime"
+          },
           "503": {
             "description": "LLMController lub ModelManager nie jest dostępny"
           },
@@ -4064,7 +4065,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeConfigResponse"
+                }
               }
             }
           },
@@ -4095,7 +4098,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigUpdateResponse"
+                }
               }
             }
           },
@@ -4143,7 +4148,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigBackupsResponse"
+                }
               }
             }
           },
@@ -4189,7 +4196,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreBackupResponse"
+                }
               }
             }
           },
@@ -4261,7 +4270,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CostModeSetResponse"
+                }
               }
             }
           },
@@ -4330,7 +4341,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyLevelSetResponse"
+                }
               }
             }
           },
@@ -4366,7 +4379,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyLevelsResponse"
+                }
               }
             }
           },
@@ -4696,7 +4711,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NodesListResponse"
+                }
               }
             }
           },
@@ -4743,7 +4760,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NodeInfoResponse"
+                }
               }
             }
           },
@@ -4803,7 +4822,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NodeExecuteResponse"
+                }
               }
             }
           },
@@ -7170,7 +7191,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkListResponse"
+                }
               }
             }
           },
@@ -7206,7 +7229,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkDeleteResponse"
+                }
               }
             }
           },
@@ -7243,7 +7268,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkDeleteResponse"
+                }
               }
             }
           },
@@ -7442,7 +7469,8 @@
         "required": [
           "server_name"
         ],
-        "title": "ActiveLlmServerRequest"
+        "title": "ActiveLlmServerRequest",
+        "description": "Request for activating an LLM server."
       },
       "AdapterInfo": {
         "properties": {
@@ -7777,6 +7805,122 @@
         "title": "AutonomyLevelResponse",
         "description": "Response z informacją o poziomie autonomii."
       },
+      "AutonomyLevelSetResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "level": {
+            "type": "integer",
+            "title": "Level"
+          },
+          "level_name": {
+            "type": "string",
+            "title": "Level Name"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "permissions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Permissions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "level",
+          "level_name",
+          "color",
+          "permissions"
+        ],
+        "title": "AutonomyLevelSetResponse",
+        "description": "Response for setting autonomy level."
+      },
+      "AutonomyLevelsResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "levels": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Levels"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "levels",
+          "count"
+        ],
+        "title": "AutonomyLevelsResponse",
+        "description": "Response for all autonomy levels."
+      },
+      "BenchmarkDeleteResponse": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "BenchmarkDeleteResponse",
+        "description": "Response after deleting benchmark(s)."
+      },
+      "BenchmarkListResponse": {
+        "properties": {
+          "benchmarks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Benchmarks"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "benchmarks",
+          "count"
+        ],
+        "title": "BenchmarkListResponse",
+        "description": "Response with list of benchmarks."
+      },
       "BenchmarkStartRequest": {
         "properties": {
           "models": {
@@ -8026,6 +8170,34 @@
         "title": "CompatibilityReport",
         "description": "Compatibility analysis for planned changes."
       },
+      "ConfigBackupsResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "backups": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Backups"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "backups",
+          "count"
+        ],
+        "title": "ConfigBackupsResponse",
+        "description": "Response model for configuration backups list."
+      },
       "ConfigUpdateRequest": {
         "properties": {
           "updates": {
@@ -8040,6 +8212,32 @@
         ],
         "title": "ConfigUpdateRequest",
         "description": "Request do aktualizacji konfiguracji."
+      },
+      "ConfigUpdateResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "updated_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Updated Keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ConfigUpdateResponse",
+        "description": "Response model for configuration update."
       },
       "ConnectionDirection": {
         "type": "string",
@@ -8056,7 +8254,8 @@
           "http",
           "https",
           "ws",
-          "sse"
+          "sse",
+          "tcp"
         ],
         "title": "ConnectionProtocol"
       },
@@ -8437,6 +8636,30 @@
         "title": "CostModeResponse",
         "description": "Response z informacją o trybie kosztowym."
       },
+      "CostModeSetResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "enabled"
+        ],
+        "title": "CostModeSetResponse",
+        "description": "Response for setting cost mode."
+      },
       "CreateEventRequest": {
         "properties": {
           "title": {
@@ -8675,6 +8898,29 @@
         "title": "EventsResponse",
         "description": "Model odpowiedzi z listą wydarzeń."
       },
+      "FeedbackLogsResponse": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "items"
+        ],
+        "title": "FeedbackLogsResponse",
+        "description": "Response model for feedback logs."
+      },
       "FeedbackRequest": {
         "properties": {
           "task_id": {
@@ -8704,7 +8950,8 @@
           "task_id",
           "rating"
         ],
-        "title": "FeedbackRequest"
+        "title": "FeedbackRequest",
+        "description": "Request model for submitting user feedback."
       },
       "FeedbackResponse": {
         "properties": {
@@ -8733,7 +8980,8 @@
           "status",
           "feedback_saved"
         ],
-        "title": "FeedbackResponse"
+        "title": "FeedbackResponse",
+        "description": "Response model for feedback submission."
       },
       "FlowStep": {
         "properties": {
@@ -9538,7 +9786,8 @@
         "required": [
           "connected"
         ],
-        "title": "IoTStatusResponse"
+        "title": "IoTStatusResponse",
+        "description": "Response with IoT bridge status."
       },
       "JobStatusResponse": {
         "properties": {
@@ -9770,7 +10019,7 @@
           "enabled"
         ],
         "title": "LearningToggleRequest",
-        "description": "Request do przełączenia trybu uczenia."
+        "description": "Request for toggling learning on/off."
       },
       "LimitsConfigResponse": {
         "properties": {
@@ -9832,7 +10081,8 @@
         "required": [
           "provider"
         ],
-        "title": "LlmRuntimeActivateRequest"
+        "title": "LlmRuntimeActivateRequest",
+        "description": "Request for activating an LLM runtime (cloud provider)."
       },
       "MemoryIngestRequest": {
         "properties": {
@@ -10118,6 +10368,79 @@
         "title": "NodeExecuteRequest",
         "description": "Model żądania wykonania skilla na węźle."
       },
+      "NodeExecuteResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "result": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "result"
+        ],
+        "title": "NodeExecuteResponse",
+        "description": "Response from node execution."
+      },
+      "NodeInfoResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "node": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Node"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "node"
+        ],
+        "title": "NodeInfoResponse",
+        "description": "Response with node information."
+      },
+      "NodesListResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "online_count": {
+            "type": "integer",
+            "title": "Online Count"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Nodes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "count",
+          "online_count",
+          "nodes"
+        ],
+        "title": "NodesListResponse",
+        "description": "Response with list of nodes."
+      },
       "ProvenanceV1": {
         "properties": {
           "source": {
@@ -10338,6 +10661,30 @@
         "title": "RestoreBackupRequest",
         "description": "Request do przywrócenia backupu."
       },
+      "RestoreBackupResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "restored_file": {
+            "type": "string",
+            "title": "Restored File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "restored_file"
+        ],
+        "title": "RestoreBackupResponse",
+        "description": "Response model for backup restoration."
+      },
       "RetentionV1": {
         "properties": {
           "ttl_days": {
@@ -10395,6 +10742,32 @@
         "title": "RoadmapCreateRequest",
         "description": "Request dla utworzenia roadmapy."
       },
+      "RuntimeConfigResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config"
+          },
+          "config_sources": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Sources"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "config",
+          "config_sources"
+        ],
+        "title": "RuntimeConfigResponse",
+        "description": "Response model for runtime configuration."
+      },
       "SimpleChatRequest": {
         "properties": {
           "content": {
@@ -10436,6 +10809,77 @@
             ],
             "title": "Temperature"
           },
+          "response_format": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Format"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tools"
+          },
+          "tool_choice": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Choice"
+          },
+          "think": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Think"
+          },
           "session_id": {
             "anyOf": [
               {
@@ -10452,7 +10896,8 @@
         "required": [
           "content"
         ],
-        "title": "SimpleChatRequest"
+        "title": "SimpleChatRequest",
+        "description": "Request for simple chat streaming."
       },
       "SourceType": {
         "type": "string",
@@ -11395,7 +11840,7 @@
         "title": "WorkflowStatus",
         "description": "Status of a workflow execution."
       },
-      "venom_core__api__routes__knowledge__LearningToggleRequest": {
+      "venom_core__api__schemas__memory__LearningToggleRequest": {
         "properties": {
           "enabled": {
             "type": "boolean",
@@ -11406,7 +11851,8 @@
         "required": [
           "enabled"
         ],
-        "title": "LearningToggleRequest"
+        "title": "LearningToggleRequest",
+        "description": "Request do przełączenia trybu uczenia."
       }
     }
   }

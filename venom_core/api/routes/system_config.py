@@ -85,7 +85,7 @@ def update_runtime_config(
             return ConfigUpdateResponse(
                 status=status,
                 message=result.get("message", "Configuration updated"),
-                updated_keys=result.get("updated_keys", list(request.updates.keys())),
+                updated_keys=result.get("changed_keys") or result.get("updated_keys", list(request.updates.keys())),
             )
         return result
 
@@ -147,10 +147,12 @@ def restore_config_backup(
         if isinstance(result, dict):
             # Map 'success' boolean to 'status' string
             status = "success" if result.get("success", True) else "error"
+            # Service doesn't return restored_file, so use the requested filename when successful
+            restored_file = request.backup_filename if result.get("success") else ""
             return RestoreBackupResponse(
                 status=status,
                 message=result.get("message", "Backup restored"),
-                restored_file=result.get("restored_file", request.backup_filename),
+                restored_file=restored_file,
             )
         return result
 

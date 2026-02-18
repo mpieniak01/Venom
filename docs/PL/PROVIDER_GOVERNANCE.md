@@ -1,5 +1,7 @@
 # Provider Governance - Zasady i Tabela Decyzyjna
 
+> **Decyzja Architektoniczna**: Provider governance jest częścią strategii routingu zdefiniowanej w [ADR-001: Strategia Runtime](adr/ADR-001-runtime-strategy-llm-first.md). Ten dokument opisuje operacyjne zasady governance i tabele decyzyjne.
+
 ## Przegląd
 Ten dokument opisuje zasady governance, wyzwalacze, akcje i kody przyczyn dla systemu Provider Governance zaimplementowanego w ramach zadania #142.
 

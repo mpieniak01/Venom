@@ -8,7 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAppMeta } from "@/lib/app-meta";
-import { navItems, AUTONOMY_LEVELS, AutonomySnapshot } from "./sidebar-helpers";
+import { getNavigationItems, AUTONOMY_LEVELS, AutonomySnapshot } from "./sidebar-helpers";
 
 export function BrandSection({
     collapsed,
@@ -78,6 +78,7 @@ export function NavigationSection({
     pathname: string;
     t: (key: string) => string;
 }>) {
+    const navigationItems = getNavigationItems();
     return (
         <nav className="mt-4 space-y-4">
             <div>
@@ -85,7 +86,7 @@ export function NavigationSection({
                     <p className="eyebrow">{t("sidebar.modulesTitle")}</p>
                 </div>
                 <div className="mt-3 space-y-2">
-                    {navItems.map((item) => {
+                    {navigationItems.map((item) => {
                         const Icon = item.icon;
                         const active = pathname === item.href;
                         const label = item.labelKey ? t(item.labelKey) : item.label;

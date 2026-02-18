@@ -96,5 +96,6 @@ tests/test_policy_gate_integration.py
 tests/test_profile_config.py
 tests/test_ollama_tuning.py
 tests/test_contracts_init.py
+tests/test_coverage_fixes_wave4.py
 
 # AUTO-ADDED by pre-commit (staged backend/test changes)

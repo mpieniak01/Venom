@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "module_id": "module_example",
+  "display_name": "Module Example",
+  "enabled_by_default": false,
+  "backend": {
+    "router_import": "venom_module_example.api.routes:router",
+    "feature_flag": "FEATURE_MODULE_EXAMPLE",
+    "module_api_version": 1,
+    "min_core_version": "1.5.0"
+  },
+  "frontend": {
+    "feature_flag": "NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE",
+    "nav_path": "/module-example"
+  }
+}

@@ -91,7 +91,7 @@ def _builtin_manifests() -> list[ApiModuleManifest]:
     return [
         ApiModuleManifest(
             module_id="module_example",
-            router_import="venom_core.api.routes.module_example:router",
+            router_import="venom_module_example.api.routes:router",
             feature_flag="FEATURE_MODULE_EXAMPLE",
             module_api_version="1",
             min_core_version="1.5.0",

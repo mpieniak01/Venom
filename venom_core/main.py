@@ -28,7 +28,6 @@ from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.api.routes import memory as memory_routes
 from venom_core.api.routes import memory_projection as memory_projection_routes
 from venom_core.api.routes import models as models_routes
-from venom_core.api.routes import module_example as module_example_routes
 from venom_core.api.routes import nodes as nodes_routes
 from venom_core.api.routes import providers as providers_routes
 from venom_core.api.routes import queue as queue_routes
@@ -66,6 +65,7 @@ from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
+from venom_core.services.module_registry import include_optional_api_routers
 from venom_core.services.session_store import SessionStore
 from venom_core.utils.helpers import extract_secret_value
 from venom_core.utils.llm_runtime import (
@@ -1181,7 +1181,7 @@ app.include_router(workflow_control_routes.router)
 app.include_router(workflow_operations_routes.router)
 app.include_router(benchmark_routes.router)
 app.include_router(calendar_routes.router)
-app.include_router(module_example_routes.router)
+include_optional_api_routers(app, SETTINGS)
 
 
 @app.websocket("/ws/events")

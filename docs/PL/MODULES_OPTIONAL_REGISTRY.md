@@ -85,6 +85,12 @@ W Venom core moduł jest tylko "podpinany":
 - rejestracja przez `API_OPTIONAL_MODULES`,
 - włączenie flag.
 
+Wspólna operacja z jednej stacji developerskiej:
+- `make modules-status` (status core + wszystkich repo modułów),
+- `make modules-branches` (aktywne branche core + moduły),
+- `make modules-pull` (pull --ff-only dla core + modułów),
+- `make modules-exec CMD='git status -s'` (to samo polecenie w całym workspace).
+
 ### 4.2. Minimalny zestaw plików modułu (wymagany)
 
 1. `api/routes.py` z obiektem `router`.

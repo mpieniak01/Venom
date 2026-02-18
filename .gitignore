@@ -11,6 +11,10 @@ workspace/*
 !workspace/MARKETING_KIT_TEMPLATE.md
 !workspace/.gitkeep
 
+# Optional module repositories (nested git repos)
+modules/*
+!modules/.gitkeep
+
 data/memory/
 data/user_lexicon/
 data/feedback/

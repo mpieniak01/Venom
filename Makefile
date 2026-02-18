@@ -34,7 +34,8 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types \
-	env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff
+	env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff \
+	modules-status modules-pull modules-branches modules-exec
 
 lint:
 	pre-commit run --all-files
@@ -186,6 +187,24 @@ install-hooks:
 
 sync-sonar-new-code-group:
 	pre-commit run --hook-stage manual update-sonar-new-code-group
+
+modules-status:
+	@bash scripts/modules_workspace.sh status
+
+modules-pull:
+	@bash scripts/modules_workspace.sh pull
+
+modules-branches:
+	@bash scripts/modules_workspace.sh branches
+
+# Usage:
+# make modules-exec CMD='git status -s'
+modules-exec:
+	@if [ -z "$${CMD:-}" ]; then \
+		echo "Usage: make modules-exec CMD='git status -s'"; \
+		exit 1; \
+	fi
+	@bash scripts/modules_workspace.sh exec "$${CMD}"
 
 define ensure_process_not_running
 	@if [ -f $(2) ]; then \

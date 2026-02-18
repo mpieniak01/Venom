@@ -10,11 +10,14 @@ import {
     Settings,
     type LucideIcon,
 } from "lucide-react";
+import { getEnabledOptionalModuleNavItems } from "@/lib/generated/optional-modules.generated";
+import type { LanguageCode } from "@/lib/i18n";
 
 export type NavItem = {
     href: string;
     label: string;
     labelKey?: string;
+    labels?: Partial<Record<LanguageCode, string>>;
     icon: LucideIcon;
     featureFlagEnv?: string;
 };
@@ -31,33 +34,22 @@ export const coreNavItems: NavItem[] = [
     { href: "/config", label: "Konfiguracja", labelKey: "sidebar.nav.config", icon: Settings },
 ];
 
-export const optionalNavItems: NavItem[] = [
-    {
-        href: "/module-example",
-        label: "Module Example",
-        labelKey: "sidebar.nav.moduleExample",
-        icon: Settings,
-        featureFlagEnv: "NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE",
-    },
-];
-
-function isEnvFlagEnabled(flagName: string): boolean {
-    const raw = process.env[flagName];
-    if (!raw) {
-        return false;
-    }
-    const normalized = raw.trim().toLowerCase();
-    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+function optionalNavItems(): NavItem[] {
+    return getEnabledOptionalModuleNavItems().map((item) => ({
+        href: item.href,
+        label: item.label,
+        labels: item.labels,
+        icon: item.icon ?? Settings,
+        featureFlagEnv: item.featureFlagEnv,
+    }));
 }
 
-export function getNavigationItems(): NavItem[] {
-    const enabledOptional = optionalNavItems.filter((item) => {
-        if (!item.featureFlagEnv) {
-            return true;
-        }
-        return isEnvFlagEnabled(item.featureFlagEnv);
-    });
-    return [...coreNavItems, ...enabledOptional];
+export function getNavigationItems(language: LanguageCode = "pl"): NavItem[] {
+    const localizedOptional = optionalNavItems().map((item) => ({
+        ...item,
+        label: item.labels?.[language] ?? item.label,
+    }));
+    return [...coreNavItems, ...localizedOptional];
 }
 
 export const AUTONOMY_LEVELS = [0, 10, 20, 30, 40];

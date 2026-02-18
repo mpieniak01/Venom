@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "module_id": "module_example",
+  "display_name": "Module Example",
+  "enabled_by_default": false,
+  "backend": {
+    "router_import": "venom_module_example.api.routes:router",
+    "feature_flag": "FEATURE_MODULE_EXAMPLE",
+    "module_api_version": 1,
+    "min_core_version": "1.5.0"
+  },
+  "frontend": {
+    "feature_flag": "NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE",
+    "nav_path": "/module-example",
+    "nav_label": "Module Example",
+    "nav_labels": {
+      "pl": "Moduł przykładowy",
+      "en": "Module Example",
+      "de": "Beispielmodul"
+    },
+    "component_import": "../../../modules/venom-module-example/web-next/page"
+  }
+}

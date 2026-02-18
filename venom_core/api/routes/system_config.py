@@ -1,8 +1,15 @@
 """Moduł: routes/system_config - Endpointy zarządzania konfiguracją runtime."""
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
 
+from venom_core.api.schemas.system import (
+    ConfigBackupsResponse,
+    ConfigUpdateRequest,
+    ConfigUpdateResponse,
+    RestoreBackupRequest,
+    RestoreBackupResponse,
+    RuntimeConfigResponse,
+)
 from venom_core.services.config_manager import config_manager
 from venom_core.utils.logger import get_logger
 
@@ -24,11 +31,12 @@ def require_localhost_request(req: Request) -> None:
 
 @router.get(
     "/config/runtime",
+    response_model=RuntimeConfigResponse,
     responses={
         500: {"description": "Błąd wewnętrzny podczas pobierania konfiguracji runtime"},
     },
 )
-def get_runtime_config():
+def get_runtime_config() -> RuntimeConfigResponse:
     """
     Zwraca aktualną konfigurację runtime (whitelist parametrów z .env).
     Sekrety są ZAWSZE maskowane w odpowiedzi API.
@@ -38,21 +46,18 @@ def get_runtime_config():
         config, config_sources = config_manager.get_effective_config_with_sources(
             mask_secrets=True
         )
-        return {"status": "success", "config": config, "config_sources": config_sources}
+        return RuntimeConfigResponse(
+            status="success", config=config, config_sources=config_sources
+        )
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania konfiguracji")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-class ConfigUpdateRequest(BaseModel):
-    """Request do aktualizacji konfiguracji."""
-
-    updates: dict
-
-
 @router.post(
     "/config/runtime",
+    response_model=ConfigUpdateResponse,
     responses={
         500: {
             "description": "Błąd wewnętrzny podczas aktualizacji konfiguracji runtime"
@@ -60,7 +65,9 @@ class ConfigUpdateRequest(BaseModel):
         403: {"description": "Brak uprawnień do zmiany konfiguracji"},
     },
 )
-def update_runtime_config(request: ConfigUpdateRequest, req: Request):
+def update_runtime_config(
+    request: ConfigUpdateRequest, req: Request
+) -> ConfigUpdateResponse:
     """
     Aktualizuje konfigurację runtime (zapis do .env z backupem).
     Dostępne tylko z localhost.
@@ -71,6 +78,13 @@ def update_runtime_config(request: ConfigUpdateRequest, req: Request):
     try:
         # User is Admin on Localhost - Allow full configuration
         result = config_manager.update_config(request.updates)
+        # Ensure result matches ConfigUpdateResponse schema
+        if isinstance(result, dict):
+            return ConfigUpdateResponse(
+                status=result.get("status", "success"),
+                message=result.get("message", "Configuration updated"),
+                updated_keys=result.get("updated_keys", list(request.updates.keys())),
+            )
         return result
 
     except HTTPException:
@@ -82,6 +96,7 @@ def update_runtime_config(request: ConfigUpdateRequest, req: Request):
 
 @router.get(
     "/config/backups",
+    response_model=ConfigBackupsResponse,
     responses={
         500: {
             "description": "Błąd wewnętrzny podczas pobierania listy backupów konfiguracji"
@@ -89,7 +104,7 @@ def update_runtime_config(request: ConfigUpdateRequest, req: Request):
         403: {"description": "Brak uprawnień do odczytu listy backupów konfiguracji"},
     },
 )
-def get_config_backups(req: Request, limit: int = 20):
+def get_config_backups(req: Request, limit: int = 20) -> ConfigBackupsResponse:
     """
     Zwraca listę backupów .env.
     """
@@ -97,21 +112,18 @@ def get_config_backups(req: Request, limit: int = 20):
 
     try:
         backups = config_manager.get_backup_list(limit=limit)
-        return {"status": "success", "backups": backups, "count": len(backups)}
+        return ConfigBackupsResponse(
+            status="success", backups=backups, count=len(backups)
+        )
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania listy backupów")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-class RestoreBackupRequest(BaseModel):
-    """Request do przywrócenia backupu."""
-
-    backup_filename: str
-
-
 @router.post(
     "/config/restore",
+    response_model=RestoreBackupResponse,
     responses={
         500: {
             "description": "Błąd wewnętrzny podczas przywracania backupu konfiguracji"
@@ -119,7 +131,9 @@ class RestoreBackupRequest(BaseModel):
         403: {"description": "Brak uprawnień do przywracania backupu konfiguracji"},
     },
 )
-def restore_config_backup(request: RestoreBackupRequest, req: Request):
+def restore_config_backup(
+    request: RestoreBackupRequest, req: Request
+) -> RestoreBackupResponse:
     """
     Przywraca .env z backupu.
     """
@@ -127,6 +141,13 @@ def restore_config_backup(request: RestoreBackupRequest, req: Request):
 
     try:
         result = config_manager.restore_backup(request.backup_filename)
+        # Ensure result matches RestoreBackupResponse schema
+        if isinstance(result, dict):
+            return RestoreBackupResponse(
+                status=result.get("status", "success"),
+                message=result.get("message", "Backup restored"),
+                restored_file=result.get("restored_file", request.backup_filename),
+            )
         return result
 
     except Exception as e:

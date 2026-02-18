@@ -1,7 +1,9 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
+from threading import Lock
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +14,7 @@ from venom_core.api.dependencies import (
     get_session_store,
     get_vector_store,
 )
+from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.schemas.knowledge import LearningToggleRequest
 from venom_core.config import SETTINGS
 from venom_core.core.knowledge_adapters import (
@@ -59,6 +62,8 @@ NODE_TYPE_FILE = "file"
 NODE_TYPE_CLASS = "class"
 NODE_TYPE_FUNCTION = "function"
 NODE_TYPE_METHOD = "method"
+_graph_view_counters: Counter[str] = Counter()
+_graph_view_counters_lock = Lock()
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -138,6 +143,16 @@ def _build_graph_edges(
     return edges
 
 
+def _increment_graph_view_counter(view: str) -> None:
+    with _graph_view_counters_lock:
+        _graph_view_counters[view] += 1
+
+
+def _graph_view_counter_snapshot() -> dict[str, int]:
+    with _graph_view_counters_lock:
+        return dict(_graph_view_counters)
+
+
 def set_dependencies(graph_store=None, lessons_store=None):
     """Ustawia zależności i synchronizuje z api.dependencies (używane głównie w testach)."""
     global _graph_store, _lessons_store
@@ -162,6 +177,33 @@ def get_knowledge_graph(
             description="Maksymalna liczba węzłów do zwrócenia (pozostałe są odfiltrowane)",
         ),
     ] = 500,
+    view: Annotated[
+        str,
+        Query(
+            pattern="^(overview|focus|full)$",
+            description="Tryb zwracanego grafu: overview/focus/full",
+        ),
+    ] = "full",
+    seed_id: Annotated[
+        Optional[str],
+        Query(description="Opcjonalny seed node id dla widoku focus"),
+    ] = None,
+    max_hops: Annotated[
+        int,
+        Query(ge=1, le=6, description="Maksymalna głębokość dla widoku focus"),
+    ] = 2,
+    include_isolates: Annotated[
+        bool,
+        Query(description="Czy zachować węzły bez krawędzi"),
+    ] = True,
+    limit_nodes: Annotated[
+        Optional[int],
+        Query(
+            ge=1,
+            le=5000,
+            description="Opcjonalny limit po transformacji widoku (overview/focus)",
+        ),
+    ] = None,
 ):
     """
     Zwraca graf wiedzy w formacie Cytoscape Elements JSON.
@@ -186,26 +228,68 @@ def get_knowledge_graph(
     # Jeśli graph_store nie jest dostępny lub jest pusty, zwróć mock data
     if graph_store is None or graph_store.graph.number_of_nodes() == 0:
         logger.info("Graph store pusty lub niedostępny, zwracam mock data")
-        return _get_mock_knowledge_graph(limit=limit)
+        return _get_mock_knowledge_graph(
+            limit=limit,
+            view=view,
+            seed_id=seed_id,
+            max_hops=max_hops,
+            include_isolates=include_isolates,
+            limit_nodes=limit_nodes,
+        )
 
     try:
         nodes = _build_graph_nodes(graph_store, limit)
         allowed_ids = {n["data"]["id"] for n in nodes}
         edges = _build_graph_edges(graph_store, allowed_ids)
 
+        view_nodes, view_edges = apply_graph_view(
+            nodes=nodes,
+            edges=edges,
+            view=view,
+            seed_id=seed_id,
+            max_hops=max_hops,
+            include_isolates=include_isolates,
+            limit_nodes=limit_nodes,
+        )
+        _increment_graph_view_counter(view)
+
         return {
             "status": "success",
-            "elements": {"nodes": nodes, "edges": edges},
-            "stats": {"nodes": len(nodes), "edges": len(edges)},
+            "view": view,
+            "elements": {"nodes": view_nodes, "edges": view_edges},
+            "stats": {
+                "nodes": len(view_nodes),
+                "edges": len(view_edges),
+                "source_nodes": len(nodes),
+                "source_edges": len(edges),
+                "view": view,
+                "max_hops": max_hops,
+                "seed_id": seed_id,
+                "view_requests": _graph_view_counter_snapshot(),
+            },
         }
 
     except Exception:
         logger.exception("Błąd podczas konwersji grafu do formatu Cytoscape")
         # W przypadku błędu zwróć mock data jako fallback
-        return _get_mock_knowledge_graph(limit=limit)
+        return _get_mock_knowledge_graph(
+            limit=limit,
+            view=view,
+            seed_id=seed_id,
+            max_hops=max_hops,
+            include_isolates=include_isolates,
+            limit_nodes=limit_nodes,
+        )
 
 
-def _get_mock_knowledge_graph(limit: int = 500):
+def _get_mock_knowledge_graph(
+    limit: int = 500,
+    view: str = "full",
+    seed_id: str | None = None,
+    max_hops: int = 2,
+    include_isolates: bool = True,
+    limit_nodes: int | None = None,
+):
     """
     Zwraca przykładowe dane grafu wiedzy do testowania UI.
 
@@ -347,12 +431,32 @@ def _get_mock_knowledge_graph(limit: int = 500):
         for e in all_edges
         if e["data"]["source"] in allowed_ids and e["data"]["target"] in allowed_ids
     ]
+    view_nodes, view_edges = apply_graph_view(
+        nodes=nodes,
+        edges=edges,
+        view=view,
+        seed_id=seed_id,
+        max_hops=max_hops,
+        include_isolates=include_isolates,
+        limit_nodes=limit_nodes,
+    )
+    _increment_graph_view_counter(view)
 
     return {
         "status": "success",
         "mock": True,
-        "elements": {"nodes": nodes, "edges": edges},
-        "stats": {"nodes": len(nodes), "edges": len(edges)},
+        "view": view,
+        "elements": {"nodes": view_nodes, "edges": view_edges},
+        "stats": {
+            "nodes": len(view_nodes),
+            "edges": len(view_edges),
+            "source_nodes": len(nodes),
+            "source_edges": len(edges),
+            "view": view,
+            "max_hops": max_hops,
+            "seed_id": seed_id,
+            "view_requests": _graph_view_counter_snapshot(),
+        },
     }
 
 

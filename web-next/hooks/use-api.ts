@@ -495,6 +495,39 @@ export function useKnowledgeGraph(limit = KNOWLEDGE_GRAPH_LIMIT, intervalMs = 20
   );
 }
 
+export function useKnowledgeGraphView(
+  {
+    limit = KNOWLEDGE_GRAPH_LIMIT,
+    view = "full",
+    seedId,
+    maxHops,
+    includeIsolates = true,
+    limitNodes,
+  }: {
+    limit?: number;
+    view?: "overview" | "focus" | "full";
+    seedId?: string;
+    maxHops?: number;
+    includeIsolates?: boolean;
+    limitNodes?: number;
+  },
+  intervalMs = 20000,
+) {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (view !== "full") params.set("view", view);
+  if (seedId) params.set("seed_id", seedId);
+  if (typeof maxHops === "number") params.set("max_hops", String(maxHops));
+  if (!includeIsolates) params.set("include_isolates", "false");
+  if (typeof limitNodes === "number") params.set("limit_nodes", String(limitNodes));
+  const key = `knowledge-graph-v2-${params.toString()}`;
+  return usePolling<KnowledgeGraph>(
+    key,
+    () => apiFetch(`/api/v1/knowledge/graph?${params.toString()}`),
+    intervalMs,
+  );
+}
+
 export function useLessons(limit = 5, intervalMs = 20000) {
   return usePolling<LessonsResponse>(
     "lessons",
@@ -530,6 +563,11 @@ export function useMemoryGraph(
   includeLessons = false,
   intervalMs = 20000,
   mode: "default" | "flow" = "default",
+  graphView: "overview" | "focus" | "full" = "full",
+  seedId?: string,
+  maxHops?: number,
+  includeIsolates = true,
+  limitNodes?: number,
 ) {
   const params = new URLSearchParams();
   params.set("limit", String(limit));
@@ -537,8 +575,13 @@ export function useMemoryGraph(
   if (onlyPinned) params.set("only_pinned", "true");
   if (includeLessons) params.set("include_lessons", "true");
   if (mode && mode !== "default") params.set("mode", mode);
+  if (graphView !== "full") params.set("view", graphView);
+  if (seedId) params.set("seed_id", seedId);
+  if (typeof maxHops === "number") params.set("max_hops", String(maxHops));
+  if (!includeIsolates) params.set("include_isolates", "false");
+  if (typeof limitNodes === "number") params.set("limit_nodes", String(limitNodes));
   return usePolling<KnowledgeGraph>(
-    `memory-graph-${limit}-${sessionId || "all"}-${onlyPinned}-${includeLessons}-${mode}`,
+    `memory-graph-${limit}-${sessionId || "all"}-${onlyPinned}-${includeLessons}-${mode}-${graphView}-${seedId || "none"}-${maxHops || "d"}-${includeIsolates}-${limitNodes || "d"}`,
     () => apiFetch(`/api/v1/memory/graph?${params.toString()}`),
     intervalMs,
   );

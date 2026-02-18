@@ -11,6 +11,7 @@ interface GraphStatsProps {
     readonly sourceTotalNodes: number;
     readonly renderedEdges: number;
     readonly sourceTotalEdges: number;
+    readonly loading?: boolean;
 }
 
 export function GraphStats({
@@ -23,6 +24,7 @@ export function GraphStats({
     sourceTotalNodes,
     renderedEdges,
     sourceTotalEdges,
+    loading = false,
 }: GraphStatsProps) {
     const t = useTranslation();
     return (
@@ -33,9 +35,9 @@ export function GraphStats({
             <Badge tone="neutral">
                 {t("brain.home.source")}: {activeTab === "repo" ? t("brain.home.knowledge") : t("brain.home.memory")}
             </Badge>
-            {activeTab === "memory" ? <Badge tone="neutral">Limit: {memoryLimit}</Badge> : null}
+            {activeTab === "memory" ? <Badge tone="neutral">{t("brain.stats.limit")}: {memoryLimit}</Badge> : null}
             <Badge tone="neutral">
-                Render: {renderedNodes}/{sourceTotalNodes} • {renderedEdges}/{sourceTotalEdges}
+                {t("brain.stats.render")}: {loading ? "…" : `${renderedNodes}/${sourceTotalNodes} • ${renderedEdges}/${sourceTotalEdges}`}
             </Badge>
         </div>
     );

@@ -1101,6 +1101,8 @@ export const de = {
       topTagsHint: "Häufigste Tags in LessonsStore",
       nodes: "Knoten",
       edges: "Kanten",
+      limit: "Limit",
+      render: "Render",
     },
     filters: {
       all: "Alle",
@@ -1113,9 +1115,15 @@ export const de = {
       layout: "Layout",
       pinnedOnly: "Nur angeheftete",
       includeLessons: "Lektionen einbeziehen",
+      includeIsolates: "Isolierte einbeziehen",
       flowMode: "Flow-Modus",
       sessionId: "Sitzungs-ID",
       topic: "Thema",
+      sessionPlaceholder: "Sitzungs-ID...",
+      topicPlaceholder: "Thema filtern...",
+      layoutPreset: "Voreinstellung",
+      layoutCola: "Cola",
+      layoutCose: "Cose",
     },
     actions: {
       scan: "Scannen",
@@ -1132,6 +1140,7 @@ export const de = {
       hygiene: "Hygiene",
     },
     home: {
+      eyebrow: "BRAIN / WISSENSGRAPH",
       title: "Wissensnetz",
       description: "Vollbildansicht des Venom-Gedächtnisses mit Agenten- und Lektionsfiltern.",
       noRelations: "Keine Beziehungen (oder kein Knoten ausgewählt).",
@@ -1139,6 +1148,18 @@ export const de = {
       source: "Quelle",
       memory: "Gedächtnis",
       knowledge: "Wissen",
+    },
+    viewMode: {
+      title: "Ansichtsmodus",
+      overview: "Überblick",
+      focus: "Fokus",
+      full: "Voll",
+    },
+    presets: {
+      session: "Sitzung",
+      topic: "Thema",
+      pinned: "Angeheftet",
+      recent: "Neueste",
     },
     lessons: {
       panelTitle: "Lektionen und Graph-Operationen",

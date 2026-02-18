@@ -1066,6 +1066,8 @@ export const en = {
       topTagsHint: "Most frequent tags in LessonsStore",
       nodes: "Nodes",
       edges: "Edges",
+      limit: "Limit",
+      render: "Render",
     },
     filters: {
       all: "All",
@@ -1078,9 +1080,15 @@ export const en = {
       layout: "Layout",
       pinnedOnly: "Pinned only",
       includeLessons: "Include lessons",
+      includeIsolates: "Include isolates",
       flowMode: "Flow mode",
       sessionId: "Session ID",
       topic: "Topic",
+      sessionPlaceholder: "Session ID...",
+      topicPlaceholder: "Filter topic...",
+      layoutPreset: "Preset",
+      layoutCola: "Cola",
+      layoutCose: "Cose",
     },
     actions: {
       scan: "Scan",
@@ -1097,6 +1105,7 @@ export const en = {
       hygiene: "Hygiene",
     },
     home: {
+      eyebrow: "BRAIN / KNOWLEDGE GRAPH",
       title: "Knowledge Grid",
       description: "Fullscreen view of Venom's memory with agent and lesson filters.",
       noRelations: "No relations (or no node selected).",
@@ -1104,6 +1113,18 @@ export const en = {
       source: "Source",
       memory: "Memory",
       knowledge: "Knowledge",
+    },
+    viewMode: {
+      title: "View mode",
+      overview: "Overview",
+      focus: "Focus",
+      full: "Full",
+    },
+    presets: {
+      session: "Session",
+      topic: "Topic",
+      pinned: "Pinned",
+      recent: "Recent",
     },
     lessons: {
       panelTitle: "Lessons and Graph Operations",

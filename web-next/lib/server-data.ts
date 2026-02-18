@@ -196,6 +196,13 @@ export type BrainInitialData = {
   lessonsStats: LessonsStats | null;
 };
 
+export const EMPTY_BRAIN_INITIAL_DATA: BrainInitialData = {
+  summary: null,
+  knowledgeGraph: null,
+  lessons: null,
+  lessonsStats: null,
+};
+
 export async function fetchBrainInitialData(): Promise<BrainInitialData> {
   const [summary, knowledgeGraph, lessons, lessonsStats] = await Promise.all([
     fetchJson<GraphSummary>("/api/v1/graph/summary"),

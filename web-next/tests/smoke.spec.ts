@@ -379,6 +379,11 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(page.getByText(/Siatka wiedzy/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /^all$/i }).first()).toBeVisible();
     await expect(page.getByTestId("graph-container")).toBeVisible();
+    await expect(page.getByTestId("brain-view-controls")).toBeVisible();
+    await expect(page.getByTestId("brain-mode-overview")).toBeVisible();
+    await expect(page.getByTestId("brain-mode-focus")).toBeVisible();
+    await expect(page.getByTestId("brain-mode-full")).toBeVisible();
+    await expect(page.getByTestId("hygiene-tab")).toBeVisible();
   });
 
   test("Sidebar system status panel is visible", async ({ page }) => {

@@ -1,6 +1,12 @@
 import { KnowledgeGraph } from "@/lib/types";
 import { useMemo, useState } from "react";
-import { useKnowledgeGraph, useMemoryGraph, KNOWLEDGE_GRAPH_LIMIT, MEMORY_GRAPH_LIMIT } from "@/hooks/use-api";
+import {
+    useKnowledgeGraphView,
+    useMemoryGraph,
+    KNOWLEDGE_GRAPH_LIMIT,
+    MEMORY_GRAPH_LIMIT,
+} from "@/hooks/use-api";
+import type { BrainGraphViewMode } from "@/lib/types";
 
 type UseBrainGraphLogicParams = {
     initialKnowledge: KnowledgeGraph | null;
@@ -11,6 +17,11 @@ type UseBrainGraphLogicParams = {
     includeLessons: boolean;
     flowMode?: "flow" | "default";
     topicFilter?: string;
+    graphViewMode?: BrainGraphViewMode;
+    focusSeedId?: string;
+    maxHops?: number;
+    includeIsolates?: boolean;
+    limitNodes?: number;
 };
 
 export function useBrainGraphLogic({
@@ -22,13 +33,28 @@ export function useBrainGraphLogic({
     includeLessons,
     flowMode = "flow",
     topicFilter = "",
+    graphViewMode = "overview",
+    focusSeedId,
+    maxHops = 2,
+    includeIsolates = false,
+    limitNodes,
 }: UseBrainGraphLogicParams) {
     const {
         data: liveGraph,
         loading: liveGraphLoading,
         error: graphError,
         refresh: refreshGraph,
-    } = useKnowledgeGraph(KNOWLEDGE_GRAPH_LIMIT, 0);
+    } = useKnowledgeGraphView(
+        {
+            limit: KNOWLEDGE_GRAPH_LIMIT,
+            view: graphViewMode,
+            seedId: focusSeedId,
+            maxHops,
+            includeIsolates,
+            limitNodes,
+        },
+        0,
+    );
 
     const memoryGraphPoll = useMemoryGraph(
         MEMORY_GRAPH_LIMIT,
@@ -37,6 +63,11 @@ export function useBrainGraphLogic({
         includeLessons,
         0,
         flowMode,
+        graphViewMode,
+        focusSeedId,
+        maxHops,
+        includeIsolates,
+        limitNodes,
     );
 
     const [memoryGraphOverride, setMemoryGraphOverride] = useState<KnowledgeGraph | null>(null);

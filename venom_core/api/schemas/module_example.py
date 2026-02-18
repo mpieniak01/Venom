@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -30,7 +30,7 @@ class DraftBundle(BaseModel):
     id: str = Field(..., description="Draft bundle identifier")
     candidate_id: str = Field(..., description="Source candidate ID")
     variants: list[DraftVariant] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class PublishQueueItem(BaseModel):
@@ -42,8 +42,8 @@ class PublishQueueItem(BaseModel):
     )
     target_repo: str | None = Field(default=None)
     target_path: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     failure_reason: str | None = Field(default=None)
 
 
@@ -58,7 +58,7 @@ class ModuleExampleAuditEntry(BaseModel):
     id: str = Field(..., description="Audit entry ID")
     action: str = Field(..., description="Action type")
     actor: str = Field(..., description="Actor identifier")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     entity_id: str | None = Field(default=None)
     details: str | None = Field(default=None)
 

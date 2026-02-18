@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from venom_core.api.schemas.module_example import (
@@ -57,24 +59,26 @@ def _resolve_provider(
 
 
 def get_actor(
-    x_authenticated_user: str | None = Header(default=None),
-    x_user: str | None = Header(default=None),
-    x_admin_user: str | None = Header(default=None),
+    x_authenticated_user: Annotated[str | None, Header()] = None,
+    x_user: Annotated[str | None, Header()] = None,
+    x_admin_user: Annotated[str | None, Header()] = None,
 ) -> str:
     return _extract_actor(x_authenticated_user, x_user, x_admin_user)
 
 
-def get_provider(actor: str = Depends(get_actor)) -> ModuleExampleProvider:
+def get_provider(
+    actor: Annotated[str, Depends(get_actor)],
+) -> ModuleExampleProvider:
     return _resolve_provider(actor)
 
 
-@router.get("/sources/candidates", response_model=CandidatesResponse)
+@router.get("/sources/candidates")
 async def list_candidates(
-    channel: str | None = Query(default=None),
-    lang: str | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=200),
-    min_score: float = Query(default=0.0, ge=0.0, le=1.0),
-    provider: ModuleExampleProvider = Depends(get_provider),
+    provider: Annotated[ModuleExampleProvider, Depends(get_provider)],
+    channel: Annotated[str | None, Query()] = None,
+    lang: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    min_score: Annotated[float, Query(ge=0.0, le=1.0)] = 0.0,
 ) -> CandidatesResponse:
     items = provider.list_candidates(
         channel=channel,
@@ -85,10 +89,10 @@ async def list_candidates(
     return CandidatesResponse(items=items)
 
 
-@router.post("/drafts/generate", response_model=DraftBundle)
+@router.post("/drafts/generate")
 async def generate_drafts(
     payload: GenerateDraftsRequest,
-    provider: ModuleExampleProvider = Depends(get_provider),
+    provider: Annotated[ModuleExampleProvider, Depends(get_provider)],
 ) -> DraftBundle:
     return provider.generate_drafts(
         candidate_id=payload.candidate_id,
@@ -98,11 +102,14 @@ async def generate_drafts(
     )
 
 
-@router.post("/drafts/{draft_id}/queue", response_model=PublishQueueItem)
+@router.post(
+    "/drafts/{draft_id}/queue",
+    responses={400: {"description": "Bad request (draft ID or payload invalid)."}},
+)
 async def queue_draft(
     draft_id: str,
     payload: QueueDraftRequest,
-    provider: ModuleExampleProvider = Depends(get_provider),
+    provider: Annotated[ModuleExampleProvider, Depends(get_provider)],
 ) -> PublishQueueItem:
     try:
         return provider.queue_draft(
@@ -115,12 +122,19 @@ async def queue_draft(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/queue/{item_id}/publish", response_model=PublishResult)
+@router.post(
+    "/queue/{item_id}/publish",
+    responses={
+        400: {
+            "description": "Bad request (unknown queue item or missing confirm_publish)."
+        }
+    },
+)
 async def publish_queue_item(
     item_id: str,
     payload: PublishQueueRequest,
-    actor: str = Depends(get_actor),
-    provider: ModuleExampleProvider = Depends(get_provider),
+    actor: Annotated[str, Depends(get_actor)],
+    provider: Annotated[ModuleExampleProvider, Depends(get_provider)],
 ) -> PublishResult:
     try:
         return provider.publish(
@@ -132,15 +146,15 @@ async def publish_queue_item(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/queue", response_model=QueueResponse)
+@router.get("/queue")
 async def list_queue(
-    provider: ModuleExampleProvider = Depends(get_provider),
+    provider: Annotated[ModuleExampleProvider, Depends(get_provider)],
 ) -> QueueResponse:
     return QueueResponse(items=provider.list_queue())
 
 
-@router.get("/audit", response_model=AuditResponse)
+@router.get("/audit")
 async def list_audit(
-    provider: ModuleExampleProvider = Depends(get_provider),
+    provider: Annotated[ModuleExampleProvider, Depends(get_provider)],
 ) -> AuditResponse:
     return AuditResponse(items=provider.list_audit())

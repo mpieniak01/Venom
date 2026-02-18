@@ -1,67 +1,106 @@
-# Optional Modules Registry (Pre-161)
+# Optional Modules: Authoring and Operations Guide (EN)
 
-This document describes how to enable optional API modules without hard-coding new router imports in `venom_core/main.py`.
+This guide describes a universal, public way to develop and operate optional modules in Venom without hard-coding new imports in `venom_core/main.py`.
 
-## 1. Built-in optional module
+## 1. Design goals
 
-Built-in manifest currently includes:
-- `module_example` -> `venom_core.api.routes.module_example:router`
+- Keep OSS core stable when modules are disabled.
+- Allow independent module development and release cadence.
+- Enforce compatibility (`module_api_version`, `min_core_version`) at startup.
+- Gate backend and frontend separately with feature flags.
 
-Enable with:
-- `FEATURE_MODULE_EXAMPLE=true`
+## 2. Registry model
 
-## 2. Extra optional modules (config)
+Two module sources are supported:
+- built-in optional manifest (in core),
+- external manifest from `API_OPTIONAL_MODULES`.
 
-Use `API_OPTIONAL_MODULES` in this format:
+Manifest format:
 
 `module_id|module.path:router|FEATURE_FLAG|MODULE_API_VERSION|MIN_CORE_VERSION`
 
-Examples:
-
-`API_OPTIONAL_MODULES=my_mod|acme_mod.api:router|FEATURE_ACME|1|1.5.0`
-
-`API_OPTIONAL_MODULES=mod_a|pkg.a:router|FEATURE_A|1|1.5.0,mod_b|pkg.b:router`
-
 Fields:
-- `module_id` (required)
-- `module.path:router` (required)
-- `FEATURE_FLAG` (optional)
-- `MODULE_API_VERSION` (optional)
-- `MIN_CORE_VERSION` (optional)
+- `module_id` (required): unique module key.
+- `module.path:router` (required): import path to FastAPI router.
+- `FEATURE_FLAG` (optional): backend flag, for example `FEATURE_ACME`.
+- `MODULE_API_VERSION` (optional): contract version.
+- `MIN_CORE_VERSION` (optional): minimal compatible core version.
+
+Examples:
+- `API_OPTIONAL_MODULES=my_mod|acme_mod.api:router|FEATURE_ACME|1|1.5.0`
+- `API_OPTIONAL_MODULES=mod_a|pkg.a:router|FEATURE_A|1|1.5.0,mod_b|pkg.b:router`
 
 ## 3. Compatibility contract
 
-Core checks:
-- `CORE_MODULE_API_VERSION` (default: `1`)
-- `CORE_RUNTIME_VERSION` (default: `1.5.0`)
+Core compares module manifest against:
+- `CORE_MODULE_API_VERSION` (default `1`)
+- `CORE_RUNTIME_VERSION` (default `1.5.0`)
 
-If module compatibility does not match:
-- module router is skipped,
+If incompatible:
+- module is skipped,
 - startup continues,
 - warning is logged.
 
-## 4. Safety behavior
-
-Invalid entries in `API_OPTIONAL_MODULES`:
+Invalid manifest entries:
 - do not crash startup,
 - are ignored,
 - produce warnings.
 
-## 5. Phase 160 objective
+## 4. Module lifecycle (recommended)
 
-The registry is preparatory infrastructure:
-- it improves module separation,
-- it does not force private/business logic into OSS core,
-- it keeps default core behavior stable when modules are disabled.
+1. Develop module in separate repository/package.
+2. Publish installable artifact (wheel/source package).
+3. Install artifact in runtime environment.
+4. Register module via `API_OPTIONAL_MODULES`.
+5. Enable backend feature flag.
+6. Enable frontend flag (if module exposes UI).
+7. Validate health and logs.
+8. Roll back by disabling flag or removing manifest entry.
 
-## 6. Entry gate checklist (160.5)
+## 5. Module example: management and toggles
 
-Criteria used before moving to phase 161:
-- core starts and works without optional modules,
-- one optional module can be attached via manifest config,
-- incompatible module versions are rejected in a controlled way,
-- optional web navigation items are gated by feature flags.
+Current built-in optional module:
+- `module_example` -> `venom_core.api.routes.module_example:router`
 
-Reference tests:
+Backend enable:
+- `FEATURE_MODULE_EXAMPLE=true`
+
+Frontend navigation enable:
+- `NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE=true`
+
+Module API base path:
+- `/api/v1/module-example/*`
+
+Disable module safely:
+- set `FEATURE_MODULE_EXAMPLE=false` (backend off),
+- set `NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE=false` (hide UI entry),
+- optionally remove matching item from `API_OPTIONAL_MODULES`.
+
+## 6. Operational runbook (quick checks)
+
+1. Confirm flags:
+- backend: `FEATURE_*`
+- frontend: `NEXT_PUBLIC_FEATURE_*`
+2. Confirm manifest parsing:
+- `API_OPTIONAL_MODULES` has correct `|` and `,` delimiters.
+3. Confirm import path:
+- `module.path:router` is importable in runtime.
+4. Confirm compatibility:
+- `MODULE_API_VERSION` and `MIN_CORE_VERSION` match core.
+5. Confirm logs:
+- module loaded/skipped with explicit reason.
+
+## 7. Testing and quality gates
+
+Minimum verification for module platform behavior:
 - `tests/test_module_registry.py`
 - `web-next/tests/sidebar-navigation-optional-modules.test.ts`
+
+Repository hard gates for code changes:
+- `make pr-fast`
+- `make check-new-code-coverage`
+
+## 8. Scope boundary
+
+This mechanism provides modular infrastructure only.
+It does not force private/business logic into OSS core.

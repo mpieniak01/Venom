@@ -381,6 +381,14 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_TASKS: int = 5  # Maksymalna liczba równoczesnych zadań
     ENABLE_QUEUE_LIMITS: bool = True  # Włącz limity kolejki zadań
 
+    # ===== BRAND STUDIO (Modular Extension) =====
+    # Publiczny moduł bazowy z możliwością podłączenia rozszerzenia przez optional import.
+    FEATURE_BRAND_STUDIO: bool = False
+    BRAND_STUDIO_MODE: str = "disabled"  # disabled|stub|extension
+    BRAND_STUDIO_EXTENSION_MODULE: str = ""
+    BRAND_STUDIO_ALLOWED_USERS: str = ""  # CSV, puste = brak ograniczeń
+    BRAND_TARGET_REPO: str = ""  # Repo docelowe np. owner/name (opcjonalne)
+
     # Konfiguracja Tokenomics (Dashboard v2.3)
     TOKEN_COST_ESTIMATION_SPLIT: float = (
         0.5  # Stosunek input/output dla estymacji kosztów

@@ -347,16 +347,10 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       }
 
       if (layoutName === "cola") {
-        try {
-          const colaModuleName = "cytoscape-cola";
-          const colaPlugin = (await import(colaModuleName as string)).default;
-          cytoscape.use(colaPlugin);
-        } catch {
-          resolvedLayoutName = "cose";
-          if (!colaWarningShownRef.current) {
-            pushToast(t("brain.toasts.layoutColaUnavailable"), "warning");
-            colaWarningShownRef.current = true;
-          }
+        resolvedLayoutName = "cose";
+        if (!colaWarningShownRef.current) {
+          pushToast(t("brain.toasts.layoutColaUnavailable"), "warning");
+          colaWarningShownRef.current = true;
         }
       }
 

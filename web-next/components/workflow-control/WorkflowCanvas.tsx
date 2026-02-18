@@ -68,7 +68,7 @@ export function WorkflowCanvas({
     const SWIMLANE_ORDER = ['decision', 'intent', 'kernel', 'runtime', 'embedding', 'provider'];
 
     // Generate visual swimlane nodes (Horizontal Rows)
-    const backgroundSwimlanes = SWIMLANE_ORDER.map((cat, i) => ({
+    const backgroundSwimlanes: Node[] = SWIMLANE_ORDER.map((cat, i) => ({
       id: `swimlane-${cat}`,
       type: 'swimlane',
       data: { label: cat, index: i }, // Pass simple category key for styling
@@ -120,7 +120,10 @@ export function WorkflowCanvas({
       };
     });
 
-    return { initialNodes: [...backgroundSwimlanes, ...positionedNodes], initialEdges: edges };
+    return {
+      initialNodes: [...backgroundSwimlanes, ...positionedNodes] as Node[],
+      initialEdges: edges,
+    };
   }, [systemState, readOnly]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);

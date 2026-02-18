@@ -149,7 +149,7 @@ def test_apply_profile_unknown():
     controller = RuntimeController()
     result = controller.apply_profile("nope")
     assert result["success"] is False
-    assert "Nieznany profil" in result["message"]
+    assert "Unknown profile" in result["message"]
 
 
 def test_apply_profile_light_starts_core_services(monkeypatch):

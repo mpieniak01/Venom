@@ -53,3 +53,15 @@ The registry is preparatory infrastructure:
 - it improves module separation,
 - it does not force private/business logic into OSS core,
 - it keeps default core behavior stable when modules are disabled.
+
+## 6. Entry gate checklist (160.5)
+
+Criteria used before moving to phase 161:
+- core starts and works without optional modules,
+- one optional module can be attached via manifest config,
+- incompatible module versions are rejected in a controlled way,
+- optional web navigation items are gated by feature flags.
+
+Reference tests:
+- `tests/test_module_registry.py`
+- `web-next/tests/sidebar-navigation-optional-modules.test.ts`

@@ -918,8 +918,8 @@ export const pl = {
         unknownError: "Nieznany błąd",
       },
       dashboard: {
-        eyebrow: "THE ACADEMY",
-        title: "Model Training & Fine-tuning",
+        eyebrow: "AKADEMIA",
+        title: "Trening i Dostrajanie Modeli",
         description: "Autonomiczne ulepszanie modeli przez LoRA/QLoRA",
         unavailable: "Academy niedostępne:",
         unavailableHint:

@@ -924,8 +924,8 @@ export const de = {
       unknownError: "Unbekannter Fehler",
     },
     dashboard: {
-      eyebrow: "THE ACADEMY",
-      title: "Model Training & Fine-tuning",
+      eyebrow: "DIE AKADEMIE",
+      title: "Modelltraining & Feinabstimmung",
       description: "Autonome Modellverbesserung mit LoRA/QLoRA",
       unavailable: "Academy nicht verfügbar:",
       unavailableHint:

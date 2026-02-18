@@ -35,6 +35,10 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 - Security and governance were hardened (`Policy Gate`, cost limits, fallback policies).
 - Operational layer was unified (`Workflow Control Plane`, config panel, runtime monitoring).
 - Quality and learning modules were strengthened (`Academy`, intent-router rollout, test-artifact policy).
+- Formal closure for 152 (Ollama 0.16.x) was completed with full evidence and PASS hard gates.
+- Runtime profiles/onboarding contract (`light/llm_off/full`) was implemented and stabilized in `venom.sh` launcher (PL/EN/DE + headless mode).
+- ADR-001 was accepted and `RoutingDecision` soft e2e contract was integrated (governance + policy + observability).
+- API Contract Wave-1 was completed: explicit `response_model` for `system/api-map`, memory response schemas, OpenAPI/codegen sync, and wave-based DI cleanup.
 
 ## Documentation
 ### Start and operations

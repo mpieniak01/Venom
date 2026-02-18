@@ -123,7 +123,11 @@ class SequencedAsyncClient:
 @pytest.fixture
 def simple_client(monkeypatch):
     tracer = RequestTracer()
-    llm_simple_routes.set_dependencies(tracer)
+    monkeypatch.setattr(
+        llm_simple_routes.system_deps,
+        "get_request_tracer",
+        lambda: tracer,
+    )
 
     monkeypatch.setattr(
         "venom_core.api.routes.llm_simple.get_active_llm_runtime",
@@ -137,8 +141,6 @@ def simple_client(monkeypatch):
 
     client = TestClient(app)
     yield client, tracer
-
-    llm_simple_routes.set_dependencies(None)
 
 
 def test_simple_stream_emits_chunks_and_traces(simple_client):

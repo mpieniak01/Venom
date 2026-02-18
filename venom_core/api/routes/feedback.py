@@ -228,12 +228,13 @@ async def submit_feedback(payload: FeedbackRequest):
 
 @router.get(
     "/feedback/logs",
-    response_model=FeedbackLogsResponse,
     responses={
         400: {"description": "Nieprawidłowa wartość parametru rating"},
     },
 )
-async def get_feedback_logs(limit: int = 50, rating: Optional[str] = None) -> FeedbackLogsResponse:
+async def get_feedback_logs(
+    limit: int = 50, rating: Optional[str] = None
+) -> FeedbackLogsResponse:
     """Zwraca ostatnie wpisy feedbacku użytkownika."""
     limit = _clamp_feedback_limit(limit)
     _validate_feedback_rating(rating)

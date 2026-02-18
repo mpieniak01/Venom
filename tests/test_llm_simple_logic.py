@@ -211,7 +211,11 @@ def test_trim_user_content_for_runtime_adds_trace_step(monkeypatch):
         def add_step(self, *args, **kwargs):
             captured["steps"].append((args, kwargs))
 
-    monkeypatch.setattr(llm_simple_routes, "_request_tracer", DummyTracer())
+    monkeypatch.setattr(
+        llm_simple_routes.system_deps,
+        "get_request_tracer",
+        lambda: DummyTracer(),
+    )
 
     trimmed = llm_simple_routes._trim_user_content_for_runtime(
         "x" * 200, "sys", DummyRuntime("vllm"), request_id="rid"
@@ -265,7 +269,11 @@ async def test_iter_stream_contents_parses_and_stops_on_done():
 
 def test_trace_helpers_and_error_metadata(monkeypatch):
     tracer = DummyTracer()
-    monkeypatch.setattr(llm_simple_routes, "_request_tracer", tracer)
+    monkeypatch.setattr(
+        llm_simple_routes.system_deps,
+        "get_request_tracer",
+        lambda: tracer,
+    )
 
     request = llm_simple_routes.SimpleChatRequest(content="hello", session_id="s1")
     llm_simple_routes._trace_simple_request("rid", request, DummyRuntime(), "model")

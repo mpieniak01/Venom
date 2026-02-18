@@ -16,12 +16,15 @@ def tracer():
 
 
 @pytest.fixture
-def client(tracer):
+def client(tracer, monkeypatch):
     """Fixture dla FastAPI TestClient z skonfigurowanym tracerem."""
-    # Import i ustaw zależności
     from venom_core.api.routes import flow as flow_routes
 
-    flow_routes.set_dependencies(tracer)
+    monkeypatch.setattr(
+        flow_routes.system_deps,
+        "get_request_tracer",
+        lambda: tracer,
+    )
 
     return TestClient(app)
 
@@ -227,12 +230,16 @@ def test_get_flow_trace_with_council_decision(client, tracer):
     assert "CouncilFlow" in data["mermaid_diagram"]
 
 
-def test_flow_endpoint_without_tracer(client):
+def test_flow_endpoint_without_tracer(client, monkeypatch):
     """Test endpointu gdy RequestTracer nie jest dostępny."""
     # Import i wyczyść zależności
     from venom_core.api.routes import flow as flow_routes
 
-    flow_routes.set_dependencies(None)
+    monkeypatch.setattr(
+        flow_routes.system_deps,
+        "get_request_tracer",
+        lambda: None,
+    )
 
     task_id = uuid4()
     response = client.get(f"/api/v1/flow/{task_id}")

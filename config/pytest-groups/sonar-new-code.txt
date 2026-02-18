@@ -90,5 +90,11 @@ tests/test_workflow_operations_api.py
 tests/test_admin_audit.py
 tests/test_error_mappings.py
 tests/test_control_plane_audit.py
+tests/test_routing_contract.py
+tests/test_routing_integration.py
+tests/test_policy_gate_integration.py
+tests/test_profile_config.py
+tests/test_ollama_tuning.py
+tests/test_contracts_init.py
 
 # AUTO-ADDED by pre-commit (staged backend/test changes)

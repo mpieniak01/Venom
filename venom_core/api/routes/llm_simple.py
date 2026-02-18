@@ -13,6 +13,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from venom_core.api.routes import system_deps
 from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import get_metrics_collector
@@ -25,7 +26,6 @@ from venom_core.utils.ollama_tuning import build_ollama_runtime_options
 from venom_core.utils.text import trim_to_char_limit
 
 router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
-_request_tracer = None
 _SIMPLE_MODE_STEP = "SimpleMode"
 _PROMPT_PREVIEW_MAX_CHARS = 200
 _CONTEXT_PREVIEW_MAX_CHARS = 2000
@@ -43,9 +43,8 @@ def _get_simple_context_char_limit(runtime) -> Optional[int]:
     return input_tokens * 4
 
 
-def set_dependencies(request_tracer):
-    global _request_tracer
-    _request_tracer = request_tracer
+def _get_request_tracer():
+    return system_deps.get_request_tracer()
 
 
 def _build_preview(text: str, *, max_chars: int) -> str:
@@ -57,14 +56,15 @@ def _build_preview(text: str, *, max_chars: int) -> str:
 def _trace_simple_request(
     request_id: UUID, request: "SimpleChatRequest", runtime, model_name: str
 ) -> None:
-    if not _request_tracer:
+    request_tracer = _get_request_tracer()
+    if not request_tracer:
         return
-    _request_tracer.create_trace(
+    request_tracer.create_trace(
         request_id,
         request.content,
         session_id=request.session_id,
     )
-    _request_tracer.set_llm_metadata(
+    request_tracer.set_llm_metadata(
         request_id,
         provider=runtime.provider,
         model=model_name,
@@ -74,8 +74,8 @@ def _trace_simple_request(
             "runtime_id": runtime.runtime_id,
         },
     )
-    _request_tracer.update_status(request_id, TraceStatus.PROCESSING)
-    _request_tracer.add_step(
+    request_tracer.update_status(request_id, TraceStatus.PROCESSING)
+    request_tracer.add_step(
         request_id,
         _SIMPLE_MODE_STEP,
         "request",
@@ -87,7 +87,8 @@ def _trace_simple_request(
 
 
 def _trace_context_preview(request_id: UUID, messages: list[dict[str, str]]) -> None:
-    if not _request_tracer:
+    request_tracer = _get_request_tracer()
+    if not request_tracer:
         return
     preview_parts = []
     for message in messages:
@@ -101,7 +102,7 @@ def _trace_context_preview(request_id: UUID, messages: list[dict[str, str]]) -> 
         if truncated
         else full_context
     )
-    _request_tracer.add_step(
+    request_tracer.add_step(
         request_id,
         _SIMPLE_MODE_STEP,
         "context_preview",
@@ -126,16 +127,17 @@ def _record_simple_error(
     error_class: Optional[str] = None,
     retryable: bool = True,
 ) -> None:
-    if not _request_tracer:
+    request_tracer = _get_request_tracer()
+    if not request_tracer:
         return
-    _request_tracer.add_step(
+    request_tracer.add_step(
         request_id,
         _SIMPLE_MODE_STEP,
         "error",
         status="error",
         details=error_message,
     )
-    _request_tracer.set_error_metadata(
+    request_tracer.set_error_metadata(
         request_id,
         {
             "error_code": error_code,
@@ -146,7 +148,7 @@ def _record_simple_error(
             "retryable": retryable,
         },
     )
-    _request_tracer.update_status(request_id, TraceStatus.FAILED)
+    request_tracer.update_status(request_id, TraceStatus.FAILED)
 
 
 def _build_messages(system_prompt: str, user_content: str) -> list[dict[str, str]]:
@@ -262,8 +264,9 @@ def _trim_user_content_for_runtime(
     overhead = len(system_prompt) + 32 if system_prompt else 0
     available = max(0, char_limit - overhead)
     trimmed_content, was_trimmed = trim_to_char_limit(user_content, available)
-    if was_trimmed and _request_tracer:
-        _request_tracer.add_step(
+    request_tracer = _get_request_tracer()
+    if was_trimmed and request_tracer:
+        request_tracer.add_step(
             request_id,
             _SIMPLE_MODE_STEP,
             "prompt_trim",
@@ -352,10 +355,11 @@ def _trace_first_chunk(
     stream_start: float,
     content: str,
 ) -> None:
-    if not _request_tracer:
+    request_tracer = _get_request_tracer()
+    if not request_tracer:
         return
     elapsed_ms = int((time.perf_counter() - stream_start) * 1000)
-    _request_tracer.add_step(
+    request_tracer.add_step(
         request_id,
         _SIMPLE_MODE_STEP,
         "first_chunk",
@@ -369,7 +373,8 @@ def _trace_first_chunk(
 def _trace_stream_completion(
     request_id: UUID, full_text: str, chunk_count: int, stream_start: float
 ) -> None:
-    if not _request_tracer:
+    request_tracer = _get_request_tracer()
+    if not request_tracer:
         return
     total_ms = int((time.perf_counter() - stream_start) * 1000)
     truncated = len(full_text) > _RESPONSE_PREVIEW_MAX_CHARS
@@ -378,7 +383,7 @@ def _trace_stream_completion(
         if truncated
         else full_text
     )
-    _request_tracer.add_step(
+    request_tracer.add_step(
         request_id,
         _SIMPLE_MODE_STEP,
         "response",
@@ -392,7 +397,7 @@ def _trace_stream_completion(
             }
         ),
     )
-    _request_tracer.update_status(request_id, TraceStatus.COMPLETED)
+    request_tracer.update_status(request_id, TraceStatus.COMPLETED)
 
 
 def _build_llm_http_error(
@@ -550,8 +555,9 @@ def _emit_connection_error_and_mark_failed(
 def _emit_internal_error_and_mark_failed(
     *, exc: Exception, runtime, request_id: UUID, stream_start: float
 ) -> str:
-    if _request_tracer:
-        _request_tracer.add_step(
+    request_tracer = _get_request_tracer()
+    if request_tracer:
+        request_tracer.add_step(
             request_id,
             _SIMPLE_MODE_STEP,
             "error",
@@ -664,6 +670,104 @@ async def _stream_single_attempt(
     state.completed = True
 
 
+def _reset_stream_attempt_state(state: _SimpleStreamState) -> None:
+    state.retry_requested = False
+    state.failed = False
+    state.completed = False
+
+
+def _finalize_successful_stream_attempt(
+    *,
+    runtime,
+    request_id: UUID,
+    stream_start: float,
+    state: _SimpleStreamState,
+    ollama_telemetry: dict[str, int],
+) -> None:
+    _trace_stream_completion(
+        request_id, "".join(state.chunks), state.chunk_count, stream_start
+    )
+    total_ms = (time.perf_counter() - stream_start) * 1000.0
+    collector = get_metrics_collector()
+    collector.record_provider_request(
+        provider=runtime.provider,
+        success=True,
+        latency_ms=total_ms,
+        tokens=(
+            int(ollama_telemetry.get("prompt_eval_count", 0))
+            + int(ollama_telemetry.get("eval_count", 0))
+        ),
+    )
+    if runtime.provider == "ollama":
+        collector.record_ollama_runtime_sample(
+            load_duration_ms=_normalize_ns_to_ms(ollama_telemetry.get("load_duration")),
+            prompt_eval_count=ollama_telemetry.get("prompt_eval_count"),
+            eval_count=ollama_telemetry.get("eval_count"),
+            prompt_eval_duration_ms=_normalize_ns_to_ms(
+                ollama_telemetry.get("prompt_eval_duration")
+            ),
+            eval_duration_ms=_normalize_ns_to_ms(ollama_telemetry.get("eval_duration")),
+        )
+
+
+def _resolve_post_attempt_action(
+    *,
+    runtime,
+    request_id: UUID,
+    stream_start: float,
+    state: _SimpleStreamState,
+    ollama_telemetry: dict[str, int],
+) -> str:
+    if state.retry_requested:
+        return "retry"
+    if state.failed:
+        return "stop"
+    if not state.completed:
+        return "retry"
+
+    _finalize_successful_stream_attempt(
+        runtime=runtime,
+        request_id=request_id,
+        stream_start=stream_start,
+        state=state,
+        ollama_telemetry=ollama_telemetry,
+    )
+    return "done"
+
+
+async def _handle_stream_http_error(
+    *,
+    exc: httpx.HTTPError,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    stream_start: float,
+    attempt: int,
+    max_attempts: int,
+    retry_backoff: float,
+    chunk_count: int,
+    ollama_telemetry: dict[str, int],
+) -> str:
+    if _is_retryable_ollama_http_error(
+        runtime=runtime,
+        attempt=attempt,
+        max_attempts=max_attempts,
+        chunk_count=chunk_count,
+    ):
+        ollama_telemetry.clear()
+        await asyncio.sleep(retry_backoff * attempt)
+        return "retry"
+
+    yield_event = _emit_connection_error_and_mark_failed(
+        exc=exc,
+        runtime=runtime,
+        request_id=request_id,
+        model_name=model_name,
+        stream_start=stream_start,
+    )
+    return yield_event
+
+
 async def _stream_simple_chunks(
     *,
     completions_url: str,
@@ -687,9 +791,7 @@ async def _stream_simple_chunks(
 
     for attempt in range(1, max_attempts + 1):
         try:
-            state.retry_requested = False
-            state.failed = False
-            state.completed = False
+            _reset_stream_attempt_state(state)
             async for event in _stream_single_attempt(
                 completions_url=completions_url,
                 payload=payload,
@@ -705,62 +807,38 @@ async def _stream_simple_chunks(
             ):
                 yield event
 
-            if state.retry_requested:
+            action = _resolve_post_attempt_action(
+                runtime=runtime,
+                request_id=request_id,
+                stream_start=stream_start,
+                state=state,
+                ollama_telemetry=ollama_telemetry,
+            )
+            if action == "retry":
                 continue
-            if state.failed:
+            if action == "stop":
                 return
-            if not state.completed:
-                continue
-
-            _trace_stream_completion(
-                request_id, "".join(state.chunks), state.chunk_count, stream_start
-            )
-            total_ms = (time.perf_counter() - stream_start) * 1000.0
-            collector = get_metrics_collector()
-            collector.record_provider_request(
-                provider=runtime.provider,
-                success=True,
-                latency_ms=total_ms,
-                tokens=(
-                    int(ollama_telemetry.get("prompt_eval_count", 0))
-                    + int(ollama_telemetry.get("eval_count", 0))
-                ),
-            )
-            if runtime.provider == "ollama":
-                collector.record_ollama_runtime_sample(
-                    load_duration_ms=_normalize_ns_to_ms(
-                        ollama_telemetry.get("load_duration")
-                    ),
-                    prompt_eval_count=ollama_telemetry.get("prompt_eval_count"),
-                    eval_count=ollama_telemetry.get("eval_count"),
-                    prompt_eval_duration_ms=_normalize_ns_to_ms(
-                        ollama_telemetry.get("prompt_eval_duration")
-                    ),
-                    eval_duration_ms=_normalize_ns_to_ms(
-                        ollama_telemetry.get("eval_duration")
-                    ),
-                )
-            yield "event: done\ndata: {}\n\n"
-            return
+            if action == "done":
+                yield "event: done\ndata: {}\n\n"
+                return
 
         except httpx.HTTPError as exc:
-            if _is_retryable_ollama_http_error(
-                runtime=runtime,
-                attempt=attempt,
-                max_attempts=max_attempts,
-                chunk_count=state.chunk_count,
-            ):
-                ollama_telemetry.clear()
-                await asyncio.sleep(retry_backoff * attempt)
-                continue
-
-            yield _emit_connection_error_and_mark_failed(
+            result = await _handle_stream_http_error(
                 exc=exc,
                 runtime=runtime,
                 request_id=request_id,
                 model_name=model_name,
                 stream_start=stream_start,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                retry_backoff=retry_backoff,
+                chunk_count=state.chunk_count,
+                ollama_telemetry=ollama_telemetry,
             )
+            if result == "retry":
+                continue
+
+            yield result
             return
         except Exception as exc:
             yield _emit_internal_error_and_mark_failed(

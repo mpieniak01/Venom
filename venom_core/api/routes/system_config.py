@@ -31,7 +31,6 @@ def require_localhost_request(req: Request) -> None:
 
 @router.get(
     "/config/runtime",
-    response_model=RuntimeConfigResponse,
     responses={
         500: {"description": "Błąd wewnętrzny podczas pobierania konfiguracji runtime"},
     },
@@ -57,7 +56,6 @@ def get_runtime_config() -> RuntimeConfigResponse:
 
 @router.post(
     "/config/runtime",
-    response_model=ConfigUpdateResponse,
     responses={
         500: {
             "description": "Błąd wewnętrzny podczas aktualizacji konfiguracji runtime"
@@ -102,7 +100,6 @@ def update_runtime_config(
 
 @router.get(
     "/config/backups",
-    response_model=ConfigBackupsResponse,
     responses={
         500: {
             "description": "Błąd wewnętrzny podczas pobierania listy backupów konfiguracji"
@@ -129,7 +126,6 @@ def get_config_backups(req: Request, limit: int = 20) -> ConfigBackupsResponse:
 
 @router.post(
     "/config/restore",
-    response_model=RestoreBackupResponse,
     responses={
         500: {
             "description": "Błąd wewnętrzny podczas przywracania backupu konfiguracji"

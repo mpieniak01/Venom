@@ -2393,6 +2393,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/iot/reconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconnect Iot Bridge
+         * @description Próbuje odtworzyć połączenie z Rider-Pi.
+         */
+        post: operations["reconnect_iot_bridge_api_v1_iot_reconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/status": {
         parameters: {
             query?: never;
@@ -4162,6 +4182,18 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
         };
+        /** CacheFlushResponse */
+        CacheFlushResponse: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            /**
+             * Deleted
+             * @default 0
+             */
+            deleted: number;
+        };
         /**
          * CalendarEvent
          * @description Model wydarzenia w kalendarzu.
@@ -4679,6 +4711,18 @@ export interface components {
             /** Mermaid Diagram */
             mermaid_diagram: string;
         };
+        /** GlobalMemoryClearResponse */
+        GlobalMemoryClearResponse: {
+            /** Status */
+            status: string;
+            /**
+             * Deleted Vectors
+             * @default 0
+             */
+            deleted_vectors: number;
+            /** Message */
+            message: string;
+        };
         /**
          * GovernanceStatusResponse
          * @description Response dla statusu governance.
@@ -4868,6 +4912,18 @@ export interface components {
             url?: string | null;
         };
         /**
+         * IoTReconnectResponse
+         * @description Response for Rider-Pi reconnect action.
+         */
+        IoTReconnectResponse: {
+            /** Connected */
+            connected: boolean;
+            /** Attempts */
+            attempts: number;
+            /** Message */
+            message?: string | null;
+        };
+        /**
          * IoTStatusResponse
          * @description Response with IoT bridge status.
          */
@@ -4959,13 +5015,39 @@ export interface components {
          * @enum {string}
          */
         KnowledgeSource: "session_store" | "state_manager" | "lessons_store" | "vector_store" | "orchestrator";
+        /** LearningStatusResponse */
+        LearningStatusResponse: {
+            /** Status */
+            status: string;
+            /** Enabled */
+            enabled: boolean;
+        };
         /**
          * LearningToggleRequest
-         * @description Request for toggling learning on/off.
+         * @description Request do przełączenia trybu uczenia.
          */
         LearningToggleRequest: {
             /** Enabled */
             enabled: boolean;
+        };
+        /** LessonsMutationResponse */
+        LessonsMutationResponse: {
+            /** Status */
+            status: string;
+            /** Message */
+            message?: string | null;
+            /** Deleted */
+            deleted?: number | null;
+            /** Removed */
+            removed?: number | null;
+            /** Days */
+            days?: number | null;
+            /** Start */
+            start?: string | null;
+            /** End */
+            end?: string | null;
+            /** Tag */
+            tag?: string | null;
         };
         /**
          * LimitsConfigResponse
@@ -5005,6 +5087,48 @@ export interface components {
              * @description Opcjonalny model LLM
              */
             model?: string | null;
+        };
+        /** MemoryEntryMutationResponse */
+        MemoryEntryMutationResponse: {
+            /** Status */
+            status: string;
+            /** Entry Id */
+            entry_id: string;
+            /** Pinned */
+            pinned?: boolean | null;
+            /** Deleted */
+            deleted?: number | null;
+        };
+        /** MemoryGraphElements */
+        MemoryGraphElements: {
+            /** Nodes */
+            nodes?: {
+                [key: string]: unknown;
+            }[];
+            /** Edges */
+            edges?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** MemoryGraphResponse */
+        MemoryGraphResponse: {
+            /** Status */
+            status: string;
+            elements: components["schemas"]["MemoryGraphElements"];
+            stats: components["schemas"]["MemoryGraphStats"];
+        };
+        /** MemoryGraphStats */
+        MemoryGraphStats: {
+            /**
+             * Nodes
+             * @default 0
+             */
+            nodes: number;
+            /**
+             * Edges
+             * @default 0
+             */
+            edges: number;
         };
         /**
          * MemoryIngestRequest
@@ -5070,6 +5194,22 @@ export interface components {
              * @default default
              */
             collection: string;
+        };
+        /** MemorySearchResponse */
+        MemorySearchResponse: {
+            /** Status */
+            status: string;
+            /** Query */
+            query: string;
+            /** Results */
+            results?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
         };
         /**
          * ModelActivateRequest
@@ -5322,6 +5462,43 @@ export interface components {
             config_sources: {
                 [key: string]: unknown;
             };
+        };
+        /** SessionMemoryClearResponse */
+        SessionMemoryClearResponse: {
+            /** Status */
+            status: string;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Deleted Vectors
+             * @default 0
+             */
+            deleted_vectors: number;
+            /**
+             * Cleared Tasks
+             * @default 0
+             */
+            cleared_tasks: number;
+            /** Message */
+            message: string;
+        };
+        /** SessionMemoryResponse */
+        SessionMemoryResponse: {
+            /** Status */
+            status: string;
+            /** Session Id */
+            session_id: string;
+            /** History */
+            history?: {
+                [key: string]: unknown;
+            }[];
+            /** Summary */
+            summary?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
         };
         /**
          * SimpleChatRequest
@@ -5780,14 +5957,6 @@ export interface components {
          * @enum {string}
          */
         WorkflowStatus: "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
-        /**
-         * LearningToggleRequest
-         * @description Request do przełączenia trybu uczenia.
-         */
-        venom_core__api__schemas__memory__LearningToggleRequest: {
-            /** Enabled */
-            enabled: boolean;
-        };
     };
     responses: never;
     parameters: never;
@@ -6439,9 +6608,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MemorySearchResponse"];
                 };
             };
             /** @description Nieprawidłowe zapytanie */
@@ -6486,9 +6653,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SessionMemoryResponse"];
                 };
             };
             /** @description Brak wymaganego session_id */
@@ -6533,9 +6698,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SessionMemoryClearResponse"];
                 };
             };
             /** @description Brak wymaganego session_id */
@@ -6571,9 +6734,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["GlobalMemoryClearResponse"];
                 };
             };
             /** @description Błąd podczas czyszczenia pamięci globalnej */
@@ -6610,9 +6771,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MemoryGraphResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6653,9 +6812,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MemoryEntryMutationResponse"];
                 };
             };
             /** @description Nie znaleziono wpisu pamięci */
@@ -6700,9 +6857,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MemoryEntryMutationResponse"];
                 };
             };
             /** @description Nie znaleziono wpisu do usunięcia */
@@ -6745,9 +6900,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CacheFlushResponse"];
                 };
             };
             /** @description Błąd podczas czyszczenia Semantic Cache */
@@ -6777,9 +6930,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LessonsMutationResponse"];
                 };
             };
             /** @description Nieprawidłowe parametry żądania */
@@ -6827,9 +6978,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LessonsMutationResponse"];
                 };
             };
             /** @description Nieprawidłowe parametry żądania */
@@ -6875,9 +7024,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LessonsMutationResponse"];
                 };
             };
             /** @description Nieprawidłowe parametry żądania */
@@ -6923,9 +7070,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LessonsMutationResponse"];
                 };
             };
             /** @description Nieprawidłowe parametry żądania */
@@ -6971,9 +7116,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LessonsMutationResponse"];
                 };
             };
             /** @description Nieprawidłowe parametry żądania */
@@ -7016,9 +7159,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LearningStatusResponse"];
                 };
             };
             /** @description Błąd wewnętrzny */
@@ -7039,7 +7180,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["venom_core__api__schemas__memory__LearningToggleRequest"];
+                "application/json": components["schemas"]["LearningToggleRequest"];
             };
         };
         responses: {
@@ -7049,9 +7190,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LearningStatusResponse"];
                 };
             };
             /** @description Nieprawidłowe parametry żądania */
@@ -10188,6 +10327,33 @@ export interface operations {
                 };
             };
             /** @description Błąd wewnętrzny podczas pobierania statusu IoT bridge */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reconnect_iot_bridge_api_v1_iot_reconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IoTReconnectResponse"];
+                };
+            };
+            /** @description Błąd wewnętrzny podczas reconnect Rider-Pi */
             500: {
                 headers: {
                     [name: string]: unknown;

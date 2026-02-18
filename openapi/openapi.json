@@ -645,9 +645,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Search Memory Api V1 Memory Search Post"
+                  "$ref": "#/components/schemas/MemorySearchResponse"
                 }
               }
             }
@@ -696,9 +694,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Clear Session Memory Api V1 Memory Session  Session Id  Delete"
+                  "$ref": "#/components/schemas/SessionMemoryClearResponse"
                 }
               }
             }
@@ -742,9 +738,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Get Session Memory Api V1 Memory Session  Session Id  Get"
+                  "$ref": "#/components/schemas/SessionMemoryResponse"
                 }
               }
             }
@@ -782,9 +776,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Clear Global Memory Api V1 Memory Global Delete"
+                  "$ref": "#/components/schemas/GlobalMemoryClearResponse"
                 }
               }
             }
@@ -871,9 +863,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Memory Graph Api V1 Memory Graph Get"
+                  "$ref": "#/components/schemas/MemoryGraphResponse"
                 }
               }
             }
@@ -931,9 +921,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Pin Memory Entry Api V1 Memory Entry  Entry Id  Pin Post"
+                  "$ref": "#/components/schemas/MemoryEntryMutationResponse"
                 }
               }
             }
@@ -982,9 +970,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Delete Memory Entry Api V1 Memory Entry  Entry Id  Delete"
+                  "$ref": "#/components/schemas/MemoryEntryMutationResponse"
                 }
               }
             }
@@ -1022,9 +1008,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Flush Semantic Cache Api V1 Memory Cache Semantic Delete"
+                  "$ref": "#/components/schemas/CacheFlushResponse"
                 }
               }
             }
@@ -1063,9 +1047,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Prune Latest Lessons Api V1 Memory Lessons Prune Latest Delete"
+                  "$ref": "#/components/schemas/LessonsMutationResponse"
                 }
               }
             }
@@ -1127,9 +1109,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Prune Lessons By Range Api V1 Memory Lessons Prune Range Delete"
+                  "$ref": "#/components/schemas/LessonsMutationResponse"
                 }
               }
             }
@@ -1180,9 +1160,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Prune Lessons By Tag Api V1 Memory Lessons Prune Tag Delete"
+                  "$ref": "#/components/schemas/LessonsMutationResponse"
                 }
               }
             }
@@ -1234,9 +1212,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Prune Lessons By Ttl Api V1 Memory Lessons Prune Ttl Delete"
+                  "$ref": "#/components/schemas/LessonsMutationResponse"
                 }
               }
             }
@@ -1288,9 +1264,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Purge All Lessons Api V1 Memory Lessons Purge Delete"
+                  "$ref": "#/components/schemas/LessonsMutationResponse"
                 }
               }
             }
@@ -1328,9 +1302,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Get Learning Status Api V1 Memory Lessons Learning Status Get"
+                  "$ref": "#/components/schemas/LearningStatusResponse"
                 }
               }
             }
@@ -1353,7 +1325,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/venom_core__api__schemas__memory__LearningToggleRequest"
+                "$ref": "#/components/schemas/LearningToggleRequest"
               }
             }
           },
@@ -1365,9 +1337,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Toggle Learning Api V1 Memory Lessons Learning Toggle Post"
+                  "$ref": "#/components/schemas/LearningStatusResponse"
                 }
               }
             }
@@ -4611,6 +4581,31 @@
           },
           "500": {
             "description": "Błąd wewnętrzny podczas pobierania statusu IoT bridge"
+          }
+        }
+      }
+    },
+    "/api/v1/iot/reconnect": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Reconnect Iot Bridge",
+        "description": "Próbuje odtworzyć połączenie z Rider-Pi.",
+        "operationId": "reconnect_iot_bridge_api_v1_iot_reconnect_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IoTReconnectResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Błąd wewnętrzny podczas reconnect Rider-Pi"
           }
         }
       }
@@ -8063,6 +8058,29 @@
         "title": "BenchmarkStatusResponse",
         "description": "Response ze statusem benchmarku."
       },
+      "CacheFlushResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "CacheFlushResponse"
+      },
       "CalendarEvent": {
         "properties": {
           "id": {
@@ -9093,6 +9111,29 @@
         "title": "FlowTraceResponse",
         "description": "Odpowiedź zawierająca pełny ślad przepływu dla Flow Inspector."
       },
+      "GlobalMemoryClearResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "deleted_vectors": {
+            "type": "integer",
+            "title": "Deleted Vectors",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "GlobalMemoryClearResponse"
+      },
       "GovernanceStatusResponse": {
         "properties": {
           "status": {
@@ -9731,6 +9772,36 @@
         "title": "InitRepoRequest",
         "description": "Payload dla inicjalizacji repozytorium."
       },
+      "IoTReconnectResponse": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected",
+          "attempts"
+        ],
+        "title": "IoTReconnectResponse",
+        "description": "Response for Rider-Pi reconnect action."
+      },
       "IoTStatusResponse": {
         "properties": {
           "connected": {
@@ -10007,6 +10078,24 @@
         ],
         "title": "KnowledgeSource"
       },
+      "LearningStatusResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "enabled"
+        ],
+        "title": "LearningStatusResponse"
+      },
       "LearningToggleRequest": {
         "properties": {
           "enabled": {
@@ -10019,7 +10108,97 @@
           "enabled"
         ],
         "title": "LearningToggleRequest",
-        "description": "Request for toggling learning on/off."
+        "description": "Request do przełączenia trybu uczenia."
+      },
+      "LessonsMutationResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "deleted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted"
+          },
+          "removed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "LessonsMutationResponse"
       },
       "LimitsConfigResponse": {
         "properties": {
@@ -10083,6 +10262,105 @@
         ],
         "title": "LlmRuntimeActivateRequest",
         "description": "Request for activating an LLM runtime (cloud provider)."
+      },
+      "MemoryEntryMutationResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "entry_id": {
+            "type": "string",
+            "title": "Entry Id"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
+          "deleted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "entry_id"
+        ],
+        "title": "MemoryEntryMutationResponse"
+      },
+      "MemoryGraphElements": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Edges"
+          }
+        },
+        "type": "object",
+        "title": "MemoryGraphElements"
+      },
+      "MemoryGraphResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "elements": {
+            "$ref": "#/components/schemas/MemoryGraphElements"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/MemoryGraphStats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "elements",
+          "stats"
+        ],
+        "title": "MemoryGraphResponse"
+      },
+      "MemoryGraphStats": {
+        "properties": {
+          "nodes": {
+            "type": "integer",
+            "title": "Nodes",
+            "default": 0
+          },
+          "edges": {
+            "type": "integer",
+            "title": "Edges",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "MemoryGraphStats"
       },
       "MemoryIngestRequest": {
         "properties": {
@@ -10232,6 +10510,37 @@
         ],
         "title": "MemorySearchRequest",
         "description": "Model żądania wyszukiwania w pamięci."
+      },
+      "MemorySearchResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "query"
+        ],
+        "title": "MemorySearchResponse"
       },
       "ModelActivateRequest": {
         "properties": {
@@ -10767,6 +11076,81 @@
         ],
         "title": "RuntimeConfigResponse",
         "description": "Response model for runtime configuration."
+      },
+      "SessionMemoryClearResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "deleted_vectors": {
+            "type": "integer",
+            "title": "Deleted Vectors",
+            "default": 0
+          },
+          "cleared_tasks": {
+            "type": "integer",
+            "title": "Cleared Tasks",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "session_id",
+          "message"
+        ],
+        "title": "SessionMemoryClearResponse"
+      },
+      "SessionMemoryResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "history": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "History"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "session_id"
+        ],
+        "title": "SessionMemoryResponse"
       },
       "SimpleChatRequest": {
         "properties": {
@@ -11839,20 +12223,6 @@
         ],
         "title": "WorkflowStatus",
         "description": "Status of a workflow execution."
-      },
-      "venom_core__api__schemas__memory__LearningToggleRequest": {
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "title": "Enabled"
-          }
-        },
-        "type": "object",
-        "required": [
-          "enabled"
-        ],
-        "title": "LearningToggleRequest",
-        "description": "Request do przełączenia trybu uczenia."
       }
     }
   }

@@ -80,8 +80,10 @@ def update_runtime_config(
         result = config_manager.update_config(request.updates)
         # Ensure result matches ConfigUpdateResponse schema
         if isinstance(result, dict):
+            # Map 'success' boolean to 'status' string
+            status = "success" if result.get("success", True) else "error"
             return ConfigUpdateResponse(
-                status=result.get("status", "success"),
+                status=status,
                 message=result.get("message", "Configuration updated"),
                 updated_keys=result.get("updated_keys", list(request.updates.keys())),
             )
@@ -143,8 +145,10 @@ def restore_config_backup(
         result = config_manager.restore_backup(request.backup_filename)
         # Ensure result matches RestoreBackupResponse schema
         if isinstance(result, dict):
+            # Map 'success' boolean to 'status' string
+            status = "success" if result.get("success", True) else "error"
             return RestoreBackupResponse(
-                status=result.get("status", "success"),
+                status=status,
                 message=result.get("message", "Backup restored"),
                 restored_file=result.get("restored_file", request.backup_filename),
             )

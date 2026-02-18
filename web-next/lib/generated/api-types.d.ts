@@ -3866,7 +3866,10 @@ export interface components {
             /** Adapter Path */
             adapter_path: string;
         };
-        /** ActiveLlmServerRequest */
+        /**
+         * ActiveLlmServerRequest
+         * @description Request for activating an LLM server.
+         */
         ActiveLlmServerRequest: {
             /** Server Name */
             server_name: string;
@@ -4041,6 +4044,62 @@ export interface components {
             risk_level: string;
         };
         /**
+         * AutonomyLevelSetResponse
+         * @description Response for setting autonomy level.
+         */
+        AutonomyLevelSetResponse: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            /** Level */
+            level: number;
+            /** Level Name */
+            level_name: string;
+            /** Color */
+            color: string;
+            /** Permissions */
+            permissions: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * AutonomyLevelsResponse
+         * @description Response for all autonomy levels.
+         */
+        AutonomyLevelsResponse: {
+            /** Status */
+            status: string;
+            /** Levels */
+            levels: {
+                [key: string]: unknown;
+            }[];
+            /** Count */
+            count: number;
+        };
+        /**
+         * BenchmarkDeleteResponse
+         * @description Response after deleting benchmark(s).
+         */
+        BenchmarkDeleteResponse: {
+            /** Message */
+            message: string;
+            /** Count */
+            count?: number | null;
+        };
+        /**
+         * BenchmarkListResponse
+         * @description Response with list of benchmarks.
+         */
+        BenchmarkListResponse: {
+            /** Benchmarks */
+            benchmarks: {
+                [key: string]: unknown;
+            }[];
+            /** Count */
+            count: number;
+        };
+        /**
          * BenchmarkStartRequest
          * @description Request do rozpoczęcia benchmarku.
          */
@@ -4150,6 +4209,20 @@ export interface components {
             affected_services?: string[];
         };
         /**
+         * ConfigBackupsResponse
+         * @description Response model for configuration backups list.
+         */
+        ConfigBackupsResponse: {
+            /** Status */
+            status: string;
+            /** Backups */
+            backups: {
+                [key: string]: unknown;
+            }[];
+            /** Count */
+            count: number;
+        };
+        /**
          * ConfigUpdateRequest
          * @description Request do aktualizacji konfiguracji.
          */
@@ -4160,6 +4233,18 @@ export interface components {
             };
         };
         /**
+         * ConfigUpdateResponse
+         * @description Response model for configuration update.
+         */
+        ConfigUpdateResponse: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            /** Updated Keys */
+            updated_keys?: string[];
+        };
+        /**
          * ConnectionDirection
          * @enum {string}
          */
@@ -4168,7 +4253,7 @@ export interface components {
          * ConnectionProtocol
          * @enum {string}
          */
-        ConnectionProtocol: "http" | "https" | "ws" | "sse";
+        ConnectionProtocol: "http" | "https" | "ws" | "sse" | "tcp";
         /**
          * ConnectionStatus
          * @enum {string}
@@ -4357,6 +4442,18 @@ export interface components {
             provider: string;
         };
         /**
+         * CostModeSetResponse
+         * @description Response for setting cost mode.
+         */
+        CostModeSetResponse: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
          * CreateEventRequest
          * @description Model żądania utworzenia wydarzenia.
          */
@@ -4494,7 +4591,22 @@ export interface components {
             /** Time Max */
             time_max: string;
         };
-        /** FeedbackRequest */
+        /**
+         * FeedbackLogsResponse
+         * @description Response model for feedback logs.
+         */
+        FeedbackLogsResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * FeedbackRequest
+         * @description Request model for submitting user feedback.
+         */
         FeedbackRequest: {
             /**
              * Task Id
@@ -4509,7 +4621,10 @@ export interface components {
             /** Comment */
             comment?: string | null;
         };
-        /** FeedbackResponse */
+        /**
+         * FeedbackResponse
+         * @description Response model for feedback submission.
+         */
         FeedbackResponse: {
             /** Status */
             status: string;
@@ -4752,7 +4867,10 @@ export interface components {
             /** Url */
             url?: string | null;
         };
-        /** IoTStatusResponse */
+        /**
+         * IoTStatusResponse
+         * @description Response with IoT bridge status.
+         */
         IoTStatusResponse: {
             /** Connected */
             connected: boolean;
@@ -4843,7 +4961,7 @@ export interface components {
         KnowledgeSource: "session_store" | "state_manager" | "lessons_store" | "vector_store" | "orchestrator";
         /**
          * LearningToggleRequest
-         * @description Request do przełączenia trybu uczenia.
+         * @description Request for toggling learning on/off.
          */
         LearningToggleRequest: {
             /** Enabled */
@@ -4872,7 +4990,10 @@ export interface components {
                 };
             };
         };
-        /** LlmRuntimeActivateRequest */
+        /**
+         * LlmRuntimeActivateRequest
+         * @description Request for activating an LLM runtime (cloud provider).
+         */
         LlmRuntimeActivateRequest: {
             /**
              * Provider
@@ -5027,6 +5148,46 @@ export interface components {
              */
             timeout: number;
         };
+        /**
+         * NodeExecuteResponse
+         * @description Response from node execution.
+         */
+        NodeExecuteResponse: {
+            /** Status */
+            status: string;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * NodeInfoResponse
+         * @description Response with node information.
+         */
+        NodeInfoResponse: {
+            /** Status */
+            status: string;
+            /** Node */
+            node: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * NodesListResponse
+         * @description Response with list of nodes.
+         */
+        NodesListResponse: {
+            /** Status */
+            status: string;
+            /** Count */
+            count: number;
+            /** Online Count */
+            online_count: number;
+            /** Nodes */
+            nodes: {
+                [key: string]: unknown;
+            }[];
+        };
         /** ProvenanceV1 */
         ProvenanceV1: {
             source: components["schemas"]["KnowledgeSource"];
@@ -5108,6 +5269,18 @@ export interface components {
             /** Backup Filename */
             backup_filename: string;
         };
+        /**
+         * RestoreBackupResponse
+         * @description Response model for backup restoration.
+         */
+        RestoreBackupResponse: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            /** Restored File */
+            restored_file: string;
+        };
         /** RetentionV1 */
         RetentionV1: {
             /** Ttl Days */
@@ -5134,7 +5307,26 @@ export interface components {
             /** Vision */
             vision: string;
         };
-        /** SimpleChatRequest */
+        /**
+         * RuntimeConfigResponse
+         * @description Response model for runtime configuration.
+         */
+        RuntimeConfigResponse: {
+            /** Status */
+            status: string;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Config Sources */
+            config_sources: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SimpleChatRequest
+         * @description Request for simple chat streaming.
+         */
         SimpleChatRequest: {
             /** Content */
             content: string;
@@ -5144,6 +5336,24 @@ export interface components {
             max_tokens?: number | null;
             /** Temperature */
             temperature?: number | null;
+            /** Response Format */
+            response_format?: {
+                [key: string]: unknown;
+            } | string | null;
+            /** Format */
+            format?: {
+                [key: string]: unknown;
+            } | string | null;
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Tool Choice */
+            tool_choice?: {
+                [key: string]: unknown;
+            } | string | null;
+            /** Think */
+            think?: boolean | null;
             /** Session Id */
             session_id?: string | null;
         };
@@ -5570,8 +5780,11 @@ export interface components {
          * @enum {string}
          */
         WorkflowStatus: "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
-        /** LearningToggleRequest */
-        venom_core__api__routes__knowledge__LearningToggleRequest: {
+        /**
+         * LearningToggleRequest
+         * @description Request do przełączenia trybu uczenia.
+         */
+        venom_core__api__schemas__memory__LearningToggleRequest: {
             /** Enabled */
             enabled: boolean;
         };
@@ -6826,7 +7039,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LearningToggleRequest"];
+                "application/json": components["schemas"]["venom_core__api__schemas__memory__LearningToggleRequest"];
             };
         };
         responses: {
@@ -7132,9 +7345,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["FeedbackLogsResponse"];
                 };
             };
             /** @description Nieprawidłowa wartość parametru rating */
@@ -8630,7 +8841,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["venom_core__api__routes__knowledge__LearningToggleRequest"];
+                "application/json": components["schemas"]["LearningToggleRequest"];
             };
         };
         responses: {
@@ -9181,6 +9392,13 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Wybrany serwer LLM jest niedostępny w aktualnym profilu runtime */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Nieznany serwer LLM lub brak konfiguracji */
             404: {
                 headers: {
@@ -9437,7 +9655,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RuntimeConfigResponse"];
                 };
             };
             /** @description Błąd wewnętrzny podczas pobierania konfiguracji runtime */
@@ -9468,7 +9686,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ConfigUpdateResponse"];
                 };
             };
             /** @description Brak uprawnień do zmiany konfiguracji */
@@ -9513,7 +9731,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ConfigBackupsResponse"];
                 };
             };
             /** @description Brak uprawnień do odczytu listy backupów konfiguracji */
@@ -9560,7 +9778,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RestoreBackupResponse"];
                 };
             };
             /** @description Brak uprawnień do przywracania backupu konfiguracji */
@@ -9641,7 +9859,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CostModeSetResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9715,7 +9933,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AutonomyLevelSetResponse"];
                 };
             };
             /** @description Nieprawidłowy poziom autonomii */
@@ -9758,7 +9976,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AutonomyLevelsResponse"];
                 };
             };
             /** @description Błąd wewnętrzny podczas pobierania listy poziomów */
@@ -10076,7 +10294,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["NodesListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10121,7 +10339,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["NodeInfoResponse"];
                 };
             };
             /** @description Węzeł o podanym ID nie istnieje */
@@ -10177,7 +10395,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["NodeExecuteResponse"];
                 };
             };
             /** @description Węzeł jest offline lub żądanie jest nieprawidłowe */
@@ -12298,7 +12516,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BenchmarkListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -12341,7 +12559,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BenchmarkDeleteResponse"];
                 };
             };
             /** @description Błąd wewnętrzny podczas czyszczenia benchmarków */
@@ -12377,7 +12595,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BenchmarkDeleteResponse"];
                 };
             };
             /** @description Benchmark nie został znaleziony */

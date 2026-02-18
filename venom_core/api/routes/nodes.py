@@ -3,8 +3,13 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
+from venom_core.api.schemas.nodes import (
+    NodeExecuteRequest,
+    NodeExecuteResponse,
+    NodeInfoResponse,
+    NodesListResponse,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -34,15 +39,6 @@ NODE_EXECUTE_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-class NodeExecuteRequest(BaseModel):
-    """Model żądania wykonania skilla na węźle."""
-
-    skill_name: str
-    method_name: str
-    parameters: dict = {}
-    timeout: int = 30
-
-
 # Dependencies - będą ustawione w main.py
 _node_manager = None
 
@@ -53,7 +49,7 @@ def set_dependencies(node_manager):
     _node_manager = node_manager
 
 
-@router.get("", responses=NODES_LIST_RESPONSES)
+@router.get("", response_model=NodesListResponse, responses=NODES_LIST_RESPONSES)
 def list_nodes(online_only: bool = False):
     """
     Zwraca listę zarejestrowanych węzłów.
@@ -76,18 +72,18 @@ def list_nodes(online_only: bool = False):
     try:
         nodes = _node_manager.list_nodes(online_only=online_only)
         nodes_data = [node.to_dict() for node in nodes]
-        return {
-            "status": "success",
-            "count": len(nodes_data),
-            "online_count": len([n for n in nodes if n.is_online]),
-            "nodes": nodes_data,
-        }
+        return NodesListResponse(
+            status="success",
+            count=len(nodes_data),
+            online_count=len([n for n in nodes if n.is_online]),
+            nodes=nodes_data,
+        )
     except Exception as e:
         logger.exception("Błąd podczas pobierania listy węzłów")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/{node_id}", responses=NODE_INFO_RESPONSES)
+@router.get("/{node_id}", response_model=NodeInfoResponse, responses=NODE_INFO_RESPONSES)
 def get_node_info(node_id: str):
     """
     Zwraca szczegółowe informacje o węźle.
@@ -112,7 +108,7 @@ def get_node_info(node_id: str):
         if node is None:
             raise HTTPException(status_code=404, detail=f"Węzeł {node_id} nie istnieje")
 
-        return {"status": "success", "node": node.to_dict()}
+        return NodeInfoResponse(status="success", node=node.to_dict())
     except HTTPException:
         raise
     except Exception as e:
@@ -120,7 +116,7 @@ def get_node_info(node_id: str):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/{node_id}/execute", responses=NODE_EXECUTE_RESPONSES)
+@router.post("/{node_id}/execute", response_model=NodeExecuteResponse, responses=NODE_EXECUTE_RESPONSES)
 async def execute_on_node(node_id: str, request: NodeExecuteRequest):
     """
     Wykonuje skill na określonym węźle.
@@ -164,7 +160,7 @@ async def execute_on_node(node_id: str, request: NodeExecuteRequest):
             timeout=request.timeout,
         )
 
-        return {"status": "success", "result": result}
+        return NodeExecuteResponse(status="success", result=result)
 
     except HTTPException:
         raise

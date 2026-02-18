@@ -12,8 +12,8 @@ from uuid import UUID, uuid4
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 
+from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import get_metrics_collector
 from venom_core.core.tracer import TraceStatus
@@ -770,19 +770,6 @@ async def _stream_simple_chunks(
                 stream_start=stream_start,
             )
             return
-
-
-class SimpleChatRequest(BaseModel):
-    content: str = Field(..., min_length=1, max_length=50000)
-    model: Optional[str] = None
-    max_tokens: Optional[int] = None
-    temperature: Optional[float] = None
-    response_format: Optional[dict[str, Any] | str] = None
-    format: Optional[dict[str, Any] | str] = None
-    tools: Optional[list[dict[str, Any]]] = None
-    tool_choice: Optional[dict[str, Any] | str] = None
-    think: Optional[bool] = None
-    session_id: Optional[str] = None
 
 
 @router.post(

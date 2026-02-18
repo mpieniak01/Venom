@@ -388,6 +388,7 @@ class Settings(BaseSettings):
     MODULE_EXAMPLE_EXTENSION_MODULE: str = ""
     MODULE_EXAMPLE_ALLOWED_USERS: str = ""  # CSV, puste = brak ograniczeń
     MODULE_EXAMPLE_TARGET: str = ""  # Opcjonalny cel demonstracyjny modułu
+    API_OPTIONAL_MODULES: str = ""  # CSV: module_id|module.path:router|FEATURE_FLAG
 
     # Konfiguracja Tokenomics (Dashboard v2.3)
     TOKEN_COST_ESTIMATION_SPLIT: float = (

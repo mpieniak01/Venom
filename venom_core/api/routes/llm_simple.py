@@ -735,6 +735,15 @@ def _resolve_post_attempt_action(
     return "done"
 
 
+def _apply_post_attempt_action(action: str) -> tuple[bool, bool]:
+    """Converts action token into retry/done flags for stream control flow."""
+    if action == "retry":
+        return True, False
+    if action == "done":
+        return False, True
+    return False, False
+
+
 async def _handle_stream_http_error(
     *,
     exc: httpx.HTTPError,
@@ -814,13 +823,12 @@ async def _stream_simple_chunks(
                 state=state,
                 ollama_telemetry=ollama_telemetry,
             )
-            if action == "retry":
+            should_retry, should_emit_done = _apply_post_attempt_action(action)
+            if should_retry:
                 continue
-            if action == "stop":
-                return
-            if action == "done":
+            if should_emit_done:
                 yield "event: done\ndata: {}\n\n"
-                return
+            return
 
         except httpx.HTTPError as exc:
             result = await _handle_stream_http_error(

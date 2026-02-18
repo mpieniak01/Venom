@@ -1109,7 +1109,6 @@ async def _stream_training_logs_events(job_id: str, job_name: str):
 
 @router.get(
     "/jobs",
-    response_model=AcademyJobsListResponse,
     responses={
         500: RESP_500_INTERNAL,
         503: RESP_503_ACADEMY_UNAVAILABLE,

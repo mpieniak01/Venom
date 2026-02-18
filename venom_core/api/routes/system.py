@@ -470,7 +470,7 @@ def _map_connection_status(svc_status: str) -> ConnectionStatus:
     return _STATUS_MAP.get(svc_status, ConnectionStatus.UNKNOWN)
 
 
-@router.get("/system/api-map", response_model=ApiMapResponse)
+@router.get("/system/api-map")
 async def get_system_api_map(request: Request) -> ApiMapResponse:
     """Returns the map of internal and external API connections."""
     global _API_MAP_CACHE, _LAST_CACHE_TIME

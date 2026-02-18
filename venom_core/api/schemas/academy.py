@@ -66,9 +66,9 @@ class JobStatusResponse(BaseModel):
 class AcademyJobSummary(BaseModel):
     """Uproszczony rekord joba zwracany przez listowanie historii."""
 
-    job_id: str | None = None
+    job_id: str
     job_name: str | None = None
-    status: str | None = None
+    status: str
     started_at: str | None = None
     finished_at: str | None = None
     adapter_path: str | None = None

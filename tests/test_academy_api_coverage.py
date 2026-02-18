@@ -199,6 +199,21 @@ def test_list_jobs_error_returns_500(mock_settings, client_with_deps):
 
 
 @patch("venom_core.config.SETTINGS")
+def test_list_jobs_normalizes_legacy_history_records(mock_settings, client_with_deps):
+    mock_settings.ENABLE_ACADEMY = True
+    with patch(
+        "venom_core.api.routes.academy._load_jobs_history",
+        return_value=[{"job_name": "legacy_job", "status": "completed"}],
+    ):
+        response = client_with_deps.get("/api/v1/academy/jobs")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["jobs"][0]["job_id"] == "legacy_job"
+    assert payload["jobs"][0]["status"] == "finished"
+
+
+@patch("venom_core.config.SETTINGS")
 def test_list_adapters_success_with_metadata_and_active_flag(
     mock_settings, client_with_deps, tmp_path
 ):

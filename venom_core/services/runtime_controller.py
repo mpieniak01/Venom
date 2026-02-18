@@ -25,6 +25,10 @@ import psutil
 
 from venom_core.config import SETTINGS
 from venom_core.services.process_monitor import ProcessMonitor
+from venom_core.services.profile_config import (
+    RuntimeProfile,
+    get_profile_capabilities,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -899,13 +903,15 @@ class RuntimeController:
         ]
 
     def apply_profile(self, profile_name: str) -> Dict[str, Any]:
-        """Aplikuje profil konfiguracji."""
+        """Aplikuje profil konfiguracji z wykorzystaniem kontraktu ProfileCapabilities."""
         logger.info(f"Aplikowanie profilu: {profile_name}")
 
-        if profile_name not in {"full", "light", "llm_off"}:
-            return {"success": False, "message": f"Nieznany profil: {profile_name}"}
+        try:
+            profile = RuntimeProfile.from_string(profile_name)
+        except ValueError as e:
+            return {"success": False, "message": str(e)}
 
-        services = [ServiceType.BACKEND, ServiceType.UI]
+        capabilities = get_profile_capabilities(profile)
         results = []
 
         def _stop_and_record(service_type: ServiceType) -> None:
@@ -918,25 +924,37 @@ class RuntimeController:
                 }
             )
 
-        if profile_name == "llm_off":
-            _stop_and_record(ServiceType.LLM_OLLAMA)
-            _stop_and_record(ServiceType.LLM_VLLM)
-        else:
+        # Stop disabled services based on profile
+        service_map = {
+            "ollama": ServiceType.LLM_OLLAMA,
+            "vllm": ServiceType.LLM_VLLM,
+        }
+
+        for disabled_svc in capabilities.disabled_services:
+            if disabled_svc in service_map:
+                _stop_and_record(service_map[disabled_svc])
+
+        # Determine which services to start
+        services_to_start = []
+        if "backend" in capabilities.required_services:
+            services_to_start.append(ServiceType.BACKEND)
+        if "frontend" in capabilities.required_services:
+            services_to_start.append(ServiceType.UI)
+
+        # Handle LLM services
+        if capabilities.uses_local_llm:
             active_llm = str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "")).strip().lower()
-            preferred_llm = (
-                ServiceType.LLM_VLLM
-                if profile_name == "full" and active_llm in {"vllm", "llm_vllm"}
-                else ServiceType.LLM_OLLAMA
-            )
-            services.append(preferred_llm)
-            opposite_llm = (
-                ServiceType.LLM_OLLAMA
-                if preferred_llm == ServiceType.LLM_VLLM
-                else ServiceType.LLM_VLLM
-            )
+            if profile == RuntimeProfile.FULL and active_llm in {"vllm", "llm_vllm"}:
+                preferred_llm = ServiceType.LLM_VLLM
+                opposite_llm = ServiceType.LLM_OLLAMA
+            else:
+                preferred_llm = ServiceType.LLM_OLLAMA
+                opposite_llm = ServiceType.LLM_VLLM
+            services_to_start.append(preferred_llm)
             _stop_and_record(opposite_llm)
 
-        for service_type in services:
+        # Start required services
+        for service_type in services_to_start:
             result = self.start_service(service_type)
             results.append(
                 {
@@ -955,6 +973,11 @@ class RuntimeController:
             "success": all_success,
             "message": message,
             "results": results,
+            "profile_capabilities": {
+                "uses_local_llm": capabilities.uses_local_llm,
+                "gpu_support": capabilities.gpu_support,
+                "requires_onnx": capabilities.requires_onnx,
+            },
         }
 
 

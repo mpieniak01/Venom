@@ -855,6 +855,83 @@
               "title": "Mode"
             },
             "description": "Tryb grafu: default lub flow (sekwencja)"
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(overview|focus|full)$",
+              "description": "Tryb zwracanego grafu: overview/focus/full",
+              "default": "full",
+              "title": "View"
+            },
+            "description": "Tryb zwracanego grafu: overview/focus/full"
+          },
+          {
+            "name": "seed_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opcjonalny seed node id dla widoku focus",
+              "title": "Seed Id"
+            },
+            "description": "Opcjonalny seed node id dla widoku focus"
+          },
+          {
+            "name": "max_hops",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 6,
+              "minimum": 1,
+              "description": "Maksymalna głębokość dla widoku focus",
+              "default": 2,
+              "title": "Max Hops"
+            },
+            "description": "Maksymalna głębokość dla widoku focus"
+          },
+          {
+            "name": "include_isolates",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Czy zachować węzły bez krawędzi",
+              "default": true,
+              "title": "Include Isolates"
+            },
+            "description": "Czy zachować węzły bez krawędzi"
+          },
+          {
+            "name": "limit_nodes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 5000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opcjonalny limit po transformacji widoku (overview/focus)",
+              "title": "Limit Nodes"
+            },
+            "description": "Opcjonalny limit po transformacji widoku (overview/focus)"
           }
         ],
         "responses": {
@@ -2162,9 +2239,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response List Jobs Api V1 Academy Jobs Get"
+                  "$ref": "#/components/schemas/AcademyJobsListResponse"
                 }
               }
             }
@@ -2653,6 +2728,83 @@
               "title": "Limit"
             },
             "description": "Maksymalna liczba węzłów do zwrócenia (pozostałe są odfiltrowane)"
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(overview|focus|full)$",
+              "description": "Tryb zwracanego grafu: overview/focus/full",
+              "default": "full",
+              "title": "View"
+            },
+            "description": "Tryb zwracanego grafu: overview/focus/full"
+          },
+          {
+            "name": "seed_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opcjonalny seed node id dla widoku focus",
+              "title": "Seed Id"
+            },
+            "description": "Opcjonalny seed node id dla widoku focus"
+          },
+          {
+            "name": "max_hops",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 6,
+              "minimum": 1,
+              "description": "Maksymalna głębokość dla widoku focus",
+              "default": 2,
+              "title": "Max Hops"
+            },
+            "description": "Maksymalna głębokość dla widoku focus"
+          },
+          {
+            "name": "include_isolates",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Czy zachować węzły bez krawędzi",
+              "default": true,
+              "title": "Include Isolates"
+            },
+            "description": "Czy zachować węzły bez krawędzi"
+          },
+          {
+            "name": "limit_nodes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 5000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opcjonalny limit po transformacji widoku (overview/focus)",
+              "title": "Limit Nodes"
+            },
+            "description": "Opcjonalny limit po transformacji widoku (overview/focus)"
           }
         ],
         "responses": {
@@ -7422,6 +7574,139 @@
   },
   "components": {
     "schemas": {
+      "AcademyJobSummary": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "job_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "adapter_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adapter Path"
+          },
+          "base_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Model"
+          },
+          "output_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Dir"
+          },
+          "dataset_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Path"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "AcademyJobSummary",
+        "description": "Uproszczony rekord joba zwracany przez listowanie historii."
+      },
+      "AcademyJobsListResponse": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/AcademyJobSummary"
+            },
+            "type": "array",
+            "title": "Jobs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "AcademyJobsListResponse",
+        "description": "Response dla endpointu listowania jobów Academy."
+      },
       "ActivateAdapterRequest": {
         "properties": {
           "adapter_id": {
@@ -10331,6 +10616,17 @@
             "type": "string",
             "title": "Status"
           },
+          "view": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View"
+          },
           "elements": {
             "$ref": "#/components/schemas/MemoryGraphElements"
           },
@@ -10357,6 +10653,75 @@
             "type": "integer",
             "title": "Edges",
             "default": 0
+          },
+          "source_nodes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Nodes"
+          },
+          "source_edges": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Edges"
+          },
+          "view": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View"
+          },
+          "max_hops": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Hops"
+          },
+          "seed_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed Id"
+          },
+          "view_requests": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Requests"
           }
         },
         "type": "object",

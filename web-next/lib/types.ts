@@ -440,6 +440,7 @@ export interface AutonomyLevel {
 export interface KnowledgeGraph {
   status?: string;
   mock?: boolean;
+  view?: "overview" | "focus" | "full";
   elements: {
     nodes: Array<{ data: Record<string, unknown> }>;
     edges: Array<{ data: Record<string, unknown> }>;
@@ -447,7 +448,22 @@ export interface KnowledgeGraph {
   stats?: {
     nodes: number;
     edges: number;
+    source_nodes?: number;
+    source_edges?: number;
+    view?: "overview" | "focus" | "full";
+    max_hops?: number;
+    seed_id?: string | null;
   };
+}
+
+export type BrainGraphViewMode = "overview" | "focus" | "full";
+
+export interface BrainFocusRequest {
+  view: BrainGraphViewMode;
+  seedId?: string;
+  maxHops?: number;
+  includeIsolates?: boolean;
+  limitNodes?: number;
 }
 
 export interface Lesson {

@@ -73,10 +73,17 @@ class MemoryGraphElements(BaseModel):
 class MemoryGraphStats(BaseModel):
     nodes: int = 0
     edges: int = 0
+    source_nodes: int | None = None
+    source_edges: int | None = None
+    view: str | None = None
+    max_hops: int | None = None
+    seed_id: str | None = None
+    view_requests: dict[str, int] | None = None
 
 
 class MemoryGraphResponse(BaseModel):
     status: str
+    view: str | None = None
     elements: MemoryGraphElements
     stats: MemoryGraphStats
 

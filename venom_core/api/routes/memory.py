@@ -1,6 +1,8 @@
 """Moduł: routes/memory - Endpointy API dla pamięci wektorowej."""
 
 import inspect
+from collections import Counter
+from threading import Lock
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +14,7 @@ from venom_core.api.dependencies import (
     get_vector_store,
     is_testing_mode,
 )
+from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.schemas.memory import (
     CacheFlushResponse,
     GlobalMemoryClearResponse,
@@ -57,6 +60,8 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
 _vector_store = None
 _state_manager = None
 _lessons_store = None
+_memory_graph_view_counters: Counter[str] = Counter()
+_memory_graph_view_counters_lock = Lock()
 
 
 def set_dependencies(
@@ -220,6 +225,16 @@ def _build_memory_graph_filters(
     if only_pinned:
         filters["pinned"] = True
     return filters
+
+
+def _increment_memory_view_counter(view: str) -> None:
+    with _memory_graph_view_counters_lock:
+        _memory_graph_view_counters[view] += 1
+
+
+def _memory_view_counter_snapshot() -> dict[str, int]:
+    with _memory_graph_view_counters_lock:
+        return dict(_memory_graph_view_counters)
 
 
 def _entry_id(entry: dict[str, Any], meta: dict[str, Any]) -> str:
@@ -649,6 +664,33 @@ def memory_graph(
     mode: Annotated[
         str, Query(description="Tryb grafu: default lub flow (sekwencja)")
     ] = "default",
+    view: Annotated[
+        str,
+        Query(
+            pattern="^(overview|focus|full)$",
+            description="Tryb zwracanego grafu: overview/focus/full",
+        ),
+    ] = "full",
+    seed_id: Annotated[
+        str | None,
+        Query(description="Opcjonalny seed node id dla widoku focus"),
+    ] = None,
+    max_hops: Annotated[
+        int,
+        Query(ge=1, le=6, description="Maksymalna głębokość dla widoku focus"),
+    ] = 2,
+    include_isolates: Annotated[
+        bool,
+        Query(description="Czy zachować węzły bez krawędzi"),
+    ] = True,
+    limit_nodes: Annotated[
+        int | None,
+        Query(
+            ge=1,
+            le=5000,
+            description="Opcjonalny limit po transformacji widoku (overview/focus)",
+        ),
+    ] = None,
 ):
     """
     Zwraca uproszczony graf pamięci (węzły/krawędzie) do wizualizacji w /brain.
@@ -693,10 +735,33 @@ def memory_graph(
         # Dodaj krawędzie sekwencyjne (prosty tok) wg metadanej timestamp, fallback: kolejność entries
         _append_flow_edges(nodes, all_edges)
 
+    source_nodes = len(all_nodes)
+    source_edges = len(all_edges)
+    view_nodes, view_edges = apply_graph_view(
+        nodes=all_nodes,
+        edges=all_edges,
+        view=view,
+        seed_id=seed_id,
+        max_hops=max_hops,
+        include_isolates=include_isolates,
+        limit_nodes=limit_nodes,
+    )
+    _increment_memory_view_counter(view)
+
     return {
         "status": "success",
-        "elements": {"nodes": all_nodes, "edges": all_edges},
-        "stats": {"nodes": len(all_nodes), "edges": len(all_edges)},
+        "view": view,
+        "elements": {"nodes": view_nodes, "edges": view_edges},
+        "stats": {
+            "nodes": len(view_nodes),
+            "edges": len(view_edges),
+            "source_nodes": source_nodes,
+            "source_edges": source_edges,
+            "view": view,
+            "max_hops": max_hops,
+            "seed_id": seed_id,
+            "view_requests": _memory_view_counter_snapshot(),
+        },
     }
 
 

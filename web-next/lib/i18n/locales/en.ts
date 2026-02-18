@@ -45,6 +45,7 @@ export const en = {
       calendar: "Calendar",
       benchmark: "Benchmark",
       config: "Configuration",
+      moduleExample: "Module Example",
     },
     cost: {
       title: "Cost mode",
@@ -93,6 +94,10 @@ export const en = {
       autonomySuccess: "Autonomy level set to {{level}}.",
       autonomyError: "Failed to change autonomy level (offline mode).",
     },
+  },
+  moduleExample: {
+    eyebrow: "// MODULE / EXAMPLE",
+    description: "This page is reserved for optional modules behind a feature flag.",
   },
   systemStatus: {
     title: "SYSTEM STATUS",

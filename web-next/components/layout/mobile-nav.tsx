@@ -23,7 +23,7 @@ import {
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { LanguageSwitcher } from "./language-switcher";
 import { useTranslation } from "@/lib/i18n";
-import { navItems } from "./sidebar-helpers";
+import { getNavigationItems } from "./sidebar-helpers";
 import {
   TelemetryTab,
   AUTONOMY_LEVELS,
@@ -42,6 +42,7 @@ export function MobileNav() {
   const { data: costMode, refresh: refreshCost } = useCostMode(15000);
   const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel(20000);
   const t = useTranslation();
+  const navigationItems = useMemo(() => getNavigationItems(), []);
 
   const latestLogs = useMemo(() => entries.slice(0, 5), [entries]);
   const telemetryContent = useMemo(() =>
@@ -120,7 +121,7 @@ export function MobileNav() {
           </SheetHeader>
 
           <nav className="mt-2 space-y-3 text-sm">
-            {navItems.map((item) => {
+            {navigationItems.map((item) => {
               const label = item.labelKey ? t(item.labelKey) : item.label;
               return (
                 <Link

@@ -46,6 +46,7 @@ export const pl = {
       calendar: "Kalendarz",
       benchmark: "Benchmark",
       config: "Konfiguracja",
+      moduleExample: "Moduł przykładowy",
     },
     cost: {
       title: "Tryb kosztów",
@@ -94,6 +95,10 @@ export const pl = {
       autonomySuccess: "Ustawiono poziom autonomii {{level}}.",
       autonomyError: "Nie udało się zmienić poziomu autonomii (tryb offline).",
     },
+  },
+  moduleExample: {
+    eyebrow: "// MODUŁ / EXAMPLE",
+    description: "Ta strona jest zarezerwowana dla opcjonalnych modułów za feature flagą.",
   },
   systemStatus: {
     title: "STATUS SYSTEMU",

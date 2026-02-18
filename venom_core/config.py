@@ -381,6 +381,17 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_TASKS: int = 5  # Maksymalna liczba równoczesnych zadań
     ENABLE_QUEUE_LIMITS: bool = True  # Włącz limity kolejki zadań
 
+    # ===== MODULE EXAMPLE (Modular Extension) =====
+    # Publiczny przykład modułu z możliwością podłączenia rozszerzenia przez optional import.
+    FEATURE_MODULE_EXAMPLE: bool = False
+    MODULE_EXAMPLE_MODE: str = "disabled"  # disabled|stub|extension
+    MODULE_EXAMPLE_EXTENSION_MODULE: str = ""
+    MODULE_EXAMPLE_ALLOWED_USERS: str = ""  # CSV, puste = brak ograniczeń
+    MODULE_EXAMPLE_TARGET: str = ""  # Opcjonalny cel demonstracyjny modułu
+    API_OPTIONAL_MODULES: str = ""  # CSV: module_id|module.path:router|FEATURE_FLAG|MODULE_API_VERSION|MIN_CORE_VERSION
+    CORE_RUNTIME_VERSION: str = "1.5.0"
+    CORE_MODULE_API_VERSION: str = "1"
+
     # Konfiguracja Tokenomics (Dashboard v2.3)
     TOKEN_COST_ESTIMATION_SPLIT: float = (
         0.5  # Stosunek input/output dla estymacji kosztów

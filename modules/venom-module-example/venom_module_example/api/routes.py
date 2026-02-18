@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-
-from venom_core.config import SETTINGS
 from venom_module_example.api.schemas import (
     AuditResponse,
     CandidatesResponse,
@@ -22,6 +20,8 @@ from venom_module_example.services.provider import (
     ModuleExampleProvider,
     get_module_example_provider,
 )
+
+from venom_core.config import SETTINGS
 
 router = APIRouter(prefix="/api/v1/module-example", tags=["module-example"])
 

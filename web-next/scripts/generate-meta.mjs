@@ -34,3 +34,6 @@ const targetPath = path.join(publicDir, "meta.json");
 writeFileSync(targetPath, JSON.stringify(meta, null, 2));
 
 console.log(`[meta] Wrote ${targetPath} -> ${meta.version} (${meta.commit})`);
+
+const modulesScript = path.join(projectRoot, "scripts", "generate-optional-modules.mjs");
+safeExecFile("node", [modulesScript]);

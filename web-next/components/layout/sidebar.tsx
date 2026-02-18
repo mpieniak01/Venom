@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { SystemStatusPanel } from "./system-status-panel";
 import { AuthorSignature } from "./author-signature";
-import { useTranslation } from "@/lib/i18n";
+import { useLanguage, useTranslation } from "@/lib/i18n";
 import { useSidebarLogic } from "./use-sidebar-logic";
 import {
   BrandSection,
@@ -16,6 +16,7 @@ import {
 export function Sidebar() {
   const pathname = usePathname();
   const t = useTranslation();
+  const { language } = useLanguage();
 
   const {
     collapsed,
@@ -52,6 +53,7 @@ export function Sidebar() {
           collapsed={collapsed}
           isSynced={isSynced}
           pathname={pathname}
+          language={language}
           t={t}
         />
 

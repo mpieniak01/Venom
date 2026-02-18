@@ -36,8 +36,6 @@ tests/test_github_skill_optional_dep.py
 tests/test_intent_embedding_router_edges.py
 tests/test_notifier.py
 tests/test_training_metrics_parser.py
-tests/test_module_example_loader.py
-tests/test_module_example_routes.py
 tests/test_module_registry.py
 tests/test_workflow_store.py
 tests/test_config_manager.py

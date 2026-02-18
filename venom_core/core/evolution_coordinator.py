@@ -7,6 +7,7 @@ from uuid import UUID
 
 from venom_core.agents.system_engineer import SystemEngineerAgent
 from venom_core.agents.tester import TesterAgent
+from venom_core.core.learning_log import append_learning_log_entry
 from venom_core.execution.skills.core_skill import CoreSkill
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.infrastructure.mirror_world import InstanceInfo, MirrorWorld
@@ -36,6 +37,7 @@ class EvolutionCoordinator:
         git_skill: GitSkill,
         tester_agent: Optional[TesterAgent] = None,
         graph_store: Optional[CodeGraphStore] = None,
+        lessons_store: Optional[Any] = None,
     ):
         """
         Inicjalizacja EvolutionCoordinator.
@@ -47,6 +49,7 @@ class EvolutionCoordinator:
             git_skill: Skill operacji Git
             tester_agent: Opcjonalny agent tester (do weryfikacji)
             graph_store: Opcjonalny graf kodu
+            lessons_store: Opcjonalny LessonsStore do trwałego feedbacku
         """
         self.system_engineer = system_engineer
         self.mirror_world = mirror_world
@@ -54,8 +57,50 @@ class EvolutionCoordinator:
         self.git_skill = git_skill
         self.tester_agent = tester_agent
         self.graph_store = graph_store
+        self.lessons_store = lessons_store
 
         logger.info("EvolutionCoordinator zainicjalizowany")
+
+    def _emit_evolution_audit(
+        self,
+        *,
+        task_id: UUID,
+        phase: str,
+        status: str,
+        branch: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        append_learning_log_entry(
+            {
+                "event_type": "evolution_iteration",
+                "task_id": str(task_id),
+                "phase": phase,
+                "status": status,
+                "branch": branch,
+                "reason": reason,
+            }
+        )
+
+    def _persist_evolution_lesson(
+        self,
+        *,
+        request: str,
+        phase: str,
+        reason: str,
+    ) -> None:
+        if self.lessons_store is None:
+            return
+        try:
+            self.lessons_store.add_lesson(
+                situation=f"Evolution request: {request[:500]}",
+                action=f"Evolution phase result: {phase}",
+                result="success" if phase == "completed" else "failure",
+                feedback=reason[:500],
+                tags=["evolution", phase],
+                metadata={"source": "evolution_coordinator"},
+            )
+        except Exception as exc:
+            logger.warning("Nie udało się zapisać lesson z ewolucji: %s", exc)
 
     async def evolve(
         self, task_id: UUID, request: str, project_root: Path
@@ -73,12 +118,24 @@ class EvolutionCoordinator:
         """
         logger.info(f"Rozpoczynam procedurę ewolucji dla zadania {task_id}")
         logger.info(f"Żądanie: {request[:100]}...")
+        self._emit_evolution_audit(task_id=task_id, phase="start", status="started")
 
         try:
             # Faza 1: Analiza i planowanie
             logger.info("=== FAZA 1: ANALIZA ===")
             analysis = self._analyze_request(request)
             if not analysis["feasible"]:
+                self._emit_evolution_audit(
+                    task_id=task_id,
+                    phase="analysis",
+                    status="failed",
+                    reason=analysis["reason"],
+                )
+                self._persist_evolution_lesson(
+                    request=request,
+                    phase="analysis_failed",
+                    reason=analysis["reason"],
+                )
                 return {
                     "success": False,
                     "phase": "analysis",
@@ -93,6 +150,18 @@ class EvolutionCoordinator:
             )
 
             if "❌" in modification_result:
+                self._emit_evolution_audit(
+                    task_id=task_id,
+                    phase="modification",
+                    status="failed",
+                    branch=branch_name,
+                    reason=modification_result[:500],
+                )
+                self._persist_evolution_lesson(
+                    request=request,
+                    phase="modification_failed",
+                    reason=modification_result,
+                )
                 return {
                     "success": False,
                     "phase": "modification",
@@ -120,6 +189,17 @@ class EvolutionCoordinator:
 
                 # Sprawdź czy merge faktycznie się udał
                 if merge_result.get("merged"):
+                    self._emit_evolution_audit(
+                        task_id=task_id,
+                        phase="completed",
+                        status="success",
+                        branch=branch_name,
+                    )
+                    self._persist_evolution_lesson(
+                        request=request,
+                        phase="completed",
+                        reason="verification_passed_and_merged",
+                    )
                     return {
                         "success": True,
                         "phase": "completed",
@@ -129,6 +209,19 @@ class EvolutionCoordinator:
                     }
                 else:
                     # Merge się nie udał (konflikty lub błędy)
+                    merge_reason = merge_result.get("reason", "Merge nie powiódł się")
+                    self._emit_evolution_audit(
+                        task_id=task_id,
+                        phase="merge",
+                        status="failed",
+                        branch=branch_name,
+                        reason=merge_reason,
+                    )
+                    self._persist_evolution_lesson(
+                        request=request,
+                        phase="merge_failed",
+                        reason=merge_reason,
+                    )
                     return {
                         "success": False,
                         "phase": "merge_failed",
@@ -145,6 +238,18 @@ class EvolutionCoordinator:
                 await self.mirror_world.destroy_instance(
                     instance_info.instance_id, cleanup=True
                 )
+                self._emit_evolution_audit(
+                    task_id=task_id,
+                    phase="verification",
+                    status="failed",
+                    branch=branch_name,
+                    reason=str(verification_result["reason"])[:500],
+                )
+                self._persist_evolution_lesson(
+                    request=request,
+                    phase="verification_failed",
+                    reason=str(verification_result["reason"]),
+                )
 
                 return {
                     "success": False,
@@ -156,6 +261,17 @@ class EvolutionCoordinator:
 
         except Exception as e:
             logger.error(f"Błąd podczas procedury ewolucji: {e}", exc_info=True)
+            self._emit_evolution_audit(
+                task_id=task_id,
+                phase="error",
+                status="failed",
+                reason=str(e)[:500],
+            )
+            self._persist_evolution_lesson(
+                request=request,
+                phase="error",
+                reason=str(e),
+            )
             return {
                 "success": False,
                 "phase": "error",

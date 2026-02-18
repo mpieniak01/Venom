@@ -151,6 +151,33 @@ class TestHardwareBridge:
         result = await bridge.emergency_procedure("unknown_procedure")
         assert result is False
 
+    @pytest.mark.asyncio
+    async def test_reconnect_success_after_retry(self):
+        bridge = HardwareBridge(host=TEST_DEVICE_HOST, protocol="ssh")
+        bridge.connected = True
+        attempts = {"count": 0}
+
+        async def _connect():
+            attempts["count"] += 1
+            return attempts["count"] >= 2
+
+        bridge.connect = _connect  # type: ignore[method-assign]
+        result = await bridge.reconnect(retries=3, delay_seconds=0.0)
+        assert result["connected"] is True
+        assert result["attempts"] == 2
+
+    @pytest.mark.asyncio
+    async def test_reconnect_failure(self):
+        bridge = HardwareBridge(host=TEST_DEVICE_HOST, protocol="ssh")
+
+        async def _connect():
+            return False
+
+        bridge.connect = _connect  # type: ignore[method-assign]
+        result = await bridge.reconnect(retries=2, delay_seconds=0.0)
+        assert result["connected"] is False
+        assert result["attempts"] == 2
+
 
 class TestHardwareBridgeHTTP:
     """Testy dla HardwareBridge z protokołem HTTP."""

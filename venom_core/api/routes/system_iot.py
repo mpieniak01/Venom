@@ -5,7 +5,7 @@ from typing import Any, Optional
 from fastapi import APIRouter
 
 from venom_core.api.routes import system_deps
-from venom_core.api.schemas.system_iot import IoTStatusResponse
+from venom_core.api.schemas.system_iot import IoTReconnectResponse, IoTStatusResponse
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
@@ -15,6 +15,9 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 
 IOT_STATUS_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas pobierania statusu IoT bridge"},
+}
+IOT_RECONNECT_RESPONSES: dict[int | str, dict[str, Any]] = {
+    500: {"description": "Błąd wewnętrzny podczas reconnect Rider-Pi"},
 }
 
 
@@ -105,3 +108,64 @@ async def get_iot_status():
         disk=disk,
         message=message,
     )
+
+
+@router.post(
+    "/iot/reconnect",
+    response_model=IoTReconnectResponse,
+    responses=IOT_RECONNECT_RESPONSES,
+)
+async def reconnect_iot_bridge():
+    """Próbuje odtworzyć połączenie z Rider-Pi."""
+    if not SETTINGS.ENABLE_IOT_BRIDGE:
+        return IoTReconnectResponse(
+            connected=False,
+            attempts=0,
+            message="IoT bridge jest wyłączony w konfiguracji.",
+        )
+
+    hardware_bridge = system_deps.get_hardware_bridge()
+    if hardware_bridge is None:
+        return IoTReconnectResponse(
+            connected=False,
+            attempts=0,
+            message="Rider-Pi bridge nie został zainicjalizowany.",
+        )
+
+    try:
+        reconnect_method = getattr(hardware_bridge, "reconnect", None)
+        if callable(reconnect_method):
+            result = await reconnect_method()
+            return IoTReconnectResponse(
+                connected=bool(result.get("connected")),
+                attempts=int(result.get("attempts", 0)),
+                message=(
+                    "Połączenie z Rider-Pi odtworzone."
+                    if result.get("connected")
+                    else "Nie udało się odtworzyć połączenia z Rider-Pi."
+                ),
+            )
+
+        # Fallback dla legacy bridge bez metody reconnect
+        if getattr(hardware_bridge, "connected", False):
+            disconnect_method = getattr(hardware_bridge, "disconnect", None)
+            if callable(disconnect_method):
+                await disconnect_method()
+        connect_method = getattr(hardware_bridge, "connect", None)
+        connected = bool(await connect_method()) if callable(connect_method) else False
+        return IoTReconnectResponse(
+            connected=connected,
+            attempts=1,
+            message=(
+                "Połączenie z Rider-Pi odtworzone."
+                if connected
+                else "Nie udało się odtworzyć połączenia z Rider-Pi."
+            ),
+        )
+    except Exception as exc:
+        logger.exception("Błąd podczas reconnect Rider-Pi")
+        return IoTReconnectResponse(
+            connected=False,
+            attempts=1,
+            message=f"Błąd reconnect: {exc}",
+        )

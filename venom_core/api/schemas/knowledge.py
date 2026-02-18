@@ -1,9 +1,6 @@
 """Schemas for knowledge API endpoints."""
 
-from pydantic import BaseModel
+from venom_core.api.schemas.memory import LearningToggleRequest
 
-
-class LearningToggleRequest(BaseModel):
-    """Request for toggling learning on/off."""
-
-    enabled: bool
+# Re-export the canonical LearningToggleRequest model from the memory schemas
+__all__ = ["LearningToggleRequest"]

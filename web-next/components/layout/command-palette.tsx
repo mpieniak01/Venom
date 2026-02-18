@@ -5,7 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from "next/navigation";
 import { Command, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { navItems } from "./sidebar-helpers";
+import { getNavigationItems } from "./sidebar-helpers";
 import { useTranslation } from "@/lib/i18n";
 
 type CommandPaletteProps = Readonly<{
@@ -35,7 +35,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
 
   const navActions: PaletteAction[] = useMemo(
     () =>
-      navItems.map((item) => {
+      getNavigationItems().map((item) => {
         const label = item.labelKey ? t(item.labelKey) : item.label;
         return {
           id: `nav-${item.href}`,

@@ -26,6 +26,21 @@ def test_include_optional_api_routers_respects_feature_flag():
     assert all("/api/v1/module-example" not in route.path for route in app.routes)
 
 
+def test_core_boot_without_optional_modules_keeps_core_routes_only():
+    app = FastAPI()
+
+    @app.get("/healthz")
+    async def healthz():
+        return {"ok": True}
+
+    included = module_registry.include_optional_api_routers(app, _Settings())
+    paths = {route.path for route in app.routes}
+
+    assert included == []
+    assert "/healthz" in paths
+    assert all("/api/v1/module-example" not in path for path in paths)
+
+
 def test_include_optional_api_routers_includes_builtin_when_feature_enabled():
     settings = _Settings()
     settings.FEATURE_MODULE_EXAMPLE = True
@@ -63,6 +78,34 @@ def test_include_optional_api_routers_loads_extra_manifest(monkeypatch):
 
     paths = {route.path for route in app.routes}
     assert "/x-test/ping" in paths
+
+
+def test_core_boot_with_one_optional_module_manifest(monkeypatch):
+    router = APIRouter(prefix="/mod-one")
+
+    @router.get("/status")
+    async def status():
+        return {"ok": True}
+
+    module = types.ModuleType("x_mod_one")
+    module.router = router
+
+    def _fake_import(name: str):
+        if name == "x_mod_one":
+            return module
+        return __import__(name)
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
+
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = "mod_one|x_mod_one:router"
+    app = FastAPI()
+
+    included = module_registry.include_optional_api_routers(app, settings)
+    paths = {route.path for route in app.routes}
+
+    assert included == ["mod_one"]
+    assert "/mod-one/status" in paths
 
 
 def test_include_optional_api_routers_skips_api_version_mismatch(monkeypatch):

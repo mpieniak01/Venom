@@ -63,6 +63,29 @@ class JobStatusResponse(BaseModel):
     error: str | None = None
 
 
+class AcademyJobSummary(BaseModel):
+    """Uproszczony rekord joba zwracany przez listowanie historii."""
+
+    job_id: str | None = None
+    job_name: str | None = None
+    status: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    adapter_path: str | None = None
+    base_model: str | None = None
+    output_dir: str | None = None
+    dataset_path: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class AcademyJobsListResponse(BaseModel):
+    """Response dla endpointu listowania jobów Academy."""
+
+    count: int
+    jobs: list[AcademyJobSummary] = Field(default_factory=list)
+
+
 class AdapterInfo(BaseModel):
     """Informacje o adapterze."""
 

@@ -79,7 +79,7 @@ Example:
       ├─ pyproject.toml
       ├─ README.md
       ├─ module.json                   # module metadata (id, versions, entrypoints)
-      ├─ venom_module/
+      ├─ venom_module_<slug>/
       │  ├─ __init__.py
       │  ├─ manifest.py               # module metadata helpers
       │  ├─ api/
@@ -91,7 +91,6 @@ Example:
       │  └─ connectors/
       │     └─ github.py              # optional integrations (env secrets only)
       ├─ web_next/                     # module frontend (separate from core web-next)
-      │  ├─ __init__.py
       │  ├─ page.tsx                  # main module screen (e.g. /module-example)
       │  ├─ components/
       │  │  └─ ModuleExamplePanel.tsx
@@ -117,7 +116,7 @@ How to add a new module screen:
 2. In `module.json` set frontend metadata:
    - `nav_path` (e.g. `/module-example`)
    - `feature_flag` (e.g. `NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE`)
-   - `component_import` (e.g. `@/modules/module-example/page`)
+   - `component_import` (relative import from `web-next/lib/generated/optional-modules.generated.ts`, e.g. `../../../modules/venom-module-example/web-next/page`)
 3. Run generator to refresh `optional-modules.generated.ts`.
 4. `web-next/app/[moduleSlug]/page.tsx` and navigation consume generated manifest (no manual core route/menu edits).
 5. When flag is disabled, screen disappears from navigation and is unavailable by URL.

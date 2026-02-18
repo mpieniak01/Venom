@@ -176,6 +176,38 @@ class TestRoutingDecision:
         assert result["reason_code"] == "default_eco_mode"
         assert result["complexity_score"] == 2.0
     
+    def test_is_cost_free_with_floating_point(self):
+        """Test is_cost_free with various floating point values (SonarCloud fix)."""
+        # Local runtime should always be cost-free
+        local_decision = RoutingDecision(
+            target_runtime=RuntimeTarget.LOCAL_OLLAMA,
+            provider="ollama",
+            model="test",
+            reason_code=ReasonCode.DEFAULT_ECO_MODE,
+            estimated_cost_usd=0.00001,  # Even with negligible cost
+        )
+        assert local_decision.is_cost_free() is True
+        
+        # Cloud with negligible cost (< $0.0001) should be considered free
+        negligible_cost = RoutingDecision(
+            target_runtime=RuntimeTarget.CLOUD_OPENAI,
+            provider="openai",
+            model="test",
+            reason_code=ReasonCode.TASK_COMPLEXITY_HIGH,
+            estimated_cost_usd=0.00005,
+        )
+        assert negligible_cost.is_cost_free() is True
+        
+        # Cloud with actual cost should not be free
+        actual_cost = RoutingDecision(
+            target_runtime=RuntimeTarget.CLOUD_OPENAI,
+            provider="openai",
+            model="test",
+            reason_code=ReasonCode.TASK_COMPLEXITY_HIGH,
+            estimated_cost_usd=0.001,
+        )
+        assert actual_cost.is_cost_free() is False
+    
     def test_decision_timestamp_format(self):
         """Test that decision timestamp is in ISO 8601 format."""
         decision = RoutingDecision(

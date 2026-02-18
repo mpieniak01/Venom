@@ -1,6 +1,7 @@
 """Moduł: routes/memory - Endpointy API dla pamięci wektorowej."""
 
 import inspect
+from collections import Counter, deque
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -57,6 +58,7 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
 _vector_store = None
 _state_manager = None
 _lessons_store = None
+_memory_graph_view_counters: Counter[str] = Counter()
 
 
 def set_dependencies(
@@ -220,6 +222,106 @@ def _build_memory_graph_filters(
     if only_pinned:
         filters["pinned"] = True
     return filters
+
+
+def _node_id(node: dict[str, Any]) -> str:
+    return str(node.get("data", {}).get("id", ""))
+
+
+def _edge_nodes(edge: dict[str, Any]) -> tuple[str, str]:
+    data = edge.get("data", {})
+    return str(data.get("source", "")), str(data.get("target", ""))
+
+
+def _focus_node_ids(
+    edges: list[dict[str, Any]], seed_id: str, max_hops: int
+) -> set[str]:
+    adjacency: dict[str, set[str]] = {}
+    for edge in edges:
+        source, target = _edge_nodes(edge)
+        if not source or not target:
+            continue
+        adjacency.setdefault(source, set()).add(target)
+        adjacency.setdefault(target, set()).add(source)
+    visited: set[str] = {seed_id}
+    queue: deque[tuple[str, int]] = deque([(seed_id, 0)])
+    while queue:
+        node_id, hops = queue.popleft()
+        if hops >= max_hops:
+            continue
+        for neighbour in adjacency.get(node_id, set()):
+            if neighbour in visited:
+                continue
+            visited.add(neighbour)
+            queue.append((neighbour, hops + 1))
+    return visited
+
+
+def _remove_isolates(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    connected: set[str] = set()
+    for edge in edges:
+        source, target = _edge_nodes(edge)
+        if source:
+            connected.add(source)
+        if target:
+            connected.add(target)
+    filtered_nodes = [node for node in nodes if _node_id(node) in connected]
+    allowed = {_node_id(node) for node in filtered_nodes}
+    filtered_edges = [
+        edge
+        for edge in edges
+        if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
+    ]
+    return filtered_nodes, filtered_edges
+
+
+def _apply_memory_view(
+    *,
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    view: str,
+    seed_id: str | None,
+    max_hops: int,
+    include_isolates: bool,
+    limit_nodes: int | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    current_nodes = list(nodes)
+    current_edges = list(edges)
+
+    if view == "overview":
+        cap = limit_nodes if limit_nodes is not None else min(len(current_nodes), 200)
+        current_nodes = current_nodes[:cap]
+        allowed = {_node_id(node) for node in current_nodes}
+        current_edges = [
+            edge
+            for edge in current_edges
+            if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
+        ]
+    elif view == "focus" and current_nodes:
+        resolved_seed = seed_id or _node_id(current_nodes[0])
+        focus_ids = _focus_node_ids(current_edges, resolved_seed, max_hops)
+        current_nodes = [node for node in current_nodes if _node_id(node) in focus_ids]
+        allowed = {_node_id(node) for node in current_nodes}
+        current_edges = [
+            edge
+            for edge in current_edges
+            if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
+        ]
+        if limit_nodes is not None and limit_nodes > 0:
+            current_nodes = current_nodes[:limit_nodes]
+            allowed = {_node_id(node) for node in current_nodes}
+            current_edges = [
+                edge
+                for edge in current_edges
+                if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
+            ]
+
+    if not include_isolates:
+        current_nodes, current_edges = _remove_isolates(current_nodes, current_edges)
+
+    return current_nodes, current_edges
 
 
 def _entry_id(entry: dict[str, Any], meta: dict[str, Any]) -> str:
@@ -649,6 +751,33 @@ def memory_graph(
     mode: Annotated[
         str, Query(description="Tryb grafu: default lub flow (sekwencja)")
     ] = "default",
+    view: Annotated[
+        str,
+        Query(
+            pattern="^(overview|focus|full)$",
+            description="Tryb zwracanego grafu: overview/focus/full",
+        ),
+    ] = "full",
+    seed_id: Annotated[
+        str | None,
+        Query(description="Opcjonalny seed node id dla widoku focus"),
+    ] = None,
+    max_hops: Annotated[
+        int,
+        Query(ge=1, le=6, description="Maksymalna głębokość dla widoku focus"),
+    ] = 2,
+    include_isolates: Annotated[
+        bool,
+        Query(description="Czy zachować węzły bez krawędzi"),
+    ] = True,
+    limit_nodes: Annotated[
+        int | None,
+        Query(
+            ge=1,
+            le=5000,
+            description="Opcjonalny limit po transformacji widoku (overview/focus)",
+        ),
+    ] = None,
 ):
     """
     Zwraca uproszczony graf pamięci (węzły/krawędzie) do wizualizacji w /brain.
@@ -693,10 +822,33 @@ def memory_graph(
         # Dodaj krawędzie sekwencyjne (prosty tok) wg metadanej timestamp, fallback: kolejność entries
         _append_flow_edges(nodes, all_edges)
 
+    source_nodes = len(all_nodes)
+    source_edges = len(all_edges)
+    view_nodes, view_edges = _apply_memory_view(
+        nodes=all_nodes,
+        edges=all_edges,
+        view=view,
+        seed_id=seed_id,
+        max_hops=max_hops,
+        include_isolates=include_isolates,
+        limit_nodes=limit_nodes,
+    )
+    _memory_graph_view_counters[view] += 1
+
     return {
         "status": "success",
-        "elements": {"nodes": all_nodes, "edges": all_edges},
-        "stats": {"nodes": len(all_nodes), "edges": len(all_edges)},
+        "view": view,
+        "elements": {"nodes": view_nodes, "edges": view_edges},
+        "stats": {
+            "nodes": len(view_nodes),
+            "edges": len(view_edges),
+            "source_nodes": source_nodes,
+            "source_edges": source_edges,
+            "view": view,
+            "max_hops": max_hops,
+            "seed_id": seed_id,
+            "view_requests": dict(_memory_graph_view_counters),
+        },
     }
 
 

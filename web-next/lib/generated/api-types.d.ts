@@ -3877,6 +3877,46 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AcademyJobSummary
+         * @description Uproszczony rekord joba zwracany przez listowanie historii.
+         */
+        AcademyJobSummary: {
+            /** Job Id */
+            job_id: string;
+            /** Job Name */
+            job_name?: string | null;
+            /** Status */
+            status: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Adapter Path */
+            adapter_path?: string | null;
+            /** Base Model */
+            base_model?: string | null;
+            /** Output Dir */
+            output_dir?: string | null;
+            /** Dataset Path */
+            dataset_path?: string | null;
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * AcademyJobsListResponse
+         * @description Response dla endpointu listowania jobów Academy.
+         */
+        AcademyJobsListResponse: {
+            /** Count */
+            count: number;
+            /** Jobs */
+            jobs?: components["schemas"]["AcademyJobSummary"][];
+        };
+        /**
          * ActivateAdapterRequest
          * @description Request do aktywacji adaptera.
          */
@@ -5114,6 +5154,8 @@ export interface components {
         MemoryGraphResponse: {
             /** Status */
             status: string;
+            /** View */
+            view?: string | null;
             elements: components["schemas"]["MemoryGraphElements"];
             stats: components["schemas"]["MemoryGraphStats"];
         };
@@ -5129,6 +5171,20 @@ export interface components {
              * @default 0
              */
             edges: number;
+            /** Source Nodes */
+            source_nodes?: number | null;
+            /** Source Edges */
+            source_edges?: number | null;
+            /** View */
+            view?: string | null;
+            /** Max Hops */
+            max_hops?: number | null;
+            /** Seed Id */
+            seed_id?: string | null;
+            /** View Requests */
+            view_requests?: {
+                [key: string]: number;
+            } | null;
         };
         /**
          * MemoryIngestRequest
@@ -6758,6 +6814,16 @@ export interface operations {
                 include_lessons?: boolean;
                 /** @description Tryb grafu: default lub flow (sekwencja) */
                 mode?: string;
+                /** @description Tryb zwracanego grafu: overview/focus/full */
+                view?: string;
+                /** @description Opcjonalny seed node id dla widoku focus */
+                seed_id?: string | null;
+                /** @description Maksymalna głębokość dla widoku focus */
+                max_hops?: number;
+                /** @description Czy zachować węzły bez krawędzi */
+                include_isolates?: boolean;
+                /** @description Opcjonalny limit po transformacji widoku (overview/focus) */
+                limit_nodes?: number | null;
             };
             header?: never;
             path?: never;
@@ -7883,9 +7949,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AcademyJobsListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8393,6 +8457,16 @@ export interface operations {
             query?: {
                 /** @description Maksymalna liczba węzłów do zwrócenia (pozostałe są odfiltrowane) */
                 limit?: number;
+                /** @description Tryb zwracanego grafu: overview/focus/full */
+                view?: string;
+                /** @description Opcjonalny seed node id dla widoku focus */
+                seed_id?: string | null;
+                /** @description Maksymalna głębokość dla widoku focus */
+                max_hops?: number;
+                /** @description Czy zachować węzły bez krawędzi */
+                include_isolates?: boolean;
+                /** @description Opcjonalny limit po transformacji widoku (overview/focus) */
+                limit_nodes?: number | null;
             };
             header?: never;
             path?: never;

@@ -1109,6 +1109,8 @@ export const pl = {
       topTagsHint: "Najczęstsze tagi LessonsStore",
       nodes: "Węzły",
       edges: "Krawędzie",
+      limit: "Limit",
+      render: "Render",
     },
     filters: {
       all: "Wszystkie",
@@ -1121,9 +1123,15 @@ export const pl = {
       layout: "Układ",
       pinnedOnly: "Tylko przypięte",
       includeLessons: "Uwzględnij lekcje",
+      includeIsolates: "Uwzględnij izolowane",
       flowMode: "Tryb flow",
       sessionId: "ID sesji",
       topic: "Temat",
+      sessionPlaceholder: "Session ID...",
+      topicPlaceholder: "Filter topic...",
+      layoutPreset: "Preset",
+      layoutCola: "Cola",
+      layoutCose: "Cose",
     },
     actions: {
       scan: "Skanuj",
@@ -1140,6 +1148,7 @@ export const pl = {
       hygiene: "Higiena",
     },
     home: {
+      eyebrow: "BRAIN / KNOWLEDGE GRAPH",
       title: "Siatka wiedzy",
       description: "Pełnoekranowy podgląd pamięci Venoma z filtrami agentów i lekcji.",
       noRelations: "Brak relacji (lub nie wybrano węzła).",
@@ -1147,6 +1156,18 @@ export const pl = {
       source: "Źródło",
       memory: "Pamięć",
       knowledge: "Knowledge",
+    },
+    viewMode: {
+      title: "Tryb widoku",
+      overview: "Overview",
+      focus: "Focus",
+      full: "Full",
+    },
+    presets: {
+      session: "Session",
+      topic: "Topic",
+      pinned: "Pinned",
+      recent: "Recent",
     },
     lessons: {
       panelTitle: "Lekcje i operacje grafu",

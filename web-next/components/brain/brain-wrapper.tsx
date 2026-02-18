@@ -1,9 +1,8 @@
 import { BrainHome } from "./brain-home";
-import { fetchBrainInitialData } from "@/lib/server-data";
+import { EMPTY_BRAIN_INITIAL_DATA } from "@/lib/server-data";
 
-export async function BrainWrapper() {
-    const initialData = await fetchBrainInitialData();
-    return <BrainHome initialData={initialData} />;
+export function BrainWrapper() {
+    return <BrainHome initialData={EMPTY_BRAIN_INITIAL_DATA} />;
 }
 
 export function BrainSkeleton() {

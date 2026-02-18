@@ -1,5 +1,6 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
+from collections import Counter, deque
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Annotated, Any, Optional
@@ -59,6 +60,7 @@ NODE_TYPE_FILE = "file"
 NODE_TYPE_CLASS = "class"
 NODE_TYPE_FUNCTION = "function"
 NODE_TYPE_METHOD = "method"
+_graph_view_counters: Counter[str] = Counter()
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -138,6 +140,112 @@ def _build_graph_edges(
     return edges
 
 
+def _node_id(node: dict[str, Any]) -> str:
+    return str(node.get("data", {}).get("id", ""))
+
+
+def _edge_nodes(edge: dict[str, Any]) -> tuple[str, str]:
+    data = edge.get("data", {})
+    return str(data.get("source", "")), str(data.get("target", ""))
+
+
+def _with_non_isolated(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not nodes:
+        return nodes, edges
+    connected: set[str] = set()
+    for edge in edges:
+        source, target = _edge_nodes(edge)
+        if source:
+            connected.add(source)
+        if target:
+            connected.add(target)
+    filtered_nodes = [node for node in nodes if _node_id(node) in connected]
+    allowed = {_node_id(node) for node in filtered_nodes}
+    filtered_edges = [
+        edge
+        for edge in edges
+        if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
+    ]
+    return filtered_nodes, filtered_edges
+
+
+def _focus_node_ids(
+    edges: list[dict[str, Any]], seed_id: str, max_hops: int
+) -> set[str]:
+    adjacency: dict[str, set[str]] = {}
+    for edge in edges:
+        source, target = _edge_nodes(edge)
+        if not source or not target:
+            continue
+        adjacency.setdefault(source, set()).add(target)
+        adjacency.setdefault(target, set()).add(source)
+    visited: set[str] = {seed_id}
+    queue: deque[tuple[str, int]] = deque([(seed_id, 0)])
+    while queue:
+        node_id, hops = queue.popleft()
+        if hops >= max_hops:
+            continue
+        for neighbour in adjacency.get(node_id, set()):
+            if neighbour in visited:
+                continue
+            visited.add(neighbour)
+            queue.append((neighbour, hops + 1))
+    return visited
+
+
+def _apply_graph_view(
+    *,
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    view: str,
+    seed_id: str | None,
+    max_hops: int,
+    include_isolates: bool,
+    limit_nodes: int | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    current_nodes = list(nodes)
+    current_edges = list(edges)
+
+    if view == "overview":
+        cap = limit_nodes if limit_nodes is not None else min(len(current_nodes), 200)
+        current_nodes = current_nodes[:cap]
+        allowed = {_node_id(node) for node in current_nodes}
+        current_edges = [
+            edge
+            for edge in current_edges
+            if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
+        ]
+    elif view == "focus" and current_nodes:
+        resolved_seed = seed_id or _node_id(current_nodes[0])
+        focus_ids = _focus_node_ids(current_edges, resolved_seed, max_hops)
+        current_nodes = [node for node in current_nodes if _node_id(node) in focus_ids]
+        allowed = {_node_id(node) for node in current_nodes}
+        current_edges = [
+            edge
+            for edge in current_edges
+            if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
+        ]
+        if limit_nodes is not None and limit_nodes > 0:
+            current_nodes = current_nodes[:limit_nodes]
+            allowed = {_node_id(node) for node in current_nodes}
+            current_edges = [
+                edge
+                for edge in current_edges
+                if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
+            ]
+
+    if not include_isolates:
+        current_nodes, current_edges = _with_non_isolated(current_nodes, current_edges)
+
+    return current_nodes, current_edges
+
+
+def _increment_graph_view_counter(view: str) -> None:
+    _graph_view_counters[view] += 1
+
+
 def set_dependencies(graph_store=None, lessons_store=None):
     """Ustawia zależności i synchronizuje z api.dependencies (używane głównie w testach)."""
     global _graph_store, _lessons_store
@@ -162,6 +270,33 @@ def get_knowledge_graph(
             description="Maksymalna liczba węzłów do zwrócenia (pozostałe są odfiltrowane)",
         ),
     ] = 500,
+    view: Annotated[
+        str,
+        Query(
+            pattern="^(overview|focus|full)$",
+            description="Tryb zwracanego grafu: overview/focus/full",
+        ),
+    ] = "full",
+    seed_id: Annotated[
+        Optional[str],
+        Query(description="Opcjonalny seed node id dla widoku focus"),
+    ] = None,
+    max_hops: Annotated[
+        int,
+        Query(ge=1, le=6, description="Maksymalna głębokość dla widoku focus"),
+    ] = 2,
+    include_isolates: Annotated[
+        bool,
+        Query(description="Czy zachować węzły bez krawędzi"),
+    ] = True,
+    limit_nodes: Annotated[
+        Optional[int],
+        Query(
+            ge=1,
+            le=5000,
+            description="Opcjonalny limit po transformacji widoku (overview/focus)",
+        ),
+    ] = None,
 ):
     """
     Zwraca graf wiedzy w formacie Cytoscape Elements JSON.
@@ -186,26 +321,68 @@ def get_knowledge_graph(
     # Jeśli graph_store nie jest dostępny lub jest pusty, zwróć mock data
     if graph_store is None or graph_store.graph.number_of_nodes() == 0:
         logger.info("Graph store pusty lub niedostępny, zwracam mock data")
-        return _get_mock_knowledge_graph(limit=limit)
+        return _get_mock_knowledge_graph(
+            limit=limit,
+            view=view,
+            seed_id=seed_id,
+            max_hops=max_hops,
+            include_isolates=include_isolates,
+            limit_nodes=limit_nodes,
+        )
 
     try:
         nodes = _build_graph_nodes(graph_store, limit)
         allowed_ids = {n["data"]["id"] for n in nodes}
         edges = _build_graph_edges(graph_store, allowed_ids)
 
+        view_nodes, view_edges = _apply_graph_view(
+            nodes=nodes,
+            edges=edges,
+            view=view,
+            seed_id=seed_id,
+            max_hops=max_hops,
+            include_isolates=include_isolates,
+            limit_nodes=limit_nodes,
+        )
+        _increment_graph_view_counter(view)
+
         return {
             "status": "success",
-            "elements": {"nodes": nodes, "edges": edges},
-            "stats": {"nodes": len(nodes), "edges": len(edges)},
+            "view": view,
+            "elements": {"nodes": view_nodes, "edges": view_edges},
+            "stats": {
+                "nodes": len(view_nodes),
+                "edges": len(view_edges),
+                "source_nodes": len(nodes),
+                "source_edges": len(edges),
+                "view": view,
+                "max_hops": max_hops,
+                "seed_id": seed_id,
+                "view_requests": dict(_graph_view_counters),
+            },
         }
 
     except Exception:
         logger.exception("Błąd podczas konwersji grafu do formatu Cytoscape")
         # W przypadku błędu zwróć mock data jako fallback
-        return _get_mock_knowledge_graph(limit=limit)
+        return _get_mock_knowledge_graph(
+            limit=limit,
+            view=view,
+            seed_id=seed_id,
+            max_hops=max_hops,
+            include_isolates=include_isolates,
+            limit_nodes=limit_nodes,
+        )
 
 
-def _get_mock_knowledge_graph(limit: int = 500):
+def _get_mock_knowledge_graph(
+    limit: int = 500,
+    view: str = "full",
+    seed_id: str | None = None,
+    max_hops: int = 2,
+    include_isolates: bool = True,
+    limit_nodes: int | None = None,
+):
     """
     Zwraca przykładowe dane grafu wiedzy do testowania UI.
 
@@ -347,12 +524,32 @@ def _get_mock_knowledge_graph(limit: int = 500):
         for e in all_edges
         if e["data"]["source"] in allowed_ids and e["data"]["target"] in allowed_ids
     ]
+    view_nodes, view_edges = _apply_graph_view(
+        nodes=nodes,
+        edges=edges,
+        view=view,
+        seed_id=seed_id,
+        max_hops=max_hops,
+        include_isolates=include_isolates,
+        limit_nodes=limit_nodes,
+    )
+    _increment_graph_view_counter(view)
 
     return {
         "status": "success",
         "mock": True,
-        "elements": {"nodes": nodes, "edges": edges},
-        "stats": {"nodes": len(nodes), "edges": len(edges)},
+        "view": view,
+        "elements": {"nodes": view_nodes, "edges": view_edges},
+        "stats": {
+            "nodes": len(view_nodes),
+            "edges": len(view_edges),
+            "source_nodes": len(nodes),
+            "source_edges": len(edges),
+            "view": view,
+            "max_hops": max_hops,
+            "seed_id": seed_id,
+            "view_requests": dict(_graph_view_counters),
+        },
     }
 
 

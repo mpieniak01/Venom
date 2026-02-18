@@ -1,13 +1,11 @@
 "use client";
 
-import { Brain, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type cytoscapeType from "cytoscape";
 
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
-import { SectionHeading } from "@/components/ui/section-heading";
-import { Panel } from "@/components/ui/panel";
 import { useToast } from "@/components/ui/toast";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -21,38 +19,41 @@ import {
   deleteMemoryEntry,
   clearSessionMemory,
   useLessons,
+  useGraphSummary,
 } from "@/hooks/use-api";
 import { useProjectionTrigger } from "@/hooks/use-projection";
 import { useTranslation } from "@/lib/i18n";
 import type { BrainInitialData } from "@/lib/server-data";
+import type { BrainGraphViewMode } from "@/lib/types";
 
-import { LessonList } from "@/components/tasks/lesson-list";
-import { LessonActions } from "@/components/brain/lesson-actions";
-import { LessonStats } from "@/components/brain/lesson-stats";
-import { FileAnalysisForm, FileAnalysisPanel } from "@/components/brain/file-analytics";
 import { GraphFilterButtons, GraphFilterType } from "@/components/brain/graph-filters";
 import { GraphActionButtons } from "@/components/brain/graph-actions";
 import { HygienePanel } from "@/components/brain/hygiene-panel";
+import { BrainHeader } from "@/components/brain/brain-header";
+import { BrainInsightsPanel } from "@/components/brain/brain-insights-panel";
+import { BrainLessonsPanel } from "@/components/brain/brain-lessons-panel";
+import { BrainFilePanel } from "@/components/brain/brain-file-panel";
+import { BrainViewControls, type BrainViewPreset } from "@/components/brain/brain-view-controls";
 
-// New components and hooks
 import { useBrainGraphLogic } from "./hooks/use-brain-graph-logic";
 import { useTopicColors } from "./hooks/use-topic-colors";
 import { GraphStats } from "./graph-stats";
 import { GraphLegend } from "./graph-legend";
-import { RecentOperations } from "./recent-operations";
-import { RelationList, RelationEntry } from "./relation-list";
-import { BrainSelectionSummary } from "./selection-summary";
+import type { RelationEntry } from "./relation-list";
 import { BrainDetailsSheetContent } from "./details-sheet-content";
+import { emitBrainMetric } from "@/lib/brain-telemetry";
+
+const BRAIN2_FOCUS_ENABLED = process.env.NEXT_PUBLIC_BRAIN2_FOCUS_ENABLED !== "false";
 
 export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialData }>) {
   const t = useTranslation();
   const { pushToast } = useToast();
   useProjectionTrigger();
 
-  // Tabs
-  const [activeTab, setActiveTab] = useState<"repo" | "memory" | "hygiene">("memory");
+  const shellStartedAtRef = useRef<number>(Date.now());
+  const graphReadyReportedRef = useRef(false);
 
-  // Filter & UI State
+  const [activeTab, setActiveTab] = useState<"repo" | "memory" | "hygiene">("memory");
   const [showMemoryLayer, setShowMemoryLayer] = useState(true);
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
   const [includeLessons, setIncludeLessons] = useState(false);
@@ -64,7 +65,12 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
   const [filters, setFilters] = useState<GraphFilterType[]>(["all"]);
   const [highlightTag, setHighlightTag] = useState<string | null>(null);
 
-  // Data Logic Hook
+  const [graphViewMode, setGraphViewMode] = useState<BrainGraphViewMode>(
+    BRAIN2_FOCUS_ENABLED ? "overview" : "full",
+  );
+  const [focusSeedId, setFocusSeedId] = useState<string | undefined>(undefined);
+  const [includeIsolates, setIncludeIsolates] = useState(false);
+
   const {
     mergedGraph,
     loading: graphLoading,
@@ -80,6 +86,11 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     includeLessons,
     flowMode,
     topicFilter,
+    graphViewMode,
+    focusSeedId,
+    maxHops: graphViewMode === "focus" ? 2 : 1,
+    includeIsolates,
+    limitNodes: graphViewMode === "overview" ? 220 : undefined,
   });
 
   const isMemoryEmpty =
@@ -88,49 +99,45 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     !graphLoading &&
     ((memoryGraphStats?.nodes ?? 0) <= 1);
 
-  // Selection state
   const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
   const [relations, setRelations] = useState<RelationEntry[]>([]);
   const [memoryActionPending, setMemoryActionPending] = useState<string | null>(null);
   const [memoryWipePending, setMemoryWipePending] = useState(false);
 
-  // File analysis state
   const [filePath, setFilePath] = useState("");
   const [fileInfo, setFileInfo] = useState<Record<string, unknown> | null>(null);
   const [impactInfo, setImpactInfo] = useState<Record<string, unknown> | null>(null);
   const [fileMessage, setFileMessage] = useState<string | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
 
-  // Metadata
-  const { data: liveLessons, refresh: refreshLessons } = useLessons(5);
+  const { data: liveLessons, loading: lessonsLoading, refresh: refreshLessons } = useLessons(5);
+  const { data: liveSummary, loading: summaryLoading } = useGraphSummary(0);
   const lessons = liveLessons ?? initialData.lessons ?? null;
+  const summary = liveSummary ?? initialData.summary;
   const { colorFromTopic } = useTopicColors();
 
-  // Derived Lessons Stats
   const lessonStatsEntries = useMemo(() => {
     if (!lessons) return [];
     const total = lessons.count || 0;
     const tags = new Set<string>();
-    lessons.lessons.forEach(l => l.tags?.forEach(t => tags.add(t)));
+    lessons.lessons.forEach((lesson) => lesson.tags?.forEach((tag) => tags.add(tag)));
     return [
       { label: t("brain.stats.total"), value: total },
-      { label: t("brain.stats.tags"), value: tags.size }
+      { label: t("brain.stats.tags"), value: tags.size },
     ];
   }, [lessons, t]);
 
   const filteredLessons = useMemo(() => {
     if (!lessons) return [];
     if (!highlightTag) return lessons.lessons;
-    return lessons.lessons.filter(l => l.tags?.includes(highlightTag));
+    return lessons.lessons.filter((lesson) => lesson.tags?.includes(highlightTag));
   }, [lessons, highlightTag]);
 
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
   const colaWarningShownRef = useRef(false);
 
-  // Derived Values
-  const summary = initialData.summary;
   const renderedNodes = mergedGraph?.elements?.nodes?.length ?? 0;
   const renderedEdges = mergedGraph?.elements?.edges?.length ?? 0;
   const summaryNodes = mergedGraph?.stats?.nodes ?? summary?.nodes ?? "—";
@@ -149,17 +156,18 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       .slice(0, 8);
   }, [lessons]);
 
-  const recentOperations = useMemo(() => {
-    return (lessons?.lessons || []).slice(0, 6).map((lesson, index) => ({
-      id: lesson.id ?? `${lesson.title ?? "lesson"}-${index}`,
-      title: lesson.title ?? t("brain.recentOperations.defaultTitle"),
-      summary: lesson.summary || t("brain.recentOperations.defaultSummary"),
-      timestamp: lesson.created_at || null,
-      tags: lesson.tags ?? [],
-    }));
-  }, [lessons?.lessons, t]);
+  const recentOperations = useMemo(
+    () =>
+      (lessons?.lessons || []).slice(0, 6).map((lesson, index) => ({
+        id: lesson.id ?? `${lesson.title ?? "lesson"}-${index}`,
+        title: lesson.title ?? t("brain.recentOperations.defaultTitle"),
+        summary: lesson.summary || t("brain.recentOperations.defaultSummary"),
+        timestamp: lesson.created_at || null,
+        tags: lesson.tags ?? [],
+      })),
+    [lessons?.lessons, t],
+  );
 
-  // Handlers
   const handleFilterToggle = (value: GraphFilterType) => {
     setFilters((prev) => {
       if (value === "all") return ["all"];
@@ -170,6 +178,41 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       return next.length === 0 ? ["all"] : next;
     });
   };
+
+  const handleViewModeChange = useCallback((mode: BrainGraphViewMode) => {
+    setGraphViewMode(mode);
+    if (mode === "focus") {
+      emitBrainMetric("brain_focus_mode_usage", 1);
+    }
+    if (mode === "full") {
+      emitBrainMetric("brain_full_mode_usage", 1);
+    }
+  }, []);
+
+  const applyPreset = useCallback(
+    (preset: BrainViewPreset) => {
+      if (preset === "session") {
+        if (memorySessionFilter.trim()) {
+          setFocusSeedId(`session:${memorySessionFilter.trim()}`);
+        }
+        setGraphViewMode("focus");
+        return;
+      }
+      if (preset === "topic") {
+        setGraphViewMode("focus");
+        setFocusSeedId(undefined);
+        return;
+      }
+      if (preset === "pinned") {
+        setMemoryOnlyPinned(true);
+        setGraphViewMode("overview");
+        return;
+      }
+      setIncludeLessons(true);
+      setGraphViewMode("overview");
+    },
+    [memorySessionFilter],
+  );
 
   const handleClearSelection = useCallback(() => {
     setSelected(null);
@@ -274,26 +317,35 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     });
   }, []);
 
-  // Effect to load cytoscape and setup instance
+  useEffect(() => {
+    emitBrainMetric("brain_first_shell_ms", Date.now() - shellStartedAtRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!graphLoading && mergedGraph?.elements && !graphReadyReportedRef.current) {
+      graphReadyReportedRef.current = true;
+      emitBrainMetric("brain_graph_ready_ms", Date.now() - shellStartedAtRef.current);
+    }
+  }, [graphLoading, mergedGraph]);
+
   useEffect(() => {
     let cy: cytoscapeType.Core | null = null;
     const setup = async () => {
       if (!cyRef.current || !mergedGraph?.elements) return;
       const cytoscape = (await import("cytoscape")).default;
       let resolvedLayoutName = layoutName;
-      const hasPresetPositions = (mergedGraph.elements.nodes as Array<{ position?: { x?: number; y?: number } }>)
-        .some((node) => {
-          const x = node.position?.x;
-          const y = node.position?.y;
-          return Number.isFinite(x) && Number.isFinite(y);
-        });
+      const hasPresetPositions = (
+        mergedGraph.elements.nodes as Array<{ position?: { x?: number; y?: number } }>
+      ).some((node) => {
+        const x = node.position?.x;
+        const y = node.position?.y;
+        return Number.isFinite(x) && Number.isFinite(y);
+      });
 
-      // `preset` needs coordinates in data. Without them Cytoscape stacks nodes.
       if (layoutName === "preset" && !hasPresetPositions) {
         resolvedLayoutName = "cose";
       }
 
-      // `cola` is provided by an optional plugin. If unavailable, fall back to built-in layout.
       if (layoutName === "cola") {
         try {
           const colaModuleName = "cytoscape-cola";
@@ -302,10 +354,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
         } catch {
           resolvedLayoutName = "cose";
           if (!colaWarningShownRef.current) {
-            pushToast(
-              t("brain.toasts.layoutColaUnavailable"),
-              "warning",
-            );
+            pushToast(t("brain.toasts.layoutColaUnavailable"), "warning");
             colaWarningShownRef.current = true;
           }
         }
@@ -319,13 +368,14 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
             selector: "node",
             style: {
               label: "data(label)",
-              "background-color": (ele: cytoscapeType.NodeSingular) => colorFromTopic(ele.data("topic")) || "#6366f1",
+              "background-color":
+                (ele: cytoscapeType.NodeSingular) => colorFromTopic(ele.data("topic")) || "#6366f1",
               color: "#fff",
               "font-size": 10,
               "text-opacity": 0.8,
               "text-valign": "center",
-              "text-halign": "center"
-            }
+              "text-halign": "center",
+            },
           },
           { selector: "node.highlighted", style: { "border-width": 4, "border-color": "#c084fc" } },
           {
@@ -341,25 +391,30 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
               "target-arrow-shape": "triangle",
               width: 2,
               "line-color": "#475569",
-            }
+            },
           },
         ],
         layout:
           resolvedLayoutName === "cose"
             ? {
-              name: "cose",
-              animate: true,
-              fit: true,
-              padding: 30,
-              nodeRepulsion: 7000,
-              idealEdgeLength: 90,
-            }
-            : { name: "preset", fit: true, padding: 30 }
+                name: "cose",
+                animate: true,
+                fit: true,
+                padding: 30,
+                nodeRepulsion: 7000,
+                idealEdgeLength: 90,
+              }
+            : { name: "preset", fit: true, padding: 30 },
       });
 
       cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
         const node = evt.target;
-        setSelected(node.data());
+        const nodeData = node.data();
+        const nodeId = String(nodeData.id || "");
+        if (nodeId) {
+          setFocusSeedId(nodeId);
+        }
+        setSelected(nodeData);
         setDetailsSheetOpen(true);
         cy?.nodes().removeClass("highlighted");
         node.addClass("highlighted");
@@ -372,38 +427,59 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
 
       cyInstanceRef.current = cy;
     };
+
     setup();
     return () => {
       if (cy) cy.destroy();
     };
   }, [mergedGraph, handleClearSelection, showEdgeLabels, layoutName, colorFromTopic, mapRelationsForNode, pushToast, t]);
 
+  const modeLabels: Record<BrainGraphViewMode, string> = {
+    overview: t("brain.viewMode.overview"),
+    focus: t("brain.viewMode.focus"),
+    full: t("brain.viewMode.full"),
+  };
+
   return (
     <div className="space-y-6 pb-10">
-      <SectionHeading
-        eyebrow="Brain / Knowledge Graph"
+      <BrainHeader
+        eyebrow={t("brain.home.eyebrow")}
         title={t("brain.home.title")}
         description={t("brain.home.description")}
-        as="h1"
-        size="lg"
-        rightSlot={<Brain className="page-heading-icon" />}
       />
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1 rounded-full border border-white/10 bg-black/40 p-1.5">
-          {["memory", "repo", "hygiene"].map((tab) => (
+          {(["memory", "repo", "hygiene"] as const).map((tab) => (
             <Button
               key={tab}
               size="sm"
               variant={activeTab === tab ? "secondary" : "ghost"}
               className="rounded-full px-4"
-              onClick={() => setActiveTab(tab as "memory" | "repo" | "hygiene")}
+              data-testid={`${tab}-tab`}
+              onClick={() => setActiveTab(tab)}
             >
               {t(`brain.tabs.${tab}`)}
             </Button>
           ))}
         </div>
       </div>
+
+      {BRAIN2_FOCUS_ENABLED && activeTab !== "hygiene" ? (
+        <BrainViewControls
+          title={t("brain.viewMode.title")}
+          mode={graphViewMode}
+          modeLabels={modeLabels}
+          presetLabels={{
+            session: t("brain.presets.session"),
+            topic: t("brain.presets.topic"),
+            pinned: t("brain.presets.pinned"),
+            recent: t("brain.presets.recent"),
+          }}
+          onModeChange={handleViewModeChange}
+          onPresetApply={applyPreset}
+        />
+      ) : null}
 
       <GraphStats
         summaryNodes={summaryNodes}
@@ -415,29 +491,35 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
         sourceTotalNodes={Number(summaryNodes) || renderedNodes}
         renderedEdges={renderedEdges}
         sourceTotalEdges={Number(summaryEdges) || renderedEdges}
+        loading={summaryLoading || graphLoading}
       />
 
       {activeTab === "hygiene" ? (
         <HygienePanel />
       ) : (
         <>
-          <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card">
+          <div
+            className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card"
+            data-testid="brain-graph-panel"
+          >
             <div ref={cyRef} data-testid="graph-container" className="relative h-[70vh] w-full" />
             {isMemoryEmpty && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/70 text-center">
                 <p className="text-sm text-zinc-400">{t("brain.file.noData")}</p>
-                <Button onClick={handleScanGraph} disabled={scanning}>{t("brain.actions.scan")}</Button>
+                <Button onClick={handleScanGraph} disabled={scanning}>
+                  {t("brain.actions.scan")}
+                </Button>
               </div>
             )}
             {graphLoading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70" data-testid="brain-graph-loading">
                 <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
               </div>
             )}
             <div className="absolute left-6 top-6 flex flex-col gap-3">
               <GraphFilterButtons selectedFilters={filters} onToggleFilter={handleFilterToggle} />
 
-              <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 p-3 backdrop-blur lg:w-[240px]">
+              <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 p-3 backdrop-blur lg:w-[260px]" data-testid="brain-filter-panel">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="show-memory" className="text-xs text-zinc-300">{t("brain.filters.memoryLayer")}</Label>
                   <Switch id="show-memory" checked={showMemoryLayer} onCheckedChange={setShowMemoryLayer} />
@@ -447,16 +529,21 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
                   <Switch id="show-labels" checked={showEdgeLabels} onCheckedChange={setShowEdgeLabels} />
                 </div>
                 <div className="flex items-center justify-between">
+                  <Label htmlFor="include-isolates" className="text-xs text-zinc-300">{t("brain.filters.includeIsolates")}</Label>
+                  <Switch id="include-isolates" checked={includeIsolates} onCheckedChange={setIncludeIsolates} />
+                </div>
+                <div className="flex items-center justify-between">
                   <Label htmlFor="layout-name" className="text-xs text-zinc-300">{t("brain.filters.layout")}</Label>
                   <select
                     id="layout-name"
                     value={layoutName}
                     onChange={(e) => setLayoutName(e.target.value as "preset" | "cola" | "cose")}
                     className="h-6 rounded bg-black/50 px-1 text-[10px] text-zinc-300 border-white/10"
+                    data-testid="brain-layout-select"
                   >
-                    <option value="preset">Preset</option>
-                    <option value="cola">Cola</option>
-                    <option value="cose">Cose</option>
+                    <option value="preset">{t("brain.filters.layoutPreset")}</option>
+                    <option value="cola">{t("brain.filters.layoutCola")}</option>
+                    <option value="cose">{t("brain.filters.layoutCose")}</option>
                   </select>
                 </div>
                 {showMemoryLayer && (
@@ -471,16 +558,17 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
                     </div>
                     <div className="flex items-center justify-between">
                       <Label htmlFor="flow-mode" className="text-xs text-zinc-300">{t("brain.filters.flowMode")}</Label>
-                      <Switch id="flow-mode" checked={flowMode === "flow"} onCheckedChange={(val: boolean) => setFlowMode(val ? "flow" : "default")} />
+                      <Switch id="flow-mode" checked={flowMode === "flow"} onCheckedChange={(val) => setFlowMode(val ? "flow" : "default")} />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="session-filter" className="text-xs text-zinc-300">{t("brain.filters.sessionId")}</Label>
                       <Input
                         id="session-filter"
                         value={memorySessionFilter}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMemorySessionFilter(e.target.value)}
+                        onChange={(e) => setMemorySessionFilter(e.target.value)}
                         className="h-7 text-xs bg-black/50 border-white/10"
-                        placeholder="Session ID..."
+                        placeholder={t("brain.filters.sessionPlaceholder")}
+                        data-testid="brain-session-filter"
                       />
                     </div>
                     <div className="space-y-1">
@@ -488,51 +576,76 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
                       <Input
                         id="topic-filter"
                         value={topicFilter}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTopicFilter(e.target.value)}
+                        onChange={(e) => setTopicFilter(e.target.value)}
                         className="h-7 text-xs bg-black/50 border-white/10"
-                        placeholder="Filter topic..."
+                        placeholder={t("brain.filters.topicPlaceholder")}
+                        data-testid="brain-topic-filter"
                       />
                     </div>
                   </>
                 )}
               </div>
             </div>
-            <div className="absolute right-6 top-6"><GraphActionButtons onFit={() => cyInstanceRef.current?.fit()} onScan={handleScanGraph} scanning={scanning} /></div>
+            <div className="absolute right-6 top-6">
+              <GraphActionButtons onFit={() => cyInstanceRef.current?.fit()} onScan={handleScanGraph} scanning={scanning} />
+            </div>
           </div>
 
           <GraphLegend activeTab={activeTab} showEdgeLabels={showEdgeLabels} />
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <BrainSelectionSummary selected={selected} relations={relations} onOpenDetails={() => setDetailsSheetOpen(true)} />
-            <RelationList selectedId={String(selected?.id || "")} relations={relations} />
-            <RecentOperations operations={recentOperations} />
-          </div>
+          <BrainInsightsPanel
+            selected={selected}
+            relations={relations}
+            recentOperations={recentOperations}
+            onOpenDetails={() => setDetailsSheetOpen(true)}
+          />
         </>
       )}
 
       {activeTab !== "hygiene" && (
         <>
-          <Panel title={t("brain.lessons.panelTitle")} description={t("brain.lessons.panelDescription")} action={<Button size="sm" onClick={() => refreshLessons()}>{t("brain.lessons.refresh")}</Button>}>
-            <div className="space-y-4">
-              <LessonStats entries={lessonStatsEntries} />
-              <LessonActions tags={lessonTags} activeTag={highlightTag} onSelect={setHighlightTag} />
-              <LessonList lessons={filteredLessons || []} />
-            </div>
-          </Panel>
+          <BrainLessonsPanel
+            title={t("brain.lessons.panelTitle")}
+            description={t("brain.lessons.panelDescription")}
+            refreshLabel={t("brain.lessons.refresh")}
+            lessonStatsEntries={lessonStatsEntries}
+            lessonTags={lessonTags}
+            highlightTag={highlightTag}
+            lessons={filteredLessons || []}
+            loading={lessonsLoading}
+            onRefresh={() => refreshLessons()}
+            onSelectTag={setHighlightTag}
+          />
 
-          <Panel title={t("brain.file.title")} description={t("brain.file.description")}>
-            <FileAnalysisForm filePath={filePath} onPathChange={setFilePath} loading={fileLoading} onFileInfo={() => handleFileFetch("info")} onImpact={() => handleFileFetch("impact")} message={fileMessage} />
-            <div className="grid gap-4 md:grid-cols-2">
-              <FileAnalysisPanel label="File info" payload={fileInfo} />
-              <FileAnalysisPanel label="Impact" payload={impactInfo} />
-            </div>
-          </Panel>
+          <BrainFilePanel
+            title={t("brain.file.title")}
+            description={t("brain.file.description")}
+            filePath={filePath}
+            loading={fileLoading}
+            message={fileMessage}
+            fileInfo={fileInfo}
+            impactInfo={impactInfo}
+            onPathChange={setFilePath}
+            onFileInfo={() => handleFileFetch("info")}
+            onImpact={() => handleFileFetch("impact")}
+          />
 
-          <Sheet open={detailsSheetOpen} onOpenChange={(open) => {
-            setDetailsSheetOpen(open);
-            if (!open) handleClearSelection();
-          }}>
-            <BrainDetailsSheetContent selected={selected} relations={relations} memoryActionPending={memoryActionPending} onPin={handlePinMemory} onDelete={handleDeleteMemory} memoryWipePending={memoryWipePending} onClearSession={handleClearSessionMemory} />
+          <Sheet
+            open={detailsSheetOpen}
+            onOpenChange={(open) => {
+              setDetailsSheetOpen(open);
+              if (!open) handleClearSelection();
+            }}
+          >
+            <BrainDetailsSheetContent
+              selected={selected}
+              relations={relations}
+              memoryActionPending={memoryActionPending}
+              onPin={handlePinMemory}
+              onDelete={handleDeleteMemory}
+              memoryWipePending={memoryWipePending}
+              onClearSession={handleClearSessionMemory}
+            />
           </Sheet>
         </>
       )}

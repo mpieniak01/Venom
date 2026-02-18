@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
+from venom_core.api.routes import system_deps
 from venom_core.api.schemas.flow import FlowStep, FlowTraceResponse
 from venom_core.utils.logger import get_logger
 
@@ -18,14 +19,8 @@ MAX_MESSAGE_LENGTH = 40  # Maksymalna długość wiadomości w diagramie Mermaid
 MAX_PROMPT_LENGTH = 50  # Maksymalna długość promptu w diagramie
 
 
-# Dependency - będzie ustawione w main.py
-_request_tracer = None
-
-
-def set_dependencies(request_tracer):
-    """Ustaw zależności dla routera."""
-    global _request_tracer
-    _request_tracer = request_tracer
+def _get_request_tracer():
+    return system_deps.get_request_tracer()
 
 
 def _build_flow_steps(trace) -> list[FlowStep]:
@@ -75,10 +70,11 @@ def get_flow_trace(task_id: UUID):
         HTTPException: 404 jeśli zadanie nie istnieje
         HTTPException: 503 jeśli RequestTracer nie jest dostępny
     """
-    if _request_tracer is None:
+    request_tracer = _get_request_tracer()
+    if request_tracer is None:
         raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
 
-    trace = _request_tracer.get_trace(task_id)
+    trace = request_tracer.get_trace(task_id)
     if trace is None:
         raise HTTPException(
             status_code=404, detail=f"Zadanie {task_id} nie istnieje w historii"

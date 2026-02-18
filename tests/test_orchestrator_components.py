@@ -467,7 +467,11 @@ async def test_submit_task_returns_queued_response_when_paused(monkeypatch):
     assert any("Zadanie zawiera 2 obrazów" in msg for _, msg in state_manager.logs)
     assert any("trybie pauzy" in msg for _, msg in state_manager.logs)
     request_tracer.create_trace.assert_called_once()
-    request_tracer.add_step.assert_called_once()
+    assert request_tracer.add_step.call_count == 2
+    assert any(
+        call.args[1] == "RoutingDecision"
+        for call in request_tracer.add_step.call_args_list
+    )
     request_tracer.set_llm_metadata.assert_called_once()
     orch._broadcast_event.assert_awaited()
     assert len(spawned) == 1

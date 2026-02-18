@@ -102,6 +102,45 @@ async def test_get_iot_status_non_ssh_and_ssh_metrics(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_reconnect_iot_bridge_paths(monkeypatch):
+    monkeypatch.setattr(
+        system_iot_routes.SETTINGS, "ENABLE_IOT_BRIDGE", False, raising=False
+    )
+    disabled = await system_iot_routes.reconnect_iot_bridge()
+    assert disabled.connected is False
+    assert disabled.attempts == 0
+
+    monkeypatch.setattr(
+        system_iot_routes.SETTINGS, "ENABLE_IOT_BRIDGE", True, raising=False
+    )
+    monkeypatch.setattr(system_deps, "get_hardware_bridge", lambda: None)
+    missing = await system_iot_routes.reconnect_iot_bridge()
+    assert missing.connected is False
+    assert missing.attempts == 0
+
+    bridge = MagicMock()
+    bridge.reconnect = AsyncMock(return_value={"connected": True, "attempts": 2})
+    monkeypatch.setattr(system_deps, "get_hardware_bridge", lambda: bridge)
+    success = await system_iot_routes.reconnect_iot_bridge()
+    assert success.connected is True
+    assert success.attempts == 2
+
+    legacy_bridge = type(
+        "LegacyBridge",
+        (),
+        {
+            "connected": True,
+            "disconnect": AsyncMock(),
+            "connect": AsyncMock(return_value=False),
+        },
+    )()
+    monkeypatch.setattr(system_deps, "get_hardware_bridge", lambda: legacy_bridge)
+    legacy = await system_iot_routes.reconnect_iot_bridge()
+    assert legacy.connected is False
+    assert legacy.attempts == 1
+
+
+@pytest.mark.asyncio
 async def test_get_service_status_not_found(monkeypatch):
     class DummyMonitor:
         def get_all_services(self):

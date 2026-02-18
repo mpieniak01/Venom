@@ -49,24 +49,35 @@ Niepoprawne wpisy manifestu:
 
 ### 4.1. Moduł w osobnym repo (docelowy dla produktów)
 
+Ustalona konwencja lokalizacji:
+- katalog kolekcji modułów: `/home/ubuntu/venom/modules`
+- każdy moduł jako osobne repo wewnątrz tej kolekcji
+
+Przykład:
+- `/home/ubuntu/venom/modules/venom-module-example`
+
 ```text
-venom-module-example/                 # osobne repo (najlepiej private)
-├─ pyproject.toml
-├─ README.md
-├─ venom_acme/
-│  ├─ __init__.py
-│  ├─ manifest.py                  # metadane modułu (id, wersje, kompatybilność)
-│  ├─ api/
-│  │  ├─ __init__.py
-│  │  ├─ routes.py                 # FastAPI router eksportowany do core
-│  │  └─ schemas.py                # Pydantic modele API modułu
-│  ├─ services/
-│  │  └─ service.py                # logika domenowa modułu
-│  └─ connectors/
-│     └─ github.py                 # opcjonalne integracje (sekrety tylko z env)
-└─ tests/
-   ├─ test_routes.py
-   └─ test_service.py
+/home/ubuntu/venom/
+├─ venom_core/                         # repo core
+├─ web-next/                           # frontend core
+└─ modules/                            # kolekcja repo modułów
+   └─ venom-module-example/            # osobne repo modułu (najlepiej private)
+      ├─ pyproject.toml
+      ├─ README.md
+      ├─ venom_module_example/
+      │  ├─ __init__.py
+      │  ├─ manifest.py               # metadane modułu (id, wersje, kompatybilność)
+      │  ├─ api/
+      │  │  ├─ __init__.py
+      │  │  ├─ routes.py              # FastAPI router eksportowany do core
+      │  │  └─ schemas.py             # Pydantic modele API modułu
+      │  ├─ services/
+      │  │  └─ service.py             # logika domenowa modułu
+      │  └─ connectors/
+      │     └─ github.py              # opcjonalne integracje (sekrety tylko z env)
+      └─ tests/
+         ├─ test_routes.py
+         └─ test_service.py
 ```
 
 W Venom core moduł jest tylko "podpinany":
@@ -95,7 +106,7 @@ W Venom core moduł jest tylko "podpinany":
 8. Rollback: wyłącz flagę lub usuń wpis z manifestu.
 
 ## 6. Module Example: status i przełączanie
-`module_example` traktujemy jako moduł referencyjny platformy i kierujemy do pełnej separacji repo (`venom-module-example`).
+`module_example` traktujemy jako moduł referencyjny platformy i kierujemy do pełnej separacji repo (`/home/ubuntu/venom/modules/venom-module-example`).
 W praktyce operacyjnej obowiązuje model modułu zewnętrznego (4.1).
 
 Włączenie backend:

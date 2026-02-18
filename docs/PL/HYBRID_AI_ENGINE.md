@@ -1,5 +1,7 @@
 # Hybrid AI Engine - Dokumentacja
 
+> **Decyzja Architektoniczna**: Strategia "LLM-First" jest formalnie udokumentowana w [ADR-001: Strategia Runtime](adr/ADR-001-runtime-strategy-llm-first.md). Ten dokument opisuje szczegóły implementacyjne i aspekty operacyjne.
+
 ## Przegląd
 
 Hybrydowy Silnik AI (Hybrid AI Engine) to kluczowy komponent systemu Venom, który zarządza inteligentnym routingiem zapytań między lokalnym LLM a chmurą. System priorytetyzuje prywatność i zerowy koszt operacyjny poprzez strategię "Local First".

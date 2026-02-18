@@ -10,6 +10,8 @@ from venom_core.services import module_registry
 class _Settings:
     FEATURE_MODULE_EXAMPLE = False
     API_OPTIONAL_MODULES = ""
+    CORE_MODULE_API_VERSION = "1"
+    CORE_RUNTIME_VERSION = "1.5.0"
 
 
 def test_builtin_manifest_has_module_example():
@@ -49,3 +51,54 @@ def test_include_optional_api_routers_loads_extra_manifest(monkeypatch):
 
     paths = {route.path for route in app.routes}
     assert "/x-test/ping" in paths
+
+
+def test_include_optional_api_routers_skips_api_version_mismatch(monkeypatch):
+    router = APIRouter(prefix="/x-test")
+
+    @router.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    module = types.ModuleType("x_test_mod_v2")
+    module.router = router
+
+    def _fake_import(name: str):
+        if name == "x_test_mod_v2":
+            return module
+        return __import__(name)
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
+
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = "x_test|x_test_mod_v2:router||2|1.5.0"
+
+    app = FastAPI()
+    included = module_registry.include_optional_api_routers(app, settings)
+    assert included == []
+
+
+def test_include_optional_api_routers_skips_when_core_too_old(monkeypatch):
+    router = APIRouter(prefix="/x-test")
+
+    @router.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    module = types.ModuleType("x_test_mod_core")
+    module.router = router
+
+    def _fake_import(name: str):
+        if name == "x_test_mod_core":
+            return module
+        return __import__(name)
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
+
+    settings = _Settings()
+    settings.CORE_RUNTIME_VERSION = "1.5.0"
+    settings.API_OPTIONAL_MODULES = "x_test|x_test_mod_core:router|||2.0.0"
+
+    app = FastAPI()
+    included = module_registry.include_optional_api_routers(app, settings)
+    assert included == []

@@ -79,7 +79,7 @@ Przykład:
       ├─ pyproject.toml
       ├─ README.md
       ├─ module.json                   # metadane modułu (id, wersje, entrypointy)
-      ├─ venom_module/
+      ├─ venom_module_<slug>/
       │  ├─ __init__.py
       │  ├─ manifest.py               # metadane modułu (id, wersje, kompatybilność)
       │  ├─ api/
@@ -91,7 +91,6 @@ Przykład:
       │  └─ connectors/
       │     └─ github.py              # opcjonalne integracje (sekrety tylko z env)
       ├─ web_next/      # frontend modułu (separowany od core)
-      │  ├─ __init__.py
       │  ├─ page.tsx                   # główny ekran modułu (np. /module-example)
       │  ├─ components/
       │  │  └─ ModuleExamplePanel.tsx
@@ -113,7 +112,7 @@ Jak dodać nowy ekran modułu (w praktyce):
 2. W `module.json` ustawiasz frontend:
    - `nav_path` (np. `/module-example`)
    - `feature_flag` (np. `NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE`)
-   - `component_import` (np. `@/modules/module-example/page`)
+   - `component_import` (import względny liczony od `web-next/lib/generated/optional-modules.generated.ts`, np. `../../../modules/venom-module-example/web-next/page`)
 3. Generator odświeża `optional-modules.generated.ts`.
 4. `web-next/app/[moduleSlug]/page.tsx` i menu pobierają konfigurację z generatora (bez ręcznych zmian route/menu w core).
 5. Po wyłączeniu flagi ekran znika z nawigacji i nie jest dostępny przez URL.

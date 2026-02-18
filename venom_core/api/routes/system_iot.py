@@ -3,9 +3,9 @@
 from typing import Any, Optional
 
 from fastapi import APIRouter
-from pydantic import BaseModel
 
 from venom_core.api.routes import system_deps
+from venom_core.api.schemas.system_iot import IoTStatusResponse
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
@@ -16,14 +16,6 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 IOT_STATUS_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas pobierania statusu IoT bridge"},
 }
-
-
-class IoTStatusResponse(BaseModel):
-    connected: bool
-    cpu_temp: Optional[str] = None
-    memory: Optional[str] = None
-    disk: Optional[str] = None
-    message: Optional[str] = None
 
 
 def _iot_disabled_response() -> IoTStatusResponse:

@@ -3,8 +3,8 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
+from venom_core.api.schemas.strategy import RoadmapCreateRequest
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -17,12 +17,6 @@ STRATEGY_ROUTE_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": ORCHESTRATOR_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas obsługi endpointu strategii"},
 }
-
-
-class RoadmapCreateRequest(BaseModel):
-    """Request dla utworzenia roadmapy."""
-
-    vision: str
 
 
 # Dependencies - będą ustawione w main.py

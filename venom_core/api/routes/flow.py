@@ -5,8 +5,8 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
+from venom_core.api.schemas.flow import FlowStep, FlowTraceResponse
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -16,31 +16,6 @@ router = APIRouter(prefix="/api/v1", tags=["flow"])
 # Stałe konfiguracyjne
 MAX_MESSAGE_LENGTH = 40  # Maksymalna długość wiadomości w diagramie Mermaid
 MAX_PROMPT_LENGTH = 50  # Maksymalna długość promptu w diagramie
-
-
-# Modele dla Flow Inspector
-class FlowStep(BaseModel):
-    """Pojedynczy krok w przepływie decyzyjnym."""
-
-    component: str
-    action: str
-    timestamp: str
-    status: str
-    details: Optional[str] = None
-    is_decision_gate: bool = False  # Czy to krok decyzyjny
-
-
-class FlowTraceResponse(BaseModel):
-    """Odpowiedź zawierająca pełny ślad przepływu dla Flow Inspector."""
-
-    request_id: UUID
-    prompt: str
-    status: str
-    created_at: str
-    finished_at: Optional[str] = None
-    duration_seconds: Optional[float] = None
-    steps: list[FlowStep]
-    mermaid_diagram: str  # Gotowy diagram Mermaid.js
 
 
 # Dependency - będzie ustawione w main.py

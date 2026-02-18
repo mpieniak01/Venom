@@ -44,6 +44,22 @@ Close remaining Gap #7 scope without breaking API 1.x compatibility.
 - `make openapi-export`
 - `make openapi-codegen-types`
 
+4. New-code coverage hardening pack (added to scope):
+- `venom_core/services/control_plane_compatibility.py`
+- `venom_core/core/intent_embedding_router.py`
+- `venom_core/learning/training_metrics_parser.py`
+- `venom_core/infrastructure/gpu_habitat.py`
+- `venom_core/api/routes/academy.py`
+- `venom_core/core/provider_observability.py`
+- `venom_core/simulation/persona_factory.py`
+- `venom_core/services/control_plane.py`
+- `venom_core/api/dependencies.py`
+- `venom_core/api/routes/providers.py`
+- `venom_core/core/routing_integration.py`
+- `venom_core/services/profile_config.py`
+- `venom_core/api/routes/workflow_control.py`
+- `venom_core/utils/ollama_tuning.py`
+
 ## Acceptance Criteria
 1. No `response_model=dict[str, Any]` in stable API routes targeted by this PR.
 2. Selected Wave-2 routers no longer depend on local mutable globals for runtime dependencies.
@@ -57,6 +73,7 @@ Close remaining Gap #7 scope without breaking API 1.x compatibility.
 1. Unit/integration tests for touched routers and schemas.
 2. OpenAPI contract tests for updated endpoints.
 3. Regression tests for dependency wiring and route startup.
+4. Coverage-focused test additions for modules from the hardening pack.
 
 ## Risks and mitigations
 1. Risk: dependency injection regression in startup wiring.

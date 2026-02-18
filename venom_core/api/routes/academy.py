@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from venom_core.api.schemas.academy import (
+    AcademyJobsListResponse,
     ActivateAdapterRequest,
     AdapterInfo,
     DatasetPreviewResponse,
@@ -1089,7 +1090,7 @@ async def _stream_training_logs_events(job_id: str, job_name: str):
 
 @router.get(
     "/jobs",
-    response_model=dict[str, Any],
+    response_model=AcademyJobsListResponse,
     responses={
         500: RESP_500_INTERNAL,
         503: RESP_503_ACADEMY_UNAVAILABLE,
@@ -1098,7 +1099,7 @@ async def _stream_training_logs_events(job_id: str, job_name: str):
 async def list_jobs(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     status: Annotated[Optional[str], Query()] = None,
-) -> Dict[str, Any]:
+) -> AcademyJobsListResponse:
     """
     Lista wszystkich jobów treningowych.
 

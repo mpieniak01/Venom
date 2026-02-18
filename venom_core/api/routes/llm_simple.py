@@ -758,7 +758,6 @@ async def _handle_stream_http_error(
         await asyncio.sleep(retry_backoff * attempt)
         return "retry"
 
-    _ = model_name
     yield_event = _emit_connection_error_and_mark_failed(
         exc=exc,
         runtime=runtime,

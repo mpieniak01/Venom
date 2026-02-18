@@ -93,6 +93,9 @@ unsloth_compiled_cache/
 
 # docs_dev/ is LOCAL-ONLY (WIP drafts). Never commit.
 docs_dev/
+# Exception: _done/ subdirectory contains formal closure documentation
+!docs_dev/_done/
+!docs_dev/_done/*.md
 
 # Local benchmark outputs
 data/benchmarks/

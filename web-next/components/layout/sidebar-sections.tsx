@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAppMeta } from "@/lib/app-meta";
 import { getNavigationItems, AUTONOMY_LEVELS, AutonomySnapshot } from "./sidebar-helpers";
+import type { LanguageCode } from "@/lib/i18n";
 
 export function BrandSection({
     collapsed,
@@ -71,14 +72,16 @@ export function NavigationSection({
     collapsed,
     isSynced,
     pathname,
+    language,
     t
 }: Readonly<{
     collapsed: boolean;
     isSynced: boolean;
     pathname: string;
+    language: LanguageCode;
     t: (key: string) => string;
 }>) {
-    const navigationItems = getNavigationItems();
+    const navigationItems = getNavigationItems(language);
     return (
         <nav className="mt-4 space-y-4">
             <div>

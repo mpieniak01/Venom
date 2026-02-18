@@ -1,4 +1,4 @@
-"""Module Example provider loader (modular extension boundary)."""
+"""Module Example provider loader (external-ready module package)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from threading import Lock
 from typing import Protocol
 from uuid import uuid4
 
-from venom_core.api.schemas.module_example import (
+from venom_module_example.api.schemas import (
     ContentCandidate,
     DraftBundle,
     DraftVariant,
@@ -16,6 +16,7 @@ from venom_core.api.schemas.module_example import (
     PublishQueueItem,
     PublishResult,
 )
+
 from venom_core.config import SETTINGS, Settings
 from venom_core.utils.logger import get_logger
 

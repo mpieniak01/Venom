@@ -11,6 +11,12 @@ workspace/*
 !workspace/MARKETING_KIT_TEMPLATE.md
 !workspace/.gitkeep
 
+# Optional module repositories (nested git repos)
+modules/*
+!modules/.gitkeep
+!modules/venom-module-example/
+!modules/venom-module-example/**
+
 data/memory/
 data/user_lexicon/
 data/feedback/

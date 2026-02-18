@@ -1,12 +1,11 @@
-"""Module Example API (modular, extension-ready)."""
+"""Module Example API (external-ready module package)."""
 
 from __future__ import annotations
 
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-
-from venom_core.api.schemas.module_example import (
+from venom_module_example.api.schemas import (
     AuditResponse,
     CandidatesResponse,
     DraftBundle,
@@ -17,11 +16,12 @@ from venom_core.api.schemas.module_example import (
     QueueDraftRequest,
     QueueResponse,
 )
-from venom_core.config import SETTINGS
-from venom_core.services.module_example_loader import (
+from venom_module_example.services.provider import (
     ModuleExampleProvider,
     get_module_example_provider,
 )
+
+from venom_core.config import SETTINGS
 
 router = APIRouter(prefix="/api/v1/module-example", tags=["module-example"])
 

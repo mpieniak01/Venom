@@ -43,7 +43,7 @@ Runtime capability usage in Venom integration:
 
 Operational reference:
 1. deployment variables and examples: `docs/DEPLOYMENT_NEXT.md`,
-2. implementation scope and review checklist: `docs_dev/_to_do/152_aktualizacja_ollama_0_16_i_adaptacja_funkcji.md`.
+2. implementation scope and evidence closure (COMPLETE): `docs_dev/_done/152_aktualizacja_ollama_0_16_i_adaptacja_funkcji.md`.
 
 ## Architecture
 

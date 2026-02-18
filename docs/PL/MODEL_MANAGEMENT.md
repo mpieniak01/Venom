@@ -43,7 +43,7 @@ Użycie capabilities runtime w integracji Venom:
 
 Referencje operacyjne:
 1. zmienne deploymentowe i przykłady: `docs/PL/DEPLOYMENT_NEXT.md`,
-2. zakres implementacji i checklista review: `docs_dev/_to_do/152_aktualizacja_ollama_0_16_i_adaptacja_funkcji.md`.
+2. zakres implementacji i evidence closure (COMPLETE): `docs_dev/_done/152_aktualizacja_ollama_0_16_i_adaptacja_funkcji.md`.
 
 ## Architektura
 

@@ -14,6 +14,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from venom_core.api.schemas.academy import (
+    AcademyJobsListResponse,
+    AcademyJobSummary,
     ActivateAdapterRequest,
     AdapterInfo,
     DatasetPreviewResponse,
@@ -192,6 +194,24 @@ def _ensure_academy_enabled():
 
 def _to_http_exception(exc: AcademyRouteError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
+def _to_job_summary(job: Dict[str, Any]) -> AcademyJobSummary:
+    """Normalizuje rekord historii do stabilnego kontraktu API."""
+    job_id = str(job.get("job_id") or job.get("job_name") or "unknown")
+    return AcademyJobSummary(
+        job_id=job_id,
+        job_name=job.get("job_name"),
+        status=_normalize_job_status(cast(Optional[str], job.get("status"))),
+        started_at=cast(Optional[str], job.get("started_at")),
+        finished_at=cast(Optional[str], job.get("finished_at")),
+        adapter_path=cast(Optional[str], job.get("adapter_path")),
+        base_model=cast(Optional[str], job.get("base_model")),
+        output_dir=cast(Optional[str], job.get("output_dir")),
+        dataset_path=cast(Optional[str], job.get("dataset_path")),
+        parameters=cast(Dict[str, Any], job.get("parameters") or {}),
+        error=cast(Optional[str], job.get("error")),
+    )
 
 
 def _load_jobs_history() -> List[Dict[str, Any]]:
@@ -1089,7 +1109,7 @@ async def _stream_training_logs_events(job_id: str, job_name: str):
 
 @router.get(
     "/jobs",
-    response_model=dict[str, Any],
+    response_model=AcademyJobsListResponse,
     responses={
         500: RESP_500_INTERNAL,
         503: RESP_503_ACADEMY_UNAVAILABLE,
@@ -1098,7 +1118,7 @@ async def _stream_training_logs_events(job_id: str, job_name: str):
 async def list_jobs(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     status: Annotated[Optional[str], Query()] = None,
-) -> Dict[str, Any]:
+) -> AcademyJobsListResponse:
     """
     Lista wszystkich jobów treningowych.
 
@@ -1111,16 +1131,16 @@ async def list_jobs(
     """
     try:
         _ensure_academy_enabled()
-        jobs = _load_jobs_history()
+        jobs = [_to_job_summary(job) for job in _load_jobs_history()]
 
         # Filtruj po statusie jeśli podano
         if status:
-            jobs = [j for j in jobs if j.get("status") == status]
+            jobs = [j for j in jobs if j.status == status]
 
         # Sortuj od najnowszych
-        jobs = sorted(jobs, key=lambda j: j.get("started_at", ""), reverse=True)[:limit]
+        jobs = sorted(jobs, key=lambda j: j.started_at or "", reverse=True)[:limit]
 
-        return {"count": len(jobs), "jobs": jobs}
+        return AcademyJobsListResponse(count=len(jobs), jobs=jobs)
 
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e

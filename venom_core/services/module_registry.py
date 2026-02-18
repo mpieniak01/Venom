@@ -16,6 +16,7 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+MANIFEST_PREFIX = "manifest:"
 
 
 @dataclass(frozen=True)
@@ -134,17 +135,24 @@ def _parse_extra_manifest(raw_item: str) -> ApiModuleManifest | None:
 
 def _looks_like_manifest_path(item: str) -> bool:
     normalized = item.strip()
-    if normalized.startswith("manifest:"):
+    if normalized.startswith(MANIFEST_PREFIX):
         return True
     return "|" not in normalized and normalized.endswith(".json")
 
 
-def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
+def _resolve_manifest_path(raw_item: str) -> Path:
     source = raw_item.strip()
-    path_text = source[len("manifest:") :] if source.startswith("manifest:") else source
+    path_text = (
+        source[len(MANIFEST_PREFIX) :] if source.startswith(MANIFEST_PREFIX) else source
+    )
     manifest_path = Path(path_text).expanduser()
     if not manifest_path.is_absolute():
         manifest_path = Path.cwd() / manifest_path
+    return manifest_path
+
+
+def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
+    manifest_path = _resolve_manifest_path(raw_item)
 
     try:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -194,6 +202,34 @@ def _extra_manifests(settings: object) -> list[ApiModuleManifest]:
     return manifests
 
 
+def _validate_manifest_item(item: str, errors: list[str]) -> None:
+    manifest_path = _resolve_manifest_path(item)
+    if not manifest_path.exists():
+        errors.append("optional module manifest not found: " + str(manifest_path))
+        return
+
+    parsed = _parse_manifest_file(item)
+    if parsed is None:
+        errors.append(
+            "invalid optional module manifest (required module_id/backend.router_import): "
+            + str(manifest_path)
+        )
+
+
+def _validate_legacy_item(item: str, errors: list[str]) -> None:
+    parts = [part.strip() for part in item.split("|")]
+    if len(parts) < 2:
+        errors.append(
+            "invalid optional module entry (expected: manifest:/path/module.json or module_id|module.path:router[|FEATURE|API|CORE]): "
+            + item
+        )
+        return
+    if ":" not in parts[1]:
+        errors.append(
+            "invalid router import (expected module.path:router): " + parts[1]
+        )
+
+
 def validate_optional_modules_config(settings: object = SETTINGS) -> list[str]:
     raw = str(getattr(settings, "API_OPTIONAL_MODULES", "") or "").strip()
     if not raw:
@@ -204,35 +240,9 @@ def validate_optional_modules_config(settings: object = SETTINGS) -> list[str]:
         if not item:
             continue
         if _looks_like_manifest_path(item):
-            path_text = (
-                item[len("manifest:") :] if item.startswith("manifest:") else item
-            )
-            manifest_path = Path(path_text).expanduser()
-            if not manifest_path.is_absolute():
-                manifest_path = Path.cwd() / manifest_path
-            if not manifest_path.exists():
-                errors.append(
-                    "optional module manifest not found: " + str(manifest_path)
-                )
-                continue
-            parsed = _parse_manifest_file(item)
-            if parsed is None:
-                errors.append(
-                    "invalid optional module manifest (required module_id/backend.router_import): "
-                    + str(manifest_path)
-                )
+            _validate_manifest_item(item, errors)
             continue
-        parts = [part.strip() for part in item.split("|")]
-        if len(parts) < 2:
-            errors.append(
-                "invalid optional module entry (expected: manifest:/path/module.json or module_id|module.path:router[|FEATURE|API|CORE]): "
-                + item
-            )
-            continue
-        if ":" not in parts[1]:
-            errors.append(
-                "invalid router import (expected module.path:router): " + parts[1]
-            )
+        _validate_legacy_item(item, errors)
     return errors
 
 

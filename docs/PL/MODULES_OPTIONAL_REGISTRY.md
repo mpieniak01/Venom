@@ -11,8 +11,7 @@ Ten dokument opisuje uniwersalny, publiczny sposób tworzenia i operacji moduł�
 
 ## 2. Model rejestru
 
-Obsługiwane są dwa źródła modułów:
-- wbudowany manifest opcjonalny (w core),
+Obsługiwane jest jedno źródło modułów produktowych:
 - zewnętrzny manifest z `API_OPTIONAL_MODULES`.
 
 Format wpisu:
@@ -46,39 +45,12 @@ Niepoprawne wpisy manifestu:
 - są ignorowane,
 - generują ostrzeżenia.
 
-## 4. Struktura modułu (pełne drzewo)
+## 4. Struktura modułu (jedyny wariant docelowy)
 
-Poniżej są dwa warianty, które razem pokazują "gdzie tworzyć pliki modułu".
-
-### 4.1. Wariant A: moduł wbudowany w repo Venom (jak `module_example`)
+### 4.1. Moduł w osobnym repo (docelowy dla produktów)
 
 ```text
-venom/
-├─ venom_core/
-│  ├─ api/
-│  │  ├─ routes/
-│  │  │  └─ module_example.py
-│  │  └─ schemas/
-│  │     └─ module_example.py
-│  └─ services/
-│     └─ module_example_loader.py
-├─ web-next/
-│  ├─ app/
-│  │  └─ module-example/
-│  │     └─ page.tsx               # opcjonalnie, jeśli moduł ma własny ekran
-│  └─ components/
-│     └─ layout/
-│        └─ sidebar-helpers.ts     # wpis nawigacyjny z feature flagą
-└─ docs/
-   └─ MODULES_OPTIONAL_REGISTRY.md
-```
-
-To jest wariant dobry dla modułów demonstracyjnych lub technicznych.
-
-### 4.2. Wariant B: moduł w osobnym repo (docelowy dla produktów)
-
-```text
-venom-module-acme/                 # osobne repo (najlepiej private)
+venom-module-example/                 # osobne repo (najlepiej private)
 ├─ pyproject.toml
 ├─ README.md
 ├─ venom_acme/
@@ -102,7 +74,7 @@ W Venom core moduł jest tylko "podpinany":
 - rejestracja przez `API_OPTIONAL_MODULES`,
 - włączenie flag.
 
-### 4.3. Minimalny zestaw plików modułu (wymagany)
+### 4.2. Minimalny zestaw plików modułu (wymagany)
 
 1. `api/routes.py` z obiektem `router`.
 2. `api/schemas.py` z modelami request/response.
@@ -122,10 +94,9 @@ W Venom core moduł jest tylko "podpinany":
 7. Zweryfikuj health i logi.
 8. Rollback: wyłącz flagę lub usuń wpis z manifestu.
 
-## 6. Moduł przykład: zarządzanie i przełączanie
-
-Aktualny wbudowany moduł opcjonalny:
-- `module_example` -> `venom_core.api.routes.module_example:router`
+## 6. Module Example: status i przełączanie
+`module_example` traktujemy jako moduł referencyjny platformy i kierujemy do pełnej separacji repo (`venom-module-example`).
+W praktyce operacyjnej obowiązuje model modułu zewnętrznego (4.1).
 
 Włączenie backend:
 - `FEATURE_MODULE_EXAMPLE=true`

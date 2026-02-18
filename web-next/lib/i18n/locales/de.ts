@@ -1121,7 +1121,7 @@ export const de = {
       topic: "Thema",
       sessionPlaceholder: "Sitzungs-ID...",
       topicPlaceholder: "Thema filtern...",
-      layoutPreset: "Preset",
+      layoutPreset: "Voreinstellung",
       layoutCola: "Cola",
       layoutCose: "Cose",
     },
@@ -1140,7 +1140,7 @@ export const de = {
       hygiene: "Hygiene",
     },
     home: {
-      eyebrow: "BRAIN / KNOWLEDGE GRAPH",
+      eyebrow: "BRAIN / WISSENSGRAPH",
       title: "Wissensnetz",
       description: "Vollbildansicht des Venom-Gedächtnisses mit Agenten- und Lektionsfiltern.",
       noRelations: "Keine Beziehungen (oder kein Knoten ausgewählt).",
@@ -1151,15 +1151,15 @@ export const de = {
     },
     viewMode: {
       title: "Ansichtsmodus",
-      overview: "Overview",
+      overview: "Überblick",
       focus: "Fokus",
       full: "Voll",
     },
     presets: {
-      session: "Session",
-      topic: "Topic",
-      pinned: "Pinned",
-      recent: "Recent",
+      session: "Sitzung",
+      topic: "Thema",
+      pinned: "Angeheftet",
+      recent: "Neueste",
     },
     lessons: {
       panelTitle: "Lektionen und Graph-Operationen",

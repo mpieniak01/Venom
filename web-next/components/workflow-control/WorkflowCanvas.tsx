@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useCallback } from "react";
+import { useMemo, useEffect, useCallback, useRef } from "react";
 import {
   ReactFlow,
   Node,
@@ -125,10 +125,27 @@ export function WorkflowCanvas({
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const lastGraphSignatureRef = useRef<string>("");
 
   // Sync with prop changes if provided (controlled mode)
   useEffect(() => {
     if (initialNodes.length > 0) {
+      const signature = JSON.stringify({
+        nodes: initialNodes.map((n) => ({
+          id: n.id,
+          position: n.position,
+          data: n.data,
+          parentId: n.parentId,
+        })),
+        edges: initialEdges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          type: e.type,
+        })),
+      });
+      if (lastGraphSignatureRef.current === signature) return;
+      lastGraphSignatureRef.current = signature;
       setNodes(initialNodes);
       setEdges(initialEdges);
     }

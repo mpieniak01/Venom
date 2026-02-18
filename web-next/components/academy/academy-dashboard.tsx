@@ -37,15 +37,7 @@ export function AcademyDashboard() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="text-zinc-400">{t("academy.common.loadingAcademy")}</div>
-      </div>
-    );
-  }
-
-  if (error || !status) {
+  if (!loading && (error || !status)) {
     return (
       <div className="space-y-6">
         <SectionHeading
@@ -76,7 +68,7 @@ export function AcademyDashboard() {
     );
   }
 
-  if (!status.enabled) {
+  if (!loading && status && !status.enabled) {
     return (
       <div className="space-y-6">
         <SectionHeading
@@ -172,10 +164,21 @@ export function AcademyDashboard() {
 
       {/* Content */}
       <div className="min-h-[500px]">
-        {activeTab === "overview" && <AcademyOverview status={status} onRefresh={loadStatus} />}
-        {activeTab === "dataset" && <DatasetPanel />}
-        {activeTab === "training" && <TrainingPanel />}
-        {activeTab === "adapters" && <AdaptersPanel />}
+        {loading && (
+          <div className="space-y-4 rounded-xl border border-white/10 bg-black/20 p-6">
+            <p className="text-sm text-zinc-400">{t("academy.common.loadingAcademy")}</p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="h-24 rounded-lg bg-white/5 animate-pulse" />
+              <div className="h-24 rounded-lg bg-white/5 animate-pulse" />
+              <div className="h-24 rounded-lg bg-white/5 animate-pulse" />
+              <div className="h-24 rounded-lg bg-white/5 animate-pulse" />
+            </div>
+          </div>
+        )}
+        {!loading && status && activeTab === "overview" && <AcademyOverview status={status} onRefresh={loadStatus} />}
+        {!loading && status && activeTab === "dataset" && <DatasetPanel />}
+        {!loading && status && activeTab === "training" && <TrainingPanel />}
+        {!loading && status && activeTab === "adapters" && <AdaptersPanel />}
       </div>
     </div>
   );

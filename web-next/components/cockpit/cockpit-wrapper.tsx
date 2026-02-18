@@ -1,9 +1,8 @@
 import { CockpitHome } from "./cockpit-home";
-import { fetchCockpitInitialData } from "@/lib/server-data";
+import { EMPTY_COCKPIT_INITIAL_DATA } from "@/lib/server-data";
 
-export async function CockpitWrapper({ variant = "home" }: Readonly<{ variant?: "reference" | "home" }>) {
-    const initialData = await fetchCockpitInitialData();
-    return <CockpitHome initialData={initialData} variant={variant} />;
+export function CockpitWrapper({ variant = "home" }: Readonly<{ variant?: "reference" | "home" }>) {
+    return <CockpitHome initialData={EMPTY_COCKPIT_INITIAL_DATA} variant={variant} />;
 }
 
 export function CockpitSkeleton() {

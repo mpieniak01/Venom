@@ -1073,6 +1073,14 @@ export const en = {
       agent: "Agent",
       repo: "Repo",
       lesson: "Lesson",
+      memoryLayer: "Memory layer",
+      edgeLabels: "Edge labels",
+      layout: "Layout",
+      pinnedOnly: "Pinned only",
+      includeLessons: "Include lessons",
+      flowMode: "Flow mode",
+      sessionId: "Session ID",
+      topic: "Topic",
     },
     actions: {
       scan: "Scan",
@@ -1897,6 +1905,7 @@ export const en = {
     },
   },
   workflowControl: {
+    eyebrow: "COMMAND CONSOLE",
     title: "Workflow Control",
     description: "Unified control plane for stack configuration",
     loading: "Loading system state...",

@@ -1116,6 +1116,14 @@ export const pl = {
       agent: "Agent",
       repo: "Repo",
       lesson: "Lekcja",
+      memoryLayer: "Warstwa pamięci",
+      edgeLabels: "Etykiety krawędzi",
+      layout: "Układ",
+      pinnedOnly: "Tylko przypięte",
+      includeLessons: "Uwzględnij lekcje",
+      flowMode: "Tryb flow",
+      sessionId: "ID sesji",
+      topic: "Temat",
     },
     actions: {
       scan: "Skanuj",
@@ -1936,6 +1944,7 @@ export const pl = {
   },
 
   workflowControl: {
+    eyebrow: "KONSOLA DOWODZENIA",
     title: "Sterowanie przepływem",
     description: "Zunifikowana płaszczyzna sterowania konfiguracją stosu",
     loading: "Ładowanie stanu systemu...",

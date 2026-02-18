@@ -458,17 +458,17 @@ a {
 
 .chat-history-scroll::-webkit-scrollbar,
 .internal-scroll::-webkit-scrollbar {
-  width: 5px;
+  width: 8px;
 }
 
 .chat-history-scroll::-webkit-scrollbar-track,
 .internal-scroll::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(15, 23, 42, 0.6);
 }
 
 .chat-history-scroll::-webkit-scrollbar-thumb,
 .internal-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 255, 157, 0.35);
+  background: rgba(0, 255, 157, 0.55);
   border-radius: 6px;
 }
 

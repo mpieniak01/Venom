@@ -22,6 +22,7 @@ export function WorkflowHeader({
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6 py-3">
             <div className="flex items-start justify-between gap-4">
                 <SectionHeading
+                    eyebrow={t("workflowControl.eyebrow")}
                     title={t("workflowControl.title")}
                     description={t("workflowControl.description")}
                 />

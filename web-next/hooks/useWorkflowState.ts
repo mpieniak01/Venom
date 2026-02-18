@@ -12,6 +12,9 @@ import type {
 } from "@/types/workflow-control";
 
 const WORKFLOW_STORAGE_KEY = "workflow_control_id";
+const WORKFLOW_STATE_CACHE_KEY = "workflow_control_state_cache_v1";
+const WORKFLOW_OPTIONS_CACHE_KEY = "workflow_control_options_cache_v1";
+const WORKFLOW_CACHE_TTL_MS = 60_000;
 const DEFAULT_WORKFLOW_ID = "00000000-0000-0000-0000-000000000001";
 
 const buildApiUrl = (path: string): string => {
@@ -84,6 +87,40 @@ function cloneState(state: SystemState): SystemState {
   return JSON.parse(JSON.stringify(state)) as SystemState;
 }
 
+function stableSerialize(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
+
+function readCache<T>(key: string): T | null {
+  if (typeof globalThis.window === "undefined") return null;
+  try {
+    const raw = globalThis.window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { ts?: number; data?: T };
+    if (!parsed || typeof parsed !== "object" || typeof parsed.ts !== "number") return null;
+    if (Date.now() - parsed.ts > WORKFLOW_CACHE_TTL_MS) return null;
+    return (parsed.data ?? null) as T | null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache<T>(key: string, data: T): void {
+  if (typeof globalThis.window === "undefined") return;
+  try {
+    globalThis.window.sessionStorage.setItem(
+      key,
+      JSON.stringify({ ts: Date.now(), data }),
+    );
+  } catch {
+    // Ignore storage errors (private mode / quota exceeded).
+  }
+}
+
 export function useWorkflowState() {
   const t = useTranslation();
   const [systemState, setSystemState] = useState<SystemState | null>(null);
@@ -99,7 +136,11 @@ export function useWorkflowState() {
         throw new Error(await readApiErrorMessage(response, t("workflowControl.error")));
       }
       const data = (await response.json()) as WorkflowControlOptions;
-      setControlOptions(data);
+      setControlOptions((prev) => {
+        if (prev && stableSerialize(prev) === stableSerialize(data)) return prev;
+        return data;
+      });
+      writeCache(WORKFLOW_OPTIONS_CACHE_KEY, data);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("workflowControl.error"));
     }
@@ -117,7 +158,11 @@ export function useWorkflowState() {
       const data = await response.json();
       const nextState = extractSystemStateFromPayload(data);
       if (nextState) {
-        setSystemState(nextState);
+        setSystemState((prev) => {
+          if (prev && stableSerialize(prev) === stableSerialize(nextState)) return prev;
+          return nextState;
+        });
+        writeCache(WORKFLOW_STATE_CACHE_KEY, nextState);
       } else {
         setSystemState(null);
         throw new Error(t("workflowControl.messages.invalidStatePayload"));
@@ -329,6 +374,15 @@ export function useWorkflowState() {
 
   // Initial load and polling
   useEffect(() => {
+    const cachedState = readCache<SystemState>(WORKFLOW_STATE_CACHE_KEY);
+    if (cachedState) {
+      setSystemState(cachedState);
+    }
+    const cachedOptions = readCache<WorkflowControlOptions>(WORKFLOW_OPTIONS_CACHE_KEY);
+    if (cachedOptions) {
+      setControlOptions(cachedOptions);
+    }
+
     fetchSystemState();
     fetchControlOptions();
     // Poll every 5 seconds

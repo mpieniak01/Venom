@@ -137,6 +137,19 @@ export type CockpitInitialData = {
   history: HistoryRequest[] | null;
 };
 
+export const EMPTY_COCKPIT_INITIAL_DATA: CockpitInitialData = {
+  metrics: null,
+  tasks: null,
+  queue: null,
+  services: null,
+  graphSummary: null,
+  models: null,
+  gitStatus: null,
+  tokenMetrics: null,
+  modelsUsage: null,
+  history: null,
+};
+
 export async function fetchCockpitInitialData(): Promise<CockpitInitialData> {
   const [
     metrics,

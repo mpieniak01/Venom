@@ -1108,6 +1108,14 @@ export const de = {
       agent: "Agent",
       repo: "Repo",
       lesson: "Lektion",
+      memoryLayer: "Speicherebene",
+      edgeLabels: "Kantenbeschriftungen",
+      layout: "Layout",
+      pinnedOnly: "Nur angeheftete",
+      includeLessons: "Lektionen einbeziehen",
+      flowMode: "Flow-Modus",
+      sessionId: "Sitzungs-ID",
+      topic: "Thema",
     },
     actions: {
       scan: "Scannen",
@@ -1932,6 +1940,7 @@ export const de = {
     },
   },
   workflowControl: {
+    eyebrow: "KOMMANDO KONSOLE",
     title: "Workflow-Steuerung",
     description: "Einheitliche Kontrollebene für Stack-Konfiguration",
     loading: "Systemzustand wird geladen...",

@@ -142,9 +142,11 @@ class RoutingDecision:
     
     def is_cost_free(self) -> bool:
         """Check if this routing decision incurs no cost."""
-        return self.estimated_cost_usd == 0.0 or (
-            self.target_runtime is not None and self.target_runtime.is_local()
-        )
+        # Local runtimes are always cost-free
+        if self.target_runtime is not None and self.target_runtime.is_local():
+            return True
+        # For cloud runtimes, check if cost is negligible (< $0.0001)
+        return abs(self.estimated_cost_usd) < 1e-4
 
 
 class RoutingKPIs:

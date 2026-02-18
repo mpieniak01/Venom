@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import importlib
+import json
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
 from fastapi import FastAPI
@@ -19,6 +22,7 @@ logger = get_logger(__name__)
 class ApiModuleManifest:
     module_id: str
     router_import: str
+    module_root: str | None = None
     feature_flag: str | None = None
     module_api_version: str | None = None
     min_core_version: str | None = None
@@ -30,14 +34,22 @@ def _is_enabled(manifest: ApiModuleManifest, settings: object) -> bool:
     return bool(getattr(settings, manifest.feature_flag, False))
 
 
-def _load_router(router_import: str) -> APIRouter | None:
+def _load_router(
+    router_import: str, module_root: str | None = None
+) -> APIRouter | None:
     try:
         module_path, attr = router_import.split(":", maxsplit=1)
     except ValueError:
         logger.warning("Invalid router import format: %s", router_import)
         return None
 
+    inserted_path: str | None = None
     try:
+        if module_root:
+            root_path = str(Path(module_root).resolve())
+            if root_path not in sys.path:
+                sys.path.insert(0, root_path)
+                inserted_path = root_path
         module = importlib.import_module(module_path)
         router = getattr(module, attr, None)
         if isinstance(router, APIRouter):
@@ -47,6 +59,12 @@ def _load_router(router_import: str) -> APIRouter | None:
     except Exception as exc:
         logger.warning("Failed to import optional router %s: %s", router_import, exc)
         return None
+    finally:
+        if inserted_path is not None and inserted_path in sys.path:
+            try:
+                sys.path.remove(inserted_path)
+            except ValueError:
+                pass
 
 
 def _parse_version(value: str) -> tuple[int, ...]:
@@ -88,15 +106,7 @@ def _is_compatible(manifest: ApiModuleManifest, settings: object) -> bool:
 
 
 def _builtin_manifests() -> list[ApiModuleManifest]:
-    return [
-        ApiModuleManifest(
-            module_id="module_example",
-            router_import="venom_module_example.api.routes:router",
-            feature_flag="FEATURE_MODULE_EXAMPLE",
-            module_api_version="1",
-            min_core_version="1.5.0",
-        )
-    ]
+    return []
 
 
 def _parse_extra_manifest(raw_item: str) -> ApiModuleManifest | None:
@@ -115,6 +125,53 @@ def _parse_extra_manifest(raw_item: str) -> ApiModuleManifest | None:
     return ApiModuleManifest(
         module_id=module_id,
         router_import=router_import,
+        module_root=None,
+        feature_flag=feature_flag,
+        module_api_version=module_api_version,
+        min_core_version=min_core_version,
+    )
+
+
+def _looks_like_manifest_path(item: str) -> bool:
+    normalized = item.strip()
+    if normalized.startswith("manifest:"):
+        return True
+    return "|" not in normalized and normalized.endswith(".json")
+
+
+def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
+    source = raw_item.strip()
+    path_text = source[len("manifest:") :] if source.startswith("manifest:") else source
+    manifest_path = Path(path_text).expanduser()
+    if not manifest_path.is_absolute():
+        manifest_path = Path.cwd() / manifest_path
+
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning(
+            "Failed to read optional module manifest %s: %s", manifest_path, exc
+        )
+        return None
+
+    module_id = str(payload.get("module_id", "")).strip()
+    backend = payload.get("backend") if isinstance(payload.get("backend"), dict) else {}
+    router_import = str(backend.get("router_import", "")).strip()
+    feature_flag = str(backend.get("feature_flag", "")).strip() or None
+    module_api_version = str(backend.get("module_api_version", "")).strip() or None
+    min_core_version = str(backend.get("min_core_version", "")).strip() or None
+
+    if not module_id or not router_import:
+        logger.warning(
+            "Invalid optional module manifest %s: required module_id/backend.router_import missing",
+            manifest_path,
+        )
+        return None
+
+    return ApiModuleManifest(
+        module_id=module_id,
+        router_import=router_import,
+        module_root=str(manifest_path.parent),
         feature_flag=feature_flag,
         module_api_version=module_api_version,
         min_core_version=min_core_version,
@@ -127,7 +184,11 @@ def _extra_manifests(settings: object) -> list[ApiModuleManifest]:
         return []
     manifests: list[ApiModuleManifest] = []
     for item in raw.split(","):
-        manifest = _parse_extra_manifest(item)
+        manifest = (
+            _parse_manifest_file(item)
+            if _looks_like_manifest_path(item)
+            else _parse_extra_manifest(item)
+        )
         if manifest is not None:
             manifests.append(manifest)
     return manifests
@@ -142,10 +203,29 @@ def validate_optional_modules_config(settings: object = SETTINGS) -> list[str]:
         item = raw_item.strip()
         if not item:
             continue
+        if _looks_like_manifest_path(item):
+            path_text = (
+                item[len("manifest:") :] if item.startswith("manifest:") else item
+            )
+            manifest_path = Path(path_text).expanduser()
+            if not manifest_path.is_absolute():
+                manifest_path = Path.cwd() / manifest_path
+            if not manifest_path.exists():
+                errors.append(
+                    "optional module manifest not found: " + str(manifest_path)
+                )
+                continue
+            parsed = _parse_manifest_file(item)
+            if parsed is None:
+                errors.append(
+                    "invalid optional module manifest (required module_id/backend.router_import): "
+                    + str(manifest_path)
+                )
+            continue
         parts = [part.strip() for part in item.split("|")]
         if len(parts) < 2:
             errors.append(
-                "invalid optional module entry (expected: module_id|module.path:router[|FEATURE|API|CORE]): "
+                "invalid optional module entry (expected: manifest:/path/module.json or module_id|module.path:router[|FEATURE|API|CORE]): "
                 + item
             )
             continue
@@ -175,7 +255,7 @@ def include_optional_api_routers(
             continue
         if not _is_compatible(manifest, settings):
             continue
-        router = _load_router(manifest.router_import)
+        router = _load_router(manifest.router_import, manifest.module_root)
         if router is None:
             continue
         app.include_router(router)

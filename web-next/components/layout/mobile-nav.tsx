@@ -22,7 +22,7 @@ import {
 } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { LanguageSwitcher } from "./language-switcher";
-import { useTranslation } from "@/lib/i18n";
+import { useLanguage, useTranslation } from "@/lib/i18n";
 import { getNavigationItems } from "./sidebar-helpers";
 import {
   TelemetryTab,
@@ -42,7 +42,8 @@ export function MobileNav() {
   const { data: costMode, refresh: refreshCost } = useCostMode(15000);
   const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel(20000);
   const t = useTranslation();
-  const navigationItems = useMemo(() => getNavigationItems(), []);
+  const { language } = useLanguage();
+  const navigationItems = useMemo(() => getNavigationItems(language), [language]);
 
   const latestLogs = useMemo(() => entries.slice(0, 5), [entries]);
   const telemetryContent = useMemo(() =>

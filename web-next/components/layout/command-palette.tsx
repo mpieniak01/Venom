@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Command, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getNavigationItems } from "./sidebar-helpers";
-import { useTranslation } from "@/lib/i18n";
+import { useLanguage, useTranslation } from "@/lib/i18n";
 
 type CommandPaletteProps = Readonly<{
   open: boolean;
@@ -28,6 +28,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
   const [running, setRunning] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const t = useTranslation();
+  const { language } = useLanguage();
 
   useEffect(() => {
     if (!open) setQuery("");
@@ -35,7 +36,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
 
   const navActions: PaletteAction[] = useMemo(
     () =>
-      getNavigationItems().map((item) => {
+      getNavigationItems(language).map((item) => {
         const label = item.labelKey ? t(item.labelKey) : item.label;
         return {
           id: `nav-${item.href}`,
@@ -47,7 +48,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
           },
         };
       }),
-    [router, t],
+    [router, t, language],
   );
 
   const queueActions: PaletteAction[] = useMemo(

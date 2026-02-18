@@ -8,8 +8,6 @@ from threading import Lock
 from typing import Protocol
 from uuid import uuid4
 
-from venom_core.config import SETTINGS, Settings
-from venom_core.utils.logger import get_logger
 from venom_module_example.api.schemas import (
     ContentCandidate,
     DraftBundle,
@@ -18,6 +16,9 @@ from venom_module_example.api.schemas import (
     PublishQueueItem,
     PublishResult,
 )
+
+from venom_core.config import SETTINGS, Settings
+from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

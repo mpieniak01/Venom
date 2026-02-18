@@ -1,5 +1,6 @@
 import React from "react";
 import { Search } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SelectMenu } from "@/components/ui/select-menu";
@@ -111,10 +112,10 @@ export function RuntimeSection({
                     >
                         Aktywuj
                     </Button>
-                    <a className="shrink-0 inline-flex items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]" href="/docs/llm-models">
+                    <Link className="shrink-0 inline-flex items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]" href="/docs/llm-models">
                         <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/15 text-[11px]">?</span>
                         {t("models.ui.instructions")}
-                    </a>
+                    </Link>
                 </div>
             </div>
         </div>

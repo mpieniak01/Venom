@@ -13,8 +13,13 @@ Ten dokument opisuje uniwersalny, publiczny sposób tworzenia i operacji moduł�
 
 Obsługiwane jest jedno źródło modułów produktowych:
 - zewnętrzny manifest z `API_OPTIONAL_MODULES`.
+- core nie utrzymuje listy modułów "na sztywno".
 
-Format wpisu:
+Preferowany format wpisu (bez duplikowania danych z manifestu):
+
+`API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/<repo-modulu>/module.json`
+
+Format legacy (kompatybilność wsteczna):
 
 `module_id|module.path:router|FEATURE_FLAG|MODULE_API_VERSION|MIN_CORE_VERSION`
 
@@ -26,8 +31,9 @@ Pola:
 - `MIN_CORE_VERSION` (opcjonalne): minimalna zgodna wersja core.
 
 Przykłady:
-- `API_OPTIONAL_MODULES=my_mod|acme_mod.api:router|FEATURE_ACME|1|1.5.0`
-- `API_OPTIONAL_MODULES=mod_a|pkg.a:router|FEATURE_A|1|1.5.0,mod_b|pkg.b:router`
+- `API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/venom-module-example/module.json`
+- `API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/mod-a/module.json,manifest:/home/ubuntu/venom/modules/mod-b/module.json`
+- (legacy) `API_OPTIONAL_MODULES=my_mod|acme_mod.api:router|FEATURE_ACME|1|1.5.0`
 
 ## 3. Kontrakt kompatybilności
 
@@ -60,11 +66,20 @@ Przykład:
 /home/ubuntu/venom/
 ├─ venom_core/                         # repo core
 ├─ web-next/                           # frontend core
+│  ├─ app/
+│  │  └─ [moduleSlug]/page.tsx         # dynamiczny host route modułów
+│  ├─ lib/generated/
+│  │  └─ optional-modules.generated.ts # auto-generated z module.json
+│  ├─ scripts/
+│  │  └─ generate-optional-modules.mjs # generator manifestów FE
+│  └─ components/layout/
+│     └─ sidebar-helpers.ts            # menu pobierane z manifestów modułów
 └─ modules/                            # kolekcja repo modułów
    └─ venom-module-example/            # osobne repo modułu (najlepiej private)
       ├─ pyproject.toml
       ├─ README.md
-      ├─ venom_module_example/
+      ├─ module.json                   # metadane modułu (id, wersje, entrypointy)
+      ├─ venom_module/
       │  ├─ __init__.py
       │  ├─ manifest.py               # metadane modułu (id, wersje, kompatybilność)
       │  ├─ api/
@@ -75,6 +90,13 @@ Przykład:
       │  │  └─ service.py             # logika domenowa modułu
       │  └─ connectors/
       │     └─ github.py              # opcjonalne integracje (sekrety tylko z env)
+      ├─ web_next/      # frontend modułu (separowany od core)
+      │  ├─ __init__.py
+      │  ├─ page.tsx                   # główny ekran modułu (np. /module-example)
+      │  ├─ components/
+      │  │  └─ ModuleExamplePanel.tsx
+      │  └─ api/
+      │     └─ client.ts               # klient do /api/v1/module-example/*
       └─ tests/
          ├─ test_routes.py
          └─ test_service.py
@@ -84,6 +106,22 @@ W Venom core moduł jest tylko "podpinany":
 - instalacja pakietu modułu (pip),
 - rejestracja przez `API_OPTIONAL_MODULES`,
 - włączenie flag.
+- uruchomienie generatora FE (`node web-next/scripts/generate-optional-modules.mjs`).
+
+Jak dodać nowy ekran modułu (w praktyce):
+1. W repo modułu tworzysz ekran, np. `web_next_<module_id>/page.tsx`.
+2. W `module.json` ustawiasz frontend:
+   - `nav_path` (np. `/module-example`)
+   - `feature_flag` (np. `NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE`)
+   - `component_import` (np. `@/modules/module-example/page`)
+3. Generator odświeża `optional-modules.generated.ts`.
+4. `web-next/app/[moduleSlug]/page.tsx` i menu pobierają konfigurację z generatora (bez ręcznych zmian route/menu w core).
+5. Po wyłączeniu flagi ekran znika z nawigacji i nie jest dostępny przez URL.
+
+I18n modułu (ważne):
+- tłumaczenia modułu trzymamy w repo modułu (np. `web_next/i18n/pl.ts`, `en.ts`, `de.ts`),
+- nie dopisujemy kluczy modułu do globalnych locale core (`web-next/lib/i18n/locales/*`),
+- manifest modułu dostarcza etykiety nawigacji (`frontend.nav_labels`), więc menu działa bez zmian w core.
 
 Wspólna operacja z jednej stacji developerskiej:
 - `make modules-status` (status core + wszystkich repo modułów),
@@ -105,7 +143,7 @@ Wspólna operacja z jednej stacji developerskiej:
 1. Rozwijaj moduł w osobnym repozytorium/pakiecie.
 2. Publikuj artefakt instalowalny (wheel/source package).
 3. Instaluj artefakt w środowisku runtime.
-4. Rejestruj moduł przez `API_OPTIONAL_MODULES`.
+4. Rejestruj moduł przez `API_OPTIONAL_MODULES` wskazując `manifest:/.../module.json`.
 5. Włącz flagę backendową.
 6. Włącz flagę frontendową (jeśli moduł ma UI).
 7. Zweryfikuj health i logi.
@@ -135,7 +173,8 @@ Bezpieczne wyłączenie:
 - backend: `FEATURE_*`
 - frontend: `NEXT_PUBLIC_FEATURE_*`
 2. Sprawdź manifest:
-- `API_OPTIONAL_MODULES` ma poprawne separatory `|` i `,`.
+- `API_OPTIONAL_MODULES` wskazuje istniejące `module.json`.
+- preferuj `manifest:/.../module.json` zamiast formatu legacy `module_id|...`.
 3. Sprawdź import:
 - `module.path:router` da się zaimportować w runtime.
 4. Sprawdź kompatybilność:

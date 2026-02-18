@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import types
 
 from fastapi import APIRouter, FastAPI
@@ -14,9 +15,9 @@ class _Settings:
     CORE_RUNTIME_VERSION = "1.5.0"
 
 
-def test_builtin_manifest_has_module_example():
+def test_builtin_manifest_is_empty_by_default():
     manifests = list(module_registry.iter_api_module_manifests(_Settings()))
-    assert any(m.module_id == "module_example" for m in manifests)
+    assert manifests == []
 
 
 def test_include_optional_api_routers_respects_feature_flag():
@@ -41,15 +42,48 @@ def test_core_boot_without_optional_modules_keeps_core_routes_only():
     assert all("/api/v1/module-example" not in path for path in paths)
 
 
-def test_include_optional_api_routers_includes_builtin_when_feature_enabled():
+def test_include_optional_api_routers_includes_module_from_manifest_file(
+    monkeypatch, tmp_path
+):
+    router = APIRouter(prefix="/module-example")
+
+    @router.get("/health")
+    async def health():
+        return {"ok": True}
+
+    module = types.ModuleType("x_module_example")
+    module.router = router
+
+    def _fake_import(name: str):
+        if name == "x_module_example":
+            return module
+        return __import__(name)
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
+
+    manifest_path = tmp_path / "module.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "module_id": "module_example",
+                "backend": {
+                    "router_import": "x_module_example:router",
+                    "feature_flag": "FEATURE_MODULE_EXAMPLE",
+                    "module_api_version": 1,
+                    "min_core_version": "1.5.0",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     settings = _Settings()
     settings.FEATURE_MODULE_EXAMPLE = True
+    settings.API_OPTIONAL_MODULES = f"manifest:{manifest_path}"
     app = FastAPI()
 
     included = module_registry.include_optional_api_routers(app, settings)
-
     assert "module_example" in included
-    assert any("/api/v1/module-example" in route.path for route in app.routes)
+    assert any("/module-example/health" == route.path for route in app.routes)
 
 
 def test_include_optional_api_routers_loads_extra_manifest(monkeypatch):
@@ -164,3 +198,52 @@ def test_validate_optional_modules_config_returns_errors():
     settings.API_OPTIONAL_MODULES = "broken_entry,no_colon|module.path"
     errors = module_registry.validate_optional_modules_config(settings)
     assert len(errors) == 2
+
+
+def test_include_optional_api_routers_loads_manifest_path(monkeypatch, tmp_path):
+    router = APIRouter(prefix="/mod-manifest")
+
+    @router.get("/health")
+    async def health():
+        return {"ok": True}
+
+    module = types.ModuleType("x_mod_manifest")
+    module.router = router
+
+    def _fake_import(name: str):
+        if name == "x_mod_manifest":
+            return module
+        return __import__(name)
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
+
+    manifest_path = tmp_path / "module.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "module_id": "mod_manifest",
+                "backend": {
+                    "router_import": "x_mod_manifest:router",
+                    "module_api_version": 1,
+                    "min_core_version": "1.5.0",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = str(manifest_path)
+    app = FastAPI()
+    included = module_registry.include_optional_api_routers(app, settings)
+
+    assert "mod_manifest" in included
+    assert any(route.path == "/mod-manifest/health" for route in app.routes)
+
+
+def test_validate_optional_modules_config_manifest_missing_file():
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = "manifest:/tmp/not-existing-module.json"
+    errors = module_registry.validate_optional_modules_config(settings)
+    assert len(errors) == 1
+    assert "manifest not found" in errors[0]

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import { Save, Eye, EyeOff, AlertTriangle, Info, ChevronDown } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { SelectMenu } from "@/components/ui/select-menu";
@@ -340,9 +341,9 @@ export function ParametersPanel() {
             )}
             <p className="mt-3 text-hint">
               {t("config.parameters.runtimeInfo.hint")}{" "}
-              <a href="/benchmark" className="text-emerald-400 hover:underline">
+              <Link href="/benchmark" className="text-emerald-400 hover:underline">
                 {t("config.parameters.runtimeInfo.benchmark")}
-              </a>{" "}
+              </Link>{" "}
             </p>
           </div>
         </div>

@@ -11,6 +11,13 @@
   },
   "frontend": {
     "feature_flag": "NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE",
-    "nav_path": "/module-example"
+    "nav_path": "/module-example",
+    "nav_label": "Module Example",
+    "nav_labels": {
+      "pl": "Moduł przykładowy",
+      "en": "Module Example",
+      "de": "Beispielmodul"
+    },
+    "component_import": "../../../modules/venom-module-example/web-next/page"
   }
 }

@@ -64,3 +64,47 @@ class ApiMapResponse(BaseModel):
     external_connections: List[ApiConnection] = Field(
         ..., description="Lista połączeń zewnętrznych"
     )
+
+
+class ConfigUpdateRequest(BaseModel):
+    """Request do aktualizacji konfiguracji."""
+
+    updates: dict
+
+
+class RestoreBackupRequest(BaseModel):
+    """Request do przywrócenia backupu."""
+
+    backup_filename: str
+
+
+class RuntimeConfigResponse(BaseModel):
+    """Response model for runtime configuration."""
+
+    status: str
+    config: dict
+    config_sources: dict
+
+
+class ConfigUpdateResponse(BaseModel):
+    """Response model for configuration update."""
+
+    status: str
+    message: str
+    updated_keys: List[str] = Field(default_factory=list)
+
+
+class ConfigBackupsResponse(BaseModel):
+    """Response model for configuration backups list."""
+
+    status: str
+    backups: List[dict]
+    count: int
+
+
+class RestoreBackupResponse(BaseModel):
+    """Response model for backup restoration."""
+
+    status: str
+    message: str
+    restored_file: str

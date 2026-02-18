@@ -48,3 +48,61 @@ class UpdateLimitRequest(BaseModel):
     max_tokens_per_minute: int | None = Field(
         None, description="Max tokenów na minutę (dla rate)", gt=0
     )
+
+
+class CostModeRequest(BaseModel):
+    """Request do zmiany trybu kosztowego."""
+
+    enable: bool
+
+
+class CostModeResponse(BaseModel):
+    """Response z informacją o trybie kosztowym."""
+
+    enabled: bool
+    provider: str
+
+
+class CostModeSetResponse(BaseModel):
+    """Response for setting cost mode."""
+
+    status: str
+    message: str
+    enabled: bool
+
+
+class AutonomyLevelRequest(BaseModel):
+    """Request do zmiany poziomu autonomii."""
+
+    level: int
+
+
+class AutonomyLevelResponse(BaseModel):
+    """Response z informacją o poziomie autonomii."""
+
+    current_level: int
+    current_level_name: str
+    color: str
+    color_name: str
+    description: str
+    permissions: dict
+    risk_level: str
+
+
+class AutonomyLevelSetResponse(BaseModel):
+    """Response for setting autonomy level."""
+
+    status: str
+    message: str
+    level: int
+    level_name: str
+    color: str
+    permissions: dict
+
+
+class AutonomyLevelsResponse(BaseModel):
+    """Response for all autonomy levels."""
+
+    status: str
+    levels: list[dict[str, Any]]
+    count: int

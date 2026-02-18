@@ -160,11 +160,11 @@ async def test_get_feedback_logs_limits_and_invalid_lines(tmp_path, monkeypatch)
     assert exc.value.status_code == 400
 
     up_only = await feedback_routes.get_feedback_logs(limit=999, rating="up")
-    assert up_only["count"] == 1
-    assert up_only["items"][0]["rating"] == "up"
+    assert up_only.count == 1
+    assert up_only.items[0]["rating"] == "up"
 
     none = await feedback_routes.get_feedback_logs(limit=0)
-    assert "count" in none
+    assert hasattr(none, "count")
 
 
 @pytest.mark.asyncio

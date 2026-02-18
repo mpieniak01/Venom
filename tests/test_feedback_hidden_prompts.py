@@ -87,8 +87,8 @@ async def test_feedback_logs_filtering(tmp_path, monkeypatch):
     )
 
     data = await feedback_routes.get_feedback_logs(limit=10, rating="up")
-    assert data["count"] == 1
-    assert data["items"][0]["rating"] == "up"
+    assert data.count == 1
+    assert data.items[0]["rating"] == "up"
 
 
 def test_hidden_prompts_aggregation_dedup(tmp_path, monkeypatch):

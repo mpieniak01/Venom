@@ -133,6 +133,29 @@ def _extra_manifests(settings: object) -> list[ApiModuleManifest]:
     return manifests
 
 
+def validate_optional_modules_config(settings: object = SETTINGS) -> list[str]:
+    raw = str(getattr(settings, "API_OPTIONAL_MODULES", "") or "").strip()
+    if not raw:
+        return []
+    errors: list[str] = []
+    for raw_item in raw.split(","):
+        item = raw_item.strip()
+        if not item:
+            continue
+        parts = [part.strip() for part in item.split("|")]
+        if len(parts) < 2:
+            errors.append(
+                "invalid optional module entry (expected: module_id|module.path:router[|FEATURE|API|CORE]): "
+                + item
+            )
+            continue
+        if ":" not in parts[1]:
+            errors.append(
+                "invalid router import (expected module.path:router): " + parts[1]
+            )
+    return errors
+
+
 def iter_api_module_manifests(
     settings: object = SETTINGS,
 ) -> Iterable[ApiModuleManifest]:
@@ -143,6 +166,9 @@ def iter_api_module_manifests(
 def include_optional_api_routers(
     app: FastAPI, settings: object = SETTINGS
 ) -> list[str]:
+    for error in validate_optional_modules_config(settings):
+        logger.warning("Optional module config warning: %s", error)
+
     included: list[str] = []
     for manifest in iter_api_module_manifests(settings):
         if not _is_enabled(manifest, settings):

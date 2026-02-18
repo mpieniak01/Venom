@@ -23,6 +23,18 @@ def test_include_optional_api_routers_respects_feature_flag():
     app = FastAPI()
     included = module_registry.include_optional_api_routers(app, _Settings())
     assert included == []
+    assert all("/api/v1/module-example" not in route.path for route in app.routes)
+
+
+def test_include_optional_api_routers_includes_builtin_when_feature_enabled():
+    settings = _Settings()
+    settings.FEATURE_MODULE_EXAMPLE = True
+    app = FastAPI()
+
+    included = module_registry.include_optional_api_routers(app, settings)
+
+    assert "module_example" in included
+    assert any("/api/v1/module-example" in route.path for route in app.routes)
 
 
 def test_include_optional_api_routers_loads_extra_manifest(monkeypatch):
@@ -102,3 +114,10 @@ def test_include_optional_api_routers_skips_when_core_too_old(monkeypatch):
     app = FastAPI()
     included = module_registry.include_optional_api_routers(app, settings)
     assert included == []
+
+
+def test_validate_optional_modules_config_returns_errors():
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = "broken_entry,no_colon|module.path"
+    errors = module_registry.validate_optional_modules_config(settings)
+    assert len(errors) == 2

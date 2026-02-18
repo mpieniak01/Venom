@@ -51,12 +51,8 @@ const OPTIONAL_MODULE_COMPONENTS: Record<string, ComponentType | null> = {
   "module_example": ModuleEntry_module_example
 };
 
-const OPTIONAL_MODULE_ENV_VALUES: Record<string, string> = {
-  "NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE": process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE ?? ""
-};
-
 function isEnvFlagEnabled(flagName: string): boolean {
-  const raw = OPTIONAL_MODULE_ENV_VALUES[flagName] ?? "";
+  const raw = process.env[flagName] ?? "";
   if (!raw) {
     return false;
   }

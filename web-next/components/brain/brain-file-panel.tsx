@@ -4,6 +4,8 @@ import { FileAnalysisForm, FileAnalysisPanel } from "@/components/brain/file-ana
 type BrainFilePanelProps = Readonly<{
   title: string;
   description: string;
+  infoLabel: string;
+  impactLabel: string;
   filePath: string;
   loading: boolean;
   message: string | null;
@@ -17,6 +19,8 @@ type BrainFilePanelProps = Readonly<{
 export function BrainFilePanel({
   title,
   description,
+  infoLabel,
+  impactLabel,
   filePath,
   loading,
   message,
@@ -38,8 +42,8 @@ export function BrainFilePanel({
           message={message}
         />
         <div className="grid gap-4 md:grid-cols-2">
-          <FileAnalysisPanel label="File info" payload={fileInfo} />
-          <FileAnalysisPanel label="Impact" payload={impactInfo} />
+          <FileAnalysisPanel label={infoLabel} payload={fileInfo} />
+          <FileAnalysisPanel label={impactLabel} payload={impactInfo} />
         </div>
       </div>
     </Panel>

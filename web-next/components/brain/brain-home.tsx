@@ -634,6 +634,8 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
           <BrainFilePanel
             title={t("brain.file.title")}
             description={t("brain.file.description")}
+            infoLabel={t("brain.file.info")}
+            impactLabel={t("brain.file.impact")}
             filePath={filePath}
             loading={fileLoading}
             message={fileMessage}

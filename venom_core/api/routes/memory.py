@@ -1,7 +1,8 @@
 """Moduł: routes/memory - Endpointy API dla pamięci wektorowej."""
 
 import inspect
-from collections import Counter, deque
+from collections import Counter
+from threading import Lock
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +14,7 @@ from venom_core.api.dependencies import (
     get_vector_store,
     is_testing_mode,
 )
+from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.schemas.memory import (
     CacheFlushResponse,
     GlobalMemoryClearResponse,
@@ -59,6 +61,7 @@ _vector_store = None
 _state_manager = None
 _lessons_store = None
 _memory_graph_view_counters: Counter[str] = Counter()
+_memory_graph_view_counters_lock = Lock()
 
 
 def set_dependencies(
@@ -224,104 +227,14 @@ def _build_memory_graph_filters(
     return filters
 
 
-def _node_id(node: dict[str, Any]) -> str:
-    return str(node.get("data", {}).get("id", ""))
+def _increment_memory_view_counter(view: str) -> None:
+    with _memory_graph_view_counters_lock:
+        _memory_graph_view_counters[view] += 1
 
 
-def _edge_nodes(edge: dict[str, Any]) -> tuple[str, str]:
-    data = edge.get("data", {})
-    return str(data.get("source", "")), str(data.get("target", ""))
-
-
-def _focus_node_ids(
-    edges: list[dict[str, Any]], seed_id: str, max_hops: int
-) -> set[str]:
-    adjacency: dict[str, set[str]] = {}
-    for edge in edges:
-        source, target = _edge_nodes(edge)
-        if not source or not target:
-            continue
-        adjacency.setdefault(source, set()).add(target)
-        adjacency.setdefault(target, set()).add(source)
-    visited: set[str] = {seed_id}
-    queue: deque[tuple[str, int]] = deque([(seed_id, 0)])
-    while queue:
-        node_id, hops = queue.popleft()
-        if hops >= max_hops:
-            continue
-        for neighbour in adjacency.get(node_id, set()):
-            if neighbour in visited:
-                continue
-            visited.add(neighbour)
-            queue.append((neighbour, hops + 1))
-    return visited
-
-
-def _remove_isolates(
-    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    connected: set[str] = set()
-    for edge in edges:
-        source, target = _edge_nodes(edge)
-        if source:
-            connected.add(source)
-        if target:
-            connected.add(target)
-    filtered_nodes = [node for node in nodes if _node_id(node) in connected]
-    allowed = {_node_id(node) for node in filtered_nodes}
-    filtered_edges = [
-        edge
-        for edge in edges
-        if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
-    ]
-    return filtered_nodes, filtered_edges
-
-
-def _apply_memory_view(
-    *,
-    nodes: list[dict[str, Any]],
-    edges: list[dict[str, Any]],
-    view: str,
-    seed_id: str | None,
-    max_hops: int,
-    include_isolates: bool,
-    limit_nodes: int | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    current_nodes = list(nodes)
-    current_edges = list(edges)
-
-    if view == "overview":
-        cap = limit_nodes if limit_nodes is not None else min(len(current_nodes), 200)
-        current_nodes = current_nodes[:cap]
-        allowed = {_node_id(node) for node in current_nodes}
-        current_edges = [
-            edge
-            for edge in current_edges
-            if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
-        ]
-    elif view == "focus" and current_nodes:
-        resolved_seed = seed_id or _node_id(current_nodes[0])
-        focus_ids = _focus_node_ids(current_edges, resolved_seed, max_hops)
-        current_nodes = [node for node in current_nodes if _node_id(node) in focus_ids]
-        allowed = {_node_id(node) for node in current_nodes}
-        current_edges = [
-            edge
-            for edge in current_edges
-            if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
-        ]
-        if limit_nodes is not None and limit_nodes > 0:
-            current_nodes = current_nodes[:limit_nodes]
-            allowed = {_node_id(node) for node in current_nodes}
-            current_edges = [
-                edge
-                for edge in current_edges
-                if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
-            ]
-
-    if not include_isolates:
-        current_nodes, current_edges = _remove_isolates(current_nodes, current_edges)
-
-    return current_nodes, current_edges
+def _memory_view_counter_snapshot() -> dict[str, int]:
+    with _memory_graph_view_counters_lock:
+        return dict(_memory_graph_view_counters)
 
 
 def _entry_id(entry: dict[str, Any], meta: dict[str, Any]) -> str:
@@ -824,7 +737,7 @@ def memory_graph(
 
     source_nodes = len(all_nodes)
     source_edges = len(all_edges)
-    view_nodes, view_edges = _apply_memory_view(
+    view_nodes, view_edges = apply_graph_view(
         nodes=all_nodes,
         edges=all_edges,
         view=view,
@@ -833,7 +746,7 @@ def memory_graph(
         include_isolates=include_isolates,
         limit_nodes=limit_nodes,
     )
-    _memory_graph_view_counters[view] += 1
+    _increment_memory_view_counter(view)
 
     return {
         "status": "success",
@@ -847,7 +760,7 @@ def memory_graph(
             "view": view,
             "max_hops": max_hops,
             "seed_id": seed_id,
-            "view_requests": dict(_memory_graph_view_counters),
+            "view_requests": _memory_view_counter_snapshot(),
         },
     }
 

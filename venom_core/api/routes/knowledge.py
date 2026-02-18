@@ -1,8 +1,9 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
-from collections import Counter, deque
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
+from threading import Lock
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +14,7 @@ from venom_core.api.dependencies import (
     get_session_store,
     get_vector_store,
 )
+from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.schemas.knowledge import LearningToggleRequest
 from venom_core.config import SETTINGS
 from venom_core.core.knowledge_adapters import (
@@ -61,6 +63,7 @@ NODE_TYPE_CLASS = "class"
 NODE_TYPE_FUNCTION = "function"
 NODE_TYPE_METHOD = "method"
 _graph_view_counters: Counter[str] = Counter()
+_graph_view_counters_lock = Lock()
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -140,110 +143,14 @@ def _build_graph_edges(
     return edges
 
 
-def _node_id(node: dict[str, Any]) -> str:
-    return str(node.get("data", {}).get("id", ""))
-
-
-def _edge_nodes(edge: dict[str, Any]) -> tuple[str, str]:
-    data = edge.get("data", {})
-    return str(data.get("source", "")), str(data.get("target", ""))
-
-
-def _with_non_isolated(
-    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    if not nodes:
-        return nodes, edges
-    connected: set[str] = set()
-    for edge in edges:
-        source, target = _edge_nodes(edge)
-        if source:
-            connected.add(source)
-        if target:
-            connected.add(target)
-    filtered_nodes = [node for node in nodes if _node_id(node) in connected]
-    allowed = {_node_id(node) for node in filtered_nodes}
-    filtered_edges = [
-        edge
-        for edge in edges
-        if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
-    ]
-    return filtered_nodes, filtered_edges
-
-
-def _focus_node_ids(
-    edges: list[dict[str, Any]], seed_id: str, max_hops: int
-) -> set[str]:
-    adjacency: dict[str, set[str]] = {}
-    for edge in edges:
-        source, target = _edge_nodes(edge)
-        if not source or not target:
-            continue
-        adjacency.setdefault(source, set()).add(target)
-        adjacency.setdefault(target, set()).add(source)
-    visited: set[str] = {seed_id}
-    queue: deque[tuple[str, int]] = deque([(seed_id, 0)])
-    while queue:
-        node_id, hops = queue.popleft()
-        if hops >= max_hops:
-            continue
-        for neighbour in adjacency.get(node_id, set()):
-            if neighbour in visited:
-                continue
-            visited.add(neighbour)
-            queue.append((neighbour, hops + 1))
-    return visited
-
-
-def _apply_graph_view(
-    *,
-    nodes: list[dict[str, Any]],
-    edges: list[dict[str, Any]],
-    view: str,
-    seed_id: str | None,
-    max_hops: int,
-    include_isolates: bool,
-    limit_nodes: int | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    current_nodes = list(nodes)
-    current_edges = list(edges)
-
-    if view == "overview":
-        cap = limit_nodes if limit_nodes is not None else min(len(current_nodes), 200)
-        current_nodes = current_nodes[:cap]
-        allowed = {_node_id(node) for node in current_nodes}
-        current_edges = [
-            edge
-            for edge in current_edges
-            if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
-        ]
-    elif view == "focus" and current_nodes:
-        resolved_seed = seed_id or _node_id(current_nodes[0])
-        focus_ids = _focus_node_ids(current_edges, resolved_seed, max_hops)
-        current_nodes = [node for node in current_nodes if _node_id(node) in focus_ids]
-        allowed = {_node_id(node) for node in current_nodes}
-        current_edges = [
-            edge
-            for edge in current_edges
-            if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
-        ]
-        if limit_nodes is not None and limit_nodes > 0:
-            current_nodes = current_nodes[:limit_nodes]
-            allowed = {_node_id(node) for node in current_nodes}
-            current_edges = [
-                edge
-                for edge in current_edges
-                if _edge_nodes(edge)[0] in allowed and _edge_nodes(edge)[1] in allowed
-            ]
-
-    if not include_isolates:
-        current_nodes, current_edges = _with_non_isolated(current_nodes, current_edges)
-
-    return current_nodes, current_edges
-
-
 def _increment_graph_view_counter(view: str) -> None:
-    _graph_view_counters[view] += 1
+    with _graph_view_counters_lock:
+        _graph_view_counters[view] += 1
+
+
+def _graph_view_counter_snapshot() -> dict[str, int]:
+    with _graph_view_counters_lock:
+        return dict(_graph_view_counters)
 
 
 def set_dependencies(graph_store=None, lessons_store=None):
@@ -335,7 +242,7 @@ def get_knowledge_graph(
         allowed_ids = {n["data"]["id"] for n in nodes}
         edges = _build_graph_edges(graph_store, allowed_ids)
 
-        view_nodes, view_edges = _apply_graph_view(
+        view_nodes, view_edges = apply_graph_view(
             nodes=nodes,
             edges=edges,
             view=view,
@@ -358,7 +265,7 @@ def get_knowledge_graph(
                 "view": view,
                 "max_hops": max_hops,
                 "seed_id": seed_id,
-                "view_requests": dict(_graph_view_counters),
+                "view_requests": _graph_view_counter_snapshot(),
             },
         }
 
@@ -524,7 +431,7 @@ def _get_mock_knowledge_graph(
         for e in all_edges
         if e["data"]["source"] in allowed_ids and e["data"]["target"] in allowed_ids
     ]
-    view_nodes, view_edges = _apply_graph_view(
+    view_nodes, view_edges = apply_graph_view(
         nodes=nodes,
         edges=edges,
         view=view,
@@ -548,7 +455,7 @@ def _get_mock_knowledge_graph(
             "view": view,
             "max_hops": max_hops,
             "seed_id": seed_id,
-            "view_requests": dict(_graph_view_counters),
+            "view_requests": _graph_view_counter_snapshot(),
         },
     }
 

@@ -1,5 +1,7 @@
 # Provider Governance - Rules and Decision Table
 
+> **Architecture Decision**: Provider governance is part of the routing strategy defined in [ADR-001: Runtime Strategy](adr/ADR-001-runtime-strategy-llm-first.md). This document describes the operational governance rules and decision tables.
+
 ## Overview
 This document describes the governance rules, triggers, actions, and reason codes for the Provider Governance system implemented in issue #142.
 

@@ -329,10 +329,12 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
   }, [graphLoading, mergedGraph]);
 
   useEffect(() => {
+    let cancelled = false;
     let cy: cytoscapeType.Core | null = null;
     const setup = async () => {
-      if (!cyRef.current || !mergedGraph?.elements) return;
+      if (cancelled || !cyRef.current || !mergedGraph?.elements) return;
       const cytoscape = (await import("cytoscape")).default;
+      if (cancelled || !cyRef.current) return;
       let resolvedLayoutName = layoutName;
       const hasPresetPositions = (
         mergedGraph.elements.nodes as Array<{ position?: { x?: number; y?: number } }>
@@ -352,6 +354,12 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
           pushToast(t("brain.toasts.layoutColaUnavailable"), "warning");
           colaWarningShownRef.current = true;
         }
+      }
+
+      // Destroy previous instance before creating a new graph to avoid stale renderer state.
+      if (cyInstanceRef.current) {
+        cyInstanceRef.current.destroy();
+        cyInstanceRef.current = null;
       }
 
       cy = cytoscape({
@@ -401,6 +409,12 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
             : { name: "preset", fit: true, padding: 30 },
       });
 
+      if (cancelled) {
+        cy.destroy();
+        cy = null;
+        return;
+      }
+
       cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
         const node = evt.target;
         const nodeData = node.data();
@@ -415,16 +429,22 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
         setRelations(mapRelationsForNode(node));
       });
 
-      cy.on("tap", (evt) => {
+      cy.on("tap", (evt: cytoscapeType.EventObject) => {
         if (evt.target === cy) handleClearSelection();
       });
 
       cyInstanceRef.current = cy;
     };
 
-    setup();
+    void setup();
     return () => {
-      if (cy) cy.destroy();
+      cancelled = true;
+      if (cy) {
+        cy.destroy();
+      }
+      if (cyInstanceRef.current === cy) {
+        cyInstanceRef.current = null;
+      }
     };
   }, [mergedGraph, handleClearSelection, showEdgeLabels, layoutName, colorFromTopic, mapRelationsForNode, pushToast, t]);
 

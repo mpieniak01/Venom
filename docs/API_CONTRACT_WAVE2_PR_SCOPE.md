@@ -8,7 +8,7 @@
 1. #360 - Centralize API schemas and unify DI pattern across route handlers
 2. #362 - API map dynamic contract and UI fixes
 3. #375 - Close API contract stream: centralize schemas, explicit response models, BE/FE type alignment
-4. #376 - Domkniecie zakresu 154-158 + poprawki Sonar
+4. #376 - Close scope 154-158 + Sonar fixes
 
 Current state after these PRs:
 1. `GET /api/v1/system/api-map` has explicit contract.

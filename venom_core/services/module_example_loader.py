@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib
-from datetime import datetime
+from datetime import UTC, datetime
 from threading import Lock
 from typing import Protocol
 from uuid import uuid4
@@ -151,7 +151,7 @@ class StubModuleExampleProvider:
     ) -> PublishQueueItem:
         if draft_id not in self._drafts:
             raise ValueError(f"Unknown draft: {draft_id}")
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         item = PublishQueueItem(
             id=f"q-{uuid4().hex[:10]}",
             draft_id=draft_id,
@@ -187,7 +187,7 @@ class StubModuleExampleProvider:
         if not confirm_publish:
             raise ValueError("confirm_publish=true is required")
         item.status = "published"
-        item.updated_at = datetime.utcnow()
+        item.updated_at = datetime.now(UTC)
         self._audit.append(
             ModuleExampleAuditEntry(
                 id=f"a-{uuid4().hex[:10]}",

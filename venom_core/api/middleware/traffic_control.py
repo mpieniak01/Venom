@@ -61,9 +61,7 @@ class TrafficControlMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.traffic_controller = get_traffic_controller()
 
-    async def dispatch(
-        self, request: Request, call_next: Callable
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
         Przetwarzanie requestu z traffic control.
 
@@ -80,10 +78,16 @@ class TrafficControlMiddleware(BaseHTTPMiddleware):
 
         # Określ grupę endpointów
         endpoint_group = _get_endpoint_group(request.url.path)
+        actor = request.headers.get("X-Actor") or request.headers.get("X-User-Id")
+        session_id = request.headers.get("X-Session-Id")
+        client_ip = request.client.host if request.client else None
 
         # Check traffic control
         allowed, reason, wait_seconds = self.traffic_controller.check_inbound_request(
-            endpoint_group
+            endpoint_group,
+            actor=actor,
+            session_id=session_id,
+            client_ip=client_ip,
         )
 
         if not allowed:

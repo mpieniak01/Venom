@@ -1,3 +1,21 @@
+## Current platform structure (v1.5+)
+
+```text
+~/venom
+├── venom_core/                  # backend core platform
+│   ├── api/routes/              # REST API endpoints
+│   ├── core/flows/              # business flows and orchestration
+│   ├── agents/                  # specialized AI agents
+│   ├── execution/               # execution layer and model routing
+│   ├── perception/              # perception (desktop_sensor, audio)
+│   ├── memory/                  # long-term memory (vectors, graph, workflows)
+│   └── infrastructure/          # hardware, cloud, broker integrations
+├── web-next/                    # Next.js frontend
+└── modules/                     # optional module workspace (separate module repos)
+```
+
+Reference detailed tree (legacy extended view):
+
 ~/venom                          # Venom project ROOT (repo)
 ├── .venv/                       # Python virtual environment
 ├── .env                         # configuration / secrets (outside Git)

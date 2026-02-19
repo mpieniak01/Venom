@@ -101,14 +101,17 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 ## Architecture
 ### Project structure
 ```text
-venom_core/
-├── api/routes/          # REST API endpoints (agents, tasks, memory, nodes)
-├── core/flows/          # Business flows and orchestration
-├── agents/              # Specialized AI agents
-├── execution/           # Execution layer and model routing
-├── perception/          # Perception (desktop_sensor, audio)
-├── memory/              # Long-term memory (vectors, graph, workflows)
-└── infrastructure/      # Infrastructure (hardware, cloud, message broker)
+venom/
+├── venom_core/
+│   ├── api/routes/          # REST API endpoints (agents, tasks, memory, nodes)
+│   ├── core/flows/          # Business flows and orchestration
+│   ├── agents/              # Specialized AI agents
+│   ├── execution/           # Execution layer and model routing
+│   ├── perception/          # Perception (desktop_sensor, audio)
+│   ├── memory/              # Long-term memory (vectors, graph, workflows)
+│   └── infrastructure/      # Infrastructure (hardware, cloud, message broker)
+├── web-next/                # Dashboard frontend (Next.js)
+└── modules/                 # Optional modules workspace (separate module repos)
 ```
 
 ### Main components

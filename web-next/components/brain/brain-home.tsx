@@ -138,6 +138,20 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
   const colaWarningShownRef = useRef(false);
 
+  const safelyDestroyCy = useCallback((instance: cytoscapeType.Core | null) => {
+    if (!instance) return;
+    try {
+      instance.stop();
+      instance.elements().stop();
+      instance.removeAllListeners();
+      if (!instance.destroyed()) {
+        instance.destroy();
+      }
+    } catch {
+      // Best-effort cleanup to avoid runtime crashes on stale animation frames.
+    }
+  }, []);
+
   const renderedNodes = mergedGraph?.elements?.nodes?.length ?? 0;
   const renderedEdges = mergedGraph?.elements?.edges?.length ?? 0;
   const summaryNodes = mergedGraph?.stats?.nodes ?? summary?.nodes ?? "—";
@@ -218,7 +232,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     setSelected(null);
     setRelations([]);
     setDetailsSheetOpen(false);
-    if (cyInstanceRef.current) {
+    if (cyInstanceRef.current && !cyInstanceRef.current.destroyed()) {
       cyInstanceRef.current.nodes().removeClass("highlighted neighbour faded");
     }
   }, []);
@@ -357,10 +371,8 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       }
 
       // Destroy previous instance before creating a new graph to avoid stale renderer state.
-      if (cyInstanceRef.current) {
-        cyInstanceRef.current.destroy();
-        cyInstanceRef.current = null;
-      }
+      safelyDestroyCy(cyInstanceRef.current);
+      cyInstanceRef.current = null;
 
       cy = cytoscape({
         container: cyRef.current,
@@ -400,7 +412,8 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
           resolvedLayoutName === "cose"
             ? {
                 name: "cose",
-                animate: true,
+                // Animated layout can race with teardown on fast re-render/unmount.
+                animate: false,
                 fit: true,
                 padding: 30,
                 nodeRepulsion: 7000,
@@ -410,12 +423,13 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       });
 
       if (cancelled) {
-        cy.destroy();
+        safelyDestroyCy(cy);
         cy = null;
         return;
       }
 
       cy.on("tap", "node", (evt: cytoscapeType.EventObject) => {
+        if (!cy || cy.destroyed()) return;
         const node = evt.target;
         const nodeData = node.data();
         const nodeId = String(nodeData.id || "");
@@ -430,6 +444,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       });
 
       cy.on("tap", (evt: cytoscapeType.EventObject) => {
+        if (!cy || cy.destroyed()) return;
         if (evt.target === cy) handleClearSelection();
       });
 
@@ -439,14 +454,12 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
     void setup();
     return () => {
       cancelled = true;
-      if (cy) {
-        cy.destroy();
-      }
+      safelyDestroyCy(cy);
       if (cyInstanceRef.current === cy) {
         cyInstanceRef.current = null;
       }
     };
-  }, [mergedGraph, handleClearSelection, showEdgeLabels, layoutName, colorFromTopic, mapRelationsForNode, pushToast, t]);
+  }, [mergedGraph, handleClearSelection, showEdgeLabels, layoutName, colorFromTopic, mapRelationsForNode, pushToast, t, safelyDestroyCy]);
 
   const modeLabels: Record<BrainGraphViewMode, string> = {
     overview: t("brain.viewMode.overview"),

@@ -39,6 +39,7 @@ W praktyce Venom działa jako warstwa decyzyjno-wykonawcza dla zespołów techni
 - Wdrożono kontrakt runtime profiles/onboarding (`light/llm_off/full`) i utrwalono launcher `venom.sh` (PL/EN/DE, tryb headless).
 - Zaakceptowano ADR-001 i wdrożono soft e2e kontrakt `RoutingDecision` (governance + policy + observability).
 - Domknięto API Contract Wave-1: jawne `response_model` dla `system/api-map`, schematy memory response, synchronizacja OpenAPI/codegen oraz falowy DI cleanup.
+- Dodano platformę modułów opcjonalnych: własne moduły można rejestrować i włączać przez env-driven module registry.
 
 ## Dokumentacja
 ### Start i operacje

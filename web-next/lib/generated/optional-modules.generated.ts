@@ -51,8 +51,11 @@ const OPTIONAL_MODULE_COMPONENTS: Record<string, ComponentType | null> = {
   "module_example": ModuleEntry_module_example
 };
 
-function isEnvFlagEnabled(flagName: string): boolean {
-  const raw = process.env[flagName] ?? "";
+const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
+  "module_example": () => process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE ?? ""
+};
+
+function isFlagEnabled(raw: string): boolean {
   if (!raw) {
     return false;
   }
@@ -69,7 +72,8 @@ export function getEnabledOptionalModuleNavItems(): OptionalModuleNavItem[] {
     if (!moduleItem.featureFlagEnv) {
       return true;
     }
-    return isEnvFlagEnabled(moduleItem.featureFlagEnv);
+    const raw = OPTIONAL_MODULE_FLAG_GETTERS[moduleItem.moduleId]?.() ?? "";
+    return isFlagEnabled(raw);
   }).map((moduleItem) => ({
     href: moduleItem.routePath,
     label: moduleItem.navLabel,

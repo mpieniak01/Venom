@@ -45,6 +45,7 @@ from venom_core.api.routes import system_services as system_services_routes
 from venom_core.api.routes import system_status as system_status_routes
 from venom_core.api.routes import system_storage as system_storage_routes
 from venom_core.api.routes import tasks as tasks_routes
+from venom_core.api.routes import traffic_control as traffic_control_routes
 from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.api.routes import workflow_operations as workflow_operations_routes
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
@@ -1000,6 +1001,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Venom Core", version="1.5.0", lifespan=lifespan)
 
+# Traffic Control Middleware (must be added before CORS for proper ordering)
+from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
+app.add_middleware(TrafficControlMiddleware)
+
 # CORS dla lokalnego UI (bezpośredni dostęp do API, bez proxy Next).
 app.add_middleware(
     CORSMiddleware,
@@ -1181,6 +1186,7 @@ app.include_router(workflow_control_routes.router)
 app.include_router(workflow_operations_routes.router)
 app.include_router(benchmark_routes.router)
 app.include_router(calendar_routes.router)
+app.include_router(traffic_control_routes.router)
 include_optional_api_routers(app, SETTINGS)
 
 

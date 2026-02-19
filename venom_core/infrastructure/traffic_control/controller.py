@@ -300,10 +300,9 @@ _traffic_controller: Optional[TrafficController] = None
 _tc_lock = threading.Lock()
 
 
-@lru_cache(maxsize=1)
 def get_traffic_controller() -> TrafficController:
     """
-    Zwraca singleton instance TrafficController.
+    Zwraca singleton instance TrafficController (thread-safe).
 
     Returns:
         TrafficController instance

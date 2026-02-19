@@ -215,6 +215,16 @@ PlatformSkill automatycznie obsługuje błędy rate limit, ale:
 - Nie implementuj agresywnego pollingu (< 1 minuta)
 - Monitoruj pozostałe requesty: `Github.get_rate_limit()`
 
+## Globalna kontrola ruchu API (core)
+
+Venom core wymusza dodatkową globalną warstwę ochrony ruchu API:
+- kontrolę outbound (scope provider + metoda),
+- kontrolę inbound (grupy endpointów + actor/session/IP),
+- spójne zachowanie `429`/`Retry-After`,
+- zabezpieczenia anti-loop (globalny cap requestów + tryb degraded).
+
+Zobacz: [`docs/PL/API_TRAFFIC_CONTROL.md`](API_TRAFFIC_CONTROL.md)
+
 ## Testowanie
 
 ### Testy manualne

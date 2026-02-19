@@ -46,6 +46,7 @@ W praktyce Venom działa jako warstwa decyzyjno-wykonawcza dla zespołów techni
 - [Deployment + uruchamianie](docs/PL/DEPLOYMENT_NEXT.md) - Kroki startu środowiska dev/prod oraz wymagania runtime.
 - [Panel konfiguracji](docs/PL/CONFIG_PANEL.md) - Zakres ustawień dostępnych w UI i zasady bezpiecznej edycji.
 - [Frontend Next.js](docs/PL/FRONTEND_NEXT_GUIDE.md) - Struktura aplikacji `web-next`, widoki i standardy implementacyjne.
+- [Kontrola ruchu API](docs/PL/API_TRAFFIC_CONTROL.md) - Globalny model anti-spam/anti-ban dla ruchu inbound i outbound.
 
 ### Architektura
 - [Wizja systemu](docs/PL/VENOM_MASTER_VISION_V1.md) - Docelowy kierunek rozwoju platformy i główne założenia produktowe.

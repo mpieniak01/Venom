@@ -46,6 +46,7 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 - [Deployment + startup](docs/DEPLOYMENT_NEXT.md) - Development/production startup flow and runtime requirements.
 - [Configuration panel](docs/CONFIG_PANEL.md) - What can be edited from UI and safe editing rules.
 - [Frontend Next.js](docs/FRONTEND_NEXT_GUIDE.md) - `web-next` structure, views, and implementation standards.
+- [API traffic control](docs/API_TRAFFIC_CONTROL.md) - Global anti-spam/anti-ban model for inbound and outbound API traffic.
 
 ### Architecture
 - [System vision](docs/VENOM_MASTER_VISION_V1.md) - Target platform direction and product assumptions.

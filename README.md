@@ -56,6 +56,7 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 ### Agents and capabilities
 - [System agents catalog](docs/SYSTEM_AGENTS_CATALOG.md) - Agent roles, inputs/outputs, and runtime cooperation.
 - [The Academy](docs/THE_ACADEMY.md) - Learning, tuning, and training data operationalization.
+- [Optional Module Guide](docs/MODULES_OPTIONAL_REGISTRY.md) - How to author, register, and enable optional modules for Venom core.
 - [Memory layer](docs/MEMORY_LAYER_GUIDE.md) - Vector/graph memory organization and retrieval rules.
 - [External integrations](docs/EXTERNAL_INTEGRATIONS.md) - GitHub/Slack and other integration setup.
 

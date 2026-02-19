@@ -61,6 +61,7 @@ W praktyce Venom działa jako warstwa decyzyjno-wykonawcza dla zespołów techni
 
 ### Jakość i współpraca
 - [Wytyczne dla coding-agentów](docs/PL/AGENTS.md) - Obowiązkowe zasady pracy agentów i wymagane bramki jakości.
+- [Przewodnik modułów opcjonalnych](docs/PL/MODULES_OPTIONAL_REGISTRY.md) - Jak tworzyć, rejestrować i włączać zewnętrzne moduły Venom.
 - [Contributing](docs/PL/CONTRIBUTING.md) - Proces współpracy, standard zmian i oczekiwania do PR.
 - [Polityka testów](docs/PL/TESTING_POLICY.md) - Zakres testów, komendy walidacyjne i wymagania jakościowe.
 - [QA Delivery Guide](docs/PL/QA_DELIVERY_GUIDE.md) - Checklista dostarczenia zmian od walidacji do gotowości release.

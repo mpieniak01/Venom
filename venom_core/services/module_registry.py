@@ -80,16 +80,41 @@ def _parse_version(value: str) -> tuple[int, ...]:
     return tuple(tokens)
 
 
+def _normalize_api_version(value: str) -> tuple[int, ...]:
+    parsed = _parse_version(value)
+    if not parsed:
+        return tuple()
+    normalized = list(parsed)
+    while len(normalized) > 1 and normalized[-1] == 0:
+        normalized.pop()
+    return tuple(normalized)
+
+
 def _is_compatible(manifest: ApiModuleManifest, settings: object) -> bool:
-    core_api = str(getattr(settings, "CORE_MODULE_API_VERSION", "1") or "1").strip()
-    if manifest.module_api_version and manifest.module_api_version != core_api:
-        logger.warning(
-            "Skipping module %s: module_api_version=%s, core_api_version=%s",
-            manifest.module_id,
-            manifest.module_api_version,
-            core_api,
-        )
-        return False
+    core_api = str(
+        getattr(settings, "CORE_MODULE_API_VERSION", "1.0.0") or "1.0.0"
+    ).strip()
+    if manifest.module_api_version:
+        module_api = str(manifest.module_api_version).strip()
+        core_norm = _normalize_api_version(core_api)
+        module_norm = _normalize_api_version(module_api)
+        if core_norm and module_norm:
+            if module_norm != core_norm:
+                logger.warning(
+                    "Skipping module %s: module_api_version=%s, core_api_version=%s",
+                    manifest.module_id,
+                    manifest.module_api_version,
+                    core_api,
+                )
+                return False
+        elif module_api != core_api:
+            logger.warning(
+                "Skipping module %s: module_api_version=%s, core_api_version=%s",
+                manifest.module_id,
+                manifest.module_api_version,
+                core_api,
+            )
+            return False
 
     if manifest.min_core_version:
         core_runtime = str(

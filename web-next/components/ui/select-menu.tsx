@@ -119,7 +119,7 @@ export function SelectMenu({
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         className={cn(
-          "flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs uppercase tracking-wider text-white transition hover:border-white/40 hover:bg-white/5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+          "flex min-w-0 items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs uppercase tracking-wider text-white transition hover:border-white/40 hover:bg-white/5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
           buttonClassName,
         )}
         aria-haspopup="listbox"
@@ -132,7 +132,7 @@ export function SelectMenu({
         {renderButton ? (
           renderButton(currentOption)
         ) : (
-          <span className="flex-1 text-left">
+          <span className="min-w-0 flex-1 truncate text-left">
             {currentOption?.label ?? placeholder}
           </span>
         )}

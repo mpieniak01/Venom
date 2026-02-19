@@ -3,8 +3,6 @@
 import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Settings } from "lucide-react";
-import ModuleEntry_brand_studio from "../../../modules/venom-module-brand-studio/web-next/page";
-import ModuleEntry_module_example from "../../../modules/venom-module-example/web-next/page";
 
 export type OptionalModuleManifest = {
   schemaVersion: number;
@@ -61,9 +59,9 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
   }
 ];
 
-const OPTIONAL_MODULE_COMPONENTS: Record<string, ComponentType | null> = {
-  "brand_studio": ModuleEntry_brand_studio,
-  "module_example": ModuleEntry_module_example
+const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<string, () => Promise<ComponentType | null>> = {
+  "brand_studio": async () => (await import("../../../modules/venom-module-brand-studio/web-next/page")).default ?? null,
+  "module_example": async () => (await import("../../../modules/venom-module-example/web-next/page")).default ?? null
 };
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
@@ -109,6 +107,10 @@ export function resolveOptionalModuleBySlug(slug: string): OptionalModuleManifes
   return null;
 }
 
-export function getOptionalModuleComponent(moduleId: string): ComponentType | null {
-  return OPTIONAL_MODULE_COMPONENTS[moduleId] ?? null;
+export async function getOptionalModuleComponent(moduleId: string): Promise<ComponentType | null> {
+  const loader = OPTIONAL_MODULE_COMPONENT_LOADERS[moduleId];
+  if (!loader) {
+    return null;
+  }
+  return loader();
 }

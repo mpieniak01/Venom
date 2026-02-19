@@ -34,7 +34,7 @@ export default async function OptionalModulePage({ params }: Readonly<OptionalMo
     notFound();
   }
 
-  const ModuleComponent = getOptionalModuleComponent(manifest.moduleId);
+  const ModuleComponent = await getOptionalModuleComponent(manifest.moduleId);
   if (ModuleComponent) {
     return <ModuleComponent />;
   }

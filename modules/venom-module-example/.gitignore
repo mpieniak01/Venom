@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local env
+.venv/
+.env
+.env.*
+
+# Node/Next (module-local frontend)
+node_modules/
+.next/
+out/
+.turbo/
+.eslintcache
+coverage/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs / pid
+*.log
+*.pid

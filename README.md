@@ -39,6 +39,7 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 - Runtime profiles/onboarding contract (`light/llm_off/full`) was implemented and stabilized in `venom.sh` launcher (PL/EN/DE + headless mode).
 - ADR-001 was accepted and `RoutingDecision` soft e2e contract was integrated (governance + policy + observability).
 - API Contract Wave-1 was completed: explicit `response_model` for `system/api-map`, memory response schemas, OpenAPI/codegen sync, and wave-based DI cleanup.
+- Added optional modules platform capability: custom modules can now be registered and enabled via environment-driven module registry.
 
 ## Documentation
 ### Start and operations

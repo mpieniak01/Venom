@@ -6,7 +6,7 @@
   "backend": {
     "router_import": "venom_module_example.api.routes:router",
     "feature_flag": "FEATURE_MODULE_EXAMPLE",
-    "module_api_version": 1,
+    "module_api_version": "1.0.0",
     "min_core_version": "1.5.0"
   },
   "frontend": {

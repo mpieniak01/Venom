@@ -11,7 +11,7 @@ from venom_core.services import module_registry
 class _Settings:
     FEATURE_MODULE_EXAMPLE = False
     API_OPTIONAL_MODULES = ""
-    CORE_MODULE_API_VERSION = "1"
+    CORE_MODULE_API_VERSION = "1.0.0"
     CORE_RUNTIME_VERSION = "1.5.0"
 
 
@@ -69,7 +69,7 @@ def test_include_optional_api_routers_includes_module_from_manifest_file(
                 "backend": {
                     "router_import": "x_module_example:router",
                     "feature_flag": "FEATURE_MODULE_EXAMPLE",
-                    "module_api_version": 1,
+                    "module_api_version": "1.0.0",
                     "min_core_version": "1.5.0",
                 },
             }
@@ -224,7 +224,7 @@ def test_include_optional_api_routers_loads_manifest_path(monkeypatch, tmp_path)
                 "module_id": "mod_manifest",
                 "backend": {
                     "router_import": "x_mod_manifest:router",
-                    "module_api_version": 1,
+                    "module_api_version": "1.0.0",
                     "min_core_version": "1.5.0",
                 },
             }

@@ -37,12 +37,6 @@ function normalizeNavLabels(value, fallbackLabel) {
   };
 }
 
-function toConstName(moduleId) {
-  const base = String(moduleId || "module").replace(/[^a-zA-Z0-9]/g, "_");
-  const normalized = base.replace(/^[0-9]/, "_$&");
-  return `ModuleEntry_${normalized}`;
-}
-
 function toSafeEnvAccessor(flagName) {
   const raw = String(flagName || "").trim();
   if (!raw) {
@@ -120,13 +114,7 @@ function renderFile(entries) {
     'import { Settings } from "lucide-react";',
   ];
 
-  const mappedEntries = entries.map((entry) => {
-    const constName = toConstName(entry.moduleId);
-    if (entry.componentImport) {
-      importLines.push(`import ${constName} from "${entry.componentImport}";`);
-    }
-    return { ...entry, constName };
-  });
+  const mappedEntries = entries.map((entry) => ({ ...entry }));
 
   const listBody = mappedEntries
     .map((entry) => {
@@ -147,10 +135,10 @@ function renderFile(entries) {
     })
     .join(",\n");
 
-  const componentMapBody = mappedEntries
+  const componentLoaderMapBody = mappedEntries
     .map((entry) => {
-      if (!entry.componentImport) return `  "${entry.moduleId}": null`;
-      return `  "${entry.moduleId}": ${entry.constName}`;
+      if (!entry.componentImport) return `  "${entry.moduleId}": async () => null`;
+      return `  "${entry.moduleId}": async () => (await import("${entry.componentImport}")).default ?? null`;
     })
     .join(",\n");
 
@@ -197,8 +185,8 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
 ${listBody}
 ];
 
-const OPTIONAL_MODULE_COMPONENTS: Record<string, ComponentType | null> = {
-${componentMapBody}
+const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<string, () => Promise<ComponentType | null>> = {
+${componentLoaderMapBody}
 };
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
@@ -243,8 +231,12 @@ export function resolveOptionalModuleBySlug(slug: string): OptionalModuleManifes
   return null;
 }
 
-export function getOptionalModuleComponent(moduleId: string): ComponentType | null {
-  return OPTIONAL_MODULE_COMPONENTS[moduleId] ?? null;
+export async function getOptionalModuleComponent(moduleId: string): Promise<ComponentType | null> {
+  const loader = OPTIONAL_MODULE_COMPONENT_LOADERS[moduleId];
+  if (!loader) {
+    return null;
+  }
+  return loader();
 }
 `;
 }

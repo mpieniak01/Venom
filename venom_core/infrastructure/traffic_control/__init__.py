@@ -18,6 +18,7 @@ from .config import (
     TrafficControlConfig,
 )
 from .controller import TrafficController, get_traffic_controller
+from .http_client import TrafficControlledHttpClient
 from .retry_policy import RetryPolicy, RetryResult
 from .token_bucket import TokenBucket
 
@@ -29,6 +30,7 @@ __all__ = [
     "RetryPolicy",
     "RetryResult",
     "TrafficController",
+    "TrafficControlledHttpClient",
     # Configuration
     "TokenBucketConfig",
     "CircuitBreakerConfig",

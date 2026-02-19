@@ -565,3 +565,21 @@ textarea:focus {
   background: rgba(0, 0, 0, 0.8);
   color: var(--primary);
 }
+
+/* Native selects: ensure readable option contrast across pages/modules */
+select {
+  color: #ffffff;
+  text-shadow: none;
+}
+
+select option,
+select optgroup {
+  color: #f8fafc;
+  background-color: #0b1220;
+}
+
+select option:checked,
+select option:hover {
+  color: #ffffff;
+  background-color: #334155;
+}

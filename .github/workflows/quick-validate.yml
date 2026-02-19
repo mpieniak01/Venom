@@ -3,8 +3,12 @@ name: Quick Validate
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "modules/**"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "modules/**"
   workflow_dispatch:
 
 permissions:

@@ -3,6 +3,7 @@
 import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Settings } from "lucide-react";
+import ModuleEntry_brand_studio from "../../../modules/venom-module-brand-studio/web-next/page";
 import ModuleEntry_module_example from "../../../modules/venom-module-example/web-next/page";
 
 export type OptionalModuleManifest = {
@@ -34,6 +35,19 @@ export type OptionalModuleNavItem = {
 const OPTIONAL_MODULES: OptionalModuleManifest[] = [
   {
     schemaVersion: 1,
+    moduleId: "brand_studio",
+    displayName: "Brand Studio",
+    routePath: "/brand-studio",
+    featureFlagEnv: "NEXT_PUBLIC_FEATURE_BRAND_STUDIO",
+    navLabel: "Brand Studio",
+    navLabels: {
+      pl: "Brand Studio",
+      en: "Brand Studio",
+      de: "Brand Studio",
+    },
+  },
+  {
+    schemaVersion: 1,
     moduleId: "module_example",
     displayName: "Module Example",
     routePath: "/module-example",
@@ -48,10 +62,12 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
 ];
 
 const OPTIONAL_MODULE_COMPONENTS: Record<string, ComponentType | null> = {
+  "brand_studio": ModuleEntry_brand_studio,
   "module_example": ModuleEntry_module_example
 };
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
+  "brand_studio": () => process.env.NEXT_PUBLIC_FEATURE_BRAND_STUDIO ?? "",
   "module_example": () => process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE ?? ""
 };
 

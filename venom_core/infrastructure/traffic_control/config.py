@@ -47,7 +47,9 @@ class RetryPolicyConfig(BaseModel):
     max_delay_seconds: float = Field(
         default=60.0, description="Maksymalne opóźnienie (sekundy)"
     )
-    exponential_base: float = Field(default=2.0, description="Baza dla exponential backoff")
+    exponential_base: float = Field(
+        default=2.0, description="Baza dla exponential backoff"
+    )
     jitter_factor: float = Field(
         default=0.1, description="Współczynnik jitter (0.0-1.0)"
     )
@@ -107,15 +109,11 @@ class TrafficControlConfig(BaseModel):
     )
 
     # Telemetry & logging
-    enable_telemetry: bool = Field(
-        default=True, description="Włącz zbieranie metryk"
-    )
+    enable_telemetry: bool = Field(default=True, description="Włącz zbieranie metryk")
     enable_logging: bool = Field(
         default=False, description="Włącz szczegółowe logowanie (opt-in via .env)"
     )
-    log_rotation_hours: int = Field(
-        default=24, description="Rotacja logów co N godzin"
-    )
+    log_rotation_hours: int = Field(default=24, description="Rotacja logów co N godzin")
     log_retention_days: int = Field(
         default=3, description="Retencja archiwów logów (dni)"
     )
@@ -137,6 +135,10 @@ class TrafficControlConfig(BaseModel):
     degraded_mode_failure_threshold: int = Field(
         default=10,
         description="Liczba kolejnych błędów, po której wymuszamy przejście w degraded mode",
+    )
+    degraded_mode_cooldown_seconds: float = Field(
+        default=60.0,
+        description="Czas trwania degraded mode po triggerze (sekundy)",
     )
 
     def is_under_global_request_cap(self, requests_last_minute: int) -> bool:
@@ -192,7 +194,9 @@ class TrafficControlConfig(BaseModel):
         """Tworzy konfigurację z zmiennych środowiskowych."""
         import os
 
-        enable_logging = os.getenv("ENABLE_TRAFFIC_CONTROL_LOGGING", "false").lower() == "true"
+        enable_logging = (
+            os.getenv("ENABLE_TRAFFIC_CONTROL_LOGGING", "false").lower() == "true"
+        )
 
         config = cls(enable_logging=enable_logging)
 

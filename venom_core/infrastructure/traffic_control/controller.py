@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import threading
+import time
+from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
-from functools import lru_cache
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .circuit_breaker import CircuitBreaker, CircuitState
-from .config import (
-    InboundPolicyConfig,
-    OutboundPolicyConfig,
-    TrafficControlConfig,
-)
+from .circuit_breaker import CircuitBreaker
+from .config import TrafficControlConfig
 from .retry_policy import RetryPolicy
 from .token_bucket import TokenBucket
 
@@ -40,7 +40,9 @@ class ScopePolicy:
     circuit_breaker: Optional[CircuitBreaker] = None
     retry_policy: Optional[RetryPolicy] = None
     metrics: TrafficMetrics = field(default_factory=TrafficMetrics)
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False
+    )
 
 
 class TrafficController:
@@ -48,59 +50,156 @@ class TrafficController:
     Globalny kontroler ruchu API - outbound i inbound.
 
     Odpowiada za:
-    1. Rate limiting per scope (provider/endpoint/group)
+    1. Rate limiting per scope (provider/method/endpoint-group)
     2. Circuit breaker dla ochrony przed degradacją
     3. Retry policy z exponential backoff
-    4. Telemetria i metryki
-    5. Anti-loop protection
+    4. Telemetrię i metryki
+    5. Anti-loop protection (global cap + degraded mode)
     """
 
     def __init__(self, config: Optional[TrafficControlConfig] = None):
-        """
-        Inicjalizacja traffic controllera.
-
-        Args:
-            config: Konfiguracja (default: from_env())
-        """
         self.config = config or TrafficControlConfig.from_env()
         self._outbound_policies: Dict[str, ScopePolicy] = {}
         self._inbound_policies: Dict[str, ScopePolicy] = {}
         self._lock = threading.Lock()
 
+        # Anti-loop state
+        self._outbound_request_times: deque[float] = deque()
+        self._degraded_until_ts: float = 0.0
+        self._consecutive_failures: int = 0
+
         # Global metrics
         self.global_metrics = TrafficMetrics()
 
+        self._setup_rotating_logging_if_enabled()
+
+    def _setup_rotating_logging_if_enabled(self) -> None:
+        """Konfiguruje dedykowaną rotację logów traffic-control (opt-in)."""
+        if not self.config.enable_logging:
+            return
+
+        log_dir = Path(
+            os.getenv("TRAFFIC_CONTROL_LOG_DIR", "/tmp/venom/traffic-control")
+        )
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / "traffic-control.log"
+        tc_logger = logging.getLogger("venom_core.traffic_control")
+
+        if any(
+            isinstance(handler, TimedRotatingFileHandler)
+            and getattr(handler, "baseFilename", "") == str(log_path)
+            for handler in tc_logger.handlers
+        ):
+            return
+
+        handler = TimedRotatingFileHandler(
+            filename=str(log_path),
+            when="h",
+            interval=self.config.log_rotation_hours,
+            backupCount=self.config.log_retention_days,
+            encoding="utf-8",
+        )
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+        )
+        tc_logger.addHandler(handler)
+        tc_logger.setLevel(logging.INFO)
+        tc_logger.propagate = False
+        self._enforce_log_storage_budget(log_dir)
+
+    def _enforce_log_storage_budget(self, log_dir: Path) -> None:
+        """Czyści najstarsze archiwa jeśli przekroczono budżet miejsca."""
+        max_bytes = self.config.log_max_size_mb * 1024 * 1024
+        files = sorted(
+            (item for item in log_dir.glob("traffic-control.log*") if item.is_file()),
+            key=lambda item: item.stat().st_mtime,
+        )
+        total_size = sum(item.stat().st_size for item in files)
+        while files and total_size > max_bytes:
+            oldest = files.pop(0)
+            try:
+                size = oldest.stat().st_size
+                oldest.unlink()
+                total_size -= size
+            except OSError:
+                break
+
+    def _is_degraded_mode_active(self) -> bool:
+        if not self.config.degraded_mode_enabled:
+            return False
+        return time.monotonic() < self._degraded_until_ts
+
+    def _track_outbound_request_and_check_global_cap(self) -> bool:
+        """
+        Rejestruje request i sprawdza globalny cap/min.
+
+        Zwraca False, gdy przekroczono limit i należy zablokować request.
+        """
+        now = time.monotonic()
+        with self._lock:
+            while (
+                self._outbound_request_times
+                and now - self._outbound_request_times[0] > 60
+            ):
+                self._outbound_request_times.popleft()
+            requests_last_minute = len(self._outbound_request_times)
+            if not self.config.is_under_global_request_cap(requests_last_minute):
+                if self.config.should_enter_degraded_state(
+                    requests_last_minute=requests_last_minute,
+                    consecutive_failures=self._consecutive_failures,
+                ):
+                    self._degraded_until_ts = max(
+                        self._degraded_until_ts,
+                        now + self.config.degraded_mode_cooldown_seconds,
+                    )
+                return False
+            self._outbound_request_times.append(now)
+            return True
+
+    def _build_outbound_scope(self, provider: str, method: Optional[str]) -> str:
+        if not method:
+            return provider
+        return f"{provider}:{method.lower()}"
+
+    def _build_inbound_scope(
+        self,
+        endpoint_group: str,
+        actor: Optional[str],
+        session_id: Optional[str],
+        client_ip: Optional[str],
+    ) -> str:
+        if actor:
+            return f"{endpoint_group}:actor:{actor}"
+        if session_id:
+            return f"{endpoint_group}:session:{session_id}"
+        if client_ip:
+            return f"{endpoint_group}:ip:{client_ip}"
+        return endpoint_group
+
     def _get_or_create_outbound_policy(self, scope: str) -> ScopePolicy:
-        """
-        Pobiera lub tworzy politykę outbound dla danego scope.
-
-        Args:
-            scope: Scope (np. 'openai', 'github', 'reddit')
-
-        Returns:
-            ScopePolicy dla danego scope
-        """
         with self._lock:
             if scope not in self._outbound_policies:
-                # Sprawdź czy jest custom policy dla tego providera
+                base_provider = scope.split(":", 1)[0]
                 provider_config = self.config.provider_policies.get(
-                    scope, self.config.global_outbound
+                    base_provider, self.config.global_outbound
                 )
 
                 rate_limiter = TokenBucket(
                     capacity=provider_config.rate_limit.capacity,
                     refill_rate=provider_config.rate_limit.refill_rate,
                 )
-
                 circuit_breaker = CircuitBreaker(
                     failure_threshold=provider_config.circuit_breaker.failure_threshold,
                     success_threshold=provider_config.circuit_breaker.success_threshold,
                     timeout_seconds=provider_config.circuit_breaker.timeout_seconds,
                     half_open_max_calls=provider_config.circuit_breaker.half_open_max_calls,
                 )
-
                 retry_policy = RetryPolicy(
-                    max_attempts=provider_config.retry_policy.max_attempts,
+                    max_attempts=min(
+                        provider_config.retry_policy.max_attempts,
+                        self.config.max_retries_per_operation,
+                    ),
                     initial_delay_seconds=provider_config.retry_policy.initial_delay_seconds,
                     max_delay_seconds=provider_config.retry_policy.max_delay_seconds,
                     exponential_base=provider_config.retry_policy.exponential_base,
@@ -117,85 +216,61 @@ class TrafficController:
             return self._outbound_policies[scope]
 
     def _get_or_create_inbound_policy(self, scope: str) -> ScopePolicy:
-        """
-        Pobiera lub tworzy politykę inbound dla danego scope.
-
-        Args:
-            scope: Scope (np. 'chat', 'memory', 'workflow')
-
-        Returns:
-            ScopePolicy dla danego scope
-        """
         with self._lock:
             if scope not in self._inbound_policies:
-                # Sprawdź czy jest custom policy dla tego endpoint group
+                endpoint_group = scope.split(":", 1)[0]
                 endpoint_config = self.config.endpoint_group_policies.get(
-                    scope, self.config.global_inbound
+                    endpoint_group, self.config.global_inbound
                 )
-
                 rate_limiter = TokenBucket(
                     capacity=endpoint_config.rate_limit.capacity,
                     refill_rate=endpoint_config.rate_limit.refill_rate,
                 )
-
-                # Inbound nie używa circuit breaker ani retry (to dla klienta)
                 self._inbound_policies[scope] = ScopePolicy(
                     scope=scope,
                     rate_limiter=rate_limiter,
                     circuit_breaker=None,
                     retry_policy=None,
                 )
-
             return self._inbound_policies[scope]
 
     def check_outbound_request(
-        self, provider: str, tokens: int = 1
+        self,
+        provider: str,
+        tokens: int = 1,
+        method: Optional[str] = None,
     ) -> tuple[bool, Optional[str], Optional[float]]:
-        """
-        Sprawdza czy outbound request może przejść (rate limit + circuit breaker).
+        if self._is_degraded_mode_active():
+            return False, "degraded_mode_active", None
+        if not self._track_outbound_request_and_check_global_cap():
+            return False, "global_request_cap_exceeded", 60.0
 
-        Args:
-            provider: Nazwa providera (np. 'openai', 'github')
-            tokens: Liczba tokenów do pobrania (default: 1)
+        scope = self._build_outbound_scope(provider, method)
+        policy = self._get_or_create_outbound_policy(scope)
 
-        Returns:
-            (allowed: bool, reason: Optional[str], wait_seconds: Optional[float])
-            - allowed: True jeśli request może być wykonany
-            - reason: Powód odrzucenia (jeśli allowed=False)
-            - wait_seconds: Sugerowany czas oczekiwania (jeśli rate limit)
-        """
-        policy = self._get_or_create_outbound_policy(provider)
-
-        # Check circuit breaker first
         if policy.circuit_breaker and not policy.circuit_breaker.is_request_allowed():
             with policy._lock:
                 policy.metrics.total_circuit_open += 1
             return False, "circuit_breaker_open", None
 
-        # Check rate limit
         success, wait_seconds = policy.rate_limiter.try_acquire(tokens)
         if not success:
             return False, "rate_limit_exceeded", wait_seconds
 
         with policy._lock:
             policy.metrics.total_requests += 1
-
         return True, None, None
 
     def record_outbound_response(
-        self, provider: str, status_code: Optional[int], exception: Optional[Exception] = None
+        self,
+        provider: str,
+        status_code: Optional[int],
+        exception: Optional[Exception] = None,
+        method: Optional[str] = None,
     ) -> None:
-        """
-        Rejestruje odpowiedź outbound request (dla circuit breaker i metryk).
+        scope = self._build_outbound_scope(provider, method)
+        policy = self._get_or_create_outbound_policy(scope)
 
-        Args:
-            provider: Nazwa providera
-            status_code: Kod statusu HTTP (lub None jeśli exception)
-            exception: Exception jeśli wystąpił błąd
-        """
-        policy = self._get_or_create_outbound_policy(provider)
-
-        # Update metrics
         with policy._lock:
             if status_code is not None:
                 if 200 <= status_code < 300:
@@ -207,29 +282,38 @@ class TrafficController:
                 elif 500 <= status_code < 600:
                     policy.metrics.total_5xx += 1
 
-        # Circuit breaker logic
         if policy.circuit_breaker:
-            # Success: 2xx responses
             if status_code is not None and 200 <= status_code < 300:
                 policy.circuit_breaker.record_success()
-            # Failure: 5xx, timeout, connection errors
             elif exception or (status_code and status_code >= 500):
                 policy.circuit_breaker.record_failure()
 
+        with self._lock:
+            is_success = status_code is not None and 200 <= status_code < 300
+            if is_success:
+                self._consecutive_failures = 0
+            elif exception or (status_code is not None and status_code >= 500):
+                self._consecutive_failures += 1
+                requests_last_minute = len(self._outbound_request_times)
+                if self.config.should_enter_degraded_state(
+                    requests_last_minute=requests_last_minute,
+                    consecutive_failures=self._consecutive_failures,
+                ):
+                    self._degraded_until_ts = max(
+                        self._degraded_until_ts,
+                        time.monotonic() + self.config.degraded_mode_cooldown_seconds,
+                    )
+
     def check_inbound_request(
-        self, endpoint_group: str, tokens: int = 1
+        self,
+        endpoint_group: str,
+        tokens: int = 1,
+        actor: Optional[str] = None,
+        session_id: Optional[str] = None,
+        client_ip: Optional[str] = None,
     ) -> tuple[bool, Optional[str], Optional[float]]:
-        """
-        Sprawdza czy inbound request może przejść (rate limit).
-
-        Args:
-            endpoint_group: Grupa endpointów (np. 'chat', 'memory', 'workflow')
-            tokens: Liczba tokenów do pobrania (default: 1)
-
-        Returns:
-            (allowed: bool, reason: Optional[str], wait_seconds: Optional[float])
-        """
-        policy = self._get_or_create_inbound_policy(endpoint_group)
+        scope = self._build_inbound_scope(endpoint_group, actor, session_id, client_ip)
+        policy = self._get_or_create_inbound_policy(scope)
 
         success, wait_seconds = policy.rate_limiter.try_acquire(tokens)
         if not success:
@@ -237,21 +321,14 @@ class TrafficController:
 
         with policy._lock:
             policy.metrics.total_requests += 1
-
         return True, None, None
 
     def get_metrics(self, scope: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Zwraca metryki dla danego scope lub globalne.
-
-        Args:
-            scope: Scope (provider/endpoint) lub None dla globalnych
-
-        Returns:
-            Dict z metrykami
-        """
         if scope is None:
-            # Global metrics
+            with self._lock:
+                requests_last_minute = len(self._outbound_request_times)
+                degraded_active = self._is_degraded_mode_active()
+                degraded_until_ts = self._degraded_until_ts
             return {
                 "global": {
                     "total_requests": self.global_metrics.total_requests,
@@ -260,15 +337,24 @@ class TrafficController:
                     "total_5xx": self.global_metrics.total_5xx,
                     "total_429": self.global_metrics.total_429,
                     "total_retries": self.global_metrics.total_retries,
+                    "requests_last_minute": requests_last_minute,
+                    "degraded_mode_active": degraded_active,
+                    "degraded_until_ts": degraded_until_ts,
                 },
                 "outbound_scopes": list(self._outbound_policies.keys()),
                 "inbound_scopes": list(self._inbound_policies.keys()),
             }
 
-        # Scope-specific metrics
         policy = self._outbound_policies.get(scope) or self._inbound_policies.get(scope)
         if not policy:
-            return {"error": f"Unknown scope: {scope}"}
+            method_scopes = {
+                name: item
+                for name, item in self._outbound_policies.items()
+                if name.startswith(f"{scope}:")
+            }
+            if not method_scopes:
+                return {"error": f"Unknown scope: {scope}"}
+            return self._aggregate_scope_metrics(scope, method_scopes)
 
         with policy._lock:
             result = {
@@ -291,8 +377,54 @@ class TrafficController:
 
             if policy.circuit_breaker:
                 result["circuit_breaker"] = policy.circuit_breaker.get_stats()
-
             return result
+
+    def _aggregate_scope_metrics(
+        self,
+        scope: str,
+        method_scopes: Dict[str, ScopePolicy],
+    ) -> Dict[str, Any]:
+        """Agreguje metryki provider-level z wielu scope'ów provider:method."""
+        totals = TrafficMetrics()
+        min_tokens = None
+        capacity = 0
+        refill_rate = 0.0
+        for policy in method_scopes.values():
+            with policy._lock:
+                totals.total_requests += policy.metrics.total_requests
+                totals.total_2xx += policy.metrics.total_2xx
+                totals.total_4xx += policy.metrics.total_4xx
+                totals.total_5xx += policy.metrics.total_5xx
+                totals.total_429 += policy.metrics.total_429
+                totals.total_retries += policy.metrics.total_retries
+                totals.total_circuit_open += policy.metrics.total_circuit_open
+                current_tokens = policy.rate_limiter.available_tokens()
+                min_tokens = (
+                    current_tokens
+                    if min_tokens is None
+                    else min(min_tokens, current_tokens)
+                )
+                capacity = max(capacity, policy.rate_limiter.capacity)
+                refill_rate = max(refill_rate, policy.rate_limiter.refill_rate)
+
+        return {
+            "scope": scope,
+            "aggregated_from": sorted(method_scopes.keys()),
+            "metrics": {
+                "total_requests": totals.total_requests,
+                "total_2xx": totals.total_2xx,
+                "total_4xx": totals.total_4xx,
+                "total_5xx": totals.total_5xx,
+                "total_429": totals.total_429,
+                "total_retries": totals.total_retries,
+                "total_circuit_open": totals.total_circuit_open,
+            },
+            "rate_limit": {
+                "available_tokens": min_tokens if min_tokens is not None else 0.0,
+                "capacity": capacity,
+                "refill_rate": refill_rate,
+            },
+        }
 
 
 # Singleton instance
@@ -301,12 +433,7 @@ _tc_lock = threading.Lock()
 
 
 def get_traffic_controller() -> TrafficController:
-    """
-    Zwraca singleton instance TrafficController (thread-safe).
-
-    Returns:
-        TrafficController instance
-    """
+    """Zwraca singleton instance TrafficController (thread-safe)."""
     global _traffic_controller
     if _traffic_controller is None:
         with _tc_lock:

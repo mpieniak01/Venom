@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -92,21 +91,27 @@ class TrafficControlledHttpClient:
         """
         # Check traffic control
         allowed, reason, wait_seconds = self.traffic_controller.check_outbound_request(
-            self.provider
+            self.provider,
+            method=method,
         )
         if not allowed:
             if reason == "circuit_breaker_open":
                 raise RuntimeError(
                     f"Circuit breaker open for provider '{self.provider}'"
                 )
+            elif reason == "degraded_mode_active":
+                raise RuntimeError("Traffic control is in degraded mode")
+            elif reason == "global_request_cap_exceeded":
+                raise RuntimeError("Global outbound request cap exceeded")
             elif reason == "rate_limit_exceeded":
                 raise RuntimeError(
                     f"Rate limit exceeded for provider '{self.provider}'. "
                     f"Retry after {wait_seconds:.1f} seconds"
                 )
 
-        # Get retry policy
-        policy = self.traffic_controller._get_or_create_outbound_policy(self.provider)
+        # Get retry policy for the same scope as rate limiting (provider + method)
+        scope = self.traffic_controller._build_outbound_scope(self.provider, method)
+        policy = self.traffic_controller._get_or_create_outbound_policy(scope)
 
         # Execute with retry
         def _execute():
@@ -130,7 +135,7 @@ class TrafficControlledHttpClient:
         # Record response
         if response:
             self.traffic_controller.record_outbound_response(
-                self.provider, response.status_code
+                self.provider, response.status_code, method=method
             )
             return response
         else:
@@ -139,7 +144,7 @@ class TrafficControlledHttpClient:
             if hasattr(error, "response") and hasattr(error.response, "status_code"):
                 status_code = error.response.status_code
             self.traffic_controller.record_outbound_response(
-                self.provider, status_code, error
+                self.provider, status_code, error, method=method
             )
             raise error
 
@@ -166,21 +171,27 @@ class TrafficControlledHttpClient:
         """
         # Check traffic control
         allowed, reason, wait_seconds = self.traffic_controller.check_outbound_request(
-            self.provider
+            self.provider,
+            method=method,
         )
         if not allowed:
             if reason == "circuit_breaker_open":
                 raise RuntimeError(
                     f"Circuit breaker open for provider '{self.provider}'"
                 )
+            elif reason == "degraded_mode_active":
+                raise RuntimeError("Traffic control is in degraded mode")
+            elif reason == "global_request_cap_exceeded":
+                raise RuntimeError("Global outbound request cap exceeded")
             elif reason == "rate_limit_exceeded":
                 raise RuntimeError(
                     f"Rate limit exceeded for provider '{self.provider}'. "
                     f"Retry after {wait_seconds:.1f} seconds"
                 )
 
-        # Get retry policy
-        policy = self.traffic_controller._get_or_create_outbound_policy(self.provider)
+        # Get retry policy for the same scope as rate limiting (provider + method)
+        scope = self.traffic_controller._build_outbound_scope(self.provider, method)
+        policy = self.traffic_controller._get_or_create_outbound_policy(scope)
 
         # Execute with retry (note: async version needs manual implementation)
         last_exception = None
@@ -189,7 +200,7 @@ class TrafficControlledHttpClient:
                 response = await self._async_client.request(method, url, **kwargs)
                 response.raise_for_status()
                 self.traffic_controller.record_outbound_response(
-                    self.provider, response.status_code
+                    self.provider, response.status_code, method=method
                 )
                 return response
             except Exception as e:
@@ -202,7 +213,7 @@ class TrafficControlledHttpClient:
                     if hasattr(e, "response") and hasattr(e.response, "status_code"):
                         status_code = e.response.status_code
                     self.traffic_controller.record_outbound_response(
-                        self.provider, status_code, e
+                        self.provider, status_code, e, method=method
                     )
                     raise
 
@@ -228,7 +239,7 @@ class TrafficControlledHttpClient:
         ):
             status_code = last_exception.response.status_code
         self.traffic_controller.record_outbound_response(
-            self.provider, status_code, last_exception
+            self.provider, status_code, last_exception, method=method
         )
         raise last_exception
 

@@ -88,9 +88,10 @@ class TrafficControlMiddleware(BaseHTTPMiddleware):
 
         if not allowed:
             # Rate limit exceeded
-            logger.warning(
-                f"Rate limit exceeded for {endpoint_group}: {request.url.path}"
-            )
+            if self.traffic_controller.config.enable_logging:
+                logger.warning(
+                    f"Rate limit exceeded for {endpoint_group}: {request.url.path}"
+                )
 
             # Prepare 429 response z Retry-After header
             retry_after = int(wait_seconds) if wait_seconds else 60
@@ -112,8 +113,8 @@ class TrafficControlMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         elapsed = time.time() - start_time
 
-        # Log slow requests (>5s)
-        if elapsed > 5.0:
+        # Log slow requests (>5s) only if logging enabled
+        if elapsed > 5.0 and self.traffic_controller.config.enable_logging:
             logger.warning(
                 f"Slow request: {request.method} {request.url.path} took {elapsed:.2f}s"
             )

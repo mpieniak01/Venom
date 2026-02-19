@@ -109,9 +109,13 @@ class TrafficControlledHttpClient:
         result, response, error = policy.retry_policy.execute_with_retry(
             _execute,
             is_retriable=is_retriable_http_error,
-            on_retry=lambda attempt, exc, delay: logger.warning(
-                f"Retry {attempt + 1} for {self.provider} {method} {url}: {exc}. "
-                f"Waiting {delay:.1f}s"
+            on_retry=lambda attempt, exc, delay: (
+                logger.warning(
+                    f"Retry {attempt + 1} for {self.provider} {method} {url}: {exc}. "
+                    f"Waiting {delay:.1f}s"
+                )
+                if self.traffic_controller.config.enable_logging
+                else None
             ),
         )
 
@@ -202,10 +206,11 @@ class TrafficControlledHttpClient:
                 import asyncio
 
                 delay = policy.retry_policy.calculate_delay(attempt)
-                logger.warning(
-                    f"Retry {attempt + 1} for {self.provider} {method} {url}: {e}. "
-                    f"Waiting {delay:.1f}s"
-                )
+                if self.traffic_controller.config.enable_logging:
+                    logger.warning(
+                        f"Retry {attempt + 1} for {self.provider} {method} {url}: {e}. "
+                        f"Waiting {delay:.1f}s"
+                    )
                 await asyncio.sleep(delay)
 
         # Failed after all retries
@@ -266,6 +271,24 @@ class TrafficControlledHttpClient:
     async def aclose(self) -> None:
         """Zamyka async klienta."""
         await self._async_client.aclose()
+
+    def __del__(self) -> None:
+        """
+        Best-effort cleanup w przypadku gdy klient nie jest użyty jako context manager.
+
+        Uwaga: Wyjątki podczas cleanup są pomijane aby uniknąć problemów
+        podczas garbage collection.
+        """
+        try:
+            # Synchronous cleanup only - async cleanup in __del__ is not safe
+            if hasattr(self, "_client") and self._client is not None:
+                try:
+                    self._client.close()
+                except Exception:
+                    pass
+        except Exception:
+            # If even basic cleanup fails, silently ignore
+            pass
 
     def __enter__(self):
         """Context manager."""

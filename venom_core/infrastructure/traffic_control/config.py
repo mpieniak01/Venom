@@ -130,6 +130,62 @@ class TrafficControlConfig(BaseModel):
     max_retries_per_operation: int = Field(
         default=5, description="Max retry dla pojedynczej operacji"
     )
+    degraded_mode_enabled: bool = Field(
+        default=True,
+        description="Czy włączyć twardy hard-stop (degraded mode) po przekroczeniu limitów",
+    )
+    degraded_mode_failure_threshold: int = Field(
+        default=10,
+        description="Liczba kolejnych błędów, po której wymuszamy przejście w degraded mode",
+    )
+
+    def is_under_global_request_cap(self, requests_last_minute: int) -> bool:
+        """
+        Sprawdza, czy globalna liczba requestów w ostatniej minucie mieści się w twardym limicie.
+
+        Ten helper powinien być wywoływany przez TrafficController / scheduler
+        przed przyjęciem nowego requestu, aby zapobiec zapętleniu lub zalaniu systemu.
+        """
+        return requests_last_minute < self.max_requests_per_minute_global
+
+    def can_retry_operation(self, retry_count: int) -> bool:
+        """
+        Sprawdza, czy można wykonać kolejny retry dla pojedynczej operacji.
+
+        retry_count to dotychczasowa liczba prób (0-based). Gdy osiągnie
+        max_retries_per_operation, kolejne próby powinny być twardo blokowane.
+        """
+        return retry_count < self.max_retries_per_operation
+
+    def should_enter_degraded_state(
+        self,
+        requests_last_minute: int,
+        consecutive_failures: int,
+    ) -> bool:
+        """
+        Określa, czy system powinien przejść w degraded mode na podstawie:
+        - przekroczenia globalnego limitu requestów/min,
+        - liczby kolejnych niepowodzeń (failures).
+
+        Args:
+            requests_last_minute: Liczba requestów w ostatniej minucie
+            consecutive_failures: Liczba kolejnych błędów bez sukcesu
+
+        Returns:
+            True jeśli system powinien przejść w degraded mode
+        """
+        if not self.degraded_mode_enabled:
+            return False
+
+        # Przekroczenie globalnego limitu
+        if requests_last_minute >= self.max_requests_per_minute_global:
+            return True
+
+        # Zbyt wiele kolejnych niepowodzeń
+        if consecutive_failures >= self.degraded_mode_failure_threshold:
+            return True
+
+        return False
 
     @classmethod
     def from_env(cls) -> TrafficControlConfig:

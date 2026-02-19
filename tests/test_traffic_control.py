@@ -432,3 +432,111 @@ def test_traffic_controller_provider_configs(provider, expected_capacity):
     controller.check_outbound_request(provider)  # Create policy
     metrics = controller.get_metrics(provider)
     assert metrics["rate_limit"]["capacity"] == expected_capacity
+
+
+class TestAntiLoopProtection:
+    """Testy dla anti-loop protection helper methods."""
+
+    def test_is_under_global_request_cap_below_threshold(self):
+        """Test że requests poniżej globalnego limitu zwracają True."""
+        config = TrafficControlConfig()
+        config.max_requests_per_minute_global = 1000
+        
+        assert config.is_under_global_request_cap(500) is True
+        assert config.is_under_global_request_cap(999) is True
+
+    def test_is_under_global_request_cap_at_threshold(self):
+        """Test że requests równe limitowi zwracają False."""
+        config = TrafficControlConfig()
+        config.max_requests_per_minute_global = 1000
+        
+        assert config.is_under_global_request_cap(1000) is False
+
+    def test_is_under_global_request_cap_above_threshold(self):
+        """Test że requests powyżej limitu zwracają False."""
+        config = TrafficControlConfig()
+        config.max_requests_per_minute_global = 1000
+        
+        assert config.is_under_global_request_cap(1001) is False
+        assert config.is_under_global_request_cap(2000) is False
+
+    def test_can_retry_operation_below_max(self):
+        """Test że retry_count poniżej max_retries zwraca True."""
+        config = TrafficControlConfig()
+        config.max_retries_per_operation = 5
+        
+        assert config.can_retry_operation(0) is True
+        assert config.can_retry_operation(4) is True
+
+    def test_can_retry_operation_at_max(self):
+        """Test że retry_count równy max_retries zwraca False."""
+        config = TrafficControlConfig()
+        config.max_retries_per_operation = 5
+        
+        assert config.can_retry_operation(5) is False
+
+    def test_can_retry_operation_above_max(self):
+        """Test że retry_count powyżej max_retries zwraca False."""
+        config = TrafficControlConfig()
+        config.max_retries_per_operation = 5
+        
+        assert config.can_retry_operation(6) is False
+        assert config.can_retry_operation(10) is False
+
+    def test_should_enter_degraded_state_disabled(self):
+        """Test że degraded mode wyłączony zawsze zwraca False."""
+        config = TrafficControlConfig()
+        config.degraded_mode_enabled = False
+        config.max_requests_per_minute_global = 1000
+        config.degraded_mode_failure_threshold = 10
+        
+        # Nawet przy przekroczeniu limitów
+        assert config.should_enter_degraded_state(2000, 20) is False
+
+    def test_should_enter_degraded_state_request_cap_exceeded(self):
+        """Test przejścia w degraded gdy przekroczony globalny limit requestów."""
+        config = TrafficControlConfig()
+        config.degraded_mode_enabled = True
+        config.max_requests_per_minute_global = 1000
+        config.degraded_mode_failure_threshold = 10
+        
+        # Przekroczenie requestów
+        assert config.should_enter_degraded_state(1000, 0) is True
+        assert config.should_enter_degraded_state(1500, 5) is True
+
+    def test_should_enter_degraded_state_failure_threshold_exceeded(self):
+        """Test przejścia w degraded gdy przekroczony próg błędów."""
+        config = TrafficControlConfig()
+        config.degraded_mode_enabled = True
+        config.max_requests_per_minute_global = 1000
+        config.degraded_mode_failure_threshold = 10
+        
+        # Przekroczenie błędów
+        assert config.should_enter_degraded_state(500, 10) is True
+        assert config.should_enter_degraded_state(100, 15) is True
+
+    def test_should_enter_degraded_state_below_all_thresholds(self):
+        """Test że degraded mode nie włącza się gdy wszystko w normie."""
+        config = TrafficControlConfig()
+        config.degraded_mode_enabled = True
+        config.max_requests_per_minute_global = 1000
+        config.degraded_mode_failure_threshold = 10
+        
+        assert config.should_enter_degraded_state(500, 5) is False
+        assert config.should_enter_degraded_state(999, 9) is False
+
+    def test_should_enter_degraded_state_boundary_conditions(self):
+        """Test warunków brzegowych dla degraded mode."""
+        config = TrafficControlConfig()
+        config.degraded_mode_enabled = True
+        config.max_requests_per_minute_global = 1000
+        config.degraded_mode_failure_threshold = 10
+        
+        # Dokładnie na granicy requestów (should trigger)
+        assert config.should_enter_degraded_state(1000, 0) is True
+        
+        # Dokładnie na granicy błędów (should trigger)
+        assert config.should_enter_degraded_state(0, 10) is True
+        
+        # Jeden poniżej granic (should not trigger)
+        assert config.should_enter_degraded_state(999, 9) is False

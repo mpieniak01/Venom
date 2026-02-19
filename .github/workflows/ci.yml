@@ -6,11 +6,13 @@ on:
     paths-ignore:
       - "**/*.md"
       - "docs/**"
+      - "modules/**"
   pull_request:
     branches: [main]
     paths-ignore:
       - "**/*.md"
       - "docs/**"
+      - "modules/**"
   workflow_dispatch:
 
 jobs:
@@ -25,6 +27,16 @@ jobs:
       - name: Ensure docs_dev is not changed in branch
         run: |
           python3 scripts/block_docs_dev_tracked.py
+
+      - name: Ensure core does not import module code directly
+        run: |
+          set -euo pipefail
+          if rg -n '\.\./\.\./\.\./modules/' web-next venom_core scripts \
+            --glob '!web-next/lib/generated/optional-modules.generated.ts' \
+            --glob '!web-next/scripts/generate-optional-modules.mjs'; then
+            echo "Forbidden direct import/path to modules/ found in core repo code."
+            exit 1
+          fi
 
   backend-lite:
     name: Backend lite (pytest)

@@ -24,6 +24,14 @@ class TrafficControlledHttpClient:
     2. Circuit breaker dla ochrony przed degradacją
     3. Retry policy z exponential backoff
     4. Telemetria requestów
+
+    **Ważne zasady użycia:**
+    - Metody synchroniczne (get, post, etc.) mogą być używane bez context managera,
+      ale zalecane jest użycie: `with TrafficControlledHttpClient(...) as client:`
+    - Metody async (aget, apost, etc.) MUSZĄ być używane z async context manager:
+      `async with TrafficControlledHttpClient(...) as client:`
+    - Resource cleanup dla async clienta działa TYLKO przez context manager
+      (__del__ nie może bezpiecznie zamknąć async zasobów)
     """
 
     def __init__(
@@ -275,6 +283,16 @@ class TrafficControlledHttpClient:
     def __del__(self) -> None:
         """
         Best-effort cleanup w przypadku gdy klient nie jest użyty jako context manager.
+
+        WAŻNE: Ta metoda zamyka TYLKO synchroniczny _client. Async _async_client
+        NIE jest zamykany, ponieważ async cleanup w __del__ jest niebezpieczny
+        (brak running event loop podczas garbage collection).
+
+        **Zalecenie**: Używaj async metod WYŁĄCZNIE z async context manager:
+        ```python
+        async with TrafficControlledHttpClient(provider="github") as client:
+            response = await client.aget("https://api.github.com/users/mpieniak01")
+        ```
 
         Uwaga: Wyjątki podczas cleanup są pomijane aby uniknąć problemów
         podczas garbage collection.

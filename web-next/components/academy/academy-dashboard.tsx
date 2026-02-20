@@ -7,6 +7,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
 import { AcademyOverview } from "./academy-overview";
 import { DatasetPanel } from "./dataset-panel";
+import { DatasetConversionPanel } from "./dataset-conversion-panel";
 import { TrainingPanel } from "./training-panel";
 import { AdaptersPanel } from "./adapters-panel";
 import { getAcademyStatus, type AcademyStatus } from "@/lib/academy-api";
@@ -14,7 +15,9 @@ import { useTranslation } from "@/lib/i18n";
 
 export function AcademyDashboard() {
   const t = useTranslation();
-  const [activeTab, setActiveTab] = useState<"overview" | "dataset" | "training" | "adapters">("overview");
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "dataset" | "conversion" | "training" | "adapters"
+  >("overview");
   const [status, setStatus] = useState<AcademyStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +136,20 @@ export function AcademyDashboard() {
           {t("academy.dashboard.tabs.dataset")}
         </Button>
         <Button
+          onClick={() => setActiveTab("conversion")}
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
+            activeTab === "conversion"
+              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
+              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+          )}
+        >
+          <Database className="h-4 w-4" />
+          {t("academy.dashboard.tabs.conversion")}
+        </Button>
+        <Button
           onClick={() => setActiveTab("training")}
           variant="ghost"
           size="sm"
@@ -177,6 +194,7 @@ export function AcademyDashboard() {
         )}
         {!loading && status && activeTab === "overview" && <AcademyOverview status={status} onRefresh={loadStatus} />}
         {!loading && status && activeTab === "dataset" && <DatasetPanel />}
+        {!loading && status && activeTab === "conversion" && <DatasetConversionPanel />}
         {!loading && status && activeTab === "training" && <TrainingPanel />}
         {!loading && status && activeTab === "adapters" && <AdaptersPanel />}
       </div>

@@ -11,13 +11,18 @@ from unittest.mock import Mock
 
 import anyio
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from venom_core.api.schemas.academy import (
     AcademyJobsListResponse,
     AcademyJobSummary,
     ActivateAdapterRequest,
     AdapterInfo,
+    DatasetConversionFileInfo,
+    DatasetConversionListResponse,
+    DatasetConversionRequest,
+    DatasetConversionResult,
+    DatasetFilePreviewResponse,
     DatasetPreviewResponse,
     DatasetResponse,
     DatasetScopeRequest,
@@ -1815,6 +1820,624 @@ async def delete_dataset_upload(file_id: str, req: Request) -> Dict[str, Any]:
         raise HTTPException(
             status_code=500, detail=f"Failed to delete upload: {str(e)}"
         )
+
+
+def _sanitize_user_id(user_id: str) -> str:
+    safe = "".join(ch for ch in user_id if ch.isalnum() or ch in {"-", "_", "."})
+    return safe or "local-user"
+
+
+def _resolve_user_id(req: Request) -> str:
+    actor = req.headers.get("X-Actor") or req.headers.get("X-User-Id") or "local-user"
+    return _sanitize_user_id(actor.strip())
+
+
+def _get_user_conversion_workspace(user_id: str) -> Dict[str, Path]:
+    from venom_core.config import SETTINGS
+
+    base_dir = Path(SETTINGS.ACADEMY_USER_DATA_DIR) / user_id
+    source_dir = base_dir / "source"
+    converted_dir = base_dir / "converted"
+    metadata_file = base_dir / "files.json"
+    for path in (base_dir, source_dir, converted_dir):
+        path.mkdir(parents=True, exist_ok=True)
+    return {
+        "base_dir": base_dir,
+        "source_dir": source_dir,
+        "converted_dir": converted_dir,
+        "metadata_file": metadata_file,
+    }
+
+
+def _load_user_conversion_metadata(metadata_file: Path) -> List[Dict[str, Any]]:
+    if not metadata_file.exists():
+        return []
+    try:
+        with open(metadata_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return [item for item in data if isinstance(item, dict)]
+    except Exception as exc:
+        logger.warning("Failed to read conversion metadata: %s", exc)
+    return []
+
+
+def _save_user_conversion_metadata(
+    metadata_file: Path, items: List[Dict[str, Any]]
+) -> None:
+    temp_file = metadata_file.with_suffix(".tmp")
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(items, f, ensure_ascii=False, indent=2)
+    temp_file.replace(metadata_file)
+
+
+def _normalize_conversion_item(raw: Dict[str, Any]) -> DatasetConversionFileInfo:
+    return DatasetConversionFileInfo(
+        file_id=str(raw.get("file_id") or ""),
+        name=str(raw.get("name") or ""),
+        extension=str(raw.get("extension") or ""),
+        size_bytes=int(raw.get("size_bytes") or 0),
+        created_at=str(raw.get("created_at") or datetime.now().isoformat()),
+        category=str(raw.get("category") or "source"),
+        source_file_id=(
+            str(raw.get("source_file_id"))
+            if raw.get("source_file_id") is not None
+            else None
+        ),
+        target_format=(
+            str(raw.get("target_format")) if raw.get("target_format") else None
+        ),
+        status=str(raw.get("status") or "ready"),
+        error=(str(raw.get("error")) if raw.get("error") else None),
+    )
+
+
+def _find_conversion_item(
+    items: List[Dict[str, Any]], file_id: str
+) -> Dict[str, Any] | None:
+    for item in items:
+        if str(item.get("file_id")) == file_id:
+            return item
+    return None
+
+
+def _build_conversion_file_id(filename: str) -> str:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    return f"{ts}_{filename}"
+
+
+def _serialize_records_to_markdown(records: List[Dict[str, str]]) -> str:
+    chunks: List[str] = []
+    for idx, item in enumerate(records, start=1):
+        instruction = item.get("instruction", "").strip()
+        input_text = item.get("input", "").strip()
+        output = item.get("output", "").strip()
+        chunks.append(f"## Przykład {idx}")
+        chunks.append(f"### Instruction\n{instruction or '(brak)'}")
+        if input_text:
+            chunks.append(f"### Input\n{input_text}")
+        chunks.append(f"### Output\n{output or '(brak)'}")
+    return "\n\n".join(chunks).strip() + ("\n" if chunks else "")
+
+
+def _records_from_text(content: str) -> List[Dict[str, str]]:
+    sections = [item.strip() for item in content.split("\n\n") if item.strip()]
+    records: List[Dict[str, str]] = []
+    for i in range(0, len(sections), 2):
+        instruction = sections[i]
+        output = sections[i + 1] if i + 1 < len(sections) else ""
+        if not instruction:
+            continue
+        if not output:
+            output = instruction
+        records.append(
+            {
+                "instruction": instruction[:2000],
+                "input": "",
+                "output": output[:8000],
+            }
+        )
+    if not records and content.strip():
+        records.append(
+            {
+                "instruction": "Streszcz i ustrukturyzuj treść dokumentu.",
+                "input": "",
+                "output": content.strip()[:12000],
+            }
+        )
+    return records
+
+
+def _records_from_json_file(source_path: Path) -> List[Dict[str, str]]:
+    with open(source_path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    items: List[Dict[str, Any]]
+    if isinstance(payload, list):
+        items = [item for item in payload if isinstance(item, dict)]
+    elif isinstance(payload, dict):
+        items = [payload]
+    else:
+        return []
+
+    records: List[Dict[str, str]] = []
+    for item in items:
+        instruction = str(item.get("instruction") or item.get("prompt") or "").strip()
+        input_text = str(item.get("input") or "").strip()
+        output = str(item.get("output") or item.get("response") or "").strip()
+        if not instruction and output:
+            instruction = "Przygotuj odpowiedź na podstawie danych wejściowych."
+        if instruction and output:
+            records.append(
+                {"instruction": instruction, "input": input_text, "output": output}
+            )
+    return records
+
+
+def _records_from_jsonl_file(source_path: Path) -> List[Dict[str, str]]:
+    records: List[Dict[str, str]] = []
+    with open(source_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(item, dict):
+                continue
+            instruction = str(
+                item.get("instruction") or item.get("prompt") or ""
+            ).strip()
+            input_text = str(item.get("input") or "").strip()
+            output = str(item.get("output") or item.get("response") or "").strip()
+            if instruction and output:
+                records.append(
+                    {"instruction": instruction, "input": input_text, "output": output}
+                )
+    return records
+
+
+def _records_from_csv_file(source_path: Path) -> List[Dict[str, str]]:
+    import csv
+
+    records: List[Dict[str, str]] = []
+    with open(source_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            instruction = str(row.get("instruction") or row.get("prompt") or "").strip()
+            input_text = str(row.get("input") or "").strip()
+            output = str(row.get("output") or row.get("response") or "").strip()
+            if instruction and output:
+                records.append(
+                    {"instruction": instruction, "input": input_text, "output": output}
+                )
+    return records
+
+
+def _extract_text_from_pdf(source_path: Path) -> str:
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(source_path))
+    pages = [page.extract_text() or "" for page in reader.pages]
+    return "\n\n".join(item.strip() for item in pages if item.strip())
+
+
+def _extract_text_from_docx(source_path: Path) -> str:
+    from docx import Document
+
+    doc = Document(str(source_path))
+    paragraphs = [item.text.strip() for item in doc.paragraphs if item.text.strip()]
+    return "\n\n".join(paragraphs)
+
+
+def _convert_with_pandoc(source_path: Path, output_path: Path) -> bool:
+    try:
+        import pypandoc
+    except ImportError:
+        return False
+
+    source_ext = source_path.suffix.lower().lstrip(".")
+    input_format = (
+        "docx" if source_ext == "docx" else ("doc" if source_ext == "doc" else None)
+    )
+    try:
+        if input_format:
+            pypandoc.convert_file(
+                str(source_path),
+                to="md",
+                format=input_format,
+                outputfile=str(output_path),
+            )
+        else:
+            pypandoc.convert_file(
+                str(source_path), to="md", outputfile=str(output_path)
+            )
+        return output_path.exists() and output_path.stat().st_size > 0
+    except Exception:
+        return False
+
+
+def _source_to_markdown(source_path: Path) -> str:
+    ext = source_path.suffix.lower()
+    if ext in {".md", ".txt"}:
+        return source_path.read_text(encoding="utf-8", errors="ignore")
+    if ext == ".json":
+        payload = json.loads(source_path.read_text(encoding="utf-8", errors="ignore"))
+        return f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+    if ext == ".jsonl":
+        lines = source_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        pretty_lines = []
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                pretty_lines.append(json.dumps(json.loads(line), ensure_ascii=False))
+            except json.JSONDecodeError:
+                pretty_lines.append(line)
+        return "```jsonl\n" + "\n".join(pretty_lines) + "\n```"
+    if ext == ".csv":
+        return (
+            "```csv\n"
+            + source_path.read_text(encoding="utf-8", errors="ignore")
+            + "\n```"
+        )
+
+    if ext in {".doc", ".docx", ".pdf"}:
+        temp_md_path = source_path.with_suffix(source_path.suffix + ".pandoc.md")
+        if _convert_with_pandoc(source_path, temp_md_path):
+            content = temp_md_path.read_text(encoding="utf-8", errors="ignore")
+            temp_md_path.unlink(missing_ok=True)
+            return content
+        temp_md_path.unlink(missing_ok=True)
+        if ext == ".pdf":
+            return _extract_text_from_pdf(source_path)
+        if ext == ".docx":
+            return _extract_text_from_docx(source_path)
+        raise ValueError(
+            "DOC conversion requires Pandoc with system support for legacy .doc files"
+        )
+
+    raise ValueError(f"Unsupported source extension: {ext}")
+
+
+def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
+    ext = source_path.suffix.lower()
+    if ext == ".json":
+        return _records_from_json_file(source_path)
+    if ext == ".jsonl":
+        return _records_from_jsonl_file(source_path)
+    if ext == ".csv":
+        return _records_from_csv_file(source_path)
+    text = _source_to_markdown(source_path)
+    return _records_from_text(text)
+
+
+def _write_records_as_target(
+    records: List[Dict[str, str]], target_format: str, output_path: Path
+) -> None:
+    if target_format == "md":
+        output_path.write_text(
+            _serialize_records_to_markdown(records),
+            encoding="utf-8",
+        )
+        return
+
+    if target_format == "txt":
+        lines: List[str] = []
+        for item in records:
+            lines.append(item.get("instruction", ""))
+            lines.append(item.get("output", ""))
+            lines.append("")
+        output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+        return
+
+    if target_format == "json":
+        output_path.write_text(
+            json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        return
+
+    if target_format == "jsonl":
+        with open(output_path, "w", encoding="utf-8") as f:
+            for item in records:
+                f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        return
+
+    if target_format == "csv":
+        import csv
+
+        with open(output_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["instruction", "input", "output"])
+            writer.writeheader()
+            for item in records:
+                writer.writerow(
+                    {
+                        "instruction": item.get("instruction", ""),
+                        "input": item.get("input", ""),
+                        "output": item.get("output", ""),
+                    }
+                )
+        return
+
+    raise ValueError(f"Unsupported target format: {target_format}")
+
+
+def _build_conversion_item(
+    *,
+    file_id: str,
+    filename: str,
+    path: Path,
+    category: str,
+    source_file_id: str | None = None,
+    target_format: str | None = None,
+) -> Dict[str, Any]:
+    return {
+        "file_id": file_id,
+        "name": filename,
+        "extension": path.suffix.lower(),
+        "size_bytes": path.stat().st_size if path.exists() else 0,
+        "created_at": datetime.now().isoformat(),
+        "category": category,
+        "source_file_id": source_file_id,
+        "target_format": target_format,
+        "status": "ready",
+        "error": None,
+    }
+
+
+@router.get("/dataset/conversion/files", response_model=DatasetConversionListResponse)
+async def list_dataset_conversion_files(req: Request) -> DatasetConversionListResponse:
+    try:
+        _ensure_academy_enabled()
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    user_id = _resolve_user_id(req)
+    workspace = _get_user_conversion_workspace(user_id)
+    items = _load_user_conversion_metadata(workspace["metadata_file"])
+
+    source_files = [
+        _normalize_conversion_item(item)
+        for item in items
+        if str(item.get("category")) == "source"
+    ]
+    converted_files = [
+        _normalize_conversion_item(item)
+        for item in items
+        if str(item.get("category")) == "converted"
+    ]
+
+    return DatasetConversionListResponse(
+        user_id=user_id,
+        workspace_dir=str(workspace["base_dir"]),
+        source_files=source_files,
+        converted_files=converted_files,
+    )
+
+
+@router.post("/dataset/conversion/upload")
+async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
+    try:
+        _ensure_academy_enabled()
+        require_localhost_request(req)
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    from venom_core.config import SETTINGS
+
+    user_id = _resolve_user_id(req)
+    workspace = _get_user_conversion_workspace(user_id)
+    items = _load_user_conversion_metadata(workspace["metadata_file"])
+
+    form = await req.form()
+    files = form.getlist("files")
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    if len(files) > SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many files (max {SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST})",
+        )
+
+    uploaded: List[Dict[str, Any]] = []
+    failed: List[Dict[str, str]] = []
+    for file in files:
+        filename, filename_error = _validate_upload_filename(file, SETTINGS)
+        if filename_error:
+            failed.append(filename_error)
+            continue
+        if not filename:
+            continue
+
+        file_id = _build_conversion_file_id(filename)
+        file_path = workspace["source_dir"] / file_id
+        persisted, persist_error = await _persist_with_limits(
+            file=file,
+            file_path=file_path,
+            filename=filename,
+            settings=SETTINGS,
+        )
+        if persist_error or not persisted:
+            failed.append(
+                persist_error
+                or {"name": filename, "error": "Failed to persist uploaded file"}
+            )
+            continue
+
+        item = _build_conversion_item(
+            file_id=file_id,
+            filename=filename,
+            path=file_path,
+            category="source",
+        )
+        items.append(item)
+        uploaded.append(item)
+
+    _save_user_conversion_metadata(workspace["metadata_file"], items)
+    return {
+        "success": len(uploaded) > 0,
+        "uploaded": len(uploaded),
+        "failed": len(failed),
+        "files": [_normalize_conversion_item(item).model_dump() for item in uploaded],
+        "errors": failed,
+        "message": f"Uploaded {len(uploaded)} file(s), failed {len(failed)}",
+    }
+
+
+@router.post(
+    "/dataset/conversion/files/{file_id}/convert",
+    response_model=DatasetConversionResult,
+)
+async def convert_dataset_file(
+    file_id: str,
+    payload: DatasetConversionRequest,
+    req: Request,
+) -> DatasetConversionResult:
+    try:
+        _ensure_academy_enabled()
+        require_localhost_request(req)
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    if not _check_path_traversal(file_id):
+        raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
+
+    user_id = _resolve_user_id(req)
+    workspace = _get_user_conversion_workspace(user_id)
+    items = _load_user_conversion_metadata(workspace["metadata_file"])
+    source_item = _find_conversion_item(items, file_id)
+    if not source_item:
+        raise HTTPException(status_code=404, detail="Source file not found")
+    if str(source_item.get("category")) != "source":
+        raise HTTPException(status_code=400, detail="Conversion requires source file")
+
+    source_path = workspace["source_dir"] / file_id
+    if not source_path.exists():
+        raise HTTPException(status_code=404, detail="Source file not found on disk")
+
+    target_format = payload.target_format.lower()
+    source_stem = Path(str(source_item.get("name") or "dataset")).stem
+    converted_name = f"{source_stem}.{target_format}"
+    converted_file_id = _build_conversion_file_id(converted_name)
+    converted_path = workspace["converted_dir"] / converted_file_id
+
+    try:
+        records = _source_to_records(source_path)
+        if not records:
+            raise ValueError("No valid records produced from source file")
+        _write_records_as_target(records, target_format, converted_path)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Conversion failed: {str(exc)}"
+        ) from exc
+
+    converted_item = _build_conversion_item(
+        file_id=converted_file_id,
+        filename=converted_name,
+        path=converted_path,
+        category="converted",
+        source_file_id=file_id,
+        target_format=target_format,
+    )
+    items.append(converted_item)
+    _save_user_conversion_metadata(workspace["metadata_file"], items)
+
+    return DatasetConversionResult(
+        success=True,
+        message=f"Converted to {target_format}",
+        source_file=_normalize_conversion_item(source_item),
+        converted_file=_normalize_conversion_item(converted_item),
+    )
+
+
+@router.get(
+    "/dataset/conversion/files/{file_id}/preview",
+    response_model=DatasetFilePreviewResponse,
+)
+async def preview_dataset_conversion_file(
+    file_id: str,
+    req: Request,
+) -> DatasetFilePreviewResponse:
+    try:
+        _ensure_academy_enabled()
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    if not _check_path_traversal(file_id):
+        raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
+
+    user_id = _resolve_user_id(req)
+    workspace = _get_user_conversion_workspace(user_id)
+    items = _load_user_conversion_metadata(workspace["metadata_file"])
+    item = _find_conversion_item(items, file_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    category = str(item.get("category") or "source")
+    file_path = (
+        workspace["source_dir"] / file_id
+        if category == "source"
+        else workspace["converted_dir"] / file_id
+    )
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    ext = file_path.suffix.lower()
+    if ext not in {".txt", ".md"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Preview supported only for .txt and .md files",
+        )
+
+    preview_text = file_path.read_text(encoding="utf-8", errors="ignore")
+    max_chars = 20_000
+    truncated = len(preview_text) > max_chars
+    if truncated:
+        preview_text = preview_text[:max_chars]
+
+    return DatasetFilePreviewResponse(
+        file_id=file_id,
+        name=str(item.get("name") or file_id),
+        extension=ext,
+        preview=preview_text,
+        truncated=truncated,
+    )
+
+
+@router.get("/dataset/conversion/files/{file_id}/download")
+async def download_dataset_conversion_file(
+    file_id: str,
+    req: Request,
+) -> FileResponse:
+    try:
+        _ensure_academy_enabled()
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    if not _check_path_traversal(file_id):
+        raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
+
+    user_id = _resolve_user_id(req)
+    workspace = _get_user_conversion_workspace(user_id)
+    items = _load_user_conversion_metadata(workspace["metadata_file"])
+    item = _find_conversion_item(items, file_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    category = str(item.get("category") or "source")
+    file_path = (
+        workspace["source_dir"] / file_id
+        if category == "source"
+        else workspace["converted_dir"] / file_id
+    )
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    return FileResponse(
+        path=str(file_path),
+        filename=str(item.get("name") or file_path.name),
+        media_type="application/octet-stream",
+    )
 
 
 def _ingest_uploads_for_preview(

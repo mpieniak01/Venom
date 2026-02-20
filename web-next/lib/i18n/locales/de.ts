@@ -942,6 +942,7 @@ export const de = {
       tabs: {
         overview: "Übersicht",
         dataset: "Datensatz",
+        conversion: "Datenkonvertierung",
         training: "Training",
         adapters: "Adapter",
       },
@@ -1060,6 +1061,30 @@ export const de = {
       deleteDialogDescription: "Diese Aktion entfernt die Datei dauerhaft aus Academy-Uploads.",
       delete: "Löschen",
       cancel: "Abbrechen",
+    },
+    conversion: {
+      title: "Datenkonvertierung",
+      subtitle:
+        "Dateien hochladen und in Trainingsformate konvertieren (.jsonl, .json, .md, .txt, .csv).",
+      uploadFiles: "Dateien hochladen",
+      uploading: "Upload läuft...",
+      supported:
+        "Import: .pdf, .doc, .docx, .jsonl, .json, .md, .txt, .csv • Ausgabe: .jsonl, .json, .md, .txt, .csv",
+      workspace: "Benutzer-Workspace",
+      sourceFiles: "Quelldateien",
+      convertedFiles: "Konvertierte Dateien",
+      emptySource: "Keine Quelldateien.",
+      emptyConverted: "Keine konvertierten Dateien.",
+      convert: "Konvertieren",
+      preview: "Vorschau",
+      download: "Herunterladen",
+      previewPanel: "Dateivorschau",
+      previewHint: "Wähle eine .txt/.md-Datei für die Vorschau.",
+      noPreviewableFiles: "Keine vorschaufähigen Dateien (.txt/.md).",
+      loadFailed: "Konvertierungsdateien konnten nicht geladen werden",
+      uploadFailed: "Datei-Upload fehlgeschlagen",
+      convertFailed: "Dateikonvertierung fehlgeschlagen",
+      previewFailed: "Dateivorschau konnte nicht geladen werden",
     },
     logs: {
       title: "Trainingslogs",

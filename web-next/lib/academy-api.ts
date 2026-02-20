@@ -261,6 +261,7 @@ export interface DatasetConversionFileInfo {
   category: "source" | "converted";
   source_file_id?: string;
   target_format?: "md" | "txt" | "json" | "jsonl" | "csv";
+  selected_for_training?: boolean;
   status: string;
   error?: string;
 }
@@ -499,4 +500,17 @@ export async function convertDatasetFile(params: {
 
 export async function previewDatasetFile(fileId: string): Promise<DatasetFilePreviewResponse> {
   return apiFetch<DatasetFilePreviewResponse>(`/api/v1/academy/dataset/conversion/files/${fileId}/preview`);
+}
+
+export async function setDatasetConversionTrainingSelection(params: {
+  fileId: string;
+  selectedForTraining: boolean;
+}): Promise<DatasetConversionFileInfo> {
+  return apiFetch<DatasetConversionFileInfo>(
+    `/api/v1/academy/dataset/conversion/files/${params.fileId}/training-selection`,
+    {
+      method: "POST",
+      body: JSON.stringify({ selected_for_training: params.selectedForTraining }),
+    }
+  );
 }

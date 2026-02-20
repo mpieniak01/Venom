@@ -473,3 +473,41 @@ def test_preview_dataset_includes_converted_files(
     assert response.status_code == 200
     body = response.json()
     assert body["by_source"]["converted"] == 3
+
+
+@patch("venom_core.config.SETTINGS")
+def test_preview_dataset_uses_marked_converted_files_when_not_explicit(
+    mock_settings, client, mock_dataset_curator
+):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_LOCALHOST_ONLY = False
+
+    with (
+        patch(
+            "venom_core.api.routes.academy._get_selected_converted_file_ids",
+            return_value=["auto_marked_1.md"],
+        ),
+        patch(
+            "venom_core.api.routes.academy._resolve_existing_user_file",
+            return_value=(
+                {"category": "converted"},
+                Path("/tmp/auto_marked_1.md"),
+            ),
+        ),
+        patch("venom_core.api.routes.academy._ingest_upload_file", return_value=4),
+    ):
+        response = client.post(
+            "/api/v1/academy/dataset/preview",
+            json={
+                "lessons_limit": 100,
+                "git_commits_limit": 50,
+                "include_lessons": False,
+                "include_git": False,
+                "format": "alpaca",
+            },
+            headers={"X-Actor": "tester"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["by_source"]["converted"] == 4

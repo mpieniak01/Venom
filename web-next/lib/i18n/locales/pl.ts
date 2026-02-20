@@ -1081,6 +1081,8 @@ export const pl = {
         uploadFailed: "Nie udało się wgrać plików",
         convertFailed: "Nie udało się przekonwertować pliku",
         previewFailed: "Nie udało się wczytać podglądu pliku",
+        useForTraining: "Użyj do treningu",
+        trainingSelectionFailed: "Nie udało się zaktualizować wyboru treningu",
       },
       logs: {
         title: "Logi treningu",

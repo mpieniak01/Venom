@@ -288,9 +288,11 @@ def test_conversion_helpers_metadata_and_workspace(tmp_path):
         assert academy_routes._find_conversion_item(loaded, "nope") is None  # noqa: SLF001
         norm = academy_routes._normalize_conversion_item(loaded[0])  # noqa: SLF001
         assert norm.file_id == "f1"
-        assert academy_routes._build_conversion_file_id("abc.txt").endswith(  # noqa: SLF001
-            "_abc.txt"
+        generated_id = academy_routes._build_conversion_file_id(  # noqa: SLF001
+            extension=".txt"
         )
+        assert generated_id.endswith(".txt")
+        assert "abc" not in generated_id
 
         workspace["metadata_file"].write_text("{bad-json", encoding="utf-8")
         assert (
@@ -492,3 +494,48 @@ def test_conversion_pdf_docx_missing_optional_dependency_errors(tmp_path):
             assert False, "Expected ValueError for missing python-docx"
         except ValueError as exc:
             assert "python-docx" in str(exc)
+
+
+def test_conversion_mark_converted_file_for_training(tmp_path):
+    client = _build_client()
+    with (
+        patch("venom_core.config.SETTINGS.ENABLE_ACADEMY", True),
+        patch("venom_core.config.SETTINGS.ACADEMY_USER_DATA_DIR", str(tmp_path)),
+        patch(
+            "venom_core.api.routes.academy.require_localhost_request", return_value=None
+        ),
+    ):
+        upload_response = client.post(
+            "/api/v1/academy/dataset/conversion/upload",
+            files={"files": ("source.txt", io.BytesIO(b"A\n\nB"), "text/plain")},
+            headers={"X-Actor": "training-select"},
+        )
+        source_file_id = upload_response.json()["files"][0]["file_id"]
+        convert_response = client.post(
+            f"/api/v1/academy/dataset/conversion/files/{source_file_id}/convert",
+            json={"target_format": "md"},
+            headers={"X-Actor": "training-select"},
+        )
+        assert convert_response.status_code == 200
+        converted_file_id = convert_response.json()["converted_file"]["file_id"]
+
+        mark_response = client.post(
+            f"/api/v1/academy/dataset/conversion/files/{converted_file_id}/training-selection",
+            json={"selected_for_training": True},
+            headers={"X-Actor": "training-select"},
+        )
+        assert mark_response.status_code == 200
+        assert mark_response.json()["selected_for_training"] is True
+
+        list_response = client.get(
+            "/api/v1/academy/dataset/conversion/files",
+            headers={"X-Actor": "training-select"},
+        )
+        assert list_response.status_code == 200
+        converted_entries = list_response.json()["converted_files"]
+        marked_entry = next(
+            entry
+            for entry in converted_entries
+            if entry["file_id"] == converted_file_id
+        )
+        assert marked_entry["selected_for_training"] is True

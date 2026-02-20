@@ -216,6 +216,7 @@ for version in genealogy['versions']:
 
 2. Dataset Curation (automatic or on-demand)
    └─> DatasetCurator.collect_from_*()
+   └─> Optional: include files marked "Use for training" in Academy → Data Conversion (right column: converted files)
    └─> Minimum 50-100 examples
 
 3. Training Decision

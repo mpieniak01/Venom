@@ -107,3 +107,5 @@ docs_dev/
 data/benchmarks/
 .mypy_cache/
 data/training/
+MagicMock*/
+<MagicMock*/

@@ -1916,6 +1916,57 @@ def _find_conversion_item(
     return None
 
 
+def _resolve_workspace_file_path(
+    workspace: Dict[str, Path],
+    *,
+    file_id: str,
+    category: str,
+) -> Path:
+    if category == "source":
+        base_dir = workspace["source_dir"]
+    elif category == "converted":
+        base_dir = workspace["converted_dir"]
+    else:
+        raise HTTPException(status_code=400, detail="Invalid file category")
+
+    base_dir_resolved = base_dir.resolve()
+    candidate = (base_dir / file_id).resolve()
+    if not candidate.is_relative_to(base_dir_resolved):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    return candidate
+
+
+def _load_conversion_item_from_workspace(
+    workspace: Dict[str, Path],
+    *,
+    file_id: str,
+) -> Dict[str, Any]:
+    with _user_conversion_metadata_lock(workspace["base_dir"]):
+        items = _load_user_conversion_metadata(workspace["metadata_file"])
+        item = _find_conversion_item(items, file_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="File not found")
+    return item
+
+
+def _resolve_existing_user_file(
+    req: Request,
+    *,
+    file_id: str,
+) -> tuple[Dict[str, Any], Path]:
+    user_id = _resolve_user_id(req)
+    workspace = _get_user_conversion_workspace(user_id)
+    item = _load_conversion_item_from_workspace(workspace, file_id=file_id)
+    file_path = _resolve_workspace_file_path(
+        workspace,
+        file_id=file_id,
+        category=str(item.get("category") or "source"),
+    )
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    return item, file_path
+
+
 def _build_conversion_file_id(filename: str) -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     unique_id = uuid.uuid4().hex[:8]
@@ -2347,7 +2398,11 @@ async def convert_dataset_file(
                 status_code=400, detail="Conversion requires source file"
             )
 
-        source_path = workspace["source_dir"] / file_id
+        source_path = _resolve_workspace_file_path(
+            workspace,
+            file_id=file_id,
+            category="source",
+        )
         if not source_path.exists():
             raise HTTPException(status_code=404, detail="Source file not found on disk")
 
@@ -2413,22 +2468,7 @@ async def preview_dataset_conversion_file(
     if not _check_path_traversal(file_id):
         raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
 
-    user_id = _resolve_user_id(req)
-    workspace = _get_user_conversion_workspace(user_id)
-    with _user_conversion_metadata_lock(workspace["base_dir"]):
-        items = _load_user_conversion_metadata(workspace["metadata_file"])
-        item = _find_conversion_item(items, file_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    category = str(item.get("category") or "source")
-    file_path = (
-        workspace["source_dir"] / file_id
-        if category == "source"
-        else workspace["converted_dir"] / file_id
-    )
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found on disk")
+    item, file_path = _resolve_existing_user_file(req, file_id=file_id)
 
     ext = file_path.suffix.lower()
     if ext not in {".txt", ".md"}:
@@ -2465,22 +2505,7 @@ async def download_dataset_conversion_file(
     if not _check_path_traversal(file_id):
         raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
 
-    user_id = _resolve_user_id(req)
-    workspace = _get_user_conversion_workspace(user_id)
-    with _user_conversion_metadata_lock(workspace["base_dir"]):
-        items = _load_user_conversion_metadata(workspace["metadata_file"])
-        item = _find_conversion_item(items, file_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    category = str(item.get("category") or "source")
-    file_path = (
-        workspace["source_dir"] / file_id
-        if category == "source"
-        else workspace["converted_dir"] / file_id
-    )
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found on disk")
+    item, file_path = _resolve_existing_user_file(req, file_id=file_id)
 
     media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
     return FileResponse(

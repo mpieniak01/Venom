@@ -1825,7 +1825,8 @@ async def delete_dataset_upload(file_id: str, req: Request) -> Dict[str, Any]:
 
 
 def _sanitize_user_id(user_id: str) -> str:
-    safe = "".join(ch for ch in user_id if ch.isalnum() or ch in {"-", "_", "."})
+    # Keep user workspace path-safe: only alnum, dash, underscore.
+    safe = "".join(ch for ch in user_id if ch.isalnum() or ch in {"-", "_"})
     return safe or "local-user"
 
 
@@ -1933,6 +1934,14 @@ def _resolve_workspace_file_path(
     candidate = (base_dir / file_id).resolve()
     if not candidate.is_relative_to(base_dir_resolved):
         raise HTTPException(status_code=400, detail="Invalid file path")
+    return candidate
+
+
+def _resolve_safe_output_path(output_path: Path, base_dir: Path) -> Path:
+    base_dir_resolved = base_dir.resolve()
+    candidate = output_path.resolve()
+    if not candidate.is_relative_to(base_dir_resolved):
+        raise ValueError("Output path escapes workspace")
     return candidate
 
 
@@ -2195,10 +2204,16 @@ def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
 
 
 def _write_records_as_target(
-    records: List[Dict[str, str]], target_format: str, output_path: Path
+    records: List[Dict[str, str]],
+    target_format: str,
+    output_path: Path,
+    *,
+    base_dir: Path | None = None,
 ) -> None:
+    effective_base_dir = base_dir or output_path.parent
+    safe_output_path = _resolve_safe_output_path(output_path, effective_base_dir)
     if target_format == "md":
-        output_path.write_text(
+        safe_output_path.write_text(
             _serialize_records_to_markdown(records),
             encoding="utf-8",
         )
@@ -2210,17 +2225,17 @@ def _write_records_as_target(
             lines.append(item.get("instruction", ""))
             lines.append(item.get("output", ""))
             lines.append("")
-        output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+        safe_output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
         return
 
     if target_format == "json":
-        output_path.write_text(
+        safe_output_path.write_text(
             json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         return
 
     if target_format == "jsonl":
-        with open(output_path, "w", encoding="utf-8") as f:
+        with open(safe_output_path, "w", encoding="utf-8") as f:
             for item in records:
                 f.write(json.dumps(item, ensure_ascii=False) + "\n")
         return
@@ -2228,7 +2243,7 @@ def _write_records_as_target(
     if target_format == "csv":
         import csv
 
-        with open(output_path, "w", encoding="utf-8", newline="") as f:
+        with open(safe_output_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=["instruction", "input", "output"])
             writer.writeheader()
             for item in records:
@@ -2411,12 +2426,20 @@ async def convert_dataset_file(
         converted_name = f"{source_stem}.{target_format}"
         converted_file_id = _build_conversion_file_id(converted_name)
         converted_path = workspace["converted_dir"] / converted_file_id
+        converted_path = _resolve_safe_output_path(
+            converted_path, workspace["converted_dir"]
+        )
 
         try:
             records = _source_to_records(source_path)
             if not records:
                 raise ValueError("No valid records produced from source file")
-            _write_records_as_target(records, target_format, converted_path)
+            _write_records_as_target(
+                records,
+                target_format,
+                converted_path,
+                base_dir=workspace["converted_dir"],
+            )
         except (ValueError, OSError, json.JSONDecodeError) as exc:
             raise HTTPException(
                 status_code=400, detail=f"Conversion failed: {str(exc)}"
@@ -2478,8 +2501,10 @@ async def preview_dataset_conversion_file(
         )
 
     max_chars = 20_000
-    with open(file_path, "r", encoding="utf-8", errors="ignore") as file_obj:
-        preview_plus_one = file_obj.read(max_chars + 1)
+    async with await anyio.open_file(
+        file_path, "r", encoding="utf-8", errors="ignore"
+    ) as file_obj:
+        preview_plus_one = await file_obj.read(max_chars + 1)
     truncated = len(preview_plus_one) > max_chars
     preview_text = preview_plus_one[:max_chars]
 

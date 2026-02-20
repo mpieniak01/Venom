@@ -129,6 +129,7 @@ class DatasetScopeRequest(BaseModel):
     include_lessons: bool = Field(default=True)
     include_git: bool = Field(default=True)
     upload_ids: list[str] = Field(default_factory=list)
+    conversion_file_ids: list[str] | None = None
     quality_profile: str = Field(
         default="balanced", pattern="^(strict|balanced|lenient)$"
     )
@@ -154,3 +155,64 @@ class TrainableModelInfo(BaseModel):
     reason_if_not_trainable: str | None = None
     recommended: bool = False
     installed_local: bool = False
+
+
+class DatasetConversionFileInfo(BaseModel):
+    """Informacje o pliku w workspace konwersji datasetu."""
+
+    file_id: str
+    name: str
+    extension: str
+    size_bytes: int
+    created_at: str
+    category: str  # source|converted
+    source_file_id: str | None = None
+    target_format: str | None = None
+    selected_for_training: bool = False
+    status: str = "ready"
+    error: str | None = None
+
+
+class DatasetConversionListResponse(BaseModel):
+    """Lista plików użytkownika dla zakładki konwersji."""
+
+    user_id: str
+    workspace_dir: str
+    source_files: list[DatasetConversionFileInfo] = Field(default_factory=list)
+    converted_files: list[DatasetConversionFileInfo] = Field(default_factory=list)
+
+
+class DatasetConversionRequest(BaseModel):
+    """Request konwersji pliku źródłowego do formatu docelowego."""
+
+    target_format: str = Field(
+        pattern="^(md|txt|json|jsonl|csv)$",
+        description="Docelowy format pliku po konwersji",
+    )
+
+
+class DatasetConversionTrainingSelectionRequest(BaseModel):
+    """Request do oznaczania przekonwertowanego pliku jako źródło treningu."""
+
+    selected_for_training: bool = Field(
+        default=True, description="Czy plik ma być używany w Dataset Curation"
+    )
+
+
+class DatasetConversionResult(BaseModel):
+    """Response po konwersji pliku."""
+
+    success: bool
+    message: str
+    source_file: DatasetConversionFileInfo
+    converted_file: DatasetConversionFileInfo | None = None
+
+
+class DatasetFilePreviewResponse(BaseModel):
+    """Response z podglądem zawartości pliku tekstowego."""
+
+    file_id: str
+    name: str
+    extension: str
+    preview: str
+    truncated: bool

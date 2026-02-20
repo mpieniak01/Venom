@@ -9,6 +9,9 @@ accelerate>=0.34.0            # Wymagane przez TRL/PEFT (działa na CPU i GPU)
 datasets>=3.2.0               # Hugging Face Datasets library
 trl<0.9.0                     # TRL (SFTTrainer)
 peft>=0.18.0                  # Parameter-Efficient Fine-Tuning (LoRA)
+pypandoc>=1.14,<2.0           # Wrapper Pandoc do konwersji dokumentów
+pypdf>=4.0.0                  # Ekstrakcja tekstu z PDF
+python-docx>=1.1.0            # Ekstrakcja tekstu z DOCX
 
 # === GPU Acceleration Stack (Optional - Nvidia GPU Only) ===
 # Odkomentuj jeśli masz GPU. Unsloth wymaga CUDA i nie zainstaluje się na samym CPU.

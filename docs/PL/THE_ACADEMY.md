@@ -58,6 +58,7 @@ THE ACADEMY to system uczenia maszynowego, który pozwala Venomowi na autonomicz
 - **LessonsStore** - pary (Sytuacja → Rozwiązanie)
 - **Git History** - analiza commitów (Diff → Commit Message)
 - **Task History** - udane konwersacje z orchestratorem
+- **Academy / Konwersja danych** - pliki przekonwertowane oznaczone po prawej stronie jako "Użyj do treningu"
 
 **Formaty wyjściowe:**
 - **Alpaca** - format instruction-input-output

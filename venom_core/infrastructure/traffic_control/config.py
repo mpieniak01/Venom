@@ -113,6 +113,10 @@ class TrafficControlConfig(BaseModel):
     enable_logging: bool = Field(
         default=False, description="Włącz szczegółowe logowanie (opt-in via .env)"
     )
+    log_dir: str = Field(
+        default="./workspace/logs/traffic-control",
+        description="Katalog logów traffic-control",
+    )
     log_rotation_hours: int = Field(default=24, description="Rotacja logów co N godzin")
     log_retention_days: int = Field(
         default=3, description="Retencja archiwów logów (dni)"
@@ -197,8 +201,11 @@ class TrafficControlConfig(BaseModel):
         enable_logging = (
             os.getenv("ENABLE_TRAFFIC_CONTROL_LOGGING", "false").lower() == "true"
         )
+        log_dir = os.getenv(
+            "TRAFFIC_CONTROL_LOG_DIR", "./workspace/logs/traffic-control"
+        )
 
-        config = cls(enable_logging=enable_logging)
+        config = cls(enable_logging=enable_logging, log_dir=log_dir)
 
         # Provider-specific overrides (przykład: GitHub ma niższe limity)
         config.provider_policies["github"] = OutboundPolicyConfig(

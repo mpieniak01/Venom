@@ -285,6 +285,13 @@ class Settings(BaseSettings):
         ".doc",
         ".docx",
     ]  # Dozwolone rozszerzenia plików dla workspace konwersji
+    ACADEMY_CONVERSION_TARGET_EXTENSIONS: dict[str, str] = {
+        "md": ".md",
+        "txt": ".txt",
+        "json": ".json",
+        "jsonl": ".jsonl",
+        "csv": ".csv",
+    }  # Mapowanie formatów docelowych konwersji na rozszerzenia plików
 
     # Konfiguracja THE_NEXUS (Distributed Mesh)
     ENABLE_NEXUS: bool = False  # Włącz tryb Nexus (master node)

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import mimetypes
 import os
 from contextlib import contextmanager
 from datetime import datetime
@@ -1849,6 +1850,19 @@ def _get_user_conversion_workspace(user_id: str) -> Dict[str, Path]:
     }
 
 
+def _get_user_conversion_lock_file(base_dir: Path) -> Path:
+    return base_dir / ".metadata.lock"
+
+
+@contextmanager
+def _user_conversion_metadata_lock(base_dir: Path):
+    lock_file = _get_user_conversion_lock_file(base_dir)
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    lock_file.touch(exist_ok=True)
+    with _file_lock(lock_file, "a"):
+        yield
+
+
 def _load_user_conversion_metadata(metadata_file: Path) -> List[Dict[str, Any]]:
     if not metadata_file.exists():
         return []
@@ -1912,11 +1926,11 @@ def _serialize_records_to_markdown(records: List[Dict[str, str]]) -> str:
         instruction = item.get("instruction", "").strip()
         input_text = item.get("input", "").strip()
         output = item.get("output", "").strip()
-        chunks.append(f"## Przykład {idx}")
-        chunks.append(f"### Instruction\n{instruction or '(brak)'}")
+        chunks.append(f"## Example {idx}")
+        chunks.append(f"### Instruction\n{instruction or '(empty)'}")
         if input_text:
             chunks.append(f"### Input\n{input_text}")
-        chunks.append(f"### Output\n{output or '(brak)'}")
+        chunks.append(f"### Output\n{output or '(empty)'}")
     return "\n\n".join(chunks).strip() + ("\n" if chunks else "")
 
 
@@ -1940,7 +1954,7 @@ def _records_from_text(content: str) -> List[Dict[str, str]]:
     if not records and content.strip():
         records.append(
             {
-                "instruction": "Streszcz i ustrukturyzuj treść dokumentu.",
+                "instruction": "Summarize and structure the document content.",
                 "input": "",
                 "output": content.strip()[:12000],
             }
@@ -1965,7 +1979,7 @@ def _records_from_json_file(source_path: Path) -> List[Dict[str, str]]:
         input_text = str(item.get("input") or "").strip()
         output = str(item.get("output") or item.get("response") or "").strip()
         if not instruction and output:
-            instruction = "Przygotuj odpowiedź na podstawie danych wejściowych."
+            instruction = "Prepare an answer based on the provided data."
         if instruction and output:
             records.append(
                 {"instruction": instruction, "input": input_text, "output": output}
@@ -2015,7 +2029,12 @@ def _records_from_csv_file(source_path: Path) -> List[Dict[str, str]]:
 
 
 def _extract_text_from_pdf(source_path: Path) -> str:
-    from pypdf import PdfReader
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        raise ValueError(
+            "PDF conversion requires optional dependency 'pypdf'."
+        ) from exc
 
     reader = PdfReader(str(source_path))
     pages = [page.extract_text() or "" for page in reader.pages]
@@ -2023,7 +2042,12 @@ def _extract_text_from_pdf(source_path: Path) -> str:
 
 
 def _extract_text_from_docx(source_path: Path) -> str:
-    from docx import Document
+    try:
+        from docx import Document
+    except ImportError as exc:
+        raise ValueError(
+            "DOCX conversion requires optional dependency 'python-docx'."
+        ) from exc
 
     doc = Document(str(source_path))
     paragraphs = [item.text.strip() for item in doc.paragraphs if item.text.strip()]
@@ -2194,7 +2218,8 @@ async def list_dataset_conversion_files(req: Request) -> DatasetConversionListRe
 
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    items = _load_user_conversion_metadata(workspace["metadata_file"])
+    with _user_conversion_metadata_lock(workspace["base_dir"]):
+        items = _load_user_conversion_metadata(workspace["metadata_file"])
 
     source_files = [
         _normalize_conversion_item(item)
@@ -2227,7 +2252,6 @@ async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
 
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    items = _load_user_conversion_metadata(workspace["metadata_file"])
 
     form = await req.form()
     files = form.getlist("files")
@@ -2241,39 +2265,41 @@ async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
 
     uploaded: List[Dict[str, Any]] = []
     failed: List[Dict[str, str]] = []
-    for file in files:
-        filename, filename_error = _validate_upload_filename(file, SETTINGS)
-        if filename_error:
-            failed.append(filename_error)
-            continue
-        if not filename:
-            continue
+    with _user_conversion_metadata_lock(workspace["base_dir"]):
+        items = _load_user_conversion_metadata(workspace["metadata_file"])
+        for file in files:
+            filename, filename_error = _validate_upload_filename(file, SETTINGS)
+            if filename_error:
+                failed.append(filename_error)
+                continue
+            if not filename:
+                continue
 
-        file_id = _build_conversion_file_id(filename)
-        file_path = workspace["source_dir"] / file_id
-        persisted, persist_error = await _persist_with_limits(
-            file=file,
-            file_path=file_path,
-            filename=filename,
-            settings=SETTINGS,
-        )
-        if persist_error or not persisted:
-            failed.append(
-                persist_error
-                or {"name": filename, "error": "Failed to persist uploaded file"}
+            file_id = _build_conversion_file_id(filename)
+            file_path = workspace["source_dir"] / file_id
+            persisted, persist_error = await _persist_with_limits(
+                file=file,
+                file_path=file_path,
+                filename=filename,
+                settings=SETTINGS,
             )
-            continue
+            if persist_error or not persisted:
+                failed.append(
+                    persist_error
+                    or {"name": filename, "error": "Failed to persist uploaded file"}
+                )
+                continue
 
-        item = _build_conversion_item(
-            file_id=file_id,
-            filename=filename,
-            path=file_path,
-            category="source",
-        )
-        items.append(item)
-        uploaded.append(item)
+            item = _build_conversion_item(
+                file_id=file_id,
+                filename=filename,
+                path=file_path,
+                category="source",
+            )
+            items.append(item)
+            uploaded.append(item)
 
-    _save_user_conversion_metadata(workspace["metadata_file"], items)
+        _save_user_conversion_metadata(workspace["metadata_file"], items)
     return {
         "success": len(uploaded) > 0,
         "uploaded": len(uploaded),
@@ -2304,43 +2330,46 @@ async def convert_dataset_file(
 
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    items = _load_user_conversion_metadata(workspace["metadata_file"])
-    source_item = _find_conversion_item(items, file_id)
-    if not source_item:
-        raise HTTPException(status_code=404, detail="Source file not found")
-    if str(source_item.get("category")) != "source":
-        raise HTTPException(status_code=400, detail="Conversion requires source file")
+    with _user_conversion_metadata_lock(workspace["base_dir"]):
+        items = _load_user_conversion_metadata(workspace["metadata_file"])
+        source_item = _find_conversion_item(items, file_id)
+        if not source_item:
+            raise HTTPException(status_code=404, detail="Source file not found")
+        if str(source_item.get("category")) != "source":
+            raise HTTPException(
+                status_code=400, detail="Conversion requires source file"
+            )
 
-    source_path = workspace["source_dir"] / file_id
-    if not source_path.exists():
-        raise HTTPException(status_code=404, detail="Source file not found on disk")
+        source_path = workspace["source_dir"] / file_id
+        if not source_path.exists():
+            raise HTTPException(status_code=404, detail="Source file not found on disk")
 
-    target_format = payload.target_format.lower()
-    source_stem = Path(str(source_item.get("name") or "dataset")).stem
-    converted_name = f"{source_stem}.{target_format}"
-    converted_file_id = _build_conversion_file_id(converted_name)
-    converted_path = workspace["converted_dir"] / converted_file_id
+        target_format = payload.target_format.lower()
+        source_stem = Path(str(source_item.get("name") or "dataset")).stem
+        converted_name = f"{source_stem}.{target_format}"
+        converted_file_id = _build_conversion_file_id(converted_name)
+        converted_path = workspace["converted_dir"] / converted_file_id
 
-    try:
-        records = _source_to_records(source_path)
-        if not records:
-            raise ValueError("No valid records produced from source file")
-        _write_records_as_target(records, target_format, converted_path)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Conversion failed: {str(exc)}"
-        ) from exc
+        try:
+            records = _source_to_records(source_path)
+            if not records:
+                raise ValueError("No valid records produced from source file")
+            _write_records_as_target(records, target_format, converted_path)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Conversion failed: {str(exc)}"
+            ) from exc
 
-    converted_item = _build_conversion_item(
-        file_id=converted_file_id,
-        filename=converted_name,
-        path=converted_path,
-        category="converted",
-        source_file_id=file_id,
-        target_format=target_format,
-    )
-    items.append(converted_item)
-    _save_user_conversion_metadata(workspace["metadata_file"], items)
+        converted_item = _build_conversion_item(
+            file_id=converted_file_id,
+            filename=converted_name,
+            path=converted_path,
+            category="converted",
+            source_file_id=file_id,
+            target_format=target_format,
+        )
+        items.append(converted_item)
+        _save_user_conversion_metadata(workspace["metadata_file"], items)
 
     return DatasetConversionResult(
         success=True,
@@ -2368,8 +2397,9 @@ async def preview_dataset_conversion_file(
 
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    items = _load_user_conversion_metadata(workspace["metadata_file"])
-    item = _find_conversion_item(items, file_id)
+    with _user_conversion_metadata_lock(workspace["base_dir"]):
+        items = _load_user_conversion_metadata(workspace["metadata_file"])
+        item = _find_conversion_item(items, file_id)
     if not item:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -2389,11 +2419,11 @@ async def preview_dataset_conversion_file(
             detail="Preview supported only for .txt and .md files",
         )
 
-    preview_text = file_path.read_text(encoding="utf-8", errors="ignore")
     max_chars = 20_000
-    truncated = len(preview_text) > max_chars
-    if truncated:
-        preview_text = preview_text[:max_chars]
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as file_obj:
+        preview_plus_one = file_obj.read(max_chars + 1)
+    truncated = len(preview_plus_one) > max_chars
+    preview_text = preview_plus_one[:max_chars]
 
     return DatasetFilePreviewResponse(
         file_id=file_id,
@@ -2419,8 +2449,9 @@ async def download_dataset_conversion_file(
 
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    items = _load_user_conversion_metadata(workspace["metadata_file"])
-    item = _find_conversion_item(items, file_id)
+    with _user_conversion_metadata_lock(workspace["base_dir"]):
+        items = _load_user_conversion_metadata(workspace["metadata_file"])
+        item = _find_conversion_item(items, file_id)
     if not item:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -2433,10 +2464,11 @@ async def download_dataset_conversion_file(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
 
+    media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
     return FileResponse(
         path=str(file_path),
         filename=str(item.get("name") or file_path.name),
-        media_type="application/octet-stream",
+        media_type=media_type,
     )
 
 

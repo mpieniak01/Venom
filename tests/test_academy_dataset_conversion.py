@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import io
 import json
 from unittest.mock import MagicMock, patch
@@ -374,3 +375,120 @@ def test_conversion_route_convert_errors_for_missing_or_invalid_content(tmp_path
         )
         assert bad_convert_response.status_code == 400
         assert "Conversion failed" in bad_convert_response.json()["detail"]
+
+
+def test_conversion_user_isolation_between_actors(tmp_path):
+    client = _build_client()
+    with (
+        patch("venom_core.config.SETTINGS.ENABLE_ACADEMY", True),
+        patch("venom_core.config.SETTINGS.ACADEMY_USER_DATA_DIR", str(tmp_path)),
+        patch(
+            "venom_core.api.routes.academy.require_localhost_request", return_value=None
+        ),
+    ):
+        resp1 = client.post(
+            "/api/v1/academy/dataset/conversion/upload",
+            files={"files": ("user1.txt", io.BytesIO(b"user1"), "text/plain")},
+            headers={"X-Actor": "user-1"},
+        )
+        assert resp1.status_code == 200
+
+        resp2 = client.post(
+            "/api/v1/academy/dataset/conversion/upload",
+            files={"files": ("user2.txt", io.BytesIO(b"user2"), "text/plain")},
+            headers={"X-Actor": "user-2"},
+        )
+        assert resp2.status_code == 200
+
+        list1 = client.get(
+            "/api/v1/academy/dataset/conversion/files",
+            headers={"X-Actor": "user-1"},
+        )
+        list2 = client.get(
+            "/api/v1/academy/dataset/conversion/files",
+            headers={"X-Actor": "user-2"},
+        )
+        assert list1.status_code == 200
+        assert list2.status_code == 200
+        names1 = [f["name"] for f in list1.json().get("source_files", [])]
+        names2 = [f["name"] for f in list2.json().get("source_files", [])]
+        assert "user1.txt" in names1
+        assert "user2.txt" not in names1
+        assert "user2.txt" in names2
+        assert "user1.txt" not in names2
+
+
+def test_conversion_rejects_invalid_target_format(tmp_path):
+    client = _build_client()
+    with (
+        patch("venom_core.config.SETTINGS.ENABLE_ACADEMY", True),
+        patch("venom_core.config.SETTINGS.ACADEMY_USER_DATA_DIR", str(tmp_path)),
+        patch(
+            "venom_core.api.routes.academy.require_localhost_request", return_value=None
+        ),
+    ):
+        upload_response = client.post(
+            "/api/v1/academy/dataset/conversion/upload",
+            files={"files": ("source.txt", io.BytesIO(b"A\n\nB"), "text/plain")},
+            headers={"X-Actor": "tester-invalid-format"},
+        )
+        source_file_id = upload_response.json()["files"][0]["file_id"]
+        convert_response = client.post(
+            f"/api/v1/academy/dataset/conversion/files/{source_file_id}/convert",
+            json={"target_format": "xml"},
+            headers={"X-Actor": "tester-invalid-format"},
+        )
+        assert convert_response.status_code == 422
+
+
+def test_conversion_preview_reports_truncation_for_large_text(tmp_path):
+    client = _build_client()
+    with (
+        patch("venom_core.config.SETTINGS.ENABLE_ACADEMY", True),
+        patch("venom_core.config.SETTINGS.ACADEMY_USER_DATA_DIR", str(tmp_path)),
+        patch(
+            "venom_core.api.routes.academy.require_localhost_request", return_value=None
+        ),
+    ):
+        large_text = ("x" * 22000).encode("utf-8")
+        upload_response = client.post(
+            "/api/v1/academy/dataset/conversion/upload",
+            files={"files": ("big.txt", io.BytesIO(large_text), "text/plain")},
+            headers={"X-Actor": "preview-large"},
+        )
+        file_id = upload_response.json()["files"][0]["file_id"]
+        preview_response = client.get(
+            f"/api/v1/academy/dataset/conversion/files/{file_id}/preview",
+            headers={"X-Actor": "preview-large"},
+        )
+        assert preview_response.status_code == 200
+        payload = preview_response.json()
+        assert payload["truncated"] is True
+        assert len(payload["preview"]) == 20000
+
+
+def test_conversion_pdf_docx_missing_optional_dependency_errors(tmp_path):
+    pdf_path = tmp_path / "sample.pdf"
+    docx_path = tmp_path / "sample.docx"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    docx_path.write_bytes(b"PK\x03\x04")
+
+    original_import = builtins.__import__
+
+    def _deny_optional(name, globals=None, locals=None, fromlist=(), level=0):
+        if name in {"pypdf", "docx"}:
+            raise ImportError(f"missing {name}")
+        return original_import(name, globals, locals, fromlist, level)
+
+    with patch("builtins.__import__", side_effect=_deny_optional):
+        try:
+            academy_routes._extract_text_from_pdf(pdf_path)  # noqa: SLF001
+            assert False, "Expected ValueError for missing pypdf"
+        except ValueError as exc:
+            assert "pypdf" in str(exc)
+
+        try:
+            academy_routes._extract_text_from_docx(docx_path)  # noqa: SLF001
+            assert False, "Expected ValueError for missing python-docx"
+        except ValueError as exc:
+            assert "python-docx" in str(exc)

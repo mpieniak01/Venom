@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { GraduationCap, Database, Zap, Server, Play } from "lucide-react";
+import {
+  GraduationCap,
+  Database,
+  Zap,
+  Server,
+  Play,
+  ArrowRightLeft,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
@@ -146,7 +153,7 @@ export function AcademyDashboard() {
               : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
           )}
         >
-          <Database className="h-4 w-4" />
+          <ArrowRightLeft className="h-4 w-4" />
           {t("academy.dashboard.tabs.conversion")}
         </Button>
         <Button

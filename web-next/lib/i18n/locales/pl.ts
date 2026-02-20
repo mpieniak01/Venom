@@ -1020,6 +1020,7 @@ export const pl = {
         supported: "Obsługiwane: .jsonl, .json, .md, .txt, .csv",
         uploadFailed: "Wgrywanie nie powiodło się",
         uploadedFiles: "Wgrane pliki:",
+        convertedReadyFiles: "Przekonwertowane pliki gotowe do treningu:",
         records: "rekordów",
         fileDeleted: "Plik usunięty",
         deleteFileFailed: "Nie udało się usunąć pliku",
@@ -1030,6 +1031,7 @@ export const pl = {
         commitsLimit: "Limit commitów",
         taskHistoryExperimental: "Historia zadań (eksperymentalne)",
         selectedUploads: "{{count}} wgranych plików zostanie uwzględnionych",
+        selectedConverted: "{{count}} przekonwertowanych plików zostanie uwzględnionych",
         generating: "Generowanie...",
         preview: "Podgląd",
         curating: "Kuracja...",
@@ -1046,6 +1048,7 @@ export const pl = {
           git: "Git",
           taskHistory: "Historia zadań",
           uploads: "Uploady",
+          converted: "Przekonwertowane",
         },
         infoTitle: "Academy v2: trening adaptera LoRA, nie pełnego modelu",
         infoDescription:

@@ -645,6 +645,37 @@ def _ingest_uploads_for_curate(curator: Any, upload_ids: List[str]) -> int:
     return uploads_count
 
 
+def _ingest_converted_files_for_curate(
+    curator: Any,
+    req: Request,
+    conversion_file_ids: List[str],
+) -> int:
+    converted_count = 0
+    for file_idx, file_id in enumerate(conversion_file_ids, start=1):
+        if not _check_path_traversal(file_id):
+            logger.warning(
+                "Skipped converted file due to invalid identifier (idx=%s)",
+                file_idx,
+            )
+            continue
+        try:
+            item, file_path = _resolve_existing_user_file(req, file_id=file_id)
+            if str(item.get("category") or "") != "converted":
+                logger.warning(
+                    "Skipped conversion file because category is not converted (idx=%s)",
+                    file_idx,
+                )
+                continue
+            converted_count += _ingest_upload_file(curator, file_path)
+        except Exception as e:
+            logger.warning(
+                "Failed to ingest converted file (idx=%s, error=%s)",
+                file_idx,
+                type(e).__name__,
+            )
+    return converted_count
+
+
 @router.post(
     "/dataset",
     responses={
@@ -653,6 +684,7 @@ def _ingest_uploads_for_curate(curator: Any, upload_ids: List[str]) -> int:
 )
 async def curate_dataset(
     request: DatasetScopeRequest,
+    req: Request,
 ) -> DatasetResponse:
     """
     Kuracja datasetu ze statystykami (v2: wspiera user-defined scope).
@@ -673,11 +705,12 @@ async def curate_dataset(
 
     try:
         logger.info(
-            "Curating dataset: lessons=%s git=%s task_history=%s uploads=%s",
+            "Curating dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",
             request.include_lessons,
             request.include_git,
             request.include_task_history,
             len(request.upload_ids or []),
+            len(request.conversion_file_ids or []),
         )
         curator = _get_dataset_curator()
 
@@ -687,6 +720,13 @@ async def curate_dataset(
         uploads_count = 0
         if request.upload_ids:
             uploads_count = _ingest_uploads_for_curate(curator, request.upload_ids)
+        converted_count = 0
+        if request.conversion_file_ids:
+            converted_count = _ingest_converted_files_for_curate(
+                curator=curator,
+                req=req,
+                conversion_file_ids=request.conversion_file_ids,
+            )
 
         # Filtruj niską jakość
         removed = curator.filter_low_quality()
@@ -706,6 +746,7 @@ async def curate_dataset(
                 "git_commits_collected": scope_counts["git"],
                 "task_history_collected": scope_counts["task_history"],
                 "uploads_collected": uploads_count,
+                "converted_collected": converted_count,
                 "removed_low_quality": removed,
                 "quality_profile": request.quality_profile,
                 "by_source": {
@@ -713,6 +754,7 @@ async def curate_dataset(
                     "git": scope_counts["git"],
                     "task_history": scope_counts["task_history"],
                     "uploads": uploads_count,
+                    "converted": converted_count,
                 },
             },
             message=f"Dataset curated successfully: {stats['total_examples']} examples",
@@ -2565,6 +2607,35 @@ def _ingest_uploads_for_preview(
     return uploads_count
 
 
+def _ingest_converted_files_for_preview(
+    curator: Any,
+    req: Request,
+    conversion_file_ids: List[str],
+    warnings: List[str],
+) -> int:
+    converted_count = 0
+    for file_idx, file_id in enumerate(conversion_file_ids, start=1):
+        if not _check_path_traversal(file_id):
+            warnings.append(f"Invalid converted file_id (path traversal): {file_id}")
+            continue
+        try:
+            item, file_path = _resolve_existing_user_file(req, file_id=file_id)
+            if str(item.get("category") or "") != "converted":
+                warnings.append(f"File is not converted: {file_id}")
+                continue
+            converted_count += _ingest_upload_file(curator, file_path)
+        except HTTPException as e:
+            warnings.append(f"Converted file unavailable ({file_id}): {e.detail}")
+        except Exception as e:
+            logger.warning(
+                "Failed to ingest converted file during preview (idx=%s, error=%s)",
+                file_idx,
+                type(e).__name__,
+            )
+            warnings.append(f"Failed to ingest converted file {file_id}: {str(e)}")
+    return converted_count
+
+
 def _add_low_examples_warning(
     warnings: List[str], total_examples: int, quality_profile: str
 ) -> None:
@@ -2604,7 +2675,10 @@ def _build_preview_samples(curator: Any) -> List[Dict[str, str]]:
         503: RESP_503_ACADEMY_UNAVAILABLE,
     },
 )
-async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewResponse:
+async def preview_dataset(
+    request: DatasetScopeRequest,
+    req: Request,
+) -> DatasetPreviewResponse:
     """
     Preview datasetu przed curate z wybranym scope.
 
@@ -2623,11 +2697,12 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
 
     try:
         logger.info(
-            "Previewing dataset: lessons=%s git=%s task_history=%s uploads=%s",
+            "Previewing dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",
             request.include_lessons,
             request.include_git,
             request.include_task_history,
             len(request.upload_ids or []),
+            len(request.conversion_file_ids or []),
         )
         curator = _get_dataset_curator()
 
@@ -2642,6 +2717,13 @@ async def preview_dataset(request: DatasetScopeRequest) -> DatasetPreviewRespons
             by_source["uploads"] = _ingest_uploads_for_preview(
                 curator=curator,
                 upload_ids=request.upload_ids,
+                warnings=warnings,
+            )
+        if request.conversion_file_ids:
+            by_source["converted"] = _ingest_converted_files_for_preview(
+                curator=curator,
+                req=req,
+                conversion_file_ids=request.conversion_file_ids,
                 warnings=warnings,
             )
 

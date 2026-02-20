@@ -403,3 +403,73 @@ def test_curate_dataset_without_task_history(
     # Sprawdź statystyki - task_history_collected powinno być 0
     assert "task_history_collected" in data["statistics"]
     assert data["statistics"]["task_history_collected"] == 0
+
+
+@patch("venom_core.config.SETTINGS")
+def test_curate_dataset_includes_converted_files(
+    mock_settings, client, mock_dataset_curator
+):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_LOCALHOST_ONLY = False
+
+    with (
+        patch(
+            "venom_core.api.routes.academy._resolve_existing_user_file",
+            return_value=(
+                {"category": "converted"},
+                Path("/tmp/converted_sample.jsonl"),
+            ),
+        ),
+        patch("venom_core.api.routes.academy._ingest_upload_file", return_value=7),
+    ):
+        response = client.post(
+            "/api/v1/academy/dataset",
+            json={
+                "lessons_limit": 100,
+                "git_commits_limit": 50,
+                "format": "alpaca",
+                "conversion_file_ids": ["converted_1.jsonl"],
+            },
+            headers={"X-Actor": "tester"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["statistics"]["converted_collected"] == 7
+    assert body["statistics"]["by_source"]["converted"] == 7
+
+
+@patch("venom_core.config.SETTINGS")
+def test_preview_dataset_includes_converted_files(
+    mock_settings, client, mock_dataset_curator
+):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_LOCALHOST_ONLY = False
+
+    with (
+        patch(
+            "venom_core.api.routes.academy._resolve_existing_user_file",
+            return_value=(
+                {"category": "converted"},
+                Path("/tmp/converted_sample.md"),
+            ),
+        ),
+        patch("venom_core.api.routes.academy._ingest_upload_file", return_value=3),
+    ):
+        response = client.post(
+            "/api/v1/academy/dataset/preview",
+            json={
+                "lessons_limit": 100,
+                "git_commits_limit": 50,
+                "include_lessons": False,
+                "include_git": False,
+                "format": "alpaca",
+                "conversion_file_ids": ["converted_2.md"],
+            },
+            headers={"X-Actor": "tester"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["by_source"]["converted"] == 3

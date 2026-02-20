@@ -4,6 +4,7 @@ import asyncio
 import json
 import mimetypes
 import os
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -1917,7 +1918,8 @@ def _find_conversion_item(
 
 def _build_conversion_file_id(filename: str) -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    return f"{ts}_{filename}"
+    unique_id = uuid.uuid4().hex[:8]
+    return f"{ts}_{unique_id}_{filename}"
 
 
 def _serialize_records_to_markdown(records: List[Dict[str, str]]) -> str:
@@ -2077,7 +2079,12 @@ def _convert_with_pandoc(source_path: Path, output_path: Path) -> bool:
                 str(source_path), to="md", outputfile=str(output_path)
             )
         return output_path.exists() and output_path.stat().st_size > 0
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "Pandoc conversion failed for '%s': %s",
+            source_path.name,
+            exc,
+        )
         return False
 
 
@@ -2355,9 +2362,20 @@ async def convert_dataset_file(
             if not records:
                 raise ValueError("No valid records produced from source file")
             _write_records_as_target(records, target_format, converted_path)
-        except Exception as exc:
+        except (ValueError, OSError, json.JSONDecodeError) as exc:
             raise HTTPException(
                 status_code=400, detail=f"Conversion failed: {str(exc)}"
+            ) from exc
+        except Exception as exc:
+            logger.exception(
+                "Unexpected conversion error for user=%s file_id=%s target=%s",
+                user_id,
+                file_id,
+                target_format,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Conversion failed due to internal error",
             ) from exc
 
         converted_item = _build_conversion_item(

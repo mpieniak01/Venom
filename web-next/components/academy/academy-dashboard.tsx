@@ -129,20 +129,6 @@ export function AcademyDashboard() {
           {t("academy.dashboard.tabs.overview")}
         </Button>
         <Button
-          onClick={() => setActiveTab("dataset")}
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "dataset"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
-        >
-          <Database className="h-4 w-4" />
-          {t("academy.dashboard.tabs.dataset")}
-        </Button>
-        <Button
           onClick={() => setActiveTab("conversion")}
           variant="ghost"
           size="sm"
@@ -155,6 +141,20 @@ export function AcademyDashboard() {
         >
           <ArrowRightLeft className="h-4 w-4" />
           {t("academy.dashboard.tabs.conversion")}
+        </Button>
+        <Button
+          onClick={() => setActiveTab("dataset")}
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
+            activeTab === "dataset"
+              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
+              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+          )}
+        >
+          <Database className="h-4 w-4" />
+          {t("academy.dashboard.tabs.dataset")}
         </Button>
         <Button
           onClick={() => setActiveTab("training")}
@@ -200,8 +200,8 @@ export function AcademyDashboard() {
           </div>
         )}
         {!loading && status && activeTab === "overview" && <AcademyOverview status={status} onRefresh={loadStatus} />}
-        {!loading && status && activeTab === "dataset" && <DatasetPanel />}
         {!loading && status && activeTab === "conversion" && <DatasetConversionPanel />}
+        {!loading && status && activeTab === "dataset" && <DatasetPanel />}
         {!loading && status && activeTab === "training" && <TrainingPanel />}
         {!loading && status && activeTab === "adapters" && <AdaptersPanel />}
       </div>

@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Loader2, Upload, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/toast";
 import {
   convertDatasetFile,
   listDatasetConversionFiles,
   previewDatasetFile,
+  setDatasetConversionTrainingSelection,
   uploadDatasetConversionFiles,
   type DatasetConversionFileInfo,
 } from "@/lib/academy-api";
@@ -29,6 +31,7 @@ export function DatasetConversionPanel() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [selectionUpdatingId, setSelectionUpdatingId] = useState<string | null>(null);
   const [targetBySource, setTargetBySource] = useState<Record<string, TargetFormat>>({});
   const [sourceFiles, setSourceFiles] = useState<DatasetConversionFileInfo[]>([]);
   const [convertedFiles, setConvertedFiles] = useState<DatasetConversionFileInfo[]>([]);
@@ -112,6 +115,24 @@ export function DatasetConversionPanel() {
     }
   }
 
+  async function handleTrainingSelection(file: DatasetConversionFileInfo, selected: boolean) {
+    try {
+      setSelectionUpdatingId(file.file_id);
+      await setDatasetConversionTrainingSelection({
+        fileId: file.file_id,
+        selectedForTraining: selected,
+      });
+      await loadFiles();
+    } catch (error) {
+      pushToast(
+        error instanceof Error ? error.message : t("academy.conversion.trainingSelectionFailed"),
+        "error"
+      );
+    } finally {
+      setSelectionUpdatingId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -143,6 +164,54 @@ export function DatasetConversionPanel() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-white">{t("academy.conversion.convertedFiles")}</h3>
+          <div className="space-y-2">
+            {loading ? (
+              <p className="text-sm text-zinc-400">{t("academy.common.loadingAcademy")}</p>
+            ) : convertedFiles.length === 0 ? (
+              <p className="text-sm text-zinc-400">{t("academy.conversion.emptyConverted")}</p>
+            ) : (
+              convertedFiles.map((file) => (
+                <div key={file.file_id} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm text-white">{file.name}</p>
+                    <span className="text-xs text-zinc-500">{formatFileSize(file.size_bytes)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Checkbox
+                      checked={file.selected_for_training === true}
+                      disabled={selectionUpdatingId === file.file_id}
+                      onCheckedChange={(checked) =>
+                        void handleTrainingSelection(file, checked === true)
+                      }
+                    />
+                    <span className="text-xs text-zinc-300">
+                      {t("academy.conversion.useForTraining")}
+                    </span>
+                    {selectionUpdatingId === file.file_id ? (
+                      <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
+                    ) : null}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {[".txt", ".md"].includes(file.extension) ? (
+                      <Button size="sm" variant="ghost" onClick={() => void handlePreview(file)}>
+                        {t("academy.conversion.preview")}
+                      </Button>
+                    ) : null}
+                    <a
+                      href={`/api/v1/academy/dataset/conversion/files/${file.file_id}/download`}
+                      className="inline-flex items-center rounded-md border border-white/15 px-2 py-1 text-xs text-zinc-200 hover:bg-white/5"
+                    >
+                      {t("academy.conversion.download")}
+                    </a>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
         <div className="rounded-xl border border-white/10 bg-white/5 p-4">
           <h3 className="mb-3 text-sm font-semibold text-white">{t("academy.conversion.sourceFiles")}</h3>
           <div className="space-y-2">
@@ -193,39 +262,6 @@ export function DatasetConversionPanel() {
                         {t("academy.conversion.preview")}
                       </Button>
                     ) : null}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-white">{t("academy.conversion.convertedFiles")}</h3>
-          <div className="space-y-2">
-            {loading ? (
-              <p className="text-sm text-zinc-400">{t("academy.common.loadingAcademy")}</p>
-            ) : convertedFiles.length === 0 ? (
-              <p className="text-sm text-zinc-400">{t("academy.conversion.emptyConverted")}</p>
-            ) : (
-              convertedFiles.map((file) => (
-                <div key={file.file_id} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm text-white">{file.name}</p>
-                    <span className="text-xs text-zinc-500">{formatFileSize(file.size_bytes)}</span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {[".txt", ".md"].includes(file.extension) ? (
-                      <Button size="sm" variant="ghost" onClick={() => void handlePreview(file)}>
-                        {t("academy.conversion.preview")}
-                      </Button>
-                    ) : null}
-                    <a
-                      href={`/api/v1/academy/dataset/conversion/files/${file.file_id}/download`}
-                      className="inline-flex items-center rounded-md border border-white/15 px-2 py-1 text-xs text-zinc-200 hover:bg-white/5"
-                    >
-                      {t("academy.conversion.download")}
-                    </a>
                   </div>
                 </div>
               ))

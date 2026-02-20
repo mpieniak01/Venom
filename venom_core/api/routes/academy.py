@@ -24,6 +24,7 @@ from venom_core.api.schemas.academy import (
     DatasetConversionListResponse,
     DatasetConversionRequest,
     DatasetConversionResult,
+    DatasetConversionTrainingSelectionRequest,
     DatasetFilePreviewResponse,
     DatasetPreviewResponse,
     DatasetResponse,
@@ -704,13 +705,17 @@ async def curate_dataset(
         raise _to_http_exception(e) from e
 
     try:
+        conversion_file_ids = _resolve_conversion_file_ids_for_dataset(
+            req=req,
+            requested_ids=request.conversion_file_ids or [],
+        )
         logger.info(
             "Curating dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",
             request.include_lessons,
             request.include_git,
             request.include_task_history,
             len(request.upload_ids or []),
-            len(request.conversion_file_ids or []),
+            len(conversion_file_ids),
         )
         curator = _get_dataset_curator()
 
@@ -721,11 +726,11 @@ async def curate_dataset(
         if request.upload_ids:
             uploads_count = _ingest_uploads_for_curate(curator, request.upload_ids)
         converted_count = 0
-        if request.conversion_file_ids:
+        if conversion_file_ids:
             converted_count = _ingest_converted_files_for_curate(
                 curator=curator,
                 req=req,
-                conversion_file_ids=request.conversion_file_ids,
+                conversion_file_ids=conversion_file_ids,
             )
 
         # Filtruj niską jakość
@@ -1945,6 +1950,7 @@ def _normalize_conversion_item(raw: Dict[str, Any]) -> DatasetConversionFileInfo
         target_format=(
             str(raw.get("target_format")) if raw.get("target_format") else None
         ),
+        selected_for_training=bool(raw.get("selected_for_training", False)),
         status=str(raw.get("status") or "ready"),
         error=(str(raw.get("error")) if raw.get("error") else None),
     )
@@ -2018,10 +2024,16 @@ def _resolve_existing_user_file(
     return item, file_path
 
 
-def _build_conversion_file_id(filename: str) -> str:
+def _build_conversion_file_id(*, extension: str | None = None) -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     unique_id = uuid.uuid4().hex[:8]
-    return f"{ts}_{unique_id}_{filename}"
+    suffix = ""
+    if extension:
+        normalized_extension = extension.lower()
+        if not normalized_extension.startswith("."):
+            normalized_extension = f".{normalized_extension}"
+        suffix = normalized_extension
+    return f"{ts}_{unique_id}{suffix}"
 
 
 def _serialize_records_to_markdown(records: List[Dict[str, str]]) -> str:
@@ -2319,9 +2331,36 @@ def _build_conversion_item(
         "category": category,
         "source_file_id": source_file_id,
         "target_format": target_format,
+        "selected_for_training": False,
         "status": "ready",
         "error": None,
     }
+
+
+def _get_selected_converted_file_ids(req: Request) -> List[str]:
+    user_id = _resolve_user_id(req)
+    workspace = _get_user_conversion_workspace(user_id)
+    with _user_conversion_metadata_lock(workspace["base_dir"]):
+        items = _load_user_conversion_metadata(workspace["metadata_file"])
+    selected_ids: List[str] = []
+    for item in items:
+        if str(item.get("category") or "") != "converted":
+            continue
+        if not bool(item.get("selected_for_training", False)):
+            continue
+        file_id = str(item.get("file_id") or "")
+        if file_id and _check_path_traversal(file_id):
+            selected_ids.append(file_id)
+    return selected_ids
+
+
+def _resolve_conversion_file_ids_for_dataset(
+    req: Request,
+    requested_ids: List[str],
+) -> List[str]:
+    if requested_ids:
+        return requested_ids
+    return _get_selected_converted_file_ids(req)
 
 
 @router.get("/dataset/conversion/files", response_model=DatasetConversionListResponse)
@@ -2390,7 +2429,7 @@ async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
             if not filename:
                 continue
 
-            file_id = _build_conversion_file_id(filename)
+            file_id = _build_conversion_file_id(extension=Path(filename).suffix.lower())
             file_path = workspace["source_dir"] / file_id
             persisted, persist_error = await _persist_with_limits(
                 file=file,
@@ -2464,9 +2503,10 @@ async def convert_dataset_file(
             raise HTTPException(status_code=404, detail="Source file not found on disk")
 
         target_format = payload.target_format.lower()
-        source_stem = Path(str(source_item.get("name") or "dataset")).stem
+        source_stem = Path(str(source_item.get("name") or "dataset")).name
+        source_stem = Path(source_stem).stem
         converted_name = f"{source_stem}.{target_format}"
-        converted_file_id = _build_conversion_file_id(converted_name)
+        converted_file_id = _build_conversion_file_id(extension=target_format)
         converted_path = workspace["converted_dir"] / converted_file_id
         converted_path = _resolve_safe_output_path(
             converted_path, workspace["converted_dir"]
@@ -2515,6 +2555,41 @@ async def convert_dataset_file(
         source_file=_normalize_conversion_item(source_item),
         converted_file=_normalize_conversion_item(converted_item),
     )
+
+
+@router.post(
+    "/dataset/conversion/files/{file_id}/training-selection",
+    response_model=DatasetConversionFileInfo,
+)
+async def set_dataset_conversion_training_selection(
+    file_id: str,
+    payload: DatasetConversionTrainingSelectionRequest,
+    req: Request,
+) -> DatasetConversionFileInfo:
+    try:
+        _ensure_academy_enabled()
+        require_localhost_request(req)
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+
+    if not _check_path_traversal(file_id):
+        raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
+
+    user_id = _resolve_user_id(req)
+    workspace = _get_user_conversion_workspace(user_id)
+    with _user_conversion_metadata_lock(workspace["base_dir"]):
+        items = _load_user_conversion_metadata(workspace["metadata_file"])
+        item = _find_conversion_item(items, file_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="File not found")
+        if str(item.get("category") or "") != "converted":
+            raise HTTPException(
+                status_code=400,
+                detail="Only converted files can be marked for training",
+            )
+        item["selected_for_training"] = bool(payload.selected_for_training)
+        _save_user_conversion_metadata(workspace["metadata_file"], items)
+    return _normalize_conversion_item(item)
 
 
 @router.get(
@@ -2696,13 +2771,17 @@ async def preview_dataset(
         raise _to_http_exception(e) from e
 
     try:
+        conversion_file_ids = _resolve_conversion_file_ids_for_dataset(
+            req=req,
+            requested_ids=request.conversion_file_ids or [],
+        )
         logger.info(
             "Previewing dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",
             request.include_lessons,
             request.include_git,
             request.include_task_history,
             len(request.upload_ids or []),
-            len(request.conversion_file_ids or []),
+            len(conversion_file_ids),
         )
         curator = _get_dataset_curator()
 
@@ -2719,11 +2798,11 @@ async def preview_dataset(
                 upload_ids=request.upload_ids,
                 warnings=warnings,
             )
-        if request.conversion_file_ids:
+        if conversion_file_ids:
             by_source["converted"] = _ingest_converted_files_for_preview(
                 curator=curator,
                 req=req,
-                conversion_file_ids=request.conversion_file_ids,
+                conversion_file_ids=conversion_file_ids,
                 warnings=warnings,
             )
 

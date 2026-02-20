@@ -1032,6 +1032,8 @@ export const en = {
       uploadFailed: "Failed to upload files",
       convertFailed: "Failed to convert file",
       previewFailed: "Failed to load file preview",
+      useForTraining: "Use for training",
+      trainingSelectionFailed: "Failed to update training selection",
     },
     logs: {
       title: "Training Logs",

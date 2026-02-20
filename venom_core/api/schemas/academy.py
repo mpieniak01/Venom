@@ -168,6 +168,7 @@ class DatasetConversionFileInfo(BaseModel):
     category: str  # source|converted
     source_file_id: str | None = None
     target_format: str | None = None
+    selected_for_training: bool = False
     status: str = "ready"
     error: str | None = None
 
@@ -187,6 +188,14 @@ class DatasetConversionRequest(BaseModel):
     target_format: str = Field(
         pattern="^(md|txt|json|jsonl|csv)$",
         description="Docelowy format pliku po konwersji",
+    )
+
+
+class DatasetConversionTrainingSelectionRequest(BaseModel):
+    """Request do oznaczania przekonwertowanego pliku jako źródło treningu."""
+
+    selected_for_training: bool = Field(
+        default=True, description="Czy plik ma być używany w Dataset Curation"
     )
 
 

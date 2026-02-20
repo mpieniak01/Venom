@@ -1088,6 +1088,8 @@ export const de = {
       uploadFailed: "Datei-Upload fehlgeschlagen",
       convertFailed: "Dateikonvertierung fehlgeschlagen",
       previewFailed: "Dateivorschau konnte nicht geladen werden",
+      useForTraining: "Für Training verwenden",
+      trainingSelectionFailed: "Trainingsauswahl konnte nicht aktualisiert werden",
     },
     logs: {
       title: "Trainingslogs",

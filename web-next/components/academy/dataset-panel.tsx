@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Database, Play, Loader2, Upload, Trash2, Eye, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,9 +22,9 @@ import {
   deleteDatasetUpload,
   previewDataset,
   type DatasetResponse,
+  type DatasetConversionFileInfo,
   type UploadFileInfo,
   type DatasetPreviewResponse,
-  type DatasetConversionFileInfo,
 } from "@/lib/academy-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
 
@@ -58,25 +58,43 @@ export function DatasetPanel() {
     fileId: string | null;
   }>({ open: false, fileId: null });
 
-  // Load uploads on mount
-  useEffect(() => {
-    loadUploads();
-  }, []);
-
-  async function loadUploads() {
+  const loadUploads = useCallback(async () => {
     try {
       const data = await listDatasetUploads();
       setUploads(data);
     } catch (err) {
       console.error("Failed to load uploads:", err);
     }
+  }, []);
+
+  const loadConvertedFiles = useCallback(async () => {
     try {
-      const conversionData = await listDatasetConversionFiles();
-      setConvertedFiles(conversionData.converted_files ?? []);
+      const data = await listDatasetConversionFiles();
+      const ready = data.converted_files;
+      setConvertedFiles(ready);
+      setSelectedConvertedIds((prev) => {
+        const valid = new Set(ready.map((file) => file.file_id));
+        const kept = prev.filter((id) => valid.has(id));
+        if (kept.length > 0) {
+          return kept;
+        }
+        return ready
+          .filter((file) => file.selected_for_training === true)
+          .map((file) => file.file_id);
+      });
     } catch (err) {
       console.error("Failed to load converted files:", err);
     }
-  }
+  }, []);
+
+  const loadSources = useCallback(async () => {
+    await Promise.all([loadUploads(), loadConvertedFiles()]);
+  }, [loadUploads, loadConvertedFiles]);
+
+  // Load sources on mount
+  useEffect(() => {
+    void loadSources();
+  }, [loadSources]);
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
@@ -85,7 +103,7 @@ export function DatasetPanel() {
     try {
       setUploading(true);
       const result = await uploadDatasetFiles({ files });
-      await loadUploads();
+      await loadSources();
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -108,7 +126,7 @@ export function DatasetPanel() {
   async function handleDeleteUpload(fileId: string) {
     try {
       await deleteDatasetUpload(fileId);
-      await loadUploads();
+      await loadSources();
       setSelectedUploadIds((prev) => prev.filter((id) => id !== fileId));
       pushToast(t("academy.dataset.fileDeleted"), "success");
     } catch (err) {
@@ -119,6 +137,12 @@ export function DatasetPanel() {
 
   function toggleUploadSelection(fileId: string) {
     setSelectedUploadIds((prev) =>
+      prev.includes(fileId) ? prev.filter((id) => id !== fileId) : [...prev, fileId]
+    );
+  }
+
+  function toggleConvertedSelection(fileId: string) {
+    setSelectedConvertedIds((prev) =>
       prev.includes(fileId) ? prev.filter((id) => id !== fileId) : [...prev, fileId]
     );
   }
@@ -195,12 +219,6 @@ export function DatasetPanel() {
       default:
         return source;
     }
-  }
-
-  function toggleConvertedSelection(fileId: string) {
-    setSelectedConvertedIds((prev) =>
-      prev.includes(fileId) ? prev.filter((id) => id !== fileId) : [...prev, fileId]
-    );
   }
 
   return (
@@ -305,6 +323,7 @@ export function DatasetPanel() {
               ))}
             </div>
           )}
+
         </div>
       </div>
 
@@ -395,6 +414,7 @@ export function DatasetPanel() {
               </p>
             </div>
           )}
+
         </div>
 
         <div className="mt-6 flex gap-3">

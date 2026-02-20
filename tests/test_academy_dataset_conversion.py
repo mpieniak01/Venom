@@ -208,31 +208,29 @@ def test_conversion_helpers_for_records_and_targets(tmp_path):
         {"instruction": "Prompt", "input": "Context", "output": "Result"}
     ]
 
-    md_out = academy_routes._write_records_as_target(  # noqa: SLF001
-        records_from_csv,
-        "md",
-        output_dir=tmp_path,
-    )
-    txt_out = academy_routes._write_records_as_target(  # noqa: SLF001
-        records_from_csv,
-        "txt",
-        output_dir=tmp_path,
-    )
-    json_out = academy_routes._write_records_as_target(  # noqa: SLF001
-        records_from_csv,
-        "json",
-        output_dir=tmp_path,
-    )
-    jsonl_out = academy_routes._write_records_as_target(  # noqa: SLF001
-        records_from_csv,
-        "jsonl",
-        output_dir=tmp_path,
-    )
-    csv_out = academy_routes._write_records_as_target(  # noqa: SLF001
-        records_from_csv,
-        "csv",
-        output_dir=tmp_path,
-    )
+    with patch(
+        "venom_core.config.SETTINGS.ACADEMY_CONVERSION_OUTPUT_DIR", str(tmp_path)
+    ):
+        md_out = academy_routes._write_records_as_target(  # noqa: SLF001
+            records_from_csv,
+            "md",
+        )
+        txt_out = academy_routes._write_records_as_target(  # noqa: SLF001
+            records_from_csv,
+            "txt",
+        )
+        json_out = academy_routes._write_records_as_target(  # noqa: SLF001
+            records_from_csv,
+            "json",
+        )
+        jsonl_out = academy_routes._write_records_as_target(  # noqa: SLF001
+            records_from_csv,
+            "jsonl",
+        )
+        csv_out = academy_routes._write_records_as_target(  # noqa: SLF001
+            records_from_csv,
+            "csv",
+        )
 
     assert md_out.suffix == ".md"
     assert txt_out.suffix == ".txt"

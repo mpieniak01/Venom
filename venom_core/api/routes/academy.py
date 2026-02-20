@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import re
+import tempfile
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
@@ -1933,6 +1934,14 @@ def _get_user_conversion_workspace(user_id: str) -> Dict[str, Path]:
     }
 
 
+def _get_conversion_output_dir() -> Path:
+    from venom_core.config import SETTINGS
+
+    output_dir = Path(SETTINGS.ACADEMY_CONVERSION_OUTPUT_DIR).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
 def _get_user_conversion_lock_file(base_dir: Path) -> Path:
     return base_dir / ".metadata.lock"
 
@@ -2007,24 +2016,27 @@ def _resolve_workspace_file_path(
 ) -> Path:
     if category == "source":
         base_dir = workspace["source_dir"]
+        base_dir_resolved = base_dir.resolve()
+        candidate = (base_dir / file_id).resolve()
+        if not candidate.is_relative_to(base_dir_resolved):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+        return candidate
     elif category == "converted":
-        base_dir = workspace["converted_dir"]
+        converted_output_dir = _get_conversion_output_dir()
+        converted_output_dir_resolved = converted_output_dir.resolve()
+        global_candidate = (converted_output_dir / file_id).resolve()
+        if global_candidate.is_relative_to(converted_output_dir_resolved):
+            if global_candidate.exists():
+                return global_candidate
+        # Backward-compat fallback for historical files created per-user.
+        legacy_dir = workspace["converted_dir"]
+        legacy_dir_resolved = legacy_dir.resolve()
+        legacy_candidate = (legacy_dir / file_id).resolve()
+        if not legacy_candidate.is_relative_to(legacy_dir_resolved):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+        return legacy_candidate
     else:
         raise HTTPException(status_code=400, detail="Invalid file category")
-
-    base_dir_resolved = base_dir.resolve()
-    candidate = (base_dir / file_id).resolve()
-    if not candidate.is_relative_to(base_dir_resolved):
-        raise HTTPException(status_code=400, detail="Invalid file path")
-    return candidate
-
-
-def _resolve_safe_output_path(output_path: Path, base_dir: Path) -> Path:
-    base_dir_resolved = base_dir.resolve()
-    candidate = output_path.resolve()
-    if not candidate.is_relative_to(base_dir_resolved):
-        raise ValueError("Output path escapes workspace")
-    return candidate
 
 
 def _load_conversion_item_from_workspace(
@@ -2294,8 +2306,6 @@ def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
 def _write_records_as_target(
     records: List[Dict[str, str]],
     target_format: str,
-    *,
-    output_dir: Path,
 ) -> Path:
     from venom_core.config import SETTINGS
 
@@ -2314,10 +2324,17 @@ def _write_records_as_target(
     if not ext:
         raise ValueError(f"Unsupported target format: {target_format}")
 
-    resolved_file_id = _build_conversion_file_id(extension=ext)
-    safe_output_path = _resolve_safe_output_path(
-        output_dir / resolved_file_id, output_dir
+    output_dir = _get_conversion_output_dir()
+    fd, temp_path = tempfile.mkstemp(
+        prefix="conv_",
+        suffix=ext,
+        dir=str(output_dir),
     )
+    os.close(fd)
+    safe_output_path = Path(temp_path).resolve()
+    output_dir_resolved = output_dir.resolve()
+    if not safe_output_path.is_relative_to(output_dir_resolved):
+        raise ValueError("Conversion output path escapes configured output directory")
     if target_format == "md":
         safe_output_path.write_text(
             _serialize_records_to_markdown(records),
@@ -2577,7 +2594,6 @@ async def convert_dataset_file(
             converted_path = _write_records_as_target(
                 records,
                 target_format,
-                output_dir=workspace["converted_dir"],
             )
             converted_file_id = converted_path.name
         except (ValueError, OSError, json.JSONDecodeError) as exc:

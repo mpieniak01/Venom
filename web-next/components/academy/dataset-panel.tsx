@@ -18,11 +18,13 @@ import {
   curateDatasetV2,
   uploadDatasetFiles,
   listDatasetUploads,
+  listDatasetConversionFiles,
   deleteDatasetUpload,
   previewDataset,
   type DatasetResponse,
   type UploadFileInfo,
   type DatasetPreviewResponse,
+  type DatasetConversionFileInfo,
 } from "@/lib/academy-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
 
@@ -38,6 +40,7 @@ export function DatasetPanel() {
   // Upload state
   const [uploading, setUploading] = useState(false);
   const [uploads, setUploads] = useState<UploadFileInfo[]>([]);
+  const [convertedFiles, setConvertedFiles] = useState<DatasetConversionFileInfo[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Scope selection state
@@ -45,6 +48,7 @@ export function DatasetPanel() {
   const [includeGit, setIncludeGit] = useState(true);
   const [includeTaskHistory, setIncludeTaskHistory] = useState(false);
   const [selectedUploadIds, setSelectedUploadIds] = useState<string[]>([]);
+  const [selectedConvertedIds, setSelectedConvertedIds] = useState<string[]>([]);
 
   // Preview state
   const [preview, setPreview] = useState<DatasetPreviewResponse | null>(null);
@@ -65,6 +69,12 @@ export function DatasetPanel() {
       setUploads(data);
     } catch (err) {
       console.error("Failed to load uploads:", err);
+    }
+    try {
+      const conversionData = await listDatasetConversionFiles();
+      setConvertedFiles(conversionData.converted_files ?? []);
+    } catch (err) {
+      console.error("Failed to load converted files:", err);
     }
   }
 
@@ -124,6 +134,7 @@ export function DatasetPanel() {
         include_lessons: includeLessons,
         include_git: includeGit,
         upload_ids: selectedUploadIds,
+        conversion_file_ids: selectedConvertedIds,
         format: "alpaca",
       });
       setPreview(data);
@@ -146,6 +157,7 @@ export function DatasetPanel() {
         include_lessons: includeLessons,
         include_git: includeGit,
         upload_ids: selectedUploadIds,
+        conversion_file_ids: selectedConvertedIds,
         format: "alpaca",
       });
       setResult(data);
@@ -178,9 +190,17 @@ export function DatasetPanel() {
         return t("academy.dataset.sources.taskHistory");
       case "uploads":
         return t("academy.dataset.sources.uploads");
+      case "converted":
+        return t("academy.dataset.sources.converted");
       default:
         return source;
     }
+  }
+
+  function toggleConvertedSelection(fileId: string) {
+    setSelectedConvertedIds((prev) =>
+      prev.includes(fileId) ? prev.filter((id) => id !== fileId) : [...prev, fileId]
+    );
   }
 
   return (
@@ -256,6 +276,31 @@ export function DatasetPanel() {
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {convertedFiles.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-zinc-300">
+                {t("academy.dataset.convertedReadyFiles")}
+              </p>
+              {convertedFiles.map((file) => (
+                <div
+                  key={file.file_id}
+                  className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+                >
+                  <Checkbox
+                    checked={selectedConvertedIds.includes(file.file_id)}
+                    onCheckedChange={() => toggleConvertedSelection(file.file_id)}
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm text-white">{file.name}</p>
+                    <p className="text-xs text-zinc-400">
+                      {(file.size_bytes / 1024).toFixed(1)} KB • {new Date(file.created_at).toLocaleString(language)}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -339,6 +384,14 @@ export function DatasetPanel() {
             <div className="mt-2 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
               <p className="text-sm text-blue-300">
                 ✓ {t("academy.dataset.selectedUploads", { count: selectedUploadIds.length })}
+              </p>
+            </div>
+          )}
+
+          {selectedConvertedIds.length > 0 && (
+            <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+              <p className="text-sm text-emerald-300">
+                ✓ {t("academy.dataset.selectedConverted", { count: selectedConvertedIds.length })}
               </p>
             </div>
           )}

@@ -129,6 +129,7 @@ class DatasetScopeRequest(BaseModel):
     include_lessons: bool = Field(default=True)
     include_git: bool = Field(default=True)
     upload_ids: list[str] = Field(default_factory=list)
+    conversion_file_ids: list[str] = Field(default_factory=list)
     quality_profile: str = Field(
         default="balanced", pattern="^(strict|balanced|lenient)$"
     )

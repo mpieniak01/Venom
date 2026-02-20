@@ -971,6 +971,7 @@ export const en = {
       supported: "Supported: .jsonl, .json, .md, .txt, .csv",
       uploadFailed: "Upload failed",
       uploadedFiles: "Uploaded files:",
+      convertedReadyFiles: "Converted files ready for training:",
       records: "records",
       fileDeleted: "File deleted",
       deleteFileFailed: "Failed to delete file",
@@ -981,6 +982,7 @@ export const en = {
       commitsLimit: "Commits limit",
       taskHistoryExperimental: "Task History (experimental)",
       selectedUploads: "{{count}} uploaded file(s) will be included",
+      selectedConverted: "{{count}} converted file(s) will be included",
       generating: "Generating...",
       preview: "Preview",
       curating: "Curating...",
@@ -997,6 +999,7 @@ export const en = {
         git: "Git",
         taskHistory: "Task History",
         uploads: "Uploads",
+        converted: "Converted",
       },
       infoTitle: "Academy v2: Training LoRA adapter, not full model",
       infoDescription:

@@ -1,6 +1,7 @@
 """Testy dla modułu traffic_control - globalna kontrola ruchu API."""
 
 import time
+from logging.handlers import TimedRotatingFileHandler
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,8 +12,8 @@ from venom_core.infrastructure.traffic_control import (
     RetryPolicy,
     RetryResult,
     TokenBucket,
-    TrafficController,
     TrafficControlConfig,
+    TrafficController,
 )
 from venom_core.infrastructure.traffic_control.retry_policy import (
     is_retriable_http_error,
@@ -241,7 +242,9 @@ class TestRetryPolicy:
             return not isinstance(e, PermissionError)
 
         policy = RetryPolicy(max_attempts=3)
-        result, value, error = policy.execute_with_retry(auth_error, is_retriable=is_retriable)
+        result, value, error = policy.execute_with_retry(
+            auth_error, is_retriable=is_retriable
+        )
         assert result == RetryResult.FAILED
         assert isinstance(error, PermissionError)
 
@@ -319,6 +322,93 @@ class TestTrafficController:
         assert allowed is False
         assert reason == "rate_limit_exceeded"
         assert wait is not None
+
+    def test_resolve_safe_log_dir_world_writable_uses_scoped_subdir(self, tmp_path):
+        """Publicznie zapisywalny katalog bazowy powinien mieć izolowany podkatalog."""
+        public_dir = tmp_path / "public-logs"
+        public_dir.mkdir(parents=True, exist_ok=True)
+        public_dir.chmod(0o777)
+
+        with (
+            patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(public_dir)}),
+            patch("os.getuid", return_value=4242),
+        ):
+            resolved = TrafficController._resolve_safe_log_dir()
+
+        assert resolved == (public_dir / "user-4242").resolve()
+        assert resolved.exists()
+        assert resolved.is_dir()
+
+    def test_setup_rotating_logging_uses_resolved_safe_dir(self, tmp_path):
+        """Setup logowania powinien tworzyć handler w bezpiecznie resolved katalogu."""
+        public_dir = tmp_path / "public-logs"
+        public_dir.mkdir(parents=True, exist_ok=True)
+        public_dir.chmod(0o777)
+
+        tc_logger = __import__("logging").getLogger("venom_core.traffic_control")
+        old_handlers = list(tc_logger.handlers)
+        try:
+            config = TrafficControlConfig.from_env()
+            config.enable_logging = True
+            config.log_rotation_hours = 24
+            config.log_retention_days = 3
+            with (
+                patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(public_dir)}),
+                patch("os.getuid", return_value=31337),
+            ):
+                controller = TrafficController(config)
+                assert controller is not None
+
+            expected_prefix = str((public_dir / "user-31337").resolve())
+            tc_handlers = [
+                h for h in tc_logger.handlers if isinstance(h, TimedRotatingFileHandler)
+            ]
+            assert any(
+                getattr(h, "baseFilename", "").startswith(expected_prefix)
+                for h in tc_handlers
+            )
+        finally:
+            for handler in list(tc_logger.handlers):
+                if handler not in old_handlers:
+                    tc_logger.removeHandler(handler)
+                    try:
+                        handler.close()
+                    except Exception:
+                        pass
+
+    def test_resolve_safe_log_dir_stat_error_fallbacks_to_base(self, tmp_path):
+        base = tmp_path / "broken-stat"
+        with (
+            patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(base)}),
+            patch("pathlib.Path.stat", side_effect=OSError("stat-failed")),
+        ):
+            resolved = TrafficController._resolve_safe_log_dir()
+        assert resolved == base.resolve()
+
+    def test_resolve_safe_log_dir_without_getuid_uses_user_local(
+        self, tmp_path, monkeypatch
+    ):
+        public_dir = tmp_path / "public-logs-nouid"
+        public_dir.mkdir(parents=True, exist_ok=True)
+        public_dir.chmod(0o777)
+        monkeypatch.delattr("os.getuid", raising=False)
+
+        with patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(public_dir)}):
+            resolved = TrafficController._resolve_safe_log_dir()
+
+        assert resolved == (public_dir / "user-local").resolve()
+
+    def test_resolve_safe_log_dir_ignores_chmod_errors(self, tmp_path):
+        private_dir = tmp_path / "private-logs"
+        private_dir.mkdir(parents=True, exist_ok=True)
+        private_dir.chmod(0o755)
+        with (
+            patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(private_dir)}),
+            patch("os.chmod", side_effect=OSError("chmod-failed")),
+        ):
+            resolved = TrafficController._resolve_safe_log_dir()
+
+        assert resolved == private_dir.resolve()
 
     def test_traffic_controller_circuit_breaker_open(self):
         """Test że circuit breaker blokuje requesty po failures."""
@@ -441,7 +531,7 @@ class TestAntiLoopProtection:
         """Test że requests poniżej globalnego limitu zwracają True."""
         config = TrafficControlConfig()
         config.max_requests_per_minute_global = 1000
-        
+
         assert config.is_under_global_request_cap(500) is True
         assert config.is_under_global_request_cap(999) is True
 
@@ -449,14 +539,14 @@ class TestAntiLoopProtection:
         """Test że requests równe limitowi zwracają False."""
         config = TrafficControlConfig()
         config.max_requests_per_minute_global = 1000
-        
+
         assert config.is_under_global_request_cap(1000) is False
 
     def test_is_under_global_request_cap_above_threshold(self):
         """Test że requests powyżej limitu zwracają False."""
         config = TrafficControlConfig()
         config.max_requests_per_minute_global = 1000
-        
+
         assert config.is_under_global_request_cap(1001) is False
         assert config.is_under_global_request_cap(2000) is False
 
@@ -464,7 +554,7 @@ class TestAntiLoopProtection:
         """Test że retry_count poniżej max_retries zwraca True."""
         config = TrafficControlConfig()
         config.max_retries_per_operation = 5
-        
+
         assert config.can_retry_operation(0) is True
         assert config.can_retry_operation(4) is True
 
@@ -472,14 +562,14 @@ class TestAntiLoopProtection:
         """Test że retry_count równy max_retries zwraca False."""
         config = TrafficControlConfig()
         config.max_retries_per_operation = 5
-        
+
         assert config.can_retry_operation(5) is False
 
     def test_can_retry_operation_above_max(self):
         """Test że retry_count powyżej max_retries zwraca False."""
         config = TrafficControlConfig()
         config.max_retries_per_operation = 5
-        
+
         assert config.can_retry_operation(6) is False
         assert config.can_retry_operation(10) is False
 
@@ -489,7 +579,7 @@ class TestAntiLoopProtection:
         config.degraded_mode_enabled = False
         config.max_requests_per_minute_global = 1000
         config.degraded_mode_failure_threshold = 10
-        
+
         # Nawet przy przekroczeniu limitów
         assert config.should_enter_degraded_state(2000, 20) is False
 
@@ -499,7 +589,7 @@ class TestAntiLoopProtection:
         config.degraded_mode_enabled = True
         config.max_requests_per_minute_global = 1000
         config.degraded_mode_failure_threshold = 10
-        
+
         # Przekroczenie requestów
         assert config.should_enter_degraded_state(1000, 0) is True
         assert config.should_enter_degraded_state(1500, 5) is True
@@ -510,7 +600,7 @@ class TestAntiLoopProtection:
         config.degraded_mode_enabled = True
         config.max_requests_per_minute_global = 1000
         config.degraded_mode_failure_threshold = 10
-        
+
         # Przekroczenie błędów
         assert config.should_enter_degraded_state(500, 10) is True
         assert config.should_enter_degraded_state(100, 15) is True
@@ -521,7 +611,7 @@ class TestAntiLoopProtection:
         config.degraded_mode_enabled = True
         config.max_requests_per_minute_global = 1000
         config.degraded_mode_failure_threshold = 10
-        
+
         assert config.should_enter_degraded_state(500, 5) is False
         assert config.should_enter_degraded_state(999, 9) is False
 
@@ -531,12 +621,12 @@ class TestAntiLoopProtection:
         config.degraded_mode_enabled = True
         config.max_requests_per_minute_global = 1000
         config.degraded_mode_failure_threshold = 10
-        
+
         # Dokładnie na granicy requestów (should trigger)
         assert config.should_enter_degraded_state(1000, 0) is True
-        
+
         # Dokładnie na granicy błędów (should trigger)
         assert config.should_enter_degraded_state(0, 10) is True
-        
+
         # Jeden poniżej granic (should not trigger)
         assert config.should_enter_degraded_state(999, 9) is False

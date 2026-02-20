@@ -329,11 +329,14 @@ class TestTrafficController:
         public_dir.mkdir(parents=True, exist_ok=True)
         public_dir.chmod(0o777)
 
+        config = TrafficControlConfig.from_env()
+        config.enable_logging = False
+        config.log_dir = str(public_dir)
+        controller = TrafficController(config)
         with (
-            patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(public_dir)}),
             patch("os.getuid", return_value=4242),
         ):
-            resolved = TrafficController._resolve_safe_log_dir()
+            resolved = controller._resolve_safe_log_dir()
 
         assert resolved == (public_dir / "user-4242").resolve()
         assert resolved.exists()
@@ -352,8 +355,8 @@ class TestTrafficController:
             config.enable_logging = True
             config.log_rotation_hours = 24
             config.log_retention_days = 3
+            config.log_dir = str(public_dir)
             with (
-                patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(public_dir)}),
                 patch("os.getuid", return_value=31337),
             ):
                 controller = TrafficController(config)
@@ -378,11 +381,14 @@ class TestTrafficController:
 
     def test_resolve_safe_log_dir_stat_error_fallbacks_to_base(self, tmp_path):
         base = tmp_path / "broken-stat"
+        config = TrafficControlConfig.from_env()
+        config.enable_logging = False
+        config.log_dir = str(base)
+        controller = TrafficController(config)
         with (
-            patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(base)}),
             patch("pathlib.Path.stat", side_effect=OSError("stat-failed")),
         ):
-            resolved = TrafficController._resolve_safe_log_dir()
+            resolved = controller._resolve_safe_log_dir()
         assert resolved == base.resolve()
 
     def test_resolve_safe_log_dir_without_getuid_uses_user_local(
@@ -393,8 +399,11 @@ class TestTrafficController:
         public_dir.chmod(0o777)
         monkeypatch.delattr("os.getuid", raising=False)
 
-        with patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(public_dir)}):
-            resolved = TrafficController._resolve_safe_log_dir()
+        config = TrafficControlConfig.from_env()
+        config.enable_logging = False
+        config.log_dir = str(public_dir)
+        controller = TrafficController(config)
+        resolved = controller._resolve_safe_log_dir()
 
         assert resolved == (public_dir / "user-local").resolve()
 
@@ -402,11 +411,14 @@ class TestTrafficController:
         private_dir = tmp_path / "private-logs"
         private_dir.mkdir(parents=True, exist_ok=True)
         private_dir.chmod(0o755)
+        config = TrafficControlConfig.from_env()
+        config.enable_logging = False
+        config.log_dir = str(private_dir)
+        controller = TrafficController(config)
         with (
-            patch.dict("os.environ", {"TRAFFIC_CONTROL_LOG_DIR": str(private_dir)}),
             patch("os.chmod", side_effect=OSError("chmod-failed")),
         ):
-            resolved = TrafficController._resolve_safe_log_dir()
+            resolved = controller._resolve_safe_log_dir()
 
         assert resolved == private_dir.resolve()
 

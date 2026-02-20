@@ -106,15 +106,14 @@ class TrafficController:
         tc_logger.propagate = False
         self._enforce_log_storage_budget(log_dir)
 
-    @staticmethod
-    def _resolve_safe_log_dir() -> Path:
+    def _resolve_safe_log_dir(self) -> Path:
         """
         Rozwiązuje bezpieczny katalog logów traffic-control.
 
         Jeśli bazowy katalog jest publicznie zapisywalny (np. /tmp), tworzony jest
         izolowany podkatalog per-user z uprawnieniami 0700.
         """
-        raw_dir = os.getenv("TRAFFIC_CONTROL_LOG_DIR", "/tmp/venom/traffic-control")
+        raw_dir = self.config.log_dir
         base_dir = Path(raw_dir).expanduser().resolve()
         base_dir.mkdir(parents=True, exist_ok=True)
 

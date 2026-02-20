@@ -2330,57 +2330,64 @@ def _write_records_as_target(
         suffix=ext,
         dir=str(output_dir),
     )
-    os.close(fd)
     safe_output_path = Path(temp_path).resolve()
     output_dir_resolved = output_dir.resolve()
     if not safe_output_path.is_relative_to(output_dir_resolved):
+        os.close(fd)
+        try:
+            safe_output_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         raise ValueError("Conversion output path escapes configured output directory")
-    if target_format == "md":
-        safe_output_path.write_text(
-            _serialize_records_to_markdown(records),
-            encoding="utf-8",
-        )
-        return safe_output_path
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as out_file:
+            if target_format == "md":
+                out_file.write(_serialize_records_to_markdown(records))
+                return safe_output_path
 
-    if target_format == "txt":
-        lines: List[str] = []
-        for item in records:
-            lines.append(item.get("instruction", ""))
-            lines.append(item.get("output", ""))
-            lines.append("")
-        safe_output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
-        return safe_output_path
+            if target_format == "txt":
+                lines: List[str] = []
+                for item in records:
+                    lines.append(item.get("instruction", ""))
+                    lines.append(item.get("output", ""))
+                    lines.append("")
+                out_file.write("\n".join(lines).strip() + "\n")
+                return safe_output_path
 
-    if target_format == "json":
-        safe_output_path.write_text(
-            json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        return safe_output_path
+            if target_format == "json":
+                out_file.write(json.dumps(records, ensure_ascii=False, indent=2))
+                return safe_output_path
 
-    if target_format == "jsonl":
-        jsonl_text = (
-            "\n".join(json.dumps(item, ensure_ascii=False) for item in records) + "\n"
-        )
-        safe_output_path.write_text(jsonl_text, encoding="utf-8")
-        return safe_output_path
+            if target_format == "jsonl":
+                jsonl_text = (
+                    "\n".join(json.dumps(item, ensure_ascii=False) for item in records)
+                    + "\n"
+                )
+                out_file.write(jsonl_text)
+                return safe_output_path
 
-    if target_format == "csv":
-        import csv
-        import io
+            if target_format == "csv":
+                import csv
 
-        buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=["instruction", "input", "output"])
-        writer.writeheader()
-        for item in records:
-            writer.writerow(
-                {
-                    "instruction": item.get("instruction", ""),
-                    "input": item.get("input", ""),
-                    "output": item.get("output", ""),
-                }
-            )
-        safe_output_path.write_text(buffer.getvalue(), encoding="utf-8")
-        return safe_output_path
+                writer = csv.DictWriter(
+                    out_file, fieldnames=["instruction", "input", "output"]
+                )
+                writer.writeheader()
+                for item in records:
+                    writer.writerow(
+                        {
+                            "instruction": item.get("instruction", ""),
+                            "input": item.get("input", ""),
+                            "output": item.get("output", ""),
+                        }
+                    )
+                return safe_output_path
+    except Exception:
+        try:
+            safe_output_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
     raise AssertionError("Unreachable: target format should be validated above")
 

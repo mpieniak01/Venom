@@ -258,13 +258,41 @@ class Settings(BaseSettings):
     ACADEMY_TRAINING_IMAGE: str = "unsloth/unsloth:latest"  # Obraz Docker dla treningu
     ACADEMY_MAX_UPLOAD_SIZE_MB: int = 25  # Maksymalny rozmiar pliku do uploadu (MB)
     ACADEMY_MAX_UPLOADS_PER_REQUEST: int = 10  # Maksymalna liczba plików na upload
+    ACADEMY_USER_DATA_DIR: str = (
+        "./data/training/user_data"  # Trwały katalog danych użytkownika (konwersja)
+    )
+    ACADEMY_CONVERSION_OUTPUT_DIR: str = "./data/training/user_data/_converted_pool"  # Globalny katalog wyników konwersji (bez ścieżek per user)
     ACADEMY_ALLOWED_EXTENSIONS: list[str] = [
         ".jsonl",
         ".json",
         ".md",
         ".txt",
         ".csv",
-    ]  # Dozwolone rozszerzenia plików
+    ]  # Backward-compatible alias dla bezpośrednich uploadów datasetu
+    ACADEMY_ALLOWED_DATASET_EXTENSIONS: list[str] = [
+        ".jsonl",
+        ".json",
+        ".md",
+        ".txt",
+        ".csv",
+    ]  # Dozwolone rozszerzenia plików dla bezpośrednich uploadów datasetów
+    ACADEMY_ALLOWED_CONVERSION_EXTENSIONS: list[str] = [
+        ".jsonl",
+        ".json",
+        ".md",
+        ".txt",
+        ".csv",
+        ".pdf",
+        ".doc",
+        ".docx",
+    ]  # Dozwolone rozszerzenia plików dla workspace konwersji
+    ACADEMY_CONVERSION_TARGET_EXTENSIONS: dict[str, str] = {
+        "md": ".md",
+        "txt": ".txt",
+        "json": ".json",
+        "jsonl": ".jsonl",
+        "csv": ".csv",
+    }  # Mapowanie formatów docelowych konwersji na rozszerzenia plików
 
     # Konfiguracja THE_NEXUS (Distributed Mesh)
     ENABLE_NEXUS: bool = False  # Włącz tryb Nexus (master node)

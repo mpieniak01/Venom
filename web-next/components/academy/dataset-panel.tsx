@@ -42,6 +42,7 @@ export function DatasetPanel() {
   const [uploads, setUploads] = useState<UploadFileInfo[]>([]);
   const [convertedFiles, setConvertedFiles] = useState<DatasetConversionFileInfo[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const convertedSelectionInitializedRef = useRef(false);
 
   // Scope selection state
   const [includeLessons, setIncludeLessons] = useState(true);
@@ -75,6 +76,10 @@ export function DatasetPanel() {
       setSelectedConvertedIds((prev) => {
         const valid = new Set(ready.map((file) => file.file_id));
         const kept = prev.filter((id) => valid.has(id));
+        if (convertedSelectionInitializedRef.current) {
+          return kept;
+        }
+        convertedSelectionInitializedRef.current = true;
         if (kept.length > 0) {
           return kept;
         }

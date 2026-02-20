@@ -4,6 +4,7 @@ import asyncio
 import json
 import mimetypes
 import os
+import re
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
@@ -320,12 +321,21 @@ def _get_uploads_metadata_file() -> Path:
     return metadata_file
 
 
-def _validate_file_extension(filename: str) -> bool:
+def _validate_file_extension(
+    filename: str, *, allowed_extensions: list[str] | None = None
+) -> bool:
     """Waliduje rozszerzenie pliku."""
     from venom_core.config import SETTINGS
 
     ext = Path(filename).suffix.lower()
-    return ext in SETTINGS.ACADEMY_ALLOWED_EXTENSIONS
+    resolved_allowed_extensions = allowed_extensions
+    if resolved_allowed_extensions is None:
+        resolved_allowed_extensions = getattr(
+            SETTINGS,
+            "ACADEMY_ALLOWED_DATASET_EXTENSIONS",
+            SETTINGS.ACADEMY_ALLOWED_EXTENSIONS,
+        )
+    return ext in resolved_allowed_extensions
 
 
 def _validate_file_size(size_bytes: int) -> bool:
@@ -342,6 +352,13 @@ def _check_path_traversal(filename: str) -> bool:
     if ".." in filename or "/" in filename or "\\" in filename:
         return False
     return True
+
+
+def _is_safe_file_id(filename: str) -> bool:
+    """Dodatkowa walidacja identyfikatora pliku używanego do ścieżek."""
+    if not _check_path_traversal(filename):
+        return False
+    return bool(re.fullmatch(r"[A-Za-z0-9._-]{1,255}", filename))
 
 
 @contextmanager
@@ -707,7 +724,7 @@ async def curate_dataset(
     try:
         conversion_file_ids = _resolve_conversion_file_ids_for_dataset(
             req=req,
-            requested_ids=request.conversion_file_ids or [],
+            requested_ids=request.conversion_file_ids,
         )
         logger.info(
             "Curating dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",
@@ -1577,7 +1594,10 @@ def _upload_error(filename: str, message: str) -> tuple[None, Dict[str, str]]:
 
 
 def _validate_upload_filename(
-    file: Any, settings: Any
+    file: Any,
+    settings: Any,
+    *,
+    allowed_extensions: list[str] | None = None,
 ) -> tuple[Optional[str], Optional[Dict[str, str]]]:
     if not hasattr(file, "filename") or not file.filename:
         return None, None
@@ -1585,12 +1605,18 @@ def _validate_upload_filename(
     filename = file.filename
     if not _check_path_traversal(filename):
         return None, {"name": filename, "error": "Invalid filename (path traversal)"}
-    if not _validate_file_extension(filename):
+    resolved_allowed_extensions = allowed_extensions or getattr(
+        settings,
+        "ACADEMY_ALLOWED_DATASET_EXTENSIONS",
+        settings.ACADEMY_ALLOWED_EXTENSIONS,
+    )
+    if not _validate_file_extension(
+        filename, allowed_extensions=resolved_allowed_extensions
+    ):
         return None, {
             "name": filename,
             "error": (
-                "Invalid file extension. Allowed: "
-                f"{settings.ACADEMY_ALLOWED_EXTENSIONS}"
+                f"Invalid file extension. Allowed: {resolved_allowed_extensions}"
             ),
         }
     return filename, None
@@ -1673,7 +1699,15 @@ async def _process_uploaded_file(
 
     from venom_core.config import SETTINGS
 
-    filename, filename_error = _validate_upload_filename(file, SETTINGS)
+    filename, filename_error = _validate_upload_filename(
+        file,
+        SETTINGS,
+        allowed_extensions=getattr(
+            SETTINGS,
+            "ACADEMY_ALLOWED_DATASET_EXTENSIONS",
+            SETTINGS.ACADEMY_ALLOWED_EXTENSIONS,
+        ),
+    )
     if filename_error:
         return None, filename_error
     if not filename:
@@ -2260,12 +2294,15 @@ def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
 def _write_records_as_target(
     records: List[Dict[str, str]],
     target_format: str,
-    output_path: Path,
     *,
-    base_dir: Path | None = None,
+    output_dir: Path,
+    output_file_id: str,
 ) -> None:
-    effective_base_dir = base_dir or output_path.parent
-    safe_output_path = _resolve_safe_output_path(output_path, effective_base_dir)
+    if not _is_safe_file_id(output_file_id):
+        raise ValueError("Invalid output file identifier")
+    safe_output_path = _resolve_safe_output_path(
+        output_dir / output_file_id, output_dir
+    )
     if target_format == "md":
         safe_output_path.write_text(
             _serialize_records_to_markdown(records),
@@ -2356,9 +2393,9 @@ def _get_selected_converted_file_ids(req: Request) -> List[str]:
 
 def _resolve_conversion_file_ids_for_dataset(
     req: Request,
-    requested_ids: List[str],
+    requested_ids: List[str] | None = None,
 ) -> List[str]:
-    if requested_ids:
+    if requested_ids is not None:
         return requested_ids
     return _get_selected_converted_file_ids(req)
 
@@ -2422,7 +2459,15 @@ async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
     with _user_conversion_metadata_lock(workspace["base_dir"]):
         items = _load_user_conversion_metadata(workspace["metadata_file"])
         for file in files:
-            filename, filename_error = _validate_upload_filename(file, SETTINGS)
+            filename, filename_error = _validate_upload_filename(
+                file,
+                SETTINGS,
+                allowed_extensions=getattr(
+                    SETTINGS,
+                    "ACADEMY_ALLOWED_CONVERSION_EXTENSIONS",
+                    SETTINGS.ACADEMY_ALLOWED_EXTENSIONS,
+                ),
+            )
             if filename_error:
                 failed.append(filename_error)
                 continue
@@ -2519,8 +2564,8 @@ async def convert_dataset_file(
             _write_records_as_target(
                 records,
                 target_format,
-                converted_path,
-                base_dir=workspace["converted_dir"],
+                output_dir=workspace["converted_dir"],
+                output_file_id=converted_file_id,
             )
         except (ValueError, OSError, json.JSONDecodeError) as exc:
             raise HTTPException(
@@ -2602,6 +2647,7 @@ async def preview_dataset_conversion_file(
 ) -> DatasetFilePreviewResponse:
     try:
         _ensure_academy_enabled()
+        require_localhost_request(req)
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
@@ -2641,6 +2687,7 @@ async def download_dataset_conversion_file(
 ) -> FileResponse:
     try:
         _ensure_academy_enabled()
+        require_localhost_request(req)
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
@@ -2773,7 +2820,7 @@ async def preview_dataset(
     try:
         conversion_file_ids = _resolve_conversion_file_ids_for_dataset(
             req=req,
-            requested_ids=request.conversion_file_ids or [],
+            requested_ids=request.conversion_file_ids,
         )
         logger.info(
             "Previewing dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",

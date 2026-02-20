@@ -226,7 +226,7 @@ export interface DatasetScopeRequest {
   include_lessons?: boolean;
   include_git?: boolean;
   upload_ids?: string[];
-  conversion_file_ids?: string[];
+  conversion_file_ids?: string[] | null;
   quality_profile?: "strict" | "balanced" | "lenient";
 }
 

@@ -2296,19 +2296,30 @@ def _write_records_as_target(
     target_format: str,
     *,
     output_dir: Path,
-    output_file_id: str,
-) -> None:
-    if not _is_safe_file_id(output_file_id):
-        raise ValueError("Invalid output file identifier")
+) -> Path:
+    if target_format == "md":
+        ext = ".md"
+    elif target_format == "txt":
+        ext = ".txt"
+    elif target_format == "json":
+        ext = ".json"
+    elif target_format == "jsonl":
+        ext = ".jsonl"
+    elif target_format == "csv":
+        ext = ".csv"
+    else:
+        raise ValueError(f"Unsupported target format: {target_format}")
+
+    resolved_file_id = _build_conversion_file_id(extension=ext)
     safe_output_path = _resolve_safe_output_path(
-        output_dir / output_file_id, output_dir
+        output_dir / resolved_file_id, output_dir
     )
     if target_format == "md":
         safe_output_path.write_text(
             _serialize_records_to_markdown(records),
             encoding="utf-8",
         )
-        return
+        return safe_output_path
 
     if target_format == "txt":
         lines: List[str] = []
@@ -2317,19 +2328,19 @@ def _write_records_as_target(
             lines.append(item.get("output", ""))
             lines.append("")
         safe_output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
-        return
+        return safe_output_path
 
     if target_format == "json":
         safe_output_path.write_text(
             json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        return
+        return safe_output_path
 
     if target_format == "jsonl":
         with open(safe_output_path, "w", encoding="utf-8") as f:
             for item in records:
                 f.write(json.dumps(item, ensure_ascii=False) + "\n")
-        return
+        return safe_output_path
 
     if target_format == "csv":
         import csv
@@ -2345,9 +2356,9 @@ def _write_records_as_target(
                         "output": item.get("output", ""),
                     }
                 )
-        return
+        return safe_output_path
 
-    raise ValueError(f"Unsupported target format: {target_format}")
+    raise AssertionError("Unreachable: target format should be validated above")
 
 
 def _build_conversion_item(
@@ -2551,22 +2562,17 @@ async def convert_dataset_file(
         source_stem = Path(str(source_item.get("name") or "dataset")).name
         source_stem = Path(source_stem).stem
         converted_name = f"{source_stem}.{target_format}"
-        converted_file_id = _build_conversion_file_id(extension=target_format)
-        converted_path = workspace["converted_dir"] / converted_file_id
-        converted_path = _resolve_safe_output_path(
-            converted_path, workspace["converted_dir"]
-        )
 
         try:
             records = _source_to_records(source_path)
             if not records:
                 raise ValueError("No valid records produced from source file")
-            _write_records_as_target(
+            converted_path = _write_records_as_target(
                 records,
                 target_format,
                 output_dir=workspace["converted_dir"],
-                output_file_id=converted_file_id,
             )
+            converted_file_id = converted_path.name
         except (ValueError, OSError, json.JSONDecodeError) as exc:
             raise HTTPException(
                 status_code=400, detail=f"Conversion failed: {str(exc)}"

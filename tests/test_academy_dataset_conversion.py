@@ -208,42 +208,37 @@ def test_conversion_helpers_for_records_and_targets(tmp_path):
         {"instruction": "Prompt", "input": "Context", "output": "Result"}
     ]
 
-    md_out = tmp_path / "out.md"
-    txt_out = tmp_path / "out.txt"
-    json_out = tmp_path / "out.json"
-    jsonl_out = tmp_path / "out.jsonl"
-    csv_out = tmp_path / "out.csv"
-
-    academy_routes._write_records_as_target(  # noqa: SLF001
+    md_out = academy_routes._write_records_as_target(  # noqa: SLF001
         records_from_csv,
         "md",
-        output_dir=md_out.parent,
-        output_file_id=md_out.name,
+        output_dir=tmp_path,
     )
-    academy_routes._write_records_as_target(  # noqa: SLF001
+    txt_out = academy_routes._write_records_as_target(  # noqa: SLF001
         records_from_csv,
         "txt",
-        output_dir=txt_out.parent,
-        output_file_id=txt_out.name,
+        output_dir=tmp_path,
     )
-    academy_routes._write_records_as_target(  # noqa: SLF001
+    json_out = academy_routes._write_records_as_target(  # noqa: SLF001
         records_from_csv,
         "json",
-        output_dir=json_out.parent,
-        output_file_id=json_out.name,
+        output_dir=tmp_path,
     )
-    academy_routes._write_records_as_target(  # noqa: SLF001
+    jsonl_out = academy_routes._write_records_as_target(  # noqa: SLF001
         records_from_csv,
         "jsonl",
-        output_dir=jsonl_out.parent,
-        output_file_id=jsonl_out.name,
+        output_dir=tmp_path,
     )
-    academy_routes._write_records_as_target(  # noqa: SLF001
+    csv_out = academy_routes._write_records_as_target(  # noqa: SLF001
         records_from_csv,
         "csv",
-        output_dir=csv_out.parent,
-        output_file_id=csv_out.name,
+        output_dir=tmp_path,
     )
+
+    assert md_out.suffix == ".md"
+    assert txt_out.suffix == ".txt"
+    assert json_out.suffix == ".json"
+    assert jsonl_out.suffix == ".jsonl"
+    assert csv_out.suffix == ".csv"
 
     assert "Prompt" in md_out.read_text(encoding="utf-8")
     assert "Result" in txt_out.read_text(encoding="utf-8")

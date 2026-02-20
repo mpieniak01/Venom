@@ -40,6 +40,27 @@ warnings.filterwarnings(
 )
 
 
+def _cleanup_magicmock_dirs(root: Path) -> None:
+    """
+    Usuń artefakty katalogowe powstające przy błędnie zmockowanych ścieżkach,
+    np. "<MagicMock name='SETTINGS.WORKSPACE_ROOT' ...>".
+    """
+
+    for path in root.iterdir():
+        if not path.is_dir():
+            continue
+        if "MagicMock" not in path.name:
+            continue
+        shutil.rmtree(path, ignore_errors=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_magicmock_artifacts() -> None:
+    _cleanup_magicmock_dirs(Path.cwd())
+    yield
+    _cleanup_magicmock_dirs(Path.cwd())
+
+
 def _has_docker() -> bool:
     if shutil.which("docker") is None:
         return False
@@ -146,15 +167,20 @@ def configure_local_settings(tmp_path_factory) -> Dict[str, Any]:
     }
 
     tmp_state_dir = tmp_path_factory.mktemp("state")
+    tmp_workspace_dir = tmp_path_factory.mktemp("workspace")
     tmp_academy_training_dir = tmp_path_factory.mktemp("academy-training")
     tmp_academy_models_dir = tmp_path_factory.mktemp("academy-models")
+    tmp_academy_user_data_dir = tmp_path_factory.mktemp("academy-user-data")
     overrides["STATE_FILE_PATH"] = str(tmp_state_dir / "state_dump.json")
+    overrides["WORKSPACE_ROOT"] = str(tmp_workspace_dir)
+    overrides["REPO_ROOT"] = str(tmp_workspace_dir)
     # Izoluj artefakty chronosa/snienia od repozytorium podczas testów.
     overrides["CHRONOS_TIMELINES_DIR"] = str(tmp_state_dir / "timelines")
     overrides["DREAMING_OUTPUT_DIR"] = str(tmp_state_dir / "synthetic_training")
     # Izoluj artefakty Academy od repozytorium podczas testów.
     overrides["ACADEMY_TRAINING_DIR"] = str(tmp_academy_training_dir)
     overrides["ACADEMY_MODELS_DIR"] = str(tmp_academy_models_dir)
+    overrides["ACADEMY_USER_DATA_DIR"] = str(tmp_academy_user_data_dir)
 
     original_values = {attr: getattr(SETTINGS, attr) for attr in overrides}
 

@@ -251,6 +251,34 @@ export interface TrainableModelInfo {
   installed_local: boolean;
 }
 
+export interface DatasetConversionFileInfo {
+  file_id: string;
+  name: string;
+  extension: string;
+  size_bytes: number;
+  created_at: string;
+  category: "source" | "converted";
+  source_file_id?: string;
+  target_format?: "md" | "txt" | "json" | "jsonl" | "csv";
+  status: string;
+  error?: string;
+}
+
+export interface DatasetConversionListResponse {
+  user_id: string;
+  workspace_dir: string;
+  source_files: DatasetConversionFileInfo[];
+  converted_files: DatasetConversionFileInfo[];
+}
+
+export interface DatasetFilePreviewResponse {
+  file_id: string;
+  name: string;
+  extension: string;
+  preview: string;
+  truncated: boolean;
+}
+
 type ParsedErrorBody = {
   message?: unknown;
   detail?: unknown;
@@ -413,4 +441,61 @@ export async function curateDatasetV2(
  */
 export async function getTrainableModels(): Promise<TrainableModelInfo[]> {
   return apiFetch<TrainableModelInfo[]>("/api/v1/academy/models/trainable");
+}
+
+export async function listDatasetConversionFiles(): Promise<DatasetConversionListResponse> {
+  return apiFetch<DatasetConversionListResponse>("/api/v1/academy/dataset/conversion/files");
+}
+
+export async function uploadDatasetConversionFiles(params: {
+  files: FileList | File[];
+}): Promise<{
+  success: boolean;
+  uploaded: number;
+  failed: number;
+  files: DatasetConversionFileInfo[];
+  errors: Array<{ name: string; error: string }>;
+  message: string;
+}> {
+  const formData = new FormData();
+  const filesArray = Array.from(params.files);
+  filesArray.forEach((file) => {
+    formData.append("files", file);
+  });
+
+  const baseUrl = globalThis.window?.location?.origin ?? "http://localhost:8000";
+  const response = await fetch(`${baseUrl}/api/v1/academy/dataset/conversion/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseUploadErrorMessage(response));
+  }
+
+  return response.json();
+}
+
+export async function convertDatasetFile(params: {
+  fileId: string;
+  targetFormat: "md" | "txt" | "json" | "jsonl" | "csv";
+}): Promise<{
+  success: boolean;
+  message: string;
+  source_file: DatasetConversionFileInfo;
+  converted_file?: DatasetConversionFileInfo;
+}> {
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    source_file: DatasetConversionFileInfo;
+    converted_file?: DatasetConversionFileInfo;
+  }>(`/api/v1/academy/dataset/conversion/files/${params.fileId}/convert`, {
+    method: "POST",
+    body: JSON.stringify({ target_format: params.targetFormat }),
+  });
+}
+
+export async function previewDatasetFile(fileId: string): Promise<DatasetFilePreviewResponse> {
+  return apiFetch<DatasetFilePreviewResponse>(`/api/v1/academy/dataset/conversion/files/${fileId}/preview`);
 }

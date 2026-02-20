@@ -935,6 +935,7 @@ export const pl = {
         tabs: {
           overview: "Przegląd",
           dataset: "Dataset",
+          conversion: "Konwersja danych",
           training: "Trening",
           adapters: "Adaptery",
         },
@@ -1053,6 +1054,30 @@ export const pl = {
         deleteDialogDescription: "Ta operacja trwale usunie plik z uploadów Academy.",
         delete: "Usuń",
         cancel: "Anuluj",
+      },
+      conversion: {
+        title: "Konwersja danych",
+        subtitle:
+          "Wgraj własne pliki i konwertuj je do formatów treningowych (.jsonl, .json, .md, .txt, .csv).",
+        uploadFiles: "Wgraj pliki",
+        uploading: "Wgrywanie...",
+        supported:
+          "Import: .pdf, .doc, .docx, .jsonl, .json, .md, .txt, .csv • Wyjście: .jsonl, .json, .md, .txt, .csv",
+        workspace: "Katalog użytkownika",
+        sourceFiles: "Pliki źródłowe",
+        convertedFiles: "Pliki przekonwertowane",
+        emptySource: "Brak plików źródłowych.",
+        emptyConverted: "Brak plików po konwersji.",
+        convert: "Konwertuj",
+        preview: "Podgląd",
+        download: "Pobierz",
+        previewPanel: "Podgląd pliku",
+        previewHint: "Wybierz plik .txt/.md aby zobaczyć treść.",
+        noPreviewableFiles: "Brak plików możliwych do podglądu (.txt/.md).",
+        loadFailed: "Nie udało się wczytać plików konwersji",
+        uploadFailed: "Nie udało się wgrać plików",
+        convertFailed: "Nie udało się przekonwertować pliku",
+        previewFailed: "Nie udało się wczytać podglądu pliku",
       },
       logs: {
         title: "Logi treningu",

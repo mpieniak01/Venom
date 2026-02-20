@@ -261,6 +261,7 @@ class Settings(BaseSettings):
     ACADEMY_USER_DATA_DIR: str = (
         "./data/training/user_data"  # Trwały katalog danych użytkownika (konwersja)
     )
+    ACADEMY_CONVERSION_OUTPUT_DIR: str = "./data/training/user_data/_converted_pool"  # Globalny katalog wyników konwersji (bez ścieżek per user)
     ACADEMY_ALLOWED_EXTENSIONS: list[str] = [
         ".jsonl",
         ".json",

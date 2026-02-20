@@ -1020,8 +1020,7 @@ print("=" * 60)
                 process_pid = self._resolve_positive_pid(getattr(process, "pid", None))
             if process_pid is None:
                 logger.warning(
-                    "Cannot determine valid PID for local process in job %s",
-                    job_name,
+                    "Cannot determine valid PID for local process during cleanup",
                 )
                 return
             self._terminate_local_process(process, process_pid)

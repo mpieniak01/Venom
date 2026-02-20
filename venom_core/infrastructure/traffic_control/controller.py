@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import stat
 import threading
 import time
 from collections import deque
@@ -78,10 +79,7 @@ class TrafficController:
         if not self.config.enable_logging:
             return
 
-        log_dir = Path(
-            os.getenv("TRAFFIC_CONTROL_LOG_DIR", "/tmp/venom/traffic-control")
-        )
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = self._resolve_safe_log_dir()
         log_path = log_dir / "traffic-control.log"
         tc_logger = logging.getLogger("venom_core.traffic_control")
 
@@ -107,6 +105,44 @@ class TrafficController:
         tc_logger.setLevel(logging.INFO)
         tc_logger.propagate = False
         self._enforce_log_storage_budget(log_dir)
+
+    @staticmethod
+    def _resolve_safe_log_dir() -> Path:
+        """
+        Rozwiązuje bezpieczny katalog logów traffic-control.
+
+        Jeśli bazowy katalog jest publicznie zapisywalny (np. /tmp), tworzony jest
+        izolowany podkatalog per-user z uprawnieniami 0700.
+        """
+        raw_dir = os.getenv("TRAFFIC_CONTROL_LOG_DIR", "/tmp/venom/traffic-control")
+        base_dir = Path(raw_dir).expanduser().resolve()
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            base_stat = base_dir.stat()
+        except OSError:
+            return base_dir
+
+        is_world_writable = bool(base_stat.st_mode & stat.S_IWOTH)
+        is_sticky = bool(base_stat.st_mode & stat.S_ISVTX)
+        if is_world_writable:
+            uid = os.getuid() if hasattr(os, "getuid") else None
+            scoped_name = f"user-{uid}" if uid is not None else "user-local"
+            scoped_dir = base_dir / scoped_name
+            scoped_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(scoped_dir, 0o700)
+            except OSError:
+                # Best-effort on platforms/filesystems without chmod support.
+                pass
+            return scoped_dir
+
+        if not is_sticky:
+            try:
+                os.chmod(base_dir, 0o700)
+            except OSError:
+                pass
+        return base_dir
 
     def _enforce_log_storage_budget(self, log_dir: Path) -> None:
         """Czyści najstarsze archiwa jeśli przekroczono budżet miejsca."""

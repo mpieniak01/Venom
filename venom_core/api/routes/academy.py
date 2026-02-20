@@ -2297,17 +2297,21 @@ def _write_records_as_target(
     *,
     output_dir: Path,
 ) -> Path:
-    if target_format == "md":
-        ext = ".md"
-    elif target_format == "txt":
-        ext = ".txt"
-    elif target_format == "json":
-        ext = ".json"
-    elif target_format == "jsonl":
-        ext = ".jsonl"
-    elif target_format == "csv":
-        ext = ".csv"
-    else:
+    from venom_core.config import SETTINGS
+
+    target_extensions = getattr(
+        SETTINGS,
+        "ACADEMY_CONVERSION_TARGET_EXTENSIONS",
+        {
+            "md": ".md",
+            "txt": ".txt",
+            "json": ".json",
+            "jsonl": ".jsonl",
+            "csv": ".csv",
+        },
+    )
+    ext = target_extensions.get(target_format)
+    if not ext:
         raise ValueError(f"Unsupported target format: {target_format}")
 
     resolved_file_id = _build_conversion_file_id(extension=ext)
@@ -2337,25 +2341,28 @@ def _write_records_as_target(
         return safe_output_path
 
     if target_format == "jsonl":
-        with open(safe_output_path, "w", encoding="utf-8") as f:
-            for item in records:
-                f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        jsonl_text = (
+            "\n".join(json.dumps(item, ensure_ascii=False) for item in records) + "\n"
+        )
+        safe_output_path.write_text(jsonl_text, encoding="utf-8")
         return safe_output_path
 
     if target_format == "csv":
         import csv
+        import io
 
-        with open(safe_output_path, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["instruction", "input", "output"])
-            writer.writeheader()
-            for item in records:
-                writer.writerow(
-                    {
-                        "instruction": item.get("instruction", ""),
-                        "input": item.get("input", ""),
-                        "output": item.get("output", ""),
-                    }
-                )
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=["instruction", "input", "output"])
+        writer.writeheader()
+        for item in records:
+            writer.writerow(
+                {
+                    "instruction": item.get("instruction", ""),
+                    "input": item.get("input", ""),
+                    "output": item.get("output", ""),
+                }
+            )
+        safe_output_path.write_text(buffer.getvalue(), encoding="utf-8")
         return safe_output_path
 
     raise AssertionError("Unreachable: target format should be validated above")

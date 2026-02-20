@@ -592,3 +592,65 @@ def test_conversion_mark_converted_file_for_training(tmp_path):
             if entry["file_id"] == converted_file_id
         )
         assert marked_entry["selected_for_training"] is True
+
+
+def test_conversion_workspace_path_resolution_prefers_global_then_legacy(tmp_path):
+    with (
+        patch("venom_core.config.SETTINGS.ACADEMY_USER_DATA_DIR", str(tmp_path)),
+        patch(
+            "venom_core.config.SETTINGS.ACADEMY_CONVERSION_OUTPUT_DIR",
+            str(tmp_path / "_pool"),
+        ),
+    ):
+        workspace = academy_routes._get_user_conversion_workspace("path-user")  # noqa: SLF001
+
+        source_id = "source_a.txt"
+        source_path = workspace["source_dir"] / source_id
+        source_path.write_text("ok", encoding="utf-8")
+        resolved_source = academy_routes._resolve_workspace_file_path(  # noqa: SLF001
+            workspace, file_id=source_id, category="source"
+        )
+        assert resolved_source == source_path.resolve()
+
+        converted_id = "converted_a.md"
+        global_pool = academy_routes._get_conversion_output_dir()  # noqa: SLF001
+        global_file = global_pool / converted_id
+        global_file.write_text("global", encoding="utf-8")
+        resolved_global = academy_routes._resolve_workspace_file_path(  # noqa: SLF001
+            workspace, file_id=converted_id, category="converted"
+        )
+        assert resolved_global == global_file.resolve()
+
+        global_file.unlink()
+        legacy_file = workspace["converted_dir"] / converted_id
+        legacy_file.write_text("legacy", encoding="utf-8")
+        resolved_legacy = academy_routes._resolve_workspace_file_path(  # noqa: SLF001
+            workspace, file_id=converted_id, category="converted"
+        )
+        assert resolved_legacy == legacy_file.resolve()
+
+        try:
+            academy_routes._resolve_workspace_file_path(  # noqa: SLF001
+                workspace, file_id=source_id, category="invalid"
+            )
+            assert False, "Expected HTTPException for invalid category"
+        except Exception as exc:
+            assert getattr(exc, "status_code", None) == 400
+
+
+def test_conversion_write_records_cleanup_on_write_error(tmp_path):
+    records = [{"instruction": "A", "input": "", "output": "B"}]
+    with (
+        patch(
+            "venom_core.config.SETTINGS.ACADEMY_CONVERSION_OUTPUT_DIR", str(tmp_path)
+        ),
+        patch("os.fdopen", side_effect=OSError("fdopen-fail")),
+    ):
+        try:
+            academy_routes._write_records_as_target(records, "md")  # noqa: SLF001
+            assert False, "Expected OSError from fdopen"
+        except OSError:
+            pass
+
+    leftovers = list(tmp_path.iterdir())
+    assert leftovers == []

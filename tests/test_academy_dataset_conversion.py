@@ -127,6 +127,41 @@ def test_conversion_preview_rejects_non_text_file(tmp_path):
         )
 
 
+def test_conversion_preview_and_download_require_localhost(tmp_path):
+    client = _build_client()
+    with (
+        patch("venom_core.config.SETTINGS.ENABLE_ACADEMY", True),
+        patch("venom_core.config.SETTINGS.ACADEMY_USER_DATA_DIR", str(tmp_path)),
+        patch(
+            "venom_core.api.routes.academy.require_localhost_request", return_value=None
+        ),
+    ):
+        upload_response = client.post(
+            "/api/v1/academy/dataset/conversion/upload",
+            files={"files": ("source.txt", io.BytesIO(b"A\n\nB"), "text/plain")},
+            headers={"X-Actor": "local-protected"},
+        )
+        source_file_id = upload_response.json()["files"][0]["file_id"]
+        convert_response = client.post(
+            f"/api/v1/academy/dataset/conversion/files/{source_file_id}/convert",
+            json={"target_format": "md"},
+            headers={"X-Actor": "local-protected"},
+        )
+        converted_file_id = convert_response.json()["converted_file"]["file_id"]
+
+    preview_response = client.get(
+        f"/api/v1/academy/dataset/conversion/files/{converted_file_id}/preview",
+        headers={"X-Actor": "local-protected"},
+    )
+    assert preview_response.status_code == 403
+
+    download_response = client.get(
+        f"/api/v1/academy/dataset/conversion/files/{converted_file_id}/download",
+        headers={"X-Actor": "local-protected"},
+    )
+    assert download_response.status_code == 403
+
+
 def test_conversion_helpers_for_records_and_targets(tmp_path):
     txt_path = tmp_path / "sample.txt"
     txt_path.write_text("Instrukcja A\n\nOdpowiedz A", encoding="utf-8")
@@ -179,11 +214,36 @@ def test_conversion_helpers_for_records_and_targets(tmp_path):
     jsonl_out = tmp_path / "out.jsonl"
     csv_out = tmp_path / "out.csv"
 
-    academy_routes._write_records_as_target(records_from_csv, "md", md_out)  # noqa: SLF001
-    academy_routes._write_records_as_target(records_from_csv, "txt", txt_out)  # noqa: SLF001
-    academy_routes._write_records_as_target(records_from_csv, "json", json_out)  # noqa: SLF001
-    academy_routes._write_records_as_target(records_from_csv, "jsonl", jsonl_out)  # noqa: SLF001
-    academy_routes._write_records_as_target(records_from_csv, "csv", csv_out)  # noqa: SLF001
+    academy_routes._write_records_as_target(  # noqa: SLF001
+        records_from_csv,
+        "md",
+        output_dir=md_out.parent,
+        output_file_id=md_out.name,
+    )
+    academy_routes._write_records_as_target(  # noqa: SLF001
+        records_from_csv,
+        "txt",
+        output_dir=txt_out.parent,
+        output_file_id=txt_out.name,
+    )
+    academy_routes._write_records_as_target(  # noqa: SLF001
+        records_from_csv,
+        "json",
+        output_dir=json_out.parent,
+        output_file_id=json_out.name,
+    )
+    academy_routes._write_records_as_target(  # noqa: SLF001
+        records_from_csv,
+        "jsonl",
+        output_dir=jsonl_out.parent,
+        output_file_id=jsonl_out.name,
+    )
+    academy_routes._write_records_as_target(  # noqa: SLF001
+        records_from_csv,
+        "csv",
+        output_dir=csv_out.parent,
+        output_file_id=csv_out.name,
+    )
 
     assert "Prompt" in md_out.read_text(encoding="utf-8")
     assert "Result" in txt_out.read_text(encoding="utf-8")

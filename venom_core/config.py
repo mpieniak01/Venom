@@ -267,10 +267,24 @@ class Settings(BaseSettings):
         ".md",
         ".txt",
         ".csv",
+    ]  # Backward-compatible alias dla bezpośrednich uploadów datasetu
+    ACADEMY_ALLOWED_DATASET_EXTENSIONS: list[str] = [
+        ".jsonl",
+        ".json",
+        ".md",
+        ".txt",
+        ".csv",
+    ]  # Dozwolone rozszerzenia plików dla bezpośrednich uploadów datasetów
+    ACADEMY_ALLOWED_CONVERSION_EXTENSIONS: list[str] = [
+        ".jsonl",
+        ".json",
+        ".md",
+        ".txt",
+        ".csv",
         ".pdf",
         ".doc",
         ".docx",
-    ]  # Dozwolone rozszerzenia plików
+    ]  # Dozwolone rozszerzenia plików dla workspace konwersji
 
     # Konfiguracja THE_NEXUS (Distributed Mesh)
     ENABLE_NEXUS: bool = False  # Włącz tryb Nexus (master node)

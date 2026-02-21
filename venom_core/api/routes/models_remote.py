@@ -6,7 +6,7 @@ import os
 import time
 from datetime import datetime
 from threading import Lock
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
@@ -628,7 +628,7 @@ async def get_remote_providers() -> dict[str, Any]:
 
 @router.get("/catalog")
 async def get_remote_catalog(
-    provider: str = Query(..., description="Provider name: openai or google"),
+    provider: Annotated[str, Query(..., description="Provider name: openai or google")],
 ) -> dict[str, Any]:
     """
     Get catalog of remote models for a specific provider.

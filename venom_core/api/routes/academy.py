@@ -2343,30 +2343,22 @@ def _write_records_as_target(
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as out_file:
             if target_format == "md":
                 out_file.write(_serialize_records_to_markdown(records))
-                return safe_output_path
-
-            if target_format == "txt":
+            elif target_format == "txt":
                 lines: List[str] = []
                 for item in records:
                     lines.append(item.get("instruction", ""))
                     lines.append(item.get("output", ""))
                     lines.append("")
                 out_file.write("\n".join(lines).strip() + "\n")
-                return safe_output_path
-
-            if target_format == "json":
+            elif target_format == "json":
                 out_file.write(json.dumps(records, ensure_ascii=False, indent=2))
-                return safe_output_path
-
-            if target_format == "jsonl":
+            elif target_format == "jsonl":
                 jsonl_text = (
                     "\n".join(json.dumps(item, ensure_ascii=False) for item in records)
                     + "\n"
                 )
                 out_file.write(jsonl_text)
-                return safe_output_path
-
-            if target_format == "csv":
+            elif target_format == "csv":
                 import csv
 
                 writer = csv.DictWriter(
@@ -2381,15 +2373,17 @@ def _write_records_as_target(
                             "output": item.get("output", ""),
                         }
                     )
-                return safe_output_path
+            else:
+                raise AssertionError(
+                    "Unreachable: target format should be validated above"
+                )
+        return safe_output_path
     except Exception:
         try:
             safe_output_path.unlink(missing_ok=True)
         except OSError:
             pass
         raise
-
-    raise AssertionError("Unreachable: target format should be validated above")
 
 
 def _build_conversion_item(
@@ -2442,7 +2436,7 @@ def _resolve_conversion_file_ids_for_dataset(
     return _get_selected_converted_file_ids(req)
 
 
-@router.get("/dataset/conversion/files", response_model=DatasetConversionListResponse)
+@router.get("/dataset/conversion/files")
 async def list_dataset_conversion_files(req: Request) -> DatasetConversionListResponse:
     try:
         _ensure_academy_enabled()
@@ -2553,7 +2547,6 @@ async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
 
 @router.post(
     "/dataset/conversion/files/{file_id}/convert",
-    response_model=DatasetConversionResult,
 )
 async def convert_dataset_file(
     file_id: str,
@@ -2640,7 +2633,6 @@ async def convert_dataset_file(
 
 @router.post(
     "/dataset/conversion/files/{file_id}/training-selection",
-    response_model=DatasetConversionFileInfo,
 )
 async def set_dataset_conversion_training_selection(
     file_id: str,
@@ -2675,7 +2667,6 @@ async def set_dataset_conversion_training_selection(
 
 @router.get(
     "/dataset/conversion/files/{file_id}/preview",
-    response_model=DatasetFilePreviewResponse,
 )
 async def preview_dataset_conversion_file(
     file_id: str,

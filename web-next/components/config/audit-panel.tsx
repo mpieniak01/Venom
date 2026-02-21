@@ -69,9 +69,33 @@ function truncateMiddle(value: string, maxLength: number): string {
 
 function resolveOutcome(status: string): AuditRow["outcome"] {
   const normalized = status.toLowerCase();
-  if (["success", "ok", "published", "accepted"].includes(normalized)) return "success";
-  if (["failed", "failure", "error", "denied", "forbidden"].includes(normalized)) return "danger";
-  if (["queued", "cached", "manual", "pending", "partial"].includes(normalized)) return "warning";
+  if (
+    normalized === "ok" ||
+    normalized.includes("success") ||
+    normalized.includes("published") ||
+    normalized.includes("accepted")
+  ) {
+    return "success";
+  }
+  if (
+    normalized.includes("fail") ||
+    normalized.includes("error") ||
+    normalized.includes("denied") ||
+    normalized.includes("forbidden")
+  ) {
+    return "danger";
+  }
+  if (
+    normalized.includes("warning") ||
+    normalized.includes("warn") ||
+    normalized.includes("queued") ||
+    normalized.includes("cached") ||
+    normalized.includes("manual") ||
+    normalized.includes("pending") ||
+    normalized.includes("partial")
+  ) {
+    return "warning";
+  }
   return "neutral";
 }
 
@@ -285,7 +309,7 @@ export function AuditPanel() {
                     <div className="ml-auto flex shrink-0 items-center gap-2">
                       <Badge
                         tone="neutral"
-                        className="w-[10.5rem] justify-start px-2 py-0.5 text-left text-[11px]"
+                        className="w-[10.5rem] justify-start border-blue-400/30 bg-blue-500/15 px-2 py-0.5 text-left text-[11px] text-blue-200"
                         title={row.apiChannel}
                       >
                         {truncateMiddle(row.apiChannel, 22)}

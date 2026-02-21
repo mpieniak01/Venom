@@ -104,6 +104,61 @@ def test_audit_stream_filters_by_api_channel() -> None:
     assert payload["entries"][0]["api_channel"] == "Governance API"
 
 
+def test_audit_stream_uses_details_api_channel_override() -> None:
+    _reset_audit_streams()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/audit/stream",
+        json={
+            "source": "core.http",
+            "action": "http.get",
+            "actor": "tester",
+            "status": "success",
+            "details": {"api_channel": "System Status API"},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["entry"]["api_channel"] == "System Status API"
+
+    filtered = client.get("/api/v1/audit/stream?api_channel=system%20status%20api")
+    assert filtered.status_code == 200
+    filtered_payload = filtered.json()
+    assert filtered_payload["count"] == 1
+    assert filtered_payload["entries"][0]["api_channel"] == "System Status API"
+
+
+def test_audit_stream_infers_queue_and_unknown_channels() -> None:
+    _reset_audit_streams()
+    client = TestClient(app)
+
+    client.post(
+        "/api/v1/audit/stream",
+        json={
+            "source": "core.technical.github_publish",
+            "action": "queue.publish",
+            "actor": "tester",
+            "status": "published",
+        },
+    )
+    client.post(
+        "/api/v1/audit/stream",
+        json={
+            "source": "external.service",
+            "action": "custom.action",
+            "actor": "tester",
+            "status": "ok",
+        },
+    )
+
+    listing = client.get("/api/v1/audit/stream?limit=10")
+    assert listing.status_code == 200
+    channels = {entry["api_channel"] for entry in listing.json()["entries"]}
+    assert "Queue API" in channels
+    assert "Unknown API" in channels
+
+
 def test_audit_stream_ingest_token_guard(monkeypatch) -> None:
     _reset_audit_streams()
     monkeypatch.setenv("VENOM_AUDIT_STREAM_INGEST_TOKEN", "secret-token")

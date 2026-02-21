@@ -555,6 +555,7 @@ export const en = {
       refresh: "Refresh",
       refreshing: "Refreshing...",
       loadError: "Failed to load audit streams.",
+      loadErrorWithStatus: "{{message}} (HTTP {{status}})",
       empty: "No audit entries for selected filters.",
       source: {
         core: "core",

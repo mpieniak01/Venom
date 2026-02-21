@@ -31,6 +31,8 @@ type AuditRow = {
 type OutcomeFilter = "all" | "success" | "warning" | "danger" | "neutral";
 
 const ALL_CHANNELS = "all";
+const AUDIT_STREAM_URL = "/api/v1/audit/stream?limit=200";
+const API_MAP_URL = "/api/v1/system/api-map";
 
 type ApiMapConnection = {
   target_component?: string;
@@ -41,10 +43,10 @@ type ApiMapPayload = {
   external_connections?: ApiMapConnection[];
 };
 
-function formatFixedDateTime(value: string): string {
+function formatFixedDateTime(value: string, fallback: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return "0000-00-00 00:00:00";
+    return fallback;
   }
   const yyyy = date.getFullYear().toString().padStart(4, "0");
   const mm = (date.getMonth() + 1).toString().padStart(2, "0");
@@ -56,9 +58,13 @@ function formatFixedDateTime(value: string): string {
 }
 
 function truncateMiddle(value: string, maxLength: number): string {
+  if (maxLength <= 0) return "";
   if (value.length <= maxLength) return value;
-  const keep = Math.max(4, Math.floor((maxLength - 1) / 2));
-  return `${value.slice(0, keep)}...${value.slice(-keep)}`;
+  if (maxLength <= 3) return value.slice(0, maxLength);
+  if (maxLength < 9) return `${value.slice(0, maxLength - 3)}...`;
+  const head = Math.floor((maxLength - 3) / 2);
+  const tail = maxLength - 3 - head;
+  return `${value.slice(0, head)}...${value.slice(-tail)}`;
 }
 
 function resolveOutcome(status: string): AuditRow["outcome"] {
@@ -73,8 +79,15 @@ function toToneBadgeLabel(status: string): string {
   return status.toUpperCase();
 }
 
+function timestampToMs(value: string): number {
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 export function AuditPanel() {
   const t = useTranslation();
+  const unknownLabel = t("common.unknown");
+  const noDataLabel = t("common.noData");
   const [entries, setEntries] = useState<AuditStreamEntry[]>([]);
   const [apiMapChannels, setApiMapChannels] = useState<string[]>([]);
   const [apiChannelFilter, setApiChannelFilter] = useState<string>(ALL_CHANNELS);
@@ -86,8 +99,8 @@ export function AuditPanel() {
   const fetchAudits = useCallback(async () => {
     setLoadError(null);
     const [auditResponse, apiMapResponse] = await Promise.allSettled([
-      fetch("/api/v1/audit/stream?limit=200"),
-      fetch("/api/v1/system/api-map"),
+      fetch(AUDIT_STREAM_URL),
+      fetch(API_MAP_URL),
     ]);
 
     if (apiMapResponse.status === "fulfilled" && apiMapResponse.value.ok) {
@@ -117,7 +130,12 @@ export function AuditPanel() {
       const response = auditResponse.value;
       if (!response.ok) {
         setEntries([]);
-        setLoadError(`${t("config.audit.loadError")} (HTTP ${response.status})`);
+        setLoadError(
+          t("config.audit.loadErrorWithStatus", {
+            message: t("config.audit.loadError"),
+            status: response.status,
+          }),
+        );
         return;
       }
       const payload = (await response.json()) as { entries?: AuditStreamEntry[] };
@@ -147,19 +165,22 @@ export function AuditPanel() {
   const rows = useMemo<AuditRow[]>(
     () =>
       entries
-        .map((entry) => ({
-          source: entry.source || "unknown",
-          apiChannel: entry.api_channel || "unknown",
-          timestamp: entry.timestamp,
-          action: entry.action || "unknown",
-          actor: entry.actor || "-",
-          context: entry.context || "-",
-          status: entry.status || "unknown",
-          outcome: resolveOutcome(entry.status || "unknown"),
-          idRef: entry.id || "-",
-        }))
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
-    [entries],
+        .map((entry) => {
+          const statusRaw = (entry.status || "").trim() || "unknown";
+          return {
+            source: (entry.source || "").trim() || unknownLabel,
+            apiChannel: (entry.api_channel || "").trim() || unknownLabel,
+            timestamp: entry.timestamp,
+            action: (entry.action || "").trim() || unknownLabel,
+            actor: (entry.actor || "").trim() || noDataLabel,
+            context: (entry.context || "").trim() || noDataLabel,
+            status: statusRaw,
+            outcome: resolveOutcome(statusRaw),
+            idRef: (entry.id || "").trim() || noDataLabel,
+          };
+        })
+        .sort((a, b) => timestampToMs(b.timestamp) - timestampToMs(a.timestamp)),
+    [entries, noDataLabel, unknownLabel],
   );
 
   const apiChannels = useMemo(() => {
@@ -181,16 +202,6 @@ export function AuditPanel() {
       }),
     [apiChannelFilter, outcomeFilter, rows],
   );
-
-  const groupedRows = useMemo(() => {
-    const groups = new Map<string, AuditRow[]>();
-    filteredRows.forEach((row) => {
-      const current = groups.get(row.apiChannel) ?? [];
-      current.push(row);
-      groups.set(row.apiChannel, current);
-    });
-    return Array.from(groups.entries());
-  }, [filteredRows]);
 
   return (
     <div className="space-y-4">
@@ -249,9 +260,9 @@ export function AuditPanel() {
         {loading ? <p className="text-zinc-400">{t("common.loading")}</p> : null}
         {!loading && !filteredRows.length ? <p className="text-zinc-400">{t("config.audit.empty")}</p> : null}
 
-        {!loading && groupedRows.length ? (
+        {!loading && filteredRows.length ? (
           <div
-            className="space-y-3 pr-2"
+            className="pr-2"
             style={{
               maxHeight: "690px",
               overflowY: "scroll",
@@ -259,35 +270,26 @@ export function AuditPanel() {
               overscrollBehavior: "contain",
             }}
           >
-            {groupedRows.map(([channel, rowsInChannel]) => (
-              <div key={channel} className="space-y-1">
-                <div className="flex items-center gap-2 px-1">
-                  <Badge tone="neutral" className="px-2 py-0.5 text-[10px] uppercase">
-                    {truncateMiddle(channel, 28)}
-                  </Badge>
-                  <span className="text-[11px] text-zinc-500">{rowsInChannel.length}</span>
-                </div>
-                <ul className="divide-y divide-white/5">
-                  {rowsInChannel.map((row) => (
-                    <li key={`${row.idRef}:${row.timestamp}`} className="px-1 py-2">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="w-[19ch] shrink-0 text-zinc-500">{formatFixedDateTime(row.timestamp)}</span>
-                        <span className="shrink-0 font-semibold uppercase text-zinc-300">{row.action}</span>
-                        <span className="shrink-0 text-zinc-500">{truncateMiddle(row.actor, 18)}</span>
-                        <span className="min-w-0 truncate text-zinc-500">{truncateMiddle(row.context, 18)}</span>
-                        <span className="shrink-0 text-zinc-500">{truncateMiddle(row.idRef, 14)}</span>
-                        <Badge tone={row.outcome} className="ml-auto px-2 py-0.5 text-[11px]">
-                          {toToneBadgeLabel(row.status)}
-                        </Badge>
-                        <Badge tone="neutral" className="px-2 py-0.5 text-[10px] uppercase">
-                          {truncateMiddle(row.source, 18)}
-                        </Badge>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            <ul className="divide-y divide-white/5">
+              {filteredRows.map((row) => (
+                <li key={`${row.idRef}:${row.timestamp}`} className="px-1 py-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="w-[19ch] shrink-0 text-zinc-500">
+                      {formatFixedDateTime(row.timestamp, noDataLabel)}
+                    </span>
+                    <span className="shrink-0 font-semibold uppercase text-zinc-300">{row.action}</span>
+                    <span className="shrink-0 text-zinc-500">{truncateMiddle(row.apiChannel, 22)}</span>
+                    <span className="shrink-0 text-zinc-500">{truncateMiddle(row.source, 16)}</span>
+                    <span className="shrink-0 text-zinc-500">{truncateMiddle(row.actor, 18)}</span>
+                    <span className="min-w-0 truncate text-zinc-500">{truncateMiddle(row.context, 18)}</span>
+                    <span className="shrink-0 text-zinc-500">{truncateMiddle(row.idRef, 14)}</span>
+                    <Badge tone={row.outcome} className="ml-auto px-2 py-0.5 text-[11px]">
+                      {toToneBadgeLabel(row.status)}
+                    </Badge>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
       </div>

@@ -72,6 +72,22 @@ Referencje operacyjne:
 
 ### API Endpoints
 
+### Modele zdalne (OpenAI / Gemini)
+
+Operacje modeli zdalnych dla zakładki `/models` są wystawione przez dedykowane endpointy:
+
+```bash
+GET /api/v1/models/remote/providers
+GET /api/v1/models/remote/catalog?provider=openai|google
+GET /api/v1/models/remote/connectivity
+POST /api/v1/models/remote/validate
+```
+
+Uwagi operacyjne:
+1. status providerów i katalog modeli są cache'owane przez TTL,
+2. katalog jest pobierany z live API providerów z fallbackiem,
+3. endpoint walidacji wykonuje lekki test połączenia i zapisuje wynik do technicznego strumienia audytu.
+
 #### Lista dostępnych modeli
 
 ```bash

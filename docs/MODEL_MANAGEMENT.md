@@ -72,6 +72,22 @@ Operational reference:
 
 ### API Endpoints
 
+### Remote Models (OpenAI / Gemini)
+
+Remote-model operations for `/models` tab are exposed in dedicated endpoints:
+
+```bash
+GET /api/v1/models/remote/providers
+GET /api/v1/models/remote/catalog?provider=openai|google
+GET /api/v1/models/remote/connectivity
+POST /api/v1/models/remote/validate
+```
+
+Operational notes:
+1. provider status and catalog data are cached with TTL,
+2. catalog fetch uses live provider APIs with fallback path,
+3. validate endpoint performs a lightweight provider check and writes result to technical audit stream.
+
 #### List available models
 
 ```bash

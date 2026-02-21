@@ -18,6 +18,7 @@ class AuditStreamRecord(BaseModel):
     id: str
     timestamp: datetime
     source: str
+    api_channel: str
     action: str
     actor: str
     status: str
@@ -51,11 +52,84 @@ def _required_ingest_token() -> str:
     return (os.getenv("VENOM_AUDIT_STREAM_INGEST_TOKEN") or "").strip()
 
 
+_ACTION_PREFIX_CHANNEL_MAP: tuple[tuple[str, str], ...] = (
+    ("queue.", "Queue API"),
+    ("draft.", "Frontend (Next.js)"),
+    ("strategy.", "Strategy API"),
+    ("campaign.", "Tasks API"),
+    ("monitoring.", "Tasks API"),
+    ("agent.", "Agents API"),
+    ("memory.", "Memory API"),
+    ("node.", "Nodes API"),
+    ("feedback.", "Feedback API"),
+)
+
+
+def _channel_from_action(action: str) -> str | None:
+    action_n = (action or "").strip().lower()
+    if not action_n:
+        return None
+    if action_n in {"provider_activate", "test_connection", "preflight_check"}:
+        return "Governance API"
+    if action_n.startswith("provider_"):
+        return "Governance API"
+    if action_n.startswith("config."):
+        return "System Services API"
+    for prefix, channel in _ACTION_PREFIX_CHANNEL_MAP:
+        if action_n.startswith(prefix):
+            return channel
+    return None
+
+
+def _infer_api_channel(
+    source: str, action: str, details: dict[str, Any] | None = None
+) -> str:
+    details = details or {}
+    details_channel = details.get("api_channel")
+    if isinstance(details_channel, str) and details_channel.strip():
+        return details_channel.strip()
+
+    source_n = (source or "").strip().lower()
+    source_head = source_n.split(".", maxsplit=1)[0] if source_n else ""
+
+    if source_n == "core.admin":
+        return "Governance API"
+
+    if source_n.startswith("core.technical."):
+        suffix = source_n.removeprefix("core.technical.")
+        if suffix.startswith("github_publish"):
+            return "Queue API"
+        channel = _channel_from_action(action)
+        return channel or "System Services API"
+
+    if source_n.startswith("module.brand_studio") or source_n.startswith(
+        "brand_studio"
+    ):
+        channel = _channel_from_action(action)
+        return channel or "Frontend (Next.js)"
+
+    if source_n.startswith("core."):
+        channel = _channel_from_action(action)
+        return channel or "System Services API"
+
+    channel = _channel_from_action(action)
+    if channel:
+        return channel
+
+    if source_head == "module":
+        return "Frontend (Next.js)"
+    if source_head == "core":
+        return "System Services API"
+
+    return "Unknown API"
+
+
 def _serialize_entry(entry: AuditStreamEntry) -> AuditStreamRecord:
     return AuditStreamRecord(
         id=entry.id,
         timestamp=entry.timestamp,
         source=entry.source,
+        api_channel=_infer_api_channel(entry.source, entry.action, entry.details),
         action=entry.action,
         actor=entry.actor,
         status=entry.status,
@@ -67,20 +141,28 @@ def _serialize_entry(entry: AuditStreamEntry) -> AuditStreamRecord:
 @router.get("/stream", response_model=AuditStreamResponse)
 async def get_audit_stream_entries(
     source: str | None = Query(default=None),
+    api_channel: str | None = Query(default=None),
     action: str | None = Query(default=None),
     actor: str | None = Query(default=None),
     status: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> AuditStreamResponse:
     stream = get_audit_stream()
+    lookup_limit = 500 if api_channel else limit
     entries = stream.get_entries(
         source=source,
         action=action,
         actor=actor,
         status=status,
-        limit=limit,
+        limit=lookup_limit,
     )
     payload = [_serialize_entry(entry) for entry in entries]
+    if api_channel:
+        api_channel_n = api_channel.strip().lower()
+        payload = [
+            entry for entry in payload if entry.api_channel.lower() == api_channel_n
+        ]
+        payload = payload[: max(1, min(limit, 500))]
     return AuditStreamResponse(count=len(payload), entries=payload)
 
 

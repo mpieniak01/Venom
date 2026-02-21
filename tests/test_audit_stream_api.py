@@ -31,6 +31,7 @@ def test_audit_stream_publish_and_read_roundtrip() -> None:
     payload = response.json()
     assert payload["status"] == "accepted"
     assert payload["entry"]["source"] == "module.brand_studio"
+    assert payload["entry"]["api_channel"] == "Frontend (Next.js)"
 
     listing = client.get("/api/v1/audit/stream?limit=20")
     assert listing.status_code == 200
@@ -38,6 +39,7 @@ def test_audit_stream_publish_and_read_roundtrip() -> None:
     assert listed_payload["status"] == "success"
     assert listed_payload["count"] >= 1
     assert listed_payload["entries"][0]["action"] == "draft.generate"
+    assert listed_payload["entries"][0]["api_channel"] == "Frontend (Next.js)"
 
 
 def test_audit_stream_filters_by_source() -> None:
@@ -68,6 +70,38 @@ def test_audit_stream_filters_by_source() -> None:
     payload = filtered.json()
     assert payload["count"] == 1
     assert payload["entries"][0]["source"] == "module.brand_studio"
+    assert payload["entries"][0]["api_channel"] == "Queue API"
+
+
+def test_audit_stream_filters_by_api_channel() -> None:
+    _reset_audit_streams()
+    client = TestClient(app)
+
+    client.post(
+        "/api/v1/audit/stream",
+        json={
+            "source": "core.admin",
+            "action": "provider_activate",
+            "actor": "admin",
+            "status": "success",
+        },
+    )
+    client.post(
+        "/api/v1/audit/stream",
+        json={
+            "source": "module.brand_studio",
+            "action": "queue.publish",
+            "actor": "tester",
+            "status": "published",
+        },
+    )
+
+    filtered = client.get("/api/v1/audit/stream?api_channel=Governance%20API")
+    assert filtered.status_code == 200
+    payload = filtered.json()
+    assert payload["count"] == 1
+    assert payload["entries"][0]["source"] == "core.admin"
+    assert payload["entries"][0]["api_channel"] == "Governance API"
 
 
 def test_audit_stream_ingest_token_guard(monkeypatch) -> None:
@@ -119,3 +153,4 @@ def test_admin_audit_entries_are_mirrored_into_canonical_stream() -> None:
     assert payload["count"] >= 1
     assert payload["entries"][0]["source"] == "core.admin"
     assert payload["entries"][0]["actor"] == "admin"
+    assert payload["entries"][0]["api_channel"] == "Governance API"

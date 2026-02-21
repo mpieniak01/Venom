@@ -562,9 +562,9 @@ export const de = {
         module: "modul",
       },
       filters: {
-        source: "Log-Quelle",
+        source: "API-Kanal",
         outcome: "Ergebnis",
-        allSources: "Alle Quellen",
+        allSources: "Alle API-Kanäle",
         coreSource: "Core-Ereignisse",
         moduleSource: "Modul-Ereignisse",
         allOutcomes: "Alle Ergebnisse",

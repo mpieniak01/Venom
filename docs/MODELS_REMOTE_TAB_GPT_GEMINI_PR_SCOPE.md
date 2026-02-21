@@ -55,7 +55,7 @@ Rozwinąć `http://localhost:3000/models` o pełny widok modeli zdalnych (OpenAI
 2. Bez migracji danych historycznych.
 3. Bez zmiany istniejących endpointów lokalnych modeli (Ollama/HF) poza niezbędnym refactorem współdzielonych typów.
 
-## Źródła i założenia (zweryfikowane 2026-02-21)
+## Źródła i założenia (zweryfikowane 2024-02-21)
 1. OpenAI API reference:
    - `GET /v1/models` (listowanie modeli),
    - `POST /v1/responses` (główny endpoint generacji multimodal/tooling).

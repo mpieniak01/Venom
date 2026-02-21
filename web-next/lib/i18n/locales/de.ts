@@ -1472,7 +1472,7 @@ export const de = {
         subtitle: "Daily Papers von HuggingFace.",
         refreshAction: "Papers aktualisieren",
         defaultTitle: "Neue Publikation",
-        noPreview: "Keine Vorschau verfugbar.",
+        noPreview: "Keine Vorschau verfügbar.",
         fetchError: "Papers konnten nicht geladen werden.",
       },
       remote: {

@@ -551,3 +551,244 @@ export function InstalledAndOperations({
         </div>
     );
 }
+
+interface RemoteModelsSectionProps extends ModelsViewerLogic {}
+
+export function RemoteModelsSection(props: RemoteModelsSectionProps) {
+    const {
+        t,
+        remoteProviders,
+        remoteProvidersLoading,
+        remoteProvidersError,
+        fetchRemoteProviders,
+        remoteCatalog,
+        remoteCatalogProvider,
+        remoteCatalogLoading,
+        remoteCatalogError,
+        remoteCatalogRefreshedAt,
+        remoteCatalogSource,
+        fetchRemoteCatalog,
+        remoteBindings,
+        remoteBindingsLoading,
+        remoteBindingsError,
+        fetchRemoteBindings,
+    } = props;
+
+    const [selectedProvider, setSelectedProvider] = React.useState<string | null>(null);
+
+    // Fetch catalog when provider is selected
+    React.useEffect(() => {
+        if (selectedProvider) {
+            fetchRemoteCatalog(selectedProvider);
+        }
+    }, [selectedProvider, fetchRemoteCatalog]);
+
+    return (
+        <div className="space-y-10">
+            {/* Provider Status Section */}
+            <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
+                <SectionHeader
+                    title={t("models.sections.remote.providerStatus.title")}
+                    subtitle={t("models.sections.remote.providerStatus.subtitle")}
+                    actionLabel={t("models.ui.refresh")}
+                    actionDisabled={remoteProvidersLoading}
+                    onAction={fetchRemoteProviders}
+                />
+                <div className="mt-5 space-y-3">
+                    {remoteProvidersLoading && (
+                        <p className="text-xs text-slate-400">{t("models.ui.loading")}</p>
+                    )}
+                    {remoteProvidersError && (
+                        <Badge tone="error">{remoteProvidersError}</Badge>
+                    )}
+                    {!remoteProvidersLoading && !remoteProvidersError && remoteProviders.length === 0 && (
+                        <p className="text-xs text-slate-400">{t("models.sections.remote.providerStatus.noProviders")}</p>
+                    )}
+                    {remoteProviders.map((provider) => (
+                        <div key={provider.provider} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-medium capitalize">{provider.provider}</span>
+                                <Badge tone={provider.status === "configured" ? "success" : "neutral"}>
+                                    {provider.status}
+                                </Badge>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs text-slate-400">
+                                {provider.latency_ms && (
+                                    <span>{t("models.sections.remote.providerStatus.latency")}: {provider.latency_ms.toFixed(0)}ms</span>
+                                )}
+                                <span>{t("models.sections.remote.providerStatus.lastCheck")}: {formatDateTime(provider.last_check)}</span>
+                                {provider.error && (
+                                    <Badge tone="error">{provider.error}</Badge>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Remote Models Catalog Section */}
+            <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
+                <SectionHeader
+                    title={t("models.sections.remote.catalog.title")}
+                    subtitle={t("models.sections.remote.catalog.subtitle")}
+                />
+                <div className="mt-4 flex items-center gap-3">
+                    <span className="whitespace-nowrap text-[11px] uppercase tracking-[0.3em] text-slate-400">
+                        {t("models.sections.remote.catalog.provider")}
+                    </span>
+                    <SelectMenu
+                        value={selectedProvider || ""}
+                        options={[
+                            { value: "openai", label: "OpenAI" },
+                            { value: "google", label: "Google" },
+                        ]}
+                        onChange={(val) => setSelectedProvider(val || null)}
+                        placeholder={t("models.runtime.select")}
+                        className="w-[180px]"
+                        buttonClassName="w-full justify-between rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-slate-100 hover:border-white/30 hover:bg-white/10"
+                        renderButton={(opt) => <span className="flex-1 truncate text-left">{opt?.label ?? t("models.runtime.select")}</span>}
+                        renderOption={(opt) => <span className="w-full text-left text-sm normal-case tracking-normal text-slate-100">{opt.label}</span>}
+                    />
+                </div>
+                <div className="mt-5 space-y-3">
+                    {remoteCatalogLoading && (
+                        <p className="text-xs text-slate-400">{t("models.ui.loading")}</p>
+                    )}
+                    {remoteCatalogError && (
+                        <Badge tone="error">{remoteCatalogError}</Badge>
+                    )}
+                    {!remoteCatalogLoading && !remoteCatalogError && remoteCatalog.length === 0 && selectedProvider && (
+                        <p className="text-xs text-slate-400">{t("models.sections.remote.catalog.noModels")}</p>
+                    )}
+                    {remoteCatalog.map((model) => (
+                        <div key={model.id} className="flex items-start justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                            <div className="flex-1">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-sm font-medium">{model.name}</span>
+                                    <Badge tone="neutral" className="text-[10px]">{model.provider}</Badge>
+                                </div>
+                                {model.model_alias && (
+                                    <p className="mt-1 text-xs text-slate-400">{model.model_alias}</p>
+                                )}
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {model.capabilities.map((cap) => (
+                                        <Badge key={cap} tone="success" className="text-[10px]">
+                                            {cap}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    {remoteCatalogRefreshedAt && remoteCatalogSource && (
+                        <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+                            <span>{t("models.sections.remote.catalog.source")}: {remoteCatalogSource}</span>
+                            <span>{t("models.sections.remote.catalog.refreshed")}: {formatDateTime(remoteCatalogRefreshedAt)}</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Connectivity Map Section */}
+            <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
+                <SectionHeader
+                    title={t("models.sections.remote.connectivity.title")}
+                    subtitle={t("models.sections.remote.connectivity.subtitle")}
+                    actionLabel={t("models.ui.refresh")}
+                    actionDisabled={remoteBindingsLoading}
+                    onAction={fetchRemoteBindings}
+                />
+                <div className="mt-5">
+                    {remoteBindingsLoading && (
+                        <p className="text-xs text-slate-400">{t("models.ui.loading")}</p>
+                    )}
+                    {remoteBindingsError && (
+                        <Badge tone="error">{remoteBindingsError}</Badge>
+                    )}
+                    {!remoteBindingsLoading && !remoteBindingsError && remoteBindings.length === 0 && (
+                        <p className="text-xs text-slate-400">{t("models.sections.remote.connectivity.noBindings")}</p>
+                    )}
+                    {!remoteBindingsLoading && !remoteBindingsError && remoteBindings.length > 0 && (
+                        <div className="overflow-x-auto">
+                            <table className="w-full border-collapse">
+                                <thead>
+                                    <tr className="border-b border-white/10">
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                            {t("models.sections.remote.connectivity.service")}
+                                        </th>
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                            {t("models.sections.remote.connectivity.endpoint")}
+                                        </th>
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                            {t("models.sections.remote.connectivity.method")}
+                                        </th>
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                            {t("models.sections.remote.connectivity.provider")}
+                                        </th>
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                            {t("models.sections.remote.connectivity.model")}
+                                        </th>
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                            {t("models.sections.remote.connectivity.routing")}
+                                        </th>
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                            {t("models.sections.remote.connectivity.status")}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {remoteBindings.map((binding, idx) => (
+                                        <tr key={idx} className="border-b border-white/5 hover:bg-white/5">
+                                            <td className="px-3 py-3 text-xs">{binding.service_id}</td>
+                                            <td className="px-3 py-3 text-xs font-mono">{binding.endpoint}</td>
+                                            <td className="px-3 py-3 text-xs">
+                                                <Badge tone="neutral" className="text-[10px]">{binding.http_method}</Badge>
+                                            </td>
+                                            <td className="px-3 py-3 text-xs capitalize">{binding.provider}</td>
+                                            <td className="px-3 py-3 text-xs">{binding.model}</td>
+                                            <td className="px-3 py-3 text-xs">
+                                                <Badge tone="info" className="text-[10px]">{binding.routing_mode}</Badge>
+                                                {binding.fallback_order && binding.fallback_order.length > 0 && (
+                                                    <span className="ml-2 text-[10px] text-slate-400">
+                                                        ({binding.fallback_order.join(" → ")})
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-3 text-xs">
+                                                <Badge tone={binding.status === "active" ? "success" : "neutral"}>
+                                                    {binding.status}
+                                                </Badge>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Policy/Runtime Section */}
+            <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
+                <SectionHeader
+                    title={t("models.sections.remote.policy.title")}
+                    subtitle={t("models.sections.remote.policy.subtitle")}
+                />
+                <div className="mt-5 space-y-3">
+                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <span className="text-sm">{t("models.sections.remote.policy.localFirst")}</span>
+                        <Badge tone="info">Enabled</Badge>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <span className="text-sm">{t("models.sections.remote.policy.fallback")}</span>
+                        <span className="text-xs text-slate-400">ollama → vllm → openai → google</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <span className="text-sm">{t("models.sections.remote.policy.rateClass")}</span>
+                        <Badge tone="neutral">Standard</Badge>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Layers, Newspaper, Server } from "lucide-react";
+import { Layers, Newspaper, Server, Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
@@ -16,14 +16,15 @@ import {
   SearchSection,
   NewsSection,
   RecommendedAndCatalog,
-  InstalledAndOperations
+  InstalledAndOperations,
+  RemoteModelsSection
 } from "./models-viewer-sections";
 
 export const ModelsViewer = () => {
   const { pushToast } = useToast();
   const logic = useModelsViewerLogic();
   const { t } = logic;
-  const [activeTab, setActiveTab] = useState<"news" | "models">("news");
+  const [activeTab, setActiveTab] = useState<"news" | "models" | "remote">("news");
 
   return (
     <div className="space-y-6 pb-10">
@@ -66,6 +67,20 @@ export const ModelsViewer = () => {
           <Server className="h-4 w-4" />
           {t("models.tabs.models")}
         </Button>
+        <Button
+          onClick={() => setActiveTab("remote")}
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
+            activeTab === "remote"
+              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
+              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+          )}
+        >
+          <Cloud className="h-4 w-4" />
+          {t("models.tabs.remoteModels")}
+        </Button>
       </div>
 
       {/* Content */}
@@ -95,6 +110,10 @@ export const ModelsViewer = () => {
               <InstalledAndOperations {...logic} />
             </div>
           </>
+        )}
+
+        {activeTab === "remote" && (
+          <RemoteModelsSection {...logic} />
         )}
       </div>
     </div>

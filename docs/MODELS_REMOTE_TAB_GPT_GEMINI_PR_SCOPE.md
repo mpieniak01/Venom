@@ -16,7 +16,7 @@ Rozwinąć `http://localhost:3000/models` o pełny widok modeli zdalnych (OpenAI
 1. Dodać trzeci tab w `/models` obok `News` i `Models`.
 2. Sekcje w tabie:
    - `Provider status` (OpenAI / Google): dostępność, ostatni test, błąd, latency.
-   - `Remote models catalog` (pobierane dynamicznie z API providera, nie hardcode).
+   - `Remote models catalog` (pobierane dynamicznie z API providera, bez hardkodowania na sztywno).
    - `Connectivity map` (usługa Venom -> endpoint -> provider -> model -> status).
    - `Policy/runtime` (czy flow używa local-first, fallback chain, limity/rate class).
 

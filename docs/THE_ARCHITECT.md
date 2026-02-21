@@ -1,145 +1,135 @@
-# THE ARCHITECT - Strategic Planning & Task Decomposition
+# THE ARCHITECT - Strategic Planning and Step Orchestration
 
 ## Role
 
-Architect Agent is the main strategic planner and project manager in the Venom system. It takes complex user goals and breaks them down into specific, executable steps, managing the orchestration of multiple specialized agents.
+Architect Agent is the planning layer for complex requests in Venom.
+It converts one user goal into an executable `ExecutionPlan`, then orchestrates step-by-step execution through `TaskDispatcher`.
+
+Core implementation: `venom_core/agents/architect.py`.
 
 ## Responsibilities
 
-- **Strategic planning** - Decomposition of complex tasks into executable steps
-- **Workflow management** - Determining sequence and dependencies between steps
-- **Executor selection** - Assigning appropriate agents to specific tasks
-- **Plan optimization** - Minimizing number of steps while maintaining completeness
-- **Infrastructure management** - Planning multi-container environments (Docker Compose)
+- Strategic decomposition of complex goals into concrete steps.
+- Choosing the right executor per step.
+- Enforcing step order through `depends_on`.
+- Injecting dependency context between steps.
+- Consolidating step outputs into a final execution summary.
 
-## Key Components
+## Executors and Intent Mapping
 
-### 1. Planning Logic (`venom_core/agents/architect.py`)
+Architect plans with agent labels and maps them to dispatcher intents:
 
-**Available Executors:**
-- `RESEARCHER` - Gathering knowledge from Internet, documentation, examples
-- `CODER` - Code implementation, file creation, Docker Compose environments
-- `LIBRARIAN` - File management, reading existing code
-- `TOOLMAKER` - Creating new tools/skills for the system
+- `RESEARCHER` -> `RESEARCH`
+- `CODER` -> `CODE_GENERATION`
+- `LIBRARIAN` -> `KNOWLEDGE_SEARCH`
+- `TOOLMAKER` -> `TOOL_CREATION`
 
-**Planning Principles:**
-1. Break down goal into small, specific steps (3-7 steps optimally)
-2. Each step has one executor
-3. Steps in logical sequence with defined dependencies
-4. Tasks requiring technical knowledge start with RESEARCHER
-5. Infrastructure (databases, cache) managed by CODER + ComposeSkill
+If a step uses an unknown label, fallback intent is `CODE_GENERATION`.
 
-**Plan Format (ExecutionPlan):**
-```json
-{
-  "steps": [
-    {
-      "step_number": 1,
-      "agent_type": "RESEARCHER",
-      "instruction": "Find PyGame documentation on collisions and rendering",
-      "depends_on": null
-    },
-    {
-      "step_number": 2,
-      "agent_type": "CODER",
-      "instruction": "Create game.py file with basic Snake game structure",
-      "depends_on": 1
-    }
-  ]
-}
-```
+## Runtime Flow
 
-### 2. Plan Examples
+1. `IntentManager` classifies request as `COMPLEX_PLANNING`.
+2. `TaskDispatcher` routes to `ArchitectAgent` (`agent_map["COMPLEX_PLANNING"]`).
+3. `ArchitectAgent.process(input_text)`:
+   - calls `create_plan(input_text)`,
+   - then calls `execute_plan(plan)`.
+4. Architect dispatches each step via `TaskDispatcher.dispatch(intent, content)`.
+5. Final result is a combined execution report across all steps.
 
-**Example 1: Web application with database**
-```
-Task: "Create REST API with Redis cache"
-Plan:
-1. RESEARCHER - Find FastAPI and Redis client documentation
-2. CODER - Create docker-compose.yml (api + redis) and launch stack
-3. CODER - Implement API endpoints with Redis integration
-```
+## Planning (`create_plan`)
 
-**Example 2: PyGame game**
-```
-Task: "Create Snake game in PyGame"
-Plan:
-1. RESEARCHER - Find PyGame documentation (collisions, rendering)
-2. CODER - Create game structure (main loop, classes)
-3. CODER - Implement snake and food logic
-4. CODER - Add scoring system and game over
-```
+`create_plan(user_goal)`:
 
-**Example 3: New tool**
-```
-Task: "Add email sending capability"
-Plan:
-1. TOOLMAKER - Create EmailSkill with send_email, validate_email methods
-2. CODER - Integrate EmailSkill with system
-```
+1. Builds chat history with `PLANNING_PROMPT` + user goal.
+2. Calls LLM via `_invoke_chat_with_fallbacks`.
+3. Expects strict JSON with `steps[]`.
+4. Removes accidental markdown code fences if returned.
+5. Parses steps into:
+   - `ExecutionStep.step_number`
+   - `ExecutionStep.agent_type`
+   - `ExecutionStep.instruction`
+   - `ExecutionStep.depends_on`
+6. Returns `ExecutionPlan(goal, steps, current_step=0)`.
 
-## System Integration
+### Planning Fallback Behavior
 
-### Execution Flow
+If JSON parsing or planning fails:
+- Architect returns a minimal fallback plan with one step:
+  - `step_number=1`
+  - `agent_type="CODER"`
+  - `instruction=user_goal`
 
-```
-User: "Create TODO app with FastAPI + PostgreSQL"
-        ↓
-IntentManager: COMPLEX_PLANNING
-        ↓
-ArchitectAgent.plan_execution()
-        ↓
-ExecutionPlan (4 steps):
-  1. RESEARCHER - FastAPI + PostgreSQL documentation
-  2. CODER - docker-compose.yml + launch stack
-  3. CODER - SQLAlchemy models + DB connection
-  4. CODER - CRUD endpoints for TODO
-        ↓
-TaskDispatcher executes steps sequentially
-        ↓
-Result: Working application in Docker Compose
-```
+This keeps execution alive but reduces task specialization.
 
-### Collaboration with Other Agents
+## Execution (`execute_plan`)
 
-- **TaskDispatcher** - Passes plan for execution step by step
-- **ResearcherAgent** - Provides technical knowledge at project start
-- **CoderAgent** - Implements code according to instructions
-- **LibrarianAgent** - Checks existing files before starting work
-- **ToolmakerAgent** - Creates missing tools on plan request
+`execute_plan(plan)` runs sequentially:
+
+1. Validates `task_dispatcher` is set (`set_dispatcher` in initialization).
+2. Iterates over steps in order.
+3. For each step:
+   - optionally broadcasts `PLAN_STEP_STARTED`,
+   - builds step context,
+   - dispatches to mapped intent,
+   - stores step result (`step.result` and local `context_history`),
+   - appends formatted summary section to final output,
+   - optionally broadcasts `PLAN_STEP_COMPLETED`.
+4. On step exception:
+   - logs error,
+   - appends error block to final summary,
+   - continues with next steps.
+
+### Dependency Context
+
+When `depends_on` points to a completed step:
+- Architect prepends previous step output as context.
+- Dependency context is truncated to 1000 chars for safety.
+
+## Event Broadcasting
+
+When `event_broadcaster` is configured, Architect emits:
+
+- `PLAN_CREATED`
+- `PLAN_STEP_STARTED`
+- `PLAN_STEP_COMPLETED`
+
+This is optional and does not block core execution.
+
+## Data Contract (ExecutionPlan)
+
+Defined in `venom_core/core/models.py`:
+
+- `ExecutionPlan.goal: str`
+- `ExecutionPlan.steps: list[ExecutionStep]`
+- `ExecutionPlan.current_step: int`
+
+`ExecutionStep` fields:
+
+- `step_number: int`
+- `agent_type: str`
+- `instruction: str`
+- `depends_on: int | None`
+- `result: str | None`
+
+## Limitations
+
+- Sequential execution only (no parallel step scheduler in Architect).
+- No structural validation for cycles in `depends_on`.
+- No automatic plan repair after partial step failures.
+- Fallback single-step CODER plan may hide planning quality issues.
 
 ## Configuration
 
-```bash
-# In .env (no dedicated flags for Architect)
-# Architect is always available in COMPLEX_PLANNING mode
-```
+No dedicated `.env` flags are required for Architect itself.
+Behavior depends on:
 
-## Metrics and Monitoring
+- LLM availability/configuration used by Kernel chat service.
+- Dispatcher wiring (`TaskDispatcher` + `set_dispatcher`).
+- Optional event broadcaster setup.
 
-**Key indicators:**
-- Average number of steps in plan (optimally 3-7)
-- Plan success rate (% plans completed without errors)
-- Planning time (typically <10s)
-- Usage of different agent types (RESEARCHER/CODER/LIBRARIAN balance)
+## Related Docs
 
-## Best Practices
-
-1. **Start with research** - Complex projects should have RESEARCHER step at beginning
-2. **Infrastructure first** - Docker Compose stack before application code
-3. **Small steps** - Better 5 small steps than 2 large ones
-4. **Clear instructions** - Each step should be specific and understandable
-5. **Dependencies** - Use `depends_on` to enforce order
-
-## Known Limitations
-
-- Plan is linear (no parallel step execution)
-- No automatic plan optimization after step failure
-- Maximum planning depth: 1 level (no nested subplans)
-
-## See also
-
-- [THE_CODER.md](THE_CODER.md) - Code implementation
-- [THE_RESEARCHER.md](THE_RESEARCHER.md) - Knowledge gathering
-- [THE_HIVE.md](THE_HIVE.md) - Distributed plan execution
-- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Intent classification
+- `docs/CHAT_SESSION.md` - routing modes and Complex path.
+- `docs/THE_CODER.md` - code execution layer.
+- `docs/THE_RESEARCHER.md` - research executor role.
+- `docs/THE_INTEGRATOR.md` - issue-to-PR workflow with planning.

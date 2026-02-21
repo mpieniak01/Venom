@@ -1,145 +1,135 @@
-# THE ARCHITECT - Strategic Planning & Task Decomposition
+# THE ARCHITECT - Planowanie Strategiczne i Orkiestracja Kroków
 
 ## Rola
 
-Architect Agent to główny planista strategiczny i kierownik projektu w systemie Venom. Przyjmuje złożone cele użytkownika i rozbija je na konkretne, wykonalne kroki, zarządzając orkiestracją wielu wyspecjalizowanych agentów.
+Architect Agent jest warstwą planowania dla złożonych żądań w Venom.
+Przekształca jeden cel użytkownika w wykonalny `ExecutionPlan`, a następnie orkiestruje wykonanie krok po kroku przez `TaskDispatcher`.
+
+Implementacja główna: `venom_core/agents/architect.py`.
 
 ## Odpowiedzialności
 
-- **Planowanie strategiczne** - Dekompozycja złożonych zadań na kroki wykonawcze
-- **Zarządzanie przepływem pracy** - Określanie kolejności i zależności między krokami
-- **Dobór wykonawców** - Przypisywanie odpowiednich agentów do konkretnych zadań
-- **Optymalizacja planów** - Minimalizacja liczby kroków przy zachowaniu kompletności
-- **Zarządzanie infrastrukturą** - Planowanie środowisk wielokontenerowych (Docker Compose)
+- Strategiczna dekompozycja złożonych celów na konkretne kroki.
+- Dobór właściwego wykonawcy dla każdego kroku.
+- Wymuszanie kolejności przez `depends_on`.
+- Przekazywanie kontekstu między krokami zależnymi.
+- Składanie wyników kroków w końcowe podsumowanie wykonania.
 
-## Kluczowe Komponenty
+## Wykonawcy i mapowanie intencji
 
-### 1. Logika Planowania (`venom_core/agents/architect.py`)
+Architect planuje kroki etykietami agentów i mapuje je na intencje dispatchera:
 
-**Dostępni Wykonawcy:**
-- `RESEARCHER` - Zbieranie wiedzy z Internetu, dokumentacji, przykładów
-- `CODER` - Implementacja kodu, tworzenie plików, środowisk Docker Compose
-- `LIBRARIAN` - Zarządzanie plikami, czytanie istniejącego kodu
-- `TOOLMAKER` - Tworzenie nowych narzędzi/umiejętności dla systemu
+- `RESEARCHER` -> `RESEARCH`
+- `CODER` -> `CODE_GENERATION`
+- `LIBRARIAN` -> `KNOWLEDGE_SEARCH`
+- `TOOLMAKER` -> `TOOL_CREATION`
 
-**Zasady Planowania:**
-1. Rozbij cel na małe, konkretne kroki (3-7 kroków optymalnie)
-2. Każdy krok ma jednego wykonawcę
-3. Kroki w logicznej kolejności z określonymi zależnościami
-4. Zadania wymagające wiedzy technologicznej rozpoczynają się od RESEARCHER
-5. Infrastruktura (bazy danych, cache) zarządzana przez CODER + ComposeSkill
+Jeśli krok użyje nieznanej etykiety, fallback intent to `CODE_GENERATION`.
 
-**Format Planu (ExecutionPlan):**
-```json
-{
-  "steps": [
-    {
-      "step_number": 1,
-      "agent_type": "RESEARCHER",
-      "instruction": "Znajdź dokumentację PyGame dot. kolizji i renderowania",
-      "depends_on": null
-    },
-    {
-      "step_number": 2,
-      "agent_type": "CODER",
-      "instruction": "Stwórz plik game.py z podstawową strukturą gry Snake",
-      "depends_on": 1
-    }
-  ]
-}
-```
+## Przepływ runtime
 
-### 2. Przykłady Planów
+1. `IntentManager` klasyfikuje żądanie jako `COMPLEX_PLANNING`.
+2. `TaskDispatcher` kieruje je do `ArchitectAgent` (`agent_map["COMPLEX_PLANNING"]`).
+3. `ArchitectAgent.process(input_text)`:
+   - wywołuje `create_plan(input_text)`,
+   - potem `execute_plan(plan)`.
+4. Architect wykonuje kroki przez `TaskDispatcher.dispatch(intent, content)`.
+5. Wynik końcowy to skonsolidowany raport wykonania wszystkich kroków.
 
-**Przykład 1: Aplikacja webowa z bazą danych**
-```
-Zadanie: "Stwórz API REST z Redis cache"
-Plan:
-1. RESEARCHER - Znajdź dokumentację FastAPI i Redis client
-2. CODER - Stwórz docker-compose.yml (api + redis) i uruchom stack
-3. CODER - Zaimplementuj endpoints API z integracją Redis
-```
+## Planowanie (`create_plan`)
 
-**Przykład 2: Gra w PyGame**
-```
-Zadanie: "Stwórz grę Snake w PyGame"
-Plan:
-1. RESEARCHER - Znajdź dokumentację PyGame (kolizje, renderowanie)
-2. CODER - Stwórz strukturę gry (main loop, klasy)
-3. CODER - Zaimplementuj logikę węża i jedzenia
-4. CODER - Dodaj system punktacji i game over
-```
+`create_plan(user_goal)`:
 
-**Przykład 3: Nowe narzędzie**
-```
-Zadanie: "Dodaj możliwość wysyłania emaili"
-Plan:
-1. TOOLMAKER - Stwórz EmailSkill z metodami send_email, validate_email
-2. CODER - Zintegruj EmailSkill z systemem
-```
+1. Buduje historię rozmowy z `PLANNING_PROMPT` i celem użytkownika.
+2. Wywołuje LLM przez `_invoke_chat_with_fallbacks`.
+3. Oczekuje ścisłego JSON z `steps[]`.
+4. Usuwa ewentualne markdown code fences z odpowiedzi.
+5. Parsuje kroki do:
+   - `ExecutionStep.step_number`
+   - `ExecutionStep.agent_type`
+   - `ExecutionStep.instruction`
+   - `ExecutionStep.depends_on`
+6. Zwraca `ExecutionPlan(goal, steps, current_step=0)`.
 
-## Integracja z Systemem
+### Fallback planowania
 
-### Przepływ Wykonania
+Gdy parsowanie JSON lub samo planowanie się nie powiedzie:
+- Architect zwraca minimalny plan awaryjny z 1 krokiem:
+  - `step_number=1`
+  - `agent_type="CODER"`
+  - `instruction=user_goal`
 
-```
-Użytkownik: "Stwórz aplikację TODO z FastAPI + PostgreSQL"
-        ↓
-IntentManager: COMPLEX_PLANNING
-        ↓
-ArchitectAgent.plan_execution()
-        ↓
-ExecutionPlan (4 kroki):
-  1. RESEARCHER - Dokumentacja FastAPI + PostgreSQL
-  2. CODER - docker-compose.yml + uruchomienie stacka
-  3. CODER - Modele SQLAlchemy + połączenie DB
-  4. CODER - Endpoints CRUD dla TODO
-        ↓
-TaskDispatcher wykonuje kroki sekwencyjnie
-        ↓
-Wynik: Działająca aplikacja w Docker Compose
-```
+To utrzymuje ciągłość wykonania, ale redukuje specjalizację.
 
-### Współpraca z Innymi Agentami
+## Wykonanie (`execute_plan`)
 
-- **TaskDispatcher** - Przekazuje plan do wykonania krok po kroku
-- **ResearcherAgent** - Dostarcza wiedzę techniczną na początku projektu
-- **CoderAgent** - Implementuje kod zgodnie z instrukcjami
-- **LibrarianAgent** - Sprawdza istniejące pliki przed rozpoczęciem pracy
-- **ToolmakerAgent** - Tworzy brakujące narzędzia na żądanie planu
+`execute_plan(plan)` działa sekwencyjnie:
+
+1. Weryfikuje, że `task_dispatcher` jest ustawiony (`set_dispatcher` podczas inicjalizacji).
+2. Iteruje po krokach w kolejności.
+3. Dla każdego kroku:
+   - opcjonalnie emituje `PLAN_STEP_STARTED`,
+   - buduje kontekst kroku,
+   - dispatchuje do zmapowanej intencji,
+   - zapisuje wynik (`step.result` i lokalne `context_history`),
+   - dopisuje sekcję do podsumowania końcowego,
+   - opcjonalnie emituje `PLAN_STEP_COMPLETED`.
+4. Przy wyjątku w kroku:
+   - loguje błąd,
+   - dopisuje sekcję błędu do podsumowania,
+   - przechodzi do kolejnych kroków.
+
+### Kontekst zależności
+
+Gdy `depends_on` wskazuje zakończony krok:
+- Architect dokleja wynik poprzedniego kroku jako kontekst.
+- Kontekst zależności jest przycinany do 1000 znaków.
+
+## Eventy broadcast
+
+Jeśli skonfigurowany jest `event_broadcaster`, Architect emituje:
+
+- `PLAN_CREATED`
+- `PLAN_STEP_STARTED`
+- `PLAN_STEP_COMPLETED`
+
+To jest opcjonalne i nie blokuje głównego wykonania.
+
+## Kontrakt danych (ExecutionPlan)
+
+Zdefiniowany w `venom_core/core/models.py`:
+
+- `ExecutionPlan.goal: str`
+- `ExecutionPlan.steps: list[ExecutionStep]`
+- `ExecutionPlan.current_step: int`
+
+Pola `ExecutionStep`:
+
+- `step_number: int`
+- `agent_type: str`
+- `instruction: str`
+- `depends_on: int | None`
+- `result: str | None`
+
+## Ograniczenia
+
+- Tylko wykonanie sekwencyjne (brak równoległego scheduler'a kroków w Architect).
+- Brak walidacji strukturalnej cykli w `depends_on`.
+- Brak automatycznej naprawy planu po częściowych błędach.
+- Fallback do pojedynczego kroku CODER może ukrywać problemy jakości planowania.
 
 ## Konfiguracja
 
-```bash
-# W .env (brak dedykowanych flag dla Architect)
-# Architect jest zawsze dostępny w trybie COMPLEX_PLANNING
-```
+Architect nie wymaga dedykowanych flag w `.env`.
+Działanie zależy od:
 
-## Metryki i Monitoring
+- dostępności/konfiguracji LLM dla chat service w Kernelu,
+- poprawnego spięcia dispatchera (`TaskDispatcher` + `set_dispatcher`),
+- opcjonalnej konfiguracji event broadcastera.
 
-**Kluczowe wskaźniki:**
-- Średnia liczba kroków w planie (optymalnie 3-7)
-- Współczynnik sukcesu planu (% planów zakończonych bez błędów)
-- Czas planowania (zazwyczaj <10s)
-- Wykorzystanie różnych typów agentów (balans RESEARCHER/CODER/LIBRARIAN)
+## Powiązane dokumenty
 
-## Best Practices
-
-1. **Rozpocznij od badań** - Złożone projekty powinny mieć krok RESEARCHER na początku
-2. **Infrastruktura najpierw** - Stack Docker Compose przed kodem aplikacji
-3. **Małe kroki** - Lepiej 5 małych kroków niż 2 duże
-4. **Jasne instrukcje** - Każdy krok powinien być konkretny i zrozumiały
-5. **Zależności** - Używaj `depends_on` do wymuszenia kolejności
-
-## Znane Ograniczenia
-
-- Plan jest liniowy (brak równoległego wykonania kroków)
-- Brak automatycznej optymalizacji planu po niepowodzeniu kroku
-- Maksymalna głębokość planowania: 1 poziom (brak zagnieżdżonych podplanów)
-
-## Zobacz też
-
-- [THE_CODER.md](THE_CODER.md) - Implementacja kodu
-- [THE_RESEARCHER.md](THE_RESEARCHER.md) - Zbieranie wiedzy
-- [THE_HIVE.md](THE_HIVE.md) - Rozproszone wykonanie planów
-- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Klasyfikacja intencji
+- `docs/PL/CHAT_SESSION.md` - tryby routingu i ścieżka Complex.
+- `docs/PL/THE_CODER.md` - warstwa wykonawcza kodu.
+- `docs/PL/THE_RESEARCHER.md` - rola wykonawcy research.
+- `docs/PL/THE_INTEGRATOR.md` - workflow issue-to-PR z planowaniem.

@@ -135,7 +135,7 @@ GitHub Issue #42: "Add login feature"
 IntegratorAgent.get_assigned_issues()
         → Issue #42 detected
         ↓
-ArchitectAgent.plan_execution(issue_description)
+ArchitectAgent.create_plan(issue_description) + execute_plan(plan)
         → Plan: [CODER - implement auth, TESTER - write tests]
         ↓
 Git workflow:

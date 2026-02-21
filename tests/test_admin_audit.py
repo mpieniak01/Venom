@@ -54,3 +54,29 @@ def test_recent_failures_and_max_entries_trim():
 
     trail.clear()
     assert trail.get_entries(limit=10) == []
+
+
+def test_log_action_handles_mirror_stream_failure(monkeypatch):
+    trail = AdminAuditTrail(max_entries=10)
+
+    class _BrokenAuditStream:
+        def publish(self, **_kwargs):
+            raise RuntimeError("stream-down")
+
+    monkeypatch.setattr(
+        "venom_core.services.audit_stream.get_audit_stream",
+        lambda: _BrokenAuditStream(),
+    )
+
+    # Should not raise even if canonical stream mirroring fails.
+    trail.log_action(
+        "provider_activate",
+        "alice",
+        provider="openai",
+        details={"mode": "test"},
+        result="success",
+    )
+
+    entries = trail.get_entries(limit=10)
+    assert len(entries) == 1
+    assert entries[0].action == "provider_activate"

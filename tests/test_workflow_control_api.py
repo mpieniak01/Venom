@@ -1,11 +1,13 @@
 """Integration tests for Workflow Control Plane API endpoints."""
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from venom_core.api.model_schemas.workflow_control import ApplyMode, ReasonCode
+from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.main import app
 
 
@@ -556,3 +558,101 @@ class TestEndToEndWorkflow:
 
         # Either rejected or invalid ticket response is acceptable
         assert apply_response.status_code in [200, 400]
+
+
+def test_extract_user_prefers_state_then_headers_and_handles_exceptions():
+    request_with_state = SimpleNamespace(
+        state=SimpleNamespace(user="state-user"),
+        headers={"x-user": "header-user"},
+    )
+    assert (
+        workflow_control_routes._extract_user_from_request(request_with_state)
+        == "state-user"
+    )
+
+    request_with_header = SimpleNamespace(
+        state=SimpleNamespace(user=""),
+        headers={"x-authenticated-user": "auth-user"},
+    )
+    assert (
+        workflow_control_routes._extract_user_from_request(request_with_header)
+        == "auth-user"
+    )
+
+    class _BrokenState:
+        @property
+        def user(self):
+            raise RuntimeError("broken-state")
+
+    broken_request = SimpleNamespace(state=_BrokenState(), headers={})
+    assert (
+        workflow_control_routes._extract_user_from_request(broken_request) == "unknown"
+    )
+
+
+def test_workflow_control_routes_return_500_when_dependencies_raise(client):
+    class _FailingService:
+        def plan_changes(self, *_args, **_kwargs):
+            raise RuntimeError("plan-error")
+
+        def apply_changes(self, *_args, **_kwargs):
+            raise RuntimeError("apply-error")
+
+        def get_system_state(self):
+            raise RuntimeError("state-error")
+
+        def get_control_options(self):
+            raise RuntimeError("options-error")
+
+    class _FailingAuditTrail:
+        def get_entries(self, **_kwargs):
+            raise RuntimeError("audit-error")
+
+    app.dependency_overrides[workflow_control_routes.get_control_plane_service] = (
+        lambda: _FailingService()
+    )
+    app.dependency_overrides[workflow_control_routes.get_control_plane_audit_trail] = (
+        lambda: _FailingAuditTrail()
+    )
+
+    try:
+        plan_response = client.post(
+            "/api/v1/workflow/control/plan",
+            json={
+                "changes": [
+                    {
+                        "resource_type": "config",
+                        "resource_id": "AI_MODE",
+                        "action": "update",
+                    }
+                ]
+            },
+        )
+        assert plan_response.status_code == 500
+        assert "plan-error" in plan_response.json()["detail"]
+
+        apply_response = client.post(
+            "/api/v1/workflow/control/apply",
+            json={"execution_ticket": "ticket", "confirm_restart": True},
+        )
+        assert apply_response.status_code == 500
+        assert "apply-error" in apply_response.json()["detail"]
+
+        state_response = client.get("/api/v1/workflow/control/state")
+        assert state_response.status_code == 500
+        assert "state-error" in state_response.json()["detail"]
+
+        options_response = client.get("/api/v1/workflow/control/options")
+        assert options_response.status_code == 500
+        assert "options-error" in options_response.json()["detail"]
+
+        audit_response = client.get("/api/v1/workflow/control/audit")
+        assert audit_response.status_code == 500
+        assert "audit-error" in audit_response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(
+            workflow_control_routes.get_control_plane_service, None
+        )
+        app.dependency_overrides.pop(
+            workflow_control_routes.get_control_plane_audit_trail, None
+        )

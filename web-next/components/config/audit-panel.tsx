@@ -283,7 +283,11 @@ export function AuditPanel() {
                     <span className="min-w-0 truncate text-zinc-500">{truncateMiddle(row.context, 18)}</span>
                     <span className="shrink-0 text-zinc-500">{truncateMiddle(row.idRef, 14)}</span>
                     <div className="ml-auto flex shrink-0 items-center gap-2">
-                      <Badge tone="neutral" className="px-2 py-0.5 text-[11px]" title={row.apiChannel}>
+                      <Badge
+                        tone="neutral"
+                        className="w-[10.5rem] justify-start px-2 py-0.5 text-left text-[11px]"
+                        title={row.apiChannel}
+                      >
                         {truncateMiddle(row.apiChannel, 22)}
                       </Badge>
                       <Badge tone={row.outcome} className="px-2 py-0.5 text-[11px]">

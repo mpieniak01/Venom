@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from starlette.requests import Request
+from starlette.responses import Response
 
 import venom_core.main as main_module
 from venom_core.nodes.protocol import MessageType
@@ -301,6 +303,119 @@ def test_initialize_model_services_handles_missing_monitor(monkeypatch, tmp_path
     assert main_module.model_manager is not None
     assert main_module.model_registry == "sentinel"
     assert main_module.benchmark_service is None
+
+
+def test_resolve_audit_channel_for_path_known_and_fallback():
+    assert (
+        main_module._resolve_audit_channel_for_path("/api/v1/queue/items")
+        == "Queue API"
+    )
+    assert (
+        main_module._resolve_audit_channel_for_path("/api/v1/unknown/endpoint")
+        == "System Services API"
+    )
+
+
+def test_resolve_audit_actor_prefers_headers_then_state_then_client():
+    with_header = SimpleNamespace(
+        headers={"X-User": "alice"},
+        state=SimpleNamespace(user="state-user"),
+        client=SimpleNamespace(host="127.0.0.1"),
+    )
+    assert main_module._resolve_audit_actor(with_header) == "alice"
+
+    with_state = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(user="state-user"),
+        client=SimpleNamespace(host="127.0.0.1"),
+    )
+    assert main_module._resolve_audit_actor(with_state) == "state-user"
+
+    with_client = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(user=""),
+        client=SimpleNamespace(host="127.0.0.2"),
+    )
+    assert main_module._resolve_audit_actor(with_client) == "127.0.0.2"
+
+    empty = SimpleNamespace(headers={}, state=SimpleNamespace(user=""), client=None)
+    assert main_module._resolve_audit_actor(empty) == "unknown"
+
+
+def test_resolve_audit_status_buckets():
+    assert main_module._resolve_audit_status(200) == "success"
+    assert main_module._resolve_audit_status(404) == "warning"
+    assert main_module._resolve_audit_status(503) == "failure"
+
+
+def _build_request(
+    *,
+    method: str,
+    path: str,
+    headers: list[tuple[bytes, bytes]] | None = None,
+) -> Request:
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "scheme": "http",
+        "method": method,
+        "path": path,
+        "raw_path": path.encode("utf-8"),
+        "query_string": b"",
+        "headers": headers or [],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+    return Request(scope)
+
+
+@pytest.mark.asyncio
+async def test_audit_http_requests_publishes_for_regular_api_calls(monkeypatch):
+    stream = SimpleNamespace(publish=MagicMock())
+    monkeypatch.setattr(main_module, "get_audit_stream", lambda: stream)
+    request = _build_request(
+        method="GET",
+        path="/api/v1/queue/items",
+        headers=[(b"x-user", b"tester")],
+    )
+
+    async def _call_next(_request):
+        return Response(status_code=201)
+
+    response = await main_module.audit_http_requests(request, _call_next)
+    assert response.status_code == 201
+    stream.publish.assert_called_once()
+    payload = stream.publish.call_args.kwargs
+    assert payload["source"] == "core.http"
+    assert payload["actor"] == "tester"
+    assert payload["action"] == "http.get"
+    assert payload["status"] == "success"
+    assert payload["details"]["api_channel"] == "Queue API"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/healthz"),
+        ("GET", "/api/v1/audit/stream"),
+        ("OPTIONS", "/api/v1/queue/items"),
+        ("HEAD", "/api/v1/queue/items"),
+    ],
+)
+async def test_audit_http_requests_skips_non_audited_paths_and_methods(
+    monkeypatch, method: str, path: str
+):
+    stream = SimpleNamespace(publish=MagicMock())
+    monkeypatch.setattr(main_module, "get_audit_stream", lambda: stream)
+    request = _build_request(method=method, path=path)
+
+    async def _call_next(_request):
+        return Response(status_code=200)
+
+    response = await main_module.audit_http_requests(request, _call_next)
+    assert response.status_code == 200
+    stream.publish.assert_not_called()
 
 
 def test_storage_and_memory_store_initialization(monkeypatch, tmp_path):

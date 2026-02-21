@@ -7,6 +7,7 @@ Panel konfiguracji dostępny pod `/config` w interfejsie web-next pozwala na:
 - Edycję parametrów konfiguracji z poziomu UI
 - Monitorowanie statusu usług (CPU, RAM, uptime)
 - Stosowanie profili szybkich (Full Stack, Light, LLM OFF)
+- Podgląd kanonicznego technicznego strumienia audytu API w `Konfiguracja -> Audyt`
 - **Rozróżnienie usług sterowalnych od konfiguracyjnych** (ZADANIE 084)
 
 ## Architektura
@@ -63,7 +64,13 @@ Zarządza plikiem `.env`:
 **Maskowanie sekretów:**
 Parametry zawierające "KEY", "TOKEN", "PASSWORD" są maskowane w formacie: `sk-****1234` (pierwsze 4 i ostatnie 4 znaki)
 
-#### API Endpoints (`venom_core/api/routes/system.py`)
+#### Audit Stream (`venom_core/services/audit_stream.py`)
+Kanoniczny techniczny strumień audytu w core:
+- Ujednolicona ścieżka ingestu zdarzeń
+- Ujednolicona ścieżka odczytu dla panelu audytu w konfiguracji
+- Zakres techniczny/API (oddzielony od logów produktowych modułów)
+
+#### API Endpoints (`venom_core/api/routes/system.py`, `venom_core/api/routes/audit_stream.py`)
 
 **Runtime:**
 ```
@@ -107,6 +114,16 @@ POST /api/v1/config/restore
      → {success: bool, message: str, restart_required: [...]}
 ```
 
+**Audit:**
+```
+GET  /api/v1/audit/stream?limit=200
+     → {entries: [{id, timestamp, source, api_channel, action, actor, status, context?}]}
+
+POST /api/v1/audit/stream
+     body: {source, api_channel, action, actor, status, context?}
+     → {ok: true, id: "..."}
+```
+
 ### Frontend
 
 #### Struktura komponentów
@@ -116,7 +133,8 @@ web-next/
 ├── components/config/
 │   ├── config-home.tsx              # Główny komponent z zakładkami
 │   ├── services-panel.tsx           # Panel usług (kafelki, akcje, profile)
-│   └── parameters-panel.tsx         # Panel parametrów (formularze, sekcje)
+│   ├── parameters-panel.tsx         # Panel parametrów (formularze, sekcje)
+│   └── audit-panel.tsx              # Panel kanonicznego technicznego audytu
 └── lib/i18n/locales/
     ├── pl.ts                        # Tłumaczenia PL
     ├── en.ts                        # Tłumaczenia EN
@@ -144,6 +162,12 @@ web-next/
 - **Sticky footer**: Panel akcji zawsze widoczny na dole ekranu
 - **Restart warnings**: Banner z listą usług wymagających restartu po zapisie
 - **Info box**: Sekcja informacyjna o Ollama vs vLLM z linkiem do benchmarków
+
+#### AuditPanel (`components/config/audit-panel.tsx`)
+- **Jedno źródło**: odczyt z jednego endpointu kanonicznego (`/api/v1/audit/stream`)
+- **Filtry**: kanał API i wynik
+- **Układ**: kompaktowe jednoliniowe wpisy sortowane od najnowszych
+- **Wizualizacja**: osobny badge kanału API + badge statusu (success/warning/error/neutral)
 
 #### Nawigacja
 Sidebar zawiera nową pozycję "Konfiguracja" z ikoną Settings:
@@ -251,6 +275,7 @@ pytest tests/test_config_manager_api.py -v
 - Config get/update (GET/POST /api/v1/config/runtime)
 - Config backups (GET /api/v1/config/backups)
 - Config restore (POST /api/v1/config/restore)
+- Audit stream (GET/POST /api/v1/audit/stream)
 - Edge cases (invalid service, invalid action, validation errors)
 
 ### Frontend (Playwright)
@@ -321,11 +346,12 @@ make clean-ports
 - [x] Backend runtime controller z obsługą 7 typów usług
 - [x] Backend config manager z whitelistą 55 parametrów
 - [x] API endpoints dla runtime i config
-- [x] Frontend panels: Services i Parameters
+- [x] Frontend panels: Services, Parameters, Audit
 - [x] Profile szybkie (Full/Light/LLM OFF)
 - [x] Maskowanie sekretów
 - [x] Backup .env z historią
 - [x] Restart warnings
+- [x] Kanoniczny techniczny strumień audytu API (`/api/v1/audit/stream`)
 - [x] Testy jednostkowe backend
 
 ### TODO (v1.1)
@@ -339,7 +365,7 @@ make clean-ports
 
 ### TODO (v1.0)
 - [ ] Multi-user access control (role-based)
-- [ ] Audit log (kto, kiedy, co zmienił)
+- [ ] Analityka audytu i polityki retencji
 - [ ] Config templates (dev/prod/test)
 - [ ] One-click deployment profiles
 - [ ] Health checks i auto-restart
@@ -355,6 +381,7 @@ http://localhost:8000/docs
 Sekcje:
 - **Runtime** → `/api/v1/runtime/*`
 - **Config** → `/api/v1/config/*`
+- **Audit** → `/api/v1/audit/stream`
 
 ## Licencja
 

@@ -7,6 +7,7 @@ Configuration panel available at `/config` in web-next interface allows:
 - Editing configuration parameters from UI
 - Monitoring service status (CPU, RAM, uptime)
 - Applying quick profiles (Full Stack, Light, LLM OFF)
+- Viewing canonical technical API audit stream in `Configuration -> Audit`
 - **Distinguishing controllable services from configurable ones** (TASK 084)
 
 ## Architecture
@@ -64,7 +65,13 @@ Manages `.env` file:
 **Secret masking:**
 Parameters containing "KEY", "TOKEN", "PASSWORD" are masked in format: `sk-****1234` (first 4 and last 4 characters)
 
-#### API Endpoints (`venom_core/api/routes/system.py`)
+#### Audit Stream (`venom_core/services/audit_stream.py`)
+Canonical technical audit stream in core:
+- Unified event ingestion path
+- Unified read path for configuration audit UI
+- Technical/API scope (separate from product-specific module logs)
+
+#### API Endpoints (`venom_core/api/routes/system.py`, `venom_core/api/routes/audit_stream.py`)
 
 **Runtime:**
 ```
@@ -115,6 +122,16 @@ POST /api/v1/config/restore
      → {success: bool, message: str, restart_required: [...]}
 ```
 
+**Audit:**
+```
+GET  /api/v1/audit/stream?limit=200
+     → {entries: [{id, timestamp, source, api_channel, action, actor, status, context?}]}
+
+POST /api/v1/audit/stream
+     body: {source, api_channel, action, actor, status, context?}
+     → {ok: true, id: "..."}
+```
+
 ### Frontend
 
 #### Component Structure
@@ -124,7 +141,8 @@ web-next/
 ├── components/config/
 │   ├── config-home.tsx              # Main component with tabs
 │   ├── services-panel.tsx           # Services panel (tiles, actions, profiles)
-│   └── parameters-panel.tsx         # Parameters panel (forms, sections)
+│   ├── parameters-panel.tsx         # Parameters panel (forms, sections)
+│   └── audit-panel.tsx              # Canonical technical audit stream panel
 └── lib/i18n/locales/
     ├── pl.ts                        # Polish translations
     ├── en.ts                        # English translations
@@ -152,6 +170,12 @@ web-next/
 - **Sticky footer**: Action panel always visible at bottom of screen
 - **Restart warnings**: Banner with list of services requiring restart after save
 - **Info box**: Informational section about Ollama vs vLLM with link to benchmarks
+
+#### AuditPanel (`components/config/audit-panel.tsx`)
+- **Single source**: reads one canonical endpoint (`/api/v1/audit/stream`)
+- **Filters**: API channel and outcome
+- **Layout**: compact one-line entries, sorted by newest first
+- **Visuals**: dedicated API-channel badge + status badge (success/warning/error/neutral)
 
 #### Navigation
 Sidebar contains new "Configuration" item with Settings icon:
@@ -259,6 +283,7 @@ pytest tests/test_config_manager_api.py -v
 - Config get/update (GET/POST /api/v1/config/runtime)
 - Config backups (GET /api/v1/config/backups)
 - Config restore (POST /api/v1/config/restore)
+- Audit stream (GET/POST /api/v1/audit/stream)
 - Edge cases (invalid service, invalid action, validation errors)
 
 ### Frontend (Playwright)
@@ -329,11 +354,12 @@ make clean-ports
 - [x] Backend runtime controller with support for 7 service types
 - [x] Backend config manager with 55 parameter whitelist
 - [x] API endpoints for runtime and config
-- [x] Frontend panels: Services and Parameters
+- [x] Frontend panels: Services, Parameters, Audit
 - [x] Quick profiles (Full/Light/LLM OFF)
 - [x] Secret masking
 - [x] .env backup with history
 - [x] Restart warnings
+- [x] Canonical technical API audit stream (`/api/v1/audit/stream`)
 - [x] Backend unit tests
 
 ### TODO (v1.1)
@@ -347,7 +373,7 @@ make clean-ports
 
 ### TODO (v2.0)
 - [ ] Multi-user access control (role-based)
-- [ ] Audit log (who, when, what changed)
+- [ ] Audit analytics and retention policies
 - [ ] Config templates (dev/prod/test)
 - [ ] One-click deployment profiles
 - [ ] Health checks and auto-restart
@@ -363,6 +389,7 @@ http://localhost:8000/docs
 Sections:
 - **Runtime** → `/api/v1/runtime/*`
 - **Config** → `/api/v1/config/*`
+- **Audit** → `/api/v1/audit/stream`
 
 ## License
 

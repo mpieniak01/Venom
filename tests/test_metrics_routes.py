@@ -127,10 +127,8 @@ def test_get_token_metrics_with_per_model_breakdown(monkeypatch, client):
     assert data["models_breakdown"]["local"]["cost_usd"] == 0.0
 
     # Nie powinno być komunikatu "note" o braku danych
-    assert (
-        "note" not in data
-        or "brak zarejestrowanego użycia" not in data.get("note", "").lower()
-    )
+    note = data.get("note")
+    assert note is None or "brak zarejestrowanego użycia" not in str(note).lower()
 
 
 def test_get_token_metrics_economist_no_data_fallback(monkeypatch, client):

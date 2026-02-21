@@ -69,14 +69,7 @@ export function useBenchmark(): UseBenchmarkReturn {
 
             const data: BenchmarkStatusResponse = await response.json();
 
-            // Update results from the API response
-            // The API returns 'results' as a list of dicts, which matches BenchmarkModelResult structure roughly
-            // We might need to map it if exact types differ, but relying on shared types for now.
-            if (data.results) {
-                // Map API results to frontend expected format if needed,
-                // but data.results seems to match BenchmarkModelResult based on types.ts
-                setResults(data.results as unknown as BenchmarkModelResult[]);
-            }
+            setResults(data.results ?? []);
 
             // Add progress log based on current_model
             if (data.status === "running" && data.current_model) {

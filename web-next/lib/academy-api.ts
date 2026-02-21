@@ -5,6 +5,7 @@
  */
 
 import { apiFetch } from "./api-client";
+import { getApiBaseUrl } from "./env";
 
 export interface DatasetStats {
   total_examples: number;
@@ -351,6 +352,14 @@ async function parseUploadErrorMessage(response: Response): Promise<string> {
   }
 }
 
+const resolveMultipartApiBase = (): string => {
+  const configuredBase = getApiBaseUrl();
+  if (configuredBase) return configuredBase;
+  const browserOrigin = globalThis.window?.location?.origin;
+  if (browserOrigin) return browserOrigin;
+  return "";
+};
+
 export async function uploadDatasetFiles(params: {
   files: FileList | File[];
   tag?: string;
@@ -380,9 +389,9 @@ export async function uploadDatasetFiles(params: {
   }
 
   // Use custom fetch for multipart/form-data (apiFetch sets application/json by default)
-  const baseUrl = globalThis.window?.location?.origin ?? "http://localhost:8000";
-
-  const response = await fetch(`${baseUrl}/api/v1/academy/dataset/upload`, {
+  const baseUrl = resolveMultipartApiBase();
+  const uploadUrl = baseUrl ? `${baseUrl}/api/v1/academy/dataset/upload` : "/api/v1/academy/dataset/upload";
+  const response = await fetch(uploadUrl, {
     method: "POST",
     body: formData,
     // Don't set Content-Type - browser will set it with boundary automatically
@@ -465,8 +474,11 @@ export async function uploadDatasetConversionFiles(params: {
     formData.append("files", file);
   });
 
-  const baseUrl = globalThis.window?.location?.origin ?? "http://localhost:8000";
-  const response = await fetch(`${baseUrl}/api/v1/academy/dataset/conversion/upload`, {
+  const baseUrl = resolveMultipartApiBase();
+  const uploadUrl = baseUrl
+    ? `${baseUrl}/api/v1/academy/dataset/conversion/upload`
+    : "/api/v1/academy/dataset/conversion/upload";
+  const response = await fetch(uploadUrl, {
     method: "POST",
     body: formData,
   });

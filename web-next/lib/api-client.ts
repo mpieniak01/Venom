@@ -32,18 +32,7 @@ export async function apiFetch<T = unknown>(
       },
     });
   } catch (error) {
-    if (!skipBaseUrl && baseUrl && isLocalBase(baseUrl)) {
-      response = await fetch(path, {
-        ...rest,
-        cache: cache ?? "no-store",
-        headers: {
-          "Content-Type": "application/json",
-          ...(headers ?? {}),
-        },
-      });
-    } else {
-      throw error;
-    }
+    throw error;
   }
 
   if (!response.ok) {
@@ -68,21 +57,5 @@ const safeParseJson = (payload: string) => {
     return JSON.parse(payload);
   } catch {
     return payload;
-  }
-};
-
-const isLocalBase = (value: string) => {
-  try {
-    const parsed = new URL(value);
-    const hostname = parsed.hostname;
-    return (
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "[::1]" ||
-      hostname === "wsl.localhost" ||
-      hostname.endsWith(".localhost")
-    );
-  } catch {
-    return false;
   }
 };

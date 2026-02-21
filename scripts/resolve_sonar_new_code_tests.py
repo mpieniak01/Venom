@@ -30,7 +30,6 @@ SLOW_FASTLANE_PATH_PATTERNS = (
     "integration",
     "benchmark",
     "test_core_nervous_system.py",
-    "test_evolution_coordinator_phase132d.py",
 )
 
 SLEEP_RE = re.compile(r"(?:time|asyncio)\.sleep\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)")
@@ -248,8 +247,6 @@ def estimate_test_cost(path: str, timings: dict[str, float]) -> float:
         cost += 18.0
     if "test_core_nervous_system.py" in lowered:
         cost += 50.0
-    if "test_evolution_coordinator_phase132d.py" in lowered:
-        cost += 70.0
 
     sleep_total = _sleep_total_seconds(path)
     if sleep_total > 0:

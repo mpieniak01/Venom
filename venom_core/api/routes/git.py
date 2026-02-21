@@ -3,11 +3,11 @@
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from venom_core.api.schemas.git import InitRepoRequest
+from venom_core.api.schemas.git import GitStatusResponse, InitRepoRequest
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 from venom_core.utils.ttl_cache import TTLCache
@@ -32,6 +32,21 @@ def _workspace_not_git_response(message: str) -> dict:
         "is_git_repo": False,
         "message": message,
     }
+
+
+def _normalize_cached_git_status(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize legacy cache payloads to current response contract."""
+    status = payload.get("status")
+    if not isinstance(status, str) or not status:
+        status = "error"
+    is_git_repo = payload.get("is_git_repo")
+    if not isinstance(is_git_repo, bool):
+        is_git_repo = status != "error"
+
+    normalized = dict(payload)
+    normalized["status"] = status
+    normalized["is_git_repo"] = is_git_repo
+    return normalized
 
 
 async def _run_git_command(
@@ -284,6 +299,7 @@ def set_dependencies(git_skill: Any):
 
 @router.get(
     "/status",
+    response_model=GitStatusResponse,
     responses={
         503: {"description": "Git status nie jest dostępny"},
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu Git"},
@@ -301,11 +317,15 @@ async def get_git_status():
     """
     cached = _git_status_cache.get()
     if cached is not None:
-        return cached
+        normalized_cached = _normalize_cached_git_status(cached)
+        if normalized_cached != cached:
+            _git_status_cache.set(normalized_cached)
+        return normalized_cached
 
     res = await _get_git_status_impl()
-    _git_status_cache.set(res)
-    return res
+    normalized_res = _normalize_cached_git_status(res)
+    _git_status_cache.set(normalized_res)
+    return normalized_res
 
 
 async def _get_git_status_impl():

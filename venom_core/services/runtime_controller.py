@@ -25,10 +25,7 @@ import psutil
 
 from venom_core.config import SETTINGS
 from venom_core.services.process_monitor import ProcessMonitor
-from venom_core.services.profile_config import (
-    RuntimeProfile,
-    get_profile_capabilities,
-)
+from venom_core.services.profile_config import RuntimeProfile, get_profile_capabilities
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

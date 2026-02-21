@@ -511,6 +511,7 @@ def get_request_detail(
         context_preview=context_preview,
         generation_params=context.get("generation_params"),
         llm_runtime=context.get("llm_runtime"),
+        routing_decision=context.get("routing_decision"),
         context_used=_serialize_context_used(task),
         error_code=trace.error_code,
         error_class=trace.error_class,

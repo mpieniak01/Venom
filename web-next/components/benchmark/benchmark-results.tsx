@@ -173,9 +173,9 @@ function ResultsTable({ results, mini = false }: Readonly<{ results: ReadonlyArr
         {results.map((r: BenchmarkModelResult) => (
           <tr key={r.model_name}>
             <td className="py-2 font-medium text-zinc-300">{r.model_name}</td>
-            <td className="py-2 text-right text-zinc-400">{r.latency_ms ? `${r.latency_ms}ms` : '-'}</td>
-            <td className="py-2 text-right text-zinc-400">{r.tokens_per_second ? `${r.tokens_per_second} t/s` : '-'}</td>
-            <td className="py-2 text-right text-zinc-400">{r.peak_vram_mb ? `${r.peak_vram_mb} MB` : '-'}</td>
+            <td className="py-2 text-right text-zinc-400">{r.latency_ms != null ? `${r.latency_ms}ms` : '-'}</td>
+            <td className="py-2 text-right text-zinc-400">{r.tokens_per_second != null ? `${r.tokens_per_second} t/s` : '-'}</td>
+            <td className="py-2 text-right text-zinc-400">{r.peak_vram_mb != null ? `${r.peak_vram_mb} MB` : '-'}</td>
             {!mini && (
               <td className="py-2 text-center">
                 <span className={cn(

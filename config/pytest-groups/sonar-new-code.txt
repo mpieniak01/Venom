@@ -1,12 +1,10 @@
 # Lekki zestaw testów ukierunkowany na pokrycie "new code" dla Sonar.
 tests/test_executive_agent_roi.py
 tests/test_shadow_agent.py
-tests/test_evolution_coordinator.py
 tests/test_hardware_bridge.py
 tests/test_operator_agent.py
 tests/test_ingestion_engine_roi.py
 tests/test_node_manager.py
-tests/test_evolution_basic.py
 tests/test_sonar_new_code_routes.py
 tests/test_sonar_agents_init.py
 tests/test_main_setup_router_dependencies.py

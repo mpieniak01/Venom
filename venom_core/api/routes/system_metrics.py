@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from venom_core.api.schemas.metrics import MetricsResponse, TokenMetricsResponse
 from venom_core.core import metrics as metrics_module
 from venom_core.utils.logger import get_logger
 from venom_core.utils.ttl_cache import TTLCache
@@ -40,7 +41,11 @@ def set_dependencies(token_economist=None):
     _token_metrics_cache.clear()
 
 
-@router.get("/tokens", responses=TOKEN_METRICS_RESPONSES)
+@router.get(
+    "/tokens",
+    response_model=TokenMetricsResponse,
+    responses=TOKEN_METRICS_RESPONSES,
+)
 def get_token_metrics():
     """
     Pobiera metryki użycia tokenów i koszty.
@@ -134,7 +139,11 @@ def _get_token_metrics_impl():
         raise HTTPException(status_code=500, detail=TOKEN_METRICS_FETCH_ERROR) from e
 
 
-@router.get("/system", responses=SYSTEM_METRICS_RESPONSES)
+@router.get(
+    "/system",
+    response_model=MetricsResponse,
+    responses=SYSTEM_METRICS_RESPONSES,
+)
 def get_system_metrics():
     """
     Pobiera metryki systemowe (zadania, uptime, network).
@@ -157,7 +166,11 @@ def get_system_metrics():
         raise HTTPException(status_code=500, detail=SYSTEM_METRICS_FETCH_ERROR) from e
 
 
-@router.get("", responses=METRICS_ROOT_RESPONSES)
+@router.get(
+    "",
+    response_model=MetricsResponse,
+    responses=METRICS_ROOT_RESPONSES,
+)
 def get_metrics():
     """
     Zwraca metryki systemowe (root endpoint).

@@ -17,6 +17,7 @@ import {
   TokenMetrics,
 } from "@/lib/types";
 import { getServerApiBaseUrl } from "@/lib/env";
+import { normalizeMetrics } from "@/lib/metrics-adapter";
 
 const KNOWLEDGE_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT ?? "500");
 
@@ -104,7 +105,7 @@ export type LayoutInitialData = {
 };
 
 export async function fetchLayoutInitialData(): Promise<LayoutInitialData> {
-  const [queue, metrics, tasks, modelsUsagePayload, tokenMetrics, gitStatus] =
+  const [queue, metricsRaw, tasks, modelsUsagePayload, tokenMetrics, gitStatus] =
     await Promise.all([
       fetchJson<QueueStatus>("/api/v1/queue/status"),
       fetchJson<Metrics>("/api/v1/metrics"),
@@ -116,7 +117,7 @@ export async function fetchLayoutInitialData(): Promise<LayoutInitialData> {
 
   return {
     queue,
-    metrics,
+    metrics: normalizeMetrics(metricsRaw),
     tasks,
     modelsUsage: normalizeModelsUsage(modelsUsagePayload),
     tokenMetrics,
@@ -152,7 +153,7 @@ export const EMPTY_COCKPIT_INITIAL_DATA: CockpitInitialData = {
 
 export async function fetchCockpitInitialData(): Promise<CockpitInitialData> {
   const [
-    metrics,
+    metricsRaw,
     tasks,
     queue,
     servicesPayload,
@@ -176,7 +177,7 @@ export async function fetchCockpitInitialData(): Promise<CockpitInitialData> {
   ]);
 
   return {
-    metrics,
+    metrics: normalizeMetrics(metricsRaw),
     tasks,
     queue,
     services: normalizeServiceStatus(servicesPayload),

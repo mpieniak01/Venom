@@ -85,6 +85,9 @@ tests/test_governance_api.py
 tests/test_control_plane_compatibility.py
 tests/test_control_plane_service_edges.py
 tests/test_workflow_control_api.py
+tests/test_models_remote_api.py
+tests/test_audit_stream_api.py
+tests/test_audit_stream_service.py
 tests/test_workflow_control_contract.py
 tests/test_workflow_operations.py
 tests/test_workflow_operations_api.py

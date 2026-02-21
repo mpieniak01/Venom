@@ -82,6 +82,7 @@ web-next/
 | **Strategy** – Campaigns         | `handleStartCampaign` asks `window.confirm` (like legacy), then sends `/api/campaign/start`.                   | On missing API informs user via toast and doesn't change local state.                                       |
 | **Config** – Services            | `/api/v1/runtime/status`, `/api/v1/runtime/{service}/{action}`, `/api/v1/runtime/profile/{profile}`            | Displays live service status (backend, UI, LLM, Hive, Nexus) with CPU/RAM metrics. Start/stop/restart actions. |
 | **Config** – Parameters          | `/api/v1/config/runtime` (GET/POST), `/api/v1/config/backups`, `/api/v1/config/restore`                        | Edit whitelisted parameters from `.env`, mask secrets, backup to `config/env-history/`, restart warnings.    |
+| **Config** – Audit               | `/api/v1/audit/stream` (GET/POST)                                                                                | Canonical technical audit stream with one-line entries and channel/outcome filters.                          |
 
 > **Note:** all hooks use `lib/api-client.ts`, which automatically retrieves base URL from `NEXT_PUBLIC_API_BASE` or Next rewrites. This allows UI to work on both HTTP and HTTPS without manual configuration.
 
@@ -123,6 +124,12 @@ Configuration panel (`/config`) allows managing Venom services (backend, UI, LLM
 - **Backup**: Each save creates `.env` backup in `config/env-history/.env-YYYYMMDD-HHMMSS`
 - **Restart warnings**: After save UI informs which components require restart
 
+#### "Audit" Panel
+- **Canonical source**: `/api/v1/audit/stream`
+- **Filters**: by API channel and outcome
+- **Entries**: compact one-line rows sorted by timestamp
+- **Badges**: dedicated API channel badge and status badge
+
 #### Info Box: Ollama vs vLLM
 Panel contains informational section explaining differences between LLM runtimes:
 - **Ollama (Light)**: Quick start, low footprint, single user
@@ -145,6 +152,12 @@ GET  /api/v1/config/runtime            # Fetch whitelisted parameters (mask_secr
 POST /api/v1/config/runtime            # Save changes (updates: {key: value})
 GET  /api/v1/config/backups            # List .env backups
 POST /api/v1/config/restore            # Restore backup (backup_filename)
+```
+
+#### Audit Stream
+```
+GET  /api/v1/audit/stream?limit=200    # Read canonical technical audit stream
+POST /api/v1/audit/stream              # Ingest technical audit event
 ```
 
 ### Security

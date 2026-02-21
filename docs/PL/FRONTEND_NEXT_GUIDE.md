@@ -82,6 +82,7 @@ web-next/
 | **Strategy** – Kampanie          | `handleStartCampaign` pyta `window.confirm` (jak legacy), po czym wysyła `/api/campaign/start`.                 | W razie braku API informuje użytkownika toastem i nie zmienia lokalnego stanu.                              |
 | **Config** – Usługi              | `/api/v1/runtime/status`, `/api/v1/runtime/{service}/{action}`, `/api/v1/runtime/profile/{profile}`             | Wyświetla live status usług (backend, UI, LLM, Hive, Nexus) z metrykami CPU/RAM. Akcje start/stop/restart.    |
 | **Config** – Parametry           | `/api/v1/config/runtime` (GET/POST), `/api/v1/config/backups`, `/api/v1/config/restore`                         | Edycja whitelisty parametrów z `.env`, maskowanie sekretów, backup do `config/env-history/`, restart warnings. |
+| **Config** – Audyt               | `/api/v1/audit/stream` (GET/POST)                                                                                 | Kanoniczny techniczny strumień audytu z jednoliniowymi wpisami i filtrami kanał/wynik.                      |
 
 > **Notatka:** wszystkie hooki korzystają z `lib/api-client.ts`, który automatycznie pobiera bazowy URL z `NEXT_PUBLIC_API_BASE` lub rewritów Next. Dzięki temu UI działa zarówno na HTTP jak i HTTPS bez ręcznej konfiguracji.
 
@@ -123,6 +124,12 @@ Panel konfiguracji (`/config`) pozwala zarządzać usługami Venom (backend, UI,
 - **Backup**: Każdy zapis tworzy backup `.env` w `config/env-history/.env-YYYYMMDD-HHMMSS`
 - **Restart warnings**: Po zapisie UI informuje, które komponenty wymagają restartu
 
+#### Panel "Audyt"
+- **Źródło kanoniczne**: `/api/v1/audit/stream`
+- **Filtry**: po kanale API i wyniku
+- **Wpisy**: kompaktowe jednoliniowe rekordy sortowane po czasie
+- **Badge**: osobny badge kanału API i badge statusu
+
 #### Info Box: Ollama vs vLLM
 Panel zawiera sekcję informacyjną wyjaśniającą różnice między runtime'ami LLM:
 - **Ollama (Light)**: Szybki start, niski footprint, single user
@@ -145,6 +152,12 @@ GET  /api/v1/config/runtime            # Pobierz whitelistę parametrów (mask_s
 POST /api/v1/config/runtime            # Zapisz zmiany (updates: {key: value})
 GET  /api/v1/config/backups            # Lista backupów .env
 POST /api/v1/config/restore            # Przywróć backup (backup_filename)
+```
+
+#### Audit Stream
+```
+GET  /api/v1/audit/stream?limit=200    # Odczyt kanonicznego technicznego strumienia audytu
+POST /api/v1/audit/stream              # Ingest technicznego zdarzenia audytu
 ```
 
 ### Bezpieczeństwo

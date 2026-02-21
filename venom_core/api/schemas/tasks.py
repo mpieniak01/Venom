@@ -1,8 +1,60 @@
 """API schemas for tasks and history endpoints."""
 
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+from venom_core.contracts.routing import ReasonCode, RuntimeTarget
+
+
+class RoutingTarget(str, Enum):
+    """Routing target runtime exposed to API clients."""
+
+    OLLAMA = RuntimeTarget.LOCAL_OLLAMA.value
+    VLLM = RuntimeTarget.LOCAL_VLLM.value
+    OPENAI = RuntimeTarget.CLOUD_OPENAI.value
+    GOOGLE = RuntimeTarget.CLOUD_GOOGLE.value
+    AZURE = RuntimeTarget.CLOUD_AZURE.value
+
+
+class RoutingReason(str, Enum):
+    """Routing decision reason codes exposed to API clients."""
+
+    DEFAULT_ECO_MODE = ReasonCode.DEFAULT_ECO_MODE.value
+    TASK_COMPLEXITY_LOW = ReasonCode.TASK_COMPLEXITY_LOW.value
+    TASK_COMPLEXITY_HIGH = ReasonCode.TASK_COMPLEXITY_HIGH.value
+    SENSITIVE_CONTENT_OVERRIDE = ReasonCode.SENSITIVE_CONTENT_OVERRIDE.value
+    FALLBACK_TIMEOUT = ReasonCode.FALLBACK_TIMEOUT.value
+    FALLBACK_AUTH_ERROR = ReasonCode.FALLBACK_AUTH_ERROR.value
+    FALLBACK_BUDGET_EXCEEDED = ReasonCode.FALLBACK_BUDGET_EXCEEDED.value
+    FALLBACK_PROVIDER_DEGRADED = ReasonCode.FALLBACK_PROVIDER_DEGRADED.value
+    FALLBACK_PROVIDER_OFFLINE = ReasonCode.FALLBACK_PROVIDER_OFFLINE.value
+    FALLBACK_RATE_LIMIT = ReasonCode.FALLBACK_RATE_LIMIT.value
+    POLICY_BLOCKED_BUDGET = ReasonCode.POLICY_BLOCKED_BUDGET.value
+    POLICY_BLOCKED_RATE_LIMIT = ReasonCode.POLICY_BLOCKED_RATE_LIMIT.value
+    POLICY_BLOCKED_NO_PROVIDER = ReasonCode.POLICY_BLOCKED_NO_PROVIDER.value
+    POLICY_BLOCKED_CONTENT = ReasonCode.POLICY_BLOCKED_CONTENT.value
+    USER_PREFERENCE = ReasonCode.USER_PREFERENCE.value
+
+
+class RoutingDecisionSummary(BaseModel):
+    """Serialized routing decision attached to task context/history."""
+
+    target_runtime: RoutingTarget | None = None
+    provider: str | None = None
+    model: str | None = None
+    reason_code: RoutingReason
+    complexity_score: float = 0.0
+    is_sensitive: bool = False
+    fallback_applied: bool = False
+    fallback_chain: list[str] = Field(default_factory=list)
+    policy_gate_passed: bool = True
+    estimated_cost_usd: float = 0.0
+    budget_remaining_usd: float | None = None
+    decision_timestamp: str
+    decision_latency_ms: float = 0.0
+    error_message: str | None = None
 
 
 class TaskExtraContext(BaseModel):
@@ -125,6 +177,7 @@ class HistoryRequestDetail(BaseModel):
     context_preview: dict | None = None
     generation_params: dict | None = None
     llm_runtime: dict | None = None
+    routing_decision: RoutingDecisionSummary | None = None
     context_used: dict | None = None
     error_code: str | None = None
     error_class: str | None = None

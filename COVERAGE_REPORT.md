@@ -26,7 +26,7 @@
   - Circuit breaker exceptions
   - Retry logic (transient vs non-retriable errors)
   - Context manager usage
-  
+
 - `TestTrafficControlledHttpClientAsync` (13 tests)
   - All async HTTP methods
   - Async rate limiting
@@ -34,7 +34,7 @@
   - Async retry with exhaustion
   - Error without response attribute
   - Async context managers
-  
+
 - `TestTrafficControlledHttpClientIntegration` (2 tests)
   - Metrics recording
   - Provider-specific limits

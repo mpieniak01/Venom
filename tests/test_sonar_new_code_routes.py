@@ -34,7 +34,6 @@ from venom_core.core.queue_manager import QueueManager
 from venom_core.execution.skills.chrono_skill import ChronoSkill
 from venom_core.execution.skills.complexity_skill import ComplexitySkill
 from venom_core.memory.lessons_store import Lesson, LessonsStore
-from venom_core.simulation.director import SimulationDirector
 from venom_core.utils.ttl_cache import TTLCache
 
 
@@ -399,26 +398,6 @@ async def test_queue_manager_emergency_stop_iterates_active_tasks() -> None:
     )
     assert result["cancelled"] == 1
     assert result["paused"] is True
-
-
-@pytest.mark.asyncio
-async def test_simulation_director_cleanup_closes_sessions_and_stack() -> None:
-    director = SimulationDirector.__new__(SimulationDirector)
-    ok_agent = SimpleNamespace(browser_skill=SimpleNamespace(close_browser=AsyncMock()))
-    err_agent = SimpleNamespace(
-        browser_skill=SimpleNamespace(close_browser=AsyncMock(side_effect=RuntimeError))
-    )
-    director.active_simulations = {"s1": ok_agent, "s2": err_agent}
-    director.stack_manager = MagicMock(
-        destroy_stack=MagicMock(return_value=(True, "ok"))
-    )
-
-    await director.cleanup(stack_name="demo-stack")
-
-    ok_agent.browser_skill.close_browser.assert_awaited_once()
-    err_agent.browser_skill.close_browser.assert_awaited_once()
-    director.stack_manager.destroy_stack.assert_called_once()
-    assert director.active_simulations == {}
 
 
 def test_lessons_store_delete_and_prune_iterate_over_snapshot(tmp_path) -> None:

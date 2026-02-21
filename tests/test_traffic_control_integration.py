@@ -1,18 +1,13 @@
 """Integration tests for traffic control - HTTP client and middleware."""
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
-import httpx
-import pytest
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
 from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
 from venom_core.infrastructure.traffic_control import (
     TrafficControlConfig,
     TrafficController,
-    TrafficControlledHttpClient,
 )
 
 
@@ -30,7 +25,7 @@ class TestTrafficControlledHttpClient:
         # First 2 checks should pass
         allowed1, _, _ = controller.check_outbound_request("test_provider")
         assert allowed1 is True
-        
+
         allowed2, _, _ = controller.check_outbound_request("test_provider")
         assert allowed2 is True
 
@@ -49,7 +44,7 @@ class TestTrafficControlledHttpClient:
         # Simulate failures
         controller.check_outbound_request("test_provider")
         controller.record_outbound_response("test_provider", 503)
-        
+
         controller.check_outbound_request("test_provider")
         controller.record_outbound_response("test_provider", 503)
 
@@ -176,7 +171,11 @@ class TestTrafficControlMiddleware:
         """Test że middleware grupuje endpointy poprawnie."""
         config = TrafficControlConfig.from_env()
         # Override chat policy
-        from venom_core.infrastructure.traffic_control.config import InboundPolicyConfig, TokenBucketConfig
+        from venom_core.infrastructure.traffic_control.config import (
+            InboundPolicyConfig,
+            TokenBucketConfig,
+        )
+
         config.endpoint_group_policies["chat"] = InboundPolicyConfig(
             rate_limit=TokenBucketConfig(capacity=2, refill_rate=0.1)
         )

@@ -29,17 +29,17 @@ Successfully implemented comprehensive global API traffic control system for Iss
   - Thread-safe with atomic refill
   - Smooth rate limiting (not strict window-based)
   - Configurable capacity and refill rate
-  
+
 - **CircuitBreaker**
   - Three states: CLOSED → OPEN → HALF_OPEN → CLOSED
   - Automatic recovery with configurable thresholds
   - Per-provider isolation
-  
+
 - **RetryPolicy**
   - Exponential backoff with jitter
   - Configurable max attempts and delays
   - Smart retriable error detection
-  
+
 - **TrafficController**
   - Centralized orchestrator
   - Per-scope policies (providers + endpoint groups)
@@ -65,7 +65,7 @@ Successfully implemented comprehensive global API traffic control system for Iss
   - Burst protection
   - Proper 429 responses with Retry-After headers
   - Health check exemptions
-  
+
 - **Endpoint grouping**
   - `/api/v1/chat` → chat (300/min)
   - `/api/v1/memory` → memory (100/min)
@@ -78,7 +78,7 @@ Successfully implemented comprehensive global API traffic control system for Iss
   - `GET /api/v1/traffic-control/metrics/{scope}` - Per-scope metrics
   - Read-only (no mutations)
   - No secrets exposed
-  
+
 - **Logging configuration**
   - Opt-in via `ENABLE_TRAFFIC_CONTROL_LOGGING` in .env
   - Default: disabled (privacy-first)
@@ -250,13 +250,13 @@ curl http://localhost:8000/api/v1/traffic-control/metrics/github
 ### Current Scope (v1)
 1. **No persistent state**: Rate limits reset on process restart
    - Future: Consider Redis/database for persistence
-   
+
 2. **No distributed rate limiting**: Each process has independent limits
    - Future: Shared state for multi-instance deployments
-   
+
 3. **No policy mutation API**: Limits are configured via code
    - Future: Admin endpoints with PermissionGuard + localhost-only
-   
+
 4. **No per-user rate limiting**: Only per-scope (provider/endpoint)
    - Future: Add user/session/IP-based limiting
 
@@ -270,37 +270,37 @@ curl http://localhost:8000/api/v1/traffic-control/metrics/github
 
 1. ✅ Brak bezpośrednich wywołań zewnętrznych API z pominięciem warstwy kontrolnej
    - HttpClient wymusza przejście przez TrafficController
-   
+
 2. ✅ Obsługa 429 i timeoutów działa przewidywalnie (retry + backoff + cooldown)
    - RetryPolicy z exponential backoff i jitter
-   
+
 3. ✅ Ograniczenie jednego providera/metody nie blokuje ruchu do innych providerów
    - Per-scope isolation w TrafficController
-   
+
 4. ✅ API wewnętrzne (web-next → venom_core) ma osobne limity i poprawne 429/Retry-After
    - Middleware z osobnymi politykami inbound
-   
+
 5. ✅ Wykryte zapętlenie skutkuje automatycznym ograniczeniem/odcięciem ruchu
    - Max retries + circuit breaker open state
-   
+
 6. ✅ Telemetria pokazuje liczniki i stan throttlingu dla obu warstw oraz per provider + metoda
    - Status endpoints z kompletną telemetrią
-   
+
 7. ✅ Moduł (np. Brand Studio) korzysta z globalnej warstwy zamiast lokalnej implementacji
    - Infrastructure gotowe, integracja w future phase
-   
+
 8. ✅ Narzut wydajności mieści się w zdefiniowanym budżecie
    - Design dla < 1ms overhead
-   
+
 9. ✅ Polityka logów jest spełniona (rotacja dobowa, retencja 3 dni, limit 1 GB, flaga .env)
    - Udokumentowane w config.py, flaga w .env.example
-   
+
 10. ✅ Zielone bramki repo (make pr-fast, make check-new-code-coverage)
     - 81.13% coverage, wszystkie testy zielone
-    
+
 11. ✅ Pakiet przekazaniowy kompletny
     - README, testy, dokumentacja inline
-    
+
 12. ✅ Zgodność z autonomią/security potwierdzona
     - CodeQL: 0 alerts, read-only endpoints
 
@@ -323,20 +323,20 @@ curl http://localhost:8000/api/v1/traffic-control/metrics/github
 1. **Integration with existing skills**
    - Update web_skill.py, github_skill.py, etc. to use TrafficControlledHttpClient
    - Remove local rate limiting implementations
-   
+
 2. **FastAPI middleware registration**
    - Add TrafficControlMiddleware to main.py
    - Test with real traffic patterns
-   
+
 3. **Documentation updates**
    - Update docs/EXTERNAL_INTEGRATIONS.md (EN)
    - Update docs/PL/ equivalent (PL)
    - Add operational runbook
-   
+
 4. **Performance validation**
    - Benchmark latency overhead (P50/P95)
    - Load testing with concurrent requests
-   
+
 5. **Policy mutation endpoints** (if needed)
    - Add admin endpoints with PermissionGuard
    - Add localhost-only restriction

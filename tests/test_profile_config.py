@@ -54,7 +54,7 @@ class TestProfileCapabilities:
     def test_light_capabilities(self):
         """Test LIGHT profile capabilities."""
         caps = get_profile_capabilities(RuntimeProfile.LIGHT)
-        
+
         assert caps.profile == RuntimeProfile.LIGHT
         assert "backend" in caps.required_services
         assert "frontend" in caps.required_services
@@ -70,7 +70,7 @@ class TestProfileCapabilities:
     def test_llm_off_capabilities(self):
         """Test LLM_OFF profile capabilities."""
         caps = get_profile_capabilities(RuntimeProfile.LLM_OFF)
-        
+
         assert caps.profile == RuntimeProfile.LLM_OFF
         assert "backend" in caps.required_services
         assert "frontend" in caps.required_services
@@ -87,7 +87,7 @@ class TestProfileCapabilities:
     def test_full_capabilities(self):
         """Test FULL profile capabilities."""
         caps = get_profile_capabilities(RuntimeProfile.FULL)
-        
+
         assert caps.profile == RuntimeProfile.FULL
         assert "backend" in caps.required_services
         assert "frontend" in caps.required_services
@@ -107,11 +107,11 @@ class TestProfileDescriptions:
         light_desc = get_profile_description(RuntimeProfile.LIGHT, "en")
         assert "Ollama" in light_desc
         assert "Privacy First" in light_desc
-        
+
         api_desc = get_profile_description(RuntimeProfile.LLM_OFF, "en")
         assert "OpenAI" in api_desc or "Cloud" in api_desc
         assert "Low Hardware" in api_desc
-        
+
         full_desc = get_profile_description(RuntimeProfile.FULL, "en")
         assert "Beast" in full_desc or "Extended" in full_desc
 
@@ -120,7 +120,7 @@ class TestProfileDescriptions:
         light_desc = get_profile_description(RuntimeProfile.LIGHT, "pl")
         assert "Ollama" in light_desc
         assert "Privacy First" in light_desc
-        
+
         api_desc = get_profile_description(RuntimeProfile.LLM_OFF, "pl")
         assert "OpenAI" in api_desc or "cloud" in api_desc
 
@@ -144,8 +144,7 @@ class TestProfileValidation:
     def test_light_validation_no_api_keys(self):
         """Test LIGHT profile doesn't require API keys."""
         is_valid, error = validate_profile_requirements(
-            RuntimeProfile.LIGHT, 
-            available_api_keys=set()
+            RuntimeProfile.LIGHT, available_api_keys=set()
         )
         assert is_valid is True
         assert error is None
@@ -153,8 +152,7 @@ class TestProfileValidation:
     def test_llm_off_validation_with_api_key(self):
         """Test LLM_OFF profile validation with API key."""
         is_valid, error = validate_profile_requirements(
-            RuntimeProfile.LLM_OFF,
-            available_api_keys={"OPENAI_API_KEY"}
+            RuntimeProfile.LLM_OFF, available_api_keys={"OPENAI_API_KEY"}
         )
         assert is_valid is True
         assert error is None
@@ -162,8 +160,7 @@ class TestProfileValidation:
     def test_llm_off_validation_without_api_key(self):
         """Test LLM_OFF profile validation without API key."""
         is_valid, error = validate_profile_requirements(
-            RuntimeProfile.LLM_OFF,
-            available_api_keys=set()
+            RuntimeProfile.LLM_OFF, available_api_keys=set()
         )
         assert is_valid is False
         assert error is not None
@@ -171,10 +168,14 @@ class TestProfileValidation:
 
     def test_llm_off_validation_with_any_key(self):
         """Test LLM_OFF accepts any of the supported API keys."""
-        for key in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]:
+        for key in [
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_API_KEY",
+            "GEMINI_API_KEY",
+        ]:
             is_valid, error = validate_profile_requirements(
-                RuntimeProfile.LLM_OFF,
-                available_api_keys={key}
+                RuntimeProfile.LLM_OFF, available_api_keys={key}
             )
             assert is_valid is True, f"Should accept {key}"
             assert error is None
@@ -182,8 +183,7 @@ class TestProfileValidation:
     def test_full_validation_no_api_keys(self):
         """Test FULL profile doesn't require API keys."""
         is_valid, error = validate_profile_requirements(
-            RuntimeProfile.FULL,
-            available_api_keys=set()
+            RuntimeProfile.FULL, available_api_keys=set()
         )
         assert is_valid is True
         assert error is None
@@ -213,15 +213,15 @@ class TestProfileContract:
         light = get_profile_capabilities(RuntimeProfile.LIGHT)
         full = get_profile_capabilities(RuntimeProfile.FULL)
         llm_off = get_profile_capabilities(RuntimeProfile.LLM_OFF)
-        
+
         # LIGHT should have ollama, disable vllm
         assert "ollama" in light.required_services
         assert "vllm" in light.disabled_services
-        
+
         # LLM_OFF should disable both
         assert "ollama" in llm_off.disabled_services
         assert "vllm" in llm_off.disabled_services
-        
+
         # FULL should have ollama by default
         assert "ollama" in full.required_services
 
@@ -230,7 +230,7 @@ class TestProfileContract:
         light = get_profile_capabilities(RuntimeProfile.LIGHT)
         llm_off = get_profile_capabilities(RuntimeProfile.LLM_OFF)
         full = get_profile_capabilities(RuntimeProfile.FULL)
-        
+
         # None of the default profiles require ONNX
         assert light.requires_onnx is False
         assert llm_off.requires_onnx is False
@@ -241,10 +241,10 @@ class TestProfileContract:
         light = get_profile_capabilities(RuntimeProfile.LIGHT)
         full = get_profile_capabilities(RuntimeProfile.FULL)
         llm_off = get_profile_capabilities(RuntimeProfile.LLM_OFF)
-        
+
         # Local LLM profiles shouldn't require API keys
         assert len(light.required_api_keys) == 0
         assert len(full.required_api_keys) == 0
-        
+
         # Cloud profile should require API keys
         assert len(llm_off.required_api_keys) > 0

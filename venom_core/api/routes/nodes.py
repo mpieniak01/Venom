@@ -83,7 +83,9 @@ def list_nodes(online_only: bool = False):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/{node_id}", response_model=NodeInfoResponse, responses=NODE_INFO_RESPONSES)
+@router.get(
+    "/{node_id}", response_model=NodeInfoResponse, responses=NODE_INFO_RESPONSES
+)
 def get_node_info(node_id: str):
     """
     Zwraca szczegółowe informacje o węźle.
@@ -116,7 +118,11 @@ def get_node_info(node_id: str):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/{node_id}/execute", response_model=NodeExecuteResponse, responses=NODE_EXECUTE_RESPONSES)
+@router.post(
+    "/{node_id}/execute",
+    response_model=NodeExecuteResponse,
+    responses=NODE_EXECUTE_RESPONSES,
+)
 async def execute_on_node(node_id: str, request: NodeExecuteRequest):
     """
     Wykonuje skill na określonym węźle.

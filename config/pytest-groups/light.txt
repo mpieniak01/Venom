@@ -48,10 +48,6 @@ tests/test_docker_habitat.py
 tests/test_docs_skill.py
 tests/test_documenter.py
 tests/test_energy_manager.py
-tests/test_evolution_basic.py
-tests/test_evolution_coordinator.py
-tests/test_evolution_coordinator_flow.py
-tests/test_evolution_system.py
 tests/test_executive_agent_roi.py
 tests/test_eyes.py
 tests/test_feedback_hidden_prompts.py
@@ -148,7 +144,6 @@ tests/test_session_history.py
 tests/test_session_store.py
 tests/test_shadow_agent.py
 tests/test_shell_skill.py
-tests/test_simulation_director.py
 tests/test_skill_manager.py
 tests/test_skills_init.py
 tests/test_slash_commands.py
@@ -195,5 +190,4 @@ tests/test_policy_gate_integration.py
 tests/test_resolve_sonar_new_code_tests.py
 tests/test_stack_manager_safety.py
 tests/test_url_policy.py
-tests/test_mirror_world_docker_cleanup.py
 tests/test_model_registry_clients.py

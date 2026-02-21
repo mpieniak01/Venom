@@ -10,7 +10,7 @@ Venom wspiera trzy różne profile runtime, aby dostosować się do różnych wy
 
 **Opis:** lokalnie: Ollama + Gemma 3 + Next.js - Privacy First
 
-**Zastosowanie:** 
+**Zastosowanie:**
 - Użytkownicy nastawieni na prywatność, którzy chcą lokalnego przetwarzania AI
 - Środowiska ograniczone CPU/RAM
 - Brak zależności od internetu dla głównych funkcji AI
@@ -168,7 +168,7 @@ from venom_core.services.runtime_controller import runtime_controller
 
 # Zastosuj profil
 result = runtime_controller.apply_profile("light")
-print(result)  
+print(result)
 # Wyjście zawiera:
 # - success: bool
 # - message: str
@@ -202,7 +202,7 @@ print(desc)  # "cloud: OpenAI/Anthropic + Next.js - Low Hardware Req"
 
 # Waliduj wymagania
 is_valid, error = validate_profile_requirements(
-    RuntimeProfile.LLM_OFF, 
+    RuntimeProfile.LLM_OFF,
     available_api_keys={"OPENAI_API_KEY"}
 )
 ```

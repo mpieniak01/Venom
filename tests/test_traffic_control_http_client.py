@@ -1,15 +1,14 @@
 """Comprehensive tests for TrafficControlledHttpClient - HTTP client wrapper."""
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from venom_core.infrastructure.traffic_control import (
     TrafficControlConfig,
-    TrafficController,
     TrafficControlledHttpClient,
+    TrafficController,
 )
 
 
@@ -525,7 +524,9 @@ class TestTrafficControlledHttpClientAsync:
         mock_async.return_value = mock_client
 
         # Error without response attribute
-        mock_client.request = AsyncMock(side_effect=httpx.ConnectError("Connection failed"))
+        mock_client.request = AsyncMock(
+            side_effect=httpx.ConnectError("Connection failed")
+        )
 
         client = TrafficControlledHttpClient("test")
 
@@ -548,7 +549,9 @@ class TestTrafficControlledHttpClientIntegration:
 
         config = TrafficControlConfig()
         controller = TrafficController(config)
-        client = TrafficControlledHttpClient("test_provider", traffic_controller=controller)
+        client = TrafficControlledHttpClient(
+            "test_provider", traffic_controller=controller
+        )
 
         # Make successful requests
         client.get("/test1")
@@ -573,7 +576,9 @@ class TestTrafficControlledHttpClientIntegration:
         controller = TrafficController(config)
 
         # GitHub has limit of 60/min
-        github_client = TrafficControlledHttpClient("github", traffic_controller=controller)
+        github_client = TrafficControlledHttpClient(
+            "github", traffic_controller=controller
+        )
 
         # Make 60 requests (should all succeed)
         for i in range(60):

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { getApiBaseUrl } from "@/lib/env";
+import { normalizeMetricsRequired } from "@/lib/metrics-adapter";
 import {
   AutonomyLevel,
   CampaignResponse,
@@ -280,7 +281,11 @@ function usePolling<T>(
 }
 
 export function useMetrics(intervalMs = 5000) {
-  return usePolling<Metrics>("metrics", () => apiFetch("/api/v1/metrics"), intervalMs);
+  return usePolling<Metrics>(
+    "metrics",
+    async () => normalizeMetricsRequired(await apiFetch<Metrics>("/api/v1/metrics")),
+    intervalMs,
+  );
 }
 
 export function useTasks(intervalMs = 5000) {

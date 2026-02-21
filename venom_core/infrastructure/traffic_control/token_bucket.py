@@ -24,7 +24,9 @@ class TokenBucket:
     refill_rate: float
     tokens: float = field(init=False)
     last_refill: float = field(init=False)
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         """Inicjalizacja bucketa - pełna pojemność na start."""

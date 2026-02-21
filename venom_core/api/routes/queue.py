@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
+from venom_core.api.schemas.queue import QueueActionResponse, QueueStatusResponse
 from venom_core.utils.logger import get_logger
 from venom_core.utils.ttl_cache import TTLCache
 
@@ -35,7 +36,11 @@ def set_dependencies(orchestrator):
     _orchestrator = orchestrator
 
 
-@router.get("/status", responses=QUEUE_BASE_RESPONSES)
+@router.get(
+    "/status",
+    response_model=QueueStatusResponse,
+    responses=QUEUE_BASE_RESPONSES,
+)
 def get_queue_status():
     """
     Pobiera status kolejki zadań.
@@ -63,7 +68,11 @@ def get_queue_status():
         ) from e
 
 
-@router.post("/pause", responses=QUEUE_BASE_RESPONSES)
+@router.post(
+    "/pause",
+    response_model=QueueActionResponse,
+    responses=QUEUE_BASE_RESPONSES,
+)
 async def pause_queue():
     """
     Wstrzymuje kolejkę zadań - nowe zadania nie będą przetwarzane.
@@ -89,7 +98,11 @@ async def pause_queue():
         ) from e
 
 
-@router.post("/resume", responses=QUEUE_BASE_RESPONSES)
+@router.post(
+    "/resume",
+    response_model=QueueActionResponse,
+    responses=QUEUE_BASE_RESPONSES,
+)
 async def resume_queue():
     """
     Wznawia kolejkę zadań - przetwarzanie zostanie kontynuowane.
@@ -115,7 +128,11 @@ async def resume_queue():
         ) from e
 
 
-@router.post("/purge", responses=QUEUE_BASE_RESPONSES)
+@router.post(
+    "/purge",
+    response_model=QueueActionResponse,
+    responses=QUEUE_BASE_RESPONSES,
+)
 async def purge_queue():
     """
     Czyści kolejkę - usuwa wszystkie oczekujące zadania.
@@ -143,7 +160,11 @@ async def purge_queue():
         ) from e
 
 
-@router.post("/emergency-stop", responses=QUEUE_BASE_RESPONSES)
+@router.post(
+    "/emergency-stop",
+    response_model=QueueActionResponse,
+    responses=QUEUE_BASE_RESPONSES,
+)
 async def emergency_stop():
     """
     Awaryjne zatrzymanie systemu - anuluje wszystkie zadania i czyści kolejkę.
@@ -168,7 +189,11 @@ async def emergency_stop():
         ) from e
 
 
-@router.post("/task/{task_id}/abort", responses=QUEUE_ABORT_RESPONSES)
+@router.post(
+    "/task/{task_id}/abort",
+    response_model=QueueActionResponse,
+    responses=QUEUE_ABORT_RESPONSES,
+)
 async def abort_task(task_id: UUID):
     """
     Przerywa wykonywanie konkretnego zadania.

@@ -341,6 +341,7 @@ export const en = {
     tabs: {
       services: "Services",
       parameters: "Parameters",
+      audit: "Audit",
     },
     services: {
       title: "Service Management",
@@ -546,6 +547,37 @@ export const en = {
         vllm: "vLLM (Full): Benchmark pipeline, longer startup, reserves all VRAM, but allows performance testing and higher throughput.",
         hint: "💡 By default we run only one runtime at a time. The second option makes sense only when separating roles (e.g., UI vs. coding).",
         benchmark: "go to benchmarks",
+      },
+    },
+    audit: {
+      title: "Audit Streams",
+      description: "Separated logs for core admin actions and module API actions.",
+      refresh: "Refresh",
+      refreshing: "Refreshing...",
+      loadError: "Failed to load audit streams.",
+      empty: "No audit entries for selected filters.",
+      source: {
+        core: "core",
+        module: "module",
+      },
+      filters: {
+        source: "Log source",
+        outcome: "Outcome",
+        allSources: "All sources",
+        coreSource: "Core admin audit",
+        moduleSource: "Module API audit",
+        allOutcomes: "All outcomes",
+        success: "Success",
+        warning: "Warning",
+        error: "Error",
+        neutral: "Neutral",
+      },
+      core: {
+        loadError: "Failed to load core admin audit.",
+      },
+      module: {
+        loadError: "Failed to load module audit.",
+        unavailable: "Brand Studio audit endpoint is unavailable (module inactive or disabled).",
       },
     },
     apiMap: {

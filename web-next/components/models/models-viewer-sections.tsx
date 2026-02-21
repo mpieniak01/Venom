@@ -552,7 +552,7 @@ export function InstalledAndOperations({
     );
 }
 
-interface RemoteModelsSectionProps extends ModelsViewerLogic {}
+type RemoteModelsSectionProps = ModelsViewerLogic;
 
 export function RemoteModelsSection(props: RemoteModelsSectionProps) {
     const {
@@ -562,7 +562,6 @@ export function RemoteModelsSection(props: RemoteModelsSectionProps) {
         remoteProvidersError,
         fetchRemoteProviders,
         remoteCatalog,
-        remoteCatalogProvider,
         remoteCatalogLoading,
         remoteCatalogError,
         remoteCatalogRefreshedAt,

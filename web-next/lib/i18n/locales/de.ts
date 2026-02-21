@@ -342,6 +342,7 @@ export const de = {
     tabs: {
       services: "Dienste",
       parameters: "Parameter",
+      audit: "Audit",
     },
     services: {
       title: "Dienstverwaltung",
@@ -547,6 +548,38 @@ export const de = {
         vllm: "vLLM (Full): Benchmark-Pipeline, längerer Start, reserviert gesamtes VRAM, ermöglicht aber Leistungstests und höheren Durchsatz.",
         hint: "💡 Standardmäßig führen wir nur eine Runtime gleichzeitig aus. Die zweite Option ist nur sinnvoll, wenn Rollen getrennt werden (z. B. UI vs. Codierung).",
         benchmark: "zu Benchmarks gehen",
+      },
+    },
+    audit: {
+      title: "Audit-Streams",
+      description: "Kanonischer Backend-Audit-Stream in Core. Module publizieren Ereignisse in diesen Stream.",
+      refresh: "Aktualisieren",
+      refreshing: "Aktualisiere...",
+      loadError: "Audit-Streams konnten nicht geladen werden.",
+      loadErrorWithStatus: "{{message}} (HTTP {{status}})",
+      empty: "Keine Audit-Einträge für die ausgewählten Filter.",
+      source: {
+        core: "core",
+        module: "modul",
+      },
+      filters: {
+        source: "API-Kanal",
+        outcome: "Ergebnis",
+        allSources: "Alle API-Kanäle",
+        coreSource: "Core-Ereignisse",
+        moduleSource: "Modul-Ereignisse",
+        allOutcomes: "Alle Ergebnisse",
+        success: "Erfolg",
+        warning: "Warnung",
+        error: "Fehler",
+        neutral: "Neutral",
+      },
+      core: {
+        loadError: "Core-Admin-Audit konnte nicht geladen werden.",
+      },
+      module: {
+        loadError: "Modul-Audit konnte nicht geladen werden.",
+        unavailable: "Brand-Studio-Audit-Endpunkt ist nicht verfügbar (Modul inaktiv oder deaktiviert).",
       },
     },
     apiMap: {

@@ -79,6 +79,21 @@ class AdminAuditTrail:
             if len(self._entries) > self._max_entries:
                 self._entries = self._entries[-self._max_entries :]
 
+        try:
+            from venom_core.services.audit_stream import get_audit_stream
+
+            get_audit_stream().publish(
+                source="core.admin",
+                action=action,
+                actor=user,
+                status=result,
+                context=provider,
+                details=details or {},
+                timestamp=entry.timestamp,
+            )
+        except Exception:
+            logger.exception("Failed to mirror admin audit into canonical stream")
+
         logger.info(
             f"Admin audit: {action} by {user} on provider={provider} -> {result}"
         )

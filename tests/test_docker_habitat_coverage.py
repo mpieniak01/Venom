@@ -222,6 +222,10 @@ def test_create_container_raises_runtime_error_on_non_conflict_api_error(
 def test_create_container_raises_runtime_error_on_unexpected_error(
     monkeypatch, tmp_path
 ):
+    class ApiError(Exception):
+        pass
+
+    monkeypatch.setattr(docker_habitat_mod, "APIError", ApiError)
     images = SimpleNamespace(get=MagicMock(), pull=MagicMock())
     client = SimpleNamespace(
         images=images,

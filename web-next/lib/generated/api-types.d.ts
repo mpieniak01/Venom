@@ -1279,6 +1279,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/academy/dataset/conversion/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Conversion Files */
+        get: operations["list_dataset_conversion_files_api_v1_academy_dataset_conversion_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/dataset/conversion/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Dataset Conversion Files */
+        post: operations["upload_dataset_conversion_files_api_v1_academy_dataset_conversion_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/dataset/conversion/files/{file_id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert Dataset File */
+        post: operations["convert_dataset_file_api_v1_academy_dataset_conversion_files__file_id__convert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/dataset/conversion/files/{file_id}/training-selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Dataset Conversion Training Selection */
+        post: operations["set_dataset_conversion_training_selection_api_v1_academy_dataset_conversion_files__file_id__training_selection_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/dataset/conversion/files/{file_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Dataset Conversion File */
+        get: operations["preview_dataset_conversion_file_api_v1_academy_dataset_conversion_files__file_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/academy/dataset/conversion/files/{file_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Dataset Conversion File */
+        get: operations["download_dataset_conversion_file_api_v1_academy_dataset_conversion_files__file_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/academy/dataset/preview": {
         parameters: {
             query?: never;
@@ -3034,6 +3136,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/models/remote/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Remote Providers
+         * @description Get status of remote providers (OpenAI, Google).
+         *
+         *     Returns provider configuration status, reachability, and last check time.
+         */
+        get: operations["get_remote_providers_api_v1_models_remote_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/remote/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Remote Catalog
+         * @description Get catalog of remote models for a specific provider.
+         *
+         *     Args:
+         *         provider: Provider name (openai or google)
+         *
+         *     Returns:
+         *         List of available models with capabilities
+         */
+        get: operations["get_remote_catalog_api_v1_models_remote_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/remote/connectivity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Connectivity Map
+         * @description Get service-to-model binding map.
+         *
+         *     Returns mapping of Venom services to remote providers and models,
+         *     including routing mode and fallback configuration.
+         */
+        get: operations["get_connectivity_map_api_v1_models_remote_connectivity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/remote/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Provider
+         * @description Validate connection for a specific provider/model.
+         *
+         *     Checks if API key is configured and returns validation result.
+         *     Note: This does not perform actual API calls to avoid key usage.
+         *
+         *     Args:
+         *         request: Validation request with provider and optional model
+         *
+         *     Returns:
+         *         Validation result with status and message
+         */
+        post: operations["validate_provider_api_v1_models_remote_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/providers": {
         parameters: {
             query?: never;
@@ -3316,6 +3518,24 @@ export interface paths {
         get: operations["get_flow_trace_api_v1_flow__task_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Audit Stream Entries */
+        get: operations["get_audit_stream_entries_api_v1_audit_stream_get"];
+        put?: never;
+        /** Publish Audit Stream Entry */
+        post: operations["publish_audit_stream_entry_api_v1_audit_stream_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3852,6 +4072,516 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/traffic-control/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pobierz status traffic control
+         * @description Zwraca metryki i status throttlingu dla API (read-only, bez sekretów)
+         */
+        get: operations["get_traffic_control_status_api_v1_traffic_control_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/traffic-control/metrics/{scope}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pobierz metryki dla konkretnego scope
+         * @description Zwraca szczegółowe metryki dla providera lub endpoint group
+         */
+        get: operations["get_scope_metrics_api_v1_traffic_control_metrics__scope__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health */
+        get: operations["health_api_v1_brand_studio_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/sources/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Candidates */
+        get: operations["list_candidates_api_v1_brand_studio_sources_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/drafts/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Draft */
+        post: operations["generate_draft_api_v1_brand_studio_drafts_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/drafts/{draft_id}/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue Draft */
+        post: operations["queue_draft_api_v1_brand_studio_drafts__draft_id__queue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/queue/{item_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Queue Item */
+        post: operations["publish_queue_item_api_v1_brand_studio_queue__item_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Queue */
+        get: operations["list_queue_api_v1_brand_studio_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Audit */
+        get: operations["list_audit_api_v1_brand_studio_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Config */
+        get: operations["get_config_api_v1_brand_studio_config_get"];
+        /** Update Config */
+        put: operations["update_config_api_v1_brand_studio_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/config/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Config */
+        post: operations["refresh_config_api_v1_brand_studio_config_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/strategies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Strategies */
+        get: operations["list_strategies_api_v1_brand_studio_strategies_get"];
+        put?: never;
+        /** Create Strategy */
+        post: operations["create_strategy_api_v1_brand_studio_strategies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/strategies/{strategy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Strategy */
+        put: operations["update_strategy_api_v1_brand_studio_strategies__strategy_id__put"];
+        post?: never;
+        /** Delete Strategy */
+        delete: operations["delete_strategy_api_v1_brand_studio_strategies__strategy_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/strategies/{strategy_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Strategy */
+        post: operations["activate_strategy_api_v1_brand_studio_strategies__strategy_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/credential-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Credential Profiles */
+        get: operations["list_credential_profiles_api_v1_brand_studio_credential_profiles_get"];
+        put?: never;
+        /** Create Credential Profile */
+        post: operations["create_credential_profile_api_v1_brand_studio_credential_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/credential-profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Credential Profile */
+        put: operations["update_credential_profile_api_v1_brand_studio_credential_profiles__profile_id__put"];
+        post?: never;
+        /** Delete Credential Profile */
+        delete: operations["delete_credential_profile_api_v1_brand_studio_credential_profiles__profile_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/credential-profiles/{profile_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Credential Profile */
+        post: operations["activate_credential_profile_api_v1_brand_studio_credential_profiles__profile_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/credential-profiles/{profile_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Credential Profile */
+        post: operations["test_credential_profile_api_v1_brand_studio_credential_profiles__profile_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/monitoring/keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Keywords */
+        get: operations["list_keywords_api_v1_brand_studio_monitoring_keywords_get"];
+        put?: never;
+        /** Create Keyword */
+        post: operations["create_keyword_api_v1_brand_studio_monitoring_keywords_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/monitoring/keywords/{keyword_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Keyword */
+        delete: operations["delete_keyword_api_v1_brand_studio_monitoring_keywords__keyword_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Keyword */
+        patch: operations["update_keyword_api_v1_brand_studio_monitoring_keywords__keyword_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/brand-studio/monitoring/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Base Sources */
+        get: operations["list_base_sources_api_v1_brand_studio_monitoring_sources_get"];
+        put?: never;
+        /** Create Base Source */
+        post: operations["create_base_source_api_v1_brand_studio_monitoring_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/monitoring/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Base Source */
+        delete: operations["delete_base_source_api_v1_brand_studio_monitoring_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Base Source */
+        patch: operations["update_base_source_api_v1_brand_studio_monitoring_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/brand-studio/monitoring/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Monitoring Scan */
+        post: operations["monitoring_scan_api_v1_brand_studio_monitoring_scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/monitoring/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Monitoring Results */
+        get: operations["monitoring_results_api_v1_brand_studio_monitoring_results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/monitoring/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Monitoring Summary */
+        get: operations["monitoring_summary_api_v1_brand_studio_monitoring_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Campaigns */
+        get: operations["list_campaigns_api_v1_brand_studio_campaigns_get"];
+        put?: never;
+        /** Create Campaign */
+        post: operations["create_campaign_api_v1_brand_studio_campaigns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/campaigns/{campaign_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Campaign */
+        get: operations["get_campaign_api_v1_brand_studio_campaigns__campaign_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Campaign */
+        patch: operations["update_campaign_api_v1_brand_studio_campaigns__campaign_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/brand-studio/campaigns/{campaign_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Campaign */
+        post: operations["run_campaign_api_v1_brand_studio_campaigns__campaign_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-studio/campaigns/{campaign_id}/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Draft To Campaign */
+        post: operations["link_draft_to_campaign_api_v1_brand_studio_campaigns__campaign_id__drafts__draft_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -4068,6 +4798,83 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
         };
+        /** AuditResponse */
+        AuditResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["BrandStudioAuditEntry"][];
+        };
+        /** AuditStreamPublishRequest */
+        AuditStreamPublishRequest: {
+            /** Source */
+            source: string;
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /** Status */
+            status: string;
+            /** Context */
+            context?: string | null;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Id */
+            id?: string | null;
+        };
+        /** AuditStreamPublishResponse */
+        AuditStreamPublishResponse: {
+            /**
+             * Status
+             * @default accepted
+             * @constant
+             */
+            status: "accepted";
+            entry: components["schemas"]["AuditStreamRecord"];
+        };
+        /** AuditStreamRecord */
+        AuditStreamRecord: {
+            /** Id */
+            id: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Source */
+            source: string;
+            /** Api Channel */
+            api_channel: string;
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /** Status */
+            status: string;
+            /** Context */
+            context?: string | null;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /** AuditStreamResponse */
+        AuditStreamResponse: {
+            /**
+             * Status
+             * @default success
+             * @constant
+             */
+            status: "success";
+            /** Count */
+            count: number;
+            /** Entries */
+            entries: components["schemas"]["AuditStreamRecord"][];
+        };
         /**
          * AuthType
          * @enum {string}
@@ -4148,16 +4955,109 @@ export interface components {
             count?: number | null;
         };
         /**
+         * BenchmarkJobResponse
+         * @description Shared response model for benchmark job data.
+         */
+        BenchmarkJobResponse: {
+            /** Benchmark Id */
+            benchmark_id: string;
+            /** Status */
+            status: string;
+            /** Progress */
+            progress: string;
+            /** Current Model */
+            current_model?: string | null;
+            /** Models */
+            models: string[];
+            /** Num Questions */
+            num_questions: number;
+            /** Results */
+            results: components["schemas"]["BenchmarkModelResultResponse"][];
+            /** Created At */
+            created_at: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+        };
+        /**
          * BenchmarkListResponse
          * @description Response with list of benchmarks.
          */
         BenchmarkListResponse: {
             /** Benchmarks */
-            benchmarks: {
-                [key: string]: unknown;
-            }[];
+            benchmarks: components["schemas"]["BenchmarkJobResponse"][];
             /** Count */
             count: number;
+        };
+        /**
+         * BenchmarkModelResultResponse
+         * @description Response model for single benchmarked model metrics.
+         */
+        BenchmarkModelResultResponse: {
+            /**
+             * Model Name
+             * @description Nazwa modelu
+             */
+            model_name: string;
+            /**
+             * Status
+             * @description Status testu modelu
+             */
+            status: string;
+            /**
+             * Latency Ms
+             * @description Średnia latencja odpowiedzi modelu (ms)
+             */
+            latency_ms?: number | null;
+            /**
+             * Tokens Per Second
+             * @description Prędkość generacji tokenów na sekundę
+             */
+            tokens_per_second?: number | null;
+            /**
+             * Peak Vram Mb
+             * @description Szczytowe zużycie VRAM (MB)
+             */
+            peak_vram_mb?: number | null;
+            /**
+             * Time To First Token Ms
+             * @description Czas do pierwszego tokena (ms)
+             */
+            time_to_first_token_ms?: number | null;
+            /**
+             * Total Duration Ms
+             * @description Całkowity czas testu modelu (ms)
+             */
+            total_duration_ms?: number | null;
+            /**
+             * Startup Latency Ms
+             * @description Czas restartu/healthchecku runtime (ms)
+             */
+            startup_latency_ms?: number | null;
+            /**
+             * Questions Tested
+             * @description Liczba przetestowanych pytań
+             * @default 0
+             */
+            questions_tested: number;
+            /**
+             * Error Message
+             * @description Komunikat błędu
+             */
+            error_message?: string | null;
+            /**
+             * Started At
+             * @description Czas startu testu modelu
+             */
+            started_at?: string | null;
+            /**
+             * Completed At
+             * @description Czas zakończenia testu modelu
+             */
+            completed_at?: string | null;
         };
         /**
          * BenchmarkStartRequest
@@ -4210,9 +5110,7 @@ export interface components {
             /** Num Questions */
             num_questions: number;
             /** Results */
-            results: {
-                [key: string]: unknown;
-            }[];
+            results: components["schemas"]["BenchmarkModelResultResponse"][];
             /** Created At */
             created_at: string;
             /** Started At */
@@ -4221,6 +5119,339 @@ export interface components {
             completed_at?: string | null;
             /** Error Message */
             error_message?: string | null;
+        };
+        /** BrandBaseSource */
+        BrandBaseSource: {
+            /** Source Id */
+            source_id: string;
+            /** Name */
+            name: string;
+            /** Base Url */
+            base_url: string;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode";
+            /** Priority */
+            priority: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Owner Tag */
+            owner_tag?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** BrandBaseSourceCreateRequest */
+        BrandBaseSourceCreateRequest: {
+            /** Name */
+            name: string;
+            /** Base Url */
+            base_url: string;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode";
+            /**
+             * Priority
+             * @default 3
+             */
+            priority: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Owner Tag */
+            owner_tag?: string | null;
+        };
+        /** BrandBaseSourceUpdateRequest */
+        BrandBaseSourceUpdateRequest: {
+            /** Name */
+            name?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Channel */
+            channel?: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode") | null;
+            /** Priority */
+            priority?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Owner Tag */
+            owner_tag?: string | null;
+        };
+        /** BrandBaseSourcesResponse */
+        BrandBaseSourcesResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["BrandBaseSource"][];
+        };
+        /** BrandCampaign */
+        BrandCampaign: {
+            /** Campaign Id */
+            campaign_id: string;
+            /** Name */
+            name: string;
+            /** Strategy Id */
+            strategy_id: string;
+            /** Source Scan Id */
+            source_scan_id?: string | null;
+            /** Linked Keyword Ids */
+            linked_keyword_ids?: string[];
+            /** Linked Result Ids */
+            linked_result_ids?: string[];
+            /** Channels */
+            channels: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode")[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "ready" | "running" | "completed" | "failed" | "cancelled";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Draft Ids */
+            draft_ids?: string[];
+            /** Queue Ids */
+            queue_ids?: string[];
+        };
+        /** BrandCampaignCreateRequest */
+        BrandCampaignCreateRequest: {
+            /** Name */
+            name: string;
+            /** Strategy Id */
+            strategy_id?: string | null;
+            /** Source Scan Id */
+            source_scan_id?: string | null;
+            /** Linked Keyword Ids */
+            linked_keyword_ids?: string[];
+            /** Linked Result Ids */
+            linked_result_ids?: string[];
+            /** Channels */
+            channels: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode")[];
+        };
+        /** BrandCampaignResponse */
+        BrandCampaignResponse: {
+            item: components["schemas"]["BrandCampaign"];
+        };
+        /** BrandCampaignRunResponse */
+        BrandCampaignRunResponse: {
+            /** Campaign Id */
+            campaign_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "ready" | "running" | "completed" | "failed" | "cancelled";
+            /** Message */
+            message: string;
+            /** Draft Ids */
+            draft_ids?: string[];
+            /** Queue Ids */
+            queue_ids?: string[];
+        };
+        /** BrandCampaignUpdateRequest */
+        BrandCampaignUpdateRequest: {
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status?: ("draft" | "ready" | "running" | "completed" | "failed" | "cancelled") | null;
+            /** Linked Keyword Ids */
+            linked_keyword_ids?: string[] | null;
+            /** Linked Result Ids */
+            linked_result_ids?: string[] | null;
+            /** Channels */
+            channels?: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode")[] | null;
+        };
+        /** BrandCampaignsResponse */
+        BrandCampaignsResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["BrandCampaign"][];
+        };
+        /** BrandKeyword */
+        BrandKeyword: {
+            /** Keyword Id */
+            keyword_id: string;
+            /** Phrase */
+            phrase: string;
+            /**
+             * Keyword Type
+             * @enum {string}
+             */
+            keyword_type: "brand_core" | "brand_product" | "brand_person" | "risk_term" | "competitor_context";
+            /** Priority */
+            priority: number;
+            /** Active */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** BrandKeywordCreateRequest */
+        BrandKeywordCreateRequest: {
+            /** Phrase */
+            phrase: string;
+            /**
+             * Keyword Type
+             * @default brand_core
+             * @enum {string}
+             */
+            keyword_type: "brand_core" | "brand_product" | "brand_person" | "risk_term" | "competitor_context";
+            /**
+             * Priority
+             * @default 3
+             */
+            priority: number;
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+        };
+        /** BrandKeywordUpdateRequest */
+        BrandKeywordUpdateRequest: {
+            /** Phrase */
+            phrase?: string | null;
+            /** Keyword Type */
+            keyword_type?: ("brand_core" | "brand_product" | "brand_person" | "risk_term" | "competitor_context") | null;
+            /** Priority */
+            priority?: number | null;
+            /** Active */
+            active?: boolean | null;
+        };
+        /** BrandKeywordsResponse */
+        BrandKeywordsResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["BrandKeyword"][];
+        };
+        /** BrandMonitoringResultsResponse */
+        BrandMonitoringResultsResponse: {
+            /** Count */
+            count: number;
+            /** Scan Id */
+            scan_id?: string | null;
+            /** Items */
+            items: components["schemas"]["BrandSearchResult"][];
+        };
+        /** BrandMonitoringScan */
+        BrandMonitoringScan: {
+            /** Scan Id */
+            scan_id: string;
+            /** Keywords Scanned */
+            keywords_scanned: string[];
+            /** Total Results */
+            total_results: number;
+            /**
+             * Scanned At
+             * Format: date-time
+             */
+            scanned_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "completed" | "partial" | "failed";
+            /** Message */
+            message?: string | null;
+        };
+        /** BrandMonitoringScanRequest */
+        BrandMonitoringScanRequest: {
+            /** Keyword Ids */
+            keyword_ids?: string[] | null;
+            /** Request Id */
+            request_id?: string | null;
+        };
+        /** BrandMonitoringScanResponse */
+        BrandMonitoringScanResponse: {
+            scan: components["schemas"]["BrandMonitoringScan"];
+            /** Results */
+            results: components["schemas"]["BrandSearchResult"][];
+        };
+        /** BrandMonitoringSummary */
+        BrandMonitoringSummary: {
+            /** Total Keywords */
+            total_keywords: number;
+            /** Active Keywords */
+            active_keywords: number;
+            /** Total Base Sources */
+            total_base_sources: number;
+            /** Total Results */
+            total_results: number;
+            /** Owned Source Coverage */
+            owned_source_coverage: number;
+            /** Risk Count */
+            risk_count: number;
+            /** Last Scan At */
+            last_scan_at?: string | null;
+        };
+        /** BrandSearchResult */
+        BrandSearchResult: {
+            /** Result Id */
+            result_id: string;
+            /** Scan Id */
+            scan_id: string;
+            /** Keyword Id */
+            keyword_id: string;
+            /** Url */
+            url: string;
+            /** Title */
+            title: string;
+            /** Snippet */
+            snippet: string;
+            /** Position */
+            position: number;
+            /**
+             * Scanned At
+             * Format: date-time
+             */
+            scanned_at: string;
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "owned_source" | "brand_mention_positive" | "brand_mention_neutral" | "brand_mention_risk" | "unrelated";
+            /** Maps To Base Source */
+            maps_to_base_source: boolean;
+            /** Base Source Id */
+            base_source_id?: string | null;
+        };
+        /** BrandStudioAuditEntry */
+        BrandStudioAuditEntry: {
+            /** Id */
+            id: string;
+            /** Actor */
+            actor: string;
+            /** Action */
+            action: string;
+            /** Status */
+            status: string;
+            /** Payload Hash */
+            payload_hash: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Details */
+            details?: string | null;
         };
         /** CacheFlushResponse */
         CacheFlushResponse: {
@@ -4266,6 +5497,182 @@ export interface components {
             /** Status */
             status?: string | null;
         };
+        /** CandidatesResponse */
+        CandidatesResponse: {
+            /**
+             * Status
+             * @default ok
+             * @constant
+             */
+            status: "ok";
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["ContentCandidate"][];
+            /**
+             * Refreshed At
+             * Format: date-time
+             */
+            refreshed_at: string;
+        };
+        /** ChannelCredentialProfile */
+        ChannelCredentialProfile: {
+            /** Profile Id */
+            profile_id: string;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode";
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "primary_brand" | "supporting_brand";
+            /** Identity Display Name */
+            identity_display_name: string;
+            /** Identity Handle */
+            identity_handle?: string | null;
+            /**
+             * Auth Mode
+             * @enum {string}
+             */
+            auth_mode: "api_key" | "oauth" | "login_password" | "username_only" | "none";
+            /** Target */
+            target?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "configured" | "incomplete" | "invalid" | "disabled";
+            /** Supports Profile Id */
+            supports_profile_id?: string | null;
+            /** Capabilities */
+            capabilities?: string[];
+            /** Last Tested At */
+            last_tested_at?: string | null;
+            /** Last Test Status */
+            last_test_status?: ("configured" | "missing" | "invalid") | null;
+            /** Last Test Message */
+            last_test_message?: string | null;
+            /**
+             * Successful Publishes
+             * @default 0
+             */
+            successful_publishes: number;
+            /**
+             * Failed Publishes
+             * @default 0
+             */
+            failed_publishes: number;
+            /** Last Published At */
+            last_published_at?: string | null;
+            /** Last Publish Status */
+            last_publish_status?: ("published" | "failed") | null;
+            /** Last Publish Message */
+            last_publish_message?: string | null;
+        };
+        /** ChannelCredentialProfileCreateRequest */
+        ChannelCredentialProfileCreateRequest: {
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode";
+            /**
+             * Role
+             * @default primary_brand
+             * @enum {string}
+             */
+            role: "primary_brand" | "supporting_brand";
+            /** Identity Display Name */
+            identity_display_name: string;
+            /** Identity Handle */
+            identity_handle?: string | null;
+            /**
+             * Auth Mode
+             * @default api_key
+             * @enum {string}
+             */
+            auth_mode: "api_key" | "oauth" | "login_password" | "username_only" | "none";
+            /** Auth Secret */
+            auth_secret?: string | null;
+            /** Target */
+            target?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Supports Profile Id */
+            supports_profile_id?: string | null;
+        };
+        /** ChannelCredentialProfileResponse */
+        ChannelCredentialProfileResponse: {
+            item: components["schemas"]["ChannelCredentialProfile"];
+        };
+        /** ChannelCredentialProfileTestResponse */
+        ChannelCredentialProfileTestResponse: {
+            /** Profile Id */
+            profile_id: string;
+            /** Success */
+            success: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "configured" | "incomplete" | "invalid" | "disabled";
+            /**
+             * Tested At
+             * Format: date-time
+             */
+            tested_at: string;
+            /** Message */
+            message: string;
+        };
+        /** ChannelCredentialProfileUpdateRequest */
+        ChannelCredentialProfileUpdateRequest: {
+            /** Role */
+            role?: ("primary_brand" | "supporting_brand") | null;
+            /** Identity Display Name */
+            identity_display_name?: string | null;
+            /** Identity Handle */
+            identity_handle?: string | null;
+            /** Auth Mode */
+            auth_mode?: ("api_key" | "oauth" | "login_password" | "username_only" | "none") | null;
+            /** Auth Secret */
+            auth_secret?: string | null;
+            /** Target */
+            target?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Is Default */
+            is_default?: boolean | null;
+            /** Supports Profile Id */
+            supports_profile_id?: string | null;
+        };
+        /** ChannelCredentialProfilesResponse */
+        ChannelCredentialProfilesResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["ChannelCredentialProfile"][];
+        };
         /**
          * CompatibilityReport
          * @description Compatibility analysis for planned changes.
@@ -4294,15 +5701,34 @@ export interface components {
             /** Count */
             count: number;
         };
-        /**
-         * ConfigUpdateRequest
-         * @description Request do aktualizacji konfiguracji.
-         */
+        /** ConfigResponse */
+        ConfigResponse: {
+            /** Active Strategy Id */
+            active_strategy_id: string;
+            active_strategy: components["schemas"]["StrategyConfig"];
+        };
+        /** ConfigUpdateRequest */
         ConfigUpdateRequest: {
-            /** Updates */
-            updates: {
-                [key: string]: unknown;
-            };
+            /** Discovery Mode */
+            discovery_mode?: ("stub" | "hybrid" | "live") | null;
+            /** Rss Urls */
+            rss_urls?: string[] | null;
+            /** Topic Keywords */
+            topic_keywords?: string[] | null;
+            /** Cache Ttl Seconds */
+            cache_ttl_seconds?: number | null;
+            /** Min Score */
+            min_score?: number | null;
+            /** Limit */
+            limit?: number | null;
+            /** Active Channels */
+            active_channels?: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode")[] | null;
+            /** Draft Languages */
+            draft_languages?: ("pl" | "en")[] | null;
+            /** Default Accounts */
+            default_accounts?: {
+                [key: string]: string;
+            } | null;
         };
         /**
          * ConfigUpdateResponse
@@ -4331,6 +5757,31 @@ export interface components {
          * @enum {string}
          */
         ConnectionStatus: "ok" | "degraded" | "down" | "unknown";
+        /** ContentCandidate */
+        ContentCandidate: {
+            /** Id */
+            id: string;
+            /** Source */
+            source: string;
+            /** Url */
+            url: string;
+            /** Topic */
+            topic: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Language
+             * @enum {string}
+             */
+            language: "pl" | "en" | "other";
+            /** Score */
+            score: number;
+            /** Age Minutes */
+            age_minutes: number;
+            score_breakdown: components["schemas"]["OpportunityScoreBreakdown"];
+            /** Reasons */
+            reasons?: string[];
+        };
         /**
          * ContextUsed
          * @description Informacje o użytym kontekście w zadaniu.
@@ -4568,6 +6019,105 @@ export interface components {
             event_link?: string | null;
         };
         /**
+         * DatasetConversionFileInfo
+         * @description Informacje o pliku w workspace konwersji datasetu.
+         */
+        DatasetConversionFileInfo: {
+            /** File Id */
+            file_id: string;
+            /** Name */
+            name: string;
+            /** Extension */
+            extension: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Created At */
+            created_at: string;
+            /** Category */
+            category: string;
+            /** Source File Id */
+            source_file_id?: string | null;
+            /** Target Format */
+            target_format?: string | null;
+            /**
+             * Selected For Training
+             * @default false
+             */
+            selected_for_training: boolean;
+            /**
+             * Status
+             * @default ready
+             */
+            status: string;
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * DatasetConversionListResponse
+         * @description Lista plików użytkownika dla zakładki konwersji.
+         */
+        DatasetConversionListResponse: {
+            /** User Id */
+            user_id: string;
+            /** Workspace Dir */
+            workspace_dir: string;
+            /** Source Files */
+            source_files?: components["schemas"]["DatasetConversionFileInfo"][];
+            /** Converted Files */
+            converted_files?: components["schemas"]["DatasetConversionFileInfo"][];
+        };
+        /**
+         * DatasetConversionRequest
+         * @description Request konwersji pliku źródłowego do formatu docelowego.
+         */
+        DatasetConversionRequest: {
+            /**
+             * Target Format
+             * @description Docelowy format pliku po konwersji
+             */
+            target_format: string;
+        };
+        /**
+         * DatasetConversionResult
+         * @description Response po konwersji pliku.
+         */
+        DatasetConversionResult: {
+            /** Success */
+            success: boolean;
+            /** Message */
+            message: string;
+            source_file: components["schemas"]["DatasetConversionFileInfo"];
+            converted_file?: components["schemas"]["DatasetConversionFileInfo"] | null;
+        };
+        /**
+         * DatasetConversionTrainingSelectionRequest
+         * @description Request do oznaczania przekonwertowanego pliku jako źródło treningu.
+         */
+        DatasetConversionTrainingSelectionRequest: {
+            /**
+             * Selected For Training
+             * @description Czy plik ma być używany w Dataset Curation
+             * @default true
+             */
+            selected_for_training: boolean;
+        };
+        /**
+         * DatasetFilePreviewResponse
+         * @description Response z podglądem zawartości pliku tekstowego.
+         */
+        DatasetFilePreviewResponse: {
+            /** File Id */
+            file_id: string;
+            /** Name */
+            name: string;
+            /** Extension */
+            extension: string;
+            /** Preview */
+            preview: string;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
          * DatasetPreviewResponse
          * @description Response z preview datasetu przed curate.
          */
@@ -4643,11 +6193,59 @@ export interface components {
             include_git: boolean;
             /** Upload Ids */
             upload_ids?: string[];
+            /** Conversion File Ids */
+            conversion_file_ids?: string[] | null;
             /**
              * Quality Profile
              * @default balanced
              */
             quality_profile: string;
+        };
+        /** DraftBundle */
+        DraftBundle: {
+            /** Draft Id */
+            draft_id: string;
+            /** Candidate Id */
+            candidate_id: string;
+            /** Variants */
+            variants: components["schemas"]["DraftVariant"][];
+            /** Campaign Id */
+            campaign_id?: string | null;
+        };
+        /** DraftGenerateRequest */
+        DraftGenerateRequest: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Channels */
+            channels: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode")[];
+            /** Languages */
+            languages: ("pl" | "en")[];
+            /** Tone */
+            tone?: ("neutral" | "expert" | "short" | "cta") | null;
+            /** Campaign Id */
+            campaign_id?: string | null;
+            /**
+             * Refresh
+             * @default false
+             */
+            refresh: boolean;
+        };
+        /** DraftVariant */
+        DraftVariant: {
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode";
+            /**
+             * Language
+             * @enum {string}
+             */
+            language: "pl" | "en";
+            /** Content */
+            content: string;
+            /** Account Id */
+            account_id?: string | null;
         };
         /**
          * EventsResponse
@@ -4750,6 +6348,38 @@ export interface components {
             steps: components["schemas"]["FlowStep"][];
             /** Mermaid Diagram */
             mermaid_diagram: string;
+        };
+        /**
+         * GitStatusResponse
+         * @description Payload with current Git workspace status.
+         */
+        GitStatusResponse: {
+            /** Status */
+            status: string;
+            /** Is Git Repo */
+            is_git_repo: boolean;
+            /** Message */
+            message?: string | null;
+            /** Branch */
+            branch?: string | null;
+            /** Has Changes */
+            has_changes?: boolean | null;
+            /** Modified Count */
+            modified_count?: number | null;
+            /** Status Output */
+            status_output?: string | null;
+            /** Compare Branch */
+            compare_branch?: string | null;
+            /** Compare Ref */
+            compare_ref?: string | null;
+            /** Compare Status */
+            compare_status?: string | null;
+            /** Ahead Count */
+            ahead_count?: number | null;
+            /** Behind Count */
+            behind_count?: number | null;
+        } & {
+            [key: string]: unknown;
         };
         /** GlobalMemoryClearResponse */
         GlobalMemoryClearResponse: {
@@ -4859,6 +6489,7 @@ export interface components {
             llm_runtime?: {
                 [key: string]: unknown;
             } | null;
+            routing_decision?: components["schemas"]["RoutingDecisionSummary"] | null;
             /** Context Used */
             context_used?: {
                 [key: string]: unknown;
@@ -5268,6 +6899,71 @@ export interface components {
             count: number;
         };
         /**
+         * MetricsFeedbackSection
+         * @description Feedback-related metrics section.
+         */
+        MetricsFeedbackSection: {
+            /** Up */
+            up?: number | null;
+            /** Down */
+            down?: number | null;
+        };
+        /**
+         * MetricsNetworkSection
+         * @description Network-related metrics section.
+         */
+        MetricsNetworkSection: {
+            /** Total Bytes */
+            total_bytes?: number | null;
+        };
+        /**
+         * MetricsPolicySection
+         * @description Policy-related metrics section.
+         */
+        MetricsPolicySection: {
+            /** Blocked Count */
+            blocked_count?: number | null;
+            /** Block Rate */
+            block_rate?: number | null;
+        };
+        /**
+         * MetricsResponse
+         * @description Primary metrics payload returned by /api/v1/metrics and /api/v1/metrics/system.
+         */
+        MetricsResponse: {
+            tasks?: components["schemas"]["MetricsTaskSection"] | null;
+            routing?: components["schemas"]["MetricsRoutingSection"] | null;
+            feedback?: components["schemas"]["MetricsFeedbackSection"] | null;
+            policy?: components["schemas"]["MetricsPolicySection"] | null;
+            /** Uptime Seconds */
+            uptime_seconds?: number | null;
+            network?: components["schemas"]["MetricsNetworkSection"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * MetricsRoutingSection
+         * @description Routing-related metrics section.
+         */
+        MetricsRoutingSection: {
+            /** Llm Only */
+            llm_only?: number | null;
+            /** Tool Required */
+            tool_required?: number | null;
+            /** Learning Logged */
+            learning_logged?: number | null;
+        };
+        /**
+         * MetricsTaskSection
+         * @description Task-related metrics section.
+         */
+        MetricsTaskSection: {
+            /** Created */
+            created?: number | null;
+            /** Success Rate */
+            success_rate?: number | null;
+        };
+        /**
          * ModelActivateRequest
          * @description Request do aktywacji modelu.
          */
@@ -5384,6 +7080,21 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** OpportunityScoreBreakdown */
+        OpportunityScoreBreakdown: {
+            /** Relevance */
+            relevance: number;
+            /** Timeliness */
+            timeliness: number;
+            /** Authority Fit */
+            authority_fit: number;
+            /** Risk Penalty */
+            risk_penalty: number;
+            /** Final Score */
+            final_score: number;
+            /** Reasons */
+            reasons?: string[];
+        };
         /** ProvenanceV1 */
         ProvenanceV1: {
             source: components["schemas"]["KnowledgeSource"];
@@ -5426,12 +7137,185 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** PublishQueueItem */
+        PublishQueueItem: {
+            /** Item Id */
+            item_id: string;
+            /** Draft Id */
+            draft_id: string;
+            /**
+             * Target Channel
+             * @enum {string}
+             */
+            target_channel: "x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode";
+            /** Target Language */
+            target_language?: ("pl" | "en") | null;
+            /** Target */
+            target?: string | null;
+            /** Target Repo */
+            target_repo?: string | null;
+            /** Target Path */
+            target_path?: string | null;
+            /** Account Id */
+            account_id?: string | null;
+            /** Account Display Name */
+            account_display_name?: string | null;
+            /**
+             * Payload
+             * @default
+             */
+            payload: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "ready" | "queued" | "published" | "failed" | "cancelled";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Campaign Id */
+            campaign_id?: string | null;
+            /** Scheduled At */
+            scheduled_at?: string | null;
+            /**
+             * Publish Mode
+             * @default manual
+             * @enum {string}
+             */
+            publish_mode: "manual" | "auto";
+        };
+        /** PublishRequest */
+        PublishRequest: {
+            /** Confirm Publish */
+            confirm_publish: boolean;
+        };
+        /** PublishResult */
+        PublishResult: {
+            /** Success */
+            success: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "ready" | "queued" | "published" | "failed" | "cancelled";
+            /** Published At */
+            published_at?: string | null;
+            /** External Id */
+            external_id?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Message */
+            message: string;
+        };
+        /**
+         * QueueActionResponse
+         * @description Generic queue action payload (pause/resume/purge/emergency/abort).
+         */
+        QueueActionResponse: {
+            /** Success */
+            success?: boolean | null;
+            /** Message */
+            message?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** QueueCreateResponse */
+        QueueCreateResponse: {
+            /** Item Id */
+            item_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "ready" | "queued" | "published" | "failed" | "cancelled";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** QueueDraftRequest */
+        QueueDraftRequest: {
+            /**
+             * Target Channel
+             * @enum {string}
+             */
+            target_channel: "x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode";
+            /** Account Id */
+            account_id?: string | null;
+            /** Target */
+            target?: string | null;
+            /** Target Repo */
+            target_repo?: string | null;
+            /** Target Path */
+            target_path?: string | null;
+            /** Target Language */
+            target_language?: ("pl" | "en") | null;
+            /** Payload Override */
+            payload_override?: string | null;
+            /** Campaign Id */
+            campaign_id?: string | null;
+            /** Scheduled At */
+            scheduled_at?: string | null;
+            /**
+             * Publish Mode
+             * @default manual
+             * @enum {string}
+             */
+            publish_mode: "manual" | "auto";
+        };
+        /** QueueResponse */
+        QueueResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["PublishQueueItem"][];
+        };
+        /**
+         * QueueStatusResponse
+         * @description Queue status payload.
+         */
+        QueueStatusResponse: {
+            /** Paused */
+            paused?: boolean | null;
+            /** Pending */
+            pending?: number | null;
+            /** Active */
+            active?: number | null;
+            /** Limit */
+            limit?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * ReasonCode
          * @description Reason codes for operation results.
          * @enum {string}
          */
         ReasonCode: "success_hot_swap" | "success_restart_pending" | "invalid_configuration" | "incompatible_combination" | "dependency_missing" | "service_unavailable" | "forbidden_transition" | "invalid_state" | "kernel_runtime_mismatch" | "provider_model_mismatch" | "embedding_incompatible" | "intent_mode_conflict" | "operation_in_progress" | "operation_completed" | "operation_failed" | "operation_cancelled";
+        /** RefreshResponse */
+        RefreshResponse: {
+            /**
+             * Status
+             * @default ok
+             * @constant
+             */
+            status: "ok";
+            /**
+             * Refreshed At
+             * Format: date-time
+             */
+            refreshed_at: string;
+            /** Count */
+            count: number;
+        };
         /**
          * ResourceChange
          * @description Single resource change in a plan.
@@ -5503,6 +7387,68 @@ export interface components {
             /** Vision */
             vision: string;
         };
+        /**
+         * RoutingDecisionSummary
+         * @description Serialized routing decision attached to task context/history.
+         */
+        RoutingDecisionSummary: {
+            target_runtime?: components["schemas"]["RoutingTarget"] | null;
+            /** Provider */
+            provider?: string | null;
+            /** Model */
+            model?: string | null;
+            reason_code: components["schemas"]["RoutingReason"];
+            /**
+             * Complexity Score
+             * @default 0
+             */
+            complexity_score: number;
+            /**
+             * Is Sensitive
+             * @default false
+             */
+            is_sensitive: boolean;
+            /**
+             * Fallback Applied
+             * @default false
+             */
+            fallback_applied: boolean;
+            /** Fallback Chain */
+            fallback_chain?: string[];
+            /**
+             * Policy Gate Passed
+             * @default true
+             */
+            policy_gate_passed: boolean;
+            /**
+             * Estimated Cost Usd
+             * @default 0
+             */
+            estimated_cost_usd: number;
+            /** Budget Remaining Usd */
+            budget_remaining_usd?: number | null;
+            /** Decision Timestamp */
+            decision_timestamp: string;
+            /**
+             * Decision Latency Ms
+             * @default 0
+             */
+            decision_latency_ms: number;
+            /** Error Message */
+            error_message?: string | null;
+        };
+        /**
+         * RoutingReason
+         * @description Routing decision reason codes exposed to API clients.
+         * @enum {string}
+         */
+        RoutingReason: "default_eco_mode" | "task_complexity_low" | "task_complexity_high" | "sensitive_content_override" | "fallback_timeout" | "fallback_auth_error" | "fallback_budget_exceeded" | "fallback_provider_degraded" | "fallback_provider_offline" | "fallback_rate_limit" | "policy_blocked_budget" | "policy_blocked_rate_limit" | "policy_blocked_no_provider" | "policy_blocked_content" | "user_preference";
+        /**
+         * RoutingTarget
+         * @description Routing target runtime exposed to API clients.
+         * @enum {string}
+         */
+        RoutingTarget: "ollama" | "vllm" | "openai" | "google" | "azure";
         /**
          * RuntimeConfigResponse
          * @description Response model for runtime configuration.
@@ -5595,6 +7541,101 @@ export interface components {
          * @enum {string}
          */
         SourceType: "local" | "cloud" | "hybrid";
+        /** StrategiesResponse */
+        StrategiesResponse: {
+            /** Active Strategy Id */
+            active_strategy_id: string;
+            /** Items */
+            items: components["schemas"]["StrategyConfig"][];
+        };
+        /** StrategyConfig */
+        StrategyConfig: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Discovery Mode
+             * @enum {string}
+             */
+            discovery_mode: "stub" | "hybrid" | "live";
+            /** Rss Urls */
+            rss_urls?: string[];
+            /** Topic Keywords */
+            topic_keywords?: string[];
+            /** Cache Ttl Seconds */
+            cache_ttl_seconds: number;
+            /** Min Score */
+            min_score: number;
+            /** Limit */
+            limit: number;
+            /** Active Channels */
+            active_channels: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode")[];
+            /** Draft Languages */
+            draft_languages: ("pl" | "en")[];
+            /** Default Accounts */
+            default_accounts?: {
+                [key: string]: string;
+            };
+        };
+        /** StrategyCreateRequest */
+        StrategyCreateRequest: {
+            /** Discovery Mode */
+            discovery_mode?: ("stub" | "hybrid" | "live") | null;
+            /** Rss Urls */
+            rss_urls?: string[] | null;
+            /** Topic Keywords */
+            topic_keywords?: string[] | null;
+            /** Cache Ttl Seconds */
+            cache_ttl_seconds?: number | null;
+            /** Min Score */
+            min_score?: number | null;
+            /** Limit */
+            limit?: number | null;
+            /** Active Channels */
+            active_channels?: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode")[] | null;
+            /** Draft Languages */
+            draft_languages?: ("pl" | "en")[] | null;
+            /** Default Accounts */
+            default_accounts?: {
+                [key: string]: string;
+            } | null;
+            /** Name */
+            name: string;
+            /** Base Strategy Id */
+            base_strategy_id?: string | null;
+        };
+        /** StrategyResponse */
+        StrategyResponse: {
+            item: components["schemas"]["StrategyConfig"];
+            /** Active Strategy Id */
+            active_strategy_id: string;
+        };
+        /** StrategyUpdateRequest */
+        StrategyUpdateRequest: {
+            /** Discovery Mode */
+            discovery_mode?: ("stub" | "hybrid" | "live") | null;
+            /** Rss Urls */
+            rss_urls?: string[] | null;
+            /** Topic Keywords */
+            topic_keywords?: string[] | null;
+            /** Cache Ttl Seconds */
+            cache_ttl_seconds?: number | null;
+            /** Min Score */
+            min_score?: number | null;
+            /** Limit */
+            limit?: number | null;
+            /** Active Channels */
+            active_channels?: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode")[] | null;
+            /** Draft Languages */
+            draft_languages?: ("pl" | "en")[] | null;
+            /** Default Accounts */
+            default_accounts?: {
+                [key: string]: string;
+            } | null;
+            /** Name */
+            name?: string | null;
+        };
         /**
          * SystemState
          * @description Current state of the entire system.
@@ -5756,6 +7797,28 @@ export interface components {
          * @enum {string}
          */
         TaskStatus: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+        /**
+         * TokenMetricsResponse
+         * @description Token/cost metrics payload returned by /api/v1/metrics/tokens.
+         */
+        TokenMetricsResponse: {
+            /** Total Tokens */
+            total_tokens?: number | null;
+            /** Session Total Tokens */
+            session_total_tokens?: number | null;
+            /** Session Cost Usd */
+            session_cost_usd?: number | null;
+            /** Models Breakdown */
+            models_breakdown?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Note */
+            note?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * TrainableModelInfo
          * @description Informacje o modelu trenowalnym.
@@ -5929,6 +7992,22 @@ export interface components {
             type: string;
         };
         /**
+         * ValidationRequest
+         * @description Request to validate provider/model connection.
+         */
+        ValidationRequest: {
+            /**
+             * Provider
+             * @description Provider name to validate
+             */
+            provider: string;
+            /**
+             * Model
+             * @description Optional model name
+             */
+            model?: string | null;
+        };
+        /**
          * VenomTask
          * @description Wewnętrzne przedstawienie zadania w systemie.
          */
@@ -6013,6 +8092,16 @@ export interface components {
          * @enum {string}
          */
         WorkflowStatus: "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
+        /**
+         * ConfigUpdateRequest
+         * @description Request do aktualizacji konfiguracji.
+         */
+        venom_core__api__schemas__system__ConfigUpdateRequest: {
+            /** Updates */
+            updates: {
+                [key: string]: unknown;
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -6296,7 +8385,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["QueueStatusResponse"];
                 };
             };
             /** @description Błąd wewnętrzny podczas operacji na kolejce */
@@ -6330,7 +8419,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["QueueActionResponse"];
                 };
             };
             /** @description Błąd wewnętrzny podczas operacji na kolejce */
@@ -6364,7 +8453,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["QueueActionResponse"];
                 };
             };
             /** @description Błąd wewnętrzny podczas operacji na kolejce */
@@ -6398,7 +8487,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["QueueActionResponse"];
                 };
             };
             /** @description Błąd wewnętrzny podczas operacji na kolejce */
@@ -6432,7 +8521,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["QueueActionResponse"];
                 };
             };
             /** @description Błąd wewnętrzny podczas operacji na kolejce */
@@ -6468,7 +8557,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["QueueActionResponse"];
                 };
             };
             /** @description Zadanie nie istnieje lub nie jest aktywne */
@@ -6518,7 +8607,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TokenMetricsResponse"];
                 };
             };
             /** @description Błąd podczas pobierania metryk tokenów */
@@ -6552,7 +8641,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MetricsResponse"];
                 };
             };
             /** @description Błąd podczas pobierania metryk systemowych */
@@ -6586,7 +8675,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MetricsResponse"];
                 };
             };
             /** @description Metrics collector nie jest dostępny */
@@ -7344,7 +9433,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GitStatusResponse"];
                 };
             };
             /** @description Błąd wewnętrzny podczas pobierania statusu Git */
@@ -8335,6 +10424,243 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_dataset_conversion_files_api_v1_academy_dataset_conversion_files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetConversionListResponse"];
+                };
+            };
+        };
+    };
+    upload_dataset_conversion_files_api_v1_academy_dataset_conversion_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Invalid request payload. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    convert_dataset_file_api_v1_academy_dataset_conversion_files__file_id__convert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetConversionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetConversionResult"];
+                };
+            };
+            /** @description Invalid request payload. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requested file was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_dataset_conversion_training_selection_api_v1_academy_dataset_conversion_files__file_id__training_selection_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetConversionTrainingSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetConversionFileInfo"];
+                };
+            };
+            /** @description Invalid request payload. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requested file was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_dataset_conversion_file_api_v1_academy_dataset_conversion_files__file_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetFilePreviewResponse"];
+                };
+            };
+            /** @description Invalid request payload. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requested file was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_dataset_conversion_file_api_v1_academy_dataset_conversion_files__file_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid request payload. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requested file was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -9889,7 +12215,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ConfigUpdateRequest"];
+                "application/json": components["schemas"]["venom_core__api__schemas__system__ConfigUpdateRequest"];
             };
         };
         responses: {
@@ -11743,6 +14069,133 @@ export interface operations {
             };
         };
     };
+    get_remote_providers_api_v1_models_remote_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_remote_catalog_api_v1_models_remote_catalog_get: {
+        parameters: {
+            query: {
+                /** @description Provider name: openai or google */
+                provider: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Invalid provider. Allowed values: openai, google. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_connectivity_map_api_v1_models_remote_connectivity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    validate_provider_api_v1_models_remote_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Invalid provider. Allowed values: openai, google. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_providers_api_v1_providers_get: {
         parameters: {
             query?: never;
@@ -12209,6 +14662,84 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_audit_stream_entries_api_v1_audit_stream_get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                api_channel?: string | null;
+                action?: string | null;
+                actor?: string | null;
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditStreamResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_audit_stream_entry_api_v1_audit_stream_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-venom-audit-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditStreamPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditStreamPublishResponse"];
+                };
+            };
+            /** @description Forbidden: invalid or missing ingest token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -12967,6 +15498,1641 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_traffic_control_status_api_v1_traffic_control_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status traffic control */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_scope_metrics_api_v1_traffic_control_metrics__scope__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metryki scope */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Scope not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    health_api_v1_brand_studio_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    list_candidates_api_v1_brand_studio_sources_candidates_get: {
+        parameters: {
+            query?: {
+                channel?: string | null;
+                lang?: string | null;
+                limit?: number;
+                /** @description Minimum relevance score. If omitted/null, active strategy default is used. Set explicit value (e.g. 0.0) to override strategy default. */
+                min_score?: number | null;
+            };
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_draft_api_v1_brand_studio_drafts_generate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftBundle"];
+                };
+            };
+            /** @description Candidate not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    queue_draft_api_v1_brand_studio_drafts__draft_id__queue_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueueDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueCreateResponse"];
+                };
+            };
+            /** @description Draft, variant or account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_queue_item_api_v1_brand_studio_queue__item_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishResult"];
+                };
+            };
+            /** @description confirm_publish must be true */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Queue item not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Queue item is already published */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_queue_api_v1_brand_studio_queue_get: {
+        parameters: {
+            query?: {
+                campaign_id?: string | null;
+            };
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_api_v1_brand_studio_audit_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_api_v1_brand_studio_config_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_config_api_v1_brand_studio_config_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_config_api_v1_brand_studio_config_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_strategies_api_v1_brand_studio_strategies_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategiesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_strategy_api_v1_brand_studio_strategies_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrategyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyResponse"];
+                };
+            };
+            /** @description Base strategy not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_strategy_api_v1_brand_studio_strategies__strategy_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                strategy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrategyUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyResponse"];
+                };
+            };
+            /** @description Strategy not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_strategy_api_v1_brand_studio_strategies__strategy_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                strategy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Strategy deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cannot delete last strategy */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Strategy not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_strategy_api_v1_brand_studio_strategies__strategy_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                strategy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Strategy not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_credential_profiles_api_v1_brand_studio_credential_profiles_get: {
+        parameters: {
+            query?: {
+                channel?: ("x" | "github" | "blog" | "linkedin" | "medium" | "hf_blog" | "hf_spaces" | "reddit" | "devto" | "hashnode") | null;
+                role?: ("primary_brand" | "supporting_brand") | null;
+                status?: ("configured" | "incomplete" | "invalid" | "disabled") | null;
+            };
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelCredentialProfilesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_credential_profile_api_v1_brand_studio_credential_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelCredentialProfileCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelCredentialProfileResponse"];
+                };
+            };
+            /** @description Invalid credential profile payload */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Duplicate credential profile */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_credential_profile_api_v1_brand_studio_credential_profiles__profile_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelCredentialProfileUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelCredentialProfileResponse"];
+                };
+            };
+            /** @description Invalid credential profile payload */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Credential profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_credential_profile_api_v1_brand_studio_credential_profiles__profile_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Credential profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_credential_profile_api_v1_brand_studio_credential_profiles__profile_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelCredentialProfileResponse"];
+                };
+            };
+            /** @description Credential profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_credential_profile_api_v1_brand_studio_credential_profiles__profile_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelCredentialProfileTestResponse"];
+                };
+            };
+            /** @description Credential profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_keywords_api_v1_brand_studio_monitoring_keywords_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandKeywordsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_keyword_api_v1_brand_studio_monitoring_keywords_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandKeywordCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandKeyword"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_keyword_api_v1_brand_studio_monitoring_keywords__keyword_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                keyword_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Keyword not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_keyword_api_v1_brand_studio_monitoring_keywords__keyword_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                keyword_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandKeywordUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandKeyword"];
+                };
+            };
+            /** @description Keyword not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_base_sources_api_v1_brand_studio_monitoring_sources_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandBaseSourcesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_base_source_api_v1_brand_studio_monitoring_sources_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandBaseSourceCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandBaseSource"];
+                };
+            };
+            /** @description Duplicate base source URL */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_base_source_api_v1_brand_studio_monitoring_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Base source not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_base_source_api_v1_brand_studio_monitoring_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandBaseSourceUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandBaseSource"];
+                };
+            };
+            /** @description Base source not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    monitoring_scan_api_v1_brand_studio_monitoring_scan_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandMonitoringScanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandMonitoringScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    monitoring_results_api_v1_brand_studio_monitoring_results_get: {
+        parameters: {
+            query?: {
+                scan_id?: string | null;
+            };
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandMonitoringResultsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    monitoring_summary_api_v1_brand_studio_monitoring_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandMonitoringSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_campaigns_api_v1_brand_studio_campaigns_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaignsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_campaign_api_v1_brand_studio_campaigns_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandCampaignCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaignResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_campaign_api_v1_brand_studio_campaigns__campaign_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+            };
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaignResponse"];
+                };
+            };
+            /** @description Campaign not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_campaign_api_v1_brand_studio_campaigns__campaign_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandCampaignUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaignResponse"];
+                };
+            };
+            /** @description Campaign not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_campaign_api_v1_brand_studio_campaigns__campaign_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-request-id"?: string | null;
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaignRunResponse"];
+                };
+            };
+            /** @description Campaign not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Campaign already in terminal state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_draft_to_campaign_api_v1_brand_studio_campaigns__campaign_id__drafts__draft_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-authenticated-user"?: string | null;
+                "x-user"?: string | null;
+                "x-admin-user"?: string | null;
+                "X-Autonomy-Level"?: number | null;
+            };
+            path: {
+                campaign_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaignResponse"];
+                };
+            };
+            /** @description Campaign or draft not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

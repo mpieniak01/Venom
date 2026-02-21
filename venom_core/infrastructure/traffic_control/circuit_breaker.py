@@ -42,7 +42,9 @@ class CircuitBreaker:
     success_count: int = field(default=0, init=False)
     last_failure_time: Optional[float] = field(default=None, init=False)
     half_open_calls: int = field(default=0, init=False)
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False
+    )
 
     def is_request_allowed(self) -> bool:
         """

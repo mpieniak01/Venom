@@ -1,12 +1,16 @@
 """Tests for traffic control API routes."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 
-from venom_core.api.routes.traffic_control import router, get_traffic_control_status, get_scope_metrics
-from venom_core.infrastructure.traffic_control import TrafficController, TrafficControlConfig
+from venom_core.api.routes.traffic_control import (
+    get_scope_metrics,
+    get_traffic_control_status,
+    router,
+)
+from venom_core.infrastructure.traffic_control import TrafficController
 
 
 @pytest.fixture
@@ -44,6 +48,7 @@ class TestTrafficControlStatusEndpoint:
 
     def test_get_traffic_control_status_with_scopes(self, mock_controller):
         """Test status retrieval includes all scopes."""
+
         # Configure mock to return scope-specific metrics
         def get_metrics_side_effect(scope=None):
             if scope is None:

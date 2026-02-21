@@ -1,53 +1,14 @@
-export type TaskStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "LOST";
+import type { components } from "./generated/api-types";
 
-export interface Task {
-  task_id?: string;
-  id?: string;
-  content: string;
-  status: TaskStatus;
-  result?: string | null;
-  logs?: string[];
-  context_history?: Record<string, unknown>;
-  llm_provider?: string | null;
-  llm_model?: string | null;
-  llm_endpoint?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  policy_blocked?: boolean;
-  reason_code?: string | null;
-  user_message?: string | null;
-}
+type ApiSchemas = components["schemas"];
 
-export interface Metrics {
-  tasks?: {
-    created?: number;
-    success_rate?: number;
-  };
-  routing?: {
-    llm_only?: number;
-    tool_required?: number;
-    learning_logged?: number;
-  };
-  feedback?: {
-    up?: number;
-    down?: number;
-  };
-  policy?: {
-    blocked_count?: number;
-    block_rate?: number;
-  };
-  uptime_seconds?: number;
-  network?: {
-    total_bytes?: number;
-  };
-}
+export type TaskStatus = ApiSchemas["TaskStatus"] | "LOST";
 
-export interface QueueStatus {
-  active: number;
-  pending: number;
-  limit?: number;
-  paused?: boolean;
-}
+export type Task = ApiSchemas["VenomTask"];
+
+export type Metrics = ApiSchemas["MetricsResponse"];
+
+export type QueueStatus = ApiSchemas["QueueStatusResponse"];
 
 export interface IntegrationStatus {
   name: string;
@@ -66,39 +27,13 @@ export interface GraphSummary {
   };
 }
 
-export interface HistoryRequest {
-  request_id: string;
-  prompt: string;
-  status: TaskStatus;
-  session_id?: string | null;
-  model?: string;
-  llm_provider?: string | null;
-  llm_model?: string | null;
-  llm_endpoint?: string | null;
-  llm_config_hash?: string | null;
-  llm_runtime_id?: string | null;
-  forced_tool?: string | null;
-  forced_provider?: string | null;
-  forced_intent?: string | null;
-  error_code?: string | null;
-  error_class?: string | null;
-  error_message?: string | null;
-  error_details?: Record<string, unknown> | null;
-  error_stage?: string | null;
-  error_retryable?: boolean | null;
-  created_at: string;
-  finished_at?: string | null;
-  duration_seconds?: number | null;
-  feedback?: {
-    rating: "up" | "down";
-    comment?: string | null;
-  } | null;
-  policy_blocked?: boolean;
-  reason_code?: string | null;
-  user_message?: string | null;
-}
+export type HistoryRequest = ApiSchemas["HistoryRequestSummary"];
 
-export interface HistoryRequestDetail extends HistoryRequest {
+export interface HistoryRequestDetail
+  extends Omit<
+    ApiSchemas["HistoryRequestDetail"],
+    "steps" | "first_token" | "streaming" | "context_used" | "feedback"
+  > {
   steps?: HistoryStep[];
   first_token?: {
     at?: string | null;
@@ -212,29 +147,9 @@ export interface LlmActionResponse {
   exit_code?: number | null;
 }
 
-export interface TokenMetrics {
-  total_tokens?: number;
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  cached_tokens?: number;
-  session_cost_usd?: number;
-}
+export type TokenMetrics = ApiSchemas["TokenMetricsResponse"];
 
-export interface GitStatus {
-  branch?: string;
-  compare_branch?: string;
-  compare_ref?: string;
-  compare_status?: string;
-  ahead_count?: number;
-  behind_count?: number;
-  has_changes?: boolean;
-  is_git_repo?: boolean;
-  modified_count?: number;
-  status_output?: string;
-  changes?: string;
-  dirty?: boolean;
-  status?: string;
-}
+export type GitStatus = ApiSchemas["GitStatusResponse"];
 
 // Model Domain v2: Source types
 export type ModelSourceType = "local-runtime" | "cloud-api" | "integrator-catalog";
@@ -656,18 +571,7 @@ export interface BenchmarkLog {
   level: "info" | "warning" | "error";
 }
 
-export interface BenchmarkModelResult {
-  model_name: string;
-  avg_response_time_ms: number;
-  tokens_per_sec: number;
-  max_vram_mb: number;
-  status: "success" | "oom" | "error" | "completed" | "failed"; // Support both
-  error_message?: string;
-  // Aliases for compatibility
-  latency_ms?: number;
-  tokens_per_second?: number;
-  peak_vram_mb?: number;
-}
+export type BenchmarkModelResult = ApiSchemas["BenchmarkModelResultResponse"];
 
 export interface BenchmarkResult {
   benchmark_id: string;
@@ -685,24 +589,8 @@ export interface BenchmarkResponse {
   result?: BenchmarkResult;
 }
 
-export interface BenchmarkStartResponse {
-  benchmark_id: string;
-  message: string;
-}
-
-export interface BenchmarkStatusResponse {
-  benchmark_id: string;
-  status: string;
-  progress: string;
-  current_model: string | null;
-  models: string[];
-  num_questions: number;
-  results: Record<string, unknown>[]; // Słownik wyników z API
-  created_at: string;
-  started_at?: string | null;
-  completed_at?: string | null;
-  error_message?: string | null;
-}
+export type BenchmarkStartResponse = ApiSchemas["BenchmarkStartResponse"];
+export type BenchmarkStatusResponse = ApiSchemas["BenchmarkStatusResponse"];
 
 // Calendar types
 export interface CalendarEvent {

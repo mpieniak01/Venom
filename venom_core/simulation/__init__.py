@@ -4,7 +4,6 @@ Ten moduł implementuje THE_SIMULACRUM - system do symulowania
 rzeczywistych użytkowników i testowania użyteczności aplikacji.
 """
 
-from venom_core.simulation.director import SimulationDirector
 from venom_core.simulation.persona_factory import Persona, PersonaFactory
 
-__all__ = ["Persona", "PersonaFactory", "SimulationDirector"]
+__all__ = ["Persona", "PersonaFactory"]

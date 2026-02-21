@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -138,14 +138,14 @@ def _serialize_entry(entry: AuditStreamEntry) -> AuditStreamRecord:
     )
 
 
-@router.get("/stream", response_model=AuditStreamResponse)
+@router.get("/stream")
 async def get_audit_stream_entries(
-    source: str | None = Query(default=None),
-    api_channel: str | None = Query(default=None),
-    action: str | None = Query(default=None),
-    actor: str | None = Query(default=None),
-    status: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
+    source: Annotated[str | None, Query()] = None,
+    api_channel: Annotated[str | None, Query()] = None,
+    action: Annotated[str | None, Query()] = None,
+    actor: Annotated[str | None, Query()] = None,
+    status: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> AuditStreamResponse:
     stream = get_audit_stream()
     lookup_limit = 500 if api_channel else limit
@@ -166,10 +166,10 @@ async def get_audit_stream_entries(
     return AuditStreamResponse(count=len(payload), entries=payload)
 
 
-@router.post("/stream", response_model=AuditStreamPublishResponse)
+@router.post("/stream")
 async def publish_audit_stream_entry(
     request: AuditStreamPublishRequest,
-    x_venom_audit_token: str | None = Header(default=None),
+    x_venom_audit_token: Annotated[str | None, Header()] = None,
 ) -> AuditStreamPublishResponse:
     required_token = _required_ingest_token()
     if required_token and (x_venom_audit_token or "") != required_token:

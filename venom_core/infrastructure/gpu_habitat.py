@@ -505,26 +505,22 @@ class GPUHabitat(DockerHabitat):
         pid = self._validate_local_job_pid(job_info)
         if pid is None:
             logger.warning(
-                "Pomijam wysłanie sygnału %s dla job=%s: PID niezweryfikowany",
+                "Pomijam wysłanie sygnału %s: PID niezweryfikowany",
                 sig,
-                job_name,
             )
             return False
 
         if not self._is_allowed_local_job_signal(sig):
             logger.warning(
-                "Pomijam wysłanie sygnału %s dla job=%s: sygnał poza allowlist",
+                "Pomijam wysłanie sygnału %s: sygnał poza allowlist",
                 sig,
-                job_name,
             )
             return False
 
         if not self._is_pid_owned_by_current_user(pid):
             logger.warning(
-                "Pomijam wysłanie sygnału %s dla job=%s: PID=%s nie należy do aktualnego użytkownika",
+                "Pomijam wysłanie sygnału %s: PID nie należy do aktualnego użytkownika",
                 sig,
-                job_name,
-                pid,
             )
             return False
 
@@ -1068,7 +1064,7 @@ print("=" * 60)
             job_name: Nazwa joba
         """
         if job_name not in self.training_containers:
-            logger.warning(f"Job {job_name} nie istnieje")
+            logger.warning("Job cleanup pominięty: wskazany job nie istnieje")
             return
 
         try:

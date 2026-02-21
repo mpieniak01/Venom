@@ -342,6 +342,7 @@ export const pl = {
     tabs: {
       services: "Usługi",
       parameters: "Parametry",
+      audit: "Audyt",
     },
     services: {
       title: "Zarządzanie usługami",
@@ -547,6 +548,37 @@ export const pl = {
         vllm: "vLLM (Full): Pipeline benchmarkowy, dłuższy start, rezerwuje cały VRAM, ale pozwala na testy wydajności i większą przepustowość.",
         hint: "💡 Domyślnie uruchamiamy tylko jeden runtime naraz. Druga opcja ma sens jedynie, gdy rozdzielamy role (np. UI vs. kodowanie).",
         benchmark: "przejdź do benchmarków",
+      },
+    },
+    audit: {
+      title: "Strumienie audytu",
+      description: "Rozdzielone logi działań administracyjnych core i akcji API modułów.",
+      refresh: "Odśwież",
+      refreshing: "Odświeżam...",
+      loadError: "Nie udało się załadować strumieni audytu.",
+      empty: "Brak wpisów audytu dla wybranych filtrów.",
+      source: {
+        core: "core",
+        module: "moduł",
+      },
+      filters: {
+        source: "Źródło logu",
+        outcome: "Wynik",
+        allSources: "Wszystkie źródła",
+        coreSource: "Audyt administracyjny core",
+        moduleSource: "Audyt API modułu",
+        allOutcomes: "Wszystkie wyniki",
+        success: "Sukces",
+        warning: "Ostrzeżenie",
+        error: "Błąd",
+        neutral: "Neutralny",
+      },
+      core: {
+        loadError: "Nie udało się załadować audytu administracyjnego core.",
+      },
+      module: {
+        loadError: "Nie udało się załadować audytu modułu.",
+        unavailable: "Endpoint audytu Brand Studio jest niedostępny (moduł nieaktywny lub wyłączony).",
       },
     },
     apiMap: {

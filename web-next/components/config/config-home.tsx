@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, Server, FileCode, Network } from "lucide-react";
+import { Settings, Server, FileCode, Network, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
@@ -9,10 +9,11 @@ import { useTranslation } from "@/lib/i18n";
 import { ServicesPanel } from "./services-panel";
 import { ParametersPanel } from "./parameters-panel";
 import { ApiMap } from "./api-map";
+import { AuditPanel } from "./audit-panel";
 
 export function ConfigHome() {
   const t = useTranslation();
-  const [activeTab, setActiveTab] = useState<"services" | "parameters" | "apiMap">("services");
+  const [activeTab, setActiveTab] = useState<"services" | "parameters" | "apiMap" | "audit">("services");
 
   return (
     <div className="space-y-6">
@@ -69,6 +70,20 @@ export function ConfigHome() {
           <Network className="h-4 w-4" />
           {t("config.apiMap.title")}
         </Button>
+        <Button
+          onClick={() => setActiveTab("audit")}
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
+            activeTab === "audit"
+              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
+              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+          )}
+        >
+          <ShieldCheck className="h-4 w-4" />
+          {t("config.tabs.audit")}
+        </Button>
       </div>
 
       {/* Content */}
@@ -76,6 +91,7 @@ export function ConfigHome() {
         {activeTab === "services" && <ServicesPanel />}
         {activeTab === "parameters" && <ParametersPanel />}
         {activeTab === "apiMap" && <ApiMap />}
+        {activeTab === "audit" && <AuditPanel />}
       </div>
     </div>
   );

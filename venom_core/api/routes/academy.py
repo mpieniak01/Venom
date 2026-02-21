@@ -2029,7 +2029,7 @@ def _resolve_workspace_file_path(
         base_dir_resolved = base_dir.resolve()
         candidate = (base_dir / file_id).resolve()
         if not candidate.is_relative_to(base_dir_resolved):
-            raise HTTPException(status_code=400, detail="Invalid file path")
+            raise AcademyRouteError(status_code=400, detail="Invalid file path")
         return candidate
     elif category == "converted":
         converted_output_dir = _get_conversion_output_dir()
@@ -2043,10 +2043,10 @@ def _resolve_workspace_file_path(
         legacy_dir_resolved = legacy_dir.resolve()
         legacy_candidate = (legacy_dir / file_id).resolve()
         if not legacy_candidate.is_relative_to(legacy_dir_resolved):
-            raise HTTPException(status_code=400, detail="Invalid file path")
+            raise AcademyRouteError(status_code=400, detail="Invalid file path")
         return legacy_candidate
     else:
-        raise HTTPException(status_code=400, detail="Invalid file category")
+        raise AcademyRouteError(status_code=400, detail="Invalid file category")
 
 
 def _load_conversion_item_from_workspace(
@@ -2058,7 +2058,7 @@ def _load_conversion_item_from_workspace(
         items = _load_user_conversion_metadata(workspace["metadata_file"])
         item = _find_conversion_item(items, file_id)
     if not item:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise AcademyRouteError(status_code=404, detail="File not found")
     return item
 
 
@@ -2076,7 +2076,7 @@ def _resolve_existing_user_file(
         category=str(item.get("category") or "source"),
     )
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found on disk")
+        raise AcademyRouteError(status_code=404, detail="File not found on disk")
     return item, file_path
 
 
@@ -2628,11 +2628,14 @@ async def convert_dataset_file(
                 status_code=400, detail="Conversion requires source file"
             )
 
-        source_path = _resolve_workspace_file_path(
-            workspace,
-            file_id=file_id,
-            category="source",
-        )
+        try:
+            source_path = _resolve_workspace_file_path(
+                workspace,
+                file_id=file_id,
+                category="source",
+            )
+        except AcademyRouteError as e:
+            raise _to_http_exception(e) from e
         if not source_path.exists():
             raise HTTPException(status_code=404, detail="Source file not found on disk")
 
@@ -2743,7 +2746,10 @@ async def preview_dataset_conversion_file(
     if not _check_path_traversal(file_id):
         raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
 
-    item, file_path = _resolve_existing_user_file(req, file_id=file_id)
+    try:
+        item, file_path = _resolve_existing_user_file(req, file_id=file_id)
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
 
     ext = file_path.suffix.lower()
     if ext not in {".txt", ".md"}:
@@ -2789,7 +2795,10 @@ async def download_dataset_conversion_file(
     if not _check_path_traversal(file_id):
         raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
 
-    item, file_path = _resolve_existing_user_file(req, file_id=file_id)
+    try:
+        item, file_path = _resolve_existing_user_file(req, file_id=file_id)
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
 
     media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
     return FileResponse(
@@ -2841,6 +2850,8 @@ def _ingest_converted_files_for_preview(
                 warnings.append(f"File is not converted: {file_id}")
                 continue
             converted_count += _ingest_upload_file(curator, file_path)
+        except AcademyRouteError as e:
+            warnings.append(f"Converted file unavailable ({file_id}): {e.detail}")
         except HTTPException as e:
             warnings.append(f"Converted file unavailable ({file_id}): {e.detail}")
         except Exception as e:

@@ -10,16 +10,28 @@ describe("Models page tabs i18n", () => {
     assert.ok(en.models.tabs, "EN locale should have models.tabs");
     assert.strictEqual(typeof en.models.tabs.news, "string", "EN models.tabs.news should be a string");
     assert.strictEqual(typeof en.models.tabs.models, "string", "EN models.tabs.models should be a string");
+    assert.strictEqual(typeof en.models.tabs.remoteModels, "string", "EN models.tabs.remoteModels should be a string");
 
     // Test Polish
     assert.ok(pl.models.tabs, "PL locale should have models.tabs");
     assert.strictEqual(typeof pl.models.tabs.news, "string", "PL models.tabs.news should be a string");
     assert.strictEqual(typeof pl.models.tabs.models, "string", "PL models.tabs.models should be a string");
+    assert.strictEqual(typeof pl.models.tabs.remoteModels, "string", "PL models.tabs.remoteModels should be a string");
 
     // Test German
     assert.ok(de.models.tabs, "DE locale should have models.tabs");
     assert.strictEqual(typeof de.models.tabs.news, "string", "DE models.tabs.news should be a string");
     assert.strictEqual(typeof de.models.tabs.models, "string", "DE models.tabs.models should be a string");
+    assert.strictEqual(typeof de.models.tabs.remoteModels, "string", "DE models.tabs.remoteModels should be a string");
+  });
+
+  it("keeps remote sections and base sections together (no key override)", () => {
+    assert.ok(en.models.sections.recommended, "EN should keep recommended section");
+    assert.ok(en.models.sections.remote, "EN should keep remote section");
+    assert.ok(pl.models.sections.recommended, "PL should keep recommended section");
+    assert.ok(pl.models.sections.remote, "PL should keep remote section");
+    assert.ok(de.models.sections.recommended, "DE should keep recommended section");
+    assert.ok(de.models.sections.remote, "DE should keep remote section");
   });
 
   it("has description keys for RECOMMENDED and CATALOG sections in all locales", () => {

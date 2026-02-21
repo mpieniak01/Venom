@@ -1406,40 +1406,6 @@ export const en = {
       noResults: "No models found.",
       error: "Search failed",
     },
-    sections: {
-      recommended: {
-        title: "RECOMMENDED",
-        subtitle: "Trending models selected for you (cached).",
-        description: "Short list of trends and recommendations curated for your workflow.",
-      },
-      catalog: {
-        title: "CATALOG",
-        subtitle: "Browsing models from providers.",
-        description: "Broader collection of models from various providers and sources.",
-      },
-      installed: {
-        title: "INSTALLED",
-        subtitle: "Local models ready to run.",
-        noModels: "No installed models.",
-      },
-      operations: {
-        title: "OPERATIONS",
-        subtitle: "Background tasks (downloads, installations).",
-        noOperations: "No active operations.",
-      },
-      news: {
-        title: "NEWS",
-        subtitle: "Latest articles from AI world.",
-      },
-      papers: {
-        title: "PAPERS",
-        subtitle: "Daily Papers from HuggingFace.",
-        refreshAction: "Refresh papers",
-        defaultTitle: "New paper",
-        noPreview: "No preview available.",
-        fetchError: "Failed to fetch papers.",
-      },
-    },
     toasts: {
       installStart: "Installation started: {{name}}",
       installError: "Failed to start installation.",

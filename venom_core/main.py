@@ -12,10 +12,12 @@ from venom_core.agents.gardener import GardenerAgent
 from venom_core.agents.operator import OperatorAgent
 from venom_core.api import dependencies as api_deps
 from venom_core.api.audio_stream import AudioStreamHandler
+from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
 
 # Import routers
 from venom_core.api.routes import academy as academy_routes
 from venom_core.api.routes import agents as agents_routes
+from venom_core.api.routes import audit_stream as audit_stream_routes
 from venom_core.api.routes import benchmark as benchmark_routes
 from venom_core.api.routes import calendar as calendar_routes
 from venom_core.api.routes import feedback as feedback_routes
@@ -1002,7 +1004,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Venom Core", version="1.5.0", lifespan=lifespan)
 
 # Traffic Control Middleware (must be added before CORS for proper ordering)
-from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
 app.add_middleware(TrafficControlMiddleware)
 
 # CORS dla lokalnego UI (bezpośredni dostęp do API, bez proxy Next).
@@ -1182,6 +1183,7 @@ app.include_router(strategy_routes.router)
 app.include_router(models_routes.router)
 app.include_router(providers_routes.router)
 app.include_router(flow_routes.router)
+app.include_router(audit_stream_routes.router)
 app.include_router(workflow_control_routes.router)
 app.include_router(workflow_operations_routes.router)
 app.include_router(benchmark_routes.router)

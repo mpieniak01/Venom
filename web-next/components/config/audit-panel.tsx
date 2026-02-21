@@ -1,30 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
 
-type CoreAuditEntry = {
-  timestamp: string;
-  action: string;
-  user: string;
-  provider: string | null;
-  result: string;
-  error_message?: string | null;
-};
-
-type ModuleAuditEntry = {
+type AuditStreamEntry = {
   id: string;
-  actor: string;
-  action: string;
-  status: string;
-  payload_hash: string;
   timestamp: string;
+  source: string;
+  action: string;
+  actor: string;
+  status: string;
+  context?: string | null;
 };
 
-type UnifiedRow = {
-  source: "core" | "module";
+type AuditRow = {
+  source: string;
+  sourceGroup: "core" | "module" | "other";
   timestamp: string;
   action: string;
   actor: string;
@@ -54,23 +47,22 @@ function formatFixedDateTime(value: string): string {
 function truncateMiddle(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value;
   const keep = Math.max(4, Math.floor((maxLength - 1) / 2));
-  return `${value.slice(0, keep)}…${value.slice(-keep)}`;
+  return `${value.slice(0, keep)}...${value.slice(-keep)}`;
 }
 
-function resolveCoreOutcome(result: string): UnifiedRow["outcome"] {
-  const normalized = result.toLowerCase();
-  if (normalized === "success" || normalized === "ok") return "success";
-  if (normalized === "failure" || normalized === "failed" || normalized === "error") return "danger";
-  if (normalized === "unknown") return "neutral";
-  return "warning";
-}
-
-function resolveModuleOutcome(status: string): UnifiedRow["outcome"] {
+function resolveOutcome(status: string): AuditRow["outcome"] {
   const normalized = status.toLowerCase();
-  if (normalized === "ok" || normalized === "published") return "success";
-  if (normalized === "failed" || normalized === "error") return "danger";
-  if (normalized === "manual" || normalized === "queued" || normalized === "cached") return "warning";
+  if (["success", "ok", "published", "accepted"].includes(normalized)) return "success";
+  if (["failed", "failure", "error", "denied", "forbidden"].includes(normalized)) return "danger";
+  if (["queued", "cached", "manual", "pending", "partial"].includes(normalized)) return "warning";
   return "neutral";
+}
+
+function resolveSourceGroup(source: string): AuditRow["sourceGroup"] {
+  const normalized = source.toLowerCase();
+  if (normalized.startsWith("core.")) return "core";
+  if (normalized.startsWith("module.") || normalized.startsWith("brand_studio")) return "module";
+  return "other";
 }
 
 function toToneBadgeLabel(status: string): string {
@@ -79,46 +71,28 @@ function toToneBadgeLabel(status: string): string {
 
 export function AuditPanel() {
   const t = useTranslation();
-  const [coreEntries, setCoreEntries] = useState<CoreAuditEntry[]>([]);
-  const [moduleEntries, setModuleEntries] = useState<ModuleAuditEntry[]>([]);
+  const [entries, setEntries] = useState<AuditStreamEntry[]>([]);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [coreError, setCoreError] = useState<string | null>(null);
-  const [moduleError, setModuleError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchAudits = useCallback(async () => {
-    setCoreError(null);
-    setModuleError(null);
+    setLoadError(null);
     try {
-      const [coreResp, moduleResp] = await Promise.all([
-        fetch("/api/v1/admin/audit?limit=100"),
-        fetch("/api/v1/brand-studio/audit"),
-      ]);
-
-      if (coreResp.ok) {
-        const payload = (await coreResp.json()) as { entries?: CoreAuditEntry[] };
-        setCoreEntries(Array.isArray(payload.entries) ? payload.entries : []);
-      } else {
-        setCoreEntries([]);
-        setCoreError(`${t("config.audit.core.loadError")} (HTTP ${coreResp.status})`);
+      const response = await fetch("/api/v1/audit/stream?limit=200");
+      if (!response.ok) {
+        setEntries([]);
+        setLoadError(`${t("config.audit.loadError")} (HTTP ${response.status})`);
+        return;
       }
-
-      if (moduleResp.ok) {
-        const payload = (await moduleResp.json()) as { items?: ModuleAuditEntry[] };
-        setModuleEntries(Array.isArray(payload.items) ? payload.items : []);
-      } else if (moduleResp.status === 404 || moduleResp.status === 503) {
-        setModuleEntries([]);
-        setModuleError(t("config.audit.module.unavailable"));
-      } else {
-        setModuleEntries([]);
-        setModuleError(`${t("config.audit.module.loadError")} (HTTP ${moduleResp.status})`);
-      }
+      const payload = (await response.json()) as { entries?: AuditStreamEntry[] };
+      setEntries(Array.isArray(payload.entries) ? payload.entries : []);
     } catch (error) {
       const message = error instanceof Error ? error.message : t("config.audit.loadError");
-      setCoreError(message);
-      setModuleError(message);
+      setLoadError(message);
+      setEntries([]);
     }
   }, [t]);
 
@@ -137,41 +111,33 @@ export function AuditPanel() {
     setRefreshing(false);
   }, [fetchAudits]);
 
-  const unifiedRows = useMemo<UnifiedRow[]>(() => {
-    const coreRows: UnifiedRow[] = coreEntries.map((entry, index) => ({
-      source: "core",
-      timestamp: entry.timestamp,
-      action: entry.action,
-      actor: entry.user || "-",
-      context: entry.provider || "-",
-      status: entry.result || "unknown",
-      outcome: resolveCoreOutcome(entry.result || "unknown"),
-      idRef: `core-${index + 1}`,
-    }));
+  const rows = useMemo<AuditRow[]>(
+    () =>
+      entries
+        .map((entry) => ({
+          source: entry.source || "unknown",
+          sourceGroup: resolveSourceGroup(entry.source || "unknown"),
+          timestamp: entry.timestamp,
+          action: entry.action || "unknown",
+          actor: entry.actor || "-",
+          context: entry.context || "-",
+          status: entry.status || "unknown",
+          outcome: resolveOutcome(entry.status || "unknown"),
+          idRef: entry.id || "-",
+        }))
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [entries],
+  );
 
-    const moduleRows: UnifiedRow[] = moduleEntries.map((entry) => ({
-      source: "module",
-      timestamp: entry.timestamp,
-      action: entry.action,
-      actor: entry.actor || "-",
-      context: entry.payload_hash || "-",
-      status: entry.status || "unknown",
-      outcome: resolveModuleOutcome(entry.status || "unknown"),
-      idRef: entry.id || "-",
-    }));
-
-    return [...coreRows, ...moduleRows].sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-    );
-  }, [coreEntries, moduleEntries]);
-
-  const filteredRows = useMemo(() => {
-    return unifiedRows.filter((row) => {
-      if (sourceFilter !== "all" && row.source !== sourceFilter) return false;
-      if (outcomeFilter !== "all" && row.outcome !== outcomeFilter) return false;
-      return true;
-    });
-  }, [outcomeFilter, sourceFilter, unifiedRows]);
+  const filteredRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        if (sourceFilter !== "all" && row.sourceGroup !== sourceFilter) return false;
+        if (outcomeFilter !== "all" && row.outcome !== outcomeFilter) return false;
+        return true;
+      }),
+    [outcomeFilter, rows, sourceFilter],
+  );
 
   return (
     <div className="space-y-4">
@@ -223,8 +189,7 @@ export function AuditPanel() {
           </label>
         </div>
 
-        {coreError ? <p className="text-xs text-amber-300">{coreError}</p> : null}
-        {moduleError ? <p className="text-xs text-amber-300">{moduleError}</p> : null}
+        {loadError ? <p className="text-xs text-amber-300">{loadError}</p> : null}
         {loading ? <p className="text-zinc-400">{t("common.loading")}</p> : null}
         {!loading && !filteredRows.length ? <p className="text-zinc-400">{t("config.audit.empty")}</p> : null}
 
@@ -240,7 +205,7 @@ export function AuditPanel() {
           >
             <ul className="divide-y divide-white/5">
               {filteredRows.map((row) => (
-                <li key={`${row.source}:${row.idRef}:${row.timestamp}`} className="px-1 py-2">
+                <li key={`${row.idRef}:${row.timestamp}`} className="px-1 py-2">
                   <div className="flex items-center gap-2 text-xs">
                     <span className="w-[19ch] shrink-0 text-zinc-500">{formatFixedDateTime(row.timestamp)}</span>
                     <span className="shrink-0 font-semibold uppercase text-zinc-300">{row.action}</span>
@@ -251,7 +216,7 @@ export function AuditPanel() {
                       {toToneBadgeLabel(row.status)}
                     </Badge>
                     <Badge tone="neutral" className="px-2 py-0.5 text-[10px] uppercase">
-                      {row.source === "core" ? t("config.audit.source.core") : t("config.audit.source.module")}
+                      {truncateMiddle(row.source, 18)}
                     </Badge>
                   </div>
                 </li>

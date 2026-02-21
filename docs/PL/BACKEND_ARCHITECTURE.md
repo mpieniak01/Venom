@@ -29,6 +29,7 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
 - `models_registry.py` - /models/providers, /models/trending, /models/news
 - `models_registry_ops.py` - /models/registry/install, /models/registry/{model_name}, /models/activate, /models/operations
 - `models_config.py` - /models/{model_name}/capabilities, /models/{model_name}/config
+- `models_remote.py` - /models/remote/providers, /models/remote/catalog, /models/remote/connectivity, /models/remote/validate
 - `models_translation.py` - /translate
 
 ## Runtime i routing modeli

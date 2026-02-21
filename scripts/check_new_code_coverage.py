@@ -27,14 +27,36 @@ class FileCoverage:
         return (self.covered / self.total) if self.total else 0.0
 
 
-def _run_git_diff(diff_base: str, scope: str) -> str:
+def _run_git_diff_once(diff_base: str, scope: str) -> tuple[int, str, str]:
     cmd = ["git", "diff", "-U0", f"{diff_base}...HEAD", "--", scope]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"git diff failed for base '{diff_base}'. stderr:\n{proc.stderr.strip()}"
-        )
-    return proc.stdout
+    return proc.returncode, proc.stdout, proc.stderr.strip()
+
+
+def _run_git_diff(diff_base: str, scope: str) -> str:
+    candidates = [diff_base]
+    if diff_base.startswith("origin/"):
+        local_branch = diff_base.split("/", 1)[1]
+        if local_branch and local_branch not in candidates:
+            candidates.append(local_branch)
+    for fallback in ("main", "HEAD~1"):
+        if fallback not in candidates:
+            candidates.append(fallback)
+
+    errors: list[str] = []
+    for candidate in candidates:
+        code, stdout, stderr = _run_git_diff_once(candidate, scope)
+        if code == 0:
+            if candidate != diff_base:
+                print(
+                    f"WARN: diff base '{diff_base}' unavailable; using fallback '{candidate}'."
+                )
+            return stdout
+        errors.append(f"[{candidate}] {stderr or 'unknown git diff error'}")
+
+    raise RuntimeError(
+        f"git diff failed for base '{diff_base}'. Attempts:\n" + "\n".join(errors)
+    )
 
 
 def _parse_changed_lines(diff_text: str) -> dict[str, set[int]]:

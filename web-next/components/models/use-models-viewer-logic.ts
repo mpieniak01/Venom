@@ -3,6 +3,7 @@ import { useModelCatalog } from "./hooks/use-model-catalog";
 import { useTrendingModels } from "./hooks/use-trending-models";
 import { useRuntime } from "./hooks/use-runtime";
 import { useTrainableModels } from "./hooks/use-trainable-models";
+import { useRemoteModels } from "./hooks/use-remote-models";
 import { useLanguage } from "@/lib/i18n";
 
 export function useModelsViewerLogic() {
@@ -14,6 +15,7 @@ export function useModelsViewerLogic() {
     const trending = useTrendingModels();
     const runtime = useRuntime();
     const trainable = useTrainableModels();
+    const remote = useRemoteModels();
 
     return {
         t, language,
@@ -52,6 +54,23 @@ export function useModelsViewerLogic() {
         trainableLoading: trainable.loading,
         trainableError: trainable.error,
         refreshTrainable: trainable.refresh,
+
+        // Remote Models
+        remoteProviders: remote.providers,
+        remoteProvidersLoading: remote.providersLoading,
+        remoteProvidersError: remote.providersError,
+        fetchRemoteProviders: remote.fetchProviders,
+        remoteCatalog: remote.catalog,
+        remoteCatalogProvider: remote.catalogProvider,
+        remoteCatalogLoading: remote.catalogLoading,
+        remoteCatalogError: remote.catalogError,
+        remoteCatalogRefreshedAt: remote.catalogRefreshedAt,
+        remoteCatalogSource: remote.catalogSource,
+        fetchRemoteCatalog: remote.fetchCatalog,
+        remoteBindings: remote.bindings,
+        remoteBindingsLoading: remote.bindingsLoading,
+        remoteBindingsError: remote.bindingsError,
+        fetchRemoteBindings: remote.fetchBindings,
 
         // Unified pending actions
         pendingActions: { ...catalog.pendingActions, ...runtime.pendingActions },

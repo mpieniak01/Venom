@@ -17,6 +17,4 @@ class LlmRuntimeActivateRequest(BaseModel):
     """Request for activating an LLM runtime (cloud provider)."""
 
     provider: str = Field(..., description="Docelowy provider runtime (openai/google)")
-    model: Optional[str] = Field(
-        default=None, description="Opcjonalny model LLM"
-    )
+    model: Optional[str] = Field(default=None, description="Opcjonalny model LLM")

@@ -3,11 +3,11 @@
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from venom_core.api.schemas.git import InitRepoRequest
+from venom_core.api.schemas.git import GitStatusResponse, InitRepoRequest
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 from venom_core.utils.ttl_cache import TTLCache
@@ -284,6 +284,7 @@ def set_dependencies(git_skill: Any):
 
 @router.get(
     "/status",
+    response_model=GitStatusResponse,
     responses={
         503: {"description": "Git status nie jest dostępny"},
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu Git"},

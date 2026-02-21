@@ -129,7 +129,6 @@ def _is_fast_safe_candidate(path: str, resolver_module) -> bool:
             "integration",
             "benchmark",
             "test_core_nervous_system.py",
-            "test_evolution_coordinator_phase132d.py",
         )
     ):
         return False

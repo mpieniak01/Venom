@@ -12,6 +12,15 @@ const getBrowserWindow = (): Window | undefined => {
   return globalThis.window;
 };
 
+const isTruthy = (value: string | undefined): boolean => {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+};
+
+const isLocalhostFallbackEnabled = (): boolean =>
+  isTruthy(getEnv("NEXT_PUBLIC_API_LOCALHOST_FALLBACK")) ||
+  isTruthy(getEnv("API_LOCALHOST_FALLBACK"));
+
 const sanitizeBase = (value: string): string => value.replace(/\/$/, "");
 
 const normalizeWs = (url: string): string => {
@@ -25,13 +34,14 @@ const normalizeWs = (url: string): string => {
   }
 };
 
-const envApiBase =
+const getEnvApiBase = (): string =>
   getEnv("NEXT_PUBLIC_API_BASE") ||
   getEnv("API_PROXY_TARGET") ||
   getEnv("NEXT_PUBLIC_API_URL") ||
   "";
 
 const resolveBrowserBase = (): string => {
+  const envApiBase = getEnvApiBase();
   if (!envApiBase) return "";
   const browserWindow = getBrowserWindow();
   if (!browserWindow) return sanitizeBase(applyHttpPolicyToUrl(envApiBase));
@@ -53,6 +63,7 @@ const resolveBrowserBase = (): string => {
 };
 
 const resolveDefaultLocalApiBase = (): string => {
+  if (!isLocalhostFallbackEnabled()) return "";
   const browserWindow = getBrowserWindow();
   if (!browserWindow) return "";
   const hostname = browserWindow.location.hostname;
@@ -81,6 +92,7 @@ const resolveBrowserWsBase = (): string => {
 };
 
 export const getServerApiBaseUrl = (): string => {
+  const envApiBase = getEnvApiBase();
   const explicit = envApiBase ? sanitizeBase(applyHttpPolicyToUrl(envApiBase)) : "";
   if (explicit) return explicit;
   return buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT);

@@ -1,6 +1,7 @@
 """Moduł: docker_habitat - Zarządca bezpiecznego środowiska wykonawczego (Docker Sandbox)."""
 
 import importlib
+import time
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +78,15 @@ class DockerHabitat:
             container = self.client.containers.get(self.CONTAINER_NAME)
             logger.info(f"Znaleziono istniejący kontener: {self.CONTAINER_NAME}")
 
+            expected_workspace = self._resolve_workspace_path()
+            if not self._has_expected_workspace_mount(container, expected_workspace):
+                logger.warning(
+                    "Istniejący kontener ma niezgodny mount workspace "
+                    f"(oczekiwano: {expected_workspace}). Rekreacja kontenera."
+                )
+                self._recreate_container(container)
+                return self._create_container(expected_workspace)
+
             # Jeśli kontener istnieje ale nie działa, uruchom go
             if container.status != "running":
                 logger.info(
@@ -92,7 +102,60 @@ class DockerHabitat:
             logger.info(f"Tworzenie nowego kontenera: {self.CONTAINER_NAME}")
             return self._create_container()
 
-    def _create_container(self):
+    def _resolve_workspace_path(self) -> Path:
+        """Zwraca bezwzględną ścieżkę workspace i upewnia się, że katalog istnieje."""
+        workspace_path = Path(SETTINGS.WORKSPACE_ROOT).resolve()
+        workspace_path.mkdir(parents=True, exist_ok=True)
+        return workspace_path
+
+    def _container_workspace_mount(self, container) -> Path | None:
+        """Zwraca hostową ścieżkę bind mounta dla `/workspace` (jeśli istnieje)."""
+        container.reload()
+        for mount in container.attrs.get("Mounts", []):
+            if mount.get("Destination") == CONTAINER_WORKDIR and mount.get("Source"):
+                return Path(mount["Source"]).resolve()
+        return None
+
+    def _has_expected_workspace_mount(
+        self, container, expected_workspace: Path
+    ) -> bool:
+        """Sprawdza, czy kontener używa oczekiwanego bind mounta workspace."""
+        actual_mount = self._container_workspace_mount(container)
+        if actual_mount is None:
+            return False
+        return actual_mount == expected_workspace.resolve()
+
+    def _recreate_container(self, container) -> None:
+        """Usuwa istniejący kontener, aby utworzyć go ponownie z poprawnym mountem."""
+        try:
+            container.reload()
+            if container.status == "running":
+                container.stop()
+        except Exception as exc:
+            logger.warning(f"Nie udało się zatrzymać kontenera przed rekreacją: {exc}")
+        try:
+            container.remove(force=True)
+        except Exception as exc:
+            logger.warning(f"Nie udało się usunąć kontenera przed rekreacją: {exc}")
+        # Domknij ewentualny race-condition na nazwie kontenera.
+        self._remove_container_by_name_if_exists()
+
+    def _remove_container_by_name_if_exists(self) -> None:
+        """Usuwa kontener po nazwie, jeśli nadal istnieje."""
+        try:
+            existing = self.client.containers.get(self.CONTAINER_NAME)
+        except NotFound:
+            return
+        try:
+            existing.remove(force=True)
+        except Exception as exc:
+            logger.warning(
+                f"Nie udało się usunąć kontenera {self.CONTAINER_NAME}: {exc}"
+            )
+
+    def _create_container(
+        self, workspace_path: Path | None = None, *, retry_on_conflict: bool = True
+    ):
         """
         Tworzy nowy kontener Docker.
 
@@ -113,8 +176,7 @@ class DockerHabitat:
                 self.client.images.pull(image_name)
 
             # Przygotuj ścieżkę workspace jako bezwzględną
-            workspace_path = Path(SETTINGS.WORKSPACE_ROOT).resolve()
-            workspace_path.mkdir(parents=True, exist_ok=True)
+            workspace_path = workspace_path or self._resolve_workspace_path()
 
             # Utwórz kontener
             container = self.client.containers.run(
@@ -138,6 +200,13 @@ class DockerHabitat:
             return container
 
         except APIError as e:
+            if retry_on_conflict and "already in use" in str(e).lower():
+                logger.warning(
+                    f"Konflikt nazwy kontenera {self.CONTAINER_NAME}; retry po usunięciu."
+                )
+                self._remove_container_by_name_if_exists()
+                time.sleep(0.2)
+                return self._create_container(workspace_path, retry_on_conflict=False)
             error_msg = f"Błąd API Docker podczas tworzenia kontenera: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e

@@ -137,7 +137,9 @@ def validate_profile_requirements(
 
     # Check API keys for API profile
     if capabilities.required_api_keys and not capabilities.uses_local_llm:
-        has_any_key = any(key in available_api_keys for key in capabilities.required_api_keys)
+        has_any_key = any(
+            key in available_api_keys for key in capabilities.required_api_keys
+        )
         if not has_any_key:
             return False, (
                 f"Profile '{profile.value}' requires at least one of: "

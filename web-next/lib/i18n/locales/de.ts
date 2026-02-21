@@ -556,6 +556,7 @@ export const de = {
       refresh: "Aktualisieren",
       refreshing: "Aktualisiere...",
       loadError: "Audit-Streams konnten nicht geladen werden.",
+      loadErrorWithStatus: "{{message}} (HTTP {{status}})",
       empty: "Keine Audit-Einträge für die ausgewählten Filter.",
       source: {
         core: "core",

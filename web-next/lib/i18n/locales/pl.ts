@@ -556,6 +556,7 @@ export const pl = {
       refresh: "Odśwież",
       refreshing: "Odświeżam...",
       loadError: "Nie udało się załadować strumieni audytu.",
+      loadErrorWithStatus: "{{message}} (HTTP {{status}})",
       empty: "Brak wpisów audytu dla wybranych filtrów.",
       source: {
         core: "core",

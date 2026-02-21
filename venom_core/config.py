@@ -21,6 +21,16 @@ def _default_url(host: str, port: int, path: str) -> str:
     return f"{_default_url_scheme()}://{host}:{port}{normalized_path}"
 
 
+EXT_JSON = ".json"
+EXT_JSONL = ".jsonl"
+EXT_MD = ".md"
+EXT_TXT = ".txt"
+EXT_CSV = ".csv"
+EXT_PDF = ".pdf"
+EXT_DOC = ".doc"
+EXT_DOCX = ".docx"
+
+
 class Settings(BaseSettings):
     # Ignore unknown env vars in local .env without failing startup/tests.
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -263,35 +273,35 @@ class Settings(BaseSettings):
     )
     ACADEMY_CONVERSION_OUTPUT_DIR: str = "./data/training/user_data/_converted_pool"  # Globalny katalog wyników konwersji (bez ścieżek per user)
     ACADEMY_ALLOWED_EXTENSIONS: list[str] = [
-        ".jsonl",
-        ".json",
-        ".md",
-        ".txt",
-        ".csv",
+        EXT_JSONL,
+        EXT_JSON,
+        EXT_MD,
+        EXT_TXT,
+        EXT_CSV,
     ]  # Backward-compatible alias dla bezpośrednich uploadów datasetu
     ACADEMY_ALLOWED_DATASET_EXTENSIONS: list[str] = [
-        ".jsonl",
-        ".json",
-        ".md",
-        ".txt",
-        ".csv",
+        EXT_JSONL,
+        EXT_JSON,
+        EXT_MD,
+        EXT_TXT,
+        EXT_CSV,
     ]  # Dozwolone rozszerzenia plików dla bezpośrednich uploadów datasetów
     ACADEMY_ALLOWED_CONVERSION_EXTENSIONS: list[str] = [
-        ".jsonl",
-        ".json",
-        ".md",
-        ".txt",
-        ".csv",
-        ".pdf",
-        ".doc",
-        ".docx",
+        EXT_JSONL,
+        EXT_JSON,
+        EXT_MD,
+        EXT_TXT,
+        EXT_CSV,
+        EXT_PDF,
+        EXT_DOC,
+        EXT_DOCX,
     ]  # Dozwolone rozszerzenia plików dla workspace konwersji
     ACADEMY_CONVERSION_TARGET_EXTENSIONS: dict[str, str] = {
-        "md": ".md",
-        "txt": ".txt",
-        "json": ".json",
-        "jsonl": ".jsonl",
-        "csv": ".csv",
+        "md": EXT_MD,
+        "txt": EXT_TXT,
+        "json": EXT_JSON,
+        "jsonl": EXT_JSONL,
+        "csv": EXT_CSV,
     }  # Mapowanie formatów docelowych konwersji na rozszerzenia plików
 
     # Konfiguracja THE_NEXUS (Distributed Mesh)

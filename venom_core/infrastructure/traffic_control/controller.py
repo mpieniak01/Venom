@@ -296,6 +296,76 @@ class TrafficController:
             policy.metrics.total_requests += 1
         return True, None, None
 
+    @staticmethod
+    def _is_success_status(status_code: Optional[int]) -> bool:
+        return status_code is not None and 200 <= status_code < 300
+
+    @staticmethod
+    def _is_4xx_status(status_code: Optional[int]) -> bool:
+        return status_code is not None and 400 <= status_code < 500
+
+    @staticmethod
+    def _is_5xx_status(status_code: Optional[int]) -> bool:
+        return status_code is not None and 500 <= status_code < 600
+
+    @staticmethod
+    def _is_failure_outcome(
+        status_code: Optional[int], exception: Optional[Exception]
+    ) -> bool:
+        return exception is not None or (status_code is not None and status_code >= 500)
+
+    @staticmethod
+    def _update_policy_metrics(policy: ScopePolicy, status_code: Optional[int]) -> None:
+        if status_code is None:
+            return
+        if TrafficController._is_success_status(status_code):
+            policy.metrics.total_2xx += 1
+            return
+        if TrafficController._is_4xx_status(status_code):
+            policy.metrics.total_4xx += 1
+            if status_code == 429:
+                policy.metrics.total_429 += 1
+            return
+        if TrafficController._is_5xx_status(status_code):
+            policy.metrics.total_5xx += 1
+
+    def _update_circuit_breaker(
+        self,
+        policy: ScopePolicy,
+        status_code: Optional[int],
+        exception: Optional[Exception],
+    ) -> None:
+        if not policy.circuit_breaker:
+            return
+        if self._is_success_status(status_code):
+            policy.circuit_breaker.record_success()
+            return
+        if self._is_failure_outcome(status_code, exception):
+            policy.circuit_breaker.record_failure()
+
+    def _update_degraded_state(
+        self,
+        *,
+        status_code: Optional[int],
+        exception: Optional[Exception],
+    ) -> None:
+        is_success = self._is_success_status(status_code)
+        if is_success:
+            self._consecutive_failures = 0
+            return
+        if not self._is_failure_outcome(status_code, exception):
+            return
+        self._consecutive_failures += 1
+        requests_last_minute = len(self._outbound_request_times)
+        if self.config.should_enter_degraded_state(
+            requests_last_minute=requests_last_minute,
+            consecutive_failures=self._consecutive_failures,
+        ):
+            self._degraded_until_ts = max(
+                self._degraded_until_ts,
+                time.monotonic() + self.config.degraded_mode_cooldown_seconds,
+            )
+
     def record_outbound_response(
         self,
         provider: str,
@@ -307,37 +377,12 @@ class TrafficController:
         policy = self._get_or_create_outbound_policy(scope)
 
         with policy._lock:
-            if status_code is not None:
-                if 200 <= status_code < 300:
-                    policy.metrics.total_2xx += 1
-                elif 400 <= status_code < 500:
-                    policy.metrics.total_4xx += 1
-                    if status_code == 429:
-                        policy.metrics.total_429 += 1
-                elif 500 <= status_code < 600:
-                    policy.metrics.total_5xx += 1
+            self._update_policy_metrics(policy, status_code)
 
-        if policy.circuit_breaker:
-            if status_code is not None and 200 <= status_code < 300:
-                policy.circuit_breaker.record_success()
-            elif exception or (status_code and status_code >= 500):
-                policy.circuit_breaker.record_failure()
+        self._update_circuit_breaker(policy, status_code, exception)
 
         with self._lock:
-            is_success = status_code is not None and 200 <= status_code < 300
-            if is_success:
-                self._consecutive_failures = 0
-            elif exception or (status_code is not None and status_code >= 500):
-                self._consecutive_failures += 1
-                requests_last_minute = len(self._outbound_request_times)
-                if self.config.should_enter_degraded_state(
-                    requests_last_minute=requests_last_minute,
-                    consecutive_failures=self._consecutive_failures,
-                ):
-                    self._degraded_until_ts = max(
-                        self._degraded_until_ts,
-                        time.monotonic() + self.config.degraded_mode_cooldown_seconds,
-                    )
+            self._update_degraded_state(status_code=status_code, exception=exception)
 
     def check_inbound_request(
         self,

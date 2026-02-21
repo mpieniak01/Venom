@@ -561,9 +561,9 @@ export const en = {
         module: "module",
       },
       filters: {
-        source: "Log source",
+        source: "API channel",
         outcome: "Outcome",
-        allSources: "All sources",
+        allSources: "All API channels",
         coreSource: "Core events",
         moduleSource: "Module events",
         allOutcomes: "All outcomes",

@@ -177,7 +177,7 @@ export function AuditPanel() {
       await fetchAudits();
       setLoading(false);
     };
-    void load();
+    load().catch(() => undefined);
   }, [fetchAudits]);
 
   const handleRefresh = useCallback(async () => {
@@ -185,6 +185,10 @@ export function AuditPanel() {
     await fetchAudits();
     setRefreshing(false);
   }, [fetchAudits]);
+
+  function onRefreshClick() {
+    handleRefresh().catch(() => undefined);
+  }
 
   const rows = useMemo<AuditRow[]>(
     () =>
@@ -239,7 +243,7 @@ export function AuditPanel() {
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => void handleRefresh()}
+            onClick={onRefreshClick}
             disabled={refreshing}
           >
             {refreshing ? t("config.audit.refreshing") : t("config.audit.refresh")}

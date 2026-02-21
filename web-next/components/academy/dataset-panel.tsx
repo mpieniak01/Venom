@@ -98,7 +98,7 @@ export function DatasetPanel() {
 
   // Load sources on mount
   useEffect(() => {
-    void loadSources();
+    loadSources().catch(() => undefined);
   }, [loadSources]);
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {

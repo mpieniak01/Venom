@@ -70,7 +70,7 @@ export function DatasetConversionPanel() {
   }, [pushToast, t]);
 
   useEffect(() => {
-    void loadFiles();
+    loadFiles().catch(() => undefined);
   }, [loadFiles]);
 
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -133,6 +133,18 @@ export function DatasetConversionPanel() {
     }
   }
 
+  function onTrainingSelectionChange(file: DatasetConversionFileInfo, checked: boolean) {
+    handleTrainingSelection(file, checked).catch(() => undefined);
+  }
+
+  function onPreviewClick(file: DatasetConversionFileInfo) {
+    handlePreview(file).catch(() => undefined);
+  }
+
+  function onConvertClick(file: DatasetConversionFileInfo) {
+    handleConvert(file).catch(() => undefined);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -182,9 +194,7 @@ export function DatasetConversionPanel() {
                     <Checkbox
                       checked={file.selected_for_training === true}
                       disabled={selectionUpdatingId === file.file_id}
-                      onCheckedChange={(checked) =>
-                        void handleTrainingSelection(file, checked === true)
-                      }
+                      onCheckedChange={(checked) => onTrainingSelectionChange(file, checked === true)}
                     />
                     <span className="text-xs text-zinc-300">
                       {t("academy.conversion.useForTraining")}
@@ -195,7 +205,7 @@ export function DatasetConversionPanel() {
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {[".txt", ".md"].includes(file.extension) ? (
-                      <Button size="sm" variant="ghost" onClick={() => void handlePreview(file)}>
+                      <Button size="sm" variant="ghost" onClick={() => onPreviewClick(file)}>
                         {t("academy.conversion.preview")}
                       </Button>
                     ) : null}
@@ -248,7 +258,7 @@ export function DatasetConversionPanel() {
                       variant="outline"
                       className="gap-1"
                       disabled={convertingId === file.file_id}
-                      onClick={() => void handleConvert(file)}
+                      onClick={() => onConvertClick(file)}
                     >
                       {convertingId === file.file_id ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -258,7 +268,7 @@ export function DatasetConversionPanel() {
                       {t("academy.conversion.convert")}
                     </Button>
                     {[".txt", ".md"].includes(file.extension) ? (
-                      <Button size="sm" variant="ghost" onClick={() => void handlePreview(file)}>
+                      <Button size="sm" variant="ghost" onClick={() => onPreviewClick(file)}>
                         {t("academy.conversion.preview")}
                       </Button>
                     ) : null}

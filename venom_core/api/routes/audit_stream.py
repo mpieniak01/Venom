@@ -13,6 +13,12 @@ from venom_core.services.audit_stream import AuditStreamEntry, get_audit_stream
 
 router = APIRouter(prefix="/api/v1/audit", tags=["audit"])
 
+CHANNEL_FRONTEND = "Frontend (Next.js)"
+CHANNEL_GOVERNANCE = "Governance API"
+CHANNEL_SYSTEM_SERVICES = "System Services API"
+CHANNEL_QUEUE = "Queue API"
+CHANNEL_UNKNOWN = "Unknown API"
+
 
 class AuditStreamRecord(BaseModel):
     id: str
@@ -53,8 +59,8 @@ def _required_ingest_token() -> str:
 
 
 _ACTION_PREFIX_CHANNEL_MAP: tuple[tuple[str, str], ...] = (
-    ("queue.", "Queue API"),
-    ("draft.", "Frontend (Next.js)"),
+    ("queue.", CHANNEL_QUEUE),
+    ("draft.", CHANNEL_FRONTEND),
     ("strategy.", "Strategy API"),
     ("campaign.", "Tasks API"),
     ("monitoring.", "Tasks API"),
@@ -70,58 +76,64 @@ def _channel_from_action(action: str) -> str | None:
     if not action_n:
         return None
     if action_n in {"provider_activate", "test_connection", "preflight_check"}:
-        return "Governance API"
+        return CHANNEL_GOVERNANCE
     if action_n.startswith("provider_"):
-        return "Governance API"
+        return CHANNEL_GOVERNANCE
     if action_n.startswith("config."):
-        return "System Services API"
+        return CHANNEL_SYSTEM_SERVICES
     for prefix, channel in _ACTION_PREFIX_CHANNEL_MAP:
         if action_n.startswith(prefix):
             return channel
     return None
 
 
-def _infer_api_channel(
-    source: str, action: str, details: dict[str, Any] | None = None
-) -> str:
-    details = details or {}
-    details_channel = details.get("api_channel")
+def _details_api_channel(details: dict[str, Any] | None = None) -> str | None:
+    details_channel = (details or {}).get("api_channel")
     if isinstance(details_channel, str) and details_channel.strip():
         return details_channel.strip()
+    return None
 
-    source_n = (source or "").strip().lower()
-    source_head = source_n.split(".", maxsplit=1)[0] if source_n else ""
 
+def _infer_from_technical_source(source_n: str, action: str) -> str:
+    suffix = source_n.removeprefix("core.technical.")
+    if suffix.startswith("github_publish"):
+        return CHANNEL_QUEUE
+    channel = _channel_from_action(action)
+    return channel or CHANNEL_SYSTEM_SERVICES
+
+
+def _infer_from_source_prefix(source_n: str, source_head: str, action: str) -> str:
     if source_n == "core.admin":
-        return "Governance API"
-
+        return CHANNEL_GOVERNANCE
     if source_n.startswith("core.technical."):
-        suffix = source_n.removeprefix("core.technical.")
-        if suffix.startswith("github_publish"):
-            return "Queue API"
-        channel = _channel_from_action(action)
-        return channel or "System Services API"
-
+        return _infer_from_technical_source(source_n, action)
     if source_n.startswith("module.brand_studio") or source_n.startswith(
         "brand_studio"
     ):
         channel = _channel_from_action(action)
-        return channel or "Frontend (Next.js)"
-
+        return channel or CHANNEL_FRONTEND
     if source_n.startswith("core."):
         channel = _channel_from_action(action)
-        return channel or "System Services API"
-
+        return channel or CHANNEL_SYSTEM_SERVICES
     channel = _channel_from_action(action)
     if channel:
         return channel
-
     if source_head == "module":
-        return "Frontend (Next.js)"
+        return CHANNEL_FRONTEND
     if source_head == "core":
-        return "System Services API"
+        return CHANNEL_SYSTEM_SERVICES
+    return CHANNEL_UNKNOWN
 
-    return "Unknown API"
+
+def _infer_api_channel(
+    source: str, action: str, details: dict[str, Any] | None = None
+) -> str:
+    details_channel = _details_api_channel(details)
+    if details_channel:
+        return details_channel
+    source_n = (source or "").strip().lower()
+    source_head = source_n.split(".", maxsplit=1)[0] if source_n else ""
+    return _infer_from_source_prefix(source_n, source_head, action)
 
 
 def _serialize_entry(entry: AuditStreamEntry) -> AuditStreamRecord:
@@ -166,7 +178,10 @@ async def get_audit_stream_entries(
     return AuditStreamResponse(count=len(payload), entries=payload)
 
 
-@router.post("/stream")
+@router.post(
+    "/stream",
+    responses={403: {"description": "Forbidden: invalid or missing ingest token."}},
+)
 async def publish_audit_stream_entry(
     request: AuditStreamPublishRequest,
     x_venom_audit_token: Annotated[str | None, Header()] = None,

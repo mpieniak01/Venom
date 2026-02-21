@@ -10,7 +10,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Dict, List, Optional, cast
+from typing import Annotated, Any, Callable, Dict, List, Optional, TextIO, cast
 from unittest.mock import Mock
 
 import anyio
@@ -87,6 +87,14 @@ CANONICAL_JOB_STATUSES = {
 TERMINAL_JOB_STATUSES = {"finished", "failed", "cancelled"}
 JOBS_HISTORY_FILE = Path("./data/training/jobs.jsonl")
 DATASET_REQUIRED_DETAIL = "No dataset found. Please curate dataset first."
+EXT_JSON = ".json"
+EXT_JSONL = ".jsonl"
+EXT_MD = ".md"
+EXT_TXT = ".txt"
+EXT_CSV = ".csv"
+EXT_DOC = ".doc"
+EXT_DOCX = ".docx"
+EXT_PDF = ".pdf"
 
 RESP_400_DATASET_REQUIRED = {"description": DATASET_REQUIRED_DETAIL}
 RESP_403_LOCALHOST_ONLY = {
@@ -98,6 +106,8 @@ RESP_500_INTERNAL = {"description": "Internal server error."}
 RESP_503_ACADEMY_UNAVAILABLE = {
     "description": "Academy is unavailable or not initialized."
 }
+RESP_400_BAD_REQUEST = {"description": "Invalid request payload."}
+RESP_404_FILE_NOT_FOUND = {"description": "Requested file was not found."}
 
 
 class AcademyRouteError(Exception):
@@ -502,18 +512,18 @@ def _estimate_records_from_content(filename: str, content: bytes) -> int:
     records_estimate = 0
     filename_lc = filename.lower()
 
-    if filename_lc.endswith(".jsonl"):
+    if filename_lc.endswith(EXT_JSONL):
         text = content.decode("utf-8", errors="ignore")
         return sum(1 for line in text.splitlines() if line.strip())
 
-    if filename_lc.endswith(".json"):
+    if filename_lc.endswith(EXT_JSON):
         text = content.decode("utf-8", errors="ignore")
         data = json.loads(text)
         if isinstance(data, list):
             return len(data)
         return 1
 
-    if filename_lc.endswith((".md", ".txt", ".csv")):
+    if filename_lc.endswith((EXT_MD, EXT_TXT, EXT_CSV)):
         text = content.decode("utf-8", errors="ignore")
         return max(1, len(text.split("\n\n")))
 
@@ -2248,59 +2258,117 @@ def _convert_with_pandoc(source_path: Path, output_path: Path) -> bool:
         return False
 
 
+def _markdown_from_json(source_path: Path) -> str:
+    payload = json.loads(source_path.read_text(encoding="utf-8", errors="ignore"))
+    return f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+
+
+def _markdown_from_jsonl(source_path: Path) -> str:
+    lines = source_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    pretty_lines: list[str] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            pretty_lines.append(json.dumps(json.loads(line), ensure_ascii=False))
+        except json.JSONDecodeError:
+            pretty_lines.append(line)
+    return "```jsonl\n" + "\n".join(pretty_lines) + "\n```"
+
+
+def _markdown_from_csv(source_path: Path) -> str:
+    return (
+        "```csv\n" + source_path.read_text(encoding="utf-8", errors="ignore") + "\n```"
+    )
+
+
+def _markdown_from_binary_document(source_path: Path, ext: str) -> str:
+    temp_md_path = source_path.with_suffix(source_path.suffix + ".pandoc.md")
+    if _convert_with_pandoc(source_path, temp_md_path):
+        content = temp_md_path.read_text(encoding="utf-8", errors="ignore")
+        temp_md_path.unlink(missing_ok=True)
+        return content
+    temp_md_path.unlink(missing_ok=True)
+    if ext == EXT_PDF:
+        return _extract_text_from_pdf(source_path)
+    if ext == EXT_DOCX:
+        return _extract_text_from_docx(source_path)
+    raise ValueError(
+        "DOC conversion requires Pandoc with system support for legacy .doc files"
+    )
+
+
 def _source_to_markdown(source_path: Path) -> str:
     ext = source_path.suffix.lower()
-    if ext in {".md", ".txt"}:
+    if ext in {EXT_MD, EXT_TXT}:
         return source_path.read_text(encoding="utf-8", errors="ignore")
-    if ext == ".json":
-        payload = json.loads(source_path.read_text(encoding="utf-8", errors="ignore"))
-        return f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
-    if ext == ".jsonl":
-        lines = source_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        pretty_lines = []
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                pretty_lines.append(json.dumps(json.loads(line), ensure_ascii=False))
-            except json.JSONDecodeError:
-                pretty_lines.append(line)
-        return "```jsonl\n" + "\n".join(pretty_lines) + "\n```"
-    if ext == ".csv":
-        return (
-            "```csv\n"
-            + source_path.read_text(encoding="utf-8", errors="ignore")
-            + "\n```"
-        )
 
-    if ext in {".doc", ".docx", ".pdf"}:
-        temp_md_path = source_path.with_suffix(source_path.suffix + ".pandoc.md")
-        if _convert_with_pandoc(source_path, temp_md_path):
-            content = temp_md_path.read_text(encoding="utf-8", errors="ignore")
-            temp_md_path.unlink(missing_ok=True)
-            return content
-        temp_md_path.unlink(missing_ok=True)
-        if ext == ".pdf":
-            return _extract_text_from_pdf(source_path)
-        if ext == ".docx":
-            return _extract_text_from_docx(source_path)
-        raise ValueError(
-            "DOC conversion requires Pandoc with system support for legacy .doc files"
-        )
+    markdown_builders: dict[str, Callable[[Path], str]] = {
+        EXT_JSON: _markdown_from_json,
+        EXT_JSONL: _markdown_from_jsonl,
+        EXT_CSV: _markdown_from_csv,
+    }
+    builder = markdown_builders.get(ext)
+    if builder:
+        return builder(source_path)
+
+    if ext in {EXT_DOC, EXT_DOCX, EXT_PDF}:
+        return _markdown_from_binary_document(source_path, ext)
 
     raise ValueError(f"Unsupported source extension: {ext}")
 
 
 def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
     ext = source_path.suffix.lower()
-    if ext == ".json":
-        return _records_from_json_file(source_path)
-    if ext == ".jsonl":
-        return _records_from_jsonl_file(source_path)
-    if ext == ".csv":
-        return _records_from_csv_file(source_path)
+    record_builders: dict[str, Callable[[Path], List[Dict[str, str]]]] = {
+        EXT_JSON: _records_from_json_file,
+        EXT_JSONL: _records_from_jsonl_file,
+        EXT_CSV: _records_from_csv_file,
+    }
+    builder = record_builders.get(ext)
+    if builder:
+        return builder(source_path)
     text = _source_to_markdown(source_path)
     return _records_from_text(text)
+
+
+def _write_target_markdown(out_file: TextIO, records: List[Dict[str, str]]) -> None:
+    out_file.write(_serialize_records_to_markdown(records))
+
+
+def _write_target_text(out_file: TextIO, records: List[Dict[str, str]]) -> None:
+    lines: list[str] = []
+    for item in records:
+        lines.append(item.get("instruction", ""))
+        lines.append(item.get("output", ""))
+        lines.append("")
+    out_file.write("\n".join(lines).strip() + "\n")
+
+
+def _write_target_json(out_file: TextIO, records: List[Dict[str, str]]) -> None:
+    out_file.write(json.dumps(records, ensure_ascii=False, indent=2))
+
+
+def _write_target_jsonl(out_file: TextIO, records: List[Dict[str, str]]) -> None:
+    jsonl_text = (
+        "\n".join(json.dumps(item, ensure_ascii=False) for item in records) + "\n"
+    )
+    out_file.write(jsonl_text)
+
+
+def _write_target_csv(out_file: TextIO, records: List[Dict[str, str]]) -> None:
+    import csv
+
+    writer = csv.DictWriter(out_file, fieldnames=["instruction", "input", "output"])
+    writer.writeheader()
+    for item in records:
+        writer.writerow(
+            {
+                "instruction": item.get("instruction", ""),
+                "input": item.get("input", ""),
+                "output": item.get("output", ""),
+            }
+        )
 
 
 def _write_records_as_target(
@@ -2309,19 +2377,31 @@ def _write_records_as_target(
 ) -> Path:
     from venom_core.config import SETTINGS
 
+    default_target_extensions = {
+        "md": EXT_MD,
+        "txt": EXT_TXT,
+        "json": EXT_JSON,
+        "jsonl": EXT_JSONL,
+        "csv": EXT_CSV,
+    }
     target_extensions = getattr(
         SETTINGS,
         "ACADEMY_CONVERSION_TARGET_EXTENSIONS",
-        {
-            "md": ".md",
-            "txt": ".txt",
-            "json": ".json",
-            "jsonl": ".jsonl",
-            "csv": ".csv",
-        },
+        default_target_extensions,
     )
     ext = target_extensions.get(target_format)
     if not ext:
+        raise ValueError(f"Unsupported target format: {target_format}")
+
+    target_writers: dict[str, Callable[[TextIO, List[Dict[str, str]]], None]] = {
+        "md": _write_target_markdown,
+        "txt": _write_target_text,
+        "json": _write_target_json,
+        "jsonl": _write_target_jsonl,
+        "csv": _write_target_csv,
+    }
+    writer = target_writers.get(target_format)
+    if not writer:
         raise ValueError(f"Unsupported target format: {target_format}")
 
     output_dir = _get_conversion_output_dir()
@@ -2341,42 +2421,7 @@ def _write_records_as_target(
         raise ValueError("Conversion output path escapes configured output directory")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as out_file:
-            if target_format == "md":
-                out_file.write(_serialize_records_to_markdown(records))
-            elif target_format == "txt":
-                lines: List[str] = []
-                for item in records:
-                    lines.append(item.get("instruction", ""))
-                    lines.append(item.get("output", ""))
-                    lines.append("")
-                out_file.write("\n".join(lines).strip() + "\n")
-            elif target_format == "json":
-                out_file.write(json.dumps(records, ensure_ascii=False, indent=2))
-            elif target_format == "jsonl":
-                jsonl_text = (
-                    "\n".join(json.dumps(item, ensure_ascii=False) for item in records)
-                    + "\n"
-                )
-                out_file.write(jsonl_text)
-            elif target_format == "csv":
-                import csv
-
-                writer = csv.DictWriter(
-                    out_file, fieldnames=["instruction", "input", "output"]
-                )
-                writer.writeheader()
-                for item in records:
-                    writer.writerow(
-                        {
-                            "instruction": item.get("instruction", ""),
-                            "input": item.get("input", ""),
-                            "output": item.get("output", ""),
-                        }
-                    )
-            else:
-                raise AssertionError(
-                    "Unreachable: target format should be validated above"
-                )
+            writer(out_file, records)
         return safe_output_path
     except Exception:
         try:
@@ -2467,7 +2512,12 @@ async def list_dataset_conversion_files(req: Request) -> DatasetConversionListRe
     )
 
 
-@router.post("/dataset/conversion/upload")
+@router.post(
+    "/dataset/conversion/upload",
+    responses={
+        400: RESP_400_BAD_REQUEST,
+    },
+)
 async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
     try:
         _ensure_academy_enabled()
@@ -2547,6 +2597,10 @@ async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
 
 @router.post(
     "/dataset/conversion/files/{file_id}/convert",
+    responses={
+        400: RESP_400_BAD_REQUEST,
+        404: RESP_404_FILE_NOT_FOUND,
+    },
 )
 async def convert_dataset_file(
     file_id: str,
@@ -2633,6 +2687,10 @@ async def convert_dataset_file(
 
 @router.post(
     "/dataset/conversion/files/{file_id}/training-selection",
+    responses={
+        400: RESP_400_BAD_REQUEST,
+        404: RESP_404_FILE_NOT_FOUND,
+    },
 )
 async def set_dataset_conversion_training_selection(
     file_id: str,
@@ -2667,6 +2725,10 @@ async def set_dataset_conversion_training_selection(
 
 @router.get(
     "/dataset/conversion/files/{file_id}/preview",
+    responses={
+        400: RESP_400_BAD_REQUEST,
+        404: RESP_404_FILE_NOT_FOUND,
+    },
 )
 async def preview_dataset_conversion_file(
     file_id: str,
@@ -2707,7 +2769,13 @@ async def preview_dataset_conversion_file(
     )
 
 
-@router.get("/dataset/conversion/files/{file_id}/download")
+@router.get(
+    "/dataset/conversion/files/{file_id}/download",
+    responses={
+        400: RESP_400_BAD_REQUEST,
+        404: RESP_404_FILE_NOT_FOUND,
+    },
+)
 async def download_dataset_conversion_file(
     file_id: str,
     req: Request,

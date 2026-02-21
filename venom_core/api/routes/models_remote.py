@@ -19,6 +19,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/models/remote", tags=["models", "remote"])
+PROVIDER_NAME_DESCRIPTION = "Provider name"
 
 # ============================================================================
 # Pydantic Response Models
@@ -28,7 +29,9 @@ router = APIRouter(prefix="/api/v1/models/remote", tags=["models", "remote"])
 class RemoteProviderStatus(BaseModel):
     """Remote provider status information."""
 
-    provider: str = Field(..., description="Provider name (openai, google)")
+    provider: str = Field(
+        ..., description=f"{PROVIDER_NAME_DESCRIPTION} (openai, google)"
+    )
     status: str = Field(
         ...,
         description="Status: configured, reachable, degraded, disabled",
@@ -45,7 +48,7 @@ class RemoteModelInfo(BaseModel):
 
     id: str = Field(..., description="Model ID")
     name: str = Field(..., description="Model display name")
-    provider: str = Field(..., description="Provider name")
+    provider: str = Field(..., description=PROVIDER_NAME_DESCRIPTION)
     capabilities: list[str] = Field(
         default_factory=list, description="Model capabilities"
     )
@@ -58,7 +61,7 @@ class ServiceModelBinding(BaseModel):
     service_id: str = Field(..., description="Service identifier")
     endpoint: str = Field(..., description="Endpoint path")
     http_method: str = Field(..., description="HTTP method")
-    provider: str = Field(..., description="Provider name")
+    provider: str = Field(..., description=PROVIDER_NAME_DESCRIPTION)
     model: str = Field(..., description="Model name")
     routing_mode: str = Field(..., description="Routing mode: direct, fallback, hybrid")
     fallback_order: list[str] | None = Field(
@@ -70,7 +73,7 @@ class ServiceModelBinding(BaseModel):
 class ValidationRequest(BaseModel):
     """Request to validate provider/model connection."""
 
-    provider: str = Field(..., description="Provider name to validate")
+    provider: str = Field(..., description=f"{PROVIDER_NAME_DESCRIPTION} to validate")
     model: str | None = Field(default=None, description="Optional model name")
 
 
@@ -626,9 +629,16 @@ async def get_remote_providers() -> dict[str, Any]:
     }
 
 
-@router.get("/catalog")
+@router.get(
+    "/catalog",
+    responses={
+        400: {"description": "Invalid provider. Allowed values: openai, google."}
+    },
+)
 async def get_remote_catalog(
-    provider: Annotated[str, Query(..., description="Provider name: openai or google")],
+    provider: Annotated[
+        str, Query(..., description=f"{PROVIDER_NAME_DESCRIPTION}: openai or google")
+    ],
 ) -> dict[str, Any]:
     """
     Get catalog of remote models for a specific provider.
@@ -679,7 +689,12 @@ async def get_connectivity_map() -> dict[str, Any]:
     }
 
 
-@router.post("/validate")
+@router.post(
+    "/validate",
+    responses={
+        400: {"description": "Invalid provider. Allowed values: openai, google."}
+    },
+)
 async def validate_provider(request: ValidationRequest) -> dict[str, Any]:
     """
     Validate connection for a specific provider/model.

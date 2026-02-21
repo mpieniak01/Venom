@@ -9,7 +9,7 @@ import httpx
 from venom_core.utils.logger import get_logger
 
 from .controller import TrafficController, get_traffic_controller
-from .retry_policy import is_retriable_http_error
+from .retry_policy import RetryPolicy, is_retriable_http_error
 
 logger = get_logger(__name__)
 
@@ -95,19 +95,7 @@ class TrafficControlledHttpClient:
             method=method,
         )
         if not allowed:
-            if reason == "circuit_breaker_open":
-                raise RuntimeError(
-                    f"Circuit breaker open for provider '{self.provider}'"
-                )
-            elif reason == "degraded_mode_active":
-                raise RuntimeError("Traffic control is in degraded mode")
-            elif reason == "global_request_cap_exceeded":
-                raise RuntimeError("Global outbound request cap exceeded")
-            elif reason == "rate_limit_exceeded":
-                raise RuntimeError(
-                    f"Rate limit exceeded for provider '{self.provider}'. "
-                    f"Retry after {wait_seconds:.1f} seconds"
-                )
+            self._raise_if_blocked(reason, wait_seconds)
 
         # Get retry policy for the same scope as rate limiting (provider + method)
         scope = self.traffic_controller._build_outbound_scope(self.provider, method)
@@ -132,21 +120,12 @@ class TrafficControlledHttpClient:
             ),
         )
 
-        # Record response
         if response:
             self.traffic_controller.record_outbound_response(
                 self.provider, response.status_code, method=method
             )
             return response
-        else:
-            # Failed after retries
-            status_code = None
-            if hasattr(error, "response") and hasattr(error.response, "status_code"):
-                status_code = error.response.status_code
-            self.traffic_controller.record_outbound_response(
-                self.provider, status_code, error, method=method
-            )
-            raise error
+        self._record_outbound_error_and_raise(error, method=method)
 
     async def arequest(
         self,
@@ -175,26 +154,14 @@ class TrafficControlledHttpClient:
             method=method,
         )
         if not allowed:
-            if reason == "circuit_breaker_open":
-                raise RuntimeError(
-                    f"Circuit breaker open for provider '{self.provider}'"
-                )
-            elif reason == "degraded_mode_active":
-                raise RuntimeError("Traffic control is in degraded mode")
-            elif reason == "global_request_cap_exceeded":
-                raise RuntimeError("Global outbound request cap exceeded")
-            elif reason == "rate_limit_exceeded":
-                raise RuntimeError(
-                    f"Rate limit exceeded for provider '{self.provider}'. "
-                    f"Retry after {wait_seconds:.1f} seconds"
-                )
+            self._raise_if_blocked(reason, wait_seconds)
 
         # Get retry policy for the same scope as rate limiting (provider + method)
         scope = self.traffic_controller._build_outbound_scope(self.provider, method)
         policy = self.traffic_controller._get_or_create_outbound_policy(scope)
 
         # Execute with retry (note: async version needs manual implementation)
-        last_exception = None
+        last_exception: Exception | None = None
         for attempt in range(policy.retry_policy.max_attempts):
             try:
                 response = await self._async_client.request(method, url, **kwargs)
@@ -203,45 +170,79 @@ class TrafficControlledHttpClient:
                     self.provider, response.status_code, method=method
                 )
                 return response
-            except Exception as e:
-                last_exception = e
-
-                # Check if retriable
-                if not is_retriable_http_error(e):
-                    # Non-retriable error
-                    status_code = None
-                    if hasattr(e, "response") and hasattr(e.response, "status_code"):
-                        status_code = e.response.status_code
-                    self.traffic_controller.record_outbound_response(
-                        self.provider, status_code, e, method=method
-                    )
-                    raise
-
-                # Last attempt?
+            except Exception as exc:
+                last_exception = exc
+                if not is_retriable_http_error(exc):
+                    self._record_outbound_error_and_raise(exc, method=method)
                 if attempt >= policy.retry_policy.max_attempts - 1:
                     break
+                await self._sleep_before_retry(
+                    attempt=attempt,
+                    policy=policy.retry_policy,
+                    method=method,
+                    url=url,
+                    error=exc,
+                )
 
-                # Calculate delay and wait
-                import asyncio
+        if last_exception is None:
+            raise RuntimeError("Retry exhausted without captured exception")
+        self._record_outbound_error_and_raise(last_exception, method=method)
 
-                delay = policy.retry_policy.calculate_delay(attempt)
-                if self.traffic_controller.config.enable_logging:
-                    logger.warning(
-                        f"Retry {attempt + 1} for {self.provider} {method} {url}: {e}. "
-                        f"Waiting {delay:.1f}s"
-                    )
-                await asyncio.sleep(delay)
+    def _raise_if_blocked(
+        self, reason: Optional[str], wait_seconds: Optional[float]
+    ) -> None:
+        if reason == "circuit_breaker_open":
+            raise RuntimeError(f"Circuit breaker open for provider '{self.provider}'")
+        if reason == "degraded_mode_active":
+            raise RuntimeError("Traffic control is in degraded mode")
+        if reason == "global_request_cap_exceeded":
+            raise RuntimeError("Global outbound request cap exceeded")
+        if reason == "rate_limit_exceeded":
+            wait = 0.0 if wait_seconds is None else wait_seconds
+            raise RuntimeError(
+                f"Rate limit exceeded for provider '{self.provider}'. "
+                f"Retry after {wait:.1f} seconds"
+            )
+        raise RuntimeError("Outbound request blocked by traffic control")
 
-        # Failed after all retries
-        status_code = None
-        if hasattr(last_exception, "response") and hasattr(
-            last_exception.response, "status_code"
-        ):
-            status_code = last_exception.response.status_code
+    @staticmethod
+    def _extract_status_code(error: Exception) -> Optional[int]:
+        response = getattr(error, "response", None)
+        status_code = getattr(response, "status_code", None)
+        return status_code if isinstance(status_code, int) else None
+
+    def _record_outbound_error_and_raise(
+        self, error: Exception, *, method: Optional[str]
+    ) -> None:
+        status_code = self._extract_status_code(error)
         self.traffic_controller.record_outbound_response(
-            self.provider, status_code, last_exception, method=method
+            self.provider, status_code, error, method=method
         )
-        raise last_exception
+        raise error
+
+    async def _sleep_before_retry(
+        self,
+        *,
+        attempt: int,
+        policy: RetryPolicy,
+        method: str,
+        url: str,
+        error: Exception,
+    ) -> None:
+        import asyncio
+
+        delay = policy.calculate_delay(attempt)
+        if self.traffic_controller.config.enable_logging:
+            logger.warning(
+                "Retry %s for %s %s %s: %s. Waiting %.1fs",
+                attempt + 1,
+                self.provider,
+                method,
+                url,
+                error,
+                delay,
+            )
+        await asyncio.sleep(delay)
 
     def get(self, url: str, **kwargs: Any) -> httpx.Response:
         """GET request."""

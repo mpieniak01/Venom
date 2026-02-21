@@ -278,14 +278,18 @@ export function AuditPanel() {
                       {formatFixedDateTime(row.timestamp, noDataLabel)}
                     </span>
                     <span className="shrink-0 font-semibold uppercase text-zinc-300">{row.action}</span>
-                    <span className="shrink-0 text-zinc-500">{truncateMiddle(row.apiChannel, 22)}</span>
                     <span className="shrink-0 text-zinc-500">{truncateMiddle(row.source, 16)}</span>
                     <span className="shrink-0 text-zinc-500">{truncateMiddle(row.actor, 18)}</span>
                     <span className="min-w-0 truncate text-zinc-500">{truncateMiddle(row.context, 18)}</span>
                     <span className="shrink-0 text-zinc-500">{truncateMiddle(row.idRef, 14)}</span>
-                    <Badge tone={row.outcome} className="ml-auto px-2 py-0.5 text-[11px]">
-                      {toToneBadgeLabel(row.status)}
-                    </Badge>
+                    <div className="ml-auto flex shrink-0 items-center gap-2">
+                      <Badge tone="neutral" className="px-2 py-0.5 text-[11px]" title={row.apiChannel}>
+                        {truncateMiddle(row.apiChannel, 22)}
+                      </Badge>
+                      <Badge tone={row.outcome} className="px-2 py-0.5 text-[11px]">
+                        {toToneBadgeLabel(row.status)}
+                      </Badge>
+                    </div>
                   </div>
                 </li>
               ))}

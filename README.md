@@ -383,14 +383,14 @@ make check-new-code-coverage
 ```
 
 ## Roadmap
-### ✅ v1.6.0 (current)
+### ✅ v1.5
 - [x] v1.4 features (planning, knowledge, memory, integrations).
 - [x] The Academy (LoRA/QLoRA).
 - [x] Workflow Control Plane.
 - [x] Provider Governance.
 - [x] Academy Hardening.
 
-### ✅ v1.6 (milestone release)
+### ✅ v1.6 (current)
 - [x] API contract hardening (Wave-1 + Wave-2 MVP) with OpenAPI/FE synchronization.
 - [x] ONNX Runtime integrated as the third local LLM engine (3-stack: Ollama + vLLM + ONNX).
 - [x] Runtime profiles and installation strategy update (minimal/API-first + optional local stacks).

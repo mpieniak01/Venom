@@ -388,14 +388,14 @@ make check-new-code-coverage
 
 
 ## Mapa drogowa
-### ✅ v1.6.0 (obecnie)
+### ✅ v1.5
 - [x] Funkcje v1.4 (planowanie, wiedza, pamięć, integracje).
 - [x] The Academy (LoRA/QLoRA).
 - [x] Workflow Control Plane.
 - [x] Provider Governance.
 - [x] Academy Hardening.
 
-### ✅ v1.6 (wydanie kamieni milowych)
+### ✅ v1.6 (obecna)
 - [x] Utwardzenie kontraktu API (Wave-1 + Wave-2 MVP) wraz z synchronizacją OpenAPI/FE.
 - [x] Integracja ONNX Runtime jako trzeciego lokalnego silnika LLM (3-stack: Ollama + vLLM + ONNX).
 - [x] Aktualizacja strategii profili runtime i instalacji (minimum API-first + opcjonalne stosy lokalne).

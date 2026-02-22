@@ -63,8 +63,9 @@ TRAFFIC_CONTROL_LOG_DIR=/tmp/venom/traffic-control
 
 Dla każdego nowego connectora/modułu, który wywołuje zewnętrzne API:
 
-1. Używaj `TrafficControlledHttpClient` z:
-   - `venom_core.infrastructure.traffic_control.http_client`
+1. Używaj `TrafficControlledHttpClient` przez import kanoniczny:
+   - `from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient`
+   - import bezpośredni z `...traffic_control.http_client` jest dopuszczalny, ale w projekcie preferujemy re-export z paczki `traffic_control`.
 2. Ustaw stabilny klucz providera (np. `openai`, `github`, `my_module_api`).
 3. Nie wywołuj zewnętrznych API bezpośrednio przez `httpx/aiohttp/requests` w ścieżkach core.
 4. Healthchecki/benchmarki/probe localhost trzymaj poza ścieżką zewnętrznego outbound.
@@ -73,7 +74,7 @@ Dla każdego nowego connectora/modułu, który wywołuje zewnętrzne API:
 
 Synchronicznie:
 ```python
-from venom_core.infrastructure.traffic_control.http_client import TrafficControlledHttpClient
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 
 with TrafficControlledHttpClient(provider="my_module_api", timeout=20.0) as client:
     resp = client.get("https://api.example.com/v1/items")
@@ -82,7 +83,7 @@ with TrafficControlledHttpClient(provider="my_module_api", timeout=20.0) as clie
 
 Asynchronicznie:
 ```python
-from venom_core.infrastructure.traffic_control.http_client import TrafficControlledHttpClient
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 
 async with TrafficControlledHttpClient(provider="my_module_api", timeout=20.0) as client:
     resp = await client.aget("https://api.example.com/v1/items")
@@ -91,7 +92,7 @@ async with TrafficControlledHttpClient(provider="my_module_api", timeout=20.0) a
 
 Streaming (SSE/chunked):
 ```python
-from venom_core.infrastructure.traffic_control.http_client import TrafficControlledHttpClient
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 
 async with TrafficControlledHttpClient(provider="my_module_api", timeout=None) as client:
     async with client.astream("POST", "https://api.example.com/v1/stream", json=payload) as resp:

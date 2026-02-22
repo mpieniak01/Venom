@@ -120,20 +120,15 @@ async def test_check_http_service_online(service_monitor):
         endpoint=TEST_EXAMPLE_HTTP,
     )
 
-    # Mock aiohttp session
-    with patch("aiohttp.ClientSession") as mock_session_class:
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.__aenter__.return_value = mock_response
-        mock_response.__aexit__.return_value = None
-
-        mock_session = MagicMock()
-        mock_session.get.return_value = mock_response
-        mock_session.__aenter__.return_value = mock_session
-        mock_session.__aexit__.return_value = None
-
-        mock_session_class.return_value = mock_session
-
+    with patch(
+        "venom_core.core.service_monitor.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
         result = await service_monitor._check_service_health(test_service)
 
         assert result.status == ServiceStatus.ONLINE
@@ -150,15 +145,13 @@ async def test_check_http_service_offline(service_monitor):
         endpoint=TEST_EXAMPLE_HTTP,
     )
 
-    # Mock aiohttp session - symuluj błąd połączenia
-    with patch("aiohttp.ClientSession") as mock_session_class:
-        mock_session = MagicMock()
-        mock_session.get.side_effect = Exception("Connection refused")
-        mock_session.__aenter__.return_value = mock_session
-        mock_session.__aexit__.return_value = None
-
-        mock_session_class.return_value = mock_session
-
+    with patch(
+        "venom_core.core.service_monitor.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
         result = await service_monitor._check_service_health(test_service)
 
         assert result.status == ServiceStatus.OFFLINE

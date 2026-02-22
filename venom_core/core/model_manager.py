@@ -15,6 +15,7 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 import psutil
 
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import apply_http_policy_to_url, build_http_url
 
@@ -1149,8 +1150,14 @@ PARAMETER top_k 40
 
         # 2. Pobieranie modeli z Ollama API
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(self._resolve_ollama_tags_url())
+            async with TrafficControlledHttpClient(
+                provider="ollama",
+                timeout=10.0,
+            ) as client:
+                response = await client.aget(
+                    self._resolve_ollama_tags_url(),
+                    raise_for_status=False,
+                )
                 if response.status_code == 200:
                     ollama_data = response.json()
                     entries = self._collect_ollama_entries(

@@ -14,6 +14,7 @@ import httpx
 from PIL import Image
 
 from venom_core.config import SETTINGS
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -130,13 +131,15 @@ Przykład odpowiedzi:
                 "temperature": 0.1,
             }
 
-            async with httpx.AsyncClient(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
-                response = await client.post(
+            async with TrafficControlledHttpClient(
+                provider="openai",
+                timeout=SETTINGS.OPENAI_API_TIMEOUT,
+            ) as client:
+                response = await client.apost(
                     SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT,
                     headers=headers,
                     json=payload,
                 )
-                response.raise_for_status()
                 result = response.json()
                 answer = result["choices"][0]["message"]["content"].strip()
 
@@ -185,6 +188,9 @@ Przykład odpowiedzi:
                     logger.warning(f"Nie można sparsować współrzędnych: {answer}")
                     return None
 
+        except httpx.HTTPError as e:
+            logger.error(f"Błąd HTTP podczas lokalizacji przez OpenAI: {e}")
+            return None
         except Exception as e:
             logger.error(f"Błąd podczas lokalizacji przez OpenAI: {e}")
             return None

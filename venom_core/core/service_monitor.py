@@ -15,10 +15,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-import aiohttp
 import psutil
 
 from venom_core.config import SETTINGS
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover - optional dependency
@@ -345,19 +345,31 @@ class ServiceHealthMonitor:
 
         # Ollama/vLLM nie wymagają autoryzacji domyślnie
 
-        timeout = aiohttp.ClientTimeout(total=self.check_timeout)
+        provider = "service_monitor"
+        lowered_name = service.name.lower()
+        if "openai" in lowered_name:
+            provider = "openai"
+        elif "github" in lowered_name:
+            provider = "github"
 
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(service.endpoint, headers=headers) as response:
-                if response.status < 400:
-                    service.status = ServiceStatus.ONLINE
-                    service.error_message = None
-                elif response.status < 500:
-                    service.status = ServiceStatus.DEGRADED
-                    service.error_message = f"HTTP {response.status}"
-                else:
-                    service.status = ServiceStatus.OFFLINE
-                    service.error_message = f"HTTP {response.status}"
+        async with TrafficControlledHttpClient(
+            provider=provider,
+            timeout=self.check_timeout,
+        ) as client:
+            response = await client.aget(
+                service.endpoint,
+                headers=headers,
+                raise_for_status=False,
+            )
+            if response.status_code < 400:
+                service.status = ServiceStatus.ONLINE
+                service.error_message = None
+            elif response.status_code < 500:
+                service.status = ServiceStatus.DEGRADED
+                service.error_message = f"HTTP {response.status_code}"
+            else:
+                service.status = ServiceStatus.OFFLINE
+                service.error_message = f"HTTP {response.status_code}"
 
     async def _check_docker_service(self, service: ServiceInfo):
         """

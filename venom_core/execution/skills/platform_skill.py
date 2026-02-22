@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from github import Github
 
 from venom_core.config import SETTINGS
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -388,9 +389,11 @@ class PlatformSkill:
                 payload = {"text": message}
 
             # Wyślij request
-            async with httpx.AsyncClient() as client:
-                response = await client.post(webhook_url, json=payload, timeout=10.0)
-                response.raise_for_status()
+            async with TrafficControlledHttpClient(
+                provider=f"{channel.lower()}_webhook",
+                timeout=10.0,
+            ) as client:
+                await client.apost(webhook_url, json=payload)
 
             result = f"✅ Wysłano powiadomienie na {channel}"
             logger.info(result)

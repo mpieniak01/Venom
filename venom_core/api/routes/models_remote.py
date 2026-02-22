@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from venom_core.config import SETTINGS
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.logger import get_logger
 
@@ -312,10 +313,12 @@ async def _fetch_openai_models_catalog_live() -> list[RemoteModelInfo]:
     if not api_key:
         return []
     headers = {"Authorization": f"Bearer {api_key}"}
-    timeout = httpx.Timeout(_remote_timeout_seconds())
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.get(_openai_models_url(), headers=headers)
-        response.raise_for_status()
+    timeout = _remote_timeout_seconds()
+    async with TrafficControlledHttpClient(
+        provider="openai",
+        timeout=timeout,
+    ) as client:
+        response = await client.aget(_openai_models_url(), headers=headers)
         payload = response.json()
     raw_items = payload.get("data") if isinstance(payload, dict) else []
     items = raw_items if isinstance(raw_items, list) else []
@@ -341,10 +344,12 @@ async def _fetch_google_models_catalog_live() -> list[RemoteModelInfo]:
     api_key = (SETTINGS.GOOGLE_API_KEY or "").strip()
     if not api_key:
         return []
-    timeout = httpx.Timeout(_remote_timeout_seconds())
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.get(_google_models_url(), params={"key": api_key})
-        response.raise_for_status()
+    timeout = _remote_timeout_seconds()
+    async with TrafficControlledHttpClient(
+        provider="google",
+        timeout=timeout,
+    ) as client:
+        response = await client.aget(_google_models_url(), params={"key": api_key})
         payload = response.json()
     raw_items = payload.get("models") if isinstance(payload, dict) else []
     items = raw_items if isinstance(raw_items, list) else []
@@ -375,11 +380,18 @@ async def _validate_openai_connection(
         return False, "OPENAI_API_KEY not configured", None
     url = _openai_model_url(model) if model else _openai_models_url()
     headers = {"Authorization": f"Bearer {api_key}"}
-    timeout = httpx.Timeout(_remote_timeout_seconds())
+    timeout = _remote_timeout_seconds()
     start = time.perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url, headers=headers)
+        async with TrafficControlledHttpClient(
+            provider="openai",
+            timeout=timeout,
+        ) as client:
+            response = await client.aget(
+                url,
+                headers=headers,
+                raise_for_status=False,
+            )
         elapsed_ms = (time.perf_counter() - start) * 1000.0
         if response.status_code == 200:
             return True, "OpenAI API reachable", elapsed_ms
@@ -392,6 +404,9 @@ async def _validate_openai_connection(
             f"OpenAI validation failed (HTTP {response.status_code})",
             elapsed_ms,
         )
+    except httpx.HTTPError as exc:
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        return False, f"OpenAI validation error: {exc}", elapsed_ms
     except Exception as exc:
         elapsed_ms = (time.perf_counter() - start) * 1000.0
         return False, f"OpenAI validation error: {exc}", elapsed_ms
@@ -404,11 +419,18 @@ async def _validate_google_connection(
     if not api_key:
         return False, "GOOGLE_API_KEY not configured", None
     url = _google_model_url(model) if model else _google_models_url()
-    timeout = httpx.Timeout(_remote_timeout_seconds())
+    timeout = _remote_timeout_seconds()
     start = time.perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url, params={"key": api_key})
+        async with TrafficControlledHttpClient(
+            provider="google",
+            timeout=timeout,
+        ) as client:
+            response = await client.aget(
+                url,
+                params={"key": api_key},
+                raise_for_status=False,
+            )
         elapsed_ms = (time.perf_counter() - start) * 1000.0
         if response.status_code == 200:
             return True, "Google API reachable", elapsed_ms
@@ -421,6 +443,9 @@ async def _validate_google_connection(
             f"Google validation failed (HTTP {response.status_code})",
             elapsed_ms,
         )
+    except httpx.HTTPError as exc:
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        return False, f"Google validation error: {exc}", elapsed_ms
     except Exception as exc:
         elapsed_ms = (time.perf_counter() - start) * 1000.0
         return False, f"Google validation error: {exc}", elapsed_ms

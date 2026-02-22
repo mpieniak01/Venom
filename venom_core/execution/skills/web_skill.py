@@ -4,9 +4,12 @@ from importlib import import_module
 from typing import Annotated, Any, Optional
 
 import httpx
+from httpx import HTTPStatusError as HttpxHTTPStatusError
+from httpx import TimeoutException as HttpxTimeoutException
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.helpers import extract_secret_value
 from venom_core.utils.logger import get_logger
 
@@ -45,6 +48,8 @@ if DDGS is None:  # pragma: no cover - fallback zależny od środowiska
         DDGS = None
 
 logger = get_logger(__name__)
+# Utrzymujemy referencję modułu dla testów patchujących `web_skill.httpx`.
+HTTPX_MODULE = httpx
 
 # Staramy się opcjonalnie załadować TavilyClient aby testy mogły go mockować
 _ImportedTavilyClient: Any = None
@@ -139,8 +144,8 @@ class WebSearchSkill:
                 "Doinstaluj zależności aby użyć fallback scrape_text."
             )
 
-        response = httpx.get(url, timeout=10, follow_redirects=True)
-        response.raise_for_status()
+        with TrafficControlledHttpClient(provider="web_scrape", timeout=10.0) as client:
+            response = client.get(url, follow_redirects=True)
 
         soup = BeautifulSoup(response.content, "html.parser")
         for script in soup(["script", "style", "nav", "footer", "header"]):
@@ -298,10 +303,10 @@ class WebSearchSkill:
             )
             return self._scrape_with_beautifulsoup(url)
 
-        except httpx.TimeoutException:
+        except HttpxTimeoutException:
             logger.error(f"Timeout podczas pobierania {url}")
             return f"Przekroczono limit czasu podczas pobierania {url}"
-        except httpx.HTTPStatusError as e:
+        except HttpxHTTPStatusError as e:
             logger.error(f"Błąd HTTP podczas pobierania {url}: {e}")
             return f"Błąd HTTP podczas pobierania {url}: {e.response.status_code}"
         except Exception as e:

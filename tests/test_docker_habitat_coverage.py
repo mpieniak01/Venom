@@ -196,6 +196,74 @@ def test_create_container_retries_on_name_conflict(monkeypatch, tmp_path):
     assert run.call_count == 2
 
 
+def test_create_container_conflict_reuses_existing_container(monkeypatch, tmp_path):
+    class ApiError(Exception):
+        def __init__(self, message: str):
+            super().__init__(message)
+            self.status_code = 409
+
+    monkeypatch.setattr(docker_habitat_mod, "APIError", ApiError)
+    monkeypatch.setattr(docker_habitat_mod.SETTINGS, "DOCKER_IMAGE_NAME", "venom-image")
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir(parents=True)
+    existing = FakeContainer(
+        status="exited",
+        mounts=[
+            {
+                "Destination": docker_habitat_mod.CONTAINER_WORKDIR,
+                "Source": str(workspace.resolve()),
+            }
+        ],
+    )
+    run = MagicMock(side_effect=ApiError("409 client error"))
+    client = SimpleNamespace(
+        images=SimpleNamespace(get=MagicMock(), pull=MagicMock()),
+        containers=SimpleNamespace(run=run, get=MagicMock(return_value=existing)),
+    )
+    habitat = _new_habitat_with_client(client)
+
+    result = habitat._create_container(workspace_path=workspace)
+
+    assert result is existing
+    assert existing.start_calls == 1
+    assert run.call_count == 1
+
+
+def test_create_container_conflict_retries_exhausted(monkeypatch, tmp_path):
+    class ApiError(Exception):
+        def __init__(self, message: str):
+            super().__init__(message)
+            self.status_code = 409
+
+    class NotFoundError(Exception):
+        pass
+
+    monkeypatch.setattr(docker_habitat_mod, "APIError", ApiError)
+    monkeypatch.setattr(docker_habitat_mod, "NotFound", NotFoundError)
+    monkeypatch.setattr(docker_habitat_mod.SETTINGS, "DOCKER_IMAGE_NAME", "venom-image")
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir(parents=True)
+    run = MagicMock(
+        side_effect=[ApiError("409 client error"), ApiError("409 client error")]
+    )
+    client = SimpleNamespace(
+        images=SimpleNamespace(get=MagicMock(), pull=MagicMock()),
+        containers=SimpleNamespace(run=run, get=MagicMock(side_effect=NotFoundError())),
+    )
+    habitat = _new_habitat_with_client(client)
+    habitat._remove_container_by_name_if_exists = MagicMock()
+
+    with pytest.raises(RuntimeError, match="Wyczerpano limit retry"):
+        habitat._create_container(
+            workspace_path=workspace,
+            conflict_retries_remaining=1,
+        )
+
+    assert run.call_count == 2
+
+
 def test_create_container_raises_runtime_error_on_non_conflict_api_error(
     monkeypatch, tmp_path
 ):

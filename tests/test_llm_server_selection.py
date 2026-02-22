@@ -509,3 +509,60 @@ async def test_get_llm_servers_excludes_not_installed_runtime(monkeypatch):
         assert names == ["ollama"]
     finally:
         _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_set_active_llm_server_releases_onnx_caches_when_switching_to_ollama(
+    monkeypatch,
+):
+    config = {
+        "LAST_MODEL_OLLAMA": "phi3:mini",
+        "PREVIOUS_MODEL_OLLAMA": "",
+        "LLM_MODEL_NAME": "phi3:mini",
+    }
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+
+    controller = DummyController(
+        [
+            {
+                "name": "ollama",
+                "supports": {"start": True, "stop": True},
+                "endpoint": "",
+            },
+            {
+                "name": "onnx",
+                "supports": {"start": False, "stop": False},
+                "endpoint": None,
+            },
+        ]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps,
+        "_model_manager",
+        DummyModelManager([{"name": "phi3:mini", "provider": "ollama"}]),
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(system_routes, "_installed_local_servers", lambda: {"ollama"})
+
+    releases: list[bool] = []
+    monkeypatch.setattr(
+        system_routes, "_release_onnx_runtime_caches", lambda: releases.append(True)
+    )
+
+    original = _snapshot_settings()
+    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.ACTIVE_LLM_SERVER = "onnx"
+    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    try:
+        request = system_routes.ActiveLlmServerRequest(server_name="ollama")
+        response = await system_routes.set_active_llm_server(request)
+        assert response["status"] == "success"
+        assert releases == [True]
+    finally:
+        _restore_settings(original)

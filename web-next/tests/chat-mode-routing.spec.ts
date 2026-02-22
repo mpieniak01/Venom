@@ -19,7 +19,14 @@ async function selectChatMode(page: Page, label: string) {
     const option = page.getByTestId(`chat-mode-option-${modeValue}`);
     await option.waitFor({ state: "visible", timeout: 10000 });
     await option.scrollIntoViewIfNeeded();
-    await option.click({ force: true });
+    try {
+      await option.click({ timeout: 3000 });
+    } catch {
+      // Fallback for flaky viewport clipping in dropdown portals.
+      await option.evaluate((element) => {
+        (element as HTMLButtonElement).click();
+      });
+    }
     try {
       await expect(trigger).toContainText(expected, { timeout: 5000 });
       return;

@@ -79,6 +79,35 @@ def _get_onnx_executor() -> ProcessPoolExecutor:
     return _ONNX_EXECUTOR
 
 
+def shutdown_onnx_task_executor(*, wait: bool = False) -> None:
+    """Shutdown ONNX process pool so worker process releases runtime memory."""
+    global _ONNX_EXECUTOR
+    executor = _ONNX_EXECUTOR
+    _ONNX_EXECUTOR = None
+    if executor is None:
+        return
+    try:
+        executor.shutdown(wait=wait, cancel_futures=True)
+    except TypeError:
+        # Python compatibility fallback for older executor API variants.
+        executor.shutdown(wait=wait)
+    except Exception:
+        logger.warning("Failed to shutdown ONNX executor cleanly.", exc_info=True)
+
+
+def release_onnx_task_runtime(*, wait: bool = False) -> None:
+    """Best-effort cleanup for ONNX task runtime (pool + in-process fallback client)."""
+    global _ONNX_WORKER_CLIENT
+    client = _ONNX_WORKER_CLIENT
+    _ONNX_WORKER_CLIENT = None
+    if client is not None:
+        try:
+            client.close()
+        except Exception:
+            logger.warning("Failed to close ONNX worker client cleanly.", exc_info=True)
+    shutdown_onnx_task_executor(wait=wait)
+
+
 def _generate_onnx_response_sync(
     messages: list[dict[str, str]],
     max_new_tokens: int | None,

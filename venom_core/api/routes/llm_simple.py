@@ -45,6 +45,20 @@ def _get_onnx_simple_client() -> OnnxLlmClient:
     return _ONNX_SIMPLE_CLIENT
 
 
+def release_onnx_simple_client() -> None:
+    """Drop warm ONNX simple-mode client to free runtime memory."""
+    global _ONNX_SIMPLE_CLIENT
+    with _ONNX_SIMPLE_CLIENT_LOCK:
+        client = _ONNX_SIMPLE_CLIENT
+        _ONNX_SIMPLE_CLIENT = None
+    if client is not None:
+        try:
+            client.close()
+        except Exception:
+            # Cleanup path must be best-effort; runtime may be partially initialized.
+            pass
+
+
 def _get_simple_context_char_limit(runtime) -> Optional[int]:
     if runtime.provider != "vllm":
         return None

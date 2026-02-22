@@ -35,7 +35,9 @@ class DockerHabitat:
     """
 
     CONTAINER_NAME = "venom-sandbox"
-    CONTAINER_REMOVE_WAIT_SECONDS = 5.0
+    CONTAINER_REMOVE_WAIT_SECONDS = 10.0
+    CONTAINER_REMOVE_POLL_SECONDS = 0.5
+    CONTAINER_CONFLICT_RETRIES = 3
 
     def __init__(self):
         """
@@ -168,14 +170,19 @@ class DockerHabitat:
                     "Błąd podczas sprawdzania dostępności nazwy kontenera: %s",
                     exc,
                 )
-            time.sleep(0.1)
+            time.sleep(self.CONTAINER_REMOVE_POLL_SECONDS)
         logger.warning(
-            "Timeout oczekiwania na zwolnienie nazwy kontenera %s",
+            "Timeout oczekiwania na zwolnienie nazwy kontenera %s. "
+            "Sprawdź `docker ps -a` i usuń konflikt ręcznie, jeśli problem się powtarza.",
             self.CONTAINER_NAME,
         )
 
     def _create_container(
-        self, workspace_path: Path | None = None, *, retry_on_conflict: bool = True
+        self,
+        workspace_path: Path | None = None,
+        *,
+        retry_on_conflict: bool = True,
+        conflict_retries_remaining: int | None = None,
     ):
         """
         Tworzy nowy kontener Docker.
@@ -186,6 +193,12 @@ class DockerHabitat:
         Raises:
             RuntimeError: Jeśli nie można utworzyć kontenera
         """
+        retries_left = (
+            self.CONTAINER_CONFLICT_RETRIES
+            if conflict_retries_remaining is None
+            else max(0, int(conflict_retries_remaining))
+        )
+
         try:
             # Pobierz obraz jeśli nie istnieje
             image_name = SETTINGS.DOCKER_IMAGE_NAME
@@ -229,8 +242,18 @@ class DockerHabitat:
                 or "already in use" in error_text
                 or "conflict" in error_text
             ):
+                if retries_left <= 0:
+                    error_msg = (
+                        f"Błąd API Docker podczas tworzenia kontenera: {e}. "
+                        "Wyczerpano limit retry dla konfliktu nazwy kontenera."
+                    )
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg) from e
                 logger.warning(
-                    f"Konflikt nazwy kontenera {self.CONTAINER_NAME}; próba ponownego użycia."
+                    "Konflikt nazwy kontenera %s; próba ponownego użycia "
+                    "(pozostałe retry: %s).",
+                    self.CONTAINER_NAME,
+                    retries_left,
                 )
                 try:
                     existing = self.client.containers.get(self.CONTAINER_NAME)
@@ -250,7 +273,9 @@ class DockerHabitat:
                     )
                     self._recreate_container(existing)
                     return self._create_container(
-                        expected_workspace, retry_on_conflict=False
+                        expected_workspace,
+                        retry_on_conflict=True,
+                        conflict_retries_remaining=retries_left - 1,
                     )
                 except NotFound:
                     pass
@@ -261,8 +286,11 @@ class DockerHabitat:
                     )
                 logger.warning("Retry po usunięciu kontenera konfliktowego.")
                 self._remove_container_by_name_if_exists()
-                self._wait_until_container_absent()
-                return self._create_container(workspace_path, retry_on_conflict=False)
+                return self._create_container(
+                    workspace_path,
+                    retry_on_conflict=True,
+                    conflict_retries_remaining=retries_left - 1,
+                )
             error_msg = f"Błąd API Docker podczas tworzenia kontenera: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e

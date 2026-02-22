@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import threading
+import traceback
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -168,20 +169,33 @@ class OnnxLlmClient:
                 except Exception as exc:  # pragma: no cover - runtime dependent
                     last_error = exc
                     logger.warning(
-                        f"ONNX provider init failed ({provider}/{alias}): {exc}"
+                        f"ONNX provider init failed ({provider}/{alias}) "
+                        f"type={exc.__class__.__name__}: {exc}"
                     )
+                    logger.debug(traceback.format_exc())
 
         # Final fallback: let ORT GenAI choose provider automatically.
-        model = og.Model(model_path)
-        self._active_execution_provider = "auto"
-        self._runtime_device_type = str(
-            getattr(model, "device_type", "unknown")
-        ).lower()
-        logger.warning(
-            f"ONNX provider fallback=auto (requested={preferred}, "
-            f"device_type={self._runtime_device_type}, last_error={last_error})"
-        )
-        return model
+        try:
+            model = og.Model(model_path)
+            self._active_execution_provider = "auto"
+            self._runtime_device_type = str(
+                getattr(model, "device_type", "unknown")
+            ).lower()
+            logger.warning(
+                f"ONNX provider fallback=auto (requested={preferred}, "
+                f"device_type={self._runtime_device_type}, last_error={last_error})"
+            )
+            return model
+        except Exception as exc:
+            logger.exception(
+                "ONNX auto provider initialization failed after explicit fallback chain."
+            )
+            if last_error is not None:
+                raise RuntimeError(
+                    "Failed to initialize ONNX runtime providers. "
+                    f"Last explicit provider error: {last_error}"
+                ) from exc
+            raise
 
     def ensure_ready(self) -> None:
         if not self.is_enabled():
@@ -297,3 +311,12 @@ class OnnxLlmClient:
                 temperature=temperature,
             )
         )
+
+    def close(self) -> None:
+        """Release model/tokenizer references to allow runtime memory cleanup."""
+        with self._lock:
+            self._tokenizer_stream = None
+            self._tokenizer = None
+            self._model = None
+            self._active_execution_provider = None
+            self._runtime_device_type = None

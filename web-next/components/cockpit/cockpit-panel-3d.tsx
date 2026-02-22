@@ -8,15 +8,19 @@ type CockpitPanel3DProps = PropsWithChildren<{
   fullscreen: boolean;
 }>;
 
+export function getCockpitPanel3DClass(fullscreen: boolean) {
+  return cn(
+    "glass-panel command-console-panel relative flex flex-col !overflow-hidden px-6 py-6",
+    fullscreen
+      ? "fixed inset-4 z-[70] h-auto min-h-0"
+      : "h-[76dvh] min-h-[620px] max-h-[980px]",
+  );
+}
+
 export function CockpitPanel3D({ fullscreen, children }: CockpitPanel3DProps) {
   return (
     <motion.div
-      className={cn(
-        "glass-panel command-console-panel relative flex flex-col !overflow-hidden px-6 py-6",
-        fullscreen
-          ? "h-[calc(100dvh-6.5rem)] min-h-[640px]"
-          : "h-[76dvh] min-h-[620px] max-h-[980px]",
-      )}
+      className={getCockpitPanel3DClass(fullscreen)}
       initial={false}
       layout
       animate={{

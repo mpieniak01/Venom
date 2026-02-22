@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import type { ReactNode, RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,14 @@ export function CockpitChatConsole({
   onNewChat,
 }: CockpitChatConsoleProps) {
   const t = useTranslation();
+  useEffect(() => {
+    if (!chatFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [chatFullscreen]);
 
   return (
     <div className="space-y-6">

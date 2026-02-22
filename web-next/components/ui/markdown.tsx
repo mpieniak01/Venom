@@ -6,6 +6,7 @@ import { marked } from "marked";
 import { useEffect, useState } from "react";
 import {
   formatComputationContent,
+  normalizeModelTextArtifacts,
   softlyWrapMathLines,
   tokenizeMath,
 } from "@/lib/markdown-format";
@@ -27,8 +28,9 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
     }
 
     try {
+      const normalizedInput = normalizeModelTextArtifacts(content);
       const formatted =
-        mode === "final" ? formatComputationContent(content) : content;
+        mode === "final" ? formatComputationContent(normalizedInput) : normalizedInput;
       const wrappedMath =
         mode === "final" ? softlyWrapMathLines(formatted) : formatted;
       const { text: tokenized, tokens } =

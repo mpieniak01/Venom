@@ -7,6 +7,7 @@ import { getPolicyBlockBadgeLabel } from "@/lib/policy-utils";
 import { statusTone } from "@/lib/status";
 import { TYPING_EFFECT } from "@/lib/ui-config";
 import { useTranslation } from "@/lib/i18n";
+import { normalizeAssistantDisplayText } from "@/components/cockpit/cockpit-utils";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -143,27 +144,28 @@ export function ConversationBubble({
   const isTerminal =
     typeof status === "string" && terminalStatuses.includes(status);
   const showTyping = !isUser && (pending || (!!status && !isTerminal));
+  const displayText = isUser ? text : normalizeAssistantDisplayText(text);
   const showComputationLabel =
-    !isUser && !showTyping && isComputationContent(text);
+    !isUser && !showTyping && isComputationContent(displayText);
   const disabled = pending || !onSelect;
   const typingText =
-    text.trim().length > 0 ? text : t("cockpit.chatLabels.generating");
-  const [visibleText, setVisibleText] = useState(text);
+    displayText.trim().length > 0 ? displayText : t("cockpit.chatLabels.generating");
+  const [visibleText, setVisibleText] = useState(displayText);
   const typingTimerRef = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
   useEffect(() => {
     if (isUser) {
-      setVisibleText(text);
+      setVisibleText(displayText);
       return;
     }
     if (!showTyping) {
-      setVisibleText(text);
+      setVisibleText(displayText);
       return;
     }
     setVisibleText((prev) => {
       if (typingText.startsWith(prev)) return prev;
       return "";
     });
-  }, [isUser, showTyping, text, typingText]);
+  }, [displayText, isUser, showTyping, typingText]);
   useEffect(() => {
     if (isUser || !showTyping) return undefined;
     typingTimerRef.current = globalThis.setInterval(() => {
@@ -192,7 +194,7 @@ export function ConversationBubble({
   const messageBody = renderMessageBody({
     showTyping,
     visibleText,
-    text,
+    text: displayText,
     isUser,
     t,
   });

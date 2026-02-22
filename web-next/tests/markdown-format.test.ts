@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   formatComputationContent,
   looksLikeMathLine,
+  normalizeModelTextArtifacts,
   softlyWrapMathLines,
 } from "@/lib/markdown-format";
 
@@ -29,4 +30,15 @@ test("looksLikeMathLine detects math-like and plain lines", () => {
 test("softlyWrapMathLines wraps math-like lines in $$ delimiters", () => {
   const wrapped = softlyWrapMathLines("x^2 + y^2 = z^2");
   assert.match(wrapped, /^\$\$.*\$\$$/);
+});
+
+test("normalizeModelTextArtifacts cleans ONNX sentencepiece and inline bullets", () => {
+  const input =
+    'Przykłady:\n\n*▁▁▁Kąt prosty *▁▁▁Kwadratowy plac zabaw *▁▁▁Kwadratowy obraz na ścianie\n\nCzy chcesz wiedzieć coś więcej?';
+  const output = normalizeModelTextArtifacts(input);
+
+  assert.ok(!output.includes("▁"));
+  assert.match(output, /\n\* Kąt prosty/);
+  assert.match(output, /\n\* Kwadratowy plac zabaw/);
+  assert.match(output, /\n\* Kwadratowy obraz na ścianie/);
 });

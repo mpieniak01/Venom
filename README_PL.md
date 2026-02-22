@@ -1,4 +1,4 @@
-# Venom v1.5 🐍
+# Venom v1.6.0 🐍
 [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml)
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
@@ -196,6 +196,10 @@ Po uruchomieniu:
 - API: `http://localhost:8000`
 - UI: `http://localhost:3000`
 
+Polityka protokołów:
+- Stos dev/lokalny działa domyślnie po HTTP (`URL_SCHEME_POLICY=force_http` w profilach docker).
+- Publiczny production powinien działać po HTTPS na reverse proxy/ingress (TLS na brzegu).
+
 ### Najczęstsze komendy
 ```bash
 make start       # backend + frontend (dev)
@@ -384,20 +388,25 @@ make check-new-code-coverage
 
 
 ## Mapa drogowa
-### ✅ v1.5 (obecnie)
+### ✅ v1.6.0 (obecnie)
 - [x] Funkcje v1.4 (planowanie, wiedza, pamięć, integracje).
 - [x] The Academy (LoRA/QLoRA).
 - [x] Workflow Control Plane.
 - [x] Provider Governance.
 - [x] Academy Hardening.
 
-### 🚧 v1.6 (planowane)
+### ✅ v1.6 (wydanie kamieni milowych)
+- [x] Utwardzenie kontraktu API (Wave-1 + Wave-2 MVP) wraz z synchronizacją OpenAPI/FE.
+- [x] Integracja ONNX Runtime jako trzeciego lokalnego silnika LLM (3-stack: Ollama + vLLM + ONNX).
+- [x] Aktualizacja strategii profili runtime i instalacji (minimum API-first + opcjonalne stosy lokalne).
+
+### 🚧 v1.7 (planowane detale)
 - [ ] Odpytywanie w tle dla GitHub Issues.
 - [ ] Panel dashboardu dla integracji zewnętrznych.
 - [ ] Rekurencyjne streszczanie długich dokumentów.
 - [ ] Cache wyników wyszukiwania.
-- [ ] Walidacja i optymalizacja planu.
-- [ ] Lepsze odzyskiwanie po błędach.
+- [ ] Walidacja i optymalizacja planu (UX).
+- [ ] Lepsze odzyskiwanie po błędach end-to-end.
 
 ### 🔮 v2.0 (w przyszłości)
 - [ ] Obsługa webhooków GitHub.

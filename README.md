@@ -1,4 +1,4 @@
-# Venom v1.5 🐍
+# Venom v1.6.0 🐍
 [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml)
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
@@ -195,6 +195,10 @@ After startup:
 - API: `http://localhost:8000`
 - UI: `http://localhost:3000`
 
+Protocol policy:
+- Dev/local stack uses HTTP by default (`URL_SCHEME_POLICY=force_http` in docker profiles).
+- Public production should use HTTPS on reverse proxy/ingress (edge TLS).
+
 ### Most common commands
 ```bash
 make start       # backend + frontend (dev)
@@ -379,20 +383,26 @@ make check-new-code-coverage
 ```
 
 ## Roadmap
-### ✅ v1.5 (current)
+### ✅ v1.6.0 (current)
 - [x] v1.4 features (planning, knowledge, memory, integrations).
 - [x] The Academy (LoRA/QLoRA).
 - [x] Workflow Control Plane.
 - [x] Provider Governance.
 - [x] Academy Hardening.
 
-### 🚧 v1.6 (planned)
+### ✅ v1.6 (milestone release)
+- [x] API contract hardening (Wave-1 + Wave-2 MVP) with OpenAPI/FE synchronization.
+- [x] ONNX Runtime integrated as the third local LLM engine (3-stack: Ollama + vLLM + ONNX).
+- [x] Runtime profiles and installation strategy update (minimal/API-first + optional local stacks).
+- [x] Runtime control-plane improvements and provider/runtime governance stabilization.
+
+### 🚧 v1.7 (planned details)
 - [ ] Background polling for GitHub Issues.
 - [ ] Dashboard panel for external integrations.
 - [ ] Recursive long-document summarization.
 - [ ] Search result caching.
-- [ ] Plan validation and optimization.
-- [ ] Better error recovery.
+- [ ] Plan validation and optimization UX.
+- [ ] Better end-to-end error recovery.
 
 ### 🔮 v2.0 (future)
 - [ ] GitHub webhook handling.

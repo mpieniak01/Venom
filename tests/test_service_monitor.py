@@ -159,6 +159,56 @@ async def test_check_http_service_offline(service_monitor):
 
 
 @pytest.mark.asyncio
+async def test_check_http_service_openai_degraded_branch(service_monitor):
+    service = ServiceInfo(
+        name="OpenAI API",
+        service_type="api",
+        endpoint=TEST_EXAMPLE_HTTP,
+    )
+
+    with patch(
+        "venom_core.core.service_monitor.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        await service_monitor._check_http_service(service)
+
+    assert mock_client_cls.call_args.kwargs["provider"] == "openai"
+    assert service.status == ServiceStatus.DEGRADED
+    assert service.error_message == "HTTP 429"
+
+
+@pytest.mark.asyncio
+async def test_check_http_service_github_offline_branch(service_monitor):
+    service = ServiceInfo(
+        name="GitHub API",
+        service_type="api",
+        endpoint=TEST_EXAMPLE_HTTP,
+    )
+
+    with patch(
+        "venom_core.core.service_monitor.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        await service_monitor._check_http_service(service)
+
+    assert mock_client_cls.call_args.kwargs["provider"] == "github"
+    assert service.status == ServiceStatus.OFFLINE
+    assert service.error_message == "HTTP 503"
+
+
+@pytest.mark.asyncio
 async def test_check_health_all_services(service_monitor):
     """Test sprawdzania zdrowia wszystkich usług."""
     # Mock check_service_health

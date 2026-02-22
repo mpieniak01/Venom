@@ -347,8 +347,7 @@ async def test_register_in_hive_no_url():
 
 
 @pytest.mark.asyncio
-@patch("venom_core.infrastructure.cloud_provisioner.httpx.AsyncClient")
-async def test_register_in_hive_success(mock_client_class):
+async def test_register_in_hive_success():
     """Test pomyślnej rejestracji w Ulu."""
     # Mock response
     mock_response = MagicMock()
@@ -359,16 +358,16 @@ async def test_register_in_hive_success(mock_client_class):
         "message": "Agent registered successfully",
     }
 
-    # Mock client
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_response)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
+    with patch(
+        "venom_core.infrastructure.cloud_provisioner.TrafficControlledHttpClient"
+    ) as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.apost = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
-    mock_client_class.return_value = mock_client
-
-    provisioner = CloudProvisioner()
-    result = await provisioner.register_in_hive(hive_url="https://hive.example.com")
+        provisioner = CloudProvisioner()
+        result = await provisioner.register_in_hive(hive_url="https://hive.example.com")
 
     assert result["status"] == "registered"
     assert result["hive_url"] == "https://hive.example.com"
@@ -377,24 +376,23 @@ async def test_register_in_hive_success(mock_client_class):
 
 
 @pytest.mark.asyncio
-@patch("venom_core.infrastructure.cloud_provisioner.httpx.AsyncClient")
-async def test_register_in_hive_error_status(mock_client_class):
+async def test_register_in_hive_error_status():
     """Test rejestracji w Ulu z błędnym statusem odpowiedzi."""
     # Mock response z błędem
     mock_response = MagicMock()
     mock_response.status_code = 403
     mock_response.text = "Forbidden: Invalid token"
 
-    # Mock client
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_response)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
+    with patch(
+        "venom_core.infrastructure.cloud_provisioner.TrafficControlledHttpClient"
+    ) as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.apost = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
-    mock_client_class.return_value = mock_client
-
-    provisioner = CloudProvisioner()
-    result = await provisioner.register_in_hive(hive_url="https://hive.example.com")
+        provisioner = CloudProvisioner()
+        result = await provisioner.register_in_hive(hive_url="https://hive.example.com")
 
     assert result["status"] == "error"
     assert result["status_code"] == 403
@@ -403,55 +401,55 @@ async def test_register_in_hive_error_status(mock_client_class):
 
 
 @pytest.mark.asyncio
-@patch("venom_core.infrastructure.cloud_provisioner.httpx.AsyncClient")
-async def test_register_in_hive_timeout(mock_client_class):
+async def test_register_in_hive_timeout():
     """Test timeout podczas rejestracji w Ulu."""
-    # Mock client który rzuca TimeoutException
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(side_effect=__import__("httpx").TimeoutException(""))
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
+    with patch(
+        "venom_core.infrastructure.cloud_provisioner.TrafficControlledHttpClient"
+    ) as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.apost = AsyncMock(
+            side_effect=__import__("httpx").TimeoutException("")
+        )
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
-    mock_client_class.return_value = mock_client
-
-    provisioner = CloudProvisioner()
-    result = await provisioner.register_in_hive(hive_url="https://hive.example.com")
+        provisioner = CloudProvisioner()
+        result = await provisioner.register_in_hive(hive_url="https://hive.example.com")
 
     assert result["status"] == "timeout"
     assert "Timeout" in result["message"]
 
 
 @pytest.mark.asyncio
-@patch("venom_core.infrastructure.cloud_provisioner.httpx.AsyncClient")
-async def test_register_in_hive_with_metadata(mock_client_class):
+async def test_register_in_hive_with_metadata():
     """Test rejestracji w Ulu z dodatkowymi metadanymi."""
     # Mock response
     mock_response = MagicMock()
     mock_response.status_code = 201
     mock_response.json.return_value = {"status": "ok"}
 
-    # Mock client
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_response)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
+    with patch(
+        "venom_core.infrastructure.cloud_provisioner.TrafficControlledHttpClient"
+    ) as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.apost = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
-    mock_client_class.return_value = mock_client
+        provisioner = CloudProvisioner()
+        custom_metadata = {
+            "location": "datacenter-1",
+            "environment": "production",
+        }
 
-    provisioner = CloudProvisioner()
-    custom_metadata = {
-        "location": "datacenter-1",
-        "environment": "production",
-    }
-
-    result = await provisioner.register_in_hive(
-        hive_url="https://hive.example.com", metadata=custom_metadata
-    )
+        result = await provisioner.register_in_hive(
+            hive_url="https://hive.example.com", metadata=custom_metadata
+        )
 
     assert result["status"] == "registered"
 
     # Sprawdź czy metadata została przekazana w POST
-    call_args = mock_client.post.call_args
+    call_args = mock_client.apost.call_args
     payload = call_args[1]["json"]
     assert "location" in payload
     assert payload["location"] == "datacenter-1"

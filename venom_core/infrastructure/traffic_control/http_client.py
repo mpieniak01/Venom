@@ -135,9 +135,10 @@ class TrafficControlledHttpClient:
             response = self._client.request(method, url, **kwargs)
             status_code = getattr(response, "status_code", None)
             if not isinstance(status_code, int):
-                method_handler = getattr(self._client, method.lower(), None)
-                if callable(method_handler):
-                    response = method_handler(url, **kwargs)
+                raise TypeError(
+                    "Invalid response object received from httpx client: "
+                    f"{type(response)}"
+                )
             if raise_for_status:
                 response.raise_for_status()
             return response
@@ -262,13 +263,10 @@ class TrafficControlledHttpClient:
                         response = method_result
                 status_code = getattr(response, "status_code", None)
                 if not isinstance(status_code, int):
-                    method_handler = getattr(self._async_client, method.lower(), None)
-                    if callable(method_handler):
-                        method_result = method_handler(url, **kwargs)
-                        if inspect.isawaitable(method_result):
-                            response = await method_result
-                        else:
-                            response = method_result
+                    raise TypeError(
+                        "Invalid response object received from httpx async client: "
+                        f"{type(response)}"
+                    )
                 if raise_for_status:
                     raise_result = response.raise_for_status()
                     if inspect.isawaitable(raise_result):

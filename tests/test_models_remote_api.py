@@ -1,5 +1,6 @@
 """Tests for remote models API endpoints."""
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -517,3 +518,57 @@ async def test_fetch_live_catalog_and_validate_branches(monkeypatch):
         model="gemini-missing"
     )
     assert valid is False and "not found" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_validate_openai_connection_handles_http_error(monkeypatch):
+    monkeypatch.setattr(SETTINGS, "OPENAI_API_KEY", "test-openai-key", raising=False)
+
+    class _ErrorClient:
+        def __init__(self, *args, **kwargs):
+            _ = (args, kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def aget(self, *args, **kwargs):
+            _ = (args, kwargs)
+            raise httpx.ReadTimeout("timeout")
+
+    monkeypatch.setattr(models_remote, "TrafficControlledHttpClient", _ErrorClient)
+    valid, message, latency = await models_remote._validate_openai_connection()
+
+    assert valid is False
+    assert "validation error" in message.lower()
+    assert "timeout" in message.lower()
+    assert latency is not None
+
+
+@pytest.mark.asyncio
+async def test_validate_google_connection_handles_http_error(monkeypatch):
+    monkeypatch.setattr(SETTINGS, "GOOGLE_API_KEY", "test-google-key", raising=False)
+
+    class _ErrorClient:
+        def __init__(self, *args, **kwargs):
+            _ = (args, kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def aget(self, *args, **kwargs):
+            _ = (args, kwargs)
+            raise httpx.ConnectTimeout("connect-timeout")
+
+    monkeypatch.setattr(models_remote, "TrafficControlledHttpClient", _ErrorClient)
+    valid, message, latency = await models_remote._validate_google_connection()
+
+    assert valid is False
+    assert "validation error" in message.lower()
+    assert "connect-timeout" in message.lower()
+    assert latency is not None

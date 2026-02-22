@@ -233,6 +233,17 @@ class TestTrafficControlledHttpClientSync:
         # Should only be called once (no retry)
         assert mock_client.request.call_count == 1
 
+    def test_http_client_invalid_response_object_raises_type_error(self, mock_httpx):
+        """Fail-fast when underlying client returns object without status_code."""
+        mock_sync, _ = mock_httpx
+        mock_client = MagicMock()
+        mock_client.request.return_value = object()
+        mock_sync.return_value = mock_client
+
+        client = TrafficControlledHttpClient("test")
+        with pytest.raises(TypeError, match="Invalid response object"):
+            client.get("/test")
+
     def test_http_client_context_manager(self, mock_httpx):
         """Test that client works as context manager."""
         mock_sync, _ = mock_httpx
@@ -531,6 +542,20 @@ class TestTrafficControlledHttpClientAsync:
         client = TrafficControlledHttpClient("test")
 
         with pytest.raises(httpx.ConnectError):
+            await client.aget("/test")
+
+    @pytest.mark.asyncio
+    async def test_http_client_async_invalid_response_object_raises_type_error(
+        self, mock_httpx
+    ):
+        """Fail-fast when async client returns object without status_code."""
+        _, mock_async = mock_httpx
+        mock_client = AsyncMock()
+        mock_client.request = AsyncMock(return_value=object())
+        mock_async.return_value = mock_client
+
+        client = TrafficControlledHttpClient("test")
+        with pytest.raises(TypeError, match="Invalid response object"):
             await client.aget("/test")
 
 

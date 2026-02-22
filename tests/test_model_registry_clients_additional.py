@@ -7,6 +7,7 @@ import subprocess
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from venom_core.core import model_registry_clients as mrc
@@ -157,13 +158,90 @@ async def test_hf_fetch_papers_month_handles_redirect():
     second.raise_for_status = MagicMock()
     second.text = '<div data-target="DailyPapers" data-props="{&quot;dailyPapers&quot;: []}"></div>'
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
         mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get = AsyncMock(side_effect=[first, second])
-        mock_client_class.return_value = mock_client
+        mock_client.aget = AsyncMock(side_effect=[first, second])
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
         parsed = await client.fetch_papers_month(limit=3, month="2026-01")
         assert parsed == []
-        assert mock_client.get.await_count == 2
+        assert mock_client.aget.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_ollama_list_tags_uses_traffic_control_client():
+    client = mrc.OllamaClient(endpoint="http://localhost:11434")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"models": [{"name": "llama3:latest"}]}
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        payload = await client.list_tags()
+
+    assert payload["models"][0]["name"] == "llama3:latest"
+    assert mock_client_cls.call_args.kwargs["provider"] == "ollama"
+    mock_client.aget.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_hf_list_models_fallbacks_from_trending_to_downloads():
+    client = mrc.HuggingFaceClient(token="secret")
+
+    status_error = httpx.HTTPStatusError(
+        "bad status",
+        request=MagicMock(),
+        response=MagicMock(status_code=503),
+    )
+    fallback_response = MagicMock()
+    fallback_response.json.return_value = [{"id": "google/gemma-2b-it"}]
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(side_effect=[status_error, fallback_response])
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        payload = await client.list_models(sort="trendingScore", limit=5)
+
+    assert payload == [{"id": "google/gemma-2b-it"}]
+    assert mock_client.aget.await_count == 2
+    first_call = mock_client.aget.await_args_list[0]
+    second_call = mock_client.aget.await_args_list[1]
+    assert first_call.kwargs["params"]["sort"] == "trendingScore"
+    assert second_call.kwargs["params"]["sort"] == "downloads"
+
+
+@pytest.mark.asyncio
+async def test_hf_fetch_blog_feed_uses_traffic_control_client():
+    client = mrc.HuggingFaceClient()
+    response = MagicMock()
+    response.text = """<?xml version="1.0"?>
+    <rss><channel>
+      <item><title>Blog</title><link>https://huggingface.co/blog/a</link><description>desc</description></item>
+    </channel></rss>"""
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        items = await client.fetch_blog_feed(limit=3)
+
+    assert len(items) == 1
+    assert items[0]["title"] == "Blog"
+    assert mock_client_cls.call_args.kwargs["provider"] == "huggingface"
+    mock_client.aget.assert_awaited_once()

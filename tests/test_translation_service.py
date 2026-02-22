@@ -116,6 +116,42 @@ async def test_translate_text_falls_back_on_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_translate_text_raises_on_http_error_without_fallback(monkeypatch):
+    _configure_settings(monkeypatch)
+    monkeypatch.setattr(translation_module, "get_active_llm_runtime", DummyRuntime)
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        async def __aenter__(self):
+            await asyncio.sleep(0)
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await asyncio.sleep(0)
+            return False
+
+        async def apost(self, *args, **kwargs):
+            await asyncio.sleep(0)
+            raise httpx.HTTPError("boom-no-fallback")
+
+    monkeypatch.setattr(
+        translation_module,
+        "TrafficControlledHttpClient",
+        DummyClient,
+    )
+
+    service = translation_module.TranslationService(cache_ttl_seconds=60)
+    with pytest.raises(httpx.HTTPError, match="boom-no-fallback"):
+        await service.translate_text(
+            "Hello",
+            target_lang="pl",
+            allow_fallback=False,
+        )
+
+
+@pytest.mark.asyncio
 async def test_translate_text_rejects_invalid_lang():
     service = translation_module.TranslationService()
     with pytest.raises(ValueError):

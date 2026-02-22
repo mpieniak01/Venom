@@ -16,6 +16,7 @@ class DummyRuntime:
         self.provider = provider
         self.model_name = model_name
         self.endpoint = http_url("localhost", 1234)
+        self.service_type = "local"
         self.config_hash = "cfg"
         self.runtime_id = "rid"
 
@@ -389,3 +390,38 @@ def test_stream_simple_chat_internal_error_emits_error_event(monkeypatch):
     ) as response:
         events = _collect_sse_events(response)
     assert events[1]["data"]["code"] == "internal_error"
+
+
+def test_stream_simple_chat_onnx_streams_without_http_endpoint(monkeypatch):
+    runtime = DummyRuntime(provider="onnx")
+    runtime.service_type = "onnx"
+    runtime.endpoint = None
+    monkeypatch.setattr(llm_simple_routes, "get_active_llm_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        llm_simple_routes, "_build_chat_completions_url", lambda _rt: None
+    )
+
+    class FakeOnnxClient:
+        def stream_generate(self, **_kwargs):
+            yield "A"
+            yield "B"
+
+    monkeypatch.setattr(llm_simple_routes, "OnnxLlmClient", lambda: FakeOnnxClient())
+    client = TestClient(app)
+
+    with client.stream(
+        "POST",
+        "/api/v1/llm/simple/stream",
+        json={"content": "hello"},
+    ) as response:
+        assert response.status_code == 200
+        events = _collect_sse_events(response)
+
+    assert [event["event"] for event in events] == [
+        "start",
+        "content",
+        "content",
+        "done",
+    ]
+    assert events[1]["data"]["text"] == "A"
+    assert events[2]["data"]["text"] == "B"

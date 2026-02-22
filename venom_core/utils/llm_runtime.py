@@ -54,6 +54,8 @@ def infer_local_provider(endpoint: Optional[str]) -> str:
         return "ollama"
     if "vllm" in endpoint_lower:
         return "vllm"
+    if "onnx" in endpoint_lower:
+        return "onnx"
     if "lmstudio" in endpoint_lower:
         return "lmstudio"
     if ":8000" in endpoint_lower or ":8001" in endpoint_lower:
@@ -89,6 +91,9 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
     if service_type == "local":
         endpoint = apply_http_policy_to_url(endpoint)
         provider = infer_local_provider(endpoint)
+    elif service_type == "onnx":
+        provider = "onnx"
+        endpoint = None
     elif service_type == "openai":
         provider = "openai"
         endpoint = endpoint or "https://api.openai.com/v1"
@@ -136,6 +141,8 @@ def format_runtime_label(runtime: LLMRuntimeInfo) -> str:
 
 def _build_health_url(runtime: LLMRuntimeInfo) -> Optional[str]:
     """Tworzy URL do health-checka na podstawie providera."""
+    if runtime.provider == "onnx":
+        return None
     if not runtime.endpoint:
         return None
 
@@ -178,6 +185,9 @@ async def probe_runtime_status(runtime: LLMRuntimeInfo) -> Tuple[str, Optional[s
     """
     Sprawdza rzeczywisty stan runtime i zwraca status + ewentualny błąd.
     """
+
+    if runtime.service_type == "onnx":
+        return "ready", None
 
     if runtime.service_type != "local":
         # Zakładamy poprawny stan dla zewnętrznych providerów

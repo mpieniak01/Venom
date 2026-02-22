@@ -22,6 +22,7 @@ UVICORN_PROD_FLAGS ?= --no-server-header
 BACKEND_LOG ?= logs/backend.log
 WEB_LOG ?= logs/web-next.log
 VLLM_ENDPOINT ?= http://127.0.0.1:8001
+VLLM_START_TIMEOUT_SEC ?= 240
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -51,11 +52,27 @@ TEST_ARTIFACT_CLEANUP_DAYS ?= 7
 
 test:
 	@echo "🧪 Uruchamiam testy w trybie CLEAN (artefakty usuwane po sesji)..."
-	VENOM_TEST_ARTIFACT_MODE=clean $(MAKE) --no-print-directory pytest
+	@set +e; \
+	VENOM_TEST_ARTIFACT_MODE=clean VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
+	rc=$$?; \
+	if [ $$rc -ne 0 ]; then \
+		echo ""; \
+		echo "❌ make test: testy nie przeszły (exit=$$rc)."; \
+		echo "   Sprawdź sekcję 'short test summary info' powyżej."; \
+		exit $$rc; \
+	fi
 
 test-data:
 	@echo "🧪 Uruchamiam testy w trybie PRESERVE (artefakty zachowane)..."
-	VENOM_TEST_ARTIFACT_MODE=preserve $(MAKE) --no-print-directory pytest
+	@set +e; \
+	VENOM_TEST_ARTIFACT_MODE=preserve VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
+	rc=$$?; \
+	if [ $$rc -ne 0 ]; then \
+		echo ""; \
+		echo "❌ make test-data: testy nie przeszły (exit=$$rc)."; \
+		echo "   Sprawdź sekcję 'short test summary info' powyżej."; \
+		exit $$rc; \
+	fi
 
 test-artifacts-cleanup:
 	@echo "🗑️  Czyszczenie starych artefaktów testowych..."
@@ -158,7 +175,15 @@ openapi-codegen-types: openapi-export
 	npx --yes openapi-typescript@7.10.1 openapi/openapi.json -o web-next/lib/generated/api-types.d.ts
 
 pytest:
-	VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh
+	@set +e; \
+	VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
+	rc=$$?; \
+	if [ $$rc -ne 0 ]; then \
+		echo ""; \
+		echo "❌ make pytest: testy nie przeszły (exit=$$rc)."; \
+		echo "   Sprawdź sekcję 'short test summary info' powyżej."; \
+		exit $$rc; \
+	fi
 
 e2e:
 	bash scripts/run-e2e-optimal.sh
@@ -268,14 +293,14 @@ _start:
 		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
 		$(MAKE) --no-print-directory vllm-start >/dev/null || true; \
 		echo "⏳ Czekam na vLLM (/v1/models)..."; \
-		for attempt in {1..90}; do \
+		for attempt in $$(seq 1 $(VLLM_START_TIMEOUT_SEC)); do \
 			if curl -fsS "$(VLLM_ENDPOINT)/v1/models" >/dev/null 2>&1; then \
 				echo "✅ vLLM gotowy"; \
 				return 0; \
 			fi; \
 			sleep 1; \
 		done; \
-		echo "❌ vLLM nie wystartował w czasie (brak odpowiedzi z /v1/models)"; \
+		echo "❌ vLLM nie wystartował w czasie ($(VLLM_START_TIMEOUT_SEC)s, brak odpowiedzi z /v1/models)"; \
 		if [ -f "logs/vllm.log" ]; then \
 			echo "ℹ️  Ostatnie logi vLLM:"; \
 			tail -n 40 "logs/vllm.log" || true; \
@@ -284,18 +309,31 @@ _start:
 		return 1; \
 	}; \
 	llm_ready=""; \
-	if [ "$$active_server" = "ollama" ]; then \
-		if start_ollama; then llm_ready="ollama"; \
-		elif start_vllm; then llm_ready="vllm"; fi; \
+	if [ "$$active_server" = "onnx" ]; then \
+		echo "▶️  Aktywny runtime: ONNX (in-process)"; \
+		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+		llm_ready="onnx"; \
+	elif [ "$$active_server" = "ollama" ]; then \
+		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+		if start_ollama; then llm_ready="ollama"; fi; \
+	elif [ "$$active_server" = "vllm" ]; then \
+		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+		if start_vllm; then llm_ready="vllm"; fi; \
+	elif [ "$$active_server" = "none" ]; then \
+		echo "▶️  ACTIVE_LLM_SERVER=none (start bez lokalnego serwera LLM)"; \
+		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+		llm_ready="none"; \
 	else \
-		if start_vllm; then llm_ready="vllm"; \
-		elif start_ollama; then llm_ready="ollama"; fi; \
+		echo "❌ Nieznany ACTIVE_LLM_SERVER='$$active_server' (dozwolone: ollama|vllm|onnx|none)"; \
+		exit 1; \
 	fi; \
 	if [ -z "$$llm_ready" ]; then \
 		if [ "$(ALLOW_DEGRADED_START)" = "1" ]; then \
-			echo "⚠️  Tryb degradowany: kontynuuję start bez LLM (ALLOW_DEGRADED_START=1)"; \
+			echo "⚠️  Tryb degradowany: kontynuuję start bez aktywnego LLM (ALLOW_DEGRADED_START=1)"; \
 		else \
-			echo "❌ Nie udało się uruchomić żadnego LLM (ollama/vLLM)."; \
+			echo "❌ Nie udało się uruchomić aktywnego LLM: $$active_server"; \
 			exit 1; \
 		fi; \
 	else \

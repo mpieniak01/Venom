@@ -38,6 +38,7 @@ type CockpitChatUiParams = {
   lastResponseDurationMs: number | null;
   labMode: boolean;
   chatMode: "normal" | "direct" | "complex";
+  selectedLlmServer: string;
   generationParams: GenerationParams | null;
   selectedLlmModel: string;
   activeServerInfo: ActiveServerInfo;
@@ -49,6 +50,7 @@ type CockpitChatUiParams = {
     config_hash?: string | null;
     runtime_id?: string | null;
   }>;
+  setActiveLlmServer: (server: string) => Promise<{ status?: string; active_model?: string | null }>;
   sendSimpleChatStream: (payload: {
     content: string;
     model: string | null;
@@ -130,6 +132,7 @@ export function useCockpitChatUi({
   lastResponseDurationMs,
   labMode,
   chatMode,
+  selectedLlmServer,
   generationParams,
   selectedLlmModel,
   activeServerInfo,
@@ -138,6 +141,7 @@ export function useCockpitChatUi({
   resetSession,
   refreshActiveServer,
   setActiveLlmRuntime,
+  setActiveLlmServer,
   sendSimpleChatStream,
   sendTask,
   ingestMemoryEntry,
@@ -298,6 +302,7 @@ export function useCockpitChatUi({
   const handleSend = useChatSend({
     labMode,
     chatMode,
+    selectedLlmServer,
     generationParams,
     selectedLlmModel,
     activeServerInfo,
@@ -306,6 +311,7 @@ export function useCockpitChatUi({
     resetSession,
     refreshActiveServer,
     setActiveLlmRuntime,
+    setActiveLlmServer,
     sendSimpleChatStream,
     sendTask,
     ingestMemoryEntry,

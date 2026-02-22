@@ -1,0 +1,17 @@
+# Venom profile: ONNX local LLM runtime (3rd engine)
+# Canonical profile for ONNX Runtime GenAI model serving.
+#
+# Install with:
+#   pip install -r requirements-profile-onnx.txt
+
+-r requirements-profile-api.txt
+
+# ONNX runtime stack for local LLM inference.
+onnxruntime-gpu; platform_system != "Darwin"
+onnxruntime; platform_system == "Darwin"
+onnxruntime-genai-cuda; platform_system != "Darwin"
+onnxruntime-genai; platform_system == "Darwin"
+onnx>=1.14.0
+onnx-ir>=0.1.16
+optimum
+accelerate

@@ -130,10 +130,11 @@ Configuration panel (`/config`) allows managing Venom services (backend, UI, LLM
 - **Entries**: compact one-line rows sorted by timestamp
 - **Badges**: dedicated API channel badge and status badge
 
-#### Info Box: Ollama vs vLLM
+#### Info Box: Ollama vs vLLM vs ONNX
 Panel contains informational section explaining differences between LLM runtimes:
 - **Ollama (Light)**: Quick start, low footprint, single user
 - **vLLM (Full)**: Longer start, higher VRAM, benchmarks and performance tests
+- **ONNX (Full/optional profile)**: In-process runtime, ONNX-standardized local path, requires ONNX LLM profile
 - Link to `/benchmark` with suggestion to compare models
 
 ### Backend API

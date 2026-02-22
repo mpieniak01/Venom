@@ -250,9 +250,13 @@ export default function StrategyPage() {
     [timelineHistory],
   );
   const trackedStrategyTaskIds = useMemo(() => {
+    const getTaskIdentifier = (task: Task): string | undefined => {
+      const legacyTaskId = (task as Task & { task_id?: string }).task_id;
+      return legacyTaskId ?? task.id ?? undefined;
+    };
     const ids = new Set<string>();
     (liveTasks ?? []).forEach((task) => {
-      const identifier = task.task_id || task.id;
+      const identifier = getTaskIdentifier(task);
       if (!identifier) return;
       const normalized = (task.status || "").toUpperCase();
       if (["PENDING", "PROCESSING", "IN_PROGRESS", "RUNNING"].includes(normalized)) {
@@ -271,13 +275,18 @@ export default function StrategyPage() {
     enabled: trackedStrategyTaskIds.length > 0,
   });
   const mergedLiveTasks = useMemo(() => {
+    const getTaskIdentifier = (task: Task): string | undefined => {
+      const legacyTaskId = (task as Task & { task_id?: string }).task_id;
+      return legacyTaskId ?? task.id ?? undefined;
+    };
     if (!liveTasks) return liveTasks;
     return liveTasks.map((task) => {
-      const identifier = task.task_id || task.id;
+      const identifier = getTaskIdentifier(task);
       if (!identifier) return task;
       const stream = strategyStreams[identifier];
       if (stream?.status) {
-        return { ...task, status: stream.status };
+        const nextStatus = stream.status === "LOST" ? "FAILED" : stream.status;
+        return { ...task, status: nextStatus };
       }
       return task;
     });
@@ -564,6 +573,8 @@ export default function StrategyPage() {
           ) : (
             <div className="space-y-3">
               {timelineEntries.map((entry) => (
+                // Timeline API can include optional fields not present in generated schema yet.
+                // Keep rendering resilient for backward/forward compatibility.
                 <div
                   key={entry.request_id}
                   className="flex items-start justify-between rounded-2xl box-base px-4 py-3"
@@ -573,7 +584,7 @@ export default function StrategyPage() {
                       #{entry.request_id.slice(0, 8)} • {entry.prompt?.slice(0, 32) ?? "Request"}
                     </p>
                     <p className="text-hint">
-                      {formatRelativeTime(entry.created_at)} • {entry.model ?? "model n/d"}
+                      {formatRelativeTime(entry.created_at)} • {(entry as { model?: string | null }).model ?? "model n/d"}
                     </p>
                   </div>
                   <Badge tone={statusTone(entry.status)}>{entry.status ?? "n/a"}</Badge>

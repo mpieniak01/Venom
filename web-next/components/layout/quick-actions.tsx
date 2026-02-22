@@ -73,7 +73,7 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
           ? t("quickActions.actions.toggleResume")
           : t("quickActions.actions.togglePause"),
         description: t("quickActions.actions.toggleDescription"),
-        endpoint: deriveQueueActionEndpoint(queue?.paused),
+        endpoint: deriveQueueActionEndpoint(queue?.paused ?? undefined),
         icon: queue?.paused ? (
           <Play className="h-4 w-4 text-emerald-300" />
         ) : (

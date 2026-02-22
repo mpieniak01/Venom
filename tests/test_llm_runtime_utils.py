@@ -32,6 +32,7 @@ def test_infer_local_provider_variants():
     assert llm_runtime.infer_local_provider("") == "local"
     assert llm_runtime.infer_local_provider(LOCALHOST_11434) == "ollama"
     assert llm_runtime.infer_local_provider(http_url("vllm.local")) == "vllm"
+    assert llm_runtime.infer_local_provider(http_url("onnx.local")) == "onnx"
     assert llm_runtime.infer_local_provider(http_url("lmstudio.local")) == "lmstudio"
     assert llm_runtime.infer_local_provider(LOCALHOST_8001) == "vllm"
 
@@ -61,6 +62,12 @@ def test_get_active_llm_runtime_variants():
     )
     assert runtime.provider == "ollama"
 
+    runtime = llm_runtime.get_active_llm_runtime(
+        DummySettings(service_type="onnx", endpoint=None)
+    )
+    assert runtime.provider == "onnx"
+    assert runtime.endpoint is None
+
 
 def test_format_runtime_label_and_health_url():
     runtime = llm_runtime.LLMRuntimeInfo(
@@ -84,6 +91,32 @@ def test_format_runtime_label_and_health_url():
             mode="LOCAL",
         )
     ).endswith("/api/tags")
+    assert (
+        llm_runtime._build_health_url(
+            llm_runtime.LLMRuntimeInfo(
+                provider="onnx",
+                model_name="x",
+                endpoint=None,
+                service_type="onnx",
+                mode="LOCAL",
+            )
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_probe_runtime_status_onnx_ready():
+    runtime = llm_runtime.LLMRuntimeInfo(
+        provider="onnx",
+        model_name="phi",
+        endpoint=None,
+        service_type="onnx",
+        mode="LOCAL",
+    )
+    status, error = await llm_runtime.probe_runtime_status(runtime)
+    assert status == "ready"
+    assert error is None
 
 
 @pytest.mark.asyncio

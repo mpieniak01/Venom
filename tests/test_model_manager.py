@@ -417,6 +417,50 @@ async def test_model_manager_list_local_models_workspace_folder(tmp_path, monkey
     assert any(model.get("source") == "models" for model in models)
 
 
+def test_model_manager_build_onnx_llm_model_success(tmp_path):
+    manager = ModelManager(models_dir=str(tmp_path / "data-models"))
+    builder_script = tmp_path / "builder.py"
+    builder_script.write_text(
+        "\n".join(
+            [
+                "import argparse",
+                "from pathlib import Path",
+                "p = argparse.ArgumentParser()",
+                "p.add_argument('-m')",
+                "p.add_argument('-e')",
+                "p.add_argument('-p')",
+                "p.add_argument('-o')",
+                "args = p.parse_args()",
+                "out = Path(args.o)",
+                "out.mkdir(parents=True, exist_ok=True)",
+                "(out / 'model.onnx').write_text('ok', encoding='utf-8')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "models" / "phi3-mini"
+    result = manager.build_onnx_llm_model(
+        model_name="microsoft/Phi-3.5-mini-instruct",
+        output_dir=str(output_dir),
+        execution_provider="cuda",
+        precision="int4",
+        builder_script=str(builder_script),
+    )
+    assert result["success"] is True
+    metadata_path = output_dir / "venom_onnx_metadata.json"
+    assert metadata_path.exists()
+
+
+def test_model_manager_build_onnx_llm_model_missing_builder(tmp_path):
+    manager = ModelManager(models_dir=str(tmp_path / "data-models"))
+    result = manager.build_onnx_llm_model(
+        model_name="microsoft/Phi-3.5-mini-instruct",
+        builder_script=str(tmp_path / "missing_builder.py"),
+    )
+    assert result["success"] is False
+    assert "builder.py" in result["message"]
+
+
 @pytest.mark.asyncio
 async def test_model_manager_pull_model_no_space(tmp_path):
     """Test pobierania modelu bez miejsca (Resource Guard)."""
@@ -514,6 +558,32 @@ async def test_model_manager_get_usage_metrics(tmp_path):
         assert metrics["gpu_usage_percent"] == pytest.approx(10.0)
         assert metrics["vram_total_mb"] == 10240
         assert metrics["vram_usage_percent"] == pytest.approx(50.0)
+
+
+@pytest.mark.asyncio
+async def test_model_manager_list_local_models_onnx_metadata_provider(tmp_path):
+    from unittest.mock import AsyncMock, patch
+
+    manager = ModelManager(models_dir=str(tmp_path))
+    model_dir = tmp_path / "phi35-local"
+    model_dir.mkdir(parents=True)
+    (model_dir / "model.onnx").write_text("onnx", encoding="utf-8")
+    (model_dir / "venom_onnx_metadata.json").write_text(
+        '{"provider":"onnx","runtime":"onnx","precision":"int4","execution_provider":"cuda"}',
+        encoding="utf-8",
+    )
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            side_effect=Exception("Ollama offline")
+        )
+        models = await manager.list_local_models()
+
+    entry = next((m for m in models if m["name"] == "phi35-local"), None)
+    assert entry is not None
+    assert entry["provider"] == "onnx"
+    assert entry["runtime"] == "onnx"
+    assert entry["precision"] == "int4"
 
 
 def test_activate_adapter_academy(tmp_path):

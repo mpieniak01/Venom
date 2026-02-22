@@ -138,7 +138,7 @@ function renderFile(entries) {
   const componentLoaderMapBody = mappedEntries
     .map((entry) => {
       if (!entry.componentImport) return `  "${entry.moduleId}": async () => null`;
-      return `  "${entry.moduleId}": async () => (await import("${entry.componentImport}")).default ?? null`;
+      return `  "${entry.moduleId}": async () => importOptionalModuleComponent("${entry.componentImport}")`;
     })
     .join(",\n");
 
@@ -188,6 +188,21 @@ ${listBody}
 const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<string, () => Promise<ComponentType | null>> = {
 ${componentLoaderMapBody}
 };
+
+async function importOptionalModuleComponent(
+  modulePath: string,
+): Promise<ComponentType | null> {
+  try {
+    const dynamicImport = new Function(
+      "modulePath",
+      "return import(modulePath);",
+    ) as (path: string) => Promise<{ default?: ComponentType }>;
+    const loaded = await dynamicImport(modulePath);
+    return loaded.default ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
 ${flagMapBody}

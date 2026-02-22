@@ -1,0 +1,6 @@
+# Venom profile: vLLM local runtime
+
+-r requirements-profile-api.txt
+
+# vLLM runtime package (provides .venv/bin/vllm)
+vllm==0.15.1

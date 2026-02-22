@@ -14,7 +14,7 @@ The system defines 5 trust levels, where each higher level inherits permissions 
 - **Scope**: Local Read
 - **Permissions**:
   - ✅ Local file access (read-only)
-  - ✅ Local models (Ollama, vLLM)
+  - ✅ Local models (Ollama, vLLM, ONNX)
   - ✅ RAG memory (local)
   - ❌ No network access
   - ❌ No file writing

@@ -31,7 +31,6 @@ export function useLlmServerSelectionData({
   llmServers,
   models,
   selectedLlmServer,
-  activeServerInfo,
 }: {
   llmServers: Array<{ name: string; display_name: string; status?: string | null }>;
   models: ModelsPayload;
@@ -48,34 +47,29 @@ export function useLlmServerSelectionData({
       if (!value) return "";
       return value.toLowerCase();
     };
-    const inferProvider = (name?: string | null) => {
-      if (!name) return null;
-      return name.includes(":") ? "ollama" : "vllm";
-    };
-    let base =
+    const base =
       models.providers && selectedLlmServer in models.providers
         ? models.providers[selectedLlmServer] ?? []
         : (models.models ?? []).filter(
           (model) => normalProvider(model.provider) === selectedLlmServer,
         );
-    base = base.filter((model) => normalProvider(model.provider) !== "onnx");
-    if (activeServerInfo?.active_model) {
-      const inferred = inferProvider(activeServerInfo.active_model);
-      if (inferred === selectedLlmServer) {
-        const hasActive = base.some((model) => model.name === activeServerInfo.active_model);
-        if (!hasActive) {
-          base = [...base, { name: activeServerInfo.active_model, provider: selectedLlmServer }];
-        }
-      }
-    }
     return base;
-  }, [models, selectedLlmServer, activeServerInfo?.active_model]);
+  }, [models, selectedLlmServer]);
   const llmServerOptions = useMemo(
-    () =>
-      llmServers.map((server) => ({
-        value: server.name,
-        label: server.display_name,
-      })),
+    () => {
+      const seen = new Set<string>();
+      return llmServers
+        .filter((server) => {
+          const key = (server.name || "").toLowerCase().trim();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map((server) => ({
+          value: server.name,
+          label: server.display_name,
+        }));
+    },
     [llmServers],
   );
   const llmModelOptions = useMemo(
@@ -108,6 +102,11 @@ export function useServiceStatusMap(services: ServiceStatus[] | null | undefined
 }
 
 export function useTasksIndex(tasks: Task[] | null | undefined) {
+  const getTaskIdentifier = (task: Task): string | undefined => {
+    const legacyTaskId = (task as Task & { task_id?: string }).task_id;
+    return legacyTaskId ?? task.id ?? undefined;
+  };
+
   const tasksByPrompt = useMemo(() => {
     const bucket = new Map<string, Task>();
     (tasks || []).forEach((task) => {
@@ -120,7 +119,7 @@ export function useTasksIndex(tasks: Task[] | null | undefined) {
   const tasksById = useMemo(() => {
     const bucket = new Map<string, Task>();
     (tasks || []).forEach((task) => {
-      const key = task.task_id || task.id;
+      const key = getTaskIdentifier(task);
       if (key) {
         bucket.set(key, task);
       }

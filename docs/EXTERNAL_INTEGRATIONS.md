@@ -254,7 +254,7 @@ print(result)
 
 ### Unit tests
 
-Tests require full dependency installation from `requirements.txt`.
+Tests require full dependency installation from `requirements-full.txt`.
 
 Due to lack of disk space in test environment, full unit tests
 can be run locally after installing all dependencies.

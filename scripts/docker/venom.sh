@@ -8,6 +8,7 @@ UNINSTALL_SCRIPT="$ROOT_DIR/scripts/docker/uninstall.sh"
 
 LANG_CODE="${VENOM_INSTALL_LANG:-}"
 PROFILE_RAW="${VENOM_RUNTIME_PROFILE:-}"
+ADDONS_RAW="${VENOM_RUNTIME_ADDONS:-}"
 ACTION="auto"
 QUICK=0
 
@@ -17,7 +18,9 @@ Usage: $(basename "$0") [options]
 
 Options:
   --lang <code>      Installer language: pl|en|de
-  --profile <name>   Runtime profile: light|api|full|llm_off
+  --profile <name>   Runtime profile: light|api_ollama|api|api_only|full|llm_off
+  --addons <list>    Optional local runtime addons: none|vllm|onnx|vllm,onnx
+                     onnx installs ONNX LLM profile only; extras are separate
   --action <name>    Action: auto|start|install|reinstall|uninstall|status
   --quick            Non-interactive mode
   -h, --help         Show this help
@@ -40,6 +43,14 @@ while [[ "$#" -gt 0 ]]; do
       PROFILE_RAW=${1:-}
       if [[ -z "$PROFILE_RAW" ]]; then
         echo "[ERROR] --profile requires a value." >&2
+        exit 1
+      fi
+      ;;
+    --addons)
+      shift
+      ADDONS_RAW=${1:-}
+      if [[ -z "$ADDONS_RAW" ]]; then
+        echo "[ERROR] --addons requires a value." >&2
         exit 1
       fi
       ;;
@@ -84,25 +95,146 @@ normalize_profile() {
   local raw=$1
   raw=$(echo "$raw" | tr '[:upper:]' '[:lower:]')
   case "$raw" in
-    light) echo "light" ;;
+    light|api_ollama) echo "light" ;;
     api|llm_off) echo "llm_off" ;;
+    api_only) echo "llm_off" ;;
     full) echo "full" ;;
     "") echo "" ;;
     *)
-      echo "[ERROR] Unsupported profile: $raw (expected: light|api|full|llm_off)." >&2
+      echo "[ERROR] Unsupported profile: $raw (expected: light|api_ollama|api|api_only|full|llm_off)." >&2
       exit 1
       ;;
   esac
 }
 
+normalize_addons() {
+  local raw=$1
+  local cleaned
+  cleaned=$(echo "$raw" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+  case "$cleaned" in
+    ""|none) echo "none"; return 0 ;;
+  esac
+
+  local result=()
+  local part
+  IFS=',' read -r -a parts <<<"$cleaned"
+  for part in "${parts[@]}"; do
+    case "$part" in
+      vllm|onnx)
+        local exists=0
+        local item
+        for item in "${result[@]:-}"; do
+          if [[ "$item" == "$part" ]]; then
+            exists=1
+            break
+          fi
+        done
+        if [[ "$exists" -eq 0 ]]; then
+          result+=("$part")
+        fi
+        ;;
+      "")
+        ;;
+      *)
+        echo "[ERROR] Unsupported addon: $part (expected: none|vllm|onnx|vllm,onnx)." >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  if [[ "${#result[@]}" -eq 0 ]]; then
+    echo "none"
+  else
+    (IFS=','; echo "${result[*]}")
+  fi
+}
+
 map_profile_label() {
   local profile=$1
   case "$profile" in
-    light) echo "LIGHT" ;;
+    light) echo "API+OLLAMA" ;;
     llm_off) echo "API" ;;
     full) echo "FULL" ;;
     *) echo "$profile" ;;
   esac
+}
+
+read_addons_from_menu() {
+  case "$LANG_CODE" in
+    pl)
+      echo "Dodatki lokalnego runtime (opcjonalne, instalowane w .venv):" >&2
+      echo "  1) Brak (domyślnie)" >&2
+      echo "  2) vLLM" >&2
+      echo "  3) ONNX LLM (profil silnika ONNX)" >&2
+      echo "  4) vLLM + ONNX LLM" >&2
+      echo "  info: ONNX extras (faster-whisper, piper-tts) instaluj osobno z requirements-extras-onnx.txt" >&2
+      read -r -p "Wybór [1/2/3/4] (domyślnie 1): " a
+      ;;
+    de)
+      echo "Optionale lokale Runtime-Add-ons (Installation in .venv):" >&2
+      echo "  1) Keine (Standard)" >&2
+      echo "  2) vLLM" >&2
+      echo "  3) ONNX LLM (ONNX-Engine-Profil)" >&2
+      echo "  4) vLLM + ONNX LLM" >&2
+      echo "  Hinweis: ONNX-Extras (faster-whisper, piper-tts) separat via requirements-extras-onnx.txt" >&2
+      read -r -p "Auswahl [1/2/3/4] (Standard 1): " a
+      ;;
+    *)
+      echo "Optional local runtime addons (installed in .venv):" >&2
+      echo "  1) None (default)" >&2
+      echo "  2) vLLM" >&2
+      echo "  3) ONNX LLM (ONNX engine profile)" >&2
+      echo "  4) vLLM + ONNX LLM" >&2
+      echo "  note: ONNX extras (faster-whisper, piper-tts) are separate via requirements-extras-onnx.txt" >&2
+      read -r -p "Choice [1/2/3/4] (default 1): " a
+      ;;
+  esac
+
+  a=${a:-1}
+  case "$a" in
+    1) echo "none" ;;
+    2) echo "vllm" ;;
+    3) echo "onnx" ;;
+    4) echo "vllm,onnx" ;;
+    *)
+      echo "[ERROR] Invalid addon choice: $a" >&2
+      exit 1
+      ;;
+  esac
+}
+
+install_optional_addons() {
+  local addons=$1
+  if [[ "$addons" == "none" ]]; then
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[ERROR] python3 is required for local addon installation." >&2
+    exit 1
+  fi
+
+  local pip_bin="$ROOT_DIR/.venv/bin/pip"
+  if [[ ! -x "$pip_bin" ]]; then
+    echo "[INFO] Creating local virtual environment: $ROOT_DIR/.venv"
+    python3 -m venv "$ROOT_DIR/.venv"
+    "$pip_bin" install --upgrade pip
+  fi
+
+  echo "[INFO] Installing optional local runtime addons: $addons"
+  local addon
+  IFS=',' read -r -a addon_list <<<"$addons"
+  for addon in "${addon_list[@]}"; do
+    case "$addon" in
+      vllm)
+        "$pip_bin" install -r "$ROOT_DIR/requirements-profile-vllm.txt"
+        ;;
+      onnx)
+        "$pip_bin" install -r "$ROOT_DIR/requirements-profile-onnx.txt"
+        echo "[INFO] ONNX addon installs ONNX LLM profile. Optional extras: requirements-extras-onnx.txt (faster-whisper, piper-tts)."
+        ;;
+    esac
+  done
 }
 
 validate_action() {
@@ -119,21 +251,21 @@ read_profile_from_menu() {
   case "$LANG_CODE" in
     pl)
       echo "Wybierz architekturę Venom:" >&2
-      echo "  1) LIGHT (lokalnie: Ollama + Gemma 3 + Next.js) - Privacy First" >&2
+      echo "  1) API+OLLAMA (lokalnie: API + Ollama + Next.js) - rekomendowane minimum" >&2
       echo "  2) API   (cloud: OpenAI/Anthropic + Next.js) - Low Hardware Req" >&2
       echo "  3) FULL  (rozszerzony stack) - The Beast" >&2
       read -r -p "Wybór [1/2/3] (domyślnie 1): " p
       ;;
     de)
       echo "Waehle deine Venom-Architektur:" >&2
-      echo "  1) LIGHT (lokal: Ollama + Gemma 3 + Next.js) - Privacy First" >&2
+      echo "  1) API+OLLAMA (lokal: API + Ollama + Next.js) - empfohlenes Minimum" >&2
       echo "  2) API   (cloud: OpenAI/Anthropic + Next.js) - Low Hardware Req" >&2
       echo "  3) FULL  (erweiterter Stack) - The Beast" >&2
       read -r -p "Auswahl [1/2/3] (Standard 1): " p
       ;;
     *)
       echo "Select your Venom architecture:" >&2
-      echo "  1) LIGHT (Local: Ollama + Gemma 3 + Next.js) - Privacy First" >&2
+      echo "  1) API+OLLAMA (Local: API + Ollama + Next.js) - recommended minimum" >&2
       echo "  2) API   (Cloud: OpenAI/Anthropic + Next.js) - Low Hardware Req" >&2
       echo "  3) FULL  (Extended stack) - The Beast" >&2
       read -r -p "Choice [1/2/3] (default 1): " p
@@ -271,6 +403,7 @@ select_action_auto() {
 
 LANG_CODE=$(normalize_lang "$LANG_CODE")
 PROFILE_RAW=$(normalize_profile "$PROFILE_RAW")
+ADDONS_RAW=$(normalize_addons "$ADDONS_RAW")
 validate_action
 
 if [[ -z "$LANG_CODE" ]]; then
@@ -287,6 +420,10 @@ if [[ -z "$PROFILE_RAW" ]]; then
   else
     PROFILE_RAW=$(read_profile_from_menu)
   fi
+fi
+
+if [[ "$ADDONS_RAW" == "none" && "$QUICK" -eq 0 && -t 0 ]]; then
+  ADDONS_RAW=$(read_addons_from_menu)
 fi
 
 if [[ "$ACTION" == "auto" ]]; then
@@ -318,4 +455,8 @@ case "$ACTION" in
     ;;
 esac
 
-echo "[OK] Launcher completed: profile=$(map_profile_label "$PROFILE_RAW"), action=$ACTION, lang=$LANG_CODE"
+if [[ "$ACTION" == "start" || "$ACTION" == "install" || "$ACTION" == "reinstall" ]]; then
+  install_optional_addons "$ADDONS_RAW"
+fi
+
+echo "[OK] Launcher completed: profile=$(map_profile_label "$PROFILE_RAW"), action=$ACTION, addons=$ADDONS_RAW, lang=$LANG_CODE"

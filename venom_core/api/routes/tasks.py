@@ -2,6 +2,9 @@
 
 import asyncio
 import json
+import multiprocessing as mp
+import os
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncGenerator, Optional
 from uuid import UUID
@@ -14,6 +17,7 @@ from venom_core.api.dependencies import (
     get_request_tracer,
     get_state_manager,
 )
+from venom_core.api.routes import system_deps
 from venom_core.api.schemas.tasks import (
     HistoryRequestDetail,
     HistoryRequestSummary,
@@ -25,11 +29,15 @@ from venom_core.core.models import TaskStatus, VenomTask
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
 from venom_core.core.tracer import RequestTracer, TraceStatus
+from venom_core.execution.onnx_llm_client import OnnxLlmClient
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["tasks"])
+_ONNX_EXECUTOR: ProcessPoolExecutor | None = None
+_ONNX_WORKER_CLIENT: OnnxLlmClient | None = None
 
 ORCHESTRATOR_UNAVAILABLE = "Orchestrator nie jest dostępny"
 STATE_MANAGER_UNAVAILABLE = "StateManager nie jest dostępny"
@@ -58,6 +66,35 @@ HISTORY_DETAIL_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": REQUEST_TRACER_UNAVAILABLE},
     404: {"description": "Request o podanym ID nie istnieje"},
 }
+
+
+def _get_onnx_executor() -> ProcessPoolExecutor:
+    global _ONNX_EXECUTOR
+    if _ONNX_EXECUTOR is None:
+        # Dedicated process avoids GIL/event-loop starvation during heavy ONNX generation.
+        _ONNX_EXECUTOR = ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=mp.get_context("spawn"),
+        )
+    return _ONNX_EXECUTOR
+
+
+def _generate_onnx_response_sync(
+    messages: list[dict[str, str]],
+    max_new_tokens: int | None,
+    temperature: float | None,
+) -> str:
+    global _ONNX_WORKER_CLIENT
+    # Keep a warm ONNX client in the dedicated worker process so model weights
+    # stay resident between consecutive requests.
+    if _ONNX_WORKER_CLIENT is None:
+        _ONNX_WORKER_CLIENT = OnnxLlmClient()
+    client = _ONNX_WORKER_CLIENT
+    return client.generate(
+        messages=messages,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+    ).strip()
 
 
 def _get_llm_runtime(task: VenomTask) -> dict:
@@ -245,6 +282,176 @@ def _is_terminal_status(status: TaskStatus) -> bool:
     return status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
 
 
+def _build_onnx_task_messages(request: TaskRequest) -> list[dict[str, str]]:
+    system_prompt = "Jesteś operacyjnym asystentem Venom."
+    if request.forced_intent == "COMPLEX_PLANNING":
+        system_prompt += (
+            " Odpowiadaj planem krok po kroku: analiza, plan, ryzyka, wykonanie."
+        )
+    messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    messages.append({"role": "user", "content": request.content})
+    return messages
+
+
+def _trace_onnx_task_start(task_id: UUID, request: TaskRequest, runtime) -> None:
+    tracer = system_deps.get_request_tracer()
+    if tracer is None:
+        return
+    tracer.create_trace(task_id, request.content, session_id=request.session_id)
+    tracer.set_llm_metadata(
+        task_id,
+        provider=runtime.provider,
+        model=runtime.model_name,
+        endpoint=runtime.endpoint,
+        metadata={
+            "config_hash": runtime.config_hash,
+            "runtime_id": runtime.runtime_id,
+        },
+    )
+    tracer.update_status(task_id, TraceStatus.PROCESSING)
+    tracer.add_step(
+        task_id,
+        "OnnxTask",
+        "start_processing",
+        status="ok",
+        details=f"forced_intent={request.forced_intent or '-'}",
+    )
+
+
+def _trace_onnx_task_success(task_id: UUID, result: str) -> None:
+    tracer = system_deps.get_request_tracer()
+    if tracer is None:
+        return
+    tracer.add_step(
+        task_id,
+        "OnnxTask",
+        "complete",
+        status="ok",
+        details=f"result_chars={len(result)}",
+    )
+    tracer.update_status(task_id, TraceStatus.COMPLETED)
+
+
+def _trace_onnx_task_failure(task_id: UUID, exc: Exception) -> None:
+    tracer = system_deps.get_request_tracer()
+    if tracer is None:
+        return
+    tracer.add_step(
+        task_id,
+        "OnnxTask",
+        "error",
+        status="error",
+        details=str(exc),
+    )
+    tracer.set_error_metadata(
+        task_id,
+        {
+            "error_code": "onnx_task_error",
+            "error_class": exc.__class__.__name__,
+            "error_message": str(exc),
+            "error_details": {"provider": "onnx"},
+            "stage": "onnx_task_execution",
+            "retryable": False,
+        },
+    )
+    tracer.update_status(task_id, TraceStatus.FAILED)
+
+
+async def _run_onnx_task(
+    *,
+    orchestrator: Orchestrator,
+    task_id: UUID,
+    request: TaskRequest,
+    runtime,
+) -> None:
+    state_manager = orchestrator.state_manager
+    try:
+        await state_manager.update_status(task_id, TaskStatus.PROCESSING)
+        state_manager.add_log(task_id, "ONNX: rozpoczęto przetwarzanie zadania.")
+        messages = _build_onnx_task_messages(request)
+        max_tokens = None
+        temperature = None
+        if isinstance(request.generation_params, dict):
+            mt = request.generation_params.get("max_tokens")
+            temp = request.generation_params.get("temperature")
+            if isinstance(mt, (int, float)):
+                max_tokens = int(mt)
+            if isinstance(temp, (int, float)):
+                temperature = float(temp)
+
+        # In tests keep thread path (monkeypatch-friendly). In runtime use process
+        # executor to avoid potential GIL/event-loop starvation on heavy ONNX calls.
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            result = (
+                await asyncio.to_thread(
+                    _generate_onnx_response_sync,
+                    messages,
+                    max_tokens,
+                    temperature,
+                )
+            ).strip()
+        else:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                _get_onnx_executor(),
+                _generate_onnx_response_sync,
+                messages,
+                max_tokens,
+                temperature,
+            )
+        if not result:
+            result = "Brak odpowiedzi z runtime ONNX."
+
+        state_manager.update_context(
+            task_id,
+            {
+                "llm_runtime": runtime.to_payload() | {"status": "ready"},
+                "session": {"session_id": request.session_id},
+                "generation_params": request.generation_params or {},
+            },
+        )
+        state_manager.add_log(task_id, "ONNX: zakończono generację.")
+        await state_manager.update_status(task_id, TaskStatus.COMPLETED, result=result)
+        _trace_onnx_task_success(task_id, result)
+    except Exception as exc:
+        logger.exception("Błąd ONNX task execution: %s", exc)
+        state_manager.add_log(task_id, f"ONNX: błąd: {exc}")
+        await state_manager.update_status(
+            task_id, TaskStatus.FAILED, result=f"Błąd: {exc}"
+        )
+        _trace_onnx_task_failure(task_id, exc)
+
+
+async def _submit_onnx_task(
+    request: TaskRequest, orchestrator: Orchestrator, runtime
+) -> TaskResponse:
+    state_manager = orchestrator.state_manager
+    task = state_manager.create_task(request.content)
+    state_manager.update_context(
+        task.id,
+        {
+            "session": {"session_id": request.session_id},
+            "llm_runtime": runtime.to_payload() | {"status": "ready"},
+        },
+    )
+    _trace_onnx_task_start(task.id, request, runtime)
+    asyncio.create_task(
+        _run_onnx_task(
+            orchestrator=orchestrator,
+            task_id=task.id,
+            request=request,
+            runtime=runtime,
+        )
+    )
+    return TaskResponse(
+        task_id=task.id,
+        status=TaskStatus.PENDING.value,
+        llm_provider=runtime.provider,
+        llm_model=runtime.model_name,
+        llm_endpoint=runtime.endpoint,
+    )
+
+
 async def _task_stream_generator(
     task_id: UUID, state_manager: StateManager
 ) -> AsyncGenerator[str, None]:
@@ -340,6 +547,10 @@ async def create_task(
         collector = metrics_module.metrics_collector
         if collector:
             collector.increment_task_created()
+
+        runtime = get_active_llm_runtime()
+        if runtime.provider == "onnx":
+            return await _submit_onnx_task(request, orchestrator, runtime)
 
         response = await orchestrator.submit_task(request)
         return response

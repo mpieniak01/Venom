@@ -4,10 +4,11 @@ import asyncio
 from datetime import datetime
 from typing import Annotated, Any, Dict, Optional
 
-import aiohttp
+import httpx
 from semantic_kernel.functions import kernel_function
 
 from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -135,7 +136,7 @@ class AssistantSkill:
         except asyncio.TimeoutError:
             logger.error("Timeout podczas pobierania danych pogodowych")
             return "✗ Przekroczono limit czasu podczas pobierania danych pogodowych."
-        except aiohttp.ClientError as e:
+        except httpx.HTTPError as e:
             logger.error(f"Błąd połączenia podczas pobierania pogody: {e}")
             return f"✗ Błąd połączenia z serwisem pogodowym: {e}"
         except Exception as e:
@@ -152,16 +153,17 @@ class AssistantSkill:
     async def _fetch_weather_payload(
         self, url: str, location: str
     ) -> Dict[str, Any] | str:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url, timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                if response.status != 200:
-                    return (
-                        f"✗ Nie udało się pobrać danych pogodowych dla '{location}'. "
-                        "Sprawdź nazwę lokalizacji."
-                    )
-                return await response.json()
+        async with TrafficControlledHttpClient(
+            provider="weather",
+            timeout=10.0,
+        ) as client:
+            response = await client.aget(url, raise_for_status=False)
+            if response.status_code != 200:
+                return (
+                    f"✗ Nie udało się pobrać danych pogodowych dla '{location}'. "
+                    "Sprawdź nazwę lokalizacji."
+                )
+            return response.json()
 
     @staticmethod
     def _first_nested_value(items: Any, field: str, default: str) -> str:

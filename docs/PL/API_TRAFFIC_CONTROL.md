@@ -58,3 +58,55 @@ TRAFFIC_CONTROL_LOG_DIR=/tmp/venom/traffic-control
 - Moduły (np. Brand Studio) nie implementują osobnego silnika anti-ban w ścieżkach core.
 - Dziedziczą globalne guardraile podczas użycia ścieżek HTTP/API core.
 - Modułowe szczegóły connectorów mogą istnieć, ale ochrona globalna pozostaje scentralizowana w Venom core.
+
+## Kontrakt integracyjny dla nowych modułów
+
+Dla każdego nowego connectora/modułu, który wywołuje zewnętrzne API:
+
+1. Używaj `TrafficControlledHttpClient` z:
+   - `venom_core.infrastructure.traffic_control.http_client`
+2. Ustaw stabilny klucz providera (np. `openai`, `github`, `my_module_api`).
+3. Nie wywołuj zewnętrznych API bezpośrednio przez `httpx/aiohttp/requests` w ścieżkach core.
+4. Healthchecki/benchmarki/probe localhost trzymaj poza ścieżką zewnętrznego outbound.
+
+### Wymagane wzorce
+
+Synchronicznie:
+```python
+from venom_core.infrastructure.traffic_control.http_client import TrafficControlledHttpClient
+
+with TrafficControlledHttpClient(provider="my_module_api", timeout=20.0) as client:
+    resp = client.get("https://api.example.com/v1/items")
+    data = resp.json()
+```
+
+Asynchronicznie:
+```python
+from venom_core.infrastructure.traffic_control.http_client import TrafficControlledHttpClient
+
+async with TrafficControlledHttpClient(provider="my_module_api", timeout=20.0) as client:
+    resp = await client.aget("https://api.example.com/v1/items")
+    data = resp.json()
+```
+
+Streaming (SSE/chunked):
+```python
+from venom_core.infrastructure.traffic_control.http_client import TrafficControlledHttpClient
+
+async with TrafficControlledHttpClient(provider="my_module_api", timeout=None) as client:
+    async with client.astream("POST", "https://api.example.com/v1/stream", json=payload) as resp:
+        async for line in resp.aiter_lines():
+            ...
+```
+
+## Weryfikacja wydajności (2026-02-22)
+
+Szybki benchmark runtime (`TrafficController.check_outbound_request + record_outbound_response`):
+- Single-thread: około `313k ops/s` (`200k` operacji w `0.64s`).
+- 8 wątków, ten sam scope: około `22k ops/s`.
+- 8 wątków, różne scope: około `11k ops/s`.
+
+Interpretacja:
+1. Centralny punkt nie jest wąskim gardłem dla normalnego przepływu Venom (async, IO-bound, praktyczne RPS dużo niższe niż powyżej).
+2. Przy sztucznym, mocno wielowątkowym obciążeniu kontencja locków jest widoczna zgodnie z założeniem (spójny stan/liczniki/circuit tracking).
+3. Ten kompromis jest akceptowany na rzecz poprawności i jednolitych guardraili w core.

@@ -42,14 +42,13 @@ class TestEyes:
     """Testy dla klasy Eyes."""
 
     @patch("venom_core.perception.eyes.SETTINGS")
-    @patch("venom_core.perception.eyes.httpx.get")
-    def test_initialization_with_openai(self, mock_get, mock_settings):
+    @patch.object(Eyes, "_check_local_vision", return_value=False)
+    def test_initialization_with_openai(self, _mock_check_local, mock_settings):
         """Test inicjalizacji z OpenAI API key."""
         # Arrange
         mock_settings.OPENAI_API_KEY = "test_key"
         mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
-        mock_get.side_effect = Exception("No local model")
 
         # Act
         eyes = Eyes()
@@ -59,14 +58,13 @@ class TestEyes:
         assert eyes.local_vision_available is False
 
     @patch("venom_core.perception.eyes.SETTINGS")
-    @patch("venom_core.perception.eyes.httpx.get")
-    def test_initialization_without_openai(self, mock_get, mock_settings):
+    @patch.object(Eyes, "_check_local_vision", return_value=False)
+    def test_initialization_without_openai(self, _mock_check_local, mock_settings):
         """Test inicjalizacji bez OpenAI API key."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
         mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
-        mock_get.side_effect = Exception("No local model")
 
         # Act
         eyes = Eyes()
@@ -75,14 +73,13 @@ class TestEyes:
         assert eyes.use_openai is False
 
     @patch("venom_core.perception.eyes.SETTINGS")
-    @patch("venom_core.perception.eyes.httpx.get")
-    def test_prepare_image_base64_with_data_uri(self, mock_get, mock_settings):
+    @patch.object(Eyes, "_check_local_vision", return_value=False)
+    def test_prepare_image_base64_with_data_uri(self, _mock_check_local, mock_settings):
         """Test przygotowania base64 z data URI."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
         mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
-        mock_get.side_effect = Exception("No local model")
         eyes = Eyes()
         data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA"
 
@@ -93,15 +90,16 @@ class TestEyes:
         assert result == "iVBORw0KGgoAAAANSUhEUgAAAAUA"
 
     @patch("venom_core.perception.eyes.SETTINGS")
-    @patch("venom_core.perception.eyes.httpx.get")
-    def test_prepare_image_base64_with_plain_base64(self, mock_get, mock_settings):
+    @patch.object(Eyes, "_check_local_vision", return_value=False)
+    def test_prepare_image_base64_with_plain_base64(
+        self, _mock_check_local, mock_settings
+    ):
         """Test przygotowania base64 z czystego base64 stringa."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
         mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_settings.MIN_BASE64_LENGTH = 500
-        mock_get.side_effect = Exception("No local model")
         eyes = Eyes()
         # Długi base64 bez slashów (prawdopodobnie base64)
         long_base64 = "a" * 600
@@ -113,9 +111,9 @@ class TestEyes:
         assert result == long_base64
 
     @patch("venom_core.perception.eyes.SETTINGS")
-    @patch("venom_core.perception.eyes.httpx.get")
+    @patch.object(Eyes, "_check_local_vision", return_value=False)
     def test_prepare_image_base64_with_file_path(
-        self, mock_get, mock_settings, tmp_path
+        self, _mock_check_local, mock_settings, tmp_path
     ):
         """Test przygotowania base64 z pliku."""
         # Arrange
@@ -123,7 +121,6 @@ class TestEyes:
         mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_settings.MIN_BASE64_LENGTH = 500
-        mock_get.side_effect = Exception("No local model")
         eyes = Eyes()
 
         # Utwórz testowy plik obrazu
@@ -139,15 +136,16 @@ class TestEyes:
         assert result == expected
 
     @patch("venom_core.perception.eyes.SETTINGS")
-    @patch("venom_core.perception.eyes.httpx.get")
-    def test_prepare_image_base64_file_not_found(self, mock_get, mock_settings):
+    @patch.object(Eyes, "_check_local_vision", return_value=False)
+    def test_prepare_image_base64_file_not_found(
+        self, _mock_check_local, mock_settings
+    ):
         """Test przygotowania base64 z nieistniejącego pliku."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
         mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_settings.MIN_BASE64_LENGTH = 500
-        mock_get.side_effect = Exception("No local model")
         eyes = Eyes()
 
         # Act & Assert (combined for exception testing)
@@ -155,15 +153,13 @@ class TestEyes:
             eyes._prepare_image_base64("/nonexistent/path/to/image.png")
 
     @patch("venom_core.perception.eyes.SETTINGS")
-    @patch("venom_core.perception.eyes.httpx.get")
-    def test_check_local_vision_not_available(self, mock_get, mock_settings):
+    @patch.object(Eyes, "_check_local_vision", return_value=False)
+    def test_check_local_vision_not_available(self, _mock_check_local, mock_settings):
         """Test sprawdzania lokalnego modelu vision gdy niedostępny."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
         mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
-        mock_get.side_effect = Exception("Connection error")
-
         # Act
         eyes = Eyes()
 
@@ -179,12 +175,11 @@ def test_headless_detection():
 
     with (
         patch("venom_core.perception.eyes.SETTINGS") as mock_settings,
-        patch("venom_core.perception.eyes.httpx.get") as mock_get,
+        patch.object(Eyes, "_check_local_vision", return_value=False),
     ):
         mock_settings.OPENAI_API_KEY = ""
         mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
-        mock_get.side_effect = Exception("No local model")
 
         eyes = Eyes()
         assert eyes.use_openai is False

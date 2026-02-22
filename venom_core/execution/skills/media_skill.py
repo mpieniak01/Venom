@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -137,8 +138,6 @@ class MediaSkill:
         try:
             import base64
 
-            import httpx
-
             # Parse rozmiaru
             try:
                 width, height = map(int, size.lower().split("x"))
@@ -151,16 +150,22 @@ class MediaSkill:
             # Sprawdź dostępność API
             logger.info(f"Próba połączenia z Stable Diffusion API: {self.sd_endpoint}")
 
-            async with httpx.AsyncClient(timeout=SETTINGS.SD_PING_TIMEOUT) as client:
+            async with TrafficControlledHttpClient(
+                provider="stable_diffusion",
+                timeout=SETTINGS.SD_PING_TIMEOUT,
+            ) as client:
                 # Ping endpoint
                 try:
-                    ping_response = await client.get(f"{self.sd_endpoint}/sdapi/v1/")
+                    ping_response = await client.aget(
+                        f"{self.sd_endpoint}/sdapi/v1/",
+                        raise_for_status=False,
+                    )
                     if ping_response.status_code != 200:
                         logger.warning(
                             f"Stable Diffusion API nie odpowiada (status {ping_response.status_code})"
                         )
                         return None
-                except (httpx.ConnectError, httpx.TimeoutException) as e:
+                except Exception as e:
                     logger.info(f"Stable Diffusion API niedostępny: {e}")
                     return None
 
@@ -177,14 +182,14 @@ class MediaSkill:
                 "sampler_name": SETTINGS.SD_DEFAULT_SAMPLER,
             }
 
-            async with httpx.AsyncClient(
-                timeout=SETTINGS.SD_GENERATION_TIMEOUT
+            async with TrafficControlledHttpClient(
+                provider="stable_diffusion",
+                timeout=SETTINGS.SD_GENERATION_TIMEOUT,
             ) as client:
-                response = await client.post(
+                response = await client.apost(
                     f"{self.sd_endpoint}/sdapi/v1/txt2img",
                     json=payload,
                 )
-                response.raise_for_status()
 
             result = response.json()
             if not result.get("images"):
@@ -226,8 +231,6 @@ class MediaSkill:
             Ścieżka do wygenerowanego obrazu
         """
         try:
-            import httpx
-
             # DALL-E 3 wspiera tylko 1024x1024, 1024x1792, 1792x1024
             valid_sizes = ["1024x1024", "1024x1792", "1792x1024"]
             if size not in valid_sizes:
@@ -247,9 +250,11 @@ class MediaSkill:
             image_url = response.data[0].url
 
             # Pobierz obraz
-            async with httpx.AsyncClient() as client:
-                img_response = await client.get(image_url)
-                img_response.raise_for_status()
+            async with TrafficControlledHttpClient(
+                provider="openai_images",
+                timeout=30.0,
+            ) as client:
+                img_response = await client.aget(image_url)
 
             # Zapisz obraz
             if not filename:

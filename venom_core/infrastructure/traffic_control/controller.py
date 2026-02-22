@@ -13,10 +13,10 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .circuit_breaker import CircuitBreaker
-from .config import TrafficControlConfig
-from .retry_policy import RetryPolicy
-from .token_bucket import TokenBucket
+from venom_core.infrastructure.traffic_control.circuit_breaker import CircuitBreaker
+from venom_core.infrastructure.traffic_control.config import TrafficControlConfig
+from venom_core.infrastructure.traffic_control.retry_policy import RetryPolicy
+from venom_core.infrastructure.traffic_control.token_bucket import TokenBucket
 
 
 @dataclass

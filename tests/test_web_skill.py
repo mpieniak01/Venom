@@ -79,37 +79,42 @@ class TestWebSearchSkill:
         assert "Extracted clean text content" in result
         assert "https://example.com" in result
 
-    @patch("venom_core.execution.skills.web_skill.httpx")
+    @patch("venom_core.execution.skills.web_skill.TrafficControlledHttpClient")
     @patch("venom_core.execution.skills.web_skill.trafilatura")
     def test_scrape_text_fallback_beautifulsoup(
-        self, mock_trafilatura, mock_httpx, web_skill
+        self, mock_trafilatura, mock_client_cls, web_skill
     ):
         """Test fallbacku do BeautifulSoup gdy trafilatura zawodzi."""
         pytest.importorskip("bs4")
         # Trafilatura zwraca None
         mock_trafilatura.fetch_url.return_value = None
 
-        # Mock httpx
+        # Mock client response
         mock_response = MagicMock()
         mock_response.content = b"<html><body><p>Test content</p></body></html>"
-        mock_httpx.get.return_value = mock_response
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+        mock_client_cls.return_value.__exit__.return_value = None
 
         result = web_skill.scrape_text("https://example.com")
 
         assert "Test content" in result
 
     @patch("venom_core.execution.skills.web_skill.trafilatura")
-    @patch("venom_core.execution.skills.web_skill.httpx")
-    def test_scrape_text_timeout(self, mock_httpx, mock_trafilatura, web_skill):
+    @patch("venom_core.execution.skills.web_skill.TrafficControlledHttpClient")
+    def test_scrape_text_timeout(self, mock_client_cls, mock_trafilatura, web_skill):
         """Test obsługi timeoutu."""
         pytest.importorskip("bs4")
         mock_trafilatura.fetch_url.return_value = None
 
-        # Mock httpx.TimeoutException
+        # Mock timeout from wrapped client
         import httpx
 
-        mock_httpx.TimeoutException = httpx.TimeoutException
-        mock_httpx.get.side_effect = httpx.TimeoutException("Timeout")
+        mock_client = MagicMock()
+        mock_client.get.side_effect = httpx.TimeoutException("Timeout")
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+        mock_client_cls.return_value.__exit__.return_value = None
 
         result = web_skill.scrape_text("https://example.com")
 

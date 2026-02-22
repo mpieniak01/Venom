@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 
 from venom_core.config import SETTINGS
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,10 +34,14 @@ class Eyes:
         """Sprawdza czy lokalny model vision jest dostępny."""
         # Sprawdź czy Ollama działa i ma model vision
         try:
-            response = httpx.get(
-                f"{SETTINGS.LLM_LOCAL_ENDPOINT.rstrip('/v1')}/api/tags",
+            with TrafficControlledHttpClient(
+                provider="ollama",
                 timeout=SETTINGS.OLLAMA_CHECK_TIMEOUT,
-            )
+            ) as client:
+                response = client.get(
+                    f"{SETTINGS.LLM_LOCAL_ENDPOINT.rstrip('/v1')}/api/tags",
+                    raise_for_status=False,
+                )
             if response.status_code == 200:
                 models = response.json().get("models", [])
                 # Szukaj modeli vision
@@ -159,18 +164,23 @@ class Eyes:
                 "max_tokens": SETTINGS.VISION_MAX_TOKENS,
             }
 
-            async with httpx.AsyncClient(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
-                response = await client.post(
+            async with TrafficControlledHttpClient(
+                provider="openai",
+                timeout=SETTINGS.OPENAI_API_TIMEOUT,
+            ) as client:
+                response = await client.apost(
                     SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT,
                     headers=headers,
                     json=payload,
                 )
-                response.raise_for_status()
                 result = response.json()
                 description = result["choices"][0]["message"]["content"]
                 logger.info("OpenAI vision: analiza zakończona")
                 return description
 
+        except httpx.HTTPError as e:
+            logger.error(f"Błąd HTTP podczas analizy przez OpenAI: {e}")
+            raise
         except Exception as e:
             logger.error(f"Błąd podczas analizy przez OpenAI: {e}")
             raise
@@ -191,16 +201,19 @@ class Eyes:
                 "stream": False,
             }
 
-            async with httpx.AsyncClient(
-                timeout=SETTINGS.LOCAL_VISION_TIMEOUT
+            async with TrafficControlledHttpClient(
+                provider="ollama",
+                timeout=SETTINGS.LOCAL_VISION_TIMEOUT,
             ) as client:
-                response = await client.post(endpoint, json=payload)
-                response.raise_for_status()
+                response = await client.apost(endpoint, json=payload)
                 result = response.json()
                 description = result.get("response", "")
                 logger.info(f"Lokalny vision model ({model_name}): analiza zakończona")
                 return description
 
+        except httpx.HTTPError as e:
+            logger.error(f"Błąd HTTP podczas analizy lokalnej: {e}")
+            raise
         except Exception as e:
             logger.error(f"Błąd podczas analizy lokalnej: {e}")
             raise

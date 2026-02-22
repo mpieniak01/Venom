@@ -58,3 +58,55 @@ TRAFFIC_CONTROL_LOG_DIR=/tmp/venom/traffic-control
 - Modules (for example Brand Studio) do not implement independent anti-ban engines in core paths.
 - They inherit the same global guardrails when using core HTTP/API paths.
 - Module-level connector specifics can exist, but global protection remains centralized in Venom core.
+
+## Integration contract for new modules
+
+For every new connector/module that calls external APIs:
+
+1. Use `TrafficControlledHttpClient` from:
+   - `venom_core.infrastructure.traffic_control.http_client`
+2. Set a stable provider key (for example `openai`, `github`, `my_module_api`).
+3. Do not call external APIs with raw `httpx/aiohttp/requests` in core paths.
+4. Keep healthchecks/benchmarks/localhost probes separate from external outbound traffic.
+
+### Required patterns
+
+Synchronous:
+```python
+from venom_core.infrastructure.traffic_control.http_client import TrafficControlledHttpClient
+
+with TrafficControlledHttpClient(provider="my_module_api", timeout=20.0) as client:
+    resp = client.get("https://api.example.com/v1/items")
+    data = resp.json()
+```
+
+Asynchronous:
+```python
+from venom_core.infrastructure.traffic_control.http_client import TrafficControlledHttpClient
+
+async with TrafficControlledHttpClient(provider="my_module_api", timeout=20.0) as client:
+    resp = await client.aget("https://api.example.com/v1/items")
+    data = resp.json()
+```
+
+Streaming (SSE/chunked):
+```python
+from venom_core.infrastructure.traffic_control.http_client import TrafficControlledHttpClient
+
+async with TrafficControlledHttpClient(provider="my_module_api", timeout=None) as client:
+    async with client.astream("POST", "https://api.example.com/v1/stream", json=payload) as resp:
+        async for line in resp.aiter_lines():
+            ...
+```
+
+## Performance verification (2026-02-22)
+
+Quick runtime benchmark (`TrafficController.check_outbound_request + record_outbound_response`):
+- Single-thread: about `313k ops/s` (`200k` ops in `0.64s`).
+- 8 threads, same scope: about `22k ops/s`.
+- 8 threads, distinct scopes: about `11k ops/s`.
+
+Interpretation:
+1. The central point is not a bottleneck for normal Venom runtime flow (async, IO-bound workloads, practical RPS far below these values).
+2. Under synthetic heavy multi-thread contention, lock pressure is visible by design (consistent state/counters/circuit tracking).
+3. This trade-off is accepted for correctness and unified guardrails in core.

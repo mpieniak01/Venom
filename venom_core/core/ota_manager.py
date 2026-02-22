@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.message_broker import MessageBroker
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
 
@@ -316,14 +317,14 @@ class OTAManager:
             Ścieżka do pobranego pliku lub None
         """
         try:
-            import httpx
-
             filename = package_url.split("/")[-1]
             download_path = self.ota_dir / f"download_{filename}"
 
-            async with httpx.AsyncClient() as client:
-                response = await client.get(package_url, timeout=60.0)
-                response.raise_for_status()
+            async with TrafficControlledHttpClient(
+                provider="ota",
+                timeout=60.0,
+            ) as client:
+                response = await client.aget(package_url)
 
                 if aiofiles is None:
                     raise RuntimeError("aiofiles nie jest zainstalowane")

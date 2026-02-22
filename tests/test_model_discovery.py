@@ -67,13 +67,13 @@ async def test_hf_search_success(mock_hf_response):
     mock_response.json.return_value = mock_hf_response
     mock_response.raise_for_status.return_value = None
 
-    # Patch AsyncClient class to support context manager
-    with patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.get.return_value = mock_response
-        mock_client_cls.return_value = mock_client
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
         results = await client.search_models("llama3", limit=1)
 
@@ -94,12 +94,13 @@ async def test_ollama_search_scraping_success(mock_ollama_html):
     mock_response.text = mock_ollama_html
     mock_response.raise_for_status.return_value = None
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.get.return_value = mock_response
-        mock_client_cls.return_value = mock_client
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
         results = await client.search_models("llama3", limit=1)
 
@@ -121,12 +122,13 @@ async def test_hf_fetch_papers_month_uses_validated_month_in_url():
     mock_response.raise_for_status.return_value = None
     mock_response.text = "<html></html>"
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.get.return_value = mock_response
-        mock_client_cls.return_value = mock_client
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
         with patch(
             "venom_core.core.model_registry_clients._parse_hf_papers_html",
@@ -134,7 +136,7 @@ async def test_hf_fetch_papers_month_uses_validated_month_in_url():
         ) as mock_parser:
             results = await client.fetch_papers_month(limit=10, month="2025-01")
 
-    first_url = mock_client.get.await_args_list[0].args[0]
+    first_url = mock_client.aget.await_args_list[0].args[0]
     assert first_url == "https://huggingface.co/papers/month/2025-01"
     assert results == [{"title": "ok"}]
     mock_parser.assert_called_once_with("<html></html>", 10)
@@ -149,12 +151,13 @@ async def test_hf_fetch_papers_month_rejects_invalid_month_for_url_path():
     mock_response.raise_for_status.return_value = None
     mock_response.text = "<html></html>"
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.get.return_value = mock_response
-        mock_client_cls.return_value = mock_client
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
         with patch(
             "venom_core.core.model_registry_clients._parse_hf_papers_html",
@@ -162,7 +165,7 @@ async def test_hf_fetch_papers_month_rejects_invalid_month_for_url_path():
         ):
             await client.fetch_papers_month(limit=5, month="../../etc/passwd")
 
-    first_url = mock_client.get.await_args_list[0].args[0]
+    first_url = mock_client.aget.await_args_list[0].args[0]
     assert re.fullmatch(
         r"https://huggingface\.co/papers/month/\d{4}-\d{2}",
         first_url,
@@ -185,12 +188,13 @@ async def test_hf_fetch_papers_month_follows_relative_redirect():
     second_response.raise_for_status.return_value = None
     second_response.text = "<html></html>"
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client.get.side_effect = [first_response, second_response]
-        mock_client_cls.return_value = mock_client
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(side_effect=[first_response, second_response])
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
         with patch(
             "venom_core.core.model_registry_clients._parse_hf_papers_html",
@@ -198,7 +202,7 @@ async def test_hf_fetch_papers_month_follows_relative_redirect():
         ):
             await client.fetch_papers_month(limit=5, month="2025-01")
 
-    assert mock_client.get.await_args_list[1].args[0] == (
+    assert mock_client.aget.await_args_list[1].args[0] == (
         "https://huggingface.co/papers/month/2025-01"
     )
 

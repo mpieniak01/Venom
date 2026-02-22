@@ -105,17 +105,18 @@ class TestAssistantSkill:
         }
 
         mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value=mock_response_data)
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_response_data
 
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(
+            "venom_core.execution.skills.assistant_skill.TrafficControlledHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.aget = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             result = await assistant_skill.get_weather(location="Warsaw")
 
             assert "🌤️" in result
@@ -151,17 +152,18 @@ class TestAssistantSkill:
         }
 
         mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value=mock_response_data)
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_response_data
 
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(
+            "venom_core.execution.skills.assistant_skill.TrafficControlledHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.aget = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             result = await assistant_skill.get_weather(
                 location="London", units="imperial"
             )
@@ -174,16 +176,17 @@ class TestAssistantSkill:
     async def test_get_weather_not_found(self, assistant_skill):
         """Test pobierania pogody - lokalizacja nie znaleziona."""
         mock_response = MagicMock()
-        mock_response.status = 404
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
+        mock_response.status_code = 404
 
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(
+            "venom_core.execution.skills.assistant_skill.TrafficControlledHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.aget = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             result = await assistant_skill.get_weather(location="NonExistentCity")
 
             assert "✗" in result
@@ -192,12 +195,15 @@ class TestAssistantSkill:
     @pytest.mark.asyncio
     async def test_get_weather_timeout(self, assistant_skill):
         """Test pobierania pogody - timeout."""
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(side_effect=asyncio.TimeoutError())
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(
+            "venom_core.execution.skills.assistant_skill.TrafficControlledHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.aget = AsyncMock(side_effect=asyncio.TimeoutError())
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             result = await assistant_skill.get_weather(location="Warsaw")
 
             assert "✗" in result
@@ -228,17 +234,18 @@ class TestAssistantSkill:
         }
 
         mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value=mock_response_data)
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_response_data
 
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(
+            "venom_core.execution.skills.assistant_skill.TrafficControlledHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.aget = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             # Nieprawidłowa jednostka - powinno użyć metric
             result = await assistant_skill.get_weather(
                 location="London", units="kelvin"
@@ -259,14 +266,19 @@ class TestAssistantSkill:
     @pytest.mark.asyncio
     async def test_get_weather_network_error(self, assistant_skill):
         """Test pobierania pogody - błąd sieci."""
-        import aiohttp
+        import httpx
 
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(side_effect=aiohttp.ClientError("Network error"))
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(
+            "venom_core.execution.skills.assistant_skill.TrafficControlledHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.aget = AsyncMock(
+                side_effect=httpx.ConnectError("Network error")
+            )
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             result = await assistant_skill.get_weather(location="Warsaw")
 
             assert "✗" in result
@@ -281,17 +293,18 @@ class TestAssistantSkill:
         }
 
         mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value=mock_response_data)
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_response_data
 
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(
+            "venom_core.execution.skills.assistant_skill.TrafficControlledHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.aget = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             result = await assistant_skill.get_weather(location="Unknown")
 
             assert "✗" in result

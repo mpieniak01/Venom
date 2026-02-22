@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import httpx
 
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
 
@@ -41,10 +42,15 @@ class OllamaClient:
         self.endpoint = (endpoint or build_http_url("localhost", 11434)).rstrip("/")
 
     async def list_tags(self) -> Dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+        async with TrafficControlledHttpClient(
+            provider="ollama",
+            timeout=10.0,
+        ) as client:
             try:
-                response = await client.get(f"{self.endpoint}/api/tags")
-                response.raise_for_status()
+                response = await client.aget(
+                    f"{self.endpoint}/api/tags",
+                    follow_redirects=True,
+                )
                 return response.json()
             except Exception as e:
                 logger.warning(f"Ollama list_tags failed: {e}")
@@ -53,10 +59,16 @@ class OllamaClient:
     async def search_models(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Przeszukuje modele na ollama.com (scraping)."""
         url = "https://ollama.com/search"
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+        async with TrafficControlledHttpClient(
+            provider="ollama_catalog",
+            timeout=10.0,
+        ) as client:
             try:
-                response = await client.get(url, params={"q": query})
-                response.raise_for_status()
+                response = await client.aget(
+                    url,
+                    params={"q": query},
+                    follow_redirects=True,
+                )
                 return _parse_ollama_search_html(response.text, limit)
             except Exception as e:
                 logger.warning(f"Ollama search failed: {e}")
@@ -150,24 +162,25 @@ class HuggingFaceClient:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with TrafficControlledHttpClient(
+            provider="huggingface",
+            timeout=10.0,
+        ) as client:
             try:
-                response = await client.get(
+                response = await client.aget(
                     url,
                     params={"limit": limit, "sort": sort},
                     headers=headers,
                 )
-                response.raise_for_status()
                 payload = response.json()
             except httpx.HTTPStatusError:
                 if sort != "trendingScore":
                     raise
-                response = await client.get(
+                response = await client.aget(
                     url,
                     params={"limit": limit, "sort": "downloads"},
                     headers=headers,
                 )
-                response.raise_for_status()
                 payload = response.json()
 
         return payload if isinstance(payload, list) else []
@@ -178,9 +191,12 @@ class HuggingFaceClient:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with TrafficControlledHttpClient(
+            provider="huggingface",
+            timeout=10.0,
+        ) as client:
             try:
-                response = await client.get(
+                response = await client.aget(
                     url,
                     params={
                         "search": query,
@@ -190,7 +206,6 @@ class HuggingFaceClient:
                     },
                     headers=headers,
                 )
-                response.raise_for_status()
                 payload = response.json()
                 return payload if isinstance(payload, list) else []
             except Exception as e:
@@ -212,10 +227,12 @@ class HuggingFaceClient:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with TrafficControlledHttpClient(
+            provider="huggingface",
+            timeout=10.0,
+        ) as client:
             try:
-                response = await client.get(url, headers=headers)
-                response.raise_for_status()
+                response = await client.aget(url, headers=headers)
                 return response.json()
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 404:
@@ -231,9 +248,11 @@ class HuggingFaceClient:
 
     async def fetch_blog_feed(self, limit: int) -> List[Dict[str, Any]]:
         url = "https://huggingface.co/blog/feed.xml"
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        async with TrafficControlledHttpClient(
+            provider="huggingface",
+            timeout=10.0,
+        ) as client:
+            response = await client.aget(url, follow_redirects=True)
             payload = response.text
 
         return _parse_hf_blog_feed(payload, limit)
@@ -243,14 +262,22 @@ class HuggingFaceClient:
     ) -> List[Dict[str, Any]]:
         target_month = _normalize_hf_papers_month(month)
         url = f"https://huggingface.co/papers/month/{target_month}"
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            response = await client.get(url)
+        async with TrafficControlledHttpClient(
+            provider="huggingface",
+            timeout=10.0,
+        ) as client:
+            response = await client.aget(
+                url,
+                follow_redirects=True,
+                raise_for_status=False,
+            )
             if response.is_redirect and response.headers.get("location"):
                 redirect_url = response.headers["location"]
                 if redirect_url.startswith("/"):
                     redirect_url = f"https://huggingface.co{redirect_url}"
-                response = await client.get(redirect_url)
-            response.raise_for_status()
+                response = await client.aget(redirect_url, follow_redirects=True)
+            else:
+                response.raise_for_status()
             payload = response.text
 
         return _parse_hf_papers_html(payload, limit)

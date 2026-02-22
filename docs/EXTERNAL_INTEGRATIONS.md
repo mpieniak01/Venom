@@ -222,6 +222,7 @@ Venom core enforces an additional global protection layer for API traffic:
 - inbound controls (endpoint groups + actor/session/IP keys),
 - unified `429`/`Retry-After` behavior,
 - anti-loop safeguards (global request cap + degraded mode).
+- mandatory outbound path for new modules: `TrafficControlledHttpClient` (no raw `httpx/aiohttp/requests` in core external API paths).
 
 See: [`docs/API_TRAFFIC_CONTROL.md`](API_TRAFFIC_CONTROL.md)
 

@@ -37,7 +37,9 @@ services:
     environment:
       VENOM_RUNTIME_PROFILE: ${VENOM_RUNTIME_PROFILE:-light}
       ENV: production
-      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
+      # Local docker mesh policy:
+      # keep internal service-to-service links on HTTP by default.
+      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
       AI_MODE: LOCAL
       ACTIVE_LLM_SERVER: ${ACTIVE_LLM_SERVER:-ollama}
       LLM_SERVICE_TYPE: local
@@ -82,8 +84,8 @@ services:
     container_name: venom-frontend-minimal
     environment:
       NEXT_PUBLIC_ENV: ${ENV:-production}
-      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
-      NEXT_PUBLIC_URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
+      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
+      NEXT_PUBLIC_URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
       API_PROXY_TARGET: ${HTTP_SCHEME:-http}://backend:8000
       NEXT_PUBLIC_API_BASE: ${HTTP_SCHEME:-http}://localhost:8000
       NEXT_PUBLIC_WS_BASE: ${WS_SCHEME:-ws}://localhost:8000/ws/events

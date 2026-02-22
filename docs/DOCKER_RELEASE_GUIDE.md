@@ -5,7 +5,7 @@ This document defines the official way to publish Docker images for Venom Minima
 ## Quick Answer
 
 - Yes: in manual mode you use a real button in GitHub UI: `Actions` -> `Docker Publish (Minimal)` -> `Run workflow`.
-- For tag mode: first make sure commit is on `main`, then create and push tag `v1.5.0` (current stable). Pushing the tag starts publish automatically.
+- For tag mode: first make sure commit is on `main`, then create and push tag `v1.6.0` (current stable). Pushing the tag starts publish automatically.
 
 ## Scope
 
@@ -16,7 +16,7 @@ This document defines the official way to publish Docker images for Venom Minima
 ## Safety Rules (Mandatory)
 
 1. Do not publish images from feature branches.
-2. Stable release uses semantic version tag: `vMAJOR.MINOR.PATCH` (current example: `v1.5.0`).
+2. Stable release uses semantic version tag: `vMAJOR.MINOR.PATCH` (current example: `v1.6.0`).
 3. Manual publish is allowed only from `main`.
 4. Manual publish requires explicit confirmation: `confirm_publish=true`.
 
@@ -39,14 +39,14 @@ git push origin main
 ```
 3. Create and push release tag:
 ```bash
-git tag v1.5.0
-git push origin v1.5.0
+git tag v1.6.0
+git push origin v1.6.0
 ```
 4. GitHub Actions runs `Docker Publish (Minimal)` automatically.
 
 Tags pushed to GHCR:
 - `sha-<short_sha>`
-- `v1.5.0`
+- `v1.6.0`
 - `latest`
 
 ### Mode B: Manual publish (for test/RC builds)
@@ -76,8 +76,8 @@ Typical tags in manual mode:
 3. Expected tags are visible.
 4. Pull smoke test from clean host:
 ```bash
-docker pull ghcr.io/mpieniak01/venom-backend:v1.5.0
-docker pull ghcr.io/mpieniak01/venom-frontend:v1.5.0
+docker pull ghcr.io/mpieniak01/venom-backend:v1.6.0
+docker pull ghcr.io/mpieniak01/venom-frontend:v1.6.0
 ```
 
 ## End-user Run (from published images)
@@ -89,8 +89,8 @@ git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 
 # optional overrides:
-# export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:v1.5.0
-# export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:v1.5.0
+# export BACKEND_IMAGE=ghcr.io/mpieniak01/venom-backend:v1.6.0
+# export FRONTEND_IMAGE=ghcr.io/mpieniak01/venom-frontend:v1.6.0
 # export OLLAMA_IMAGE=ollama/ollama:0.16.1
 # export OLLAMA_MODEL=gemma3:1b
 # export OLLAMA_NO_CLOUD=1
@@ -100,6 +100,12 @@ scripts/docker/run-release.sh start
 ```
 
 This flow uses prebuilt backend/frontend images from GHCR and pulls local Ollama model on first start.
+
+### Protocol policy (no manual tuning in default path)
+
+- Local/dev Docker stack (`run-release.sh`, `compose.release.yml`, `compose.minimal.yml`) defaults to `URL_SCHEME_POLICY=force_http`.
+- Internal service links stay HTTP (`frontend -> backend`, `backend -> ollama`) to avoid accidental TLS mismatch inside container network.
+- Public production exposure should terminate TLS on reverse proxy/ingress (HTTPS on edge, HTTP inside stack unless explicitly hardened end-to-end).
 
 ## Rollback / Recovery
 

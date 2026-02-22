@@ -33,13 +33,13 @@ Fields for legacy format:
 Examples:
 - `API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/venom-module-example/module.json`
 - `API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/mod-a/module.json,manifest:/home/ubuntu/venom/modules/mod-b/module.json`
-- legacy: `API_OPTIONAL_MODULES=my_mod|acme_mod.api:router|FEATURE_ACME|1.0.0|1.5.0`
+- legacy: `API_OPTIONAL_MODULES=my_mod|acme_mod.api:router|FEATURE_ACME|1.0.0|1.6.0`
 
 ## 3. Compatibility contract
 
 Core compares module manifest values with:
 - `CORE_MODULE_API_VERSION` (default `1.0.0`)
-- `CORE_RUNTIME_VERSION` (default `1.5.0`)
+- `CORE_RUNTIME_VERSION` (default `1.6.0`)
 
 If incompatible:
 - module is skipped,

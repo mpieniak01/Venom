@@ -1,4 +1,4 @@
-## Current platform structure (v1.5+)
+## Current platform structure (v1.6.0+)
 
 ```text
 ~/venom

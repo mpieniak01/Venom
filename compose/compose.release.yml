@@ -30,12 +30,14 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/mpieniak01/venom-backend:v1.5.0}
+    image: ${BACKEND_IMAGE:-ghcr.io/mpieniak01/venom-backend:v${VENOM_RELEASE_VERSION:-1.6.0}}
     container_name: venom-backend-release
     environment:
       VENOM_RUNTIME_PROFILE: ${VENOM_RUNTIME_PROFILE:-light}
       ENV: production
-      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
+      # Local docker mesh policy:
+      # keep internal service-to-service links on HTTP by default.
+      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
       AI_MODE: LOCAL
       ACTIVE_LLM_SERVER: ${ACTIVE_LLM_SERVER:-ollama}
       LLM_SERVICE_TYPE: local
@@ -71,12 +73,12 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/mpieniak01/venom-frontend:v1.5.0}
+    image: ${FRONTEND_IMAGE:-ghcr.io/mpieniak01/venom-frontend:v${VENOM_RELEASE_VERSION:-1.6.0}}
     container_name: venom-frontend-release
     environment:
       NEXT_PUBLIC_ENV: ${ENV:-production}
-      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
-      NEXT_PUBLIC_URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
+      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
+      NEXT_PUBLIC_URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-force_http}
       API_PROXY_TARGET: ${HTTP_SCHEME:-http}://backend:8000
       NEXT_PUBLIC_API_BASE: ${HTTP_SCHEME:-http}://localhost:8000
       NEXT_PUBLIC_WS_BASE: ${WS_SCHEME:-ws}://localhost:8000/ws/events

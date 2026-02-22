@@ -111,12 +111,12 @@ Default tags:
 - on release tag: `<git_tag>` + `latest`
 - manual run: optional `custom_tag` (+ optional `latest`)
 
-Example release flow (current stable: `v1.5.0`):
+Example release flow (current stable: `v1.6.0`):
 ```bash
 git checkout main
 git pull --ff-only
-git tag v1.5.0
-git push origin v1.5.0
+git tag v1.6.0
+git push origin v1.6.0
 ```
 
 ## Post-Deployment Tests

@@ -6,7 +6,7 @@
 
 ## 0. Wprowadzenie – Wizja Docelowa (Venom v2.0)
 > [!NOTE]
-> **Status:** Poniższy opis przedstawia docelową formę organizmu (v2.0). Obecna wersja (v1.5) stanowi fundament (Fundament Layer) realizujący kluczowe funkcje orkiestracji, **zarządzania workflow**, uwierzytelniania, pamięci i uczenia się.
+> **Status:** Poniższy opis przedstawia docelową formę organizmu (v2.0). Obecna wersja (v1.6.0) stanowi fundament (Fundament Layer) realizujący kluczowe funkcje orkiestracji, **zarządzania workflow**, uwierzytelniania, pamięci i uczenia się.
 Venom to projekt stworzenia organizmu sztucznej inteligencji, który rozwija, nadzoruje i projektuje inne systemy AI.
 To warstwa meta-inteligencji działająca nad Rider-PC (logika, kod, AI) oraz Rider-Pi (świat fizyczny, sensory, ruch).
 Venom może w przyszłości objąć każdym innym modułem Twojego ekosystemu.

@@ -33,13 +33,13 @@ Pola:
 Przykłady:
 - `API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/venom-module-example/module.json`
 - `API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/mod-a/module.json,manifest:/home/ubuntu/venom/modules/mod-b/module.json`
-- (legacy) `API_OPTIONAL_MODULES=my_mod|acme_mod.api:router|FEATURE_ACME|1.0.0|1.5.0`
+- (legacy) `API_OPTIONAL_MODULES=my_mod|acme_mod.api:router|FEATURE_ACME|1.0.0|1.6.0`
 
 ## 3. Kontrakt kompatybilności
 
 Core porównuje manifest modułu z:
 - `CORE_MODULE_API_VERSION` (domyślnie `1.0.0`)
-- `CORE_RUNTIME_VERSION` (domyślnie `1.5.0`)
+- `CORE_RUNTIME_VERSION` (domyślnie `1.6.0`)
 
 Jeśli moduł jest niekompatybilny:
 - moduł jest pomijany,

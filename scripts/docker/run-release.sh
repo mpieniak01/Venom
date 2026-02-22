@@ -8,6 +8,7 @@ MODEL_DEFAULT="gemma3:4b"
 MODEL="${OLLAMA_MODEL:-$MODEL_DEFAULT}"
 GPU_MODE="${VENOM_ENABLE_GPU:-auto}"
 RUNTIME_PROFILE="${VENOM_RUNTIME_PROFILE:-light}"
+RELEASE_VERSION=""
 
 usage() {
   cat <<USAGE
@@ -34,6 +35,19 @@ validate_runtime_profile() {
       exit 1
       ;;
   esac
+}
+
+detect_release_version() {
+  local version_file="$ROOT_DIR/pyproject.toml"
+  if [[ -f "$version_file" ]]; then
+    local parsed
+    parsed=$(awk -F '"' '/^version = "/ {print $2; exit}' "$version_file")
+    if [[ -n "$parsed" ]]; then
+      echo "$parsed"
+      return 0
+    fi
+  fi
+  echo "1.6.0"
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -94,6 +108,7 @@ fi
 compose_cmd() {
   local active_llm_server="ollama"
   local warmup_on_startup="true"
+  local scheme_policy="${URL_SCHEME_POLICY:-force_http}"
 
   if [[ "$RUNTIME_PROFILE" == "llm_off" ]]; then
     active_llm_server="none"
@@ -103,6 +118,9 @@ compose_cmd() {
   fi
 
   OLLAMA_MODEL="$MODEL" \
+  VENOM_RELEASE_VERSION="$RELEASE_VERSION" \
+  URL_SCHEME_POLICY="$scheme_policy" \
+  NEXT_PUBLIC_URL_SCHEME_POLICY="${NEXT_PUBLIC_URL_SCHEME_POLICY:-$scheme_policy}" \
   VENOM_RUNTIME_PROFILE="$RUNTIME_PROFILE" \
   ACTIVE_LLM_SERVER="$active_llm_server" \
   LLM_WARMUP_ON_STARTUP="$warmup_on_startup" \
@@ -157,6 +175,7 @@ ensure_model() {
 
 cmd=${1:-}
 validate_runtime_profile
+RELEASE_VERSION=$(detect_release_version)
 case "$cmd" in
   start)
     compose_up_stack

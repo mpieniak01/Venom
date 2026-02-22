@@ -8,7 +8,10 @@ const MATH_ALLOWED_REGEX = /^[-0-9a-zA-Z\s+*/=^_().,:√π∑∫<>≤≥\\]+$/;
 export function normalizeModelTextArtifacts(content: string) {
   if (!content) return content;
   const hasOnnxArtifacts =
-    content.includes("▁") || /^\s*""/.test(content) || /\*▁/.test(content);
+    content.includes("▁") ||
+    /^\s*""/.test(content) ||
+    /\*▁/.test(content) ||
+    /:\*\s*$/m.test(content);
   if (!hasOnnxArtifacts) return content;
 
   let normalized = content;
@@ -19,7 +22,11 @@ export function normalizeModelTextArtifacts(content: string) {
   normalized = normalized.replaceAll(/^\*\s*/gm, "* ");
   normalized = normalized
     .split("\n")
-    .map((line) => line.replaceAll(/[ \t]{2,}/g, " ").trimEnd())
+    .map((line) => {
+      const collapsed = line.replaceAll(/[ \t]{2,}/g, " ").trimEnd();
+      // ONNX sometimes emits a stray "*" at the end of numbered section titles.
+      return collapsed.replace(/^(\s*\d+\.\s.+?):\*\s*$/, "$1:");
+    })
     .join("\n")
     .replaceAll(/\s+([,.;!?])/g, "$1")
     .replaceAll(/\n{3,}/g, "\n\n")

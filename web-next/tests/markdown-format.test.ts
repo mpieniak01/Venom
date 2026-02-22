@@ -42,3 +42,13 @@ test("normalizeModelTextArtifacts cleans ONNX sentencepiece and inline bullets",
   assert.match(output, /\n\* Kwadratowy plac zabaw/);
   assert.match(output, /\n\* Kwadratowy obraz na ścianie/);
 });
+
+test("normalizeModelTextArtifacts removes stray star after numbered section header", () => {
+  const input =
+    "1. W matematyce (geometryczna definicja):*\n\nKwadrat to czworokąt.\n\n2. W kontekście programowania (np. w Pythonie):*";
+  const output = normalizeModelTextArtifacts(input);
+
+  assert.match(output, /^1\. W matematyce \(geometryczna definicja\):/);
+  assert.ok(!output.includes("definicja):*"));
+  assert.ok(!output.includes("Pythonie):*"));
+});

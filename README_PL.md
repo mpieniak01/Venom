@@ -32,15 +32,14 @@ W praktyce Venom działa jako warstwa decyzyjno-wykonawcza dla zespołów techni
 - 🔌 **Rozszerzalność** - narzędzia lokalne i import MCP z repozytoriów Git.
 
 ## Ostatnie wdrożenia (2026-02)
-- Uporządkowano bezpieczeństwo i governance (`Policy Gate`, limity kosztów, fallback).
-- Uspójniono warstwę operacyjną (`Workflow Control Plane`, panel config, monitoring runtime).
-- Wzmocniono moduły jakości i uczenia (`Academy`, rollout routera intencji, polityka artefaktów testowych).
-- Domknięto formalnie 152 (Ollama 0.16.x) z pełnym evidence i PASS hard-gates.
-- Wdrożono kontrakt runtime profiles/onboarding (`light/llm_off/full`) i utrwalono launcher `venom.sh` (PL/EN/DE, tryb headless).
-- Zaakceptowano ADR-001 i wdrożono soft e2e kontrakt `RoutingDecision` (governance + policy + observability).
-- Domknięto API Contract Wave-1: jawne `response_model` dla `system/api-map`, schematy memory response, synchronizacja OpenAPI/codegen oraz falowy DI cleanup.
-- Dodano platformę modułów opcjonalnych: własne moduły można rejestrować i włączać przez env-driven module registry.
-- Zintegrowano ONNX Runtime LLM jako trzeci lokalny silnik (3-stack: Ollama + vLLM + ONNX) z parytetem trybów (`direct`/`normal`/`complex`) w Cockpit.
+- Kamień milowy 1.6.0: produkcyjna gotowość lokalnego 3-stack runtime, większa ciągłość działania i mniejsze ryzyko zależności od pojedynczego providera.
+- Uporządkowano bazę bezpieczeństwa i governance (`Policy Gate`, limity kosztów, fallback), co podnosi bezpieczeństwo operacyjne.
+- Uspójniono model operacyjny (`Workflow Control Plane`, monitoring, konfiguracja i aktywacja runtime).
+- Wdrożono wspólną warstwę kontroli ruchu API (anti-ban/anti-loop) dla komunikacji inbound i outbound.
+- Wzmocniono tor jakości i uczenia (`Academy`, router intencji, polityka artefaktów testowych) dla większej powtarzalności dostarczeń.
+- Ustabilizowano profile onboardingowe runtime (`light/llm_off/full`) w launcherze `venom.sh` (PL/EN/DE, tryb headless).
+- Domknięto API Contract Wave-1 (synchronizacja OpenAPI/codegen, jawne schematy odpowiedzi, cleanup DI).
+- Otworzono platformę modułów opcjonalnych: moduły własne można włączać przez registry sterowane środowiskiem.
 
 ## Dokumentacja
 ### Start i operacje

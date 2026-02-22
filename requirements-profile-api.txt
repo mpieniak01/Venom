@@ -1,0 +1,22 @@
+# Venom profile: API-only / cloud-first minimal baseline
+# Installs backend runtime without local heavy LLM engines (vLLM/ONNX).
+# Intended default for quick start and minimal environments.
+
+-r requirements-docker-minimal.txt
+
+# API/runtime essentials used by backend routes
+python-multipart==0.0.20
+mcp>=1.0.0
+urllib3>=2.6.3
+
+# Cloud/API providers (optional at runtime, lightweight compared to local engines)
+openai<2,>=1.98.0
+google-genai
+anthropic
+tiktoken
+
+# Optional integrations frequently used in API profile
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+google-api-python-client>=2.100.0

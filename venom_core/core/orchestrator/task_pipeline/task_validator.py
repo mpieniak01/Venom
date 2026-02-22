@@ -83,6 +83,27 @@ class TaskValidator:
         runtime_info = get_active_llm_runtime()
         normalized_forced_provider = normalize_forced_provider(forced_provider)
 
+        # ONNX runtime is handled via dedicated in-process adapter paths.
+        # Standard orchestrator task path currently depends on SK OpenAI-compatible
+        # connectors and may not execute ONNX models correctly.
+        if runtime_info.provider == "onnx":
+            envelope = self.orch._build_error_envelope(
+                error_code="runtime_not_supported",
+                error_message=(
+                    "Runtime ONNX nie jest jeszcze obsługiwany w trybie zadaniowym "
+                    "(Normal/Complex). Przełącz na vLLM/Ollama lub użyj trybu Direct."
+                ),
+                error_details={
+                    "active_provider": runtime_info.provider,
+                    "active_model": runtime_info.model_name,
+                    "service_type": runtime_info.service_type,
+                },
+                stage="routing_validation",
+                retryable=False,
+            )
+            self.orch._set_runtime_error(task_id, envelope)
+            raise RuntimeError("runtime_not_supported")
+
         # Check provider mismatch
         if (
             normalized_forced_provider

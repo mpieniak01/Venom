@@ -37,8 +37,8 @@
 │                                                                               │
 │   ┌─────────────────────────────────────────────────────────────────────────┐ │
 │   │ RIDER-PC (Host Body)                                                    │ │
-│   │ [ WSL2 ] ↔ [ Docker Sandbox ] ↔ [ Ollama / vLLM / Cloud ]                │ │
-│   │                 (LLM Runtime: Local + Cloud, ONNX for audio)             │ │
+│   │ [ WSL2 ] ↔ [ Docker Sandbox ] ↔ [ Ollama / vLLM / ONNX / Cloud ]         │ │
+│   │           (LLM Runtime: 3-stack local + Cloud, ONNX also for audio)      │ │
 │   └─────────────────────────────────────────────────────────────────────────┘ │
 │                                       │ Network / IoT                           │
 │                                       ▼                                          │

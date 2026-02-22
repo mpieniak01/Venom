@@ -8,7 +8,7 @@ This document describes how to measure Venom chat pipeline performance in two ar
 ## Requirements
 - Running backend (`make start-dev` or `make start-prod`).
 - Running Next (`make start-dev` / `make start-prod`).
-- Node 18.19+ (Playwright) and Python test environment (`pip install -r requirements.txt` + `pip install locust`).
+- Node 18.19+ (Playwright) and Python test environment (`pip install -r requirements-full.txt` + `pip install locust`).
 
 ## Playwright: UI Latency
 

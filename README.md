@@ -25,7 +25,7 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 
 ## Key capabilities
 - 🤖 **Agent orchestration** - planning and execution through specialized roles.
-- 🧭 **Hybrid model runtime** - Ollama / vLLM / cloud switching with local-first behavior.
+- 🧭 **Hybrid model runtime (3-stack)** - Ollama / vLLM / ONNX + cloud switching with local-first behavior.
 - 💾 **Memory and knowledge** - persistent context, lessons learned, and knowledge reuse.
 - 🎓 **Workflow learning** - automation built from user demonstrations.
 - 🛠️ **Operations and governance** - service panel, policy gate, and provider cost control.
@@ -40,6 +40,7 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 - ADR-001 was accepted and `RoutingDecision` soft e2e contract was integrated (governance + policy + observability).
 - API Contract Wave-1 was completed: explicit `response_model` for `system/api-map`, memory response schemas, OpenAPI/codegen sync, and wave-based DI cleanup.
 - Added optional modules platform capability: custom modules can now be registered and enabled via environment-driven module registry.
+- ONNX Runtime LLM was integrated as the third local engine (3-stack: Ollama + vLLM + ONNX) with mode parity (`direct`/`normal`/`complex`) in Cockpit.
 
 ## Documentation
 ### Start and operations
@@ -66,6 +67,7 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 - [Contributing](docs/CONTRIBUTING.md) - Contribution process and PR expectations.
 - [Testing policy](docs/TESTING_POLICY.md) - Test scope, validation commands, and quality requirements.
 - [QA Delivery Guide](docs/QA_DELIVERY_GUIDE.md) - Delivery checklist from validation to release readiness.
+- [LLM 3-stack benchmark baseline (2026-02-22)](docs/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE_2026-02-22.md) - Frozen reference metrics for `ollama`/`vllm`/`onnx` and E2E comparison.
 
 ## UI preview
 <table>
@@ -137,7 +139,7 @@ venom/
 - **HybridModelRouter** (`venom_core/execution/model_router.py`) - local/cloud routing.
 - **Modes**: LOCAL, HYBRID, CLOUD.
 - **Local-first**: privacy and cost control first.
-- **Providers**: Ollama/vLLM (local), Gemini, OpenAI.
+- **Providers**: Ollama/vLLM/ONNX (local), Gemini, OpenAI.
 - Sensitive data can be blocked from leaving local runtime.
 
 #### 5) Learning by demonstration
@@ -160,7 +162,7 @@ venom/
 
 #### 8) Runtime services
 - Backend API (FastAPI/uvicorn) and Next.js UI.
-- LLM servers: Ollama, vLLM.
+- LLM servers: Ollama, vLLM, ONNX (in-process).
 - LanceDB (embedded), Redis (optional).
 - Nexus and background tasks as optional processes.
 
@@ -173,6 +175,14 @@ pip install -r requirements.txt
 cp .env.example .env
 make start
 ```
+
+Default `requirements.txt` installs **minimal API/cloud profile**.
+If you want local runtime engines, install one of:
+- `pip install -r requirements-profile-ollama.txt`
+- `pip install -r requirements-profile-vllm.txt`
+- `pip install -r requirements-profile-onnx.txt`
+- `pip install -r requirements-extras-onnx.txt` (optional extras: `faster-whisper` + `piper-tts`)
+- `pip install -r requirements-full.txt` (legacy full stack)
 
 ### Path B: Docker script setup (single command)
 ```bash
@@ -239,7 +249,13 @@ Python 3.10+ (recommended 3.11)
 - `google-genai` - Gemini (optional).
 - `openai` / `anthropic` - LLM providers (optional).
 
-Full list: [requirements.txt](requirements.txt)
+Profiles:
+- [requirements.txt](requirements.txt) - default minimal API/cloud profile
+- [requirements-profile-ollama.txt](requirements-profile-ollama.txt) - API + Ollama profile
+- [requirements-profile-vllm.txt](requirements-profile-vllm.txt) - API + vLLM profile
+- [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - API + ONNX LLM profile (third engine)
+- [requirements-extras-onnx.txt](requirements-extras-onnx.txt) - optional extras (`faster-whisper`, `piper-tts`), separate from ONNX LLM profile
+- [requirements-full.txt](requirements-full.txt) - full legacy stack
 
 ## Running (FastAPI + Next.js)
 Full checklist: [`docs/DEPLOYMENT_NEXT.md`](docs/DEPLOYMENT_NEXT.md).
@@ -338,7 +354,7 @@ Runtime profile (single package, selectable mode):
 export VENOM_RUNTIME_PROFILE=light   # light|llm_off|full
 scripts/docker/run-release.sh start
 ```
-`llm_off` means no local LLM runtime (Ollama/vLLM), but backend and UI can still use external LLM APIs (for example OpenAI/Gemini) after API key configuration.
+`llm_off` means no local LLM runtime (Ollama/vLLM/ONNX), but backend and UI can still use external LLM APIs (for example OpenAI/Gemini) after API key configuration.
 
 Optional GPU mode:
 ```bash

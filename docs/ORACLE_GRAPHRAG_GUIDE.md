@@ -172,7 +172,7 @@ print(stats)
 ## Dependency Installation
 
 ```bash
-# Basic dependencies (already in requirements.txt)
+# Basic dependencies (included in requirements-full.txt)
 pip install networkx lancedb
 
 # Document ingestion
@@ -336,7 +336,7 @@ graph.load_graph()
 ## FAQ
 
 **Q: Can I use Oracle without GPT-4?**
-A: Yes! You can use local models (Ollama, vLLM). Knowledge extraction and reasoning will work, though may be less precise.
+A: Yes! You can use local models (Ollama, vLLM, ONNX). Knowledge extraction and reasoning will work, though may be less precise.
 
 **Q: How long does it take to process a 100-page PDF?**
 A: ~30-60 seconds (depends on LLM speed and PDF quality).

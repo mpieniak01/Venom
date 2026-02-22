@@ -1,0 +1,5 @@
+# Venom profile: Ollama local runtime
+# Ollama server is an external daemon (not installed by pip here).
+# This profile keeps Python deps at API baseline.
+
+-r requirements-profile-api.txt

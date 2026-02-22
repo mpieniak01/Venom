@@ -169,7 +169,7 @@ web-next/
 - **Validation**: Checking filled fields before save
 - **Sticky footer**: Action panel always visible at bottom of screen
 - **Restart warnings**: Banner with list of services requiring restart after save
-- **Info box**: Informational section about Ollama vs vLLM with link to benchmarks
+- **Info box**: Informational section about Ollama vs vLLM vs ONNX with link to benchmarks
 
 #### AuditPanel (`components/config/audit-panel.tsx`)
 - **Single source**: reads one canonical endpoint (`/api/v1/audit/stream`)
@@ -247,7 +247,7 @@ UI displays warning with service list and CTA to "Services" tab.
 2. POST to `/api/v1/config/restore` restores selected backup
 3. Current `.env` is saved as new backup before restoration
 
-## LLM Modes: Ollama vs vLLM
+## LLM Modes: Ollama vs vLLM vs ONNX
 
 Panel contains informational section explaining differences:
 
@@ -264,8 +264,13 @@ Panel contains informational section explaining differences:
 - Higher throughput for multiple requests
 - Better for performance tests
 
+**ONNX (Full / optional profile):**
+- In-process runtime (no separate daemon)
+- Good for controlled local deployments and ONNX-standardized model paths
+- Requires ONNX LLM profile and model path readiness
+
 **Recommendation:**
-By default we run only one runtime at a time. Second runtime makes sense when separating roles (e.g., UI on Ollama, coding agent on vLLM). Full selection strategy should be based on benchmark results → link to `/benchmark`.
+By default we run only one runtime at a time. Additional runtimes make sense when separating roles (e.g., UI on Ollama, coding agent on vLLM, deterministic edge path on ONNX). Full selection strategy should be based on benchmark results → link to `/benchmark`.
 
 ## Tests
 

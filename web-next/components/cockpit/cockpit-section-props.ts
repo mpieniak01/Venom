@@ -85,7 +85,20 @@ export function useCockpitSectionProps() {
   const onSend = useCallback(async (txt: string) => { logic.chatUi.handleSend(txt); return true; }, [logic.chatUi]);
   const onActivateModel = useCallback((model: string) => handleActivateModel(model), [handleActivateModel]);
 
-  const llmServerOptions = useMemo(() => data.llmServers?.map(s => ({ label: s.name, value: s.name })) || [], [data.llmServers]);
+  const llmServerOptions = useMemo(
+    () => {
+      const seen = new Set<string>();
+      return (data.llmServers ?? [])
+        .filter((server) => {
+          const key = (server.name || "").toLowerCase().trim();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map((s) => ({ label: s.name, value: s.name }));
+    },
+    [data.llmServers],
+  );
   const allowedLlmProviders = useMemo(
     () => new Set((data.llmServers || []).map((s) => (s.name || "").toLowerCase()).filter(Boolean)),
     [data.llmServers],
@@ -93,6 +106,7 @@ export function useCockpitSectionProps() {
   const resolveModelProvider = useCallback((modelName: string, provider?: string | null) => {
     const normalized = (provider || "").toLowerCase().trim();
     if (normalized) return normalized;
+    if (modelName.toLowerCase().includes("onnx")) return "onnx";
     return modelName.includes(":") ? "ollama" : "vllm";
   }, []);
   const llmModelOptions = useMemo(() => data.models?.models

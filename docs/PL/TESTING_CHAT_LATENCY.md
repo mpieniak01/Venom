@@ -8,7 +8,7 @@ Dokument opisuje jak zmierzyć wydajność pipeline’u czatu Venoma w dwóch ob
 ## Wymagania
 - Uruchomiony backend (`make start-dev` lub `make start-prod`).
 - Uruchomiony Next (`make start-dev` / `make start-prod`).
-- Node 18.19+ (Playwright) i Python środowiska testowego (`pip install -r requirements.txt` + `pip install locust`).
+- Node 18.19+ (Playwright) i Python środowiska testowego (`pip install -r requirements-full.txt` + `pip install locust`).
 
 ## Playwright: latencja UI
 

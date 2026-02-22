@@ -14,7 +14,7 @@ The Workflow Control screen introduces a **Visual Composer** based on React Flow
 The diagram is organized into domains:
 1. **Decision & Intent**: Strategy (Heuristic/LLM) and Intent Classification.
 2. **Kernel & Embedding**: Execution Engine (Python/Docker) and Vector Embeddings.
-3. **Runtime & Provider**: LLM Server (Ollama/vLLM) and Model Provider (Local/Cloud).
+3. **Runtime & Provider**: LLM Server (Ollama/vLLM/ONNX) and Model Provider (Local/Cloud).
 
 ### Connection Rules
 The Composer enforces valid connections:

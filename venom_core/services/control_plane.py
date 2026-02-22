@@ -581,7 +581,7 @@ class ControlPlaneService:
             runtime=runtime_dict,
             provider={
                 "active": derived_provider,
-                "available": ["ollama", "huggingface", "openai"],
+                "available": ["ollama", "onnx", "huggingface", "openai"],
                 "sourceType": self._classify_provider_source(derived_provider),
             },
             embedding_model=embedding_model,
@@ -804,6 +804,9 @@ class ControlPlaneService:
         provider = str(config.get("ACTIVE_PROVIDER", "")).strip().lower()
         if provider:
             return provider
+        llm_service_type = str(config.get("LLM_SERVICE_TYPE", "")).strip().lower()
+        if llm_service_type in {"onnx", "ollama", "vllm"}:
+            return llm_service_type
         hybrid_provider = str(config.get("HYBRID_CLOUD_PROVIDER", "")).strip().lower()
         if hybrid_provider:
             return hybrid_provider
@@ -813,7 +816,13 @@ class ControlPlaneService:
         model = str(config.get("LLM_MODEL_NAME", "")).strip()
         if model:
             return model
-        for key in ("HYBRID_LOCAL_MODEL", "HYBRID_CLOUD_MODEL", "LAST_MODEL_OLLAMA"):
+        for key in (
+            "HYBRID_LOCAL_MODEL",
+            "HYBRID_CLOUD_MODEL",
+            "LAST_MODEL_OLLAMA",
+            "LAST_MODEL_ONNX",
+            "ONNX_LLM_MODEL_PATH",
+        ):
             val = str(config.get(key, "")).strip()
             if val:
                 return val

@@ -42,6 +42,9 @@ class TestCompatibilityValidator:
         assert compatible is True
         assert "compatible" in message.lower()
 
+        compatible, _ = validator.validate_runtime_provider("python", "onnx")
+        assert compatible is True
+
     def test_runtime_provider_incompatible(self, validator):
         """Test incompatible runtime and provider combination."""
         # Use python runtime with vllm provider (vllm not in python's compatible providers)
@@ -58,6 +61,8 @@ class TestCompatibilityValidator:
     def test_provider_model_known_provider(self, validator):
         """Test provider model validation with known provider."""
         compatible, message = validator.validate_provider_model("ollama", "llama2")
+        assert compatible is True
+        compatible, _ = validator.validate_provider_model("onnx", "phi")
         assert compatible is True
 
     def test_provider_model_unknown_provider(self, validator):

@@ -127,7 +127,8 @@ export default function InspectorPage() {
       }
     });
     (tasks ?? []).forEach((task) => {
-      const identifier = task.task_id || task.id;
+      const legacyTaskId = (task as Task & { task_id?: string }).task_id;
+      const identifier = legacyTaskId || task.id;
       if (!identifier) return;
       const normalized = (task.status || "").toUpperCase();
       if (normalized === "PENDING" || normalized === "PROCESSING") {

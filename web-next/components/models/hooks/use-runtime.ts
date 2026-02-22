@@ -12,7 +12,6 @@ import {
 } from "@/hooks/use-api";
 import {
     normalizeProvider,
-    inferProviderFromName,
     getRuntimeForProvider
 } from "../models-helpers";
 
@@ -33,7 +32,7 @@ export function useRuntime() {
     const allowedRuntimeProviders = useMemo(() => {
         const providers = (llmServers.data ?? [])
             .map((server) => normalizeProvider(server.provider ?? server.name))
-            .filter((provider) => provider === "ollama" || provider === "vllm");
+            .filter((provider) => provider.length > 0);
         return new Set(providers);
     }, [llmServers.data]);
 
@@ -44,24 +43,35 @@ export function useRuntime() {
     // Memoized lists and options
     const installedBuckets = useMemo(() => {
         const data = installed.data;
-        if (!data) return { vllm: [], ollama: [] };
+        if (!data) return {} as Record<string, ModelInfo[]>;
         const providers = data.providers ?? {};
         const allowAll = allowedRuntimeProviders.size === 0;
-        const vllm = allowAll || allowedRuntimeProviders.has("vllm") ? (providers.vllm ?? []) : [];
-        const ollama = allowAll || allowedRuntimeProviders.has("ollama") ? (providers.ollama ?? []) : [];
-        if (vllm.length || ollama.length) return { vllm, ollama };
+        const buckets: Record<string, ModelInfo[]> = {};
+        Object.entries(providers).forEach(([provider, list]) => {
+            const normalized = normalizeProvider(provider);
+            if (!normalized) return;
+            if (!allowAll && !allowedRuntimeProviders.has(normalized)) return;
+            buckets[normalized] = Array.isArray(list) ? list : [];
+        });
+        if (Object.keys(buckets).length > 0) return buckets;
         const fallback = Array.isArray(data.models) ? data.models : [];
-        return {
-            vllm: (allowAll || allowedRuntimeProviders.has("vllm"))
-                ? fallback.filter((m) => normalizeProvider(m.provider) === "vllm")
-                : [],
-            ollama: (allowAll || allowedRuntimeProviders.has("ollama"))
-                ? fallback.filter((m) => normalizeProvider(m.provider) === "ollama")
-                : [],
-        };
+        const fallbackBuckets: Record<string, ModelInfo[]> = {};
+        fallback.forEach((model) => {
+            const provider = normalizeProvider(model.provider);
+            if (!provider) return;
+            if (!allowAll && !allowedRuntimeProviders.has(provider)) return;
+            if (!fallbackBuckets[provider]) {
+                fallbackBuckets[provider] = [];
+            }
+            fallbackBuckets[provider].push(model);
+        });
+        return fallbackBuckets;
     }, [installed.data, allowedRuntimeProviders]);
 
-    const installedModels = useMemo(() => [...installedBuckets.vllm, ...installedBuckets.ollama], [installedBuckets]);
+    const installedModels = useMemo(
+        () => Object.values(installedBuckets).flat(),
+        [installedBuckets],
+    );
 
     const availableModelsForServer = useMemo(() => {
         if (!selectedServer || !installed.data) return installedModels;
@@ -69,25 +79,12 @@ export function useRuntime() {
         const targetProvider = normalizeProvider(server?.provider ?? selectedServer);
         const providersMap = installed.data.providers ?? {};
 
-        let base = targetProvider in providersMap
+        const base = targetProvider in providersMap
             ? providersMap[targetProvider] ?? []
             : (installed.data.models ?? []).filter((m) => normalizeProvider(m.provider) === targetProvider);
 
-        const lastModels = activeServer.data?.last_models ?? {};
-        let lastForServer: string | null | undefined = null;
-        if (targetProvider === "ollama") {
-            lastForServer = lastModels.ollama || lastModels.previous_ollama;
-        } else if (targetProvider === "vllm") {
-            lastForServer = lastModels.vllm || lastModels.previous_vllm;
-        }
-
-        if (!base.length && lastForServer) {
-            if (inferProviderFromName(lastForServer) === targetProvider) {
-                base = [{ name: lastForServer, provider: targetProvider, source: "cached" }];
-            }
-        }
         return base;
-    }, [selectedServer, installed.data, installedModels, llmServers.data, activeServer.data]);
+    }, [selectedServer, installed.data, installedModels, llmServers.data]);
 
     const serverOptions = useMemo(() => (llmServers.data ?? []).map((s) => ({ value: s.name, label: s.name })), [llmServers.data]);
     const modelOptions = useMemo(() => availableModelsForServer.map((m) => ({ value: m.name, label: m.name })), [availableModelsForServer]);

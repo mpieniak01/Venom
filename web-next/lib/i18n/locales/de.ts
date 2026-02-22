@@ -681,6 +681,9 @@ export const de = {
       taskSent: "Aufgabe gesendet: {{id}}",
       taskPendingId: "in Bearbeitung…",
       taskSendError: "Aufgabe konnte nicht gesendet werden",
+      emptyPrompt: "Bitte Aufgabeninhalt eingeben.",
+      sessionInitializing: "Sitzung wird initialisiert. Bitte gleich erneut versuchen.",
+      serverSwitchError: "Aktiver LLM-Server konnte nicht umgeschaltet werden.",
     },
     chatMode: {
       direct: "Direct",

@@ -138,7 +138,7 @@ function renderFile(entries) {
   const componentLoaderMapBody = mappedEntries
     .map((entry) => {
       if (!entry.componentImport) return `  "${entry.moduleId}": async () => null`;
-      return `  "${entry.moduleId}": async () => (await import("${entry.componentImport}")).default ?? null`;
+      return `  "${entry.moduleId}": async () => importOptionalModuleComponent("${entry.componentImport}")`;
     })
     .join(",\n");
 
@@ -188,6 +188,36 @@ ${listBody}
 const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<string, () => Promise<ComponentType | null>> = {
 ${componentLoaderMapBody}
 };
+
+const OPTIONAL_MODULE_IMPORT_PATH_RE =
+  /^(?:@\\/components\\/modules\\/[a-zA-Z0-9._/-]+|(?:\\.\\.\\/)+modules\\/[a-zA-Z0-9._/-]+)$/;
+
+function isSafeOptionalModuleImportPath(modulePath: string): boolean {
+  return OPTIONAL_MODULE_IMPORT_PATH_RE.test(modulePath);
+}
+
+async function importOptionalModuleComponent(
+  modulePath: string,
+): Promise<ComponentType | null> {
+  try {
+    if (!isSafeOptionalModuleImportPath(modulePath)) {
+      return null;
+    }
+    // Intentionally dynamic to keep optional modules out of static bundles
+    // when feature-flagged off. modulePath is validated above.
+    const dynamicImport = new Function(
+      "modulePath",
+      "return import(modulePath);",
+    ) as (path: string) => Promise<{ default?: ComponentType }>;
+    const loaded = await dynamicImport(modulePath);
+    return loaded.default ?? null;
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[modules] Optional module import failed:", modulePath, error);
+    }
+    return null;
+  }
+}
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
 ${flagMapBody}

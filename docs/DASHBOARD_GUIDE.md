@@ -58,7 +58,7 @@ web-next/
 
 ### 1.6 Cockpit – Operational Panel
 Most important blocks in Cockpit (web-next):
-- **LLM Servers** – runtime selection (Ollama/vLLM), model list for selected runtime, model activation.
+- **LLM Servers** – runtime selection (Ollama/vLLM/ONNX), model list for selected runtime, model activation.
 - **Slash commands** – `/gpt`, `/gem`, `/<tool>` with autocomplete, forced routing and "Forced" badge.
 - **Response language** – PL/EN/DE UI setting is passed to backend and used for result translation.
 - **User feedback** – thumbs up/down on response, feedback logs and quality metrics (👍/👎).

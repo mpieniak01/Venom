@@ -9,7 +9,7 @@ This runbook guides you through diagnosing and resolving provider offline issues
 - API requests to provider fail with connection errors
 
 ## Common Causes
-1. Provider service not running (Ollama, vLLM)
+1. Provider service not running (Ollama, vLLM) or ONNX runtime not ready
 2. Incorrect endpoint configuration
 3. Network connectivity issues
 4. Provider service crashed or hung
@@ -81,7 +81,7 @@ curl http://localhost:8000/api/v1/config/runtime
 
 ## Resolution Steps
 
-### For Local Providers (Ollama, vLLM)
+### For Local Providers (Ollama, vLLM, ONNX)
 
 **Option 1: Restart Service**
 ```bash
@@ -91,6 +91,14 @@ make ollama-restart
 # vLLM
 make vllm-restart
 ```
+
+**ONNX note (in-process):**
+- ONNX does not expose a standalone daemon to restart.
+- Verify ONNX readiness instead:
+```bash
+curl http://localhost:8000/api/v1/system/llm-servers | jq '.servers[] | select(.name=="onnx")'
+```
+- If `status` is not `online`, validate ONNX LLM profile install and model path configuration.
 
 **Option 2: Check Configuration**
 1. Verify endpoint in `.env`:

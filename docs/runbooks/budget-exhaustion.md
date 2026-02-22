@@ -186,7 +186,7 @@ Global hard limit: $500/month
 Per-provider:
 - OpenAI soft: $200, hard: $250
 - Google soft: $150, hard: $200
-- Ollama/vLLM: No limit (local, free)
+- Ollama/vLLM/ONNX: No limit (local, free)
 ```
 
 ### 2. Monitor Continuously

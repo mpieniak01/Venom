@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -23,6 +24,7 @@ logger = get_logger(__name__)
 MAX_STORAGE_GB = 50  # Limit na modele w GB
 DEFAULT_MODEL_SIZE_GB = 4.0  # Szacowany domyślny rozmiar modelu dla Resource Guard
 BYTES_IN_GB = 1024**3
+ONNX_METADATA_FILENAME = "venom_onnx_metadata.json"
 
 
 class ModelVersion:
@@ -101,6 +103,174 @@ class ModelManager:
         self.active_version: Optional[str] = None
 
         logger.info(f"ModelManager zainicjalizowany (models_dir={self.models_dir})")
+
+    @staticmethod
+    def _normalize_onnx_model_slug(model_name: str) -> str:
+        """Normalize model id into a filesystem-safe slug."""
+        return model_name.strip().replace("/", "--").replace(":", "-").replace(" ", "-")
+
+    @staticmethod
+    def _load_onnx_metadata(model_path: Path) -> Dict[str, Any]:
+        """Load optional ONNX metadata from model directory/file sibling."""
+        candidates: List[Path] = []
+        if model_path.is_dir():
+            candidates.append(model_path / ONNX_METADATA_FILENAME)
+        else:
+            candidates.append(model_path.with_suffix(".json"))
+            candidates.append(model_path.parent / ONNX_METADATA_FILENAME)
+
+        for metadata_path in candidates:
+            if not metadata_path.exists():
+                continue
+            try:
+                payload = json.loads(metadata_path.read_text("utf-8"))
+                if isinstance(payload, dict):
+                    return payload
+            except Exception as e:
+                logger.warning(
+                    "Nie udało się wczytać metadanych ONNX (%s): %s",
+                    metadata_path,
+                    e,
+                )
+        return {}
+
+    @staticmethod
+    def _default_onnx_metadata_for_path(model_path: Path) -> Dict[str, Any]:
+        """Infer best-effort ONNX metadata when explicit metadata is missing."""
+        path_name = model_path.name.lower()
+        precision = "unknown"
+        if "int4" in path_name:
+            precision = "int4"
+        elif "fp16" in path_name:
+            precision = "fp16"
+
+        execution_provider = "unknown"
+        if "cuda" in path_name:
+            execution_provider = "cuda"
+        elif "cpu" in path_name:
+            execution_provider = "cpu"
+        elif "directml" in path_name:
+            execution_provider = "directml"
+
+        return {
+            "provider": "onnx",
+            "runtime": "onnx",
+            "precision": precision,
+            "execution_provider": execution_provider,
+        }
+
+    def build_onnx_llm_model(
+        self,
+        *,
+        model_name: str,
+        output_dir: Optional[str] = None,
+        execution_provider: str = "cuda",
+        precision: str = "int4",
+        builder_script: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build ONNX LLM model via onnxruntime-genai builder and persist metadata.
+
+        Returns:
+            Dict with success flag and build details/error.
+        """
+        if not model_name or not re.match(r"^[\w\-.:/]+$", model_name):
+            return {
+                "success": False,
+                "message": "Nieprawidłowa nazwa modelu ONNX.",
+            }
+
+        exec_provider = (execution_provider or "cuda").strip().lower()
+        prec = (precision or "int4").strip().lower()
+        if exec_provider not in {"cuda", "cpu", "directml"}:
+            return {
+                "success": False,
+                "message": "execution_provider musi być jednym z: cuda, cpu, directml",
+            }
+        if prec not in {"int4", "fp16"}:
+            return {"success": False, "message": "precision musi być: int4 lub fp16"}
+
+        default_script = os.getenv(
+            "ONNX_GENAI_BUILDER_SCRIPT",
+            "third_party/onnxruntime-genai/src/python/py/models/builder.py",
+        )
+        script_path = Path(builder_script or default_script).expanduser().resolve()
+        if not script_path.exists():
+            return {
+                "success": False,
+                "message": (
+                    "Nie znaleziono skryptu builder.py. "
+                    "Ustaw ONNX_GENAI_BUILDER_SCRIPT lub parametr builder_script."
+                ),
+                "builder_script": str(script_path),
+            }
+
+        if output_dir:
+            output_path = Path(output_dir).expanduser().resolve()
+        else:
+            slug = self._normalize_onnx_model_slug(model_name)
+            output_path = (Path("./models") / f"{slug}-onnx").resolve()
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        command = [
+            sys.executable or "python",
+            str(script_path),
+            "-m",
+            model_name,
+            "-e",
+            exec_provider,
+            "-p",
+            prec,
+            "-o",
+            str(output_path),
+        ]
+
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+            )
+        except subprocess.TimeoutExpired:
+            return {"success": False, "message": "Timeout podczas build ONNX modelu."}
+        except Exception as e:
+            return {"success": False, "message": f"Błąd build ONNX: {e}"}
+
+        if result.returncode != 0:
+            return {
+                "success": False,
+                "message": "Builder ONNX zakończył się błędem.",
+                "exit_code": result.returncode,
+                "stderr": result.stderr.strip(),
+                "stdout": result.stdout.strip(),
+            }
+
+        metadata = {
+            "provider": "onnx",
+            "runtime": "onnx",
+            "model_name": model_name,
+            "output_dir": str(output_path),
+            "precision": prec,
+            "execution_provider": exec_provider,
+            "builder_script": str(script_path),
+            "built_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        }
+        metadata_path = output_path / ONNX_METADATA_FILENAME
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=True, indent=2),
+            encoding="utf-8",
+        )
+
+        logger.info("Zbudowano ONNX model: %s -> %s", model_name, output_path)
+        return {
+            "success": True,
+            "message": "Model ONNX zbudowany pomyślnie.",
+            "model_name": model_name,
+            "output_dir": str(output_path),
+            "metadata_path": str(metadata_path),
+            "stdout": result.stdout.strip(),
+        }
 
     def _save_active_adapter_state(
         self, adapter_id: str, adapter_path: str, base_model: str
@@ -612,6 +782,8 @@ PARAMETER top_k 40
                     size_bytes += file_path.stat().st_size
 
         lower_path = str(model_path).lower()
+        onnx_metadata = self._load_onnx_metadata(model_path)
+        metadata_provider = str(onnx_metadata.get("provider", "")).lower()
         if ".gguf" in lower_path:
             model_type = "gguf"
         elif model_path.suffix == ".onnx" or model_path.suffix == ".bin":
@@ -623,6 +795,16 @@ PARAMETER top_k 40
                 provider = "onnx"
         else:
             model_type = "folder"
+        if metadata_provider == "onnx":
+            provider = "onnx"
+
+        onnx_payload: Dict[str, Any] = {}
+        if provider == "onnx":
+            inferred = self._default_onnx_metadata_for_path(model_path)
+            onnx_payload = {
+                **inferred,
+                **onnx_metadata,
+            }
 
         models[model_path.name] = {
             "name": model_path.name,
@@ -633,6 +815,7 @@ PARAMETER top_k 40
             "source": source,
             "provider": provider,
             "active": False,
+            **onnx_payload,
         }
 
     def _build_search_dirs(self) -> List[Path]:
@@ -965,12 +1148,10 @@ PARAMETER top_k 40
         self._scan_local_dirs(search_dirs, models)
 
         # 2. Pobieranie modeli z Ollama API
-        live_query_success = False
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(self._resolve_ollama_tags_url())
                 if response.status_code == 200:
-                    live_query_success = True
                     ollama_data = response.json()
                     entries = self._collect_ollama_entries(
                         ollama_data.get("models", [])
@@ -986,14 +1167,8 @@ PARAMETER top_k 40
             if now - self._last_ollama_warning > 60:
                 logger.warning(f"Ollama nie jest dostępne: {e}")
                 self._last_ollama_warning = now
-            self._load_ollama_cache(models)
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modeli z Ollama: {e}")
-
-        # 3. Jeśli Ollama jest dostępna (live_query_success), to ufamy jej w 100%.
-        # Jeśli nie (live_query_success=False), to ładujemy fallbacki z manifestów.
-        if not live_query_success:
-            self._register_manifest_fallbacks(search_dirs, models)
 
         return list(models.values())
 

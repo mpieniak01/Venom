@@ -3,7 +3,7 @@
 ## Przegląd
 
 System zarządzania modelami w Venom zapewnia centralny, zautomatyzowany sposób instalacji, usuwania i przełączania modeli AI. Obsługuje trzy typy domenowe:
-- **Local Runtime**: Modele uruchamiane lokalnie przez Ollama lub vLLM.
+- **Local Runtime**: Modele uruchamiane lokalnie przez Ollama, vLLM lub ONNX.
 - **Cloud API**: Modele dostępne przez zewnętrzne API (OpenAI, Google Gemini).
 - **Integrator Catalog**: Modele dostępne do pobrania/instalacji (HuggingFace, Biblioteka Ollama).
 
@@ -12,7 +12,7 @@ System zarządzania modelami w Venom zapewnia centralny, zautomatyzowany sposób
 Projekt korzysta obecnie z jednej paczki instalacyjnej i profili wybieranych przez `VENOM_RUNTIME_PROFILE`:
 1. `light`: backend + web-next + Ollama (Gemma), bez vLLM.
 2. `llm_off`: backend + web-next, bez lokalnego runtime LLM (nadal można używać zewnętrznych providerów API, np. OpenAI/Gemini, po ustawieniu kluczy).
-3. `full`: rozszerzony stack; dostępne są Ollama i vLLM.
+3. `full`: rozszerzony stack; dostępne są Ollama, vLLM i ONNX.
 
 Uwagi operacyjne:
 1. W `light` runtime/API/UI udostępniają wyłącznie ścieżki lokalnego runtime Ollama.
@@ -64,7 +64,7 @@ Referencje operacyjne:
    - Pobieranie capabilities
 
 4. **Runtime Controllers**
-   - `LlmServerController` - sterowanie serwerami vLLM/Ollama
+   - `LlmServerController` - sterowanie runtime vLLM/Ollama/ONNX
    - Integracja z systemd
    - Health checks
 
@@ -321,7 +321,7 @@ Informacja o kwantyzacji modelu (Q4_K_M, Q8_0, etc.):
 
 ### Aktywny runtime i model
 
-System utrzymuje jeden aktywny runtime LLM na raz (Ollama lub vLLM) i pamięta
+System utrzymuje jeden aktywny runtime LLM na raz (Ollama, vLLM lub ONNX) i pamięta
 ostatni model per runtime. Aktualny stan pobierzesz z:
 
 ```bash

@@ -1,0 +1,156 @@
+# VENOM – requirements-full.txt (legacy full stack)
+# Zalecany Python: 3.10 lub 3.11 (GraphRAG bywa niestabilny na 3.12)
+# Użyj: pip install -r requirements-full.txt
+
+# --- VENOM CORE: SYSTEM NERWOWY (Orchestration) ---
+
+pyautogen>=0.2.0        # Microsoft AutoGen (Standardowa, stabilna wersja)
+flaml[automl]           # Optymalizacja parametrów (silnik pod AutoGen)
+
+# API / orkiestracja zewnętrzna
+fastapi==0.128.0        # API Orchestratora (pin zgodny z profilem CI Lite)
+uvicorn[standard]==0.40.0  # Serwer ASGI (pin zgodny z profilem CI Lite)
+python-multipart==0.0.20 # Required for FastAPI multipart/form-data support (file uploads)
+
+
+# --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
+
+# UWAGA: nie pinujemy tu do 1.39.2, bo ta wersja wymusza openai<2 i openapi-core<0.20.
+# W full stack używamy openai>=2.x (przez graphrag/litellm), więc resolver musi dobrać nowszy SK.
+semantic-kernel>=1.39.2 # Microsoft Semantic Kernel (dobór wersji kompatybilnej przez resolver)
+mcp>=1.0.0              # Model Context Protocol SDK (Official Client)
+aiohttp>=3.13.3         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
+urllib3>=2.6.3          # HTTP klient – aktualizacja pod CVE dot. kompresji danych
+httpx==0.28.1           # Nowoczesny klient HTTP (pin zgodny z profilem CI Lite)
+aiofiles==25.1.0        # Async file I/O (pin zgodny z profilem CI Lite)
+
+
+# --- VENOM METABOLISM: ONNX RUNTIME (Inference Engine) ---
+
+# UWAGA: Upewnij się, że masz zainstalowane CUDA Toolkit w WSL2 dla wersji -gpu.
+# Na macOS używamy CPU wheels, bo onnxruntime-gpu jest niedostępne.
+onnxruntime-gpu; platform_system != "Darwin"  # Domyślnie Linux/Windows
+onnxruntime; platform_system == "Darwin"      # Fallback dla macOS
+onnxruntime-genai-cuda; platform_system != "Darwin"  # ONNX Runtime GenAI (CUDA)
+onnxruntime-genai; platform_system == "Darwin"       # ONNX Runtime GenAI (CPU/macOS)
+onnx>=1.14.0            # Standard wymiany modeli
+onnx-ir>=0.1.16         # Wymagane przez onnxruntime_genai.models.builder
+optimum                 # Hugging Face Optimum (Interface do ONNX)
+accelerate              # Zarządzanie pamięcią przy ładowaniu dużych modeli
+protobuf>=4.25.3,<6.0.0 # Stabilny zakres pod ONNX + SDK Google
+
+
+# --- VENOM HIPPOCAMPUS: PAMIĘĆ (Knowledge Graph) ---
+
+graphrag==2.7.0         # Microsoft GraphRAG (Pamięć długotrwała) - pin dla stabilnego resolvera
+networkx==3.6.1         # Analiza grafów (pin zgodny z profilem CI Lite)
+lancedb==0.25.3         # Baza wektorowa (Local-first) - pin dla stabilnego resolvera
+# uvloop jest instalowany z uvicorn[standard], ale warto wiedzieć, że GraphRAG go lubi.
+
+# Ingestion Engine dependencies
+pypdf>=6.6.0            # Ekstrakcja tekstu z PDF (fix CVE)
+filelock>=3.20.3        # Fix for TOCTOU/symlink issues (transitive from HF stack)
+# litellm>=1.81.3         # Fix for graphrag transitive vulnerability (wymaga openai>=2.x)
+marshmallow>=4.1.2      # Fix for graphrag/environs transitive vulnerability
+pyasn1>=0.6.2           # Fix for google-auth transitive vulnerability
+werkzeug>=3.1.5         # Fix for locust transitive vulnerability
+markitdown              # Microsoft MarkItDown - konwersja dokumentów (PDF, DOCX) do Markdown
+python-docx             # Obsługa plików DOCX (fallback dla markitdown)
+openapi-core<0.20,>=0.18    # Nowe wymagania (kompatybilność z werkzeug>=3.1.5)
+
+
+# --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
+
+transformers>=4.57.6    # Obsługa modeli HF / Tokenizacja – aktualizacja pod CVE dot. deserializacji
+sentence-transformers   # Embeddingi do RAG
+pillow                  # Przetwarzanie obrazów
+timm                    # Modele wizyjne (zależność dla Florence-2)
+opencv-python-headless  # Wersja "headless" jest bezpieczniejsza dla WSL2/Server (brak zależności X11)
+
+
+# --- VENOM ANTENNA: DOSTĘP DO SIECI ---
+
+ddgs>=1.0  # Wyszukiwanie (następca duckduckgo-search)
+tavily-python           # Tavily AI Search API - nowoczesna wyszukiwarka dla AI
+beautifulsoup4          # Parsowanie HTML
+trafilatura             # Ekstrakcja tekstu z stron WWW (lepsze czyszczenie niż BS4)
+PyGithub                # GitHub API wrapper (External Discovery - GitHub Scanner)
+huggingface_hub>=0.35.3 # Hugging Face Hub API (External Discovery - Model Explorer), aligned with CI-lite baseline
+
+# Google Calendar Integration (THE_CALENDAR)
+google-auth>=2.23.0     # Google OAuth2 authentication
+google-auth-oauthlib>=1.1.0  # OAuth2 flow helpers
+google-auth-httplib2>=0.1.1  # HTTP transport for Google API
+google-api-python-client>=2.100.0  # Google Calendar API client
+
+
+# --- VENOM ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---
+
+openai<2,>=1.98.0           # SDK OpenAI (wersja 2.x; wymagane przez litellm>=1.81)
+google-genai            # Gemini API (Google GenAI SDK)
+anthropic               # Claude API
+azure-core>=1.38.0      # Azure SDK core – aktualizacja pod CVE dot. deserializacji
+tiktoken                # Tokenizer (wymagany przez AutoGen/SK przy modelach GPT)
+
+
+# --- VENOM INFRASTRUCTURE & UTILS ---
+
+python-dotenv==1.2.1    # Zmienne środowiskowe (.env) (pin zgodny z profilem CI Lite)
+pydantic==2.11.10       # Walidacja (pin zgodny z profilem CI Lite i FastAPI)
+pydantic-settings==2.10.1  # Settings loader używany przez runtime
+numpy<2.0.0             # KRYTYCZNE: NumPy 2.0 łamie onnxruntime i numba (używaną przez GraphRAG)
+pandas                  # Analiza danych
+colorama==0.4.6         # Kolory w terminalu (pin zgodny z profilem CI Lite)
+rich==13.7.1            # Piękne logi i paski postępu (pin zgodny z profilem CI Lite)
+loguru==0.7.3           # Nowoczesne logowanie błędów (pin zgodny z profilem CI Lite)
+tqdm==4.67.1            # Paski postępu (pin zgodny z profilem CI Lite)
+docker                  # Docker SDK dla Python (Docker Sandbox)
+gitpython==3.1.46       # Git operations (Git Skill) (pin zgodny z profilem CI Lite)
+apscheduler             # Advanced Python Scheduler (background jobs)
+watchdog>=6.0.0         # File system monitoring, aligned with CI-lite baseline
+radon                   # Code complexity analysis
+psutil==5.9.8           # System and process utilities (pin zgodny z profilem CI Lite)
+websockets==15.0.1      # WebSocket client/server (pin zgodny z profilem CI Lite)
+
+# Task Queue & Message Broker (THE_HIVE)
+redis==5.3.1            # Redis client for message broker (pin zgodny z profilem CI Lite)
+arq>=0.26.0             # Async Redis Queue (lightweight, FastAPI-friendly)
+
+# Audio & Voice Interface (THE_AVATAR)
+faster-whisper          # Local STT (Speech-to-Text) engine
+piper-tts               # Local TTS (Text-to-Speech) engine (ONNX-based)
+sounddevice             # Audio I/O
+webrtcvad               # Voice Activity Detection (optional, can use simple RMS)
+
+# IoT & Hardware Bridge (Rider-Pi)
+paramiko                # SSH client for Raspberry Pi communication
+asyncssh                # Async SSH client for cloud deployment
+zeroconf                # mDNS service discovery for local network
+
+# UI & Visualization (THE_CANVAS)
+bleach                  # HTML sanitization for safe widget rendering
+
+# Desktop Awareness & Proactive Assistance (THE_SHADOW)
+pyperclip               # Cross-platform clipboard access
+win10toast; platform_system == "Windows"  # Toast notifications dostępne tylko na Windows
+
+# Visual GUI Automation (THE_GHOST)
+pyautogui>=0.9.54       # GUI automation (mouse, keyboard) - stable version
+pynput>=1.7.6           # Alternative input control library
+mss>=9.0.1              # Fast screenshot library
+
+# --- VENOM DEV TOOLS (Jakość Kodu) ---
+
+pytest==9.0.2           # Testy (pin zgodny z profilem CI Lite)
+pytest-asyncio==1.3.0   # Obsługa testów asynchronicznych (pin zgodny z profilem CI Lite)
+pytest-cov>=7.0.0       # Raporty pokrycia testami
+pytest-xdist==3.8.0
+pytest-timeout==2.4.0   # Twarde timeouty per-test (anty-zawieszka)
+locust                  # Testy wydajnościowe HTTP/SSE
+ruff                    # Linter (zastępuje flake8/black)
+mypy                    # Statyczne typowanie
+types-PyYAML            # Typy dla PyYAML
+types-psutil            # Typy dla psutil
+types-docker            # Typy dla docker SDK
+types-bleach            # Typy dla bleach
+types-aiofiles          # Typy dla aiofiles

@@ -22,6 +22,8 @@ export type LocalHistoryEntry = {
     session_id?: string;
     request_id?: string;
     timestamp?: string;
+    pending?: boolean;
+    status?: string | null;
 };
 
 export type ChatSendParams = {
@@ -117,6 +119,19 @@ export const reconcileUserRequestId = (
                 return { ...entry, request_id: toId };
             }
             return entry;
+        }),
+    );
+};
+
+export const reconcileRequestId = (
+    setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"],
+    fromId: string,
+    toId: string,
+) => {
+    setLocalSessionHistory((prev) =>
+        prev.map((entry) => {
+            if (entry.request_id !== fromId) return entry;
+            return { ...entry, request_id: toId };
         }),
     );
 };
@@ -478,6 +493,24 @@ export async function handleStandardTaskSend(params: {
         t,
     } = params;
     try {
+        const createdTimestamp = new Date().toISOString();
+        setLocalSessionHistory((prev) => {
+            const hasAssistantPlaceholder = prev.some(
+                (entry) => entry.request_id === clientId && entry.role === "assistant",
+            );
+            if (hasAssistantPlaceholder) return prev;
+            return [
+                ...prev,
+                {
+                    role: "assistant",
+                    content: "",
+                    request_id: clientId,
+                    timestamp: createdTimestamp,
+                    session_id: resolvedSession ?? undefined,
+                },
+            ];
+        });
+
         const res = await sendTask({
             content: trimmed,
             storeKnowledge: !labMode,
@@ -496,12 +529,22 @@ export async function handleStandardTaskSend(params: {
         const resolvedId = res.task_id ?? null;
         linkOptimisticRequest(clientId, resolvedId);
         if (resolvedId) {
-            reconcileUserRequestId(setLocalSessionHistory, clientId, resolvedId);
+            reconcileRequestId(setLocalSessionHistory, clientId, resolvedId);
         }
         const displayId = resolvedId ?? t("cockpit.chatMessages.taskPendingId");
         setMessage(t("cockpit.chatMessages.taskSent", { id: displayId }));
         await Promise.all([refreshTasks(), refreshQueue(), refreshHistory(), refreshSessionHistory()]);
     } catch (err) {
+        setLocalSessionHistory((prev) =>
+            prev.filter(
+                (entry) =>
+                    !(
+                        entry.request_id === clientId &&
+                        entry.role === "assistant" &&
+                        !(entry.content ?? "").trim()
+                    ),
+            ),
+        );
         dropOptimisticRequest(clientId);
         setMessage(err instanceof Error ? err.message : t("cockpit.chatMessages.taskSendError"));
     } finally {

@@ -32,15 +32,14 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 - 🔌 **Extensibility** - local tools and MCP import from Git repositories.
 
 ## Recent updates (2026-02)
-- Security and governance were hardened (`Policy Gate`, cost limits, fallback policies).
-- Operational layer was unified (`Workflow Control Plane`, config panel, runtime monitoring).
-- Quality and learning modules were strengthened (`Academy`, intent-router rollout, test-artifact policy).
-- Formal closure for 152 (Ollama 0.16.x) was completed with full evidence and PASS hard gates.
-- Runtime profiles/onboarding contract (`light/llm_off/full`) was implemented and stabilized in `venom.sh` launcher (PL/EN/DE + headless mode).
-- ADR-001 was accepted and `RoutingDecision` soft e2e contract was integrated (governance + policy + observability).
-- API Contract Wave-1 was completed: explicit `response_model` for `system/api-map`, memory response schemas, OpenAPI/codegen sync, and wave-based DI cleanup.
-- Added optional modules platform capability: custom modules can now be registered and enabled via environment-driven module registry.
-- ONNX Runtime LLM was integrated as the third local engine (3-stack: Ollama + vLLM + ONNX) with mode parity (`direct`/`normal`/`complex`) in Cockpit.
+- Release 1.6.0 milestone: local 3-stack runtime is production-ready, giving teams better continuity and lower provider risk.
+- Security/governance baseline was hardened (`Policy Gate`, cost limits, fallback policy) to improve operational safety.
+- Workflow Control Plane and runtime governance were unified into one operating model (monitoring + configuration + activation flow).
+- API traffic control and anti-ban guardrails were integrated as a shared core layer for inbound/outbound communication.
+- Quality and learning track was strengthened (`Academy`, intent routing rollout, test-artifact policy) to improve repeatability of delivery.
+- Runtime onboarding profiles (`light/llm_off/full`) were stabilized in `venom.sh` (PL/EN/DE + headless mode).
+- API Contract Wave-1 was closed (OpenAPI/codegen sync, explicit response schemas, DI cleanup).
+- Optional modules platform was opened: custom modules can be enabled through environment-driven registry.
 
 ## Documentation
 ### Start and operations

@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+import inspect
+import os
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Optional
 
 import httpx
 
+from venom_core.infrastructure.traffic_control.config import TrafficControlConfig
+from venom_core.infrastructure.traffic_control.controller import (
+    TrafficController,
+    get_traffic_controller,
+)
+from venom_core.infrastructure.traffic_control.retry_policy import (
+    RetryPolicy,
+    is_retriable_http_error,
+)
 from venom_core.utils.logger import get_logger
-
-from .controller import TrafficController, get_traffic_controller
-from .retry_policy import RetryPolicy, is_retriable_http_error
 
 logger = get_logger(__name__)
 
@@ -37,7 +46,7 @@ class TrafficControlledHttpClient:
         self,
         provider: str,
         base_url: Optional[str] = None,
-        timeout: float = 30.0,
+        timeout: float | None = 30.0,
         traffic_controller: Optional[TrafficController] = None,
     ):
         """
@@ -52,27 +61,46 @@ class TrafficControlledHttpClient:
         self.provider = provider
         self.base_url = base_url
         self.timeout = timeout
-        self.traffic_controller = traffic_controller or get_traffic_controller()
+        self.traffic_controller = (
+            traffic_controller or self._resolve_traffic_controller()
+        )
 
         # httpx client (sync)
         base_url_value = base_url or ""
-        self._client = httpx.Client(
-            base_url=base_url_value,
-            timeout=timeout,
-            follow_redirects=True,
-        )
+        client_kwargs: dict[str, Any] = {
+            "timeout": timeout,
+        }
+        if base_url_value:
+            client_kwargs["base_url"] = base_url_value
+        self._client = httpx.Client(**client_kwargs)
 
         # httpx async client
-        self._async_client = httpx.AsyncClient(
-            base_url=base_url_value,
-            timeout=timeout,
-            follow_redirects=True,
-        )
+        async_client_kwargs: dict[str, Any] = {
+            "timeout": timeout,
+        }
+        if base_url_value:
+            async_client_kwargs["base_url"] = base_url_value
+        self._async_client = httpx.AsyncClient(**async_client_kwargs)
+
+    @staticmethod
+    def _resolve_traffic_controller() -> TrafficController:
+        """
+        Zwraca domyślny kontroler ruchu.
+
+        W testach (`PYTEST_CURRENT_TEST`) używa świeżej konfiguracji per-client,
+        aby uniknąć przeciekania stanu limiterów/circuit-breakera pomiędzy testami.
+        """
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return TrafficController(TrafficControlConfig())
+        return get_traffic_controller()
 
     def request(
         self,
         method: str,
         url: str,
+        *,
+        raise_for_status: bool = True,
+        disable_retry: bool = False,
         **kwargs: Any,
     ) -> httpx.Response:
         """
@@ -105,7 +133,14 @@ class TrafficControlledHttpClient:
         # Execute with retry
         def _execute():
             response = self._client.request(method, url, **kwargs)
-            response.raise_for_status()
+            status_code = getattr(response, "status_code", None)
+            if not isinstance(status_code, int):
+                raise TypeError(
+                    "Invalid response object received from httpx client: "
+                    f"{type(response)}"
+                )
+            if raise_for_status:
+                response.raise_for_status()
             return response
 
         retry_policy = policy.retry_policy
@@ -113,6 +148,22 @@ class TrafficControlledHttpClient:
             raise RuntimeError(
                 f"Retry policy not configured for provider scope: {scope}"
             )
+
+        if disable_retry:
+            try:
+                response = _execute()
+                response_status = getattr(response, "status_code", None)
+                status_code = (
+                    response_status if isinstance(response_status, int) else None
+                )
+                self.traffic_controller.record_outbound_response(
+                    self.provider, status_code, method=method
+                )
+                return response
+            except Exception as exc:
+                if isinstance(exc, Exception):
+                    self._record_outbound_error_and_raise(exc, method=method)
+                raise
 
         result, response, error = retry_policy.execute_with_retry(
             _execute,
@@ -128,8 +179,10 @@ class TrafficControlledHttpClient:
         )
 
         if response:
+            response_status = getattr(response, "status_code", None)
+            status_code = response_status if isinstance(response_status, int) else None
             self.traffic_controller.record_outbound_response(
-                self.provider, response.status_code, method=method
+                self.provider, status_code, method=method
             )
             return response
         if isinstance(error, Exception):
@@ -146,6 +199,9 @@ class TrafficControlledHttpClient:
         self,
         method: str,
         url: str,
+        *,
+        raise_for_status: bool = True,
+        disable_retry: bool = False,
         **kwargs: Any,
     ) -> httpx.Response:
         """
@@ -183,19 +239,134 @@ class TrafficControlledHttpClient:
                 f"Retry policy not configured for provider scope: {scope}"
             )
 
-        for attempt in range(retry_policy.max_attempts):
+        max_attempts = 1 if disable_retry else retry_policy.max_attempts
+        for attempt in range(max_attempts):
             try:
-                response = await self._async_client.request(method, url, **kwargs)
-                response.raise_for_status()
+                response: Any
+                request_handler = getattr(self._async_client, "request", None)
+                if callable(request_handler):
+                    request_result = request_handler(method, url, **kwargs)
+                    if inspect.isawaitable(request_result):
+                        response = await request_result
+                    else:
+                        response = request_result
+                else:
+                    method_handler = getattr(self._async_client, method.lower(), None)
+                    if not callable(method_handler):
+                        raise AttributeError(
+                            f"Async client does not support method '{method.lower()}'"
+                        )
+                    method_result = method_handler(url, **kwargs)
+                    if inspect.isawaitable(method_result):
+                        response = await method_result
+                    else:
+                        response = method_result
+                status_code = getattr(response, "status_code", None)
+                if not isinstance(status_code, int):
+                    raise TypeError(
+                        "Invalid response object received from httpx async client: "
+                        f"{type(response)}"
+                    )
+                if raise_for_status:
+                    raise_result = response.raise_for_status()
+                    if inspect.isawaitable(raise_result):
+                        await raise_result
+                response_status = getattr(response, "status_code", None)
+                status_code = (
+                    response_status if isinstance(response_status, int) else None
+                )
                 self.traffic_controller.record_outbound_response(
-                    self.provider, response.status_code, method=method
+                    self.provider, status_code, method=method
                 )
                 return response
             except Exception as exc:
                 last_exception = exc
                 if not is_retriable_http_error(exc):
                     self._record_outbound_error_and_raise(exc, method=method)
-                if attempt >= retry_policy.max_attempts - 1:
+                if attempt >= max_attempts - 1:
+                    break
+                if disable_retry:
+                    break
+                await self._sleep_before_retry(
+                    attempt=attempt,
+                    policy=retry_policy,
+                    method=method,
+                    url=url,
+                    error=exc,
+                )
+
+        if last_exception is None:
+            raise RuntimeError("Retry exhausted without captured exception")
+        self._record_outbound_error_and_raise(last_exception, method=method)
+        raise RuntimeError("unreachable")
+
+    @asynccontextmanager
+    async def astream(
+        self,
+        method: str,
+        url: str,
+        *,
+        raise_for_status: bool = True,
+        disable_retry: bool = False,
+        **kwargs: Any,
+    ) -> AsyncIterator[httpx.Response]:
+        """
+        Wykonuje streaming HTTP request z traffic control (async).
+
+        Użycie:
+        `async with client.astream("POST", url, json=payload) as response: ...`
+        """
+        allowed, reason, wait_seconds = self.traffic_controller.check_outbound_request(
+            self.provider,
+            method=method,
+        )
+        if not allowed:
+            self._raise_if_blocked(reason, wait_seconds)
+
+        scope = self.traffic_controller._build_outbound_scope(self.provider, method)
+        policy = self.traffic_controller._get_or_create_outbound_policy(scope)
+        retry_policy = policy.retry_policy
+        if retry_policy is None:
+            raise RuntimeError(
+                f"Retry policy not configured for provider scope: {scope}"
+            )
+
+        last_exception: Exception | None = None
+        max_attempts = 1 if disable_retry else retry_policy.max_attempts
+        for attempt in range(max_attempts):
+            stream_cm = self._async_client.stream(method, url, **kwargs)
+            response: httpx.Response | None = None
+            try:
+                response = await stream_cm.__aenter__()
+                if raise_for_status:
+                    raise_result = response.raise_for_status()
+                    if inspect.isawaitable(raise_result):
+                        await raise_result
+
+                response_status = getattr(response, "status_code", None)
+                status_code = (
+                    response_status if isinstance(response_status, int) else None
+                )
+                self.traffic_controller.record_outbound_response(
+                    self.provider, status_code, method=method
+                )
+                try:
+                    yield response
+                finally:
+                    await stream_cm.__aexit__(None, None, None)
+                return
+            except Exception as exc:
+                last_exception = exc
+                if response is not None:
+                    try:
+                        await stream_cm.__aexit__(type(exc), exc, exc.__traceback__)
+                    except Exception:
+                        pass
+                if not is_retriable_http_error(exc):
+                    self._record_outbound_error_and_raise(exc, method=method)
+                if attempt >= max_attempts - 1:
+                    break
+                if disable_retry:
                     break
                 await self._sleep_before_retry(
                     attempt=attempt,
@@ -312,7 +483,12 @@ class TrafficControlledHttpClient:
 
     async def aclose(self) -> None:
         """Zamyka async klienta."""
-        await self._async_client.aclose()
+        close_handler = getattr(self._async_client, "aclose", None)
+        if not callable(close_handler):
+            return
+        close_result = close_handler()
+        if inspect.isawaitable(close_result):
+            await close_result
 
     def __del__(self) -> None:
         """

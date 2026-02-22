@@ -51,10 +51,15 @@ class TestVisionGrounding:
                 "choices": [{"message": {"content": "450,230"}}]
             }
 
-            with patch("httpx.AsyncClient") as mock_client:
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
+            with patch(
+                "venom_core.perception.vision_grounding.TrafficControlledHttpClient"
+            ) as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.apost = AsyncMock(return_value=mock_response)
+                mock_client_cls.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_client
                 )
+                mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 result = await vg.locate_element(sample_image, "red button")
 
@@ -75,10 +80,15 @@ class TestVisionGrounding:
                 "choices": [{"message": {"content": "BRAK"}}]
             }
 
-            with patch("httpx.AsyncClient") as mock_client:
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
+            with patch(
+                "venom_core.perception.vision_grounding.TrafficControlledHttpClient"
+            ) as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.apost = AsyncMock(return_value=mock_response)
+                mock_client_cls.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_client
                 )
+                mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 result = await vg.locate_element(sample_image, "non-existent button")
 
@@ -151,10 +161,15 @@ class TestVisionGrounding:
             vg = VisionGrounding()
 
             # Mock błędu w zapytaniu
-            with patch("httpx.AsyncClient") as mock_client:
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                    side_effect=Exception("API Error")
+            with patch(
+                "venom_core.perception.vision_grounding.TrafficControlledHttpClient"
+            ) as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.apost = AsyncMock(side_effect=Exception("API Error"))
+                mock_client_cls.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_client
                 )
+                mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 result = await vg.locate_element(sample_image, "button")
 
@@ -174,10 +189,15 @@ class TestVisionGrounding:
                 "choices": [{"message": {"content": "450,230,0.5"}}]  # Niska pewność
             }
 
-            with patch("httpx.AsyncClient") as mock_client:
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
+            with patch(
+                "venom_core.perception.vision_grounding.TrafficControlledHttpClient"
+            ) as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.apost = AsyncMock(return_value=mock_response)
+                mock_client_cls.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_client
                 )
+                mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 # Próg wyższy niż pewność - powinno zwrócić None
                 result = await vg.locate_element(
@@ -200,10 +220,15 @@ class TestVisionGrounding:
                 "choices": [{"message": {"content": "450,230,0.95"}}]  # Wysoka pewność
             }
 
-            with patch("httpx.AsyncClient") as mock_client:
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
+            with patch(
+                "venom_core.perception.vision_grounding.TrafficControlledHttpClient"
+            ) as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.apost = AsyncMock(return_value=mock_response)
+                mock_client_cls.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_client
                 )
+                mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 # Próg niższy niż pewność - powinno zwrócić współrzędne
                 result = await vg.locate_element(
@@ -226,10 +251,15 @@ class TestVisionGrounding:
                 "choices": [{"message": {"content": "450,230"}}]  # Brak confidence
             }
 
-            with patch("httpx.AsyncClient") as mock_client:
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
+            with patch(
+                "venom_core.perception.vision_grounding.TrafficControlledHttpClient"
+            ) as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.apost = AsyncMock(return_value=mock_response)
+                mock_client_cls.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_client
                 )
+                mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 # Domyślnie confidence = 1.0, więc powinno przejść
                 result = await vg.locate_element(

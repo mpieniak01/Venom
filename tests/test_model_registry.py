@@ -99,41 +99,31 @@ def test_model_operation_to_dict():
 @pytest.mark.asyncio
 async def test_ollama_provider_list_models():
     """Test listowania modeli z Ollama."""
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+    provider = OllamaModelProvider()
+    provider.client.list_tags = AsyncMock(
+        return_value={
             "models": [
                 {"name": "llama3:latest", "size": 4 * 1024**3},
                 {"name": "phi3:latest", "size": 7 * 1024**3},
             ]
         }
+    )
+    models = await provider.list_available_models()
 
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-            return_value=mock_response
-        )
-
-        provider = OllamaModelProvider()
-        models = await provider.list_available_models()
-
-        assert len(models) == 2
-        assert models[0].name == "llama3:latest"
-        assert models[0].provider == ModelProvider.OLLAMA
-        assert models[0].runtime == "ollama"
+    assert len(models) == 2
+    assert models[0].name == "llama3:latest"
+    assert models[0].provider == ModelProvider.OLLAMA
+    assert models[0].runtime == "ollama"
 
 
 @pytest.mark.asyncio
 async def test_ollama_provider_list_models_error():
     """Test listowania modeli gdy Ollama nie jest dostępny."""
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-            side_effect=Exception("Connection error")
-        )
+    provider = OllamaModelProvider()
+    provider.client.list_tags = AsyncMock(side_effect=Exception("Connection error"))
+    models = await provider.list_available_models()
 
-        provider = OllamaModelProvider()
-        models = await provider.list_available_models()
-
-        assert len(models) == 0
+    assert len(models) == 0
 
 
 @pytest.mark.asyncio
@@ -279,19 +269,28 @@ def test_model_registry_save_manifest(tmp_path):
 @pytest.mark.asyncio
 async def test_model_registry_list_available_models(tmp_path):
     """Test listowania dostępnych modeli."""
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"models": []}
+    registry = ModelRegistry(models_dir=str(tmp_path))
+    registry.providers[ModelProvider.OLLAMA].list_available_models = AsyncMock(
+        return_value=[]
+    )
+    registry.providers[ModelProvider.HUGGINGFACE].list_available_models = AsyncMock(
+        return_value=[
+            ModelMetadata(
+                name="google/gemma-2b-it",
+                provider=ModelProvider.HUGGINGFACE,
+                display_name="Gemma 2B IT",
+            ),
+            ModelMetadata(
+                name="microsoft/phi-3-mini",
+                provider=ModelProvider.HUGGINGFACE,
+                display_name="Phi-3 Mini",
+            ),
+        ]
+    )
 
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-            return_value=mock_response
-        )
+    models = await registry.list_available_models()
 
-        registry = ModelRegistry(models_dir=str(tmp_path))
-        models = await registry.list_available_models()
-
-        assert len(models) >= 2  # Przynajmniej modele z HF stub
+    assert len(models) >= 2
 
 
 @pytest.mark.asyncio

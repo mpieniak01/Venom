@@ -3,12 +3,13 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
-import httpx
-
 from venom_core.config import SETTINGS
 from venom_core.core.knowledge_contract import KnowledgeKind
 from venom_core.core.knowledge_ttl import compute_expires_at, resolve_ttl_days
 from venom_core.core.models import ContextUsed, TaskRequest
+from venom_core.infrastructure.traffic_control.http_client import (
+    TrafficControlledHttpClient,
+)
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.services.session_store import SessionStore
 from venom_core.services.translation_service import translation_service
@@ -463,15 +464,6 @@ class SessionHandler:
     def _summarize_history_llm(self, history_text: str) -> str:
         """
         Synchroniczne streszczenie przy użyciu aktywnego modelu LLM.
-
-        UWAGA: Ta metoda używa synchronicznego httpx.Client zamiast async,
-        ponieważ jest wywoływana z kontekstu synchronicznego (_get_context_for_task).
-        Jeśli w przyszłości zostanie przeniesiona do kontekstu async, konieczne będzie:
-        - zmienienie sygnatury na `async def _summarize_history_llm(...):`,
-        - zamiana `with httpx.Client(...) as client:` na
-          `async with httpx.AsyncClient(...) as client:`,
-        - dodanie `await` przed wywołaniem `client.post(...)`,
-        - wywoływanie tej metody wyłącznie z kontekstu asynchronicznego.
         """
         try:
             history_text = self._trim_history_text_for_summary(history_text)
@@ -487,10 +479,12 @@ class SessionHandler:
                 return ""
             headers = self._build_summary_headers(runtime)
             payload = self._build_summary_payload(model_name, history_text)
-
-            with httpx.Client(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
+            provider_name = str(getattr(runtime, "provider", "") or "llm_summary")
+            with TrafficControlledHttpClient(
+                provider=provider_name,
+                timeout=SETTINGS.OPENAI_API_TIMEOUT,
+            ) as client:
                 resp = client.post(endpoint, headers=headers, json=payload)
-                resp.raise_for_status()
                 data = resp.json()
             message = (
                 data.get("choices", [{}])[0]

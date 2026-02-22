@@ -10,6 +10,7 @@ from typing import Dict, Optional, TypedDict
 import httpx
 
 from venom_core.config import SETTINGS
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
@@ -117,13 +118,18 @@ class TranslationService:
             }
 
             async with self._semaphore:
-                async with httpx.AsyncClient(
-                    timeout=SETTINGS.OPENAI_API_TIMEOUT
+                provider = (
+                    getattr(runtime, "provider", None)
+                    or getattr(runtime, "service_type", None)
+                    or "llm"
+                )
+                async with TrafficControlledHttpClient(
+                    provider=provider,
+                    timeout=SETTINGS.OPENAI_API_TIMEOUT,
                 ) as client:
-                    response = await client.post(
+                    response = await client.apost(
                         chat_endpoint, headers=headers, json=payload
                     )
-                    response.raise_for_status()
                     data = response.json()
                 message = (
                     data.get("choices", [{}])[0]
@@ -135,6 +141,11 @@ class TranslationService:
                 if use_cache:
                     self._cache[cache_key] = {"value": result, "timestamp": now}
                 return result
+        except httpx.HTTPError as exc:
+            logger.warning(f"Tłumaczenie HTTP nie powiodło się: {exc}")
+            if allow_fallback:
+                return text
+            raise
         except Exception as exc:
             logger.warning(f"Tłumaczenie nie powiodło się: {exc}")
             if allow_fallback:

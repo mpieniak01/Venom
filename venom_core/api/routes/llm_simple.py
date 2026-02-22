@@ -20,6 +20,9 @@ from venom_core.config import SETTINGS
 from venom_core.core.metrics import get_metrics_collector
 from venom_core.core.tracer import TraceStatus
 from venom_core.execution.onnx_llm_client import OnnxLlmClient
+from venom_core.infrastructure.traffic_control.http_client import (
+    TrafficControlledHttpClient,
+)
 from venom_core.utils.llm_runtime import (
     _build_chat_completions_url,
     get_active_llm_runtime,
@@ -656,43 +659,50 @@ async def _stream_single_attempt(
     state: _SimpleStreamState,
     ollama_telemetry: dict[str, int],
 ) -> AsyncIterator[str]:
-    async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream("POST", completions_url, json=payload) as resp:
-            try:
-                resp.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                status_code = exc.response.status_code if exc.response else None
-                if _is_retryable_ollama_status(
-                    runtime=runtime,
-                    status_code=status_code,
-                    attempt=attempt,
-                    max_attempts=max_attempts,
-                    chunk_count=state.chunk_count,
-                ):
-                    state.retry_requested = True
-                    ollama_telemetry.clear()
-                    await asyncio.sleep(retry_backoff * attempt)
-                    return
-                state.failed = True
-                yield await _emit_http_status_error_and_mark_failed(
-                    exc=exc,
-                    runtime=runtime,
-                    request_id=request_id,
-                    model_name=model_name,
-                    stream_start=stream_start,
-                )
+    provider_name = str(getattr(runtime, "provider", "") or "llm_runtime")
+    async with TrafficControlledHttpClient(
+        provider=provider_name,
+        timeout=None,
+    ) as client:
+        try:
+            async with client.astream(
+                "POST",
+                completions_url,
+                json=payload,
+                disable_retry=True,
+            ) as resp:
+                async for packet in _iter_stream_packets(resp):
+                    for event in _update_stream_state_from_packet(
+                        packet=packet,
+                        runtime=runtime,
+                        state=state,
+                        request_id=request_id,
+                        stream_start=stream_start,
+                        ollama_telemetry=ollama_telemetry,
+                    ):
+                        yield event
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response else None
+            if _is_retryable_ollama_status(
+                runtime=runtime,
+                status_code=status_code,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                chunk_count=state.chunk_count,
+            ):
+                state.retry_requested = True
+                ollama_telemetry.clear()
+                await asyncio.sleep(retry_backoff * attempt)
                 return
-
-            async for packet in _iter_stream_packets(resp):
-                for event in _update_stream_state_from_packet(
-                    packet=packet,
-                    runtime=runtime,
-                    state=state,
-                    request_id=request_id,
-                    stream_start=stream_start,
-                    ollama_telemetry=ollama_telemetry,
-                ):
-                    yield event
+            state.failed = True
+            yield await _emit_http_status_error_and_mark_failed(
+                exc=exc,
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+                stream_start=stream_start,
+            )
+            return
 
     state.completed = True
 

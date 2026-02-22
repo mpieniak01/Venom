@@ -8,8 +8,11 @@ Ten moduł zapewnia:
 5. Ochrona przed zapętleniami
 """
 
-from .circuit_breaker import CircuitBreaker, CircuitState
-from .config import (
+from venom_core.infrastructure.traffic_control.circuit_breaker import (
+    CircuitBreaker,
+    CircuitState,
+)
+from venom_core.infrastructure.traffic_control.config import (
     CircuitBreakerConfig,
     InboundPolicyConfig,
     OutboundPolicyConfig,
@@ -17,10 +20,18 @@ from .config import (
     TokenBucketConfig,
     TrafficControlConfig,
 )
-from .controller import TrafficController, get_traffic_controller
-from .http_client import TrafficControlledHttpClient
-from .retry_policy import RetryPolicy, RetryResult
-from .token_bucket import TokenBucket
+from venom_core.infrastructure.traffic_control.controller import (
+    TrafficController,
+    get_traffic_controller,
+)
+from venom_core.infrastructure.traffic_control.http_client import (
+    TrafficControlledHttpClient,
+)
+from venom_core.infrastructure.traffic_control.retry_policy import (
+    RetryPolicy,
+    RetryResult,
+)
+from venom_core.infrastructure.traffic_control.token_bucket import TokenBucket
 
 __all__ = [
     # Core components

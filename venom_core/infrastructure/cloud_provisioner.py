@@ -10,6 +10,8 @@ from typing import Any, Optional, cast
 
 import httpx
 
+from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
+
 try:
     from zeroconf import ServiceInfo, Zeroconf
 
@@ -589,12 +591,15 @@ class CloudProvisioner:
             # Wykonaj POST do Ula z timeoutem
             registration_endpoint = f"{hive_url.rstrip('/')}/api/agents/register"
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with TrafficControlledHttpClient(
+                provider="hive",
+                timeout=float(self.timeout),
+            ) as client:
                 logger.info(
                     f"Rejestracja w Ulu: {registration_endpoint} (agent_id={self.agent_id})"
                 )
 
-                response = await client.post(
+                response = await client.apost(
                     registration_endpoint, json=payload, headers=headers
                 )
 

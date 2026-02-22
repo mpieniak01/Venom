@@ -25,12 +25,15 @@ class TestHuggingFaceClientGetModelInfo:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch(
+            "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+        ) as mock_client_class:
             mock_client = MagicMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client.get = AsyncMock(return_value=mock_response)
-            mock_client_class.return_value = mock_client
+            mock_client.aget = AsyncMock(return_value=mock_response)
+            mock_client_class.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = await client.get_model_info("microsoft/phi-3-mini")
 
@@ -39,7 +42,7 @@ class TestHuggingFaceClientGetModelInfo:
             assert result["downloads"] == 100000
 
             # Sprawdź że użyto tokena
-            call_kwargs = mock_client.get.call_args[1]
+            call_kwargs = mock_client.aget.call_args[1]
             assert "headers" in call_kwargs
             # Token powinien być w headerach (jako ******)
 
@@ -48,10 +51,10 @@ class TestHuggingFaceClientGetModelInfo:
         """Test gdy model nie istnieje (404)."""
         client = HuggingFaceClient()
 
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch(
+            "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+        ) as mock_client_class:
             mock_client = MagicMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
 
             # Symuluj 404
             import httpx
@@ -61,8 +64,11 @@ class TestHuggingFaceClientGetModelInfo:
             error = httpx.HTTPStatusError(
                 "Not found", request=MagicMock(), response=mock_response
             )
-            mock_client.get = AsyncMock(side_effect=error)
-            mock_client_class.return_value = mock_client
+            mock_client.aget = AsyncMock(side_effect=error)
+            mock_client_class.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = await client.get_model_info("nonexistent/model")
 
@@ -73,10 +79,10 @@ class TestHuggingFaceClientGetModelInfo:
         """Test błędu HTTP innego niż 404."""
         client = HuggingFaceClient()
 
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch(
+            "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+        ) as mock_client_class:
             mock_client = MagicMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
 
             # Symuluj 500
             import httpx
@@ -86,8 +92,11 @@ class TestHuggingFaceClientGetModelInfo:
             error = httpx.HTTPStatusError(
                 "Server error", request=MagicMock(), response=mock_response
             )
-            mock_client.get = AsyncMock(side_effect=error)
-            mock_client_class.return_value = mock_client
+            mock_client.aget = AsyncMock(side_effect=error)
+            mock_client_class.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = await client.get_model_info("some/model")
 
@@ -99,12 +108,15 @@ class TestHuggingFaceClientGetModelInfo:
         """Test obsługi generycznego błędu."""
         client = HuggingFaceClient()
 
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch(
+            "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+        ) as mock_client_class:
             mock_client = MagicMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client.get = AsyncMock(side_effect=Exception("Network error"))
-            mock_client_class.return_value = mock_client
+            mock_client.aget = AsyncMock(side_effect=Exception("Network error"))
+            mock_client_class.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = await client.get_model_info("some/model")
 
@@ -122,12 +134,15 @@ class TestHuggingFaceClientGetModelInfo:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch(
+            "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+        ) as mock_client_class:
             mock_client = MagicMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client.get = AsyncMock(return_value=mock_response)
-            mock_client_class.return_value = mock_client
+            mock_client.aget = AsyncMock(return_value=mock_response)
+            mock_client_class.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = await client.get_model_info("gpt2")
 
@@ -135,7 +150,7 @@ class TestHuggingFaceClientGetModelInfo:
             assert result["id"] == "gpt2"
 
             # Sprawdź że NIE użyto tokena (brak headerów auth)
-            call_kwargs = mock_client.get.call_args[1]
+            call_kwargs = mock_client.aget.call_args[1]
             headers = call_kwargs.get("headers", {})
             assert (
                 "Authorization" not in headers or headers.get("Authorization") is None

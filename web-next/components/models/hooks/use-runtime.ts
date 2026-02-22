@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useToast } from "@/components/ui/toast";
-import type { ModelInfo } from "@/lib/types";
+import type { ModelInfo, ModelsResponse } from "@/lib/types";
 import {
     removeRegistryModel,
     setActiveLlmServer,
@@ -14,6 +14,54 @@ import {
     normalizeProvider,
     getRuntimeForProvider
 } from "../models-helpers";
+
+export function buildInstalledBuckets(
+    data: ModelsResponse | null,
+): Record<string, ModelInfo[]> {
+    if (!data) return {};
+    const buckets: Record<string, ModelInfo[]> = {};
+    const providers = data.providers ?? {};
+
+    Object.entries(providers).forEach(([provider, list]) => {
+        const normalized = normalizeProvider(provider);
+        if (!normalized) return;
+        if (!buckets[normalized]) {
+            buckets[normalized] = [];
+        }
+        if (Array.isArray(list)) {
+            buckets[normalized].push(...list);
+        }
+    });
+
+    const fallback = Array.isArray(data.models) ? data.models : [];
+    fallback.forEach((model) => {
+        const provider = normalizeProvider(model.provider ?? model.source);
+        if (!provider) return;
+        if (!buckets[provider]) {
+            buckets[provider] = [];
+        }
+        const exists = buckets[provider].some((candidate) => candidate.name === model.name);
+        if (!exists) {
+            buckets[provider].push(model);
+        }
+    });
+
+    return buckets;
+}
+
+export function resolveModelsForServer(input: {
+    selectedServer: string | null;
+    llmServers: Array<{ name: string; provider?: string | null }> | null;
+    installedBuckets: Record<string, ModelInfo[]>;
+    installedModels: ModelInfo[];
+}) {
+    const { selectedServer, llmServers, installedBuckets, installedModels } = input;
+    if (!selectedServer) return installedModels;
+    const server = (llmServers ?? []).find((item) => item.name === selectedServer);
+    const targetProvider = normalizeProvider(server?.provider ?? selectedServer);
+    if (!targetProvider) return installedModels;
+    return installedBuckets[targetProvider] ?? [];
+}
 
 export function useRuntime() {
     const { pushToast } = useToast();
@@ -29,12 +77,6 @@ export function useRuntime() {
     const activeRuntime = installed.data?.active;
     const [selectedServer, setSelectedServer] = useState<string | null>(null);
     const [selectedModel, setSelectedModel] = useState<string | null>(null);
-    const allowedRuntimeProviders = useMemo(() => {
-        const providers = (llmServers.data ?? [])
-            .map((server) => normalizeProvider(server.provider ?? server.name))
-            .filter((provider) => provider.length > 0);
-        return new Set(providers);
-    }, [llmServers.data]);
 
     const setPending = useCallback((key: string, value: boolean) => {
         setPendingActions((prev) => ({ ...prev, [key]: value }));
@@ -42,31 +84,8 @@ export function useRuntime() {
 
     // Memoized lists and options
     const installedBuckets = useMemo(() => {
-        const data = installed.data;
-        if (!data) return {} as Record<string, ModelInfo[]>;
-        const providers = data.providers ?? {};
-        const allowAll = allowedRuntimeProviders.size === 0;
-        const buckets: Record<string, ModelInfo[]> = {};
-        Object.entries(providers).forEach(([provider, list]) => {
-            const normalized = normalizeProvider(provider);
-            if (!normalized) return;
-            if (!allowAll && !allowedRuntimeProviders.has(normalized)) return;
-            buckets[normalized] = Array.isArray(list) ? list : [];
-        });
-        if (Object.keys(buckets).length > 0) return buckets;
-        const fallback = Array.isArray(data.models) ? data.models : [];
-        const fallbackBuckets: Record<string, ModelInfo[]> = {};
-        fallback.forEach((model) => {
-            const provider = normalizeProvider(model.provider);
-            if (!provider) return;
-            if (!allowAll && !allowedRuntimeProviders.has(provider)) return;
-            if (!fallbackBuckets[provider]) {
-                fallbackBuckets[provider] = [];
-            }
-            fallbackBuckets[provider].push(model);
-        });
-        return fallbackBuckets;
-    }, [installed.data, allowedRuntimeProviders]);
+        return buildInstalledBuckets(installed.data);
+    }, [installed.data]);
 
     const installedModels = useMemo(
         () => Object.values(installedBuckets).flat(),
@@ -74,17 +93,16 @@ export function useRuntime() {
     );
 
     const availableModelsForServer = useMemo(() => {
-        if (!selectedServer || !installed.data) return installedModels;
-        const server = (llmServers.data ?? []).find((s) => s.name === selectedServer);
-        const targetProvider = normalizeProvider(server?.provider ?? selectedServer);
-        const providersMap = installed.data.providers ?? {};
-
-        const base = targetProvider in providersMap
-            ? providersMap[targetProvider] ?? []
-            : (installed.data.models ?? []).filter((m) => normalizeProvider(m.provider) === targetProvider);
-
-        return base;
-    }, [selectedServer, installed.data, installedModels, llmServers.data]);
+        return resolveModelsForServer({
+            selectedServer,
+            llmServers: (llmServers.data ?? []).map((server) => ({
+                name: server.name,
+                provider: server.provider,
+            })),
+            installedBuckets,
+            installedModels,
+        });
+    }, [selectedServer, installedBuckets, installedModels, llmServers.data]);
 
     const serverOptions = useMemo(() => (llmServers.data ?? []).map((s) => ({ value: s.name, label: s.name })), [llmServers.data]);
     const modelOptions = useMemo(() => availableModelsForServer.map((m) => ({ value: m.name, label: m.name })), [availableModelsForServer]);
@@ -109,13 +127,27 @@ export function useRuntime() {
     }, [activeServer.data?.active_server, llmServers.data, selectedServer]);
 
     useEffect(() => {
-        if (selectedModel) return;
-        const activeModel = activeRuntime?.model;
-        if (activeModel) {
-            setSelectedModel(activeModel);
-        } else if (availableModelsForServer.length) {
-            setSelectedModel(availableModelsForServer[0].name);
+        if (availableModelsForServer.length === 0) {
+            if (selectedModel !== null) {
+                setSelectedModel(null);
+            }
+            return;
         }
+        if (
+            selectedModel &&
+            availableModelsForServer.some((model) => model.name === selectedModel)
+        ) {
+            return;
+        }
+        const activeModel = activeRuntime?.model;
+        if (
+            activeModel &&
+            availableModelsForServer.some((model) => model.name === activeModel)
+        ) {
+            setSelectedModel(activeModel);
+            return;
+        }
+        setSelectedModel(availableModelsForServer[0].name);
     }, [activeRuntime?.model, selectedModel, availableModelsForServer]);
 
     const handleActivate = async (model: ModelInfo) => {

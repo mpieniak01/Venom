@@ -5,6 +5,29 @@ const MATH_INLINE_REGEX = /\\\(((?:.|\n)+?)\\\)/g;
 const MATH_HINT_REGEX = /(?:=|\^|\\frac|\\sqrt|sqrt\(|≤|≥|<|>)/;
 const MATH_ALLOWED_REGEX = /^[-0-9a-zA-Z\s+*/=^_().,:√π∑∫<>≤≥\\]+$/;
 
+export function normalizeModelTextArtifacts(content: string) {
+  if (!content) return content;
+  const hasOnnxArtifacts =
+    content.includes("▁") || /^\s*""/.test(content) || /\*▁/.test(content);
+  if (!hasOnnxArtifacts) return content;
+
+  let normalized = content;
+  normalized = normalized.replaceAll(/▁+/g, " ");
+  normalized = normalized.replace(/^""/, '"');
+  normalized = normalized.replace(/""$/, '"');
+  normalized = normalized.replaceAll(/\s\*(?=\s*[A-ZĄĆĘŁŃÓŚŹŻ0-9])/g, "\n* ");
+  normalized = normalized.replaceAll(/^\*\s*/gm, "* ");
+  normalized = normalized
+    .split("\n")
+    .map((line) => line.replaceAll(/[ \t]{2,}/g, " ").trimEnd())
+    .join("\n")
+    .replaceAll(/\s+([,.;!?])/g, "$1")
+    .replaceAll(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return normalized;
+}
+
 export function formatComputationContent(content: string) {
   let replaced = false;
   const withBlocks = content.replaceAll(/```(?:json)?\n([\s\S]*?)```/g, (match, block) => {

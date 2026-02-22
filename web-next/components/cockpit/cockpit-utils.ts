@@ -86,6 +86,34 @@ export function sanitizeAssistantText(raw: string) {
   return text;
 }
 
+export function normalizeAssistantDisplayText(raw: string) {
+  if (!raw) return raw;
+
+  let text = sanitizeAssistantText(raw);
+
+  // ONNX/SentencePiece artifacts: ▁ marks token boundaries.
+  text = text.replaceAll(/▁+/g, " ");
+
+  // Sometimes generated content starts with duplicated opening quote.
+  text = text.replace(/^""/, '"');
+  text = text.replace(/""$/, '"');
+
+  // Recover markdown list items when bullets are emitted inline.
+  text = text.replaceAll(/\s\*(?=\s*[A-ZĄĆĘŁŃÓŚŹŻ0-9])/g, "\n* ");
+  text = text.replaceAll(/^\*\s*/gm, "* ");
+
+  // Normalize spacing after artifact cleanup.
+  text = text
+    .split("\n")
+    .map((line) => line.replaceAll(/[ \t]{2,}/g, " ").trimEnd())
+    .join("\n")
+    .replaceAll(/\s+([,.;!?])/g, "$1")
+    .replaceAll(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return text;
+}
+
 export type TelemetryEventPayload = {
   type?: string;
   data?: Record<string, unknown>;

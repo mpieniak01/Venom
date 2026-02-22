@@ -38,6 +38,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["tasks"])
 _ONNX_EXECUTOR: ProcessPoolExecutor | None = None
 _ONNX_WORKER_CLIENT: OnnxLlmClient | None = None
+_ONNX_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 ORCHESTRATOR_UNAVAILABLE = "Orchestrator nie jest dostępny"
 STATE_MANAGER_UNAVAILABLE = "StateManager nie jest dostępny"
@@ -98,6 +99,9 @@ def shutdown_onnx_task_executor(*, wait: bool = False) -> None:
 def release_onnx_task_runtime(*, wait: bool = False) -> None:
     """Best-effort cleanup for ONNX task runtime (pool + in-process fallback client)."""
     global _ONNX_WORKER_CLIENT
+    for task in list(_ONNX_BACKGROUND_TASKS):
+        task.cancel()
+    _ONNX_BACKGROUND_TASKS.clear()
     client = _ONNX_WORKER_CLIENT
     _ONNX_WORKER_CLIENT = None
     if client is not None:
@@ -106,6 +110,13 @@ def release_onnx_task_runtime(*, wait: bool = False) -> None:
         except Exception:
             logger.warning("Failed to close ONNX worker client cleanly.", exc_info=True)
     shutdown_onnx_task_executor(wait=wait)
+
+
+def _track_background_task(task: asyncio.Task[Any]) -> asyncio.Task[Any]:
+    """Retain a strong reference to background task until it finishes."""
+    _ONNX_BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_ONNX_BACKGROUND_TASKS.discard)
+    return task
 
 
 def _generate_onnx_response_sync(
@@ -451,7 +462,7 @@ async def _run_onnx_task(
         _trace_onnx_task_failure(task_id, exc)
 
 
-async def _submit_onnx_task(
+def _submit_onnx_task(
     request: TaskRequest, orchestrator: Orchestrator, runtime
 ) -> TaskResponse:
     state_manager = orchestrator.state_manager
@@ -464,12 +475,14 @@ async def _submit_onnx_task(
         },
     )
     _trace_onnx_task_start(task.id, request, runtime)
-    asyncio.create_task(
-        _run_onnx_task(
-            orchestrator=orchestrator,
-            task_id=task.id,
-            request=request,
-            runtime=runtime,
+    _track_background_task(
+        asyncio.create_task(
+            _run_onnx_task(
+                orchestrator=orchestrator,
+                task_id=task.id,
+                request=request,
+                runtime=runtime,
+            )
         )
     )
     return TaskResponse(
@@ -579,7 +592,7 @@ async def create_task(
 
         runtime = get_active_llm_runtime()
         if runtime.provider == "onnx":
-            return await _submit_onnx_task(request, orchestrator, runtime)
+            return _submit_onnx_task(request, orchestrator, runtime)
 
         response = await orchestrator.submit_task(request)
         return response

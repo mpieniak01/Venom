@@ -29,6 +29,7 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 - 💾 **Memory and knowledge** - persistent context, lessons learned, and knowledge reuse.
 - 🎓 **Workflow learning** - automation built from user demonstrations.
 - 🛠️ **Operations and governance** - service panel, policy gate, and provider cost control.
+- 🔍 **Transparency and full auditability** - end-to-end trace of decisions, actions, and outcomes for operational trust, compliance, and faster incident review.
 - 🔌 **Extensibility** - local tools and MCP import from Git repositories.
 
 ## Recent updates (2026-02)

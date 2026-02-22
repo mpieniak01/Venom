@@ -29,6 +29,7 @@ W praktyce Venom działa jako warstwa decyzyjno-wykonawcza dla zespołów techni
 - 💾 **Pamięć i wiedza** - utrwalanie kontekstu, lessons learned i ponowne użycie wiedzy.
 - 🎓 **Uczenie workflow** - budowa automatyzacji przez demonstrację działań użytkownika.
 - 🛠️ **Operacje i governance** - panel usług, policy gate i kontrola kosztów providerów.
+- 🔍 **Transparentność i pełna audytowalność** - śledzenie end-to-end decyzji, działań i wyników dla zaufania operacyjnego, compliance oraz szybszej analizy incydentów.
 - 🔌 **Rozszerzalność** - narzędzia lokalne i import MCP z repozytoriów Git.
 
 ## Ostatnie wdrożenia (2026-02)

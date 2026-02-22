@@ -43,6 +43,14 @@ class GenerationParamsAdapter:
             "top_p": "top_p",
             # OpenAI nie wspiera top_k i repeat_penalty
         },
+        "onnx": {
+            # Foundation mapping for ONNX Runtime GenAI adapter.
+            "max_tokens": "max_new_tokens",
+            "temperature": "temperature",
+            "top_p": "top_p",
+            "top_k": "top_k",
+            "repeat_penalty": "repetition_penalty",
+        },
     }
 
     @classmethod
@@ -120,6 +128,8 @@ class GenerationParamsAdapter:
             return "vllm"
         elif "openai" in provider_lower or "azure" in provider_lower:
             return "openai"
+        elif "onnx" in provider_lower:
+            return "onnx"
         elif provider_lower == "local":
             # Dla lokalnego providera spróbuj wykryć z runtime info
             try:

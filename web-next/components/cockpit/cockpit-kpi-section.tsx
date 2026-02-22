@@ -75,7 +75,7 @@ const getTasksSummaryLabel = (
 };
 
 const getUptimeLabel = (metrics: Metrics | null): string => {
-  if (metrics?.uptime_seconds === undefined) return "Uptime: —";
+  if (metrics?.uptime_seconds == null) return "Uptime: —";
   return `Uptime: ${formatUptime(metrics.uptime_seconds)}`;
 };
 

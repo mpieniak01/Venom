@@ -1,18 +1,25 @@
 """Endpointy operacji na modelach registry (install/remove/activate/operations)."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 from venom_core.api.model_schemas.model_requests import (
     ModelActivateRequest,
     ModelRegistryInstallRequest,
+    OnnxBuildRequest,
 )
-from venom_core.api.routes.models_dependencies import get_model_registry
+from venom_core.api.routes.models_dependencies import (
+    get_model_manager,
+    get_model_registry,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
 MODEL_REGISTRY_UNAVAILABLE_DETAIL = "ModelRegistry nie jest dostępny"
+MODEL_MANAGER_UNAVAILABLE_DETAIL = "ModelManager nie jest dostępny"
 
 
 @router.post(
@@ -190,4 +197,40 @@ def get_operation_status_endpoint(operation_id: str):
         raise
     except Exception as exc:
         logger.error(f"Błąd podczas pobierania statusu operacji: {exc}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
+
+
+@router.post(
+    "/models/onnx/build",
+    responses={
+        503: {"description": MODEL_MANAGER_UNAVAILABLE_DETAIL},
+        400: {"description": "Nieprawidłowe parametry build ONNX"},
+        500: {"description": "Błąd serwera podczas budowania modelu ONNX"},
+    },
+)
+async def build_onnx_model(request: OnnxBuildRequest):
+    """Uruchamia pipeline build modelu ONNX i zapisuje metadane runtime=onnx."""
+    model_manager = get_model_manager()
+    if model_manager is None:
+        raise HTTPException(status_code=503, detail=MODEL_MANAGER_UNAVAILABLE_DETAIL)
+
+    try:
+        result = await asyncio.to_thread(
+            model_manager.build_onnx_llm_model,
+            model_name=request.model_name,
+            output_dir=request.output_dir,
+            execution_provider=request.execution_provider,
+            precision=request.precision,
+            builder_script=request.builder_script,
+        )
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("message", "Build ONNX nie powiódł się"),
+            )
+        return {"success": True, "result": result}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Błąd podczas budowania modelu ONNX: %s", exc)
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")

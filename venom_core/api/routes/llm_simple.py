@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Optional
@@ -18,6 +19,7 @@ from venom_core.api.schemas.llm_simple import SimpleChatRequest
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import get_metrics_collector
 from venom_core.core.tracer import TraceStatus
+from venom_core.execution.onnx_llm_client import OnnxLlmClient
 from venom_core.utils.llm_runtime import (
     _build_chat_completions_url,
     get_active_llm_runtime,
@@ -30,6 +32,17 @@ _SIMPLE_MODE_STEP = "SimpleMode"
 _PROMPT_PREVIEW_MAX_CHARS = 200
 _CONTEXT_PREVIEW_MAX_CHARS = 2000
 _RESPONSE_PREVIEW_MAX_CHARS = 4000
+_ONNX_SIMPLE_CLIENT: OnnxLlmClient | None = None
+_ONNX_SIMPLE_CLIENT_LOCK = threading.Lock()
+
+
+def _get_onnx_simple_client() -> OnnxLlmClient:
+    global _ONNX_SIMPLE_CLIENT
+    if _ONNX_SIMPLE_CLIENT is None:
+        with _ONNX_SIMPLE_CLIENT_LOCK:
+            if _ONNX_SIMPLE_CLIENT is None:
+                _ONNX_SIMPLE_CLIENT = OnnxLlmClient()
+    return _ONNX_SIMPLE_CLIENT
 
 
 def _get_simple_context_char_limit(runtime) -> Optional[int]:
@@ -858,6 +871,72 @@ async def _stream_simple_chunks(
             return
 
 
+async def _stream_simple_chunks_onnx(
+    *,
+    runtime,
+    request_id: UUID,
+    model_name: str,
+    messages: list[dict[str, str]],
+    max_tokens: int | None,
+    temperature: float | None,
+) -> AsyncIterator[str]:
+    stream_start = time.perf_counter()
+    chunks: list[str] = []
+    chunk_count = 0
+    first_chunk_seen = False
+
+    yield "event: start\ndata: {}\n\n"
+    try:
+        # Keep a warm ONNX client in API process to avoid reloading model
+        # between consecutive simple-mode requests.
+        client = _get_onnx_simple_client()
+        for content in client.stream_generate(
+            messages=messages,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+        ):
+            if not content:
+                continue
+            chunk_count += 1
+            chunks.append(content)
+            if not first_chunk_seen:
+                _trace_first_chunk(request_id, stream_start, content)
+                first_chunk_seen = True
+            yield "event: content\ndata: " + json.dumps({"text": content}) + "\n\n"
+
+        _trace_stream_completion(request_id, "".join(chunks), chunk_count, stream_start)
+        collector = get_metrics_collector()
+        collector.record_provider_request(
+            provider=runtime.provider,
+            success=True,
+            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+        )
+        yield "event: done\ndata: {}\n\n"
+    except Exception as exc:
+        _record_simple_error(
+            request_id,
+            error_code="onnx_generation_error",
+            error_message=f"Błąd generacji ONNX: {exc}",
+            error_details={"provider": "onnx", "model": model_name},
+            error_class=exc.__class__.__name__,
+            retryable=False,
+        )
+        collector = get_metrics_collector()
+        collector.record_provider_request(
+            provider=runtime.provider,
+            success=False,
+            latency_ms=(time.perf_counter() - stream_start) * 1000.0,
+            error_code="onnx_generation_error",
+        )
+        yield (
+            "event: error\ndata: "
+            + json.dumps(
+                {"code": "onnx_generation_error", "message": f"Błąd ONNX: {exc}"}
+            )
+            + "\n\n"
+        )
+
+
 @router.post(
     "/simple/stream",
     responses={
@@ -871,9 +950,6 @@ async def stream_simple_chat(request: SimpleChatRequest):
     model_name = request.model or runtime.model_name
     if not model_name:
         raise HTTPException(status_code=400, detail="Brak nazwy modelu LLM.")
-    completions_url = _build_chat_completions_url(runtime)
-    if not completions_url:
-        raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
     request_id: UUID = uuid4()
     _trace_simple_request(request_id, request, runtime, model_name)
 
@@ -885,6 +961,25 @@ async def stream_simple_chat(request: SimpleChatRequest):
     payload = _build_payload(request, runtime, model_name, messages)
     _trace_context_preview(request_id, messages)
     headers = _build_streaming_headers(request_id, request.session_id)
+    runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
+    runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
+    if runtime_provider == "onnx" or runtime_service_type == "onnx":
+        return StreamingResponse(
+            _stream_simple_chunks_onnx(
+                runtime=runtime,
+                request_id=request_id,
+                model_name=model_name,
+                messages=messages,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+            ),
+            media_type="text/event-stream",
+            headers=headers,
+        )
+
+    completions_url = _build_chat_completions_url(runtime)
+    if not completions_url:
+        raise HTTPException(status_code=503, detail="Brak endpointu LLM.")
     return StreamingResponse(
         _stream_simple_chunks(
             completions_url=completions_url,

@@ -1,14 +1,14 @@
-# Venom optional extras: ONNX / voice-vision acceleration stack
-# Install only when ONNX-dependent features are needed.
+# Venom ONNX extras: optional packages beyond ONNX LLM profile.
+# Use this when you need ONNX-adjacent speech/voice extras in addition
+# to the ONNX local LLM runtime profile.
+# Current extras:
+# - faster-whisper (local STT)
+# - piper-tts (local TTS, ONNX model-based)
 #
 # Example:
-#   pip install -r requirements-docker-minimal.txt -r requirements-extras-onnx.txt
+#   pip install -r requirements-extras-onnx.txt
 
-onnxruntime-gpu; platform_system != "Darwin"
-onnxruntime; platform_system == "Darwin"
-onnx>=1.14.0
-optimum
-accelerate
+-r requirements-profile-onnx.txt
 
 # Audio/voice ONNX-adjacent extras
 faster-whisper

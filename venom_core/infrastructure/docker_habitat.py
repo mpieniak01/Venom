@@ -35,6 +35,7 @@ class DockerHabitat:
     """
 
     CONTAINER_NAME = "venom-sandbox"
+    CONTAINER_REMOVE_WAIT_SECONDS = 5.0
 
     def __init__(self):
         """
@@ -152,6 +153,26 @@ class DockerHabitat:
             logger.warning(
                 f"Nie udało się usunąć kontenera {self.CONTAINER_NAME}: {exc}"
             )
+        self._wait_until_container_absent()
+
+    def _wait_until_container_absent(self) -> None:
+        """Czeka aż nazwa kontenera będzie ponownie dostępna."""
+        deadline = time.time() + self.CONTAINER_REMOVE_WAIT_SECONDS
+        while time.time() < deadline:
+            try:
+                self.client.containers.get(self.CONTAINER_NAME)
+            except NotFound:
+                return
+            except Exception as exc:
+                logger.warning(
+                    "Błąd podczas sprawdzania dostępności nazwy kontenera: %s",
+                    exc,
+                )
+            time.sleep(0.1)
+        logger.warning(
+            "Timeout oczekiwania na zwolnienie nazwy kontenera %s",
+            self.CONTAINER_NAME,
+        )
 
     def _create_container(
         self, workspace_path: Path | None = None, *, retry_on_conflict: bool = True
@@ -200,12 +221,47 @@ class DockerHabitat:
             return container
 
         except APIError as e:
-            if retry_on_conflict and "already in use" in str(e).lower():
+            error_text = str(e).lower()
+            status_code = getattr(e, "status_code", None)
+            is_conflict = status_code == 409 or "409 client error" in error_text
+            if retry_on_conflict and (
+                is_conflict
+                or "already in use" in error_text
+                or "conflict" in error_text
+            ):
                 logger.warning(
-                    f"Konflikt nazwy kontenera {self.CONTAINER_NAME}; retry po usunięciu."
+                    f"Konflikt nazwy kontenera {self.CONTAINER_NAME}; próba ponownego użycia."
                 )
+                try:
+                    existing = self.client.containers.get(self.CONTAINER_NAME)
+                    expected_workspace = (
+                        workspace_path or self._resolve_workspace_path()
+                    )
+                    if self._has_expected_workspace_mount(existing, expected_workspace):
+                        if existing.status != "running":
+                            existing.start()
+                            existing.reload()
+                        logger.info(
+                            "Ponownie użyto istniejącego kontenera po konflikcie nazwy."
+                        )
+                        return existing
+                    logger.warning(
+                        "Istniejący kontener po konflikcie ma niezgodny mount; rekreacja."
+                    )
+                    self._recreate_container(existing)
+                    return self._create_container(
+                        expected_workspace, retry_on_conflict=False
+                    )
+                except NotFound:
+                    pass
+                except Exception as reuse_exc:
+                    logger.warning(
+                        "Nie udało się ponownie użyć kontenera po konflikcie: %s",
+                        reuse_exc,
+                    )
+                logger.warning("Retry po usunięciu kontenera konfliktowego.")
                 self._remove_container_by_name_if_exists()
-                time.sleep(0.2)
+                self._wait_until_container_absent()
                 return self._create_container(workspace_path, retry_on_conflict=False)
             error_msg = f"Błąd API Docker podczas tworzenia kontenera: {e}"
             logger.error(error_msg)

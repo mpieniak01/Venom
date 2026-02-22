@@ -18,12 +18,14 @@ export function useChatSend(params: ChatSendParams) {
     chatMode,
     generationParams,
     selectedLlmModel,
+    selectedLlmServer,
     activeServerInfo,
     sessionId,
     language,
     resetSession,
     refreshActiveServer,
     setActiveLlmRuntime,
+    setActiveLlmServer,
     sendSimpleChatStream,
     sendTask,
     ingestMemoryEntry,
@@ -80,6 +82,22 @@ export function useChatSend(params: ChatSendParams) {
     if (!resolvedSession) {
       setMessage("Sesja inicjalizuje się. Spróbuj ponownie za chwilę.");
       return false;
+    }
+
+    const targetServer = (selectedLlmServer || "").toLowerCase().trim();
+    const activeServer = (activeServerInfo?.active_server || "").toLowerCase().trim();
+    if (targetServer && activeServer && targetServer !== activeServer) {
+      try {
+        await setActiveLlmServer(targetServer);
+        refreshActiveServer();
+      } catch (err) {
+        setMessage(
+          err instanceof Error
+            ? err.message
+            : "Nie udało się przełączyć aktywnego serwera LLM.",
+        );
+        return false;
+      }
     }
 
     autoScrollEnabled.current = true;
@@ -189,6 +207,7 @@ export function useChatSend(params: ChatSendParams) {
     resetSession,
     scrollChatToBottom,
     selectedLlmModel,
+    selectedLlmServer,
     sendSimpleChatStream,
     sendTask,
     sessionId,
@@ -201,6 +220,7 @@ export function useChatSend(params: ChatSendParams) {
     setSending,
     setSimpleRequestDetails,
     setActiveLlmRuntime,
+    setActiveLlmServer,
     uiTimingsRef,
     updateSimpleStream,
   ]);

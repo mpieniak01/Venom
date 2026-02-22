@@ -51,6 +51,16 @@ export function SelectMenu({
   renderButton,
   renderOption,
 }: SelectMenuProps) {
+  const uniqueOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return options.filter((option) => {
+      const key = (option.value || "").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [options]);
+
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -150,10 +160,10 @@ export function SelectMenu({
             )}
             data-testid={menuTestId}
           >
-            {options.length === 0 ? (
+            {uniqueOptions.length === 0 ? (
               <div className="px-3 py-2 text-xs text-zinc-500">Brak opcji</div>
             ) : (
-              options.map((option) => {
+              uniqueOptions.map((option) => {
                 const active = option.value === value;
                 return (
                   <button

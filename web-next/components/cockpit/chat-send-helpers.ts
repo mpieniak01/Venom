@@ -29,6 +29,7 @@ export type ChatSendParams = {
     chatMode: "normal" | "direct" | "complex";
     generationParams: GenerationParams | null;
     selectedLlmModel: string;
+    selectedLlmServer: string;
     activeServerInfo: ActiveServerInfo;
     sessionId: string | null;
     language: string;
@@ -38,6 +39,7 @@ export type ChatSendParams = {
         config_hash?: string | null;
         runtime_id?: string | null;
     }>;
+    setActiveLlmServer: (server: string) => Promise<{ status?: string; active_model?: string | null }>;
     sendSimpleChatStream: (payload: {
         content: string;
         model: string | null;

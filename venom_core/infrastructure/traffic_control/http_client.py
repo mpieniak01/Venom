@@ -55,15 +55,16 @@ class TrafficControlledHttpClient:
         self.traffic_controller = traffic_controller or get_traffic_controller()
 
         # httpx client (sync)
+        base_url_value = base_url or ""
         self._client = httpx.Client(
-            base_url=base_url,
+            base_url=base_url_value,
             timeout=timeout,
             follow_redirects=True,
         )
 
         # httpx async client
         self._async_client = httpx.AsyncClient(
-            base_url=base_url,
+            base_url=base_url_value,
             timeout=timeout,
             follow_redirects=True,
         )
@@ -107,7 +108,13 @@ class TrafficControlledHttpClient:
             response.raise_for_status()
             return response
 
-        result, response, error = policy.retry_policy.execute_with_retry(
+        retry_policy = policy.retry_policy
+        if retry_policy is None:
+            raise RuntimeError(
+                f"Retry policy not configured for provider scope: {scope}"
+            )
+
+        result, response, error = retry_policy.execute_with_retry(
             _execute,
             is_retriable=is_retriable_http_error,
             on_retry=lambda attempt, exc, delay: (
@@ -125,7 +132,15 @@ class TrafficControlledHttpClient:
                 self.provider, response.status_code, method=method
             )
             return response
-        self._record_outbound_error_and_raise(error, method=method)
+        if isinstance(error, Exception):
+            self._record_outbound_error_and_raise(error, method=method)
+        self._record_outbound_error_and_raise(
+            RuntimeError(
+                f"Request failed without response for {self.provider} {method} {url}"
+            ),
+            method=method,
+        )
+        raise RuntimeError("unreachable")
 
     async def arequest(
         self,
@@ -162,7 +177,13 @@ class TrafficControlledHttpClient:
 
         # Execute with retry (note: async version needs manual implementation)
         last_exception: Exception | None = None
-        for attempt in range(policy.retry_policy.max_attempts):
+        retry_policy = policy.retry_policy
+        if retry_policy is None:
+            raise RuntimeError(
+                f"Retry policy not configured for provider scope: {scope}"
+            )
+
+        for attempt in range(retry_policy.max_attempts):
             try:
                 response = await self._async_client.request(method, url, **kwargs)
                 response.raise_for_status()
@@ -174,11 +195,11 @@ class TrafficControlledHttpClient:
                 last_exception = exc
                 if not is_retriable_http_error(exc):
                     self._record_outbound_error_and_raise(exc, method=method)
-                if attempt >= policy.retry_policy.max_attempts - 1:
+                if attempt >= retry_policy.max_attempts - 1:
                     break
                 await self._sleep_before_retry(
                     attempt=attempt,
-                    policy=policy.retry_policy,
+                    policy=retry_policy,
                     method=method,
                     url=url,
                     error=exc,
@@ -187,6 +208,7 @@ class TrafficControlledHttpClient:
         if last_exception is None:
             raise RuntimeError("Retry exhausted without captured exception")
         self._record_outbound_error_and_raise(last_exception, method=method)
+        raise RuntimeError("unreachable")
 
     def _raise_if_blocked(
         self, reason: Optional[str], wait_seconds: Optional[float]

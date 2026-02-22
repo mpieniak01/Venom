@@ -17,7 +17,7 @@ Hybrid AI Engine is a key component of the Venom system that manages intelligent
 
 2. **KernelBuilder** (`venom_core/execution/kernel_builder.py`)
    - Building Semantic Kernel with appropriate connectors
-   - Local LLM support (Ollama/vLLM)
+   - Local LLM support (Ollama/vLLM/ONNX)
    - Google Gemini support
    - OpenAI support
    - Azure OpenAI stub

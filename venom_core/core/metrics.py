@@ -465,7 +465,8 @@ class MetricsCollector:
 
             return {
                 "status": "ok",
-                "uptime_seconds": round(uptime_seconds, 2),
+                # API schema expects integer uptime value.
+                "uptime_seconds": int(uptime_seconds),
                 "start_time": self.start_time.isoformat(),
                 "tasks": {
                     "created": self.metrics["tasks_created"],

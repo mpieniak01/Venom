@@ -139,7 +139,7 @@ export function CockpitLogs({
           )}
           {tasksPreview.map((task, index) => (
             <ListCard
-              key={`${task.task_id ?? task.id ?? "task"}-${index}`}
+              key={`${(task as Task & { task_id?: string }).task_id ?? task.id ?? "task"}-${index}`}
               title={task.content}
               subtitle={
                 task.created_at ? new Date(task.created_at).toLocaleString() : "—"

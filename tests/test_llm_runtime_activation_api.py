@@ -80,3 +80,54 @@ class TestLlmRuntimeActivationAPI:
             json={"provider": "unknown"},
         )
         assert response.status_code == 400
+
+    def test_activate_onnx_runtime(self, client):
+        with (
+            patch.object(system_llm, "SETTINGS") as settings,
+            patch.object(system_llm, "config_manager") as mock_manager,
+            patch.object(system_llm, "get_active_llm_runtime") as mock_runtime,
+            patch.object(system_llm, "OnnxLlmClient") as mock_onnx_client,
+        ):
+            settings.LLM_SERVICE_TYPE = "local"
+            settings.LLM_MODEL_NAME = "phi3:latest"
+            settings.LLM_CONFIG_HASH = ""
+            settings.ACTIVE_LLM_SERVER = ""
+            settings.OPENAI_API_KEY = ""
+            settings.GOOGLE_API_KEY = ""
+
+            client_instance = mock_onnx_client.return_value
+            client_instance.ensure_ready.return_value = None
+            client_instance.config.model_path = "models/phi35-onnx"
+
+            mock_runtime.return_value = type(
+                "Runtime",
+                (),
+                {
+                    "provider": "onnx",
+                    "endpoint": None,
+                    "model_name": "models/phi35-onnx",
+                    "config_hash": "hash-onnx",
+                    "runtime_id": "onnx@local",
+                },
+            )()
+
+            response = client.post(
+                "/api/v1/system/llm-runtime/active",
+                json={"provider": "onnx"},
+            )
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["active_server"] == "onnx"
+            mock_manager.update_config.assert_called_once()
+
+    def test_activate_onnx_runtime_not_ready(self, client):
+        with patch.object(system_llm, "OnnxLlmClient") as mock_onnx_client:
+            mock_onnx_client.return_value.ensure_ready.side_effect = RuntimeError(
+                "boom"
+            )
+            response = client.post(
+                "/api/v1/system/llm-runtime/active",
+                json={"provider": "onnx"},
+            )
+            assert response.status_code == 400
+            assert "boom" in response.json()["detail"]

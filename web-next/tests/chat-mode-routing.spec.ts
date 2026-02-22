@@ -18,6 +18,7 @@ async function selectChatMode(page: Page, label: string) {
     await page.getByTestId("chat-mode-menu").waitFor({ state: "visible", timeout: 10000 });
     const option = page.getByTestId(`chat-mode-option-${modeValue}`);
     await option.waitFor({ state: "visible", timeout: 10000 });
+    await option.scrollIntoViewIfNeeded();
     await option.click({ force: true });
     try {
       await expect(trigger).toContainText(expected, { timeout: 5000 });
@@ -73,6 +74,11 @@ async function installMockTaskEventSource(
         }
 
         private emitPayload(payload: { event: string; data: Record<string, unknown> }) {
+          const win = window as typeof window & { __taskStreamEvents?: Record<string, unknown>[] };
+          win.__taskStreamEvents = [
+            ...(win.__taskStreamEvents ?? []),
+            { event: payload.event, ...payload.data },
+          ].slice(-25);
           const event = new MessageEvent(payload.event, { data: JSON.stringify(payload.data) });
           for (const handler of this.listeners[payload.event] || []) {
             handler(event);
@@ -115,6 +121,8 @@ test.describe("Chat mode routing", () => {
       window.localStorage.setItem("venom-session-id", sessionId);
       window.localStorage.setItem("venom-backend-boot-id", bootId);
       window.localStorage.setItem("venom-next-build-id", "test-build");
+      const win = window as typeof window & { __taskStreamEvents?: Record<string, unknown>[] };
+      win.__taskStreamEvents = [];
     });
     await page.route("**/api/v1/history/requests?limit=6", async (route) => {
       await route.fulfill({

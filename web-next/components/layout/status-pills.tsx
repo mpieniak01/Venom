@@ -167,7 +167,7 @@ export function StatusPills({ initialData }: Readonly<{ initialData?: StatusPill
         queueActive,
         queueLimit: queueData?.limit ?? "∞",
         queuePending,
-        queuePaused: queueData?.paused,
+        queuePaused: queueData?.paused ?? undefined,
         queuePendingLoading,
         metricsAvailable,
         successRate,

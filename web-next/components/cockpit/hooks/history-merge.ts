@@ -81,7 +81,7 @@ export function mergeHistoryFallbacks({
     }
   >();
   (tasks ?? []).forEach((task) => {
-    const taskId = task.task_id ?? task.id;
+    const taskId = (task as Task & { task_id?: string }).task_id ?? task.id;
     if (!taskId) return;
     let taskSession: string | null = null;
     const ctx = task.context_history as Record<string, unknown> | null | undefined;
@@ -99,7 +99,7 @@ export function mergeHistoryFallbacks({
     taskResultIndex.set(String(taskId), {
       result: task.result ?? null,
       status: task.status ?? null,
-      updated_at: task.updated_at ?? null,
+      updated_at: (task as Task & { updated_at?: string | null }).updated_at ?? null,
       created_at: task.created_at ?? null,
       session_id: taskSession ?? null,
     });

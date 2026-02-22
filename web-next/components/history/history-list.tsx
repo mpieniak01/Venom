@@ -144,7 +144,10 @@ export function HistoryList({
 }
 
 function formatHistoryModel(entry: HistoryRequest): string {
-  const model = entry.llm_model ?? entry.model ?? "LLM";
+  const model =
+    entry.llm_model ??
+    (entry as HistoryRequest & { model?: string | null }).model ??
+    "LLM";
   const provider = entry.llm_provider ?? "local";
   return `${model} • ${provider}`;
 }

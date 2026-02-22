@@ -60,9 +60,24 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
 ];
 
 const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<string, () => Promise<ComponentType | null>> = {
-  "brand_studio": async () => (await import("../../../modules/venom-module-brand-studio/web-next/page")).default ?? null,
-  "module_example": async () => (await import("../../../modules/venom-module-example/web-next/page")).default ?? null
+  "brand_studio": async () => importOptionalModuleComponent("../../../modules/venom-module-brand-studio/web-next/page"),
+  "module_example": async () => importOptionalModuleComponent("../../../modules/venom-module-example/web-next/page")
 };
+
+async function importOptionalModuleComponent(
+  modulePath: string,
+): Promise<ComponentType | null> {
+  try {
+    const dynamicImport = new Function(
+      "modulePath",
+      "return import(modulePath);",
+    ) as (path: string) => Promise<{ default?: ComponentType }>;
+    const loaded = await dynamicImport(modulePath);
+    return loaded.default ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
   "brand_studio": () => process.env.NEXT_PUBLIC_FEATURE_BRAND_STUDIO ?? "",

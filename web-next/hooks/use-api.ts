@@ -422,14 +422,25 @@ export function useLlmServers(intervalMs = 0) {
   return usePolling<LlmServerInfo[]>(
     "llm-servers",
     async () => {
+      const dedupeServers = (servers: LlmServerInfo[]) => {
+        const seen = new Set<string>();
+        const result: LlmServerInfo[] = [];
+        for (const server of servers) {
+          const name = (server?.name ?? "").toLowerCase().trim();
+          if (!name || seen.has(name)) continue;
+          seen.add(name);
+          result.push(server);
+        }
+        return result;
+      };
       const data = await apiFetch<{ servers?: LlmServerInfo[] } | LlmServerInfo[]>(
         "/api/v1/system/llm-servers",
       );
       if (Array.isArray(data)) {
-        return data;
+        return dedupeServers(data);
       }
       if (Array.isArray(data?.servers)) {
-        return data.servers;
+        return dedupeServers(data.servers);
       }
       return [];
     },

@@ -730,6 +730,7 @@ export function useCockpitLogic({
         lastResponseDurationMs: interactive.state.lastResponseDurationMs,
         labMode: layout.labMode,
         chatMode: interactive.state.chatMode,
+        selectedLlmServer: interactive.state.selectedLlmServer,
         generationParams: interactive.state.generationParams,
         selectedLlmModel: interactive.state.selectedLlmModel,
         activeServerInfo: data.activeServerInfo,
@@ -740,6 +741,7 @@ export function useCockpitLogic({
             void data.refresh.activeServer();
         },
         setActiveLlmRuntime: setActiveLlmRuntime,
+        setActiveLlmServer: setActiveLlmServer,
         sendSimpleChatStream,
         sendTask: sendTask, // No cast
         ingestMemoryEntry,

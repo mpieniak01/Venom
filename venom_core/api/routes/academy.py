@@ -2228,7 +2228,7 @@ def _extract_text_from_docx(source_path: Path) -> str:
 
 def _convert_with_pandoc(source_path: Path, output_path: Path) -> bool:
     try:
-        import pypandoc
+        import pypandoc  # type: ignore[import-untyped]
     except ImportError:
         return False
 

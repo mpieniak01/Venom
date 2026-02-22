@@ -107,6 +107,26 @@ class TestGenerationParamsAdapter:
         assert GenerationParamsAdapter._detect_provider("OpenAI") == "openai"
         assert GenerationParamsAdapter._detect_provider("azure-openai") == "openai"
 
+    def test_detect_provider_onnx_variations(self):
+        """Test wykrywania providera ONNX z różnych wartości."""
+        assert GenerationParamsAdapter._detect_provider("onnx") == "onnx"
+        assert GenerationParamsAdapter._detect_provider("ONNX") == "onnx"
+        assert GenerationParamsAdapter._detect_provider("onnx-runtime") == "onnx"
+
+    def test_adapt_params_onnx(self):
+        """Test adaptacji parametrów dla ONNX foundation mapping."""
+        params = {
+            "temperature": 0.3,
+            "max_tokens": 256,
+            "top_p": 0.92,
+            "repeat_penalty": 1.05,
+        }
+        result = GenerationParamsAdapter.adapt_params(params, "onnx")
+        assert result["temperature"] == pytest.approx(0.3)
+        assert result["max_new_tokens"] == 256
+        assert result["top_p"] == pytest.approx(0.92)
+        assert result["repetition_penalty"] == pytest.approx(1.05)
+
     def test_normalize_provider_wrapper(self):
         """Test publicznego wrappera normalize_provider."""
         assert GenerationParamsAdapter.normalize_provider("VLLM") == "vllm"

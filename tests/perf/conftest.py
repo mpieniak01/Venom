@@ -24,7 +24,10 @@ def pytest_collection_modifyitems(config, items):
         reason="Backend API niedostępny – pomijam testy perf.",
     )
     for item in items:
-        item.add_marker(skip_perf)
+        # Ten conftest jest ładowany jako plugin podczas pełnej kolekcji testów,
+        # więc ograniczamy skip wyłącznie do testów wydajnościowych.
+        if item.nodeid.startswith("tests/perf/") or "performance" in item.keywords:
+            item.add_marker(skip_perf)
 
 
 @pytest.fixture(scope="session", autouse=True)

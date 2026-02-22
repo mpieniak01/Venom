@@ -17,7 +17,7 @@ Hybrydowy Silnik AI (Hybrid AI Engine) to kluczowy komponent systemu Venom, któ
 
 2. **KernelBuilder** (`venom_core/execution/kernel_builder.py`)
    - Budowanie Semantic Kernel z odpowiednimi konektorami
-   - Obsługa Local LLM (Ollama/vLLM)
+   - Obsługa Local LLM (Ollama/vLLM/ONNX)
    - Obsługa Google Gemini
    - Obsługa OpenAI
    - Stub dla Azure OpenAI

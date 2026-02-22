@@ -32,6 +32,7 @@ def test_list_servers_contains_known_entries():
     names = {srv["name"] for srv in servers}
     assert "vllm" in names
     assert "ollama" in names
+    assert "onnx" in names
 
 
 @pytest.mark.asyncio

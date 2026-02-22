@@ -254,7 +254,7 @@ print(result)
 
 ### Testy jednostkowe
 
-Testy wymagają pełnej instalacji zależności z `requirements.txt`.
+Testy wymagają pełnej instalacji zależności z `requirements-full.txt`.
 
 Ze względu na brak miejsca na dysku w środowisku testowym, pełne testy jednostkowe
 mogą być uruchomione lokalnie po instalacji wszystkich zależności.

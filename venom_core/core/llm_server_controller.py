@@ -93,6 +93,22 @@ class LlmServerController:
             },
         )
 
+        # ONNX Runtime działa in-process, ale utrzymujemy spójny wpis serwera
+        # żeby testy i UI mogły traktować ONNX jako trzeci lokalny stack.
+        servers["onnx"] = LlmServerConfig(
+            name="onnx",
+            display_name="ONNX Runtime",
+            provider="onnx",
+            description="In-process ONNX Runtime GenAI (bez osobnego daemonu).",
+            endpoint=None,
+            health_url=None,
+            commands={
+                "start": "",
+                "stop": "",
+                "restart": "",
+            },
+        )
+
         return servers
 
     def list_servers(self) -> List[dict]:

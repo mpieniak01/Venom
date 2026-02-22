@@ -172,7 +172,7 @@ print(stats)
 ## Instalacja Zależności
 
 ```bash
-# Podstawowe zależności (już w requirements.txt)
+# Podstawowe zależności (zawarte w requirements-full.txt)
 pip install networkx lancedb
 
 # Ingestia dokumentów
@@ -336,7 +336,7 @@ graph.load_graph()
 ## FAQ
 
 **Q: Czy mogę używać Oracle bez GPT-4?**
-A: Tak! Możesz używać lokalnych modeli (Ollama, vLLM). Ekstrakcja wiedzy i reasoning będą działać, choć mogą być mniej precyzyjne.
+A: Tak! Możesz używać lokalnych modeli (Ollama, vLLM, ONNX). Ekstrakcja wiedzy i reasoning będą działać, choć mogą być mniej precyzyjne.
 
 **Q: Jak długo trwa przetworzenie 100-stronicowego PDF?**
 A: ~30-60 sekund (zależy od prędkości LLM i jakości PDF).

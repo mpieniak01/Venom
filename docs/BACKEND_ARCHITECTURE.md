@@ -34,8 +34,8 @@ Routers are composed in `venom_core/api/routes/models.py` (aggregator). Submodul
 
 ## Runtime and model routing
 - `venom_core/execution/model_router.py` and `venom_core/core/model_router.py` – routing between local LLM and cloud (LOCAL/HYBRID/CLOUD).
-- `venom_core/core/llm_server_controller.py` – LLM server control (Ollama/vLLM) and health checks.
-- `venom_core/core/generation_params_adapter.py` – maps generation params to OpenAI/vLLM/Ollama formats.
+- `venom_core/core/llm_server_controller.py` – LLM server control (Ollama/vLLM/ONNX) and health checks.
+- `venom_core/core/generation_params_adapter.py` – maps generation params to OpenAI/vLLM/Ollama/ONNX formats.
 - Runtime configuration lives in `venom_core/config.py` and `.env` (e.g. `LLM_LOCAL_ENDPOINT`, `VLLM_ENDPOINT`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
 
 ## Execution Layer (Skills & MCP)

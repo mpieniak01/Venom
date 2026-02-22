@@ -232,12 +232,15 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         const status = normalizeStatus(task.status);
         const logs = task.logs as string[] | undefined;
         const result = task.result as string | undefined;
+        const updatedAt =
+          (task as typeof task & { updated_at?: string | null }).updated_at ??
+          new Date().toISOString();
 
         updateStateById(taskId, {
           status: status ?? null,
           logs,
           result,
-          lastEventAt: task.updated_at ?? new Date().toISOString(),
+          lastEventAt: updatedAt,
           connected: false,
           error: "SSE connection lost, using polling.",
         });
@@ -249,7 +252,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           status,
           logs,
           result,
-          timestamp: task.updated_at,
+          timestamp: updatedAt,
           llmProvider: runtime.provider,
           llmModel: runtime.model,
           llmEndpoint: runtime.endpoint,

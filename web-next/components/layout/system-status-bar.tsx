@@ -34,7 +34,7 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
   const appMeta = useAppMeta();
   const t = useTranslation();
 
-  const costValue = formatUsd(tokenMetrics?.session_cost_usd);
+  const costValue = formatUsd(tokenMetrics?.session_cost_usd ?? undefined);
   let gpuValue = "—";
   if (usage?.gpu_usage_percent !== undefined) {
     gpuValue = formatPercentMetric(usage.gpu_usage_percent);
@@ -154,7 +154,16 @@ type RepoStatus = {
 };
 
 function getRepoStatusTitle(gitStatus: GitStatus): string | undefined {
-  return gitStatus.status_output || gitStatus.changes || gitStatus.status || undefined;
+  if (typeof gitStatus.status_output === "string" && gitStatus.status_output.trim()) {
+    return gitStatus.status_output;
+  }
+  if (typeof gitStatus.status === "string" && gitStatus.status.trim()) {
+    return gitStatus.status;
+  }
+  if (Array.isArray(gitStatus.changes) && gitStatus.changes.length > 0) {
+    return `${gitStatus.changes.length} change(s)`;
+  }
+  return undefined;
 }
 
 function resolveRepoBaseText(
@@ -216,8 +225,8 @@ function resolveRepoStatus(
     };
   }
 
-  const hasChanges = gitStatus.has_changes ?? gitStatus.dirty ?? false;
-  const compareStatus = gitStatus.compare_status;
+  const hasChanges = Boolean(gitStatus.has_changes ?? gitStatus.dirty ?? false);
+  const compareStatus = gitStatus.compare_status ?? undefined;
   const baseText = resolveRepoBaseText(compareStatus, hasChanges, t);
   const branch = gitStatus.branch?.trim() || "unknown";
   const commitShort = commit?.trim() || "unknown";

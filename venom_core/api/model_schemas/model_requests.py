@@ -42,7 +42,7 @@ class ModelRegistryInstallRequest(BaseModel):
 
     name: str
     provider: str  # "huggingface" lub "ollama"
-    runtime: str = "vllm"  # "vllm" lub "ollama"
+    runtime: str = "vllm"  # "vllm" lub "ollama" lub "onnx"
 
     @field_validator("name")
     def validate_name(cls, v):
@@ -97,3 +97,31 @@ class ModelConfigUpdateRequest(BaseModel):
 
     runtime: Optional[str] = None
     params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OnnxBuildRequest(BaseModel):
+    """Request do budowania modelu ONNX przez onnxruntime-genai builder."""
+
+    model_name: str
+    execution_provider: str = "cuda"
+    precision: str = "int4"
+    output_dir: Optional[str] = None
+    builder_script: Optional[str] = None
+
+    @field_validator("model_name")
+    def validate_model_name(cls, v):
+        return validate_model_name_extended(v, max_length=200)
+
+    @field_validator("execution_provider")
+    def validate_execution_provider(cls, v):
+        value = (v or "").strip().lower()
+        if value not in {"cuda", "cpu", "directml"}:
+            raise ValueError("execution_provider musi być: cuda|cpu|directml")
+        return value
+
+    @field_validator("precision")
+    def validate_precision(cls, v):
+        value = (v or "").strip().lower()
+        if value not in {"int4", "fp16"}:
+            raise ValueError("precision musi być: int4|fp16")
+        return value

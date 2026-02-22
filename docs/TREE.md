@@ -19,7 +19,8 @@ Reference detailed tree (legacy extended view):
 ~/venom                          # Venom project ROOT (repo)
 ├── .venv/                       # Python virtual environment
 ├── .env                         # configuration / secrets (outside Git)
-├── requirements.txt             # VENOM dependencies
+├── requirements.txt             # default minimal API/cloud dependencies
+├── requirements-full.txt        # full legacy dependency set
 ├── README.md                    # project description (can be empty on start)
 │
 ├── docs/                        # documentation (English, default)
@@ -69,7 +70,7 @@ Reference detailed tree (legacy extended view):
     │   ├── model_registry.py    # model registry (Ollama + HF Hub)
     │   ├── model_manager.py     # lifecycle, versioning and activation of local models
     │   ├── model_router.py      # routing between local LLM and cloud
-    │   ├── llm_server_controller.py # LLM server management (Ollama/vLLM)
+    │   ├── llm_server_controller.py # LLM server management (Ollama/vLLM/ONNX)
     │   ├── prompt_manager.py    # prompt template management
     │   ├── service_monitor.py   # system services monitoring (status, CPU/RAM)
     │   ├── tracer.py            # RequestTracer (step tracking and mermaid)

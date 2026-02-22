@@ -317,7 +317,8 @@ async def _fetch_openai_models_catalog_live() -> list[RemoteModelInfo]:
         response = await client.get(_openai_models_url(), headers=headers)
         response.raise_for_status()
         payload = response.json()
-    items = payload.get("data") if isinstance(payload, dict) else []
+    raw_items = payload.get("data") if isinstance(payload, dict) else []
+    items = raw_items if isinstance(raw_items, list) else []
     models: list[RemoteModelInfo] = []
     for item in items:
         model_id = str(item.get("id") or "").strip()
@@ -345,7 +346,8 @@ async def _fetch_google_models_catalog_live() -> list[RemoteModelInfo]:
         response = await client.get(_google_models_url(), params={"key": api_key})
         response.raise_for_status()
         payload = response.json()
-    items = payload.get("models") if isinstance(payload, dict) else []
+    raw_items = payload.get("models") if isinstance(payload, dict) else []
+    items = raw_items if isinstance(raw_items, list) else []
     models: list[RemoteModelInfo] = []
     for item in items:
         raw_name = str(item.get("name") or "").strip()

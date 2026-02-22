@@ -11,7 +11,11 @@ from venom_core.api.model_schemas.model_requests import (
 )
 from venom_core.api.model_schemas.model_validators import validate_model_name_basic
 from venom_core.api.routes.models_dependencies import get_model_manager
-from venom_core.api.routes.models_utils import resolve_model_provider, update_last_model
+from venom_core.api.routes.models_utils import (
+    infer_model_provider,
+    resolve_model_provider,
+    update_last_model,
+)
 from venom_core.config import SETTINGS
 from venom_core.core.model_manager import DEFAULT_MODEL_SIZE_GB
 from venom_core.services.config_manager import config_manager
@@ -26,6 +30,25 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
 MODEL_MANAGER_UNAVAILABLE_DETAIL = "ModelManager nie jest dostępny"
+
+
+def _resolve_onnx_runtime_path(model_path: str | None) -> str | None:
+    if not model_path:
+        return None
+    path = Path(model_path)
+    if path.is_file() and path.name == "genai_config.json":
+        return str(path.parent)
+    if path.is_dir():
+        direct = path / "genai_config.json"
+        if direct.exists():
+            return str(path)
+        matches = sorted(
+            path.rglob("genai_config.json"),
+            key=lambda p: (len(p.parts), str(p)),
+        )
+        if matches:
+            return str(matches[0].parent)
+    return model_path
 
 
 def _ensure_model_exists(models: list[dict], model_name: str) -> None:
@@ -59,25 +82,50 @@ def _ensure_registered_version(model_manager, model_name: str) -> None:
     model_manager.register_version(version_id=model_name, base_model=model_name)
 
 
-def _update_runtime_settings(model_name: str) -> None:
+def _update_runtime_settings(
+    *,
+    active_provider: str,
+    model_name: str,
+    model_path: str | None = None,
+) -> None:
     try:
         SETTINGS.LLM_MODEL_NAME = model_name
         SETTINGS.HYBRID_LOCAL_MODEL = model_name
-        SETTINGS.LLM_SERVICE_TYPE = "local"
+        SETTINGS.ACTIVE_LLM_SERVER = active_provider
+        if active_provider == "onnx":
+            SETTINGS.LLM_SERVICE_TYPE = "onnx"
+            if model_path:
+                SETTINGS.ONNX_LLM_MODEL_PATH = model_path
+        else:
+            SETTINGS.LLM_SERVICE_TYPE = "local"
     except Exception:
         logger.warning("Nie udało się zaktualizować SETTINGS w pamięci.")
 
 
-def _update_config_for_active_model(*, active_provider: str, model_name: str) -> None:
-    config_manager.update_config(
-        {
-            "LLM_MODEL_NAME": model_name,
-            "HYBRID_LOCAL_MODEL": model_name,
-            "LLM_SERVICE_TYPE": "local",
-        }
+def _update_config_for_active_model(
+    *,
+    active_provider: str,
+    model_name: str,
+    model_path: str | None = None,
+) -> None:
+    updates = {
+        "LLM_MODEL_NAME": model_name,
+        "HYBRID_LOCAL_MODEL": model_name,
+        "ACTIVE_LLM_SERVER": active_provider,
+    }
+    if active_provider == "onnx":
+        updates["LLM_SERVICE_TYPE"] = "onnx"
+        updates["LAST_MODEL_ONNX"] = model_name
+        if model_path:
+            updates["ONNX_LLM_MODEL_PATH"] = model_path
+    else:
+        updates["LLM_SERVICE_TYPE"] = "local"
+    config_manager.update_config(updates)
+    endpoint_for_hash = (
+        None if active_provider == "onnx" else SETTINGS.LLM_LOCAL_ENDPOINT
     )
     config_hash = compute_llm_config_hash(
-        active_provider, SETTINGS.LLM_LOCAL_ENDPOINT, model_name
+        active_provider, endpoint_for_hash, model_name
     )
     config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
     try:
@@ -89,16 +137,8 @@ def _update_config_for_active_model(*, active_provider: str, model_name: str) ->
 def _resolve_provider_bucket(models: List[dict]) -> Dict[str, List[dict]]:
     provider_buckets: Dict[str, List[dict]] = {}
 
-    def resolve_provider(model: dict) -> str:
-        provider = model.get("provider")
-        if isinstance(provider, str) and provider:
-            return provider
-        if model.get("source") == "ollama":
-            return "ollama"
-        return "vllm"
-
     for model in models:
-        provider = resolve_provider(model)
+        provider = infer_model_provider(model) or "vllm"
         model.setdefault("provider", provider)
         provider_buckets.setdefault(provider, []).append(model)
 
@@ -236,15 +276,30 @@ async def switch_model(request: ModelSwitchRequest):
             models=models,
             active_provider=active_provider,
         )
+        selected_model = next(
+            (m for m in models if m.get("name") == request.name), None
+        )
+        selected_model_path = (
+            str(selected_model.get("path"))
+            if selected_model and selected_model.get("path")
+            else None
+        )
+        if active_provider == "onnx":
+            selected_model_path = _resolve_onnx_runtime_path(selected_model_path)
         _ensure_registered_version(model_manager, request.name)
 
         success = model_manager.activate_version(request.name)
 
         if success:
-            _update_runtime_settings(request.name)
+            _update_runtime_settings(
+                active_provider=active_provider,
+                model_name=request.name,
+                model_path=selected_model_path,
+            )
             _update_config_for_active_model(
                 active_provider=active_provider,
                 model_name=request.name,
+                model_path=selected_model_path,
             )
             if model_provider:
                 update_last_model(model_provider, request.name)

@@ -44,7 +44,7 @@ Venom is a local meta-intelligence layer that takes user intent and transforms i
 - self-improvement mechanisms.
 
 Venom strives for technological unification based on the **ONNX Runtime** standard.
-In practice, the LLM layer currently runs on OpenAI-compatible servers (Ollama/vLLM) and cloud providers (OpenAI/Gemini/Claude), while ONNX for LLM remains a future direction.
+In practice, the LLM layer runs on a local 3-stack (Ollama/vLLM/ONNX) and cloud providers (OpenAI/Gemini/Claude).
 Oracle Models (cloud) are optional and work only in selected policies.
 
 ## 2. Venom's biological model – artificial intelligence organism
@@ -67,11 +67,11 @@ Oracle Models (cloud) are optional and work only in selected policies.
 <tr><td>Legs</td><td>Movement</td><td>Mobility</td><td>Rider-Pi</td><td>v2.0</td></tr>
 <tr><td>Metabolism</td><td>Performance</td><td>Model execution</td><td>ONNX / GGUF</td><td>v1.0</td></tr>
 <tr><td>Circulatory system (Hive)</td><td>Queues & distribution</td><td>Task routing and status</td><td>Redis + ARQ</td><td>v1.0</td></tr>
-<tr><td>Communication</td><td>Thought exchange</td><td>Inference engine</td><td>Ollama / vLLM<br>FastAPI + WebSocket<br>Next.js</td><td>v1.0</td></tr>
+<tr><td>Communication</td><td>Thought exchange</td><td>Inference engine</td><td>Ollama / vLLM / ONNX<br>FastAPI + WebSocket<br>Next.js</td><td>v1.0</td></tr>
 <tr><td>Habitat</td><td>Environment</td><td>Sandbox</td><td>WSL2 + Dev Containers</td><td>v1.0</td></tr>
 </table>
 
-## 2A. Model layer – Dual-Engine Strategy
+## 2A. Model layer – 3-stack Strategy
 The original vision assumed basing the entire system solely on **ONNX Runtime**.
 In practice, Large Language Model (LLM) engineering necessitated a hybrid approach.
 
@@ -80,11 +80,11 @@ In practice, Large Language Model (LLM) engineering necessitated a hybrid approa
     *   Vision: local models via Ollama (e.g., llava) or OpenAI GPT-4o; Florence-2 ONNX planned.
     *   Audio: STT via faster-whisper (CTranslate2), TTS via Piper (ONNX) when a model is available.
 2.  **Large Language Models (LLM)** -> v1.0 state:
-    *   **Runtime:** OpenAI-compatible (Ollama/vLLM) + cloud (OpenAI/Gemini/Claude).
-    *   **ONNX LLM:** future direction for smaller models and edge devices.
+    *   **Runtime:** local 3-stack (Ollama/vLLM/ONNX) + cloud (OpenAI/Gemini/Claude).
+    *   **ONNX LLM:** active third local engine, especially relevant for standardized edge paths.
 
-> **Architectural Decision: Experimental Dual-Stack (Ollama vs vLLM)**
-> Maintaining parallel support for both serving technologies (Ollama and vLLM) is currently a **conscious design choice**.
+> **Architectural Decision: Experimental Triple-Stack (Ollama vs vLLM vs ONNX)**
+> Maintaining parallel support for all three local serving technologies (Ollama, vLLM, ONNX) is currently a **conscious design choice**.
 > It allows for flexible testing of different model families and quantization methods to empirically select the most efficient target solution for specific hardware conditions.
 > **Stabilization (v1.0.x):** Introduced hybrid orchestration enabling seamless switching between the active server and model directly from the Cockpit (Hybrid Model Orchestration).
 
@@ -201,7 +201,7 @@ Venom is:
 - policy guardian,
 - AI creating AI.
 
-The LLM layer follows a **Dual-Engine approach (Ollama/vLLM + cloud)**, while ONNX covers selected perception/audio paths; full ONNX unification is a v2.0 goal.
+The LLM layer follows a **3-stack approach (Ollama/vLLM/ONNX + cloud)**, while ONNX also covers selected perception/audio paths.
 ### v2.0 roadmap detail (chat experience)
 - **Multi-chat sessions:** multiple named sessions with quick switching and preserved history.
 - **Session recall:** reopen past sessions and continue with their context.

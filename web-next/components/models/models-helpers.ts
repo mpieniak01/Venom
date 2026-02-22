@@ -7,7 +7,9 @@ export const formatNumber = (value?: number | null) => {
 
 export const getRuntimeForProvider = (provider?: string | null) => {
     if (!provider) return "vllm";
-    return provider === "ollama" ? "ollama" : "vllm";
+    if (provider === "ollama") return "ollama";
+    if (provider === "onnx") return "onnx";
+    return "vllm";
 };
 
 export const normalizeProvider = (value?: string | null) => {
@@ -17,6 +19,7 @@ export const normalizeProvider = (value?: string | null) => {
 
 export const inferProviderFromName = (name?: string | null) => {
     if (!name) return null;
+    if (name.includes("onnx")) return "onnx";
     return name.includes(":") ? "ollama" : "vllm";
 };
 

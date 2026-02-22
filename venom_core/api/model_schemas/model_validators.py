@@ -116,6 +116,6 @@ def validate_runtime(runtime: str) -> str:
     Raises:
         ValueError: Jeśli runtime jest nieprawidłowy
     """
-    if runtime not in ["vllm", "ollama"]:
-        raise ValueError("Runtime musi być 'vllm' lub 'ollama'")
+    if runtime not in ["vllm", "ollama", "onnx"]:
+        raise ValueError("Runtime musi być 'vllm', 'ollama' lub 'onnx'")
     return runtime

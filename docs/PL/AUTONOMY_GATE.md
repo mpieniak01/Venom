@@ -14,7 +14,7 @@ System definiuje 5 poziomów zaufania, gdzie każdy wyższy poziom dziedziczy up
 - **Zakres**: Lokalny Odczyt
 - **Uprawnienia**:
   - ✅ Dostęp do lokalnych plików (read-only)
-  - ✅ Modele lokalne (Ollama, vLLM)
+  - ✅ Modele lokalne (Ollama, vLLM, ONNX)
   - ✅ Pamięć RAG (lokalna)
   - ❌ Brak dostępu do sieci
   - ❌ Brak zapisu plików

@@ -3,6 +3,7 @@ Skrypt weryfikacji Kryteriów Akceptacji dla External Discovery v1.0
 Zadanie: Integracja GitHub & Hugging Face
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from venom_core.execution.skills.github_skill import GitHubSkill
@@ -15,12 +16,21 @@ def _ensure(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def _read_requirements_files(files: list[str]) -> dict[str, str]:
+    contents: dict[str, str] = {}
+    for file_name in files:
+        path = Path(file_name)
+        if path.exists():
+            contents[file_name] = path.read_text(encoding="utf-8")
+    return contents
+
+
 def test_kryteria_akceptacji():
     """
     Weryfikacja wszystkich kryteriów akceptacji (DoD):
     - [ ] Agent zapytany "Znajdź popularne biblioteki Python do PDF" zwraca listę linków do GitHub z liczbą gwiazdek.
     - [ ] Agent zapytany "Poszukaj lekkiego modelu do sentymentu" zwraca listę modeli z Hugging Face.
-    - [ ] Biblioteki PyGithub i huggingface_hub są w zależnościach.
+    - [ ] Biblioteki PyGithub i huggingface_hub są zadeklarowane w profilach zależności.
     """
 
     print("\n" + "=" * 80)
@@ -109,23 +119,46 @@ def test_kryteria_akceptacji():
         "\n✅ SUKCES: Agent zwraca listę modeli z Hugging Face z preferencją dla ONNX"
     )
 
-    # Kryterium 3: Weryfikacja zależności w requirements.txt
-    print("\n[3/3] Test: Biblioteki PyGithub i huggingface_hub są w zależnościach")
+    # Kryterium 3: Weryfikacja zależności w plikach profilowych requirements
+    print(
+        "\n[3/3] Test: Biblioteki PyGithub i huggingface_hub są zadeklarowane w profilach"
+    )
     print("-" * 80)
 
-    with open("requirements.txt", "r") as f:
-        requirements_content = f.read()
-
-    # Sprawdź czy PyGithub jest w requirements
-    _ensure("PyGithub" in requirements_content, "PyGithub nie jest w requirements.txt")
-    print("✅ PyGithub jest w requirements.txt")
-
-    # Sprawdź czy huggingface_hub jest w requirements
+    requirement_files = [
+        "requirements.txt",
+        "requirements-profile-api.txt",
+        "requirements-docker-minimal.txt",
+        "requirements-full.txt",
+        "requirements-ci-lite.txt",
+    ]
+    contents_by_file = _read_requirements_files(requirement_files)
     _ensure(
-        "huggingface_hub" in requirements_content,
-        "huggingface_hub nie jest w requirements.txt",
+        len(contents_by_file) > 0,
+        "Nie znaleziono żadnych plików requirements do weryfikacji",
     )
-    print("✅ huggingface_hub jest w requirements.txt")
+
+    def _find_dependency(dep_name: str) -> list[str]:
+        return [
+            file_name
+            for file_name, content in contents_by_file.items()
+            if dep_name in content
+        ]
+
+    pygithub_in = _find_dependency("PyGithub")
+    hfhub_in = _find_dependency("huggingface_hub")
+
+    _ensure(
+        len(pygithub_in) > 0,
+        "PyGithub nie jest zadeklarowany w żadnym aktywnym profilu requirements",
+    )
+    print(f"✅ PyGithub zadeklarowany w: {', '.join(pygithub_in)}")
+
+    _ensure(
+        len(hfhub_in) > 0,
+        "huggingface_hub nie jest zadeklarowany w żadnym aktywnym profilu requirements",
+    )
+    print(f"✅ huggingface_hub zadeklarowany w: {', '.join(hfhub_in)}")
 
     # Sprawdź czy można je zaimportować
     try:
@@ -154,7 +187,7 @@ def test_kryteria_akceptacji():
     print("=" * 80)
     print("✅ [1/3] Agent może wyszukać biblioteki Python do PDF na GitHub")
     print("✅ [2/3] Agent może wyszukać lekkie modele do sentymentu na Hugging Face")
-    print("✅ [3/3] Biblioteki PyGithub i huggingface_hub są w zależnościach")
+    print("✅ [3/3] Biblioteki PyGithub i huggingface_hub są zadeklarowane w profilach")
     print("\n🎉 WSZYSTKIE KRYTERIA AKCEPTACJI SPEŁNIONE!")
     print("=" * 80)
 

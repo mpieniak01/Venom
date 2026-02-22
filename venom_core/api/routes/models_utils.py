@@ -21,10 +21,32 @@ def _get_config_manager():
     return models_module.config_manager
 
 
+def infer_model_provider(model: dict) -> str | None:
+    """Best-effort inferencja providera modelu, gdy metadane są niepełne."""
+    provider = str(model.get("provider") or "").strip().lower()
+    if provider:
+        return provider
+
+    source = str(model.get("source") or "").strip().lower()
+    if source in {"ollama", "vllm", "onnx"}:
+        return source
+
+    model_name = str(model.get("name") or "").strip().lower()
+    model_path = str(model.get("path") or "").strip().lower()
+    hint = f"{model_name} {model_path}"
+    if "onnx" in hint or model_path.endswith(".onnx"):
+        return "onnx"
+    if ":" in model_name:
+        return "ollama"
+    if hint:
+        return "vllm"
+    return None
+
+
 def resolve_model_provider(models: List[dict], model_name: str):
     for model in models:
         if model.get("name") == model_name:
-            return model.get("provider") or model.get("source")
+            return infer_model_provider(model)
     return None
 
 
@@ -46,9 +68,13 @@ def _redacted_input_fingerprint(value: str) -> str:
 
 
 def update_last_model(provider: str, new_model: str):
+    provider = (provider or "").lower()
     if provider == "ollama":
         last_key = "LAST_MODEL_OLLAMA"
         prev_key = "PREVIOUS_MODEL_OLLAMA"
+    elif provider == "onnx":
+        last_key = "LAST_MODEL_ONNX"
+        prev_key = "PREVIOUS_MODEL_ONNX"
     else:
         last_key = "LAST_MODEL_VLLM"
         prev_key = "PREVIOUS_MODEL_VLLM"

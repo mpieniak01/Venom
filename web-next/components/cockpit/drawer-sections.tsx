@@ -187,7 +187,8 @@ export function DiagnosticsSection({
 }
 
 export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail: HistoryRequestDetail; t: (key: string, options?: Record<string, string | number>) => string }>) {
-    if (!historyDetail.model && !historyDetail.llm_provider && !historyDetail.llm_endpoint && !historyDetail.llm_runtime_id) return null;
+    const modelName = (historyDetail as HistoryRequestDetail & { model?: string | null }).model ?? historyDetail.llm_model ?? null;
+    if (!modelName && !historyDetail.llm_provider && !historyDetail.llm_endpoint && !historyDetail.llm_runtime_id) return null;
 
     return (
         <div className="mt-4 rounded-2xl box-muted p-4">
@@ -195,11 +196,11 @@ export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail:
                 {t("cockpit.requestDetails.modelInfoTitle")}
             </p>
             <div className="mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
-                {(historyDetail.model || historyDetail.llm_model) && (
+                {modelName && (
                     <div className="overflow-hidden">
                         <span className="block truncate text-zinc-500">{t("cockpit.requestDetails.modelLabel")}</span>
-                        <div className="text-sm text-zinc-100 truncate" title={historyDetail.model || historyDetail.llm_model || ""}>
-                            {historyDetail.model || historyDetail.llm_model}
+                        <div className="text-sm text-zinc-100 truncate" title={modelName}>
+                            {modelName}
                         </div>
                     </div>
                 )}

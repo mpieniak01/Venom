@@ -9,6 +9,15 @@ export interface TokenSample {
 }
 
 export function useCockpitMetricsDisplay(data: Data) {
+    const asNumber = (value: unknown): number => {
+        if (typeof value === "number" && Number.isFinite(value)) return value;
+        if (typeof value === "string") {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+        return 0;
+    };
+
     // 1. History Status Breakdown
     const historyStatusEntries = useMemo(() => {
         const bucket: Record<string, number> = {};
@@ -25,9 +34,9 @@ export function useCockpitMetricsDisplay(data: Data) {
     const tokenSplits = useMemo(() => {
         if (!data.tokenMetrics) return [];
         return [
-            { label: "Prompt", value: data.tokenMetrics.prompt_tokens ?? 0 },
-            { label: "Completion", value: data.tokenMetrics.completion_tokens ?? 0 },
-            { label: "Cached", value: data.tokenMetrics.cached_tokens ?? 0 },
+            { label: "Prompt", value: asNumber(data.tokenMetrics.prompt_tokens) },
+            { label: "Completion", value: asNumber(data.tokenMetrics.completion_tokens) },
+            { label: "Cached", value: asNumber(data.tokenMetrics.cached_tokens) },
         ].filter((item) => item.value && item.value > 0);
     }, [data.tokenMetrics]);
 
@@ -35,7 +44,7 @@ export function useCockpitMetricsDisplay(data: Data) {
     const [tokenHistory, setTokenHistory] = useState<TokenSample[]>([]);
 
     useEffect(() => {
-        const total = data.tokenMetrics?.total_tokens;
+        const total = asNumber(data.tokenMetrics?.total_tokens);
         if (total === undefined || total === null) return;
 
         setTokenHistory((prev) => {

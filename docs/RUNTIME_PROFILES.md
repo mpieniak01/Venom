@@ -4,6 +4,14 @@
 
 Venom supports three distinct runtime profiles to accommodate different hardware, privacy, and operational requirements. Each profile has explicit capabilities and constraints defined in the codebase.
 
+## Canonical References
+
+- Benchmark baseline (3-stack): `docs/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE_2026-02-22.md`
+- WSL setup and guardrails: `docs/WINDOWS_WSL_D_DRIVE_INSTALL.md`
+- Operational monitoring: `README.md` (`Monitoring and environment hygiene`)
+
+Use this document for profile requirements and environment context. Use the benchmark baseline for measured runtime results.
+
 ## Profile Definitions
 
 ### 1. LIGHT Profile (Privacy First)
@@ -55,7 +63,7 @@ OLLAMA_MODEL=gemma3:4b
 **Capabilities:**
 - ✅ Backend + Frontend services
 - ✅ External API providers (OpenAI, Anthropic, Google/Gemini)
-- ❌ No local LLM (Ollama/vLLM disabled)
+- ❌ No local LLM (Ollama/vLLM/ONNX disabled)
 - ❌ No GPU requirement
 - ❌ No ONNX requirement
 
@@ -66,6 +74,7 @@ OLLAMA_MODEL=gemma3:4b
 **Services Disabled:**
 - `ollama` - Stopped/not started
 - `vllm` - Stopped/not started
+- `onnx` - In-process runtime disabled
 
 **Environment Variables:**
 ```bash
@@ -96,11 +105,11 @@ LLM_WARMUP_ON_STARTUP=false
 - Maximum capabilities
 - GPU-enabled environments
 - Advanced users who want full control
-- Can use either Ollama or vLLM
+- Can use Ollama, vLLM, or ONNX
 
 **Capabilities:**
 - ✅ Backend + Frontend services
-- ✅ Local LLM (Ollama by default, vLLM optional)
+- ✅ Local LLM 3-stack (Ollama by default, vLLM/ONNX optional)
 - ✅ GPU acceleration support
 - ✅ Optional ONNX extras
 - ✅ All advanced features enabled
@@ -123,6 +132,19 @@ LLM_WARMUP_ON_STARTUP=true
 - Disk: 20GB+
 - GPU: Highly recommended (NVIDIA with CUDA support)
 
+### Reference Benchmark Environment (2026-02-22)
+
+This is the reference hardware/software context used for the current 3-stack LLM benchmark baseline:
+
+- GPU: NVIDIA GeForce RTX 3060, 12 GB VRAM, CUDA 13.1
+- CPU: Intel i5-14400F (16 logical threads)
+- RAM in Linux runtime: ~15 GiB
+- Host context: Windows host with 32 GB RAM + WSL2
+
+WSL note:
+- Historical environment audits showed `vmmem` can retain high memory reservations after workload bursts.
+- Keep WSL limits and restart procedures documented in `docs/WINDOWS_WSL_D_DRIVE_INSTALL.md`.
+
 ---
 
 ## Using Profiles
@@ -136,7 +158,8 @@ LLM_WARMUP_ON_STARTUP=true
 The launcher will prompt you to:
 1. Select language (English/Polski/Deutsch)
 2. Select profile (LIGHT/API/FULL)
-3. Select action (Start/Install/Reinstall/Uninstall/Status)
+3. Select optional addons (`vllm` and/or `onnx` for ONNX LLM profile)
+4. Select action (Start/Install/Reinstall/Uninstall/Status)
 
 ### Non-Interactive Mode
 
@@ -147,9 +170,16 @@ The launcher will prompt you to:
 # Start API profile with Polish
 ./scripts/docker/venom.sh --quick --lang pl --profile api --action start
 
+# Start FULL profile and install ONNX LLM addon
+./scripts/docker/venom.sh --quick --lang en --profile full --addons onnx --action install
+
 # Status check for FULL profile
 ./scripts/docker/venom.sh --quick --lang de --profile full --action status
 ```
+
+Addon note:
+- `--addons onnx` installs `requirements-profile-onnx.txt` (ONNX LLM engine profile).
+- `requirements-extras-onnx.txt` is separate and currently adds `faster-whisper` + `piper-tts`.
 
 ### Direct Profile Setting
 
@@ -211,7 +241,18 @@ is_valid, error = validate_profile_requirements(
 
 ## Dependencies by Profile
 
-### Core-Light (Default for light/llm_off)
+### API baseline (default install)
+
+Install with:
+```bash
+pip install -r requirements.txt
+```
+
+Includes:
+- minimal API/cloud baseline
+- no local heavy runtime engines by default (`vllm`/ONNX excluded)
+
+### Core-Light (Docker/minimal runtime)
 
 Install with:
 ```bash
@@ -224,7 +265,18 @@ Includes:
 - Semantic Kernel, Redis, WebSockets
 - NO ONNX, NO heavy ML dependencies
 
-### Extras-ONNX (Optional for full)
+### ONNX LLM Profile (Third engine)
+
+Install with:
+```bash
+pip install -r requirements-profile-onnx.txt
+```
+
+Includes:
+- ONNX Runtime (GPU or CPU)
+- Optimum, Accelerate
+
+### Extras-ONNX (Optional add-ons)
 
 Install with:
 ```bash
@@ -232,18 +284,32 @@ pip install -r requirements-extras-onnx.txt
 ```
 
 Includes:
-- ONNX Runtime (GPU or CPU)
-- Optimum, Accelerate
 - Faster Whisper, Piper TTS
 
 ### Full Stack
 
 Install with:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-full.txt
 ```
 
-Includes everything (core-light + extras-onnx + development tools).
+Includes full legacy set (core + local engines + heavy extras + dev tools).
+
+### Engine-specific profile installs
+
+```bash
+# Ollama-oriented profile
+pip install -r requirements-profile-ollama.txt
+
+# vLLM-oriented profile
+pip install -r requirements-profile-vllm.txt
+
+# ONNX-oriented profile
+pip install -r requirements-profile-onnx.txt
+
+# Optional ONNX-adjacent extras (audio/voice etc.)
+pip install -r requirements-extras-onnx.txt
+```
 
 ---
 
@@ -300,7 +366,8 @@ export GEMINI_API_KEY="..."
 By design! Light profile uses `requirements-docker-minimal.txt` which excludes ONNX. If you need ONNX features:
 
 1. Switch to FULL profile, or
-2. Manually install extras: `pip install -r requirements-extras-onnx.txt`
+2. Install ONNX LLM profile: `pip install -r requirements-profile-onnx.txt`
+3. Optionally install extras: `pip install -r requirements-extras-onnx.txt`
 
 ---
 

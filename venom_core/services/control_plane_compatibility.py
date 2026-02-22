@@ -40,14 +40,15 @@ DEFAULT_COMPATIBILITY_MATRIX = CompatibilityMatrix(
         "minimal": ["python"],
     },
     runtime_provider={
-        "python": ["huggingface", "ollama", "openai", "google"],
-        "docker": ["vllm", "ollama", "huggingface"],
-        "hybrid": ["ollama", "openai", "google"],
+        "python": ["huggingface", "ollama", "onnx", "openai", "google"],
+        "docker": ["vllm", "ollama", "huggingface", "onnx"],
+        "hybrid": ["ollama", "onnx", "openai", "google"],
     },
     provider_models={
         "huggingface": ["bert", "gpt2", "roberta", "distilbert"],
         "ollama": ["llama2", "llama3", "mistral", "phi"],
         "vllm": ["llama2", "mistral"],
+        "onnx": ["phi", "qwen", "llama", "mistral", "gemma"],
         "openai": ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"],
         "google": ["gemini-pro", "gemini-pro-vision"],
     },

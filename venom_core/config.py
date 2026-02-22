@@ -52,6 +52,12 @@ class Settings(BaseSettings):
 
     # Modele ONNX
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"
+    ONNX_LLM_ENABLED: bool = False
+    ONNX_LLM_MODEL_PATH: str = "models/phi3.5-mini-instruct-onnx"
+    ONNX_LLM_EXECUTION_PROVIDER: str = "cuda"  # cuda|cpu|directml
+    ONNX_LLM_PRECISION: str = "int4"  # int4|fp16
+    ONNX_LLM_MAX_NEW_TOKENS: int = 512
+    ONNX_LLM_TEMPERATURE: float = 0.2
 
     # Konfiguracja LLM (Local-First Brain)
     VENOM_RUNTIME_PROFILE: str = "light"  # full|light|llm_off
@@ -158,8 +164,10 @@ class Settings(BaseSettings):
 
     LAST_MODEL_OLLAMA: str = ""  # Ostatnio wybrany model Ollama
     LAST_MODEL_VLLM: str = ""  # Ostatnio wybrany model vLLM
+    LAST_MODEL_ONNX: str = ""  # Ostatnio wybrany model ONNX
     PREVIOUS_MODEL_OLLAMA: str = ""  # Poprzedni model Ollama (fallback)
     PREVIOUS_MODEL_VLLM: str = ""  # Poprzedni model vLLM (fallback)
+    PREVIOUS_MODEL_ONNX: str = ""  # Poprzedni model ONNX (fallback)
     ACTIVE_LLM_SERVER: str = ""  # Ostatnio aktywowany serwer LLM
     LLM_CONFIG_HASH: str = (
         ""  # Hash aktywnej konfiguracji LLM (endpoint+model+provider)

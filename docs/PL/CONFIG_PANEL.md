@@ -161,7 +161,7 @@ web-next/
 - **Walidacja**: Sprawdzanie wypełnionych pól przed zapisem
 - **Sticky footer**: Panel akcji zawsze widoczny na dole ekranu
 - **Restart warnings**: Banner z listą usług wymagających restartu po zapisie
-- **Info box**: Sekcja informacyjna o Ollama vs vLLM z linkiem do benchmarków
+- **Info box**: Sekcja informacyjna o Ollama vs vLLM vs ONNX z linkiem do benchmarków
 
 #### AuditPanel (`components/config/audit-panel.tsx`)
 - **Jedno źródło**: odczyt z jednego endpointu kanonicznego (`/api/v1/audit/stream`)
@@ -239,7 +239,7 @@ UI wyświetla ostrzeżenie z listą usług i CTA do zakładki "Usługi".
 2. POST do `/api/v1/config/restore` przywraca wybrany backup
 3. Aktualny `.env` jest zapisywany jako nowy backup przed przywróceniem
 
-## Tryby LLM: Ollama vs vLLM
+## Tryby LLM: Ollama vs vLLM vs ONNX
 
 Panel zawiera sekcję informacyjną wyjaśniającą różnice:
 
@@ -256,8 +256,13 @@ Panel zawiera sekcję informacyjną wyjaśniającą różnice:
 - Wyższa przepustowość dla wielu requestów
 - Lepsze do testów wydajności
 
+**ONNX (Full / profil opcjonalny):**
+- Runtime in-process (bez osobnego daemona)
+- Dobry do kontrolowanych wdrożeń lokalnych i ścieżek w standardzie ONNX
+- Wymaga gotowego profilu ONNX LLM i poprawnej ścieżki modelu
+
 **Rekomendacja:**
-Domyślnie uruchamiamy tylko jeden runtime naraz. Drugi runtime ma sens gdy rozdzielamy role (np. UI na Ollama, agent kodujący na vLLM). Pełna strategia wyboru powinna być oparta na wynikach benchmarków → link do `/benchmark`.
+Domyślnie uruchamiamy tylko jeden runtime naraz. Kolejne runtime mają sens, gdy rozdzielamy role (np. UI na Ollama, agent kodujący na vLLM, ścieżka edge na ONNX). Pełna strategia wyboru powinna być oparta na wynikach benchmarków → link do `/benchmark`.
 
 ## Testy
 

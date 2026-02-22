@@ -212,3 +212,44 @@ def test_task_logs(client, clear_state):
         "zakończono" in log.lower() or "przetwarzanie" in log.lower()
         for log in data["logs"]
     )
+
+
+def test_create_task_onnx_runtime_completes_via_tasks_path(
+    client, clear_state, monkeypatch
+):
+    runtime = LLMRuntimeInfo(
+        provider="onnx",
+        model_name="models/gemma-3-4b-it-onnx",
+        endpoint=None,
+        service_type="onnx",
+        mode="LOCAL",
+        config_hash="onnxhash",
+        runtime_id="onnx@local",
+    )
+    monkeypatch.setattr(
+        "venom_core.api.routes.tasks.get_active_llm_runtime", lambda: runtime
+    )
+
+    class FakeOnnxClient:
+        def generate(self, **_kwargs):
+            return "ONNX OK"
+
+    monkeypatch.setattr(
+        "venom_core.api.routes.tasks.OnnxLlmClient", lambda: FakeOnnxClient()
+    )
+
+    response = client.post("/api/v1/tasks", json={"content": "test onnx normal"})
+    assert response.status_code == 201
+    task_id = response.json()["task_id"]
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        current = client.get(f"/api/v1/tasks/{task_id}")
+        assert current.status_code == 200
+        payload = current.json()
+        if payload["status"] == "COMPLETED":
+            assert payload["result"] == "ONNX OK"
+            return
+        time.sleep(0.05)
+
+    pytest.fail("ONNX task did not complete in expected time window")

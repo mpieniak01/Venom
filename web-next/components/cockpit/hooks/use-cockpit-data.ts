@@ -18,6 +18,7 @@ import {
     useModelsUsage,
 } from "@/hooks/use-api";
 import type { CockpitInitialData } from "@/lib/server-data";
+import type { Task } from "@/lib/types";
 
 export function useCockpitData(initialData: CockpitInitialData) {
     // Metrics
@@ -105,7 +106,10 @@ export function useCockpitData(initialData: CockpitInitialData) {
     const findTaskMatch = useCallback((requestId?: string, prompt?: string | null) => {
         if (!tasks) return null;
         if (requestId) {
-            const found = tasks.find((t) => t.task_id === requestId || t.id === requestId);
+            const found = tasks.find((t) => {
+                const legacyTaskId = (t as Task & { task_id?: string }).task_id;
+                return legacyTaskId === requestId || t.id === requestId;
+            });
             if (found) return found;
         }
         if (prompt) {

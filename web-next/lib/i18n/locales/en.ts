@@ -688,6 +688,9 @@ export const en = {
       taskSent: "Task sent: {{id}}",
       taskPendingId: "in progress…",
       taskSendError: "Failed to send task",
+      emptyPrompt: "Provide task content.",
+      sessionInitializing: "Session is initializing. Please try again in a moment.",
+      serverSwitchError: "Failed to switch active LLM server.",
     },
     chatMode: {
       direct: "Direct",

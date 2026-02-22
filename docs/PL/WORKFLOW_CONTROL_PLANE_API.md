@@ -14,7 +14,7 @@ Ekran Workflow Control wprowadza **Wizualny Kompozytor** oparty o React Flow.
 Diagram jest podzielony na domeny:
 1. **Decision & Intent**: Strategia (Heurystyka/LLM) i Klasyfikacja Intencji.
 2. **Kernel & Embedding**: Silnik Wykonawczy (Python/Docker) i Embeddings.
-3. **Runtime & Provider**: Serwer LLM (Ollama/vLLM) i Dostawca Modelu (Lokalny/Chmura).
+3. **Runtime & Provider**: Serwer LLM (Ollama/vLLM/ONNX) i Dostawca Modelu (Lokalny/Chmura).
 
 ### Zasady Łączenia
 Kompozytor wymusza poprawne połączenia:

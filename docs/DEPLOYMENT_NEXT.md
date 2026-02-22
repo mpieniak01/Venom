@@ -19,6 +19,14 @@ For security operating assumptions and localhost admin policy, see `docs/SECURIT
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
+   Notes:
+   - `requirements.txt` = minimal API/cloud profile (default).
+   - For local runtime engines install additional profile:
+     - `pip install -r requirements-profile-ollama.txt`
+     - `pip install -r requirements-profile-vllm.txt`
+     - `pip install -r requirements-profile-onnx.txt`
+     - optional extras (not ONNX LLM itself): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
+   - Full legacy stack: `pip install -r requirements-full.txt`
 2. **Node.js 18.19+** – frontend:
    ```bash
    npm --prefix web-next install

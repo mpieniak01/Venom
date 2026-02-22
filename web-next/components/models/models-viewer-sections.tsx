@@ -471,6 +471,16 @@ export function InstalledAndOperations({
     t
 }: InstalledAndOperationsProps) {
     const allowRemoveProviders = new Set(["ollama", "huggingface"]);
+    const runtimeLabels: Record<string, string> = {
+        ollama: "Ollama",
+        vllm: "vLLM",
+        onnx: "ONNX",
+    };
+    const providerSections = Object.entries(installedBuckets).map(([provider, data]) => ({
+        provider,
+        label: runtimeLabels[provider] ?? provider.toUpperCase(),
+        data,
+    }));
     let installedBadge = t("models.sections.installed.noModels");
     if (installedModels.length) {
         const suffix = installedModels.length > 1 ? "s" : "";
@@ -506,7 +516,10 @@ export function InstalledAndOperations({
                     <div className="mt-5 space-y-6">
                         {installed.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> : (
                             <>
-                                {[{ label: 'Ollama', data: installedBuckets.ollama }, { label: 'vLLM', data: installedBuckets.vllm }].map(p => (
+                                {providerSections.length === 0 && (
+                                    <p className="text-[11px] text-slate-500">{t("models.sections.installed.noModels")}</p>
+                                )}
+                                {providerSections.map(p => (
                                     <div key={p.label} className="rounded-2xl border border-white/10 bg-black/30 p-4">
                                         <div className="flex items-center justify-between mb-3">
                                             <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">{p.label}</p>
@@ -598,7 +611,7 @@ export function RemoteModelsSection(props: RemoteModelsSectionProps) {
                         <p className="text-xs text-slate-400">{t("models.ui.loading")}</p>
                     )}
                     {remoteProvidersError && (
-                        <Badge tone="error">{remoteProvidersError}</Badge>
+                        <Badge tone="danger">{remoteProvidersError}</Badge>
                     )}
                     {!remoteProvidersLoading && !remoteProvidersError && remoteProviders.length === 0 && (
                         <p className="text-xs text-slate-400">{t("models.sections.remote.providerStatus.noProviders")}</p>
@@ -617,7 +630,7 @@ export function RemoteModelsSection(props: RemoteModelsSectionProps) {
                                 )}
                                 <span>{t("models.sections.remote.providerStatus.lastCheck")}: {formatDateTime(provider.last_check)}</span>
                                 {provider.error && (
-                                    <Badge tone="error">{provider.error}</Badge>
+                                    <Badge tone="danger">{provider.error}</Badge>
                                 )}
                             </div>
                         </div>
@@ -654,7 +667,7 @@ export function RemoteModelsSection(props: RemoteModelsSectionProps) {
                         <p className="text-xs text-slate-400">{t("models.ui.loading")}</p>
                     )}
                     {remoteCatalogError && (
-                        <Badge tone="error">{remoteCatalogError}</Badge>
+                        <Badge tone="danger">{remoteCatalogError}</Badge>
                     )}
                     {!remoteCatalogLoading && !remoteCatalogError && remoteCatalog.length === 0 && selectedProvider && (
                         <p className="text-xs text-slate-400">{t("models.sections.remote.catalog.noModels")}</p>
@@ -702,7 +715,7 @@ export function RemoteModelsSection(props: RemoteModelsSectionProps) {
                         <p className="text-xs text-slate-400">{t("models.ui.loading")}</p>
                     )}
                     {remoteBindingsError && (
-                        <Badge tone="error">{remoteBindingsError}</Badge>
+                        <Badge tone="danger">{remoteBindingsError}</Badge>
                     )}
                     {!remoteBindingsLoading && !remoteBindingsError && remoteBindings.length === 0 && (
                         <p className="text-xs text-slate-400">{t("models.sections.remote.connectivity.noBindings")}</p>
@@ -746,7 +759,7 @@ export function RemoteModelsSection(props: RemoteModelsSectionProps) {
                                             <td className="px-3 py-3 text-xs capitalize">{binding.provider}</td>
                                             <td className="px-3 py-3 text-xs">{binding.model}</td>
                                             <td className="px-3 py-3 text-xs">
-                                                <Badge tone="info" className="text-[10px]">{binding.routing_mode}</Badge>
+                                                <Badge tone="neutral" className="text-[10px]">{binding.routing_mode}</Badge>
                                                 {binding.fallback_order && binding.fallback_order.length > 0 && (
                                                     <span className="ml-2 text-[10px] text-slate-400">
                                                         ({binding.fallback_order.join(" → ")})
@@ -776,7 +789,7 @@ export function RemoteModelsSection(props: RemoteModelsSectionProps) {
                 <div className="mt-5 space-y-3">
                     <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
                         <span className="text-sm">{t("models.sections.remote.policy.localFirst")}</span>
-                        <Badge tone="info">Enabled</Badge>
+                        <Badge tone="success">Enabled</Badge>
                     </div>
                     <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
                         <span className="text-sm">{t("models.sections.remote.policy.fallback")}</span>

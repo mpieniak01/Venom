@@ -947,6 +947,16 @@ async def _ensure_local_llm_ready() -> None:
 async def _shutdown_runtime_components() -> None:
     logger.info("Zamykanie aplikacji...")
 
+    # Release in-process ONNX caches/pools early to free VRAM/RAM on shutdown.
+    try:
+        llm_simple_routes.release_onnx_simple_client()
+    except Exception:
+        logger.warning("Nie udało się zwolnić klienta ONNX (simple mode).")
+    try:
+        tasks_routes.release_onnx_task_runtime(wait=False)
+    except Exception:
+        logger.warning("Nie udało się zwolnić runtime ONNX (tasks mode).")
+
     if request_tracer:
         await request_tracer.stop_watchdog()
         logger.info("RequestTracer watchdog zatrzymany")

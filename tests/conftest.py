@@ -1,3 +1,5 @@
+import importlib
+import importlib.util
 import json
 import os
 import shutil
@@ -62,6 +64,12 @@ def cleanup_magicmock_artifacts() -> None:
 
 
 def _has_docker() -> bool:
+    if importlib.util.find_spec("docker") is None:
+        return False
+    try:
+        importlib.import_module("docker")
+    except Exception:
+        return False
     if shutil.which("docker") is None:
         return False
     try:

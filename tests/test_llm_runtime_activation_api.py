@@ -27,6 +27,7 @@ class TestLlmRuntimeActivationAPI:
             patch.object(system_llm, "SETTINGS") as settings,
             patch.object(system_llm, "config_manager") as mock_manager,
             patch.object(system_llm, "get_active_llm_runtime") as mock_runtime,
+            patch.object(system_llm, "_release_onnx_runtime_caches") as mock_release,
         ):
             settings.OPENAI_API_KEY = "sk-test"
             settings.GOOGLE_API_KEY = ""
@@ -63,6 +64,7 @@ class TestLlmRuntimeActivationAPI:
             assert payload["active_server"] == "openai"
             assert payload["active_model"] == "gpt-4o-mini"
             mock_manager.update_config.assert_called_once()
+            mock_release.assert_called_once()
 
     def test_activate_google_missing_key(self, client):
         with patch.object(system_llm, "SETTINGS") as settings:

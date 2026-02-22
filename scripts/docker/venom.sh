@@ -115,24 +115,14 @@ normalize_addons() {
     ""|none) echo "none"; return 0 ;;
   esac
 
-  local result=()
+  local has_vllm=0
+  local has_onnx=0
   local part
   IFS=',' read -r -a parts <<<"$cleaned"
   for part in "${parts[@]}"; do
     case "$part" in
-      vllm|onnx)
-        local exists=0
-        local item
-        for item in "${result[@]:-}"; do
-          if [[ "$item" == "$part" ]]; then
-            exists=1
-            break
-          fi
-        done
-        if [[ "$exists" -eq 0 ]]; then
-          result+=("$part")
-        fi
-        ;;
+      vllm) has_vllm=1 ;;
+      onnx) has_onnx=1 ;;
       "")
         ;;
       *)
@@ -142,10 +132,14 @@ normalize_addons() {
     esac
   done
 
-  if [[ "${#result[@]}" -eq 0 ]]; then
+  if [[ "$has_vllm" -eq 0 && "$has_onnx" -eq 0 ]]; then
     echo "none"
+  elif [[ "$has_vllm" -eq 1 && "$has_onnx" -eq 1 ]]; then
+    echo "vllm,onnx"
+  elif [[ "$has_vllm" -eq 1 ]]; then
+    echo "vllm"
   else
-    (IFS=','; echo "${result[*]}")
+    echo "onnx"
   fi
 }
 

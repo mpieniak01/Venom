@@ -56,7 +56,7 @@ export function useChatSend(params: ChatSendParams) {
     const parsed = parseSlashCommand(payload);
     const trimmed = parsed.cleaned.trim();
     if (!trimmed) {
-      setMessage("Podaj treść zadania.");
+      setMessage(t("cockpit.chatMessages.emptyPrompt"));
       return false;
     }
 
@@ -80,7 +80,7 @@ export function useChatSend(params: ChatSendParams) {
     }
     const resolvedSession = sessionOverride ?? sessionId;
     if (!resolvedSession) {
-      setMessage("Sesja inicjalizuje się. Spróbuj ponownie za chwilę.");
+      setMessage(t("cockpit.chatMessages.sessionInitializing"));
       return false;
     }
 
@@ -94,7 +94,7 @@ export function useChatSend(params: ChatSendParams) {
         setMessage(
           err instanceof Error
             ? err.message
-            : "Nie udało się przełączyć aktywnego serwera LLM.",
+            : t("cockpit.chatMessages.serverSwitchError"),
         );
         return false;
       }

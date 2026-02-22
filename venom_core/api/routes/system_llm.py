@@ -171,6 +171,22 @@ def _assert_stop_results_clean(stop_results: dict[str, dict[str, Any]]) -> None:
         )
 
 
+def _release_onnx_runtime_caches() -> None:
+    """Release ONNX in-process caches when switching away from ONNX runtime."""
+    try:
+        from venom_core.api.routes import llm_simple as llm_simple_routes
+
+        llm_simple_routes.release_onnx_simple_client()
+    except Exception:
+        logger.warning("Nie udało się zwolnić klienta ONNX simple-mode.")
+    try:
+        from venom_core.api.routes import tasks as tasks_routes
+
+        tasks_routes.release_onnx_task_runtime(wait=False)
+    except Exception:
+        logger.warning("Nie udało się zwolnić runtime ONNX task-mode.")
+
+
 async def _await_server_health(_server_name: str, health_url: str) -> bool:
     logger.info("Oczekiwanie na gotowość serwera LLM.")
     async with httpx.AsyncClient(timeout=2.0) as client:
@@ -612,6 +628,8 @@ def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
             "runtime_id": runtime.runtime_id,
         }
 
+    _release_onnx_runtime_caches()
+
     if provider_raw == "openai" and not SETTINGS.OPENAI_API_KEY:
         raise HTTPException(status_code=400, detail="Brak OPENAI_API_KEY")
     if provider_raw == "google":
@@ -685,6 +703,8 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     servers = llm_controller.list_servers()
     stop_results = await _stop_other_servers(llm_controller, servers, server_name)
     _assert_stop_results_clean(stop_results)
+    if server_name != "onnx":
+        _release_onnx_runtime_caches()
     if server_name == "onnx":
         onnx_client = OnnxLlmClient()
         try:

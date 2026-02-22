@@ -696,6 +696,9 @@ export const pl = {
       taskSent: "Wysłano zadanie: {{id}}",
       taskPendingId: "w toku…",
       taskSendError: "Nie udało się wysłać zadania",
+      emptyPrompt: "Podaj treść zadania.",
+      sessionInitializing: "Sesja inicjalizuje się. Spróbuj ponownie za chwilę.",
+      serverSwitchError: "Nie udało się przełączyć aktywnego serwera LLM.",
     },
     chatMode: {
       direct: "Direct",

@@ -1,4 +1,4 @@
-"""Testy jednostkowe dla DesignerAgent."""
+"""Unit tests for DesignerAgent."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,7 +10,7 @@ from venom_core.agents.designer import DesignerAgent
 
 @pytest.fixture
 def mock_kernel():
-    """Fixture dla mockowego Kernel."""
+    """Fixture for mock Kernel."""
     kernel = MagicMock(spec=Kernel)
     mock_service = MagicMock()
     mock_service.get_chat_message_content = AsyncMock()
@@ -19,7 +19,7 @@ def mock_kernel():
 
 
 def test_designer_agent_initialization(mock_kernel):
-    """Test inicjalizacji DesignerAgent."""
+    """Test DesignerAgent initialization."""
     agent = DesignerAgent(mock_kernel)
     assert agent.kernel == mock_kernel
     assert "UI/UX" in agent.SYSTEM_PROMPT
@@ -28,7 +28,7 @@ def test_designer_agent_initialization(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_designer_agent_process(mock_kernel):
-    """Test metody process DesignerAgent."""
+    """Test DesignerAgent process method."""
     agent = DesignerAgent(mock_kernel)
 
     # Mock response
@@ -46,7 +46,7 @@ async def test_designer_agent_process(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_designer_agent_create_visualization(mock_kernel):
-    """Test tworzenia wizualizacji."""
+    """Test creating visualization."""
     agent = DesignerAgent(mock_kernel)
 
     # Mock response z JSONem
@@ -65,7 +65,7 @@ async def test_designer_agent_create_visualization(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_designer_agent_create_chart(mock_kernel):
-    """Test tworzenia wykresu."""
+    """Test creating chart."""
     agent = DesignerAgent(mock_kernel)
 
     # Mock response
@@ -81,7 +81,7 @@ async def test_designer_agent_create_chart(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_designer_agent_create_form(mock_kernel):
-    """Test tworzenia formularza."""
+    """Test creating form."""
     agent = DesignerAgent(mock_kernel)
 
     # Mock response
@@ -97,7 +97,7 @@ async def test_designer_agent_create_form(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_designer_agent_create_dashboard_card(mock_kernel):
-    """Test tworzenia karty dashboardu."""
+    """Test creating dashboard card."""
     agent = DesignerAgent(mock_kernel)
 
     # Mock response
@@ -113,7 +113,7 @@ async def test_designer_agent_create_dashboard_card(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_designer_agent_error_handling(mock_kernel):
-    """Test obsługi błędów."""
+    """Test error handling."""
     agent = DesignerAgent(mock_kernel)
 
     # Mock błąd
@@ -126,7 +126,7 @@ async def test_designer_agent_error_handling(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_designer_agent_invalid_json_response(mock_kernel):
-    """Test obsługi nieprawidłowego JSON w odpowiedzi."""
+    """Test handling invalid JSON in response."""
     agent = DesignerAgent(mock_kernel)
 
     # Mock response bez JSONa
@@ -137,16 +137,16 @@ async def test_designer_agent_invalid_json_response(mock_kernel):
     data = {}
     result = await agent.create_visualization("Test", data)
 
-    # Powinien zwrócić markdown widget jako fallback
+    # Should return markdown widget as fallback
     assert isinstance(result, dict)
     assert result["type"] == "markdown"
 
 
 def test_designer_system_prompt():
-    """Test poprawności system prompta."""
+    """Test system prompt correctness."""
     prompt = DesignerAgent.SYSTEM_PROMPT
 
-    # Sprawdź kluczowe elementy prompta
+    # Check key prompt elements
     assert "UI/UX" in prompt
     assert "Frontend Developer" in prompt
     assert "HTML" in prompt
@@ -155,7 +155,7 @@ def test_designer_system_prompt():
     assert "Mermaid" in prompt
     assert "bezpieczeństwo" in prompt.lower() or "security" in prompt.lower()
 
-    # Sprawdź typy komponentów
+    # Check component types
     assert "chart" in prompt
     assert "table" in prompt
     assert "form" in prompt

@@ -1,4 +1,4 @@
-"""Testy jednostkowe dla protokołu komunikacji węzłów."""
+"""Unit tests for node communication protocol."""
 
 import pytest
 
@@ -14,7 +14,7 @@ from venom_core.nodes.protocol import (
 
 
 def test_capabilities_creation():
-    """Test tworzenia obiektu Capabilities."""
+    """Test creating Capabilities object."""
     caps = Capabilities(
         skills=["ShellSkill", "FileSkill"],
         tags=["location:test", "gpu"],
@@ -32,7 +32,7 @@ def test_capabilities_creation():
 
 
 def test_node_handshake():
-    """Test tworzenia wiadomości handshake."""
+    """Test creating handshake message."""
     caps = Capabilities(skills=["ShellSkill"], tags=["test"])
 
     handshake = NodeHandshake(
@@ -46,7 +46,7 @@ def test_node_handshake():
 
 
 def test_skill_execution_request():
-    """Test tworzenia żądania wykonania skilla."""
+    """Test creating skill execution request."""
     request = SkillExecutionRequest(
         node_id="node-123",
         skill_name="ShellSkill",
@@ -63,7 +63,7 @@ def test_skill_execution_request():
 
 
 def test_heartbeat_message():
-    """Test tworzenia wiadomości heartbeat."""
+    """Test creating heartbeat message."""
     heartbeat = HeartbeatMessage(
         node_id="node-123", cpu_usage=0.5, memory_usage=0.6, active_tasks=2
     )
@@ -76,7 +76,7 @@ def test_heartbeat_message():
 
 
 def test_node_response():
-    """Test tworzenia odpowiedzi węzła."""
+    """Test creating node response."""
     response = NodeResponse(
         request_id="req-123",
         node_id="node-123",
@@ -94,7 +94,7 @@ def test_node_response():
 
 
 def test_node_response_with_error():
-    """Test tworzenia odpowiedzi z błędem."""
+    """Test creating response with error."""
     response = NodeResponse(
         request_id="req-123",
         node_id="node-123",
@@ -109,7 +109,7 @@ def test_node_response_with_error():
 
 
 def test_node_message_from_handshake():
-    """Test konwersji handshake do NodeMessage."""
+    """Test converting handshake to NodeMessage."""
     caps = Capabilities(skills=["ShellSkill"])
     handshake = NodeHandshake(
         node_name="test-node", capabilities=caps, token="test-token"
@@ -123,7 +123,7 @@ def test_node_message_from_handshake():
 
 
 def test_node_message_from_execution_request():
-    """Test konwersji SkillExecutionRequest do NodeMessage."""
+    """Test converting SkillExecutionRequest to NodeMessage."""
     request = SkillExecutionRequest(
         node_id="node-123",
         skill_name="ShellSkill",
@@ -139,14 +139,14 @@ def test_node_message_from_execution_request():
 
 
 def test_node_message_serialization():
-    """Test serializacji NodeMessage do dict."""
+    """Test NodeMessage serialization to dict."""
     caps = Capabilities(skills=["ShellSkill"])
     handshake = NodeHandshake(
         node_name="test-node", capabilities=caps, token="test-token"
     )
     message = NodeMessage.from_handshake(handshake)
 
-    # Model Pydantic powinien być serializowalny
+    # Pydantic model should be serializable
     data = message.model_dump()
 
     assert data["message_type"] == "HANDSHAKE"

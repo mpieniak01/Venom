@@ -6,7 +6,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from anyio import fail_after
 from semantic_kernel import Kernel
@@ -628,7 +628,8 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
             self.last_intent_debug["source"] = "keyword"
             if self.kernel:
                 try:
-                    await self.kernel.get_service().get_chat_message_content()
+                    llm_service = cast(Any, self.kernel.get_service())
+                    await llm_service.get_chat_message_content()
                 except Exception as exc:
                     logger.debug(f"LLM service not available for intent: {exc}")
             self._append_user_phrase("HELP_REQUEST", user_input, language)

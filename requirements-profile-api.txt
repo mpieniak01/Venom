@@ -5,7 +5,7 @@
 -r requirements-docker-minimal.txt
 
 # API/runtime essentials used by backend routes
-python-multipart==0.0.20
+python-multipart==0.0.22
 mcp>=1.0.0
 urllib3>=2.6.3
 

@@ -342,7 +342,7 @@ class GardenerAgent:
             Lista plików z metrykami złożoności
         """
         try:
-            from radon.visitors import ComplexityVisitor  # type: ignore[import-untyped]
+            from radon.visitors import ComplexityVisitor
 
             complex_files = []
 

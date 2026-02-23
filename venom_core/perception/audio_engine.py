@@ -43,7 +43,7 @@ class WhisperSkill:
         """Lazy loading modelu (tylko gdy potrzebny)."""
         if self.model is None:
             try:
-                from faster_whisper import WhisperModel  # type: ignore[import-untyped]
+                from faster_whisper import WhisperModel
 
                 self.model = WhisperModel(
                     self.model_size,
@@ -247,7 +247,7 @@ class VoiceSkill:
     def _playback_worker(self):
         """Worker do odtwarzania audio z kolejki."""
         try:
-            import sounddevice as sd  # type: ignore[import-untyped]
+            import sounddevice as sd
 
             while not self._stop_playback.is_set():
                 try:

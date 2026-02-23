@@ -31,7 +31,7 @@ SHELL := /bin/bash
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod stop restart status clean-ports \
-	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage sonar-reports-backend-new-code pr-fast \
+	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage check-new-code-coverage-local sonar-reports-backend-new-code pr-fast pr-fast-local \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types \
@@ -126,7 +126,9 @@ NEW_CODE_MAX_TESTS ?= 0
 NEW_CODE_EXCLUDE_SLOW_FASTLANE ?= 1
 
 test-light-coverage:
-	@mkdir -p test-results/sonar
+	@mkdir -p "$$(dirname "$(NEW_CODE_COVERAGE_XML)")"
+	@if [ -n "$(NEW_CODE_JUNIT_XML)" ]; then mkdir -p "$$(dirname "$(NEW_CODE_JUNIT_XML)")"; fi
+	@if [ -n "$(NEW_CODE_COVERAGE_HTML)" ]; then mkdir -p "$(NEW_CODE_COVERAGE_HTML)"; fi
 	@PYTEST_BIN="pytest"; \
 	if [ -x "$(VENV)/bin/pytest" ]; then PYTEST_BIN="$(VENV)/bin/pytest"; fi; \
 	python3 scripts/run_new_code_coverage_gate.py \
@@ -158,8 +160,22 @@ check-new-code-coverage: test-light-coverage
 		--scope "$(NEW_CODE_COV_TARGET)" \
 		--min-coverage "$(NEW_CODE_CHANGED_LINES_MIN)"
 
+# Szybki tryb lokalny: krótsza pętla developerska bez zmiany gate'ów CI.
+check-new-code-coverage-local:
+	@$(MAKE) check-new-code-coverage \
+		NEW_CODE_INCLUDE_BASELINE=0 \
+		NEW_CODE_FALLBACK_COVERAGE=0 \
+		NEW_CODE_TIME_BUDGET_SEC=45 \
+		NEW_CODE_COVERAGE_XML=test-results/local-fast/python-coverage.xml \
+		NEW_CODE_JUNIT_XML=test-results/local-fast/python-junit.xml \
+		NEW_CODE_COVERAGE_HTML=
+
 pr-fast:
 	@bash scripts/pr_fast_check.sh
+
+# Lokalny skrót zamiast pełnego pr-fast + osobnego check-new-code-coverage.
+pr-fast-local:
+	@$(MAKE) check-new-code-coverage-local
 
 sonar-reports-backend-new-code: test-light-coverage
 
@@ -661,6 +677,12 @@ monitor:
 
 env-audit:
 	@python3 scripts/dev/env_audit.py
+
+security-delta-scan:
+	@python3 scripts/dev/security_delta_scan.py --out-json logs/security-delta-latest.json
+
+security-delta-scan-strict:
+	@python3 scripts/dev/security_delta_scan.py --out-json logs/security-delta-latest.json --strict
 
 env-clean-safe:
 	@bash scripts/dev/env_cleanup.sh safe

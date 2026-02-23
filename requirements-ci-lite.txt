@@ -7,7 +7,7 @@ uvicorn[standard]==0.40.0
 pydantic==2.11.10
 pydantic-settings==2.10.1
 python-dotenv==1.2.1
-python-multipart==0.0.20  # Required for FastAPI multipart/form-data support (file uploads)
+python-multipart==0.0.22  # Required for FastAPI multipart/form-data support (file uploads)
 loguru==0.7.3
 aiofiles==25.1.0
 httpx==0.28.1
@@ -22,11 +22,13 @@ pytest-timeout==2.4.0
 
 # --- TOOLING SECURITY CHAIN ---
 pre-commit>=4.5.1
+mypy==1.17.1
 
 # --- UTILS ---
 colorama==0.4.6
 rich==13.7.1
 tqdm==4.67.1
+chardet<6
 psutil==5.9.8
 types-psutil
 types-bleach
@@ -38,7 +40,8 @@ pyautogen>=0.2.0
 
 # --- INFRASTRUCTURE (Mocked/Optional in Lite) ---
 numpy<2.0.0
-semantic-kernel==1.39.2
+semantic-kernel==1.39.4
+werkzeug>=3.1.6
 apscheduler>=3.10.4,<4.0.0
 redis==5.3.1
 arq>=0.26.0

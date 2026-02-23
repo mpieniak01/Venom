@@ -24,7 +24,7 @@ except ImportError:
     PIL_AVAILABLE = False
 
 try:
-    import pyperclip  # type: ignore[import-untyped]
+    import pyperclip
 
     PYPERCLIP_AVAILABLE = True
 except ImportError:  # pragma: no cover - zależność opcjonalna

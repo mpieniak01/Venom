@@ -42,12 +42,39 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
 disable_error_code = ["annotation-unchecked"]
+incremental = false
+cache_dir = "/dev/null"
 exclude = "(^|/)(models|models_cache|node_modules|web|web-next|\\.venv|venv|\\.mypy_cache|\\.ruff_cache|\\.git)(/|$)"
 
 [[tool.mypy.overrides]]
 module = [
     "google_auth_oauthlib.*",
     "googleapiclient.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "asyncssh",
+    "docx",
+    "faster_whisper",
+    "lancedb",
+    "markitdown",
+    "mss",
+    "paramiko",
+    "peft",
+    "bitsandbytes",
+    "bs4",
+    "pyperclip",
+    "piper",
+    "pypandoc",
+    "pypdf",
+    "radon.visitors",
+    "sentence_transformers",
+    "sounddevice",
+    "trafilatura",
+    "yaml",
+    "zeroconf",
 ]
 ignore_missing_imports = true
 

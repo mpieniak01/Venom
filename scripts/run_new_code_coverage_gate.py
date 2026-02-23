@@ -58,10 +58,12 @@ def _run_pytest(
         f"--cov={cov_target}",
         "--cov-report=term-missing:skip-covered",
         f"--cov-report=xml:{coverage_xml}",
-        f"--cov-report=html:{coverage_html}",
         f"--cov-fail-under={cov_fail_under}",
-        f"--junitxml={junit_xml}",
     ]
+    if coverage_html:
+        cmd.append(f"--cov-report=html:{coverage_html}")
+    if junit_xml:
+        cmd.append(f"--junitxml={junit_xml}")
     if cov_append:
         cmd.append("--cov-append")
 
@@ -170,8 +172,8 @@ def main() -> int:
     parser.add_argument("--mark-expr", required=True)
     parser.add_argument("--cov-target", required=True)
     parser.add_argument("--coverage-xml", required=True)
-    parser.add_argument("--coverage-html", required=True)
-    parser.add_argument("--junit-xml", required=True)
+    parser.add_argument("--coverage-html", default="")
+    parser.add_argument("--junit-xml", default="")
     parser.add_argument("--cov-fail-under", type=float, default=0.0)
     parser.add_argument("--min-coverage", type=float, default=80.0)
     parser.add_argument("--sonar-config", default="sonar-project.properties")

@@ -17,8 +17,8 @@ try:
 
     ZEROCONF_AVAILABLE = True
 except ImportError:  # pragma: no cover - zależność opcjonalna
-    ServiceInfo = Any  # type: ignore[assignment,misc]
-    Zeroconf = Any  # type: ignore[assignment,misc]
+    ServiceInfo = Any
+    Zeroconf = Any
     ZEROCONF_AVAILABLE = False
 
 from venom_core.config import SETTINGS
@@ -405,7 +405,9 @@ class CloudProvisioner:
                 "message": str(e),
             }
 
-    def start_broadcasting(self, service_name: Optional[str] = None) -> dict[str, str]:
+    def start_broadcasting(
+        self, service_name: Optional[str] = None
+    ) -> dict[str, str | int]:
         """
         Rozpoczyna broadcasting usługi w sieci lokalnej przez mDNS (Zeroconf).
 

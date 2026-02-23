@@ -452,7 +452,7 @@ class ServiceHealthMonitor:
 
         # LanceDB (lokalna pamięć embed)
         try:
-            import lancedb  # type: ignore[import-untyped]
+            import lancedb
 
             db_path = getattr(SETTINGS, "VECTOR_DB_PATH", "data/vector_store")
             conn = lancedb.connect(db_path)

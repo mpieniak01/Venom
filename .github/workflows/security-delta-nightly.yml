@@ -1,0 +1,59 @@
+name: Security Delta Nightly
+
+on:
+  schedule:
+    # Daily at 03:15 UTC
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-delta-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-delta-scan:
+    name: Security delta scan (python + web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.11.1"
+          cache: npm
+          cache-dependency-path: web-next/package-lock.json
+
+      - name: Install Python deps for delta scan
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-ci-lite.txt
+          pip install pip-audit
+
+      - name: Install web deps for production audit
+        run: npm --prefix web-next ci
+
+      - name: Run security delta scan
+        run: make security-delta-scan
+
+      - name: Upload security delta artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-delta-latest
+          path: logs/security-delta-latest.json
+          if-no-files-found: error

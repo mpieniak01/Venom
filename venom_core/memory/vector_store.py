@@ -154,7 +154,7 @@ class VectorStore:
             return
 
         try:
-            import lancedb  # type: ignore[import-untyped]
+            import lancedb
 
             logger.info(f"Łączenie z bazą LanceDB: {self.db_path}")
             self._db = lancedb.connect(str(self.db_path))

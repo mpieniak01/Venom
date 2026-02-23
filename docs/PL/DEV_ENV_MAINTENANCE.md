@@ -28,6 +28,10 @@ make env-clean-docker-safe
 make env-audit
 make env-report-diff
 ```
+5. Delta security (Python + web, cykl utrzymaniowy):
+```bash
+make security-delta-scan
+```
 
 ## Komendy Make i do czego służą
 
@@ -56,6 +60,19 @@ CONFIRM_DEEP_CLEAN=1 make env-clean-deep
 - porównuje dwa ostatnie raporty `diag-env-*.json`,
 - tworzy markdown z różnicą zużycia miejsca.
 
+6. `make security-delta-scan`
+- uruchamia lekki skan delta bezpieczeństwa:
+  - Python: `pip check` + `pip-audit` (jeśli dostępny),
+  - web: `npm audit --omit=dev --json` w `web-next`.
+- zapisuje raport:
+  - `logs/security-delta-latest.json`
+- w CI działa również harmonogram nightly:
+  - `.github/workflows/security-delta-nightly.yml`
+
+7. `make security-delta-scan-strict`
+- jak wyżej, ale zwraca non-zero gdy wykryto podatności
+- użyteczne dla trybu alarmowego i szybkiej walidacji SLA
+
 ## Skrypty `scripts/dev/*`
 
 1. `scripts/dev/env_audit.py`
@@ -81,6 +98,14 @@ python3 scripts/dev/env_audit.py --ci-check
 
 4. `scripts/dev/env_report_diff.py`
 - porównanie raportów przed/po cleanup i podsumowanie odzyskanego miejsca.
+
+5. `scripts/dev/security_delta_scan.py`
+- jednolity skan delta CVE dla runtime Python i produkcyjnych zależności web,
+- domyślnie tryb operacyjny (nie blokuje pipeline),
+- opcja `--strict` zwraca non-zero, jeśli wykryto podatności.
+- triage i SLA:
+  - `docs/PL/runbooks/security-delta-triage.md`
+  - `docs/runbooks/security-delta-triage.md`
 
 ## Kontrola duplikatów i konfliktów pakietów
 

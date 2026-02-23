@@ -4,7 +4,7 @@ These tests validate the contract definitions, ensuring schema stability
 and backward compatibility for the Control Plane API.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -202,7 +202,7 @@ class TestResponseModels:
             apply_mode=ApplyMode.RESTART_REQUIRED,
             reason_code=ReasonCode.SUCCESS_RESTART_PENDING,
             message="Kernel updated, restart required",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )
 
         assert change.resource_type == ResourceType.KERNEL
@@ -222,7 +222,7 @@ class TestResponseModels:
             apply_mode=ApplyMode.HOT_SWAP,
             reason_code=ReasonCode.SUCCESS_HOT_SWAP,
             message="Change validated",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )
 
         response = ControlPlanResponse(
@@ -252,7 +252,7 @@ class TestResponseModels:
             apply_mode=ApplyMode.HOT_SWAP,
             reason_code=ReasonCode.SUCCESS_HOT_SWAP,
             message="Applied successfully",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )
 
         response = ControlApplyResponse(
@@ -274,7 +274,7 @@ class TestResponseModels:
     def test_system_state(self):
         """Test SystemState contract."""
         state = SystemState(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             decision_strategy="standard",
             intent_mode="simple",
             kernel="standard",
@@ -295,7 +295,7 @@ class TestResponseModels:
     def test_control_state_response(self):
         """Test ControlStateResponse contract."""
         state = SystemState(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             decision_strategy="standard",
             intent_mode="simple",
             kernel="standard",
@@ -326,7 +326,7 @@ class TestResponseModels:
             status=WorkflowStatus.PAUSED,
             reason_code=ReasonCode.OPERATION_COMPLETED,
             message="Workflow paused successfully",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             metadata={"duration_ms": 100},
         )
 
@@ -338,7 +338,7 @@ class TestResponseModels:
         """Test AuditEntry contract."""
         entry = AuditEntry(
             operation_id=str(uuid4()),
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             triggered_by="admin",
             operation_type="plan",
             resource_type=ResourceType.CONFIG,
@@ -359,7 +359,7 @@ class TestResponseModels:
         """Test ControlAuditResponse contract."""
         entry = AuditEntry(
             operation_id=str(uuid4()),
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             triggered_by="admin",
             operation_type="plan",
             resource_type=ResourceType.CONFIG,

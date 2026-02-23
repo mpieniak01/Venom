@@ -12,14 +12,14 @@ flaml[automl]           # Optymalizacja parametrów (silnik pod AutoGen)
 # API / orkiestracja zewnętrzna
 fastapi==0.128.0        # API Orchestratora (pin zgodny z profilem CI Lite)
 uvicorn[standard]==0.40.0  # Serwer ASGI (pin zgodny z profilem CI Lite)
-python-multipart==0.0.20 # Required for FastAPI multipart/form-data support (file uploads)
+python-multipart==0.0.22 # Required for FastAPI multipart/form-data support (file uploads)
 
 
 # --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
 
-# UWAGA: nie pinujemy tu do 1.39.2, bo ta wersja wymusza openai<2 i openapi-core<0.20.
+# UWAGA: nie pinujemy tu do konkretnej wersji, bo starsze wersje wymuszały openai<2 i openapi-core<0.20.
 # W full stack używamy openai>=2.x (przez graphrag/litellm), więc resolver musi dobrać nowszy SK.
-semantic-kernel>=1.39.2 # Microsoft Semantic Kernel (dobór wersji kompatybilnej przez resolver)
+semantic-kernel>=1.39.4 # Microsoft Semantic Kernel (zakres po fixach CVE)
 mcp>=1.0.0              # Model Context Protocol SDK (Official Client)
 aiohttp>=3.13.3         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
 urllib3>=2.6.3          # HTTP klient – aktualizacja pod CVE dot. kompresji danych
@@ -55,10 +55,10 @@ filelock>=3.20.3        # Fix for TOCTOU/symlink issues (transitive from HF stac
 # litellm>=1.81.3         # Fix for graphrag transitive vulnerability (wymaga openai>=2.x)
 marshmallow>=4.1.2      # Fix for graphrag/environs transitive vulnerability
 pyasn1>=0.6.2           # Fix for google-auth transitive vulnerability
-werkzeug>=3.1.5         # Fix for locust transitive vulnerability
+werkzeug>=3.1.6         # Fix for Windows safe_join CVE chain
 markitdown              # Microsoft MarkItDown - konwersja dokumentów (PDF, DOCX) do Markdown
 python-docx             # Obsługa plików DOCX (fallback dla markitdown)
-openapi-core<0.20,>=0.18    # Nowe wymagania (kompatybilność z werkzeug>=3.1.5)
+openapi-core<0.20,>=0.18    # Nowe wymagania (kompatybilność z werkzeug>=3.1.6)
 
 
 # --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
@@ -106,6 +106,7 @@ colorama==0.4.6         # Kolory w terminalu (pin zgodny z profilem CI Lite)
 rich==13.7.1            # Piękne logi i paski postępu (pin zgodny z profilem CI Lite)
 loguru==0.7.3           # Nowoczesne logowanie błędów (pin zgodny z profilem CI Lite)
 tqdm==4.67.1            # Paski postępu (pin zgodny z profilem CI Lite)
+chardet<6               # Kompatybilność z requests (eliminuje RequestsDependencyWarning)
 docker                  # Docker SDK dla Python (Docker Sandbox)
 gitpython==3.1.46       # Git operations (Git Skill) (pin zgodny z profilem CI Lite)
 apscheduler             # Advanced Python Scheduler (background jobs)

@@ -41,6 +41,14 @@ warnings.filterwarnings(
     module="pydantic._internal._generate_schema",
 )
 
+try:
+    from requests.exceptions import RequestsDependencyWarning
+
+    warnings.filterwarnings("ignore", category=RequestsDependencyWarning)
+except Exception:
+    # requests może nie być dostępny w wybranych profilach testowych
+    pass
+
 
 def _cleanup_magicmock_dirs(root: Path) -> None:
     """
@@ -67,7 +75,12 @@ def _has_docker() -> bool:
     if importlib.util.find_spec("docker") is None:
         return False
     try:
-        importlib.import_module("docker")
+        docker_mod = importlib.import_module("docker")
+        # W repo istnieje katalog `docker/`, który może zostać zaimportowany jako
+        # namespace package i dać fałszywie pozytywny wynik. Wymagamy API SDK.
+        if not callable(getattr(docker_mod, "from_env", None)):
+            return False
+        importlib.import_module("docker.errors")
     except Exception:
         return False
     if shutil.which("docker") is None:

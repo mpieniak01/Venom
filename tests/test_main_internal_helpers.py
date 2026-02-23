@@ -548,7 +548,10 @@ async def test_initialize_background_scheduler_registers_jobs(monkeypatch):
     assert "cleanup_traces" in main_module.background_scheduler.job_ids
     assert "cleanup_runtime_files" in main_module.background_scheduler.job_ids
     assert len(created_tasks) == 1
+    assert main_module.startup_runtime_retention_task is created_tasks[0]
     await asyncio.gather(*created_tasks)
+    await asyncio.sleep(0)
+    assert main_module.startup_runtime_retention_task is None
 
 
 @pytest.mark.asyncio

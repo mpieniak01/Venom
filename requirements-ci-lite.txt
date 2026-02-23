@@ -20,6 +20,9 @@ pytest-cov>=7.0.0
 pytest-xdist==3.8.0
 pytest-timeout==2.4.0
 
+# --- TOOLING SECURITY CHAIN ---
+pre-commit>=4.5.1
+
 # --- UTILS ---
 colorama==0.4.6
 rich==13.7.1

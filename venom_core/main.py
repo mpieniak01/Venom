@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -110,6 +110,7 @@ git_skill = None
 background_scheduler = None
 file_watcher = None
 documenter_agent = None
+startup_runtime_retention_task: asyncio.Task[None] | None = None
 
 # Inicjalizacja Audio i IoT (THE_AVATAR)
 audio_engine = None
@@ -661,7 +662,7 @@ async def _initialize_gardener_and_git(workspace_path: Path) -> None:
 
 
 async def _initialize_background_scheduler() -> None:
-    global background_scheduler
+    global background_scheduler, startup_runtime_retention_task
 
     try:
         background_scheduler = BackgroundScheduler(event_broadcaster=event_broadcaster)
@@ -743,7 +744,12 @@ async def _initialize_background_scheduler() -> None:
             )
             if should_run_initial_retention:
                 # Start with one immediate background retention pass, then keep interval schedule.
-                asyncio.create_task(_cleanup_runtime_files_wrapper())
+                startup_runtime_retention_task = asyncio.create_task(
+                    _cleanup_runtime_files_wrapper()
+                )
+                startup_runtime_retention_task.add_done_callback(
+                    lambda _task: _clear_startup_runtime_retention_task()
+                )
                 logger.info(
                     "Uruchomiono jednorazowe czyszczenie runtime po starcie aplikacji"
                 )
@@ -987,8 +993,20 @@ async def _ensure_local_llm_ready() -> None:
         logger.info("Warm-up LLM uruchomiony w tle.")
 
 
+def _clear_startup_runtime_retention_task() -> None:
+    global startup_runtime_retention_task
+    startup_runtime_retention_task = None
+
+
 async def _shutdown_runtime_components() -> None:
+    global startup_runtime_retention_task
     logger.info("Zamykanie aplikacji...")
+
+    if startup_runtime_retention_task and not startup_runtime_retention_task.done():
+        startup_runtime_retention_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await startup_runtime_retention_task
+    startup_runtime_retention_task = None
 
     # Release in-process ONNX caches/pools early to free VRAM/RAM on shutdown.
     try:

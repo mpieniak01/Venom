@@ -12,6 +12,10 @@ class DummyRuntime:
     service_type = "local"
 
 
+class DummyOpenAIRuntime:
+    service_type = "openai"
+
+
 class DummyResponse:
     def __init__(self, payload):
         self._payload = payload
@@ -156,3 +160,60 @@ async def test_translate_text_rejects_invalid_lang():
     service = translation_module.TranslationService()
     with pytest.raises(ValueError):
         await service.translate_text("Hello", target_lang="fr")
+
+
+def test_resolve_chat_endpoint_variants(monkeypatch):
+    _configure_settings(monkeypatch)
+
+    service = translation_module.TranslationService()
+
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: DummyOpenAIRuntime(),
+    )
+    assert (
+        service._resolve_chat_endpoint()
+        == translation_module.SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT
+    )
+
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: DummyRuntime(),
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "LLM_LOCAL_ENDPOINT", "http://localhost:11434"
+    )
+    assert (
+        service._resolve_chat_endpoint() == "http://localhost:11434/v1/chat/completions"
+    )
+
+    monkeypatch.setattr(translation_module.SETTINGS, "LLM_LOCAL_ENDPOINT", "")
+    with pytest.raises(RuntimeError, match="Brak skonfigurowanego endpointu"):
+        service._resolve_chat_endpoint()
+
+
+def test_resolve_headers_openai_local_and_empty(monkeypatch):
+    _configure_settings(monkeypatch)
+    service = translation_module.TranslationService()
+
+    monkeypatch.setattr(translation_module.SETTINGS, "OPENAI_API_KEY", "openai-key")
+    assert service._resolve_headers(DummyOpenAIRuntime()) == {
+        "Authorization": "Bearer openai-key"
+    }
+
+    monkeypatch.setattr(translation_module.SETTINGS, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(translation_module.SETTINGS, "LLM_LOCAL_API_KEY", "local-key")
+    assert service._resolve_headers(DummyRuntime()) == {
+        "Authorization": "Bearer local-key"
+    }
+
+    monkeypatch.setattr(translation_module.SETTINGS, "LLM_LOCAL_API_KEY", "")
+    assert service._resolve_headers(DummyRuntime()) == {}
+
+
+@pytest.mark.asyncio
+async def test_translate_text_returns_early_on_empty_text():
+    service = translation_module.TranslationService()
+    assert await service.translate_text("", target_lang="pl") == ""

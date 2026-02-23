@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from venom_core.jobs.scheduler import (
+    _load_tracked_repo_files,
+    _resolve_retention_targets,
     _runtime_retention_marker_path,
     cleanup_runtime_files,
     should_run_runtime_retention_now,
@@ -128,3 +130,38 @@ def test_cleanup_runtime_files_skips_git_tracked_files(
 
     assert stats["deleted_files"] == 0
     assert tracked_file.exists() is True
+
+
+def test_should_run_runtime_retention_now_returns_true_for_invalid_marker(
+    tmp_path: Path,
+) -> None:
+    marker = _runtime_retention_marker_path(base_dir=tmp_path.resolve())
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("invalid", encoding="utf-8")
+    assert should_run_runtime_retention_now(min_interval_minutes=60, base_dir=tmp_path)
+
+
+def test_resolve_retention_targets_filters_duplicates_and_escape(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "repo"
+    base.mkdir(parents=True, exist_ok=True)
+    targets = _resolve_retention_targets(
+        base_dir=base,
+        target_dirs=["logs", " logs ", "", "../outside", "logs", str(base / "data")],
+    )
+    assert (base / "logs").resolve() in targets
+    assert (base / "data").resolve() in targets
+    assert len(targets) == 2
+
+
+def test_load_tracked_repo_files_returns_empty_on_subprocess_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    def _boom(*_args, **_kwargs):
+        raise subprocess.SubprocessError("boom")
+
+    monkeypatch.setattr(subprocess, "run", _boom)
+    assert _load_tracked_repo_files(repo_root=tmp_path) == set()

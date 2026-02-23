@@ -286,3 +286,46 @@ async def test_analyze_with_local_uses_traffic_client_and_http_error_branch():
             await eyes._analyze_with_local("iVBORw0KGgoAAAANS", "prompt")
 
     assert mock_client_cls.call_args.kwargs["provider"] == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_analyze_image_raises_when_no_vision_models_configured():
+    with (
+        patch("venom_core.perception.eyes.SETTINGS") as mock_settings,
+        patch.object(Eyes, "_check_local_vision", return_value=False),
+    ):
+        mock_settings.OPENAI_API_KEY = ""
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+        mock_settings.OLLAMA_CHECK_TIMEOUT = 5
+        mock_settings.VISION_MODEL_NAMES = ["llava", 123]
+        mock_settings.MIN_BASE64_LENGTH = 1
+
+        eyes = Eyes()
+        with pytest.raises(RuntimeError, match="Brak dostępnych modeli vision"):
+            await eyes.analyze_image("aaaa")
+
+
+def test_check_local_vision_detects_available_model():
+    with patch("venom_core.perception.eyes.SETTINGS") as mock_settings:
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+        mock_settings.OLLAMA_CHECK_TIMEOUT = 5
+        mock_settings.VISION_MODEL_NAMES = ["llava"]
+
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {"models": [{"name": "llava:latest"}]}
+
+        client = MagicMock()
+        client.get.return_value = response
+        client_ctx = MagicMock()
+        client_ctx.__enter__.return_value = client
+        client_ctx.__exit__.return_value = None
+
+        with patch(
+            "venom_core.perception.eyes.TrafficControlledHttpClient",
+            return_value=client_ctx,
+        ):
+            eyes = object.__new__(Eyes)
+            eyes.local_vision_model = None
+            assert eyes._check_local_vision() is True
+            assert eyes.local_vision_model == "llava:latest"

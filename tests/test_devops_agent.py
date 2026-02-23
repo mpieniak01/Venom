@@ -1,4 +1,4 @@
-"""Testy jednostkowe dla DevOpsAgent."""
+"""Unit tests for DevOpsAgent."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,7 +10,7 @@ from venom_core.agents.devops import DevOpsAgent
 
 @pytest.fixture
 def mock_kernel():
-    """Fixture dla mockowego Kernel."""
+    """Fixture for mock Kernel."""
     kernel = MagicMock(spec=Kernel)
     mock_service = MagicMock()
     mock_service.get_chat_message_content = AsyncMock()
@@ -19,7 +19,7 @@ def mock_kernel():
 
 
 def test_devops_agent_initialization(mock_kernel):
-    """Test inicjalizacji DevOpsAgent."""
+    """Test initialization of DevOpsAgent."""
     agent = DevOpsAgent(mock_kernel)
     assert agent.kernel == mock_kernel
     assert agent.chat_history is not None
@@ -28,10 +28,10 @@ def test_devops_agent_initialization(mock_kernel):
 
 
 def test_devops_agent_system_prompt():
-    """Test poprawności system prompta."""
+    """Test correctness of system prompt."""
     prompt = DevOpsAgent.SYSTEM_PROMPT
 
-    # Sprawdź kluczowe elementy prompta
+    # Check key elements of the prompt
     assert "devops" in prompt.lower()
     assert "docker" in prompt.lower()
     assert "deployment" in prompt.lower()
@@ -41,7 +41,7 @@ def test_devops_agent_system_prompt():
 
 @pytest.mark.asyncio
 async def test_devops_agent_process_success(mock_kernel):
-    """Test metody process - sukces."""
+    """Test process method - success path."""
     agent = DevOpsAgent(mock_kernel)
 
     # Mock response
@@ -63,7 +63,7 @@ async def test_devops_agent_process_success(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_devops_agent_process_deployment_request(mock_kernel):
-    """Test przetwarzania żądania deploymentu."""
+    """Test processing a deployment request."""
     agent = DevOpsAgent(mock_kernel)
 
     # Mock response
@@ -79,7 +79,7 @@ async def test_devops_agent_process_deployment_request(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_devops_agent_process_monitoring_request(mock_kernel):
-    """Test przetwarzania żądania monitoringu."""
+    """Test processing a monitoring request."""
     agent = DevOpsAgent(mock_kernel)
 
     # Mock response
@@ -94,10 +94,10 @@ async def test_devops_agent_process_monitoring_request(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_devops_agent_process_error(mock_kernel):
-    """Test obsługi błędów podczas przetwarzania."""
+    """Test error handling during processing."""
     agent = DevOpsAgent(mock_kernel)
 
-    # Mock błąd
+    # Mock error
     agent.kernel.get_service().get_chat_message_content.side_effect = Exception(
         "Connection error"
     )
@@ -110,7 +110,7 @@ async def test_devops_agent_process_error(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_devops_agent_empty_input(mock_kernel):
-    """Test z pustym inputem."""
+    """Test with empty input."""
     agent = DevOpsAgent(mock_kernel)
 
     # Mock response
@@ -124,25 +124,25 @@ async def test_devops_agent_empty_input(mock_kernel):
 
 
 def test_devops_agent_reset_conversation(mock_kernel):
-    """Test resetowania historii konwersacji."""
+    """Test resetting conversation history."""
     agent = DevOpsAgent(mock_kernel)
 
-    # Dodaj wiadomość do historii
+    # Add a message to the history
     agent.chat_history.add_user_message("Test message")
     initial_count = len(agent.chat_history.messages)
     assert initial_count > 1  # System prompt + user message
 
-    # Resetuj
+    # Reset
     agent.reset_conversation()
 
-    # Po resecie powinna być tylko wiadomość systemowa
+    # After reset, only the system message should remain
     assert len(agent.chat_history.messages) == 1
     assert agent.chat_history.messages[0].content == agent.SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio
 async def test_devops_agent_low_temperature(mock_kernel):
-    """Test że DevOps Agent używa niskiej temperatury dla precyzji."""
+    """Test that DevOps Agent uses low temperature for precision."""
     agent = DevOpsAgent(mock_kernel)
 
     # Mock response
@@ -158,17 +158,17 @@ async def test_devops_agent_low_temperature(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_devops_agent_security_focus(mock_kernel):
-    """Test że agent uwzględnia bezpieczeństwo w odpowiedziach."""
+    """Test that the agent accounts for security in its system prompt."""
     agent = DevOpsAgent(mock_kernel)
 
-    # Sprawdź czy system prompt zawiera informacje o bezpieczeństwie
+    # Check if the system prompt contains security information
     assert "SSH" in agent.SYSTEM_PROMPT or "ssl" in agent.SYSTEM_PROMPT.lower()
     assert "secret" in agent.SYSTEM_PROMPT.lower() or "token" in agent.SYSTEM_PROMPT.lower()
 
 
 @pytest.mark.asyncio
 async def test_devops_agent_conversation_context(mock_kernel):
-    """Test utrzymywania kontekstu konwersacji."""
+    """Test maintaining conversation context."""
     agent = DevOpsAgent(mock_kernel)
 
     # Mock response
@@ -176,14 +176,14 @@ async def test_devops_agent_conversation_context(mock_kernel):
     mock_response.__str__ = lambda self: "Response 1"
     agent.kernel.get_service().get_chat_message_content.return_value = mock_response
 
-    # Pierwsze wywołanie
+    # First call
     await agent.process("Request 1")
     first_history_len = len(agent.chat_history.messages)
 
-    # Drugie wywołanie
+    # Second call
     mock_response.__str__ = lambda self: "Response 2"
     await agent.process("Request 2")
     second_history_len = len(agent.chat_history.messages)
 
-    # Historia powinna się powiększać
+    # History should grow
     assert second_history_len > first_history_len

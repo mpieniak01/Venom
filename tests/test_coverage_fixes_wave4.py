@@ -21,6 +21,8 @@ from venom_core.core.provider_observability import (
     ProviderObservability,
     SLOTarget,
 )
+from venom_core.infrastructure import docker_habitat as docker_habitat_mod
+from venom_core.services import translation_service as translation_module
 
 
 class _Secret:
@@ -29,6 +31,159 @@ class _Secret:
 
     def get_secret_value(self) -> str:
         return self._value
+
+
+def _configure_translation_settings(monkeypatch) -> None:
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "LLM_MODEL_NAME", "test-model", raising=False
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS,
+        "LLM_LOCAL_ENDPOINT",
+        "http://localhost:11434/v1",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "LLM_LOCAL_API_KEY", "local-key", raising=False
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "OPENAI_API_TIMEOUT", 1.0, raising=False
+    )
+
+
+class _DummyDockerContainer:
+    def __init__(self, *, status: str = "running"):
+        self.status = status
+
+    def reload(self) -> None:
+        return None
+
+    def remove(self, force: bool = False) -> None:
+        return None
+
+
+def _new_docker_habitat_with_client(client):
+    habitat = object.__new__(docker_habitat_mod.DockerHabitat)
+    habitat.client = client
+    return habitat
+
+
+def test_translation_endpoint_and_model_helpers_cover_branches(monkeypatch):
+    _configure_translation_settings(monkeypatch)
+    service = translation_module.TranslationService()
+
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(service_type="local"),
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS,
+        "LLM_LOCAL_ENDPOINT",
+        "http://localhost:11434/v1",
+        raising=False,
+    )
+    assert (
+        service._resolve_chat_endpoint() == "http://localhost:11434/v1/chat/completions"
+    )
+    assert service._normalize_target_lang("PL") == "pl"
+    assert service._resolve_model_name() == "test-model"
+
+
+@pytest.mark.asyncio
+async def test_translation_missing_model_uses_fallback_when_enabled(monkeypatch):
+    _configure_translation_settings(monkeypatch)
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "LLM_MODEL_NAME", "", raising=False
+    )
+    service = translation_module.TranslationService()
+    assert await service.translate_text("Hello", target_lang="pl") == "Hello"
+
+
+def test_docker_conflict_helpers_cover_branches(monkeypatch):
+    class ApiError(Exception):
+        def __init__(self, msg: str, status_code=None):
+            super().__init__(msg)
+            self.status_code = status_code
+
+    monkeypatch.setattr(docker_habitat_mod, "APIError", ApiError)
+
+    assert docker_habitat_mod.DockerHabitat._is_name_conflict_error(
+        ApiError("any", status_code=409)
+    )
+    assert docker_habitat_mod.DockerHabitat._is_name_conflict_error(
+        ApiError("already in use")
+    )
+    assert (
+        docker_habitat_mod.DockerHabitat._resolve_conflict_retries(
+            docker_habitat_mod.DockerHabitat, None
+        )
+        == docker_habitat_mod.DockerHabitat.CONTAINER_CONFLICT_RETRIES
+    )
+    assert (
+        docker_habitat_mod.DockerHabitat._resolve_conflict_retries(
+            docker_habitat_mod.DockerHabitat, -3
+        )
+        == 0
+    )
+
+
+def test_docker_wait_until_absent_handles_timeout_and_notfound(monkeypatch):
+    class NotFoundError(Exception):
+        pass
+
+    monkeypatch.setattr(docker_habitat_mod, "NotFound", NotFoundError)
+    ticks = {"now": 0.0}
+
+    def fake_time():
+        ticks["now"] += 1.0
+        return ticks["now"]
+
+    monkeypatch.setattr(docker_habitat_mod.time, "time", fake_time)
+    monkeypatch.setattr(docker_habitat_mod.time, "sleep", lambda _x: None)
+
+    def _raise_not_found(_name):
+        raise NotFoundError()
+
+    client_not_found = SimpleNamespace(containers=SimpleNamespace(get=_raise_not_found))
+    habitat = _new_docker_habitat_with_client(client_not_found)
+    habitat._wait_until_container_absent()
+
+    client_timeout = SimpleNamespace(
+        containers=SimpleNamespace(get=lambda _name: _DummyDockerContainer())
+    )
+    habitat_timeout = _new_docker_habitat_with_client(client_timeout)
+    habitat_timeout._wait_until_container_absent()
+
+
+def test_docker_recover_from_name_conflict_notfound_path(monkeypatch, tmp_path):
+    class NotFoundError(Exception):
+        pass
+
+    class ApiError(Exception):
+        pass
+
+    monkeypatch.setattr(docker_habitat_mod, "NotFound", NotFoundError)
+    monkeypatch.setattr(docker_habitat_mod, "APIError", ApiError)
+    workspace = tmp_path / "ws"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    def _raise_not_found(_name):
+        raise NotFoundError()
+
+    client = SimpleNamespace(containers=SimpleNamespace(get=_raise_not_found))
+    habitat = _new_docker_habitat_with_client(client)
+    habitat._resolve_workspace_path = lambda: workspace
+    habitat._remove_container_by_name_if_exists = lambda: None
+    expected_container = _DummyDockerContainer()
+    habitat._create_container = lambda *args, **kwargs: expected_container
+
+    result = habitat._recover_from_name_conflict(
+        error=ApiError("conflict"),
+        workspace_path=workspace,
+        retries_left=1,
+    )
+    assert result is expected_container
 
 
 def test_system_generate_external_map_covers_config_branches(monkeypatch):

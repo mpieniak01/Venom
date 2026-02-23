@@ -99,6 +99,24 @@ async def test_wait_for_runtime_online(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_wait_for_runtime_online_returns_offline_after_exhausted_attempts(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        main_module,
+        "probe_runtime_status",
+        AsyncMock(side_effect=[("offline", {}), ("offline", {})]),
+    )
+    monkeypatch.setattr(main_module.asyncio, "sleep", AsyncMock())
+
+    runtime = SimpleNamespace(provider="ollama")
+    status = await main_module._wait_for_runtime_online(
+        runtime, attempts=2, delay_seconds=0
+    )
+    assert status == "offline"
+
+
+@pytest.mark.asyncio
 async def test_start_local_runtime_if_needed_paths(monkeypatch):
     runtime = SimpleNamespace(provider="ollama")
 

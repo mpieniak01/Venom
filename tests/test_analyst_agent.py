@@ -1,4 +1,4 @@
-"""Testy dla AnalystAgent."""
+"""Tests for AnalystAgent."""
 
 from unittest.mock import Mock
 
@@ -10,21 +10,21 @@ from venom_core.core.model_router import ComplexityScore, ServiceId
 
 @pytest.fixture
 def mock_kernel():
-    """Fixture: mock kernela."""
+    """Fixture: mock kernel."""
     return Mock()
 
 
 @pytest.fixture
 def analyst_agent(mock_kernel):
-    """Fixture: instancja AnalystAgent."""
+    """Fixture: AnalystAgent instance."""
     return AnalystAgent(kernel=mock_kernel)
 
 
 class TestAnalystAgent:
-    """Testy dla klasy AnalystAgent."""
+    """Tests for AnalystAgent class."""
 
     def test_initialization(self, analyst_agent):
-        """Test inicjalizacji agenta."""
+        """Test agent initialization."""
         assert analyst_agent.total_tasks == 0
         assert analyst_agent.successful_tasks == 0
         assert analyst_agent.failed_tasks == 0
@@ -32,7 +32,7 @@ class TestAnalystAgent:
         assert len(analyst_agent.metrics_history) == 0
 
     def test_record_task_success(self, analyst_agent):
-        """Test rejestracji udanego zadania."""
+        """Test recording successful task."""
         metrics = TaskMetrics(
             task_id="task_1",
             complexity=ComplexityScore.LOW,
@@ -51,7 +51,7 @@ class TestAnalystAgent:
         assert analyst_agent.total_tokens == 100
 
     def test_record_task_failure(self, analyst_agent):
-        """Test rejestracji nieudanego zadania."""
+        """Test recording failed task."""
         metrics = TaskMetrics(
             task_id="task_1",
             complexity=ComplexityScore.HIGH,
@@ -71,8 +71,8 @@ class TestAnalystAgent:
         assert analyst_agent.total_tokens == 500
 
     def test_service_stats_tracking(self, analyst_agent):
-        """Test śledzenia statystyk per serwis."""
-        # Zadanie lokalne
+        """Test tracking statistics per service."""
+        # Local task
         metrics1 = TaskMetrics(
             task_id="task_1",
             complexity=ComplexityScore.LOW,
@@ -84,7 +84,7 @@ class TestAnalystAgent:
         )
         analyst_agent.record_task(metrics1)
 
-        # Zadanie cloud
+        # Cloud task
         metrics2 = TaskMetrics(
             task_id="task_2",
             complexity=ComplexityScore.HIGH,
@@ -96,7 +96,7 @@ class TestAnalystAgent:
         )
         analyst_agent.record_task(metrics2)
 
-        # Sprawdź statystyki
+        # Check statistics
         assert ServiceId.LOCAL.value in analyst_agent.service_stats
         assert ServiceId.CLOUD_HIGH.value in analyst_agent.service_stats
 
@@ -110,14 +110,14 @@ class TestAnalystAgent:
         assert cloud_stats["total_cost"] == pytest.approx(0.10)
 
     def test_analyze_routing_efficiency_no_data(self, analyst_agent):
-        """Test analizy efektywności bez danych."""
+        """Test efficiency analysis without data."""
         analysis = analyst_agent.analyze_routing_efficiency()
         assert "message" in analysis
         assert analysis["message"] == "Brak danych do analizy"
 
     def test_analyze_routing_efficiency_with_data(self, analyst_agent):
-        """Test analizy efektywności z danymi."""
-        # Dodaj kilka zadań
+        """Test efficiency analysis with data."""
+        # Add several tasks
         for i in range(3):
             metrics = TaskMetrics(
                 task_id=f"task_{i}",
@@ -140,8 +140,8 @@ class TestAnalystAgent:
         assert low_analysis["success_rate"] == pytest.approx(100.0)
 
     def test_detect_overprovisioning(self, analyst_agent):
-        """Test wykrywania overprovisioning."""
-        # Proste zadania używające drogiego modelu
+        """Test detecting overprovisioning."""
+        # Simple tasks using expensive model
         for i in range(6):
             metrics = TaskMetrics(
                 task_id=f"task_{i}",
@@ -158,14 +158,14 @@ class TestAnalystAgent:
         assert analysis["overprovisioned_tasks"] > 5
 
     def test_detect_underprovisioning(self, analyst_agent):
-        """Test wykrywania underprovisioning."""
-        # Złożone zadania używające słabego modelu i kończące się niepowodzeniem
+        """Test detecting underprovisioning."""
+        # Complex tasks using weak model and ending in failure
         for i in range(4):
             metrics = TaskMetrics(
                 task_id=f"task_{i}",
                 complexity=ComplexityScore.HIGH,
                 selected_service=ServiceId.LOCAL,  # Underprovisioning!
-                success=False,  # Niepowodzenie
+                success=False,  # Failure
                 cost_usd=0.0,
                 duration_seconds=10.0,
                 tokens_used=2000,
@@ -176,8 +176,8 @@ class TestAnalystAgent:
         assert analysis["underprovisioned_tasks"] > 3
 
     def test_get_cost_breakdown(self, analyst_agent):
-        """Test breakdown kosztów."""
-        # Zadanie lokalne
+        """Test cost breakdown."""
+        # Local task
         metrics1 = TaskMetrics(
             task_id="task_1",
             complexity=ComplexityScore.LOW,
@@ -189,7 +189,7 @@ class TestAnalystAgent:
         )
         analyst_agent.record_task(metrics1)
 
-        # Zadania cloud
+        # Cloud tasks
         for i in range(3):
             metrics = TaskMetrics(
                 task_id=f"task_cloud_{i}",
@@ -216,14 +216,14 @@ class TestAnalystAgent:
         assert cloud_breakdown["total_cost_usd"] == pytest.approx(0.06)
 
     def test_generate_recommendations_no_data(self, analyst_agent):
-        """Test generowania rekomendacji bez danych."""
+        """Test generating recommendations without data."""
         recommendations = analyst_agent.generate_recommendations()
         assert len(recommendations) == 1
         assert "więcej danych" in recommendations[0].lower()
 
     def test_generate_recommendations_overprovisioning(self, analyst_agent):
-        """Test rekomendacji przy overprovisioning."""
-        # Dodaj dużo zadań z overprovisioning
+        """Test recommendations for overprovisioning."""
+        # Add many tasks with overprovisioning
         for i in range(10):
             metrics = TaskMetrics(
                 task_id=f"task_{i}",
@@ -238,15 +238,15 @@ class TestAnalystAgent:
 
         recommendations = analyst_agent.generate_recommendations()
 
-        # Powinna być rekomendacja o overprovisioning
+        # Should have recommendation about overprovisioning
         overprovisioning_recs = [
             r for r in recommendations if "overprovisioning" in r.lower()
         ]
         assert len(overprovisioning_recs) > 0
 
     def test_generate_recommendations_low_success_rate(self, analyst_agent):
-        """Test rekomendacji przy niskiej skuteczności."""
-        # Dodaj 15 zadań: 5 udanych, 10 nieudanych
+        """Test recommendations for low success rate."""
+        # Add 15 tasks: 5 successful, 10 failed
         for i in range(5):
             metrics = TaskMetrics(
                 task_id=f"task_success_{i}",
@@ -273,13 +273,13 @@ class TestAnalystAgent:
 
         recommendations = analyst_agent.generate_recommendations()
 
-        # Powinna być rekomendacja o niskiej skuteczności
+        # Should have recommendation about low success rate
         success_rate_recs = [r for r in recommendations if "skuteczność" in r.lower()]
         assert len(success_rate_recs) > 0
 
     def test_get_summary(self, analyst_agent):
-        """Test podsumowania metryk."""
-        # Dodaj kilka zadań
+        """Test metrics summary."""
+        # Add several tasks
         for i in range(5):
             metrics = TaskMetrics(
                 task_id=f"task_{i}",
@@ -303,8 +303,8 @@ class TestAnalystAgent:
 
     @pytest.mark.asyncio
     async def test_process(self, analyst_agent):
-        """Test metody process generującej raport."""
-        # Dodaj kilka zadań
+        """Test process method generating report."""
+        # Add several tasks
         for i in range(3):
             metrics = TaskMetrics(
                 task_id=f"task_{i}",
@@ -319,7 +319,7 @@ class TestAnalystAgent:
 
         result = await analyst_agent.process("Generate report")
 
-        # Raport powinien zawierać kluczowe informacje
+        # Report should contain key information
         assert "RAPORT ANALITYCZNY" in result
         assert "STATYSTYKI OGÓLNE" in result
-        assert "3" in result  # Liczba zadań
+        assert "3" in result  # Number of tasks

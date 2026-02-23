@@ -1,4 +1,4 @@
-"""Testy jednostkowe dla ChronoSkill."""
+"""Unit tests for ChronoSkill."""
 
 import tempfile
 from pathlib import Path
@@ -11,7 +11,7 @@ from venom_core.execution.skills.chrono_skill import ChronoSkill
 
 @pytest.fixture
 def temp_dirs():
-    """Fixture dla tymczasowych katalogów."""
+    """Fixture for temporary directories."""
     with tempfile.TemporaryDirectory() as tmpdir:
         base = Path(tmpdir)
         timelines_dir = base / "timelines"
@@ -31,7 +31,7 @@ def temp_dirs():
 
 @pytest.fixture
 def chronos_engine(temp_dirs):
-    """Fixture dla ChronosEngine."""
+    """Fixture for ChronosEngine."""
     return ChronosEngine(
         timelines_dir=temp_dirs["timelines"],
         workspace_root=temp_dirs["workspace"],
@@ -41,20 +41,20 @@ def chronos_engine(temp_dirs):
 
 @pytest.fixture
 def chrono_skill(chronos_engine):
-    """Fixture dla ChronoSkill."""
+    """Fixture for ChronoSkill."""
     return ChronoSkill(chronos_engine=chronos_engine)
 
 
 class TestChronoSkill:
-    """Testy dla ChronoSkill."""
+    """Tests for ChronoSkill."""
 
     def test_chrono_skill_initialization(self, chrono_skill):
-        """Test inicjalizacji ChronoSkill."""
+        """Test ChronoSkill initialization."""
         assert chrono_skill.chronos is not None
 
     @pytest.mark.asyncio
     async def test_create_checkpoint(self, chrono_skill):
-        """Test tworzenia checkpointu przez skill."""
+        """Test creating checkpoint through skill."""
         result = await chrono_skill.create_checkpoint(
             name="Test Checkpoint", description="Test description"
         )
@@ -66,8 +66,8 @@ class TestChronoSkill:
 
     @pytest.mark.asyncio
     async def test_create_checkpoint_on_timeline(self, chrono_skill):
-        """Test tworzenia checkpointu na określonej timeline."""
-        # Najpierw utwórz timeline
+        """Test creating checkpoint on specific timeline."""
+        # First create timeline
         await chrono_skill.branch_timeline("experimental")
 
         result = await chrono_skill.create_checkpoint(
@@ -79,15 +79,15 @@ class TestChronoSkill:
 
     @pytest.mark.asyncio
     async def test_list_checkpoints_empty(self, chrono_skill):
-        """Test listowania checkpointów gdy ich brak."""
+        """Test listing checkpoints when there are none."""
         result = await chrono_skill.list_checkpoints()
 
         assert "Brak checkpointów" in result
 
     @pytest.mark.asyncio
     async def test_list_checkpoints(self, chrono_skill):
-        """Test listowania checkpointów."""
-        # Utwórz kilka checkpointów
+        """Test listing checkpoints."""
+        # Create several checkpoints
         await chrono_skill.create_checkpoint(name="CP1", description="First")
         await chrono_skill.create_checkpoint(name="CP2", description="Second")
 
@@ -99,37 +99,37 @@ class TestChronoSkill:
 
     @pytest.mark.asyncio
     async def test_delete_checkpoint(self, chrono_skill):
-        """Test usuwania checkpointu."""
-        # Utwórz checkpoint
+        """Test deleting checkpoint."""
+        # Create checkpoint
         create_result = await chrono_skill.create_checkpoint(name="To Delete")
 
-        # Wyciągnij ID z wyniku (format: "ID: xxx")
+        # Extract ID from result (format: "ID: xxx")
         import re
 
         match = re.search(r"ID: (\w+)", create_result)
         assert match
         checkpoint_id = match.group(1)
 
-        # Usuń checkpoint
+        # Delete checkpoint
         result = await chrono_skill.delete_checkpoint(checkpoint_id=checkpoint_id)
 
         assert "✓" in result
         assert checkpoint_id in result
 
-        # Sprawdź czy został usunięty
+        # Check if it was deleted
         list_result = await chrono_skill.list_checkpoints()
         assert "Brak checkpointów" in list_result
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent_checkpoint(self, chrono_skill):
-        """Test usuwania nieistniejącego checkpointu."""
+        """Test deleting nonexistent checkpoint."""
         result = await chrono_skill.delete_checkpoint(checkpoint_id="nonexistent")
 
         assert "❌" in result
 
     @pytest.mark.asyncio
     async def test_branch_timeline(self, chrono_skill):
-        """Test tworzenia nowej linii czasowej."""
+        """Test creating new timeline."""
         result = await chrono_skill.branch_timeline(name="experimental")
 
         assert "✓" in result
@@ -138,7 +138,7 @@ class TestChronoSkill:
 
     @pytest.mark.asyncio
     async def test_branch_duplicate_timeline(self, chrono_skill):
-        """Test tworzenia duplikatu linii czasowej."""
+        """Test creating duplicate timeline."""
         await chrono_skill.branch_timeline(name="test")
         result = await chrono_skill.branch_timeline(name="test")
 
@@ -146,15 +146,15 @@ class TestChronoSkill:
 
     @pytest.mark.asyncio
     async def test_list_timelines_empty(self, chrono_skill):
-        """Test listowania linii czasowych."""
+        """Test listing timelines."""
         result = await chrono_skill.list_timelines()
 
-        # Zawsze jest przynajmniej "main"
+        # Always at least "main"
         assert "main" in result
 
     @pytest.mark.asyncio
     async def test_list_timelines(self, chrono_skill):
-        """Test listowania linii czasowych."""
+        """Test listing timelines."""
         await chrono_skill.branch_timeline("timeline1")
         await chrono_skill.branch_timeline("timeline2")
 
@@ -167,18 +167,18 @@ class TestChronoSkill:
 
     @pytest.mark.asyncio
     async def test_merge_timeline_placeholder(self, chrono_skill):
-        """Test mergowania linii czasowych (placeholder)."""
+        """Test merging timelines (placeholder)."""
         await chrono_skill.branch_timeline("source")
         result = await chrono_skill.merge_timeline(source="source", target="main")
 
-        # W obecnej wersji to tylko placeholder
+        # In current version this is just a placeholder
         assert "⚠️" in result
         assert "zaawansowana funkcja" in result.lower()
 
     @pytest.mark.asyncio
     async def test_restore_checkpoint(self, chrono_skill):
-        """Test przywracania checkpointu."""
-        # Utwórz checkpoint
+        """Test restoring checkpoint."""
+        # Create checkpoint
         create_result = await chrono_skill.create_checkpoint(name="Test")
 
         import re
@@ -187,65 +187,65 @@ class TestChronoSkill:
         assert match
         checkpoint_id = match.group(1)
 
-        # Przywróć checkpoint
-        # Uwaga: To może nie działać w testach bez prawdziwego git repo
+        # Restore checkpoint
+        # Note: This may not work in tests without real git repo
         result = await chrono_skill.restore_checkpoint(checkpoint_id=checkpoint_id)
 
-        # Sprawdź format wyniku (może być success lub error w zależności od środowiska)
+        # Check result format (may be success or error depending on environment)
         assert checkpoint_id in result
 
 
 class TestChronoSkillIntegration:
-    """Testy integracyjne dla ChronoSkill."""
+    """Integration tests for ChronoSkill."""
 
     @pytest.mark.asyncio
     async def test_full_workflow(self, chrono_skill):
-        """Test pełnego przepływu pracy z checkpointami."""
-        # 1. Utwórz checkpoint
+        """Test full workflow with checkpoints."""
+        # 1. Create checkpoint
         create_result = await chrono_skill.create_checkpoint(
             name="Initial State", description="Starting point"
         )
         assert "✓" in create_result
 
-        # 2. Wylistuj checkpointy
+        # 2. List checkpoints
         list_result = await chrono_skill.list_checkpoints()
         assert "Initial State" in list_result
 
-        # 3. Utwórz drugi checkpoint
+        # 3. Create second checkpoint
         await chrono_skill.create_checkpoint(name="After Changes")
 
-        # 4. Wylistuj ponownie
+        # 4. List again
         list_result = await chrono_skill.list_checkpoints()
         assert "Initial State" in list_result
         assert "After Changes" in list_result
 
     @pytest.mark.asyncio
     async def test_timeline_branching_workflow(self, chrono_skill):
-        """Test przepływu z rozgałęzieniami linii czasowej."""
-        # 1. Utwórz checkpoint na main
+        """Test workflow with timeline branching."""
+        # 1. Create checkpoint on main
         await chrono_skill.create_checkpoint(name="Main CP", timeline="main")
 
-        # 2. Utwórz nową timeline
+        # 2. Create new timeline
         branch_result = await chrono_skill.branch_timeline(name="experimental")
         assert "✓" in branch_result
 
-        # 3. Utwórz checkpoint na nowej timeline
+        # 3. Create checkpoint on new timeline
         await chrono_skill.create_checkpoint(name="Exp CP", timeline="experimental")
 
-        # 4. Sprawdź checkpointy na obu timelines
+        # 4. Check checkpoints on both timelines
         main_cps = await chrono_skill.list_checkpoints(timeline="main")
         exp_cps = await chrono_skill.list_checkpoints(timeline="experimental")
 
-        # Main powinien mieć 2 checkpointy (original + branch point)
+        # Main should have 2 checkpoints (original + branch point)
         assert "Main CP" in main_cps
 
-        # Experimental powinien mieć swój checkpoint
+        # Experimental should have its checkpoint
         assert "Exp CP" in exp_cps
 
     @pytest.mark.asyncio
     async def test_checkpoint_lifecycle(self, chrono_skill):
-        """Test pełnego cyklu życia checkpointu."""
-        # Tworzenie
+        """Test full checkpoint lifecycle."""
+        # Creating
         create_result = await chrono_skill.create_checkpoint(name="Lifecycle Test")
         assert "✓" in create_result
 
@@ -254,16 +254,16 @@ class TestChronoSkillIntegration:
         match = re.search(r"ID: (\w+)", create_result)
         checkpoint_id = match.group(1)
 
-        # Listowanie
+        # Listing
         list_result = await chrono_skill.list_checkpoints()
         assert checkpoint_id in list_result
 
-        # Usuwanie
+        # Deleting
         delete_result = await chrono_skill.delete_checkpoint(
             checkpoint_id=checkpoint_id
         )
         assert "✓" in delete_result
 
-        # Weryfikacja usunięcia
+        # Verify deletion
         list_result = await chrono_skill.list_checkpoints()
         assert checkpoint_id not in list_result

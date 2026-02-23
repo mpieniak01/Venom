@@ -1,4 +1,4 @@
-"""Testy jednostkowe dla CodeGraphStore."""
+"""Unit tests for CodeGraphStore."""
 
 import tempfile
 from pathlib import Path
@@ -10,21 +10,21 @@ from venom_core.memory.graph_store import CodeGraphStore
 
 @pytest.fixture
 def temp_workspace():
-    """Fixture dla tymczasowego workspace."""
+    """Fixture for temporary workspace."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield tmpdir
 
 
 @pytest.fixture
 def graph_store(temp_workspace):
-    """Fixture dla CodeGraphStore z tymczasowym workspace."""
+    """Fixture for CodeGraphStore with temporary workspace."""
     graph_file = Path(temp_workspace) / "code_graph.json"
     return CodeGraphStore(workspace_root=temp_workspace, graph_file=str(graph_file))
 
 
 @pytest.fixture
 def sample_python_file(temp_workspace):
-    """Fixture tworzący przykładowy plik Python."""
+    """Fixture creating sample Python file."""
     file_path = Path(temp_workspace) / "sample.py"
     content = """
 import os
@@ -51,16 +51,16 @@ def caller():
 
 
 class TestCodeGraphStore:
-    """Testy dla CodeGraphStore."""
+    """Tests for CodeGraphStore."""
 
     def test_initialization(self, graph_store, temp_workspace):
-        """Test inicjalizacji CodeGraphStore."""
+        """Test CodeGraphStore initialization."""
         assert graph_store.workspace_root == Path(temp_workspace).resolve()
         assert graph_store.graph is not None
         assert graph_store.graph.number_of_nodes() == 0
 
     def test_scan_workspace_empty(self, graph_store):
-        """Test skanowania pustego workspace."""
+        """Test scanning empty workspace."""
         stats = graph_store.scan_workspace()
 
         assert stats["total_files"] == 0
@@ -69,23 +69,23 @@ class TestCodeGraphStore:
         assert stats["edges"] == 0
 
     def test_scan_workspace_with_file(self, graph_store, sample_python_file):
-        """Test skanowania workspace z plikiem."""
+        """Test scanning workspace with file."""
         stats = graph_store.scan_workspace()
 
         assert stats["total_files"] == 1
         assert stats["files_scanned"] == 1
-        assert stats["nodes"] > 0  # Powinny być węzły
-        assert stats["edges"] > 0  # Powinny być krawędzie
+        assert stats["nodes"] > 0  # Should have nodes
+        assert stats["edges"] > 0  # Should have edges
 
     def test_parse_file_creates_nodes(self, graph_store, sample_python_file):
-        """Test czy parsowanie pliku tworzy odpowiednie węzły."""
+        """Test if file parsing creates appropriate nodes."""
         graph_store.scan_workspace()
 
-        # Sprawdź czy istnieje węzeł pliku
+        # Check if file node exists
         file_nodes = [n for n in graph_store.graph.nodes() if n.startswith("file:")]
         assert len(file_nodes) > 0
 
-        # Sprawdź czy istnieją węzły klas
+        # Check if class nodes exist
         class_nodes = [
             n
             for n, data in graph_store.graph.nodes(data=True)
@@ -93,7 +93,7 @@ class TestCodeGraphStore:
         ]
         assert len(class_nodes) > 0
 
-        # Sprawdź czy istnieją węzły funkcji
+        # Check if function nodes exist
         function_nodes = [
             n
             for n, data in graph_store.graph.nodes(data=True)
@@ -102,7 +102,7 @@ class TestCodeGraphStore:
         assert len(function_nodes) > 0
 
     def test_get_file_info(self, graph_store, sample_python_file):
-        """Test pobierania informacji o pliku."""
+        """Test getting file information."""
         graph_store.scan_workspace()
 
         rel_path = sample_python_file.relative_to(graph_store.workspace_root)
@@ -113,25 +113,25 @@ class TestCodeGraphStore:
         assert "functions" in info
         assert "imports" in info
 
-        # Sprawdź czy znaleziono klasę
+        # Check if class was found
         assert len(info["classes"]) > 0
         assert any(c["name"] == "MyClass" for c in info["classes"])
 
-        # Sprawdź czy znaleziono funkcje
+        # Check if functions were found
         assert len(info["functions"]) > 0
 
     def test_get_dependencies_empty(self, graph_store, sample_python_file):
-        """Test pobierania zależności dla pliku bez zależności."""
+        """Test getting dependencies for file without dependencies."""
         graph_store.scan_workspace()
 
         rel_path = sample_python_file.relative_to(graph_store.workspace_root)
         deps = graph_store.get_dependencies(str(rel_path))
 
-        # Nasz przykładowy plik nie ma zależności od innych plików w workspace
+        # Our sample file has no dependencies on other files in workspace
         assert isinstance(deps, list)
 
     def test_get_impact_analysis(self, graph_store, sample_python_file):
-        """Test analizy wpływu."""
+        """Test impact analysis."""
         graph_store.scan_workspace()
 
         rel_path = sample_python_file.relative_to(graph_store.workspace_root)
@@ -143,13 +143,13 @@ class TestCodeGraphStore:
         assert "impact_score" in impact
 
     def test_save_and_load_graph(self, graph_store, sample_python_file):
-        """Test zapisywania i ładowania grafu."""
-        # Skanuj i zapisz
+        """Test saving and loading graph."""
+        # Scan and save
         graph_store.scan_workspace()
         nodes_before = graph_store.graph.number_of_nodes()
         edges_before = graph_store.graph.number_of_edges()
 
-        # Utwórz nową instancję i załaduj
+        # Create new instance and load
         new_store = CodeGraphStore(
             workspace_root=graph_store.workspace_root,
             graph_file=graph_store.graph_file,
@@ -161,7 +161,7 @@ class TestCodeGraphStore:
         assert new_store.graph.number_of_edges() == edges_before
 
     def test_get_graph_summary(self, graph_store, sample_python_file):
-        """Test pobierania podsumowania grafu."""
+        """Test getting graph summary."""
         graph_store.scan_workspace()
 
         summary = graph_store.get_graph_summary()
@@ -175,19 +175,19 @@ class TestCodeGraphStore:
         assert summary["total_edges"] > 0
 
     def test_parse_invalid_syntax(self, graph_store, temp_workspace):
-        """Test parsowania pliku z błędem składni."""
+        """Test parsing file with syntax error."""
         invalid_file = Path(temp_workspace) / "invalid.py"
         invalid_file.write_text("def invalid syntax here", encoding="utf-8")
 
-        # Nie powinno wywołać wyjątku
+        # Should not raise exception
         stats = graph_store.scan_workspace()
 
-        # Powinien być błąd
+        # Should have error
         assert stats["errors"] > 0
 
     def test_multiple_files(self, graph_store, temp_workspace):
-        """Test skanowania wielu plików."""
-        # Utwórz kilka plików
+        """Test scanning multiple files."""
+        # Create several files
         for i in range(3):
             file_path = Path(temp_workspace) / f"file{i}.py"
             file_path.write_text(f"def func{i}(): pass", encoding="utf-8")

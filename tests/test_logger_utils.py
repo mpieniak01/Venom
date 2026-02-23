@@ -70,6 +70,21 @@ def test_log_sink_schedules_broadcast_task_when_loop_running(monkeypatch):
     assert len(logger_module._log_tasks) == 1
 
 
+def test_log_sink_skips_when_loop_not_running(monkeypatch):
+    class DummyLoop:
+        def is_running(self):
+            return False
+
+    logger_module._log_tasks.clear()
+    logger_module.set_event_broadcaster(object())
+    monkeypatch.setattr(
+        "venom_core.utils.logger.asyncio.get_event_loop", lambda: DummyLoop()
+    )
+
+    logger_module.log_sink(_message("INFO", "idle loop"))
+    assert logger_module._log_tasks == set()
+
+
 def test_log_sink_create_task_exception_is_ignored(monkeypatch):
     class DummyBroadcaster:
         async def broadcast_log(self, level, message):
@@ -89,3 +104,8 @@ def test_log_sink_create_task_exception_is_ignored(monkeypatch):
 
     logger_module.log_sink(_message("ERROR", "x"))
     assert logger_module._log_tasks == set()
+
+
+def test_get_logger_binds_name():
+    bound = logger_module.get_logger("unit-test-logger")
+    assert bound is not None

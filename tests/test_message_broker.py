@@ -2,10 +2,11 @@
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import venom_core.infrastructure.message_broker as message_broker_mod
 from venom_core.infrastructure.message_broker import MessageBroker, TaskMessage
 
 
@@ -305,3 +306,116 @@ async def test_get_task_status_returns_none_for_invalid_redis_payload():
     task = await broker.get_task_status("broken_task")
 
     assert task is None
+
+
+@pytest.mark.asyncio
+async def test_connect_returns_false_when_arq_not_available(monkeypatch):
+    broker = MessageBroker()
+    monkeypatch.setattr(message_broker_mod, "ARQ_AVAILABLE", False)
+    monkeypatch.setattr(message_broker_mod, "create_pool", None)
+
+    result = await broker.connect()
+    assert result is False
+    assert broker.is_connected() is False
+
+
+@pytest.mark.asyncio
+async def test_connect_success_sets_connected(monkeypatch):
+    broker = MessageBroker()
+    monkeypatch.setattr(message_broker_mod, "ARQ_AVAILABLE", True)
+
+    redis_instance = AsyncMock()
+    redis_instance.ping = AsyncMock(return_value=True)
+    monkeypatch.setattr(message_broker_mod.redis, "Redis", lambda **_: redis_instance)
+
+    fake_pool = AsyncMock()
+    monkeypatch.setattr(
+        message_broker_mod, "create_pool", AsyncMock(return_value=fake_pool)
+    )
+
+    result = await broker.connect()
+    assert result is True
+    assert broker.is_connected() is True
+    assert broker.arq_pool is fake_pool
+
+
+@pytest.mark.asyncio
+async def test_disconnect_closes_resources():
+    broker = MessageBroker()
+    broker.pubsub = AsyncMock()
+    broker.arq_pool = AsyncMock()
+    broker.redis_client = AsyncMock()
+    broker._is_connected = True
+
+    await broker.disconnect()
+
+    broker.pubsub.unsubscribe.assert_awaited_once()
+    broker.pubsub.close.assert_awaited_once()
+    broker.arq_pool.close.assert_awaited_once()
+    broker.redis_client.close.assert_awaited_once()
+    assert broker.is_connected() is False
+
+
+@pytest.mark.asyncio
+async def test_update_task_status_completed_sets_result_and_completed_at():
+    broker = MessageBroker()
+    broker.redis_client = AsyncMock()
+    task = TaskMessage("task_done", "type", {})
+    broker._task_registry["task_done"] = task
+
+    await broker.update_task_status(
+        "task_done", status="completed", result={"ok": True}, error=""
+    )
+
+    assert task.status == "completed"
+    assert task.completed_at is not None
+    assert task.result == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_broadcast_control_and_subscribe():
+    broker = MessageBroker()
+    broker.redis_client = MagicMock()
+    broker.redis_client.publish = AsyncMock()
+    broker.redis_client.pubsub.return_value = AsyncMock()
+
+    await broker.broadcast_control("STATUS", {"scope": "all"})
+    broker.redis_client.publish.assert_awaited_once()
+    call_args = broker.redis_client.publish.await_args.args
+    assert "STATUS" in call_args[1]
+
+    pubsub = await broker.subscribe_broadcast()
+    assert pubsub is broker.pubsub
+    broker.pubsub.subscribe.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_queue_length_and_invalid_dict_payload():
+    broker = MessageBroker()
+    broker.redis_client = AsyncMock()
+    broker.redis_client.zcard = AsyncMock(return_value=3)
+    assert await broker.get_queue_length("queue") == 3
+
+    broker.redis_client.get = AsyncMock(return_value=b'["not","a","dict"]')
+    assert await broker.get_task_status("bad_shape") is None
+
+
+@pytest.mark.asyncio
+async def test_retry_task_success_path(monkeypatch):
+    broker = MessageBroker()
+    broker.redis_client = AsyncMock()
+    broker.redis_client.get = AsyncMock(return_value=None)
+    task = TaskMessage("retry_1", "kind", {"x": 1}, max_retries=2)
+    task.attempt = 1
+    task.status = "failed"
+    task.error = "boom"
+    broker._task_registry[task.task_id] = task
+
+    # Avoid re-entering internal lock path by mocking enqueue_task.
+    monkeypatch.setattr(broker, "enqueue_task", AsyncMock(return_value=task.task_id))
+
+    result = await broker.retry_task(task.task_id)
+    assert result is True
+    assert task.attempt == 2
+    assert task.status == "pending"
+    assert task.error is None

@@ -1,9 +1,11 @@
 """Testy jednostkowe dla port_authority."""
 
 import socket
+from unittest.mock import Mock
 
 import pytest
 
+from venom_core.utils import port_authority
 from venom_core.utils.port_authority import (
     find_free_port,
     get_free_ports,
@@ -13,14 +15,11 @@ from venom_core.utils.port_authority import (
 
 def test_is_port_in_use_free_port():
     """Test sprawdzenia czy port jest wolny."""
-    # Znajdź wolny port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("localhost", 0))
         free_port = s.getsockname()[1]
 
-    # Ten port powinien być wolny (może być krótko zajęty przez SO)
-    # ale generalnie powinien być dostępny
-    assert not is_port_in_use(free_port) or is_port_in_use(free_port)
+    assert is_port_in_use(free_port) is False
 
 
 def test_is_port_in_use_occupied_port():
@@ -59,6 +58,9 @@ def test_find_free_port_invalid_range():
 
     with pytest.raises(ValueError):
         find_free_port(start=70000)
+
+    with pytest.raises(ValueError):
+        find_free_port(start=100, end=70000)
 
 
 def test_find_free_port_no_free_ports():
@@ -122,3 +124,40 @@ def test_get_free_ports_too_many():
     with pytest.raises(ValueError):
         # Próba znalezienia 10 portów w zakresie 5 portów
         get_free_ports(10, start=9990, end=9995)
+
+
+def test_find_free_port_logs_warning_when_no_port(monkeypatch):
+    warn = Mock()
+    monkeypatch.setattr(port_authority.logger, "warning", warn)
+    monkeypatch.setattr(port_authority, "is_port_in_use", lambda *_: True)
+
+    assert find_free_port(start=10000, end=10001) is None
+    warn.assert_called_once()
+
+
+def test_get_free_ports_logs_and_raises_when_not_enough(monkeypatch):
+    debug = Mock()
+    info = Mock()
+    monkeypatch.setattr(port_authority.logger, "debug", debug)
+    monkeypatch.setattr(port_authority.logger, "info", info)
+    monkeypatch.setattr(
+        port_authority,
+        "is_port_in_use",
+        lambda port, _host="localhost": port != 9000,
+    )
+
+    with pytest.raises(ValueError, match="Nie można znaleźć 2 wolnych portów"):
+        get_free_ports(2, start=9000, end=9001)
+    # tylko jeden port został dodany
+    debug.assert_called_once()
+    info.assert_not_called()
+
+
+def test_get_free_ports_success_logs_info(monkeypatch):
+    info = Mock()
+    monkeypatch.setattr(port_authority.logger, "info", info)
+    monkeypatch.setattr(port_authority, "is_port_in_use", lambda *_: False)
+
+    ports = get_free_ports(2, start=9100, end=9101)
+    assert ports == [9100, 9101]
+    info.assert_called_once()

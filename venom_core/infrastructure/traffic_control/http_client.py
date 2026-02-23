@@ -276,7 +276,14 @@ class TrafficControlledHttpClient:
         self.traffic_controller.record_outbound_response(
             self.provider, status_code, error, method=method
         )
-        raise error
+        if isinstance(
+            error,
+            (httpx.HTTPError, RuntimeError, TypeError, ValueError, AttributeError),
+        ):
+            raise error
+        raise RuntimeError(
+            f"Outbound request failed for provider '{self.provider}'"
+        ) from error
 
     def _check_outbound_allowed(self, method: str) -> None:
         allowed, reason, wait_seconds = self.traffic_controller.check_outbound_request(

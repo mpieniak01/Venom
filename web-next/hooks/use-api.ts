@@ -594,18 +594,33 @@ export function useLessonsStats(intervalMs = 30000) {
 }
 
 export function useMemoryGraph(
-  limit = MEMORY_GRAPH_LIMIT,
-  sessionId?: string,
-  onlyPinned = false,
-  includeLessons = false,
-  intervalMs = 20000,
-  mode: "default" | "flow" = "default",
-  graphView: "overview" | "focus" | "full" = "full",
-  seedId?: string,
-  maxHops?: number,
-  includeIsolates = true,
-  limitNodes?: number,
+  options: {
+    limit?: number;
+    sessionId?: string;
+    onlyPinned?: boolean;
+    includeLessons?: boolean;
+    intervalMs?: number;
+    mode?: "default" | "flow";
+    graphView?: "overview" | "focus" | "full";
+    seedId?: string;
+    maxHops?: number;
+    includeIsolates?: boolean;
+    limitNodes?: number;
+  } = {},
 ) {
+  const {
+    limit = MEMORY_GRAPH_LIMIT,
+    sessionId,
+    onlyPinned = false,
+    includeLessons = false,
+    intervalMs = 20000,
+    mode = "default",
+    graphView = "full",
+    seedId,
+    maxHops,
+    includeIsolates = true,
+    limitNodes,
+  } = options;
   const params = new URLSearchParams();
   params.set("limit", String(limit));
   if (sessionId) params.set("session_id", sessionId);

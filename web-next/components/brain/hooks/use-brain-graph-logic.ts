@@ -56,19 +56,19 @@ export function useBrainGraphLogic({
         0,
     );
 
-    const memoryGraphPoll = useMemoryGraph(
-        MEMORY_GRAPH_LIMIT,
-        memorySessionFilter || undefined,
-        memoryOnlyPinned,
+    const memoryGraphPoll = useMemoryGraph({
+        limit: MEMORY_GRAPH_LIMIT,
+        sessionId: memorySessionFilter || undefined,
+        onlyPinned: memoryOnlyPinned,
         includeLessons,
-        0,
-        flowMode,
-        graphViewMode,
-        focusSeedId,
+        intervalMs: 0,
+        mode: flowMode,
+        graphView: graphViewMode,
+        seedId: focusSeedId,
         maxHops,
         includeIsolates,
         limitNodes,
-    );
+    });
 
     const [memoryGraphOverride, setMemoryGraphOverride] = useState<KnowledgeGraph | null>(null);
 

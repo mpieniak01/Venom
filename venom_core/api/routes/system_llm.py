@@ -401,17 +401,17 @@ def _build_model_updates(
             logger.info("Persisting ONNX model path from registry metadata.")
 
     if previous_model and previous_model != selected_model:
-        prev_model_key = (
-            "PREVIOUS_MODEL_OLLAMA"
-            if server_name == "ollama"
-            else (
-                "PREVIOUS_MODEL_VLLM"
-                if server_name == "vllm"
-                else "PREVIOUS_MODEL_ONNX"
-            )
-        )
+        prev_model_key = _previous_model_key_for_server(server_name)
         updates[prev_model_key] = previous_model
     return updates
+
+
+def _previous_model_key_for_server(server_name: str) -> str:
+    if server_name == "ollama":
+        return "PREVIOUS_MODEL_OLLAMA"
+    if server_name == "vllm":
+        return "PREVIOUS_MODEL_VLLM"
+    return "PREVIOUS_MODEL_ONNX"
 
 
 def _persist_selected_model_settings(
@@ -452,6 +452,127 @@ def _build_onnx_server_payload() -> dict[str, Any]:
         else "ONNX runtime not ready (check model path and dependencies).",
         "onnx": status,
     }
+
+
+def _normalize_runtime_provider(provider_raw: str | None) -> str:
+    normalized = str(provider_raw or "").lower()
+    if normalized in ("google-gemini", "gem"):
+        return "google"
+    return normalized
+
+
+def _assert_runtime_provider_supported(provider_raw: str) -> None:
+    if provider_raw not in ("openai", "google", "onnx"):
+        raise HTTPException(status_code=400, detail="Nieznany provider runtime")
+
+
+def _capture_runtime_settings_snapshot() -> tuple[str, str, str, str]:
+    return (
+        SETTINGS.LLM_SERVICE_TYPE,
+        SETTINGS.LLM_MODEL_NAME,
+        SETTINGS.ACTIVE_LLM_SERVER,
+        SETTINGS.LLM_CONFIG_HASH,
+    )
+
+
+def _restore_runtime_settings_snapshot(snapshot: tuple[str, str, str, str]) -> None:
+    (
+        SETTINGS.LLM_SERVICE_TYPE,
+        SETTINGS.LLM_MODEL_NAME,
+        SETTINGS.ACTIVE_LLM_SERVER,
+        SETTINGS.LLM_CONFIG_HASH,
+    ) = snapshot
+
+
+def _runtime_activate_payload(runtime) -> dict[str, Any]:
+    return {
+        "status": "success",
+        "active_server": runtime.provider,
+        "active_endpoint": runtime.endpoint,
+        "active_model": runtime.model_name,
+        "config_hash": runtime.config_hash,
+        "runtime_id": runtime.runtime_id,
+    }
+
+
+def _assert_cloud_provider_requirements(provider_raw: str) -> None:
+    if provider_raw == "openai" and not SETTINGS.OPENAI_API_KEY:
+        raise HTTPException(status_code=400, detail="Brak OPENAI_API_KEY")
+    if provider_raw != "google":
+        return
+    if not SETTINGS.GOOGLE_API_KEY:
+        raise HTTPException(status_code=400, detail="Brak GOOGLE_API_KEY")
+    if (
+        importlib.util.find_spec("google.genai") is None
+        and importlib.util.find_spec("google.generativeai") is None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Brak SDK Gemini (google-genai / google-generativeai)",
+        )
+
+
+def _activate_onnx_runtime(model: str | None) -> dict[str, Any]:
+    onnx_client = OnnxLlmClient()
+    try:
+        onnx_client.ensure_ready()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    model_name = model or onnx_client.config.model_path
+    snapshot = _capture_runtime_settings_snapshot()
+    try:
+        SETTINGS.LLM_SERVICE_TYPE = "onnx"
+        SETTINGS.LLM_MODEL_NAME = model_name
+        SETTINGS.ACTIVE_LLM_SERVER = "onnx"
+        runtime = get_active_llm_runtime()
+        config_hash = runtime.config_hash or ""
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+        config_manager.update_config(
+            {
+                "LLM_SERVICE_TYPE": "onnx",
+                "LLM_MODEL_NAME": model_name,
+                "ACTIVE_LLM_SERVER": "onnx",
+                "LAST_MODEL_ONNX": model_name,
+                "LLM_CONFIG_HASH": config_hash,
+            }
+        )
+    except Exception:
+        _restore_runtime_settings_snapshot(snapshot)
+        raise
+    return _runtime_activate_payload(runtime)
+
+
+def _default_cloud_model(provider_raw: str) -> str:
+    if provider_raw == "openai":
+        return SETTINGS.OPENAI_GPT4O_MODEL
+    return SETTINGS.GOOGLE_GEMINI_PRO_MODEL
+
+
+def _activate_cloud_runtime(provider_raw: str, model: str | None) -> dict[str, Any]:
+    model_name = model or _default_cloud_model(provider_raw)
+    snapshot = _capture_runtime_settings_snapshot()
+    try:
+        SETTINGS.LLM_SERVICE_TYPE = provider_raw
+        SETTINGS.LLM_MODEL_NAME = model_name
+        SETTINGS.ACTIVE_LLM_SERVER = provider_raw
+
+        runtime = get_active_llm_runtime()
+        config_hash = runtime.config_hash or ""
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+
+        config_manager.update_config(
+            {
+                "LLM_SERVICE_TYPE": provider_raw,
+                "LLM_MODEL_NAME": model_name,
+                "ACTIVE_LLM_SERVER": provider_raw,
+                "LLM_CONFIG_HASH": config_hash,
+            }
+        )
+    except Exception:
+        _restore_runtime_settings_snapshot(snapshot)
+        raise
+    return _runtime_activate_payload(runtime)
 
 
 def _dedupe_servers_by_name(
@@ -577,116 +698,14 @@ def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     """
     Przelacza runtime LLM na provider (openai/google/onnx).
     """
-    provider_raw = (request.provider or "").lower()
-    if provider_raw in ("google-gemini", "gem"):
-        provider_raw = "google"
-    if provider_raw not in ("openai", "google", "onnx"):
-        raise HTTPException(status_code=400, detail="Nieznany provider runtime")
-
+    provider_raw = _normalize_runtime_provider(request.provider)
+    _assert_runtime_provider_supported(provider_raw)
     if provider_raw == "onnx":
-        onnx_client = OnnxLlmClient()
-        try:
-            onnx_client.ensure_ready()
-        except RuntimeError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-
-        model_name = request.model or onnx_client.config.model_path
-        old_service_type = SETTINGS.LLM_SERVICE_TYPE
-        old_model_name = SETTINGS.LLM_MODEL_NAME
-        old_active_server = SETTINGS.ACTIVE_LLM_SERVER
-        old_config_hash = SETTINGS.LLM_CONFIG_HASH
-
-        try:
-            SETTINGS.LLM_SERVICE_TYPE = "onnx"
-            SETTINGS.LLM_MODEL_NAME = model_name
-            SETTINGS.ACTIVE_LLM_SERVER = "onnx"
-            runtime = get_active_llm_runtime()
-            config_hash = runtime.config_hash or ""
-            SETTINGS.LLM_CONFIG_HASH = config_hash
-            config_manager.update_config(
-                {
-                    "LLM_SERVICE_TYPE": "onnx",
-                    "LLM_MODEL_NAME": model_name,
-                    "ACTIVE_LLM_SERVER": "onnx",
-                    "LAST_MODEL_ONNX": model_name,
-                    "LLM_CONFIG_HASH": config_hash,
-                }
-            )
-        except Exception:
-            SETTINGS.LLM_SERVICE_TYPE = old_service_type
-            SETTINGS.LLM_MODEL_NAME = old_model_name
-            SETTINGS.ACTIVE_LLM_SERVER = old_active_server
-            SETTINGS.LLM_CONFIG_HASH = old_config_hash
-            raise
-
-        return {
-            "status": "success",
-            "active_server": runtime.provider,
-            "active_endpoint": runtime.endpoint,
-            "active_model": runtime.model_name,
-            "config_hash": runtime.config_hash,
-            "runtime_id": runtime.runtime_id,
-        }
+        return _activate_onnx_runtime(request.model)
 
     _release_onnx_runtime_caches()
-
-    if provider_raw == "openai" and not SETTINGS.OPENAI_API_KEY:
-        raise HTTPException(status_code=400, detail="Brak OPENAI_API_KEY")
-    if provider_raw == "google":
-        if not SETTINGS.GOOGLE_API_KEY:
-            raise HTTPException(status_code=400, detail="Brak GOOGLE_API_KEY")
-        if (
-            importlib.util.find_spec("google.genai") is None
-            and importlib.util.find_spec("google.generativeai") is None
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Brak SDK Gemini (google-genai / google-generativeai)",
-            )
-
-    default_model = (
-        SETTINGS.OPENAI_GPT4O_MODEL
-        if provider_raw == "openai"
-        else SETTINGS.GOOGLE_GEMINI_PRO_MODEL
-    )
-    model_name = request.model or default_model
-
-    old_service_type = SETTINGS.LLM_SERVICE_TYPE
-    old_model_name = SETTINGS.LLM_MODEL_NAME
-    old_active_server = SETTINGS.ACTIVE_LLM_SERVER
-    old_config_hash = SETTINGS.LLM_CONFIG_HASH
-
-    try:
-        SETTINGS.LLM_SERVICE_TYPE = provider_raw
-        SETTINGS.LLM_MODEL_NAME = model_name
-        SETTINGS.ACTIVE_LLM_SERVER = provider_raw
-
-        runtime = get_active_llm_runtime()
-        config_hash = runtime.config_hash or ""
-        SETTINGS.LLM_CONFIG_HASH = config_hash
-
-        updates = {
-            "LLM_SERVICE_TYPE": provider_raw,
-            "LLM_MODEL_NAME": model_name,
-            "ACTIVE_LLM_SERVER": provider_raw,
-            "LLM_CONFIG_HASH": config_hash,
-        }
-        config_manager.update_config(updates)
-    except Exception:
-        SETTINGS.LLM_SERVICE_TYPE = old_service_type
-        SETTINGS.LLM_MODEL_NAME = old_model_name
-        SETTINGS.ACTIVE_LLM_SERVER = old_active_server
-        SETTINGS.LLM_CONFIG_HASH = old_config_hash
-        raise
-
-    return {
-        "status": "success",
-        "active_server": runtime.provider,
-        "active_endpoint": runtime.endpoint,
-        "active_model": runtime.model_name,
-        "config_hash": runtime.config_hash,
-        "runtime_id": runtime.runtime_id,
-    }
+    _assert_cloud_provider_requirements(provider_raw)
+    return _activate_cloud_runtime(provider_raw, request.model)
 
 
 @router.post(

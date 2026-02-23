@@ -12,6 +12,33 @@ import {
   handleStandardTaskSend,
 } from "./chat-send-helpers";
 
+function resolveSession(
+  parsed: ReturnType<typeof parseSlashCommand>,
+  sessionId: string | null,
+  resetSession: () => string | null,
+): string | null {
+  if (!parsed.sessionReset) {
+    return sessionId;
+  }
+  return resetSession() ?? sessionId;
+}
+
+function getServerSwitchErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+function shouldUseSimpleMode(
+  chatMode: ChatSendParams["chatMode"],
+  parsed: ReturnType<typeof parseSlashCommand>,
+): boolean {
+  return (
+    chatMode === "direct" &&
+    !parsed.forcedTool &&
+    !parsed.forcedProvider &&
+    !parsed.sessionReset
+  );
+}
+
 export function useChatSend(params: ChatSendParams) {
   const {
     labMode,
@@ -60,7 +87,6 @@ export function useChatSend(params: ChatSendParams) {
       return false;
     }
 
-    let sessionOverride: string | null = null;
     const switchResult = await handleRuntimeSwitch({
       parsed,
       activeServerInfo,
@@ -75,10 +101,7 @@ export function useChatSend(params: ChatSendParams) {
     if (!switchResult.success) return false;
     const runtimeOverride: RuntimeOverride = switchResult.runtimeOverride;
 
-    if (parsed.sessionReset) {
-      sessionOverride = resetSession();
-    }
-    const resolvedSession = sessionOverride ?? sessionId;
+    const resolvedSession = resolveSession(parsed, sessionId, resetSession);
     if (!resolvedSession) {
       setMessage(t("cockpit.chatMessages.sessionInitializing"));
       return false;
@@ -91,11 +114,7 @@ export function useChatSend(params: ChatSendParams) {
         await setActiveLlmServer(targetServer);
         refreshActiveServer();
       } catch (err) {
-        setMessage(
-          err instanceof Error
-            ? err.message
-            : t("cockpit.chatMessages.serverSwitchError"),
-        );
+        setMessage(getServerSwitchErrorMessage(err, t("cockpit.chatMessages.serverSwitchError")));
         return false;
       }
     }
@@ -105,11 +124,7 @@ export function useChatSend(params: ChatSendParams) {
     setSending(true);
     setMessage(null);
 
-    const shouldUseSimple =
-      chatMode === "direct" &&
-      !parsed.forcedTool &&
-      !parsed.forcedProvider &&
-      !parsed.sessionReset;
+    const shouldUseSimple = shouldUseSimpleMode(chatMode, parsed);
 
     const forcedIntent = chatMode === "complex" ? "COMPLEX_PLANNING" : null;
     const clientId = enqueueOptimisticRequest(trimmed, {

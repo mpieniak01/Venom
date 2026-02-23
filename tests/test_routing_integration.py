@@ -3,7 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from venom_core.contracts.routing import ReasonCode, RuntimeTarget
-from venom_core.core.routing_integration import build_routing_decision
+from venom_core.core.routing_integration import (
+    _build_fallback_chain,
+    build_routing_decision,
+)
 
 
 def test_build_routing_decision_local_path(monkeypatch):
@@ -109,3 +112,24 @@ def test_build_routing_decision_governance_fallback(monkeypatch):
     assert decision.fallback_applied is True
     assert decision.reason_code == ReasonCode.FALLBACK_AUTH_ERROR
     assert decision.fallback_chain == ["openai", "vllm"]
+
+
+def test_build_fallback_chain_variants():
+    assert _build_fallback_chain(
+        preferred_provider="openai",
+        selected_provider="vllm",
+        fallback_applied=True,
+    ) == ["openai", "vllm"]
+    assert _build_fallback_chain(
+        preferred_provider="ollama",
+        selected_provider="ollama",
+        fallback_applied=False,
+    ) == ["ollama"]
+    assert (
+        _build_fallback_chain(
+            preferred_provider="",
+            selected_provider="vllm",
+            fallback_applied=True,
+        )
+        == []
+    )

@@ -313,6 +313,25 @@ def test_conversion_helpers_pandoc_success_and_missing_import(tmp_path):
         assert academy_routes._convert_with_pandoc(src, out) is False  # noqa: SLF001
 
 
+def test_conversion_helpers_pandoc_doc_uses_doc_format(tmp_path):
+    src = tmp_path / "legacy.doc"
+    out = tmp_path / "legacy.md"
+    src.write_bytes(b"X")
+    out.write_text("converted", encoding="utf-8")
+    calls: list[dict] = []
+
+    class _P:
+        @staticmethod
+        def convert_file(*args, **kwargs):
+            calls.append(kwargs)
+            return None
+
+    with patch.dict("sys.modules", {"pypandoc": _P}):
+        assert academy_routes._convert_with_pandoc(src, out) is True  # noqa: SLF001
+    assert calls
+    assert calls[0]["format"] == "doc"
+
+
 def test_conversion_helpers_metadata_and_workspace(tmp_path):
     with patch("venom_core.config.SETTINGS.ACADEMY_USER_DATA_DIR", str(tmp_path)):
         workspace = academy_routes._get_user_conversion_workspace("user_a")  # noqa: SLF001

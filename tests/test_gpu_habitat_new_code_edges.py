@@ -300,14 +300,14 @@ def test_signal_validated_local_job_sends_signal_only_when_pid_valid(monkeypatch
     )
 
     sent = habitat._signal_validated_local_job(
-        "job-a", {"pid": 321}, gpu_habitat_mod.signal.SIGTERM
+        {"pid": 321}, gpu_habitat_mod.signal.SIGTERM
     )
     assert sent is True
     assert calls and calls[0][0] == 321
 
     monkeypatch.setattr(habitat, "_validate_local_job_pid", lambda _job: None)
     sent = habitat._signal_validated_local_job(
-        "job-b", {"pid": 999}, gpu_habitat_mod.signal.SIGTERM
+        {"pid": 999}, gpu_habitat_mod.signal.SIGTERM
     )
     assert sent is False
 
@@ -323,7 +323,7 @@ def test_signal_validated_local_job_rejects_disallowed_signal(monkeypatch):
         lambda pid, sig: called.append((pid, sig)) or True,
     )
 
-    sent = habitat._signal_validated_local_job("job-c", {"pid": 321}, 999)
+    sent = habitat._signal_validated_local_job({"pid": 321}, 999)
     assert sent is False
     assert called == []
 
@@ -340,7 +340,7 @@ def test_signal_validated_local_job_rejects_foreign_pid_owner(monkeypatch):
     )
 
     sent = habitat._signal_validated_local_job(
-        "job-d", {"pid": 321}, gpu_habitat_mod.signal.SIGTERM
+        {"pid": 321}, gpu_habitat_mod.signal.SIGTERM
     )
     assert sent is False
     assert called == []
@@ -463,14 +463,11 @@ def test_cleanup_job_local_pid_without_process_uses_validated_signal(monkeypatch
     monkeypatch.setattr(
         habitat,
         "_signal_validated_local_job",
-        lambda job_name, job_info, sig: called.append(
-            (job_name, job_info.get("pid"), sig)
-        )
-        or True,
+        lambda job_info, sig: called.append((job_info.get("pid"), sig)) or True,
     )
 
     habitat.cleanup_job("job-local")
-    assert called and called[0][0] == "job-local"
+    assert called and called[0][0] == 222
     assert "job-local" not in habitat.training_containers
 
 

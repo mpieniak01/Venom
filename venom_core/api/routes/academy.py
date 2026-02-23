@@ -2233,9 +2233,11 @@ def _convert_with_pandoc(source_path: Path, output_path: Path) -> bool:
         return False
 
     source_ext = source_path.suffix.lower().lstrip(".")
-    input_format = (
-        "docx" if source_ext == "docx" else ("doc" if source_ext == "doc" else None)
-    )
+    input_format: str | None = None
+    if source_ext == "docx":
+        input_format = "docx"
+    elif source_ext == "doc":
+        input_format = "doc"
     try:
         if input_format:
             pypandoc.convert_file(

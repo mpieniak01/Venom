@@ -565,9 +565,7 @@ export function InstalledAndOperations({
     );
 }
 
-type RemoteModelsSectionProps = ModelsViewerLogic;
-
-export function RemoteModelsSection(props: RemoteModelsSectionProps) {
+export function RemoteModelsSection(props: ModelsViewerLogic) {
     const {
         t,
         remoteProviders,
@@ -749,8 +747,11 @@ export function RemoteModelsSection(props: RemoteModelsSectionProps) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {remoteBindings.map((binding, idx) => (
-                                        <tr key={idx} className="border-b border-white/5 hover:bg-white/5">
+                                    {remoteBindings.map((binding) => (
+                                        <tr
+                                            key={`${binding.service_id}:${binding.endpoint}:${binding.http_method}:${binding.provider}:${binding.model}`}
+                                            className="border-b border-white/5 hover:bg-white/5"
+                                        >
                                             <td className="px-3 py-3 text-xs">{binding.service_id}</td>
                                             <td className="px-3 py-3 text-xs font-mono">{binding.endpoint}</td>
                                             <td className="px-3 py-3 text-xs">

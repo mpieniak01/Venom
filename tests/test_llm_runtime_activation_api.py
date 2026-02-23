@@ -133,3 +133,11 @@ class TestLlmRuntimeActivationAPI:
             )
             assert response.status_code == 400
             assert "boom" in response.json()["detail"]
+
+
+def test_previous_model_key_for_server():
+    assert (
+        system_llm._previous_model_key_for_server("ollama") == "PREVIOUS_MODEL_OLLAMA"
+    )  # noqa: SLF001
+    assert system_llm._previous_model_key_for_server("vllm") == "PREVIOUS_MODEL_VLLM"  # noqa: SLF001
+    assert system_llm._previous_model_key_for_server("onnx") == "PREVIOUS_MODEL_ONNX"  # noqa: SLF001

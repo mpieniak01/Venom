@@ -497,7 +497,7 @@ class GPUHabitat(DockerHabitat):
         return pid
 
     def _signal_validated_local_job(
-        self, job_name: str, job_info: Dict[str, Any], sig: signal.Signals
+        self, job_info: Dict[str, Any], sig: signal.Signals
     ) -> bool:
         """
         Wysyła sygnał tylko do zweryfikowanego procesu lokalnego joba.
@@ -1023,7 +1023,7 @@ print("=" * 60)
             return
 
         if pid:
-            self._signal_validated_local_job(job_name, job_info, signal.SIGTERM)
+            self._signal_validated_local_job(job_info, signal.SIGTERM)
 
     @staticmethod
     def _resolve_positive_pid(pid_raw: Any) -> Optional[int]:

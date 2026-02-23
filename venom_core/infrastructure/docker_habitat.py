@@ -193,103 +193,25 @@ class DockerHabitat:
         Raises:
             RuntimeError: Jeśli nie można utworzyć kontenera
         """
-        retries_left = (
-            self.CONTAINER_CONFLICT_RETRIES
-            if conflict_retries_remaining is None
-            else max(0, int(conflict_retries_remaining))
-        )
+        retries_left = self._resolve_conflict_retries(conflict_retries_remaining)
 
         try:
-            # Pobierz obraz jeśli nie istnieje
             image_name = SETTINGS.DOCKER_IMAGE_NAME
-            try:
-                self.client.images.get(image_name)
-                logger.info(f"Obraz {image_name} już istnieje")
-            except ImageNotFound:
-                logger.info(f"Pobieranie obrazu {image_name}...")
-                self.client.images.pull(image_name)
-
-            # Przygotuj ścieżkę workspace jako bezwzględną
+            self._ensure_image_present(image_name)
             workspace_path = workspace_path or self._resolve_workspace_path()
-
-            # Utwórz kontener
-            container = self.client.containers.run(
-                image=image_name,
-                name=self.CONTAINER_NAME,
-                command="tail -f /dev/null",  # Utrzymuje kontener w działaniu
-                volumes={
-                    str(workspace_path): {"bind": CONTAINER_WORKDIR, "mode": "rw"}
-                },
-                working_dir=CONTAINER_WORKDIR,
-                detach=True,
-                remove=False,  # Nie usuwaj kontenera po zatrzymaniu
-            )
-
-            # Odśwież status kontenera
+            container = self._run_container(image_name, workspace_path)
             container.reload()
-
             logger.info(
                 f"Utworzono kontener {self.CONTAINER_NAME} z volume: {workspace_path} -> {CONTAINER_WORKDIR}"
             )
             return container
 
         except APIError as e:
-            error_text = str(e).lower()
-            status_code = getattr(e, "status_code", None)
-            is_conflict = status_code == 409 or "409 client error" in error_text
-            if retry_on_conflict and (
-                is_conflict
-                or "already in use" in error_text
-                or "conflict" in error_text
-            ):
-                if retries_left <= 0:
-                    error_msg = (
-                        f"Błąd API Docker podczas tworzenia kontenera: {e}. "
-                        "Wyczerpano limit retry dla konfliktu nazwy kontenera."
-                    )
-                    logger.error(error_msg)
-                    raise RuntimeError(error_msg) from e
-                logger.warning(
-                    "Konflikt nazwy kontenera %s; próba ponownego użycia "
-                    "(pozostałe retry: %s).",
-                    self.CONTAINER_NAME,
-                    retries_left,
-                )
-                try:
-                    existing = self.client.containers.get(self.CONTAINER_NAME)
-                    expected_workspace = (
-                        workspace_path or self._resolve_workspace_path()
-                    )
-                    if self._has_expected_workspace_mount(existing, expected_workspace):
-                        if existing.status != "running":
-                            existing.start()
-                            existing.reload()
-                        logger.info(
-                            "Ponownie użyto istniejącego kontenera po konflikcie nazwy."
-                        )
-                        return existing
-                    logger.warning(
-                        "Istniejący kontener po konflikcie ma niezgodny mount; rekreacja."
-                    )
-                    self._recreate_container(existing)
-                    return self._create_container(
-                        expected_workspace,
-                        retry_on_conflict=True,
-                        conflict_retries_remaining=retries_left - 1,
-                    )
-                except NotFound:
-                    pass
-                except Exception as reuse_exc:
-                    logger.warning(
-                        "Nie udało się ponownie użyć kontenera po konflikcie: %s",
-                        reuse_exc,
-                    )
-                logger.warning("Retry po usunięciu kontenera konfliktowego.")
-                self._remove_container_by_name_if_exists()
-                return self._create_container(
-                    workspace_path,
-                    retry_on_conflict=True,
-                    conflict_retries_remaining=retries_left - 1,
+            if retry_on_conflict and self._is_name_conflict_error(e):
+                return self._recover_from_name_conflict(
+                    error=e,
+                    workspace_path=workspace_path,
+                    retries_left=retries_left,
                 )
             error_msg = f"Błąd API Docker podczas tworzenia kontenera: {e}"
             logger.error(error_msg)
@@ -298,6 +220,103 @@ class DockerHabitat:
             error_msg = f"Nieoczekiwany błąd podczas tworzenia kontenera: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
+
+    def _resolve_conflict_retries(self, retries: int | None) -> int:
+        if retries is None:
+            return self.CONTAINER_CONFLICT_RETRIES
+        return max(0, int(retries))
+
+    def _ensure_image_present(self, image_name: str) -> None:
+        try:
+            self.client.images.get(image_name)
+            logger.info(f"Obraz {image_name} już istnieje")
+        except ImageNotFound:
+            logger.info(f"Pobieranie obrazu {image_name}...")
+            self.client.images.pull(image_name)
+
+    def _run_container(self, image_name: str, workspace_path: Path):
+        return self.client.containers.run(
+            image=image_name,
+            name=self.CONTAINER_NAME,
+            command="tail -f /dev/null",
+            volumes={str(workspace_path): {"bind": CONTAINER_WORKDIR, "mode": "rw"}},
+            working_dir=CONTAINER_WORKDIR,
+            detach=True,
+            remove=False,
+        )
+
+    @staticmethod
+    def _is_name_conflict_error(error: APIError) -> bool:
+        error_text = str(error).lower()
+        status_code = getattr(error, "status_code", None)
+        return bool(
+            status_code == 409
+            or "409 client error" in error_text
+            or "already in use" in error_text
+            or "conflict" in error_text
+        )
+
+    def _recover_from_name_conflict(
+        self,
+        *,
+        error: APIError,
+        workspace_path: Path | None,
+        retries_left: int,
+    ):
+        if retries_left <= 0:
+            error_msg = (
+                f"Błąd API Docker podczas tworzenia kontenera: {error}. "
+                "Wyczerpano limit retry dla konfliktu nazwy kontenera."
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from error
+
+        logger.warning(
+            "Konflikt nazwy kontenera %s; próba ponownego użycia "
+            "(pozostałe retry: %s).",
+            self.CONTAINER_NAME,
+            retries_left,
+        )
+        expected_workspace = workspace_path or self._resolve_workspace_path()
+        try:
+            existing = self.client.containers.get(self.CONTAINER_NAME)
+            if self._has_expected_workspace_mount(existing, expected_workspace):
+                if existing.status != "running":
+                    existing.start()
+                    existing.reload()
+                logger.info(
+                    "Ponownie użyto istniejącego kontenera po konflikcie nazwy."
+                )
+                return existing
+            logger.warning(
+                "Istniejący kontener po konflikcie ma niezgodny mount; rekreacja."
+            )
+            self._recreate_container(existing)
+            return self._create_container(
+                expected_workspace,
+                retry_on_conflict=True,
+                conflict_retries_remaining=retries_left - 1,
+            )
+        except NotFound:
+            logger.warning("Retry po usunięciu kontenera konfliktowego.")
+            self._remove_container_by_name_if_exists()
+            return self._create_container(
+                expected_workspace,
+                retry_on_conflict=True,
+                conflict_retries_remaining=retries_left - 1,
+            )
+        except Exception as reuse_exc:
+            logger.warning(
+                "Nie udało się ponownie użyć kontenera po konflikcie: %s",
+                reuse_exc,
+            )
+            logger.warning("Retry po usunięciu kontenera konfliktowego.")
+            self._remove_container_by_name_if_exists()
+            return self._create_container(
+                expected_workspace,
+                retry_on_conflict=True,
+                conflict_retries_remaining=retries_left - 1,
+            )
 
     def execute(self, command: str, timeout: int = 30) -> tuple[int, str]:
         """

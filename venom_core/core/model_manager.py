@@ -774,28 +774,13 @@ PARAMETER top_k 40
         source: str,
         provider: str = "vllm",
     ) -> None:
-        size_bytes = 0
-        if model_path.is_file():
-            size_bytes = model_path.stat().st_size
-        else:
-            for file_path in model_path.rglob("*"):
-                if file_path.is_file():
-                    size_bytes += file_path.stat().st_size
-
-        lower_path = str(model_path).lower()
+        size_bytes = self._calculate_model_size_bytes(model_path)
         onnx_metadata = self._load_onnx_metadata(model_path)
         metadata_provider = str(onnx_metadata.get("provider", "")).lower()
-        if ".gguf" in lower_path:
-            model_type = "gguf"
-        elif model_path.suffix == ".onnx" or model_path.suffix == ".bin":
-            model_type = "onnx"
-            provider = "onnx"
-        elif model_path.is_dir():
-            model_type = "folder"
-            if "onnx" in model_path.name.lower():
-                provider = "onnx"
-        else:
-            model_type = "folder"
+        model_type, provider = self._detect_model_type_and_provider(
+            model_path=model_path,
+            provider=provider,
+        )
         if metadata_provider == "onnx":
             provider = "onnx"
 
@@ -818,6 +803,34 @@ PARAMETER top_k 40
             "active": False,
             **onnx_payload,
         }
+
+    @staticmethod
+    def _calculate_model_size_bytes(model_path: Path) -> int:
+        if model_path.is_file():
+            return model_path.stat().st_size
+        size_bytes = 0
+        for file_path in model_path.rglob("*"):
+            if file_path.is_file():
+                size_bytes += file_path.stat().st_size
+        return size_bytes
+
+    @staticmethod
+    def _detect_model_type_and_provider(
+        *,
+        model_path: Path,
+        provider: str,
+    ) -> tuple[str, str]:
+        lower_path = str(model_path).lower()
+        if ".gguf" in lower_path:
+            return "gguf", provider
+        if model_path.suffix in {".onnx", ".bin"}:
+            return "onnx", "onnx"
+        if model_path.is_dir():
+            resolved_provider = (
+                "onnx" if "onnx" in model_path.name.lower() else provider
+            )
+            return "folder", resolved_provider
+        return "folder", provider
 
     def _build_search_dirs(self) -> List[Path]:
         search_dirs = [self.models_dir]

@@ -4,18 +4,16 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Generic, Optional, TypeVar
-
-T = TypeVar("T")
+from typing import Optional
 
 
 @dataclass
-class _CacheEntry(Generic[T]):
+class _CacheEntry[T]:
     value: T
     expires_at: float
 
 
-class TTLCache(Generic[T]):
+class TTLCache[T]:
     """Lekki cache w pamięci z TTL (sekundy)."""
 
     def __init__(self, ttl_seconds: float) -> None:

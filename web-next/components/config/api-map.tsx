@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
     Network,
     Globe,
@@ -30,6 +31,60 @@ import type { components } from "@/lib/generated/api-types";
 
 type ApiMapResponse = components["schemas"]["ApiMapResponse"];
 export type ApiConnection = components["schemas"]["ApiConnection"];
+
+type ConnectionCardProps = {
+    connection: ApiConnection;
+    isSelected: boolean;
+    onClick: () => void;
+    criticalLabel: string;
+    statusIcon: ReactNode;
+};
+
+function ConnectionCard({
+    connection,
+    isSelected,
+    onClick,
+    criticalLabel,
+    statusIcon,
+}: ConnectionCardProps) {
+    const isCloud = connection.source_type === "cloud";
+    const TargetIcon = isCloud ? Cloud : Server;
+
+    return (
+        <button
+            onClick={onClick}
+            className={cn(
+                "w-full text-left relative overflow-hidden rounded-xl border p-4 transition-all hover:bg-white/5",
+                isSelected
+                    ? "border-emerald-500/50 bg-emerald-500/10 ring-1 ring-emerald-500/20"
+                    : "border-white/5 bg-white/5"
+            )}
+        >
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <div className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-lg border",
+                        isSelected ? "border-emerald-500/30 bg-emerald-500/20" : "border-white/10 bg-white/10"
+                    )}>
+                        <TargetIcon className={cn("h-4 w-4", isSelected ? "text-emerald-300" : "text-zinc-400")} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className={cn("font-medium", isSelected ? "text-emerald-300" : "text-zinc-200")}>
+                                {connection.target_component}
+                            </span>
+                            {connection.is_critical && (
+                                <Shield className="h-3 w-3 text-red-400" aria-label={criticalLabel} />
+                            )}
+                        </div>
+                        <p className="text-xs text-zinc-500 line-clamp-1">{connection.description}</p>
+                    </div>
+                </div>
+                {statusIcon}
+            </div>
+        </button>
+    );
+}
 
 export function shouldShowConnection(
     conn: ApiConnection,
@@ -117,53 +172,8 @@ export function ApiMap() {
         }
     };
 
-    const ConnectionCard = ({
-        connection,
-        isSelected,
-        onClick
-    }: {
-        connection: ApiConnection;
-        isSelected: boolean;
-        onClick: () => void;
-    }) => {
-        const isCloud = connection.source_type === "cloud";
-        const TargetIcon = isCloud ? Cloud : Server;
-
-        return (
-            <button
-                onClick={onClick}
-                className={cn(
-                    "w-full text-left relative overflow-hidden rounded-xl border p-4 transition-all hover:bg-white/5",
-                    isSelected
-                        ? "border-emerald-500/50 bg-emerald-500/10 ring-1 ring-emerald-500/20"
-                        : "border-white/5 bg-white/5"
-                )}
-            >
-                <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                        <div className={cn(
-                            "flex h-8 w-8 items-center justify-center rounded-lg border",
-                            isSelected ? "border-emerald-500/30 bg-emerald-500/20" : "border-white/10 bg-white/10"
-                        )}>
-                            <TargetIcon className={cn("h-4 w-4", isSelected ? "text-emerald-300" : "text-zinc-400")} />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <span className={cn("font-medium", isSelected ? "text-emerald-300" : "text-zinc-200")}>
-                                    {connection.target_component}
-                                </span>
-                                {connection.is_critical && (
-                                    <Shield className="h-3 w-3 text-red-400" aria-label={t("config.apiMap.legend.critical")} />
-                                )}
-                            </div>
-                            <p className="text-xs text-zinc-500 line-clamp-1">{connection.description}</p>
-                        </div>
-                    </div>
-                    {getStatusIcon(connection.status)}
-                </div>
-            </button>
-        );
-    };
+    const connectionKey = (conn: ApiConnection) =>
+        `${conn.source_component}:${conn.target_component}:${conn.protocol}:${conn.direction}`;
 
     // --- Filtering Logic ---
     const filterConnection = (conn: ApiConnection) => {
@@ -294,12 +304,14 @@ export function ApiMap() {
                                     <span className="text-xs text-zinc-500">({filteredInternal.length})</span>
                                 </div>
                                 <div className="space-y-2">
-                                    {filteredInternal.map((conn, idx) => (
+                                    {filteredInternal.map((conn) => (
                                         <ConnectionCard
-                                            key={`internal-${idx}`}
+                                            key={`internal-${connectionKey(conn)}`}
                                             connection={conn}
                                             isSelected={selectedConnection === conn}
                                             onClick={() => setSelectedConnection(conn)}
+                                            criticalLabel={t("config.apiMap.legend.critical")}
+                                            statusIcon={getStatusIcon(conn.status)}
                                         />
                                     ))}
                                 </div>
@@ -315,12 +327,14 @@ export function ApiMap() {
                                     <span className="text-xs text-zinc-500">({filteredExternal.length})</span>
                                 </div>
                                 <div className="space-y-2">
-                                    {filteredExternal.map((conn, idx) => (
+                                    {filteredExternal.map((conn) => (
                                         <ConnectionCard
-                                            key={`external-${idx}`}
+                                            key={`external-${connectionKey(conn)}`}
                                             connection={conn}
                                             isSelected={selectedConnection === conn}
                                             onClick={() => setSelectedConnection(conn)}
+                                            criticalLabel={t("config.apiMap.legend.critical")}
+                                            statusIcon={getStatusIcon(conn.status)}
                                         />
                                     ))}
                                 </div>
@@ -413,8 +427,8 @@ export function ApiMap() {
                                 <div className="flex-1 overflow-y-auto -mr-4 pr-4">
                                     {selectedConnection.methods && selectedConnection.methods.length > 0 ? (
                                         <div className="space-y-2">
-                                            {selectedConnection.methods.map((method, idx) => (
-                                                <div key={idx} className="font-mono text-xs bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-zinc-300 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors cursor-default">
+                                            {selectedConnection.methods.map((method) => (
+                                                <div key={`${selectedConnection.target_component}-${method}`} className="font-mono text-xs bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-zinc-300 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors cursor-default">
                                                     {method}
                                                 </div>
                                             ))}

@@ -28,6 +28,23 @@ _REASON_CODE_FROM_GOVERNANCE: dict[str, ReasonCode] = {
 }
 
 
+def _build_fallback_chain(
+    *,
+    preferred_provider: str,
+    selected_provider: str,
+    fallback_applied: bool,
+) -> list[str]:
+    if not preferred_provider:
+        return []
+    if (
+        fallback_applied
+        and selected_provider
+        and selected_provider != preferred_provider
+    ):
+        return [preferred_provider, selected_provider]
+    return [preferred_provider]
+
+
 def _to_runtime_target(provider: str | None) -> RuntimeTarget | None:
     provider_key = (provider or "").strip().lower()
     if provider_key == "ollama":
@@ -113,14 +130,10 @@ def build_routing_decision(
         complexity_score=complexity_score,
         is_sensitive=is_sensitive,
         fallback_applied=bool(governance_decision.fallback_applied),
-        fallback_chain=(
-            [preferred_provider, selected_provider]
-            if governance_decision.fallback_applied
-            and selected_provider
-            and selected_provider != preferred_provider
-            else [preferred_provider]
-            if preferred_provider
-            else []
+        fallback_chain=_build_fallback_chain(
+            preferred_provider=preferred_provider,
+            selected_provider=selected_provider,
+            fallback_applied=bool(governance_decision.fallback_applied),
         ),
         policy_gate_passed=True,
         estimated_cost_usd=0.0,

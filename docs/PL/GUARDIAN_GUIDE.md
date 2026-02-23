@@ -166,7 +166,7 @@ Dashboard wyświetla:
 ### Wymagania środowiska:
 
 1. **Docker** - Wymagany do uruchomienia DockerHabitat
-2. **Python 3.11+**
+2. **Python 3.12+**
 3. **Zależności w kontenerze:**
    - pytest
    - ruff lub flake8

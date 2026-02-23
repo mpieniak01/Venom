@@ -241,7 +241,7 @@ API_PROXY_TARGET=http://localhost:8000
 ## Instalacja i zależności
 ### Wymagania
 ```text
-Python 3.10+ (zalecane 3.11)
+Python 3.12+ (zalecane 3.12)
 ```
 
 ### Kluczowe pakiety

@@ -246,7 +246,7 @@ for version in genealogy['versions']:
 **Minimum (CPU only):**
 - Docker installed
 - 8 GB RAM
-- Python 3.10+
+- Python 3.12+
 
 **Recommended (GPU):**
 - NVIDIA GPU (min. 8 GB VRAM)

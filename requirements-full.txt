@@ -1,5 +1,5 @@
 # VENOM – requirements-full.txt (legacy full stack)
-# Zalecany Python: 3.10 lub 3.11 (GraphRAG bywa niestabilny na 3.12)
+# Zalecany Python: 3.12
 # Użyj: pip install -r requirements-full.txt
 
 -c constraints-hf-onnx.txt

@@ -240,7 +240,7 @@ API_PROXY_TARGET=http://localhost:8000
 ## Installation and dependencies
 ### Requirements
 ```text
-Python 3.10+ (recommended 3.11)
+Python 3.12+ (recommended 3.12)
 ```
 
 ### Key packages

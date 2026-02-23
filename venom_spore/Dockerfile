@@ -1,5 +1,5 @@
 # Dockerfile for Venom Spore
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 LABEL maintainer="Venom Project"
 LABEL description="Venom Spore - Lightweight distributed node"

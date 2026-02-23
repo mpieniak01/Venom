@@ -185,7 +185,7 @@ class Settings(BaseSettings):
     MAX_CONTEXT_TOKENS: int = 4000  # Maksymalna liczba tokenów w kontekście
 
     # Konfiguracja Docker Sandbox
-    DOCKER_IMAGE_NAME: str = "python:3.11-slim"
+    DOCKER_IMAGE_NAME: str = "python:3.12-slim"
     ENABLE_SANDBOX: bool = True
 
     # Konfiguracja Background Tasks (THE_OVERMIND)

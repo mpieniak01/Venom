@@ -5,7 +5,7 @@ description = "Venom - AI Agent System"
 authors = ["Venom Team"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 88
 extend-exclude = [
   "models",
@@ -36,7 +36,7 @@ skip = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 files = ["venom_core"]
 warn_unused_ignores = true
 warn_redundant_casts = true
@@ -80,7 +80,7 @@ ignore_missing_imports = true
 
 [tool.black]
 line-length = 88
-target-version = ["py311"]
+target-version = ["py312"]
 extend-exclude = '''
 (
   ^/(

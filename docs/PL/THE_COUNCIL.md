@@ -179,7 +179,7 @@ print(f"Uczestnicy: {session.get_speakers()}")
 
 ### Software:
 
-1. **Python 3.10+**
+1. **Python 3.12+**
 2. **pyautogen>=0.2.0** (zainstalowany automatycznie)
 3. **semantic-kernel>=1.9.0** (wymagany przez Venom)
 4. **Lokalny LLM Server** (opcjonalny, ale zalecany):

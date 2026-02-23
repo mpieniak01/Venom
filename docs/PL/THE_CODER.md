@@ -110,7 +110,7 @@ TaskDispatcher przechodzi do następnego kroku
 # W .env
 WORKSPACE_ROOT=./workspace          # Katalog roboczy dla plików
 ENABLE_SANDBOX=true                 # Czy uruchamiać kod w sandboxie
-DOCKER_IMAGE_NAME=python:3.11-slim  # Obraz dla Docker sandbox
+DOCKER_IMAGE_NAME=python:3.12-slim  # Obraz dla Docker sandbox
 ```
 
 ## Docker Compose Stack - Best Practices

@@ -283,7 +283,7 @@ async def main():
 
     print("\n📌 Wymagania:")
     print("  • Redis (localhost:6379)")
-    print("  • Python 3.10+")
+    print("  • Python 3.12+")
     print("  • Zainstalowane zależności (redis, arq)")
 
     print("\n🚀 Rozpoczynam demonstracje...\n")

@@ -13,7 +13,7 @@ Venom Spore ("Zarodnik") to mniejsza, uproszczona wersja Venoma, która:
 ## 📦 Instalacja
 
 ### Wymagania
-- Python 3.10+
+- Python 3.12+
 - `websockets` i `psutil` (instalowane automatycznie)
 
 ### Szybki start
@@ -98,7 +98,7 @@ python main.py
 
 ```dockerfile
 # Dockerfile dla Venom Spore
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 COPY venom_spore/ /app/

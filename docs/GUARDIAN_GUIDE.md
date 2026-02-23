@@ -166,7 +166,7 @@ Dashboard shows:
 ### Environment requirements:
 
 1. **Docker** - required to run DockerHabitat
-2. **Python 3.11+**
+2. **Python 3.12+**
 3. **Dependencies in container:**
    - pytest
    - ruff or flake8

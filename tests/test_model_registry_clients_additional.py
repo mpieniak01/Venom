@@ -245,6 +245,95 @@ async def test_ollama_list_tags_uses_traffic_control_client():
 
 
 @pytest.mark.asyncio
+async def test_ollama_list_tags_returns_empty_on_exception():
+    client = mrc.OllamaClient(endpoint="http://localhost:11434")
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(side_effect=RuntimeError("boom"))
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        payload = await client.list_tags()
+
+    assert payload == {"models": []}
+
+
+@pytest.mark.asyncio
+async def test_ollama_search_models_success_and_failure():
+    client = mrc.OllamaClient(endpoint="http://localhost:11434")
+
+    response = MagicMock()
+    response.text = "<html></html>"
+    with patch(
+        "venom_core.core.model_registry_clients._parse_ollama_search_html",
+        return_value=[{"name": "qwen2.5"}],
+    ):
+        with patch(
+            "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.aget = AsyncMock(return_value=response)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            data = await client.search_models("qwen", limit=3)
+            assert data == [{"name": "qwen2.5"}]
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(side_effect=RuntimeError("catalog down"))
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        data = await client.search_models("qwen", limit=3)
+        assert data == []
+
+
+@pytest.mark.asyncio
+async def test_ollama_pull_model_stream_success_and_failed_return_code():
+    client = mrc.OllamaClient()
+    progress = AsyncMock()
+
+    class _Stream:
+        def __init__(self, lines):
+            self._lines = list(lines)
+
+        async def readline(self):
+            return self._lines.pop(0) if self._lines else b""
+
+    process_ok = SimpleNamespace(
+        stdout=_Stream([b"pulling...\n", b"done\n", b""]),
+        stderr=SimpleNamespace(read=AsyncMock(return_value=b"")),
+        returncode=0,
+        wait=AsyncMock(return_value=0),
+        kill=MagicMock(),
+    )
+    with patch(
+        "asyncio.create_subprocess_exec", new=AsyncMock(return_value=process_ok)
+    ):
+        assert await client.pull_model("m1", progress_callback=progress) is True
+    assert progress.await_count >= 1
+
+    process_fail = SimpleNamespace(
+        stdout=_Stream([b"step\n", b""]),
+        stderr=SimpleNamespace(read=AsyncMock(return_value=b"failed")),
+        returncode=1,
+        wait=AsyncMock(return_value=1),
+        kill=MagicMock(),
+    )
+    with patch(
+        "asyncio.create_subprocess_exec", new=AsyncMock(return_value=process_fail)
+    ):
+        assert await client.pull_model("m1") is False
+
+
+@pytest.mark.asyncio
 async def test_hf_list_models_fallbacks_from_trending_to_downloads():
     client = mrc.HuggingFaceClient(token="secret")
 
@@ -275,6 +364,51 @@ async def test_hf_list_models_fallbacks_from_trending_to_downloads():
 
 
 @pytest.mark.asyncio
+async def test_hf_list_models_non_trending_http_error_is_raised():
+    client = mrc.HuggingFaceClient(token="secret")
+    status_error = httpx.HTTPStatusError(
+        "bad status",
+        request=MagicMock(),
+        response=MagicMock(status_code=503),
+    )
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(side_effect=status_error)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.list_models(sort="downloads", limit=5)
+
+
+@pytest.mark.asyncio
+async def test_hf_search_models_non_list_and_exception_paths():
+    client = mrc.HuggingFaceClient(token="tok")
+    response = MagicMock()
+    response.json.return_value = {"unexpected": True}
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        assert await client.search_models("phi", limit=2) == []
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(side_effect=RuntimeError("hf down"))
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        assert await client.search_models("phi", limit=2) == []
+
+
+@pytest.mark.asyncio
 async def test_hf_fetch_blog_feed_uses_traffic_control_client():
     client = mrc.HuggingFaceClient()
     response = MagicMock()
@@ -297,3 +431,64 @@ async def test_hf_fetch_blog_feed_uses_traffic_control_client():
     assert items[0]["title"] == "Blog"
     assert mock_client_cls.call_args.kwargs["provider"] == "huggingface"
     mock_client.aget.assert_awaited_once()
+
+
+def test_parse_hf_blog_feed_channel_missing_returns_empty():
+    payload = "<?xml version='1.0'?><rss><no-channel /></rss>"
+    assert mrc._parse_hf_blog_feed(payload, limit=2) == []
+
+
+def test_parse_hf_papers_html_invalid_data_props_shape_returns_empty():
+    raw = html.escape("[]")
+    payload = f'<div data-target="DailyPapers" data-props="{raw}"></div>'
+    assert mrc._parse_hf_papers_html(payload, limit=2) == []
+
+
+def test_parse_hf_papers_html_missing_data_props_end_quote_returns_empty():
+    payload = '<div data-target="DailyPapers" data-props="'
+    assert mrc._parse_hf_papers_html(payload, limit=2) == []
+
+
+@pytest.mark.asyncio
+async def test_hf_download_snapshot_success_calls_callback(tmp_path):
+    called = []
+
+    async def _progress(message: str):
+        called.append(message)
+
+    fake_module = SimpleNamespace(
+        snapshot_download=lambda **kwargs: str(
+            tmp_path / kwargs["repo_id"].replace("/", "--")
+        )
+    )
+
+    client = mrc.HuggingFaceClient(token="tok")
+    with patch.dict(sys.modules, {"huggingface_hub": fake_module}):
+        result = await client.download_snapshot(
+            "org/model",
+            str(tmp_path),
+            progress_callback=_progress,
+        )
+
+    assert result is not None
+    assert called and "Pobieranie org/model" in called[0]
+
+
+def test_remove_cached_model_success_missing_and_rmtree_error(tmp_path, monkeypatch):
+    client = mrc.HuggingFaceClient()
+    model_name = "org/model"
+    model_dir = tmp_path / "org--model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    assert client.remove_cached_model(tmp_path, model_name) is True
+    assert model_dir.exists() is False
+
+    assert client.remove_cached_model(tmp_path, model_name) is False
+
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    def _raise(*_args, **_kwargs):
+        raise OSError("cannot remove")
+
+    monkeypatch.setattr(mrc.shutil, "rmtree", _raise)
+    assert client.remove_cached_model(tmp_path, model_name) is False

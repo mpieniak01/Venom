@@ -8,6 +8,7 @@ import pytest
 from venom_core.jobs.scheduler import (
     _delete_stale_empty_dir,
     _delete_stale_file,
+    _is_file_stale_and_untracked,
     _is_target_scannable,
     _load_tracked_repo_files,
     _resolve_retention_targets,
@@ -238,6 +239,112 @@ def test_delete_stale_empty_dir_returns_zero_when_rmdir_fails(tmp_path: Path) ->
         _delete_stale_empty_dir(
             dir_path=stale_dir,
             cutoff_timestamp=time.time() - (7 * 86400),
+        )
+        == 0
+    )
+
+
+def test_is_file_stale_and_untracked_covers_outside_repo_and_non_file(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path.parent / "outside.log"
+    outside.write_text("x", encoding="utf-8")
+    stale, size = _is_file_stale_and_untracked(
+        file_path=outside,
+        repo_root=tmp_path.resolve(),
+        cutoff_timestamp=time.time(),
+        tracked_repo_files=set(),
+    )
+    assert stale is False
+    assert size == 0
+
+    dir_path = tmp_path / "data"
+    dir_path.mkdir(parents=True, exist_ok=True)
+    stale2, size2 = _is_file_stale_and_untracked(
+        file_path=dir_path,
+        repo_root=tmp_path.resolve(),
+        cutoff_timestamp=time.time(),
+        tracked_repo_files=set(),
+    )
+    assert stale2 is False
+    assert size2 == 0
+
+
+def test_is_file_stale_and_untracked_handles_stat_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "logs" / "old.log"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("x", encoding="utf-8")
+
+    original_stat = Path.stat
+
+    def _stat_raise_oserror(self, *args, **kwargs):
+        if self == target:
+            raise OSError("stat-fail")
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", _stat_raise_oserror)
+    stale, size = _is_file_stale_and_untracked(
+        file_path=target,
+        repo_root=tmp_path.resolve(),
+        cutoff_timestamp=time.time(),
+        tracked_repo_files=set(),
+    )
+    assert stale is False
+    assert size == 0
+
+
+def test_delete_stale_file_handles_file_disappearing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stale_file = tmp_path / "data" / "old.log"
+    _touch_with_age(stale_file, age_days=9)
+
+    def _unlink_missing(*_args, **_kwargs):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(Path, "unlink", _unlink_missing)
+    deleted, freed = _delete_stale_file(
+        file_path=stale_file,
+        repo_root=tmp_path.resolve(),
+        cutoff_timestamp=time.time() - (7 * 86400),
+        tracked_repo_files=set(),
+    )
+    assert deleted == 0
+    assert freed == 0
+
+
+def test_delete_stale_empty_dir_returns_one_for_old_empty_dir(tmp_path: Path) -> None:
+    stale_dir = tmp_path / "logs" / "old-empty"
+    stale_dir.mkdir(parents=True, exist_ok=True)
+    old_ts = int(time.time()) - (10 * 86400)
+    os.utime(stale_dir, (old_ts, old_ts))
+
+    deleted = _delete_stale_empty_dir(
+        dir_path=stale_dir,
+        cutoff_timestamp=time.time() - (7 * 86400),
+    )
+    assert deleted == 1
+    assert stale_dir.exists() is False
+
+
+def test_delete_stale_empty_dir_returns_zero_on_stat_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stale_dir = tmp_path / "logs" / "maybe"
+    stale_dir.mkdir(parents=True, exist_ok=True)
+    original_stat = Path.stat
+
+    def _stat_raise(self, *args, **kwargs):
+        if self == stale_dir:
+            raise OSError("stat-error")
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", _stat_raise)
+    assert (
+        _delete_stale_empty_dir(
+            dir_path=stale_dir, cutoff_timestamp=time.time() - (7 * 86400)
         )
         == 0
     )

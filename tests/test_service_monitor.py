@@ -1,5 +1,6 @@
 """Testy dla modułu service_monitor."""
 
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -103,6 +104,25 @@ def test_set_orchestrator(service_monitor):
     orchestrator = MagicMock()
     service_monitor.set_orchestrator(orchestrator)
     assert service_monitor.orchestrator is orchestrator
+
+
+def test_service_registry_registers_openai_and_docker_when_enabled(monkeypatch):
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.SETTINGS.OPENAI_API_KEY",
+        "sk-enabled",
+    )
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.SETTINGS.LLM_SERVICE_TYPE",
+        "openai",
+    )
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.SETTINGS.ENABLE_SANDBOX",
+        True,
+    )
+    registry = ServiceRegistry()
+    names = {service.name for service in registry.get_all_services()}
+    assert "OpenAI API" in names
+    assert "Docker Daemon" in names
 
 
 def test_get_all_services_returns_list(service_monitor):
@@ -300,9 +320,37 @@ async def test_check_health_unknown_service_returns_empty(service_monitor):
 
 
 @pytest.mark.asyncio
+async def test_check_health_converts_exceptions_to_offline_status(service_monitor):
+    with patch.object(
+        service_monitor,
+        "_check_service_health",
+        new=AsyncMock(side_effect=RuntimeError("explode")),
+    ):
+        services = await service_monitor.check_health()
+
+    assert services
+    assert all(service.status == ServiceStatus.OFFLINE for service in services)
+    assert all(service.error_message for service in services)
+
+
+@pytest.mark.asyncio
 async def test_check_service_health_unknown_type_sets_unknown(service_monitor):
     test_service = ServiceInfo(name="Mystery", service_type="mystery")
     result = await service_monitor._check_service_health(test_service)
+    assert result.status == ServiceStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_check_service_health_ws_broadcast_error_is_non_fatal():
+    registry = ServiceRegistry()
+    monitor = ServiceHealthMonitor(
+        registry,
+        event_broadcaster=SimpleNamespace(
+            broadcast_event=MagicMock(side_effect=RuntimeError("ws down"))
+        ),
+    )
+    service = ServiceInfo(name="Mystery", service_type="mystery")
+    result = await monitor._check_service_health(service)
     assert result.status == ServiceStatus.UNKNOWN
 
 
@@ -375,6 +423,55 @@ async def test_check_local_database_service(service_monitor):
         result = await service_monitor._check_service_health(test_service)
 
         assert result.status == ServiceStatus.ONLINE
+
+
+@pytest.mark.asyncio
+async def test_check_local_database_service_redis_missing_dependency(service_monitor):
+    service = ServiceInfo(
+        name="Redis",
+        service_type="database",
+        endpoint="redis://localhost:6379/0",
+        description="redis",
+    )
+    await service_monitor._check_local_database_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert service.error_message
+
+
+@pytest.mark.asyncio
+async def test_check_mcp_service_import_error_branch(service_monitor, monkeypatch):
+    fake_module = ModuleType("venom_core.skills.mcp_manager_skill")
+    monkeypatch.setitem(
+        __import__("sys").modules, "venom_core.skills.mcp_manager_skill", fake_module
+    )
+    service = ServiceInfo(name="MCP Engine", service_type="mcp")
+    await service_monitor._check_mcp_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+
+
+@pytest.mark.asyncio
+async def test_check_semantic_kernel_service_without_orchestrator(service_monitor):
+    service_monitor.orchestrator = None
+    service = ServiceInfo(name="Semantic Kernel", service_type="orchestrator")
+    await service_monitor._check_semantic_kernel_service(service)
+    assert service.status == ServiceStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_check_semantic_kernel_service_counts_functions(service_monitor):
+    kernel = SimpleNamespace(
+        plugins={
+            "p1": SimpleNamespace(functions=[1, 2]),
+            "p2": SimpleNamespace(functions=[3]),
+        }
+    )
+    service_monitor.orchestrator = SimpleNamespace(
+        task_dispatcher=SimpleNamespace(kernel=kernel)
+    )
+    service = ServiceInfo(name="Semantic Kernel", service_type="orchestrator")
+    await service_monitor._check_semantic_kernel_service(service)
+    assert service.status == ServiceStatus.ONLINE
+    assert "3 funkcji" in (service.error_message or "")
 
 
 def test_get_memory_metrics(service_monitor):

@@ -120,6 +120,13 @@ async def test_start_local_runtime_if_needed_paths(monkeypatch):
     )
     assert await main_module._start_local_runtime_if_needed(runtime) == "online"
 
+    monkeypatch.setattr(
+        main_module,
+        "_wait_for_runtime_online",
+        AsyncMock(return_value="offline"),
+    )
+    assert await main_module._start_local_runtime_if_needed(runtime) == "offline"
+
 
 @pytest.mark.asyncio
 async def test_synchronize_startup_local_model_updates_config(monkeypatch):
@@ -345,6 +352,15 @@ def test_resolve_audit_actor_prefers_headers_then_state_then_client():
 def test_resolve_audit_actor_without_state_attribute_uses_client():
     request = SimpleNamespace(headers={}, client=SimpleNamespace(host="10.0.0.7"))
     assert main_module._resolve_audit_actor(request) == "10.0.0.7"
+
+
+def test_resolve_audit_actor_with_state_without_user_attr_uses_client():
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(),
+        client=SimpleNamespace(host="10.0.0.8"),
+    )
+    assert main_module._resolve_audit_actor(request) == "10.0.0.8"
 
 
 def test_resolve_audit_status_buckets():

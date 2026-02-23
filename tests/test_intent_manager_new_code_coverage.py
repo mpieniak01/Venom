@@ -277,6 +277,12 @@ def test_init_with_builder_failure_in_test_mode(monkeypatch):
     assert manager._llm_disabled is True
 
 
+def test_requires_tool_uses_tool_required_intents():
+    manager = IntentManager(kernel=MagicMock())
+    assert manager.requires_tool("TIME_REQUEST") is True
+    assert manager.requires_tool("GENERAL_CHAT") is False
+
+
 @pytest.mark.asyncio
 async def test_classify_intent_with_llm_error_falls_back_to_help():
     manager = IntentManager(kernel=MagicMock())

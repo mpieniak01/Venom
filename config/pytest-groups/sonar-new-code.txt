@@ -114,3 +114,6 @@ tests/test_message_broker.py
 
 # AUTO-ADDED by pre-commit (staged backend/test changes)
 tests/test_api_contracts_stability.py
+tests/test_translation_service.py
+tests/test_onnx_llm_client.py
+tests/test_eyes.py

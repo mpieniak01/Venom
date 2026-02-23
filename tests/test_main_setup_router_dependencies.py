@@ -1,6 +1,6 @@
 import sys
 from types import ModuleType, SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import venom_core.main as main_module
 
@@ -269,3 +269,81 @@ def test_setup_router_dependencies_retries_professor_init_handles_exception(
     main_module.setup_router_dependencies()
 
     assert main_module.professor is None
+
+
+async def _done_task() -> None:
+    return None
+
+
+def test_initialize_background_scheduler_retention_recent_no_startup_task(monkeypatch):
+    class DummyScheduler:
+        def __init__(self, event_broadcaster):
+            self.event_broadcaster = event_broadcaster
+            self.job_ids = []
+
+        async def start(self):
+            return None
+
+        def add_interval_job(self, func, minutes, job_id, description):
+            self.job_ids.append(job_id)
+
+    monkeypatch.setattr(main_module, "BackgroundScheduler", DummyScheduler)
+    monkeypatch.setattr(main_module.job_scheduler, "consolidate_memory", AsyncMock())
+    monkeypatch.setattr(main_module.job_scheduler, "check_health", AsyncMock())
+    monkeypatch.setattr(
+        main_module.job_scheduler, "cleanup_runtime_files", lambda **_: {}
+    )
+    monkeypatch.setattr(
+        main_module.asyncio, "to_thread", AsyncMock(side_effect=[False])
+    )
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_MEMORY_CONSOLIDATION", False)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_HEALTH_CHECKS", False)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_RUNTIME_RETENTION_CLEANUP", True)
+    monkeypatch.setattr(main_module.SETTINGS, "RUNTIME_RETENTION_DAYS", 7)
+    monkeypatch.setattr(main_module.SETTINGS, "RUNTIME_RETENTION_INTERVAL_MINUTES", 11)
+    monkeypatch.setattr(main_module.SETTINGS, "RUNTIME_RETENTION_TARGETS", ["./logs"])
+    monkeypatch.setattr(main_module.SETTINGS, "REPO_ROOT", ".")
+    monkeypatch.setattr(main_module, "request_tracer", None)
+    monkeypatch.setattr(main_module, "vector_store", None)
+    monkeypatch.setattr(main_module, "event_broadcaster", object())
+    main_module.startup_runtime_retention_task = None
+
+    import asyncio
+
+    asyncio.run(main_module._initialize_background_scheduler())
+
+    assert "cleanup_runtime_files" in main_module.background_scheduler.job_ids
+    assert main_module.startup_runtime_retention_task is None
+
+
+def test_shutdown_runtime_components_clears_startup_retention_task(monkeypatch):
+    import asyncio
+
+    async def _runner() -> None:
+        task = asyncio.create_task(_done_task())
+        main_module.startup_runtime_retention_task = task
+
+        monkeypatch.setattr(
+            main_module.llm_simple_routes,
+            "release_onnx_simple_client",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+        monkeypatch.setattr(
+            main_module.tasks_routes,
+            "release_onnx_task_runtime",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+        main_module.request_tracer = None
+        main_module.desktop_sensor = None
+        main_module.shadow_agent = None
+        main_module.node_manager = None
+        main_module.background_scheduler = None
+        main_module.file_watcher = None
+        main_module.gardener_agent = None
+        main_module.hardware_bridge = None
+        main_module.state_manager = SimpleNamespace(shutdown=AsyncMock())
+
+        await main_module._shutdown_runtime_components()
+        assert main_module.startup_runtime_retention_task is None
+
+    asyncio.run(_runner())

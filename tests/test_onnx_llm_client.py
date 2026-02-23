@@ -321,3 +321,28 @@ def test_stream_generate_and_generate_return_text(tmp_path, monkeypatch):
     )
     assert parts == ["A", "B"]
     assert client.generate(messages=[{"role": "user", "content": "hello"}]) == "AB"
+
+
+def test_resolve_runtime_model_path_from_genai_config_file(tmp_path):
+    model_dir = _prepare_model_dir(tmp_path)
+    genai_file = model_dir / "genai_config.json"
+    client = OnnxLlmClient(settings=_settings(ONNX_LLM_MODEL_PATH=str(genai_file)))
+    assert client._resolve_runtime_model_path() == model_dir
+
+
+def test_close_resets_runtime_state(tmp_path):
+    model_dir = _prepare_model_dir(tmp_path)
+    client = OnnxLlmClient(settings=_settings(ONNX_LLM_MODEL_PATH=str(model_dir)))
+    client._model = object()
+    client._tokenizer = object()
+    client._tokenizer_stream = object()
+    client._active_execution_provider = "cuda"
+    client._runtime_device_type = "cuda"
+
+    client.close()
+
+    assert client._model is None
+    assert client._tokenizer is None
+    assert client._tokenizer_stream is None
+    assert client._active_execution_provider is None
+    assert client._runtime_device_type is None

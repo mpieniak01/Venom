@@ -294,7 +294,7 @@ export function useSessionHistoryState({
     } catch {
       return null;
     }
-  }, [sessionId]);
+  }, []);
   const sessionHistoryStorageKey =
     sessionId && bootId ? `venom-session-history:${sessionId}:${bootId}` : null;
 

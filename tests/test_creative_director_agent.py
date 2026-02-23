@@ -1,4 +1,4 @@
-"""Testy jednostkowe dla CreativeDirectorAgent."""
+"""Unit tests for CreativeDirectorAgent."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,7 +10,7 @@ from venom_core.agents.creative_director import CreativeDirectorAgent
 
 @pytest.fixture
 def mock_kernel():
-    """Fixture dla mockowego Kernel."""
+    """Fixture for mock Kernel."""
     kernel = MagicMock(spec=Kernel)
     mock_service = MagicMock()
     mock_service.get_chat_message_content = AsyncMock()
@@ -19,7 +19,7 @@ def mock_kernel():
 
 
 def test_creative_director_initialization(mock_kernel):
-    """Test inicjalizacji CreativeDirectorAgent."""
+    """Test initialization of CreativeDirectorAgent."""
     agent = CreativeDirectorAgent(mock_kernel)
     assert agent.kernel == mock_kernel
     assert agent.chat_history is not None
@@ -28,10 +28,10 @@ def test_creative_director_initialization(mock_kernel):
 
 
 def test_creative_director_system_prompt():
-    """Test poprawności system prompta."""
+    """Test correctness of system prompt."""
     prompt = CreativeDirectorAgent.SYSTEM_PROMPT
 
-    # Sprawdź kluczowe elementy prompta
+    # Check key elements of the prompt
     assert "branding" in prompt.lower() or "marketing" in prompt.lower()
     assert "copywriting" in prompt.lower() or "copy" in prompt.lower()
     assert "logo" in prompt.lower() or "visual" in prompt.lower()
@@ -40,7 +40,7 @@ def test_creative_director_system_prompt():
 
 @pytest.mark.asyncio
 async def test_creative_director_process_success(mock_kernel):
-    """Test metody process - sukces."""
+    """Test process method - success path."""
     agent = CreativeDirectorAgent(mock_kernel)
 
     # Mock response
@@ -64,7 +64,7 @@ async def test_creative_director_process_success(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_creative_director_process_with_logo_request(mock_kernel):
-    """Test przetwarzania żądania stworzenia logo."""
+    """Test processing a logo creation request."""
     agent = CreativeDirectorAgent(mock_kernel)
 
     # Mock response
@@ -80,7 +80,7 @@ async def test_creative_director_process_with_logo_request(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_creative_director_process_with_copywriting_request(mock_kernel):
-    """Test przetwarzania żądania copywritingu."""
+    """Test processing a copywriting request."""
     agent = CreativeDirectorAgent(mock_kernel)
 
     # Mock response
@@ -96,10 +96,10 @@ async def test_creative_director_process_with_copywriting_request(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_creative_director_process_error(mock_kernel):
-    """Test obsługi błędów podczas przetwarzania."""
+    """Test error handling during processing."""
     agent = CreativeDirectorAgent(mock_kernel)
 
-    # Mock błąd
+    # Mock error
     agent.kernel.get_service().get_chat_message_content.side_effect = Exception(
         "API error"
     )
@@ -112,7 +112,7 @@ async def test_creative_director_process_error(mock_kernel):
 
 @pytest.mark.asyncio
 async def test_creative_director_empty_input(mock_kernel):
-    """Test z pustym inputem."""
+    """Test with empty input."""
     agent = CreativeDirectorAgent(mock_kernel)
 
     # Mock response
@@ -126,25 +126,25 @@ async def test_creative_director_empty_input(mock_kernel):
 
 
 def test_creative_director_reset_conversation(mock_kernel):
-    """Test resetowania historii konwersacji."""
+    """Test resetting conversation history."""
     agent = CreativeDirectorAgent(mock_kernel)
 
-    # Dodaj wiadomość do historii
+    # Add a message to the history
     agent.chat_history.add_user_message("Test message")
     initial_count = len(agent.chat_history.messages)
     assert initial_count > 1  # System prompt + user message
 
-    # Resetuj
+    # Reset
     agent.reset_conversation()
 
-    # Po resecie powinna być tylko wiadomość systemowa
+    # After reset, only the system message should remain
     assert len(agent.chat_history.messages) == 1
     assert agent.chat_history.messages[0].content == agent.SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio
 async def test_creative_director_conversation_context(mock_kernel):
-    """Test utrzymywania kontekstu konwersacji."""
+    """Test maintaining conversation context."""
     agent = CreativeDirectorAgent(mock_kernel)
 
     # Mock response
@@ -152,23 +152,23 @@ async def test_creative_director_conversation_context(mock_kernel):
     mock_response.__str__ = lambda self: "Response 1"
     agent.kernel.get_service().get_chat_message_content.return_value = mock_response
 
-    # Pierwsze wywołanie
+    # First call
     await agent.process("Request 1")
     first_history_len = len(agent.chat_history.messages)
 
-    # Drugie wywołanie
+    # Second call
     mock_response.__str__ = lambda self: "Response 2"
     await agent.process("Request 2")
     second_history_len = len(agent.chat_history.messages)
 
-    # Historia powinna się powiększać
+    # History should grow
     assert second_history_len > first_history_len
     assert second_history_len >= 5  # System + Request1 + Response1 + Request2 + Response2
 
 
 @pytest.mark.asyncio
 async def test_creative_director_high_temperature(mock_kernel):
-    """Test że Creative Director używa wyższej temperatury dla kreatywności."""
+    """Test that Creative Director uses higher temperature for creativity."""
     agent = CreativeDirectorAgent(mock_kernel)
 
     # Mock response

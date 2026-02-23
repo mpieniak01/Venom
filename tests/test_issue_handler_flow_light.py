@@ -1,4 +1,4 @@
-"""Testy jednostkowe dla IssueHandlerFlow."""
+"""Unit tests for IssueHandlerFlow."""
 
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -19,7 +19,7 @@ class FakeTask:
 
 @pytest.fixture
 def mock_state_manager():
-    """Fixture dla mockowego StateManager."""
+    """Fixture for mock StateManager."""
     manager = MagicMock()
     manager.create_task = MagicMock(
         return_value=FakeTask(id="task-123", content="Test")
@@ -31,7 +31,7 @@ def mock_state_manager():
 
 @pytest.fixture
 def mock_task_dispatcher():
-    """Fixture dla mockowego TaskDispatcher."""
+    """Fixture for mock TaskDispatcher."""
     dispatcher = MagicMock()
     dispatcher.agent_map = {}
     return dispatcher
@@ -39,7 +39,7 @@ def mock_task_dispatcher():
 
 @pytest.fixture
 def mock_event_broadcaster():
-    """Fixture dla mockowego EventBroadcaster."""
+    """Fixture for mock EventBroadcaster."""
     broadcaster = MagicMock()
     broadcaster.broadcast_event = AsyncMock()
     return broadcaster
@@ -49,7 +49,7 @@ def mock_event_broadcaster():
 def issue_handler_flow(
     mock_state_manager, mock_task_dispatcher, mock_event_broadcaster
 ):
-    """Fixture dla IssueHandlerFlow."""
+    """Fixture for IssueHandlerFlow."""
     return IssueHandlerFlow(
         state_manager=mock_state_manager,
         task_dispatcher=mock_task_dispatcher,
@@ -60,7 +60,7 @@ def issue_handler_flow(
 def test_issue_handler_flow_initialization(
     mock_state_manager, mock_task_dispatcher, mock_event_broadcaster
 ):
-    """Test inicjalizacji IssueHandlerFlow."""
+    """Test initialization of IssueHandlerFlow."""
     flow = IssueHandlerFlow(
         state_manager=mock_state_manager,
         task_dispatcher=mock_task_dispatcher,
@@ -83,7 +83,7 @@ async def test_execute_without_integrator(issue_handler_flow):
 
 @pytest.mark.asyncio
 async def test_execute_with_integrator_error(issue_handler_flow, mock_task_dispatcher):
-    """Test wykonania gdy Integrator zwraca błąd."""
+    """Test execution when Integrator returns an error."""
     # Mock integrator agent
     mock_integrator = MagicMock()
     mock_integrator.handle_issue = AsyncMock(return_value="❌ Issue not found")
@@ -97,7 +97,7 @@ async def test_execute_with_integrator_error(issue_handler_flow, mock_task_dispa
 
 @pytest.mark.asyncio
 async def test_execute_success_path(issue_handler_flow, mock_task_dispatcher):
-    """Test pomyślnego wykonania flow."""
+    """Test successful flow execution."""
     # Mock integrator agent
     mock_integrator = MagicMock()
     mock_integrator.handle_issue = AsyncMock(
@@ -125,7 +125,7 @@ async def test_execute_success_path(issue_handler_flow, mock_task_dispatcher):
 
 @pytest.mark.asyncio
 async def test_broadcast_event_called(issue_handler_flow, mock_event_broadcaster):
-    """Test że eventy są broadcastowane."""
+    """Test that events are broadcast."""
     result = await issue_handler_flow.execute(issue_number=123)
 
     # Verify event broadcasting was called
@@ -157,7 +157,7 @@ async def test_execute_with_invalid_issue_number(issue_handler_flow):
 
 @pytest.mark.asyncio
 async def test_execute_creates_task(issue_handler_flow, mock_state_manager):
-    """Test że execute tworzy zadanie w state managerze."""
+    """Test that execute creates a task in the state manager."""
     await issue_handler_flow.execute(issue_number=123)
 
     # Verify that create_task was called
@@ -168,7 +168,7 @@ async def test_execute_creates_task(issue_handler_flow, mock_state_manager):
 
 @pytest.mark.asyncio
 async def test_execute_logs_progress(issue_handler_flow, mock_state_manager):
-    """Test że execute loguje postęp."""
+    """Test that execute logs progress."""
     await issue_handler_flow.execute(issue_number=123)
 
     # Verify that add_log was called
@@ -177,7 +177,7 @@ async def test_execute_logs_progress(issue_handler_flow, mock_state_manager):
 
 @pytest.mark.asyncio
 async def test_execute_with_exception(issue_handler_flow, mock_task_dispatcher):
-    """Test obsługi wyjątku podczas wykonania."""
+    """Test exception handling during execution."""
     # Mock integrator that raises exception
     mock_integrator = MagicMock()
     mock_integrator.handle_issue = AsyncMock(side_effect=Exception("Network error"))

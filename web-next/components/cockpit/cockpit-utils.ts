@@ -1,5 +1,6 @@
 "use client";
 
+import { removeSpacesBeforePunctuation } from "@/lib/markdown-format";
 import type { HistoryStep } from "@/lib/types";
 
 export const SESSION_CONTEXT_MARKERS = [
@@ -107,7 +108,9 @@ export function normalizeAssistantDisplayText(raw: string) {
     .split("\n")
     .map((line) => line.replaceAll(/[ \t]{2,}/g, " ").trimEnd())
     .join("\n")
-    .replaceAll(/\s+([,.;!?])/g, "$1")
+    .split("\n")
+    .map(removeSpacesBeforePunctuation)
+    .join("\n")
     .replaceAll(/\n{3,}/g, "\n\n")
     .trim();
 

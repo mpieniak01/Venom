@@ -52,3 +52,10 @@ test("normalizeModelTextArtifacts removes stray star after numbered section head
   assert.ok(!output.includes("definicja):*"));
   assert.ok(!output.includes("Pythonie):*"));
 });
+
+test("normalizeModelTextArtifacts removes spaces before punctuation", () => {
+  const input = '""Test ▁ zdanie  , z błędem  !';
+  const output = normalizeModelTextArtifacts(input);
+
+  assert.equal(output, '"Test zdanie, z błędem!');
+});

@@ -28,11 +28,29 @@ export function normalizeModelTextArtifacts(content: string) {
       return collapsed.replace(/^(\s*\d+\.\s.+?):\*\s*$/, "$1:");
     })
     .join("\n")
-    .replaceAll(/\s+([,.;!?])/g, "$1")
+    .split("\n")
+    .map(removeSpacesBeforePunctuation)
+    .join("\n")
     .replaceAll(/\n{3,}/g, "\n\n")
     .trim();
 
   return normalized;
+}
+
+export function removeSpacesBeforePunctuation(line: string) {
+  const punctuation = new Set([",", ".", ";", "!", "?"]);
+  const out: string[] = [];
+
+  for (const char of line) {
+    if (punctuation.has(char)) {
+      while (out.length > 0 && (out[out.length - 1] === " " || out[out.length - 1] === "\t")) {
+        out.pop();
+      }
+    }
+    out.push(char);
+  }
+
+  return out.join("");
 }
 
 export function formatComputationContent(content: string) {

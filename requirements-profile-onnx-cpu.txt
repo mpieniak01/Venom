@@ -1,0 +1,21 @@
+# Venom profile: ONNX local LLM runtime (CPU-only)
+#
+# Use this profile on hosts without dedicated GPU inference.
+# It keeps ONNX Runtime GenAI support but avoids CUDA/Torch stack.
+#
+# Install with:
+#   pip install -r requirements-profile-onnx-cpu.txt
+
+-r requirements-profile-api.txt
+
+# ONNX CPU runtime stack for local LLM inference.
+onnxruntime
+onnxruntime-genai
+onnx>=1.14.0
+onnx-ir>=0.1.16
+
+# Intentionally excluded here (heavy GPU/torch chain):
+# - onnxruntime-gpu
+# - onnxruntime-genai-cuda
+# - optimum
+# - accelerate

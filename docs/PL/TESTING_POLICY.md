@@ -10,10 +10,13 @@ Bazowe wymagania bezpieczeństwa i kontroli są opisane w `docs/PL/SECURITY_POLI
 
 Cel: bardzo szybki feedback w trakcie implementacji.
 
+Przed dopisaniem nowych testów sprawdź, czy wymagane pakiety są dostępne w aktualnym środowisku oraz czy są zgodne z polityką zależności CI-lite.
+
 Uruchom:
 
 ```bash
-source .venv/bin/activate || true
+test -f .venv/bin/activate || { echo "Brak .venv/bin/activate. Najpierw utwórz .venv."; exit 1; }
+source .venv/bin/activate
 pytest -q
 ```
 

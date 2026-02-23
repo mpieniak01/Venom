@@ -2,7 +2,12 @@
 set -euo pipefail
 
 cd /home/ubuntu/venom
-source .venv/bin/activate || true
+if [[ ! -f ".venv/bin/activate" ]]; then
+  echo "ERROR: missing virtualenv activation script (.venv/bin/activate). Create .venv first."
+  exit 1
+fi
+# shellcheck disable=SC1091
+source .venv/bin/activate
 
 FAST_GROUP_FILE="config/pytest-groups/fast.txt"
 if [[ ! -f "${FAST_GROUP_FILE}" ]]; then

@@ -182,6 +182,7 @@ Jeśli chcesz lokalne silniki runtime, doinstaluj jeden z profili:
 - `pip install -r requirements-profile-ollama.txt`
 - `pip install -r requirements-profile-vllm.txt`
 - `pip install -r requirements-profile-onnx.txt`
+- `pip install -r requirements-profile-onnx-cpu.txt`
 - `pip install -r requirements-extras-onnx.txt` (opcjonalne extras: `faster-whisper` + `piper-tts`)
 - `pip install -r requirements-full.txt` (legacy full stack)
 
@@ -259,6 +260,7 @@ Profile:
 - [requirements-profile-ollama.txt](requirements-profile-ollama.txt) - profil API + Ollama
 - [requirements-profile-vllm.txt](requirements-profile-vllm.txt) - profil API + vLLM
 - [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - profil API + ONNX LLM (trzeci silnik)
+- [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - profil API + ONNX CPU-only
 - [requirements-extras-onnx.txt](requirements-extras-onnx.txt) - opcjonalne extras (`faster-whisper`, `piper-tts`), osobno od profilu ONNX LLM
 - [requirements-full.txt](requirements-full.txt) - pełny legacy stack
 
@@ -380,7 +382,8 @@ scripts/docker/run-release.sh restart
 - Lokalnie przed PR:
 
 ```bash
-source .venv/bin/activate || true
+test -f .venv/bin/activate || { echo "Brak .venv/bin/activate. Najpierw utwórz .venv."; exit 1; }
+source .venv/bin/activate
 pre-commit run --all-files
 make pr-fast
 make check-new-code-coverage

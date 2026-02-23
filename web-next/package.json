@@ -39,8 +39,8 @@
     "katex": "^0.16.27",
     "lucide-react": "^0.561.0",
     "marked": "15.0.12",
-    "mermaid": "10.9.1",
-    "next": "15.5.9",
+    "mermaid": "^11.10.0",
+    "next": "^15.5.10",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-zoom-pan-pinch": "^3.7.0",
@@ -55,7 +55,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.5.9",
+    "eslint-config-next": "^15.5.10",
     "playwright": "^1.57.0",
     "tailwindcss": "^4",
     "tailwindcss-animate": "^1.0.7",
@@ -63,6 +63,7 @@
     "typescript": "^5"
   },
   "overrides": {
+    "dagre-d3-es": "7.0.13",
     "marked": "15.0.12"
   }
 }

@@ -10,10 +10,13 @@ Security baseline and required controls are described in `docs/SECURITY_POLICY.m
 
 Goal: very fast feedback while coding.
 
+Before adding new tests, verify required dependencies are available in the current environment and that they are allowed by the CI-lite dependency policy.
+
 Run:
 
 ```bash
-source .venv/bin/activate || true
+test -f .venv/bin/activate || { echo "Missing .venv/bin/activate. Create .venv first."; exit 1; }
+source .venv/bin/activate
 pytest -q
 ```
 

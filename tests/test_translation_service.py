@@ -194,6 +194,24 @@ def test_resolve_chat_endpoint_variants(monkeypatch):
         service._resolve_chat_endpoint()
 
 
+def test_resolve_chat_endpoint_accepts_full_chat_completions(monkeypatch):
+    _configure_settings(monkeypatch)
+    service = translation_module.TranslationService()
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: DummyRuntime(),
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS,
+        "LLM_LOCAL_ENDPOINT",
+        "http://localhost:11434/v1/chat/completions",
+    )
+    assert (
+        service._resolve_chat_endpoint() == "http://localhost:11434/v1/chat/completions"
+    )
+
+
 def test_resolve_headers_openai_local_and_empty(monkeypatch):
     _configure_settings(monkeypatch)
     service = translation_module.TranslationService()
@@ -217,3 +235,108 @@ def test_resolve_headers_openai_local_and_empty(monkeypatch):
 async def test_translate_text_returns_early_on_empty_text():
     service = translation_module.TranslationService()
     assert await service.translate_text("", target_lang="pl") == ""
+
+
+def test_extract_message_content_fallback_variants():
+    text = "fallback"
+    assert (
+        translation_module.TranslationService._extract_message_content(
+            data={"choices": "not-list"},
+            fallback_text=text,
+        )
+        == text
+    )
+    assert (
+        translation_module.TranslationService._extract_message_content(
+            data={"choices": [123]},
+            fallback_text=text,
+        )
+        == text
+    )
+    assert (
+        translation_module.TranslationService._extract_message_content(
+            data={"choices": [{"message": "not-dict"}]},
+            fallback_text=text,
+        )
+        == text
+    )
+    assert (
+        translation_module.TranslationService._extract_message_content(
+            data={"choices": [{"message": {"content": 7}}]},
+            fallback_text=text,
+        )
+        == text
+    )
+
+
+def test_get_cached_value_expired_entry_returns_none():
+    service = translation_module.TranslationService(cache_ttl_seconds=1)
+    key = service._build_cache_key("hello", None, "pl", "m")
+    service._cache[key] = {"value": "cached", "timestamp": 1.0}
+    assert service._get_cached_value(cache_key=key, now=2.0) is None
+
+
+@pytest.mark.asyncio
+async def test_translate_text_without_cache_handles_non_dict_payload(monkeypatch):
+    _configure_settings(monkeypatch)
+    monkeypatch.setattr(translation_module, "get_active_llm_runtime", DummyRuntime)
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        async def __aenter__(self):
+            await asyncio.sleep(0)
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await asyncio.sleep(0)
+            return False
+
+        async def apost(self, *args, **kwargs):
+            await asyncio.sleep(0)
+            return DummyResponse(["not-a-dict"])
+
+    monkeypatch.setattr(translation_module, "TrafficControlledHttpClient", DummyClient)
+    service = translation_module.TranslationService(cache_ttl_seconds=60)
+    result = await service.translate_text("Hello", target_lang="pl", use_cache=False)
+    assert result == "Hello"
+    assert service._cache == {}
+
+
+@pytest.mark.asyncio
+async def test_translate_text_model_name_missing_raises_without_fallback(monkeypatch):
+    _configure_settings(monkeypatch)
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "LLM_MODEL_NAME", "", raising=False
+    )
+    service = translation_module.TranslationService()
+    with pytest.raises(RuntimeError, match="Brak ustawionego modelu"):
+        await service.translate_text("Hello", target_lang="pl", allow_fallback=False)
+
+
+@pytest.mark.asyncio
+async def test_translate_text_raises_generic_exception_without_fallback(monkeypatch):
+    _configure_settings(monkeypatch)
+    monkeypatch.setattr(translation_module, "get_active_llm_runtime", DummyRuntime)
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        async def __aenter__(self):
+            await asyncio.sleep(0)
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await asyncio.sleep(0)
+            return False
+
+        async def apost(self, *args, **kwargs):
+            await asyncio.sleep(0)
+            raise RuntimeError("generic-boom")
+
+    monkeypatch.setattr(translation_module, "TrafficControlledHttpClient", DummyClient)
+    service = translation_module.TranslationService()
+    with pytest.raises(RuntimeError, match="generic-boom"):
+        await service.translate_text("Hello", target_lang="pl", allow_fallback=False)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -96,6 +97,21 @@ def test_parse_ollama_search_html_with_fake_bs4(monkeypatch):
     assert [item["name"] for item in parsed] == ["phi4-mini", "qwen2.5"]
 
 
+def test_parse_ollama_search_html_without_bs4_returns_empty(monkeypatch):
+    import builtins
+
+    original_import = builtins.__import__
+
+    def _import(name, *args, **kwargs):
+        if name == "bs4":
+            raise ImportError("missing-bs4")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _import)
+    parsed = mrc._parse_ollama_search_html("<html></html>", limit=3)
+    assert parsed == []
+
+
 @pytest.mark.asyncio
 async def test_ollama_client_remove_model_paths():
     client = mrc.OllamaClient()
@@ -169,6 +185,42 @@ async def test_hf_fetch_papers_month_handles_redirect():
         parsed = await client.fetch_papers_month(limit=3, month="2026-01")
         assert parsed == []
         assert mock_client.aget.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_hf_fetch_papers_month_non_redirect_uses_raise_for_status():
+    client = mrc.HuggingFaceClient()
+    response = MagicMock()
+    response.is_redirect = False
+    response.headers = {}
+    response.raise_for_status = MagicMock()
+    response.text = '<div data-target="DailyPapers" data-props="{&quot;dailyPapers&quot;: []}"></div>'
+
+    with patch(
+        "venom_core.core.model_registry_clients.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        parsed = await client.fetch_papers_month(limit=1, month="2026-01")
+
+    assert parsed == []
+    response.raise_for_status.assert_called_once()
+
+
+def test_remove_cached_model_rejects_path_escape(tmp_path):
+    client = mrc.HuggingFaceClient()
+    assert client.remove_cached_model(tmp_path, "../outside") is False
+
+
+@pytest.mark.asyncio
+async def test_hf_download_snapshot_returns_none_when_hub_missing():
+    client = mrc.HuggingFaceClient()
+    with patch.dict(sys.modules, {"huggingface_hub": None}):
+        result = await client.download_snapshot("org/model", "/tmp/cache")
+    assert result is None
 
 
 @pytest.mark.asyncio

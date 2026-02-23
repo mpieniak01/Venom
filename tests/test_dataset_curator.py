@@ -1,4 +1,4 @@
-"""Testy jednostkowe dla DatasetCurator."""
+"""Unit tests for DatasetCurator."""
 
 import json
 import tempfile
@@ -9,7 +9,7 @@ from venom_core.learning.dataset_curator import DatasetCurator, TrainingExample
 
 
 def test_training_example_alpaca_format():
-    """Test konwersji przykładu do formatu Alpaca."""
+    """Test converting example to Alpaca format."""
     example = TrainingExample(
         instruction="Napisz funkcję w Pythonie",
         input_text="Funkcja ma sumować dwie liczby",
@@ -24,7 +24,7 @@ def test_training_example_alpaca_format():
 
 
 def test_training_example_sharegpt_format():
-    """Test konwersji przykładu do formatu ShareGPT."""
+    """Test converting example to ShareGPT format."""
     example = TrainingExample(
         instruction="Jesteś asystentem AI",
         input_text="Jak napisać pętlę for?",
@@ -41,7 +41,7 @@ def test_training_example_sharegpt_format():
 
 
 def test_dataset_curator_initialization():
-    """Test inicjalizacji DatasetCurator."""
+    """Test DatasetCurator initialization."""
     with tempfile.TemporaryDirectory() as tmpdir:
         curator = DatasetCurator(output_dir=tmpdir)
         assert curator.output_dir.exists()
@@ -49,49 +49,49 @@ def test_dataset_curator_initialization():
 
 
 def test_dataset_curator_filter_low_quality():
-    """Test filtrowania przykładów niskiej jakości."""
+    """Test filtering low quality examples."""
     with tempfile.TemporaryDirectory() as tmpdir:
         curator = DatasetCurator(output_dir=tmpdir)
 
-        # Dodaj przykłady
+        # Add examples
         curator.examples = [
-            TrainingExample("inst1", "short", "short"),  # Zbyt krótki
+            TrainingExample("inst1", "short", "short"),  # Too short
             TrainingExample("inst2", "Valid input text", "Valid output text"),  # OK
             TrainingExample("inst3", "Another valid", "Another output"),  # OK
-            TrainingExample("inst4", "Another valid", "Another output"),  # Duplikat
+            TrainingExample("inst4", "Another valid", "Another output"),  # Duplicate
         ]
 
         removed = curator.filter_low_quality()
 
-        # Powinno usunąć 1 zbyt krótki + 1 duplikat = 2
+        # Should remove 1 too short + 1 duplicate = 2
         assert removed == 2
         assert len(curator.examples) == 2
 
 
 def test_dataset_curator_save_dataset():
-    """Test zapisywania datasetu."""
+    """Test saving dataset."""
     with tempfile.TemporaryDirectory() as tmpdir:
         curator = DatasetCurator(output_dir=tmpdir)
 
-        # Dodaj przykłady
+        # Add examples
         curator.examples = [
             TrainingExample("inst1", "input1", "output1"),
             TrainingExample("inst2", "input2", "output2"),
         ]
 
-        # Zapisz
+        # Save
         output_path = curator.save_dataset(
             filename="test_dataset.jsonl", format="alpaca"
         )
 
         assert output_path.exists()
 
-        # Sprawdź zawartość
+        # Check content
         with open(output_path, "r") as f:
             lines = f.readlines()
             assert len(lines) == 2
 
-            # Sprawdź pierwszy przykład
+            # Check first example
             data = json.loads(lines[0])
             assert data["instruction"] == "inst1"
             assert data["input"] == "input1"
@@ -99,11 +99,11 @@ def test_dataset_curator_save_dataset():
 
 
 def test_dataset_curator_statistics():
-    """Test statystyk datasetu."""
+    """Test dataset statistics."""
     with tempfile.TemporaryDirectory() as tmpdir:
         curator = DatasetCurator(output_dir=tmpdir)
 
-        # Dodaj przykłady
+        # Add examples
         curator.examples = [
             TrainingExample(
                 "inst1", "input text", "output text", metadata={"source": "lessons"}
@@ -124,7 +124,7 @@ def test_dataset_curator_statistics():
 
 
 def test_dataset_curator_save_empty_raises_error():
-    """Test że zapisywanie pustego datasetu rzuca błąd."""
+    """Test that saving empty dataset raises error."""
     with tempfile.TemporaryDirectory() as tmpdir:
         curator = DatasetCurator(output_dir=tmpdir)
 
@@ -133,11 +133,11 @@ def test_dataset_curator_save_empty_raises_error():
 
 
 def test_dataset_curator_clear():
-    """Test czyszczenia przykładów."""
+    """Test clearing examples."""
     with tempfile.TemporaryDirectory() as tmpdir:
         curator = DatasetCurator(output_dir=tmpdir)
 
-        # Dodaj przykłady
+        # Add examples
         curator.examples = [
             TrainingExample("inst1", "input1", "output1"),
             TrainingExample("inst2", "input2", "output2"),
@@ -145,7 +145,7 @@ def test_dataset_curator_clear():
 
         assert len(curator.examples) == 2
 
-        # Wyczyść
+        # Clear
         curator.clear()
 
         assert len(curator.examples) == 0

@@ -38,7 +38,7 @@ def infer_model_provider(model: dict) -> str | None:
         return "onnx"
     if ":" in model_name:
         return "ollama"
-    if hint:
+    if model_name or model_path:
         return "vllm"
     return None
 

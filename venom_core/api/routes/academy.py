@@ -2600,6 +2600,7 @@ async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
     responses={
         400: RESP_400_BAD_REQUEST,
         404: RESP_404_FILE_NOT_FOUND,
+        500: RESP_500_INTERNAL,
     },
 )
 async def convert_dataset_file(

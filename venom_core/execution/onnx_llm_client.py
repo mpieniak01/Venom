@@ -14,6 +14,7 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+GENAI_CONFIG_FILENAME = "genai_config.json"
 
 
 def is_onnx_genai_available() -> bool:
@@ -77,16 +78,16 @@ class OnnxLlmClient:
             return None
 
         configured = Path(raw_path)
-        if configured.is_file() and configured.name == "genai_config.json":
+        if configured.is_file() and configured.name == GENAI_CONFIG_FILENAME:
             return configured.parent
 
         if configured.is_dir():
-            direct_genai = configured / "genai_config.json"
+            direct_genai = configured / GENAI_CONFIG_FILENAME
             if direct_genai.exists():
                 return configured
 
             candidates = sorted(
-                configured.rglob("genai_config.json"),
+                configured.rglob(GENAI_CONFIG_FILENAME),
                 key=lambda p: (len(p.parts), str(p)),
             )
             if candidates:

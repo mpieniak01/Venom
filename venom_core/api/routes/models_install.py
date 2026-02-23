@@ -30,20 +30,21 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
 MODEL_MANAGER_UNAVAILABLE_DETAIL = "ModelManager nie jest dostępny"
+GENAI_CONFIG_FILENAME = "genai_config.json"
 
 
 def _resolve_onnx_runtime_path(model_path: str | None) -> str | None:
     if not model_path:
         return None
     path = Path(model_path)
-    if path.is_file() and path.name == "genai_config.json":
+    if path.is_file() and path.name == GENAI_CONFIG_FILENAME:
         return str(path.parent)
     if path.is_dir():
-        direct = path / "genai_config.json"
+        direct = path / GENAI_CONFIG_FILENAME
         if direct.exists():
             return str(path)
         matches = sorted(
-            path.rglob("genai_config.json"),
+            path.rglob(GENAI_CONFIG_FILENAME),
             key=lambda p: (len(p.parts), str(p)),
         )
         if matches:

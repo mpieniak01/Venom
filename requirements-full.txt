@@ -2,6 +2,8 @@
 # Zalecany Python: 3.10 lub 3.11 (GraphRAG bywa niestabilny na 3.12)
 # Użyj: pip install -r requirements-full.txt
 
+-c constraints-hf-onnx.txt
+
 # --- VENOM CORE: SYSTEM NERWOWY (Orchestration) ---
 
 pyautogen>=0.2.0        # Microsoft AutoGen (Standardowa, stabilna wersja)
@@ -61,7 +63,7 @@ openapi-core<0.20,>=0.18    # Nowe wymagania (kompatybilność z werkzeug>=3.1.5
 
 # --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
 
-transformers>=4.57.6    # Obsługa modeli HF / Tokenizacja – aktualizacja pod CVE dot. deserializacji
+transformers>=4.57.6,<5.0.0  # Obsługa modeli HF / Tokenizacja (pin <5 zgodny z huggingface_hub 0.35.x)
 sentence-transformers   # Embeddingi do RAG
 pillow                  # Przetwarzanie obrazów
 timm                    # Modele wizyjne (zależność dla Florence-2)
@@ -75,7 +77,7 @@ tavily-python           # Tavily AI Search API - nowoczesna wyszukiwarka dla AI
 beautifulsoup4          # Parsowanie HTML
 trafilatura             # Ekstrakcja tekstu z stron WWW (lepsze czyszczenie niż BS4)
 PyGithub                # GitHub API wrapper (External Discovery - GitHub Scanner)
-huggingface_hub>=0.35.3 # Hugging Face Hub API (External Discovery - Model Explorer), aligned with CI-lite baseline
+huggingface_hub==0.35.3 # Hugging Face Hub API (External Discovery - Model Explorer), pin zgodny z CI-lite/runtime
 
 # Google Calendar Integration (THE_CALENDAR)
 google-auth>=2.23.0     # Google OAuth2 authentication

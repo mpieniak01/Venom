@@ -179,7 +179,7 @@ make start
 
 Domyślny `requirements.txt` instaluje **minimalny profil API/cloud**.
 Jeśli chcesz lokalne silniki runtime, doinstaluj jeden z profili:
-- `pip install -r requirements-profile-ollama.txt`
+- `pip install -r requirements.txt` (Ollama: bez dodatkowych paczek Pythona; `requirements-profile-ollama.txt` to alias deprecated)
 - `pip install -r requirements-profile-vllm.txt`
 - `pip install -r requirements-profile-onnx.txt`
 - `pip install -r requirements-profile-onnx-cpu.txt`
@@ -257,7 +257,7 @@ Python 3.10+ (zalecane 3.11)
 
 Profile:
 - [requirements.txt](requirements.txt) - domyślny minimalny profil API/cloud
-- [requirements-profile-ollama.txt](requirements-profile-ollama.txt) - profil API + Ollama
+- [requirements-profile-ollama.txt](requirements-profile-ollama.txt) - alias deprecated profilu API (`requirements.txt`)
 - [requirements-profile-vllm.txt](requirements-profile-vllm.txt) - profil API + vLLM
 - [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - profil API + ONNX LLM (trzeci silnik)
 - [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - profil API + ONNX CPU-only

@@ -298,8 +298,9 @@ Zawiera pełny legacy zestaw (core + lokalne silniki + ciężkie extras + narzę
 ### Instalacja per silnik runtime
 
 ```bash
-# Profil pod Ollama
-pip install -r requirements-profile-ollama.txt
+# Instalacja pod Ollama (bez dodatkowych paczek Pythona względem API)
+pip install -r requirements.txt
+# (legacy alias nadal działa: requirements-profile-ollama.txt)
 
 # Profil pod vLLM
 pip install -r requirements-profile-vllm.txt

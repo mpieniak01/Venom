@@ -298,8 +298,9 @@ Includes full legacy set (core + local engines + heavy extras + dev tools).
 ### Engine-specific profile installs
 
 ```bash
-# Ollama-oriented profile
-pip install -r requirements-profile-ollama.txt
+# Ollama-oriented install (no extra Python deps vs API profile)
+pip install -r requirements.txt
+# (legacy alias still works: requirements-profile-ollama.txt)
 
 # vLLM-oriented profile
 pip install -r requirements-profile-vllm.txt

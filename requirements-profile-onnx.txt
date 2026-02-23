@@ -4,6 +4,7 @@
 # Install with:
 #   pip install -r requirements-profile-onnx.txt
 
+-c constraints-hf-onnx.txt
 -r requirements-profile-api.txt
 
 # ONNX runtime stack for local LLM inference.
@@ -15,3 +16,4 @@ onnx>=1.14.0
 onnx-ir>=0.1.16
 optimum
 accelerate
+transformers>=4.57.6,<5.0.0

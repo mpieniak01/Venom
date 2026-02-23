@@ -3,9 +3,9 @@
   "version": "1.6.0",
   "private": true,
   "scripts": {
-    "predev": "node scripts/generate-meta.mjs",
+    "predev": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/generate-meta.mjs",
+    "prebuild": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
     "build": "next build",
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "node scripts/start-server.mjs",

@@ -74,6 +74,23 @@ Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje 
 - `web-next/.next/standalone` – output buildu (nie commitujemy).
 - `scripts/archive-perf-results.sh` – pomocniczy backup wyników Playwright/pytest/Locust z katalogu `perf-artifacts/`.
 
+### Polityka retencji danych runtime i logów
+
+Venom uruchamia automatyczne zadanie retencji w `BackgroundScheduler` dla plików runtime.
+
+- **Co jest czyszczone**: katalogi z `SETTINGS.RUNTIME_RETENTION_TARGETS` (domyślnie: `./logs`, `./data/timelines`, `./data/memory`, `./data/training`, `./data/synthetic_training`, `./data/learning`).
+- **Okres retencji**: `SETTINGS.RUNTIME_RETENTION_DAYS` (domyślnie: `7` dni).
+- **Częstotliwość uruchamiania**: jedno natychmiastowe uruchomienie po starcie aplikacji + interwał z `SETTINGS.RUNTIME_RETENTION_INTERVAL_MINUTES` (domyślnie: `1440`, raz na dobę).
+- **Przełącznik funkcji**: `SETTINGS.ENABLE_RUNTIME_RETENTION_CLEANUP` (domyślnie: `True`).
+- **Guard startowy**: jednorazowe uruchomienie po starcie wykona się tylko wtedy, gdy ostatnia udana retencja jest starsza niż ustawiony interwał (brak „mielenia” przy częstym reloadzie w dev).
+- **Marker stanu**: `./.venom_runtime/runtime_retention.last_run` zapisuje timestamp ostatniego wykonania retencji runtime.
+- **Bezpiecznik**: pliki śledzone przez Git są wykluczone z usuwania przez retencję.
+
+Referencje implementacji:
+- funkcja joba: `venom_core/jobs/scheduler.py` (`cleanup_runtime_files`)
+- rejestracja w schedulerze: `venom_core/main.py` (job interwałowy `cleanup_runtime_files`)
+- wartości domyślne konfiguracji: `venom_core/config.py` (ustawienia retencji runtime)
+
 ## Paczki Docker Minimal (build i publikacja)
 
 Szczegółowa procedura wydania krok po kroku:

@@ -505,15 +505,36 @@ async def test_initialize_background_scheduler_registers_jobs(monkeypatch):
         await asyncio.sleep(0)
         return None
 
+    created_tasks: list[asyncio.Task] = []
+    original_create_task = asyncio.create_task
+
+    def _create_task_proxy(coro):
+        task = original_create_task(coro)
+        created_tasks.append(task)
+        return task
+
     monkeypatch.setattr(main_module, "BackgroundScheduler", DummyScheduler)
     monkeypatch.setattr(main_module.job_scheduler, "consolidate_memory", _noop)
     monkeypatch.setattr(main_module.job_scheduler, "check_health", _noop)
+    monkeypatch.setattr(
+        main_module.job_scheduler, "cleanup_runtime_files", lambda **_: {}
+    )
+    monkeypatch.setattr(
+        main_module.asyncio, "to_thread", AsyncMock(side_effect=[True, {}])
+    )
+    monkeypatch.setattr(main_module.asyncio, "create_task", _create_task_proxy)
     monkeypatch.setattr(main_module.SETTINGS, "ENABLE_MEMORY_CONSOLIDATION", True)
     monkeypatch.setattr(main_module.SETTINGS, "ENABLE_HEALTH_CHECKS", True)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_RUNTIME_RETENTION_CLEANUP", True)
     monkeypatch.setattr(
         main_module.SETTINGS, "MEMORY_CONSOLIDATION_INTERVAL_MINUTES", 5
     )
     monkeypatch.setattr(main_module.SETTINGS, "HEALTH_CHECK_INTERVAL_MINUTES", 3)
+    monkeypatch.setattr(main_module.SETTINGS, "RUNTIME_RETENTION_DAYS", 7)
+    monkeypatch.setattr(main_module.SETTINGS, "RUNTIME_RETENTION_INTERVAL_MINUTES", 11)
+    monkeypatch.setattr(
+        main_module.SETTINGS, "RUNTIME_RETENTION_TARGETS", ["./logs", "./data"]
+    )
     monkeypatch.setattr(main_module, "vector_store", object())
     monkeypatch.setattr(main_module, "event_broadcaster", object())
     monkeypatch.setattr(main_module, "request_tracer", DummyTracer())
@@ -525,6 +546,9 @@ async def test_initialize_background_scheduler_registers_jobs(monkeypatch):
     assert "consolidate_memory" in main_module.background_scheduler.job_ids
     assert "check_health" in main_module.background_scheduler.job_ids
     assert "cleanup_traces" in main_module.background_scheduler.job_ids
+    assert "cleanup_runtime_files" in main_module.background_scheduler.job_ids
+    assert len(created_tasks) == 1
+    await asyncio.gather(*created_tasks)
 
 
 @pytest.mark.asyncio

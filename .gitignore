@@ -16,6 +16,9 @@ modules/*
 !modules/.gitkeep
 !modules/venom-module-example/
 !modules/venom-module-example/**
+modules/*/node_modules
+modules/*/node_modules/
+.venom_runtime/
 
 data/memory/
 data/user_lexicon/

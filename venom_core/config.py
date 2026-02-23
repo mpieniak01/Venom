@@ -203,6 +203,21 @@ class Settings(BaseSettings):
     GARDENER_COMPLEXITY_THRESHOLD: int = 10  # Próg złożoności dla auto-refaktoryzacji
     MEMORY_CONSOLIDATION_INTERVAL_MINUTES: int = 60  # Interwał konsolidacji pamięci
     HEALTH_CHECK_INTERVAL_MINUTES: int = 5  # Interwał sprawdzania zdrowia systemu
+    ENABLE_RUNTIME_RETENTION_CLEANUP: bool = (
+        True  # Włącz cykliczne czyszczenie starych plików runtime
+    )
+    RUNTIME_RETENTION_DAYS: int = 7  # Usuń pliki starsze niż N dni
+    RUNTIME_RETENTION_INTERVAL_MINUTES: int = (
+        1440  # Interwał uruchamiania retencji (domyślnie co 24h)
+    )
+    RUNTIME_RETENTION_TARGETS: list[str] = [
+        "./logs",
+        "./data/timelines",
+        "./data/memory",
+        "./data/training",
+        "./data/synthetic_training",
+        "./data/learning",
+    ]  # Katalogi objęte retencją runtime
 
     # Konfiguracja External Integrations (THE_TEAMMATE)
     # UWAGA: Sekrety używają SecretStr aby zapobiec przypadkowemu logowaniu

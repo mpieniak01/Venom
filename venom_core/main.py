@@ -710,6 +710,49 @@ async def _initialize_background_scheduler() -> None:
             )
             logger.info("Zadanie cleanup_traces zarejestrowane (retencja 7 dni)")
 
+        if SETTINGS.ENABLE_RUNTIME_RETENTION_CLEANUP:
+
+            async def _cleanup_runtime_files_wrapper():
+                try:
+                    await asyncio.to_thread(
+                        job_scheduler.cleanup_runtime_files,
+                        retention_days=SETTINGS.RUNTIME_RETENTION_DAYS,
+                        target_dirs=SETTINGS.RUNTIME_RETENTION_TARGETS,
+                        base_dir=Path(SETTINGS.REPO_ROOT),
+                    )
+                except Exception as exc:
+                    logger.warning(f"Błąd podczas retencji plików runtime: {exc}")
+
+            background_scheduler.add_interval_job(
+                func=_cleanup_runtime_files_wrapper,
+                minutes=SETTINGS.RUNTIME_RETENTION_INTERVAL_MINUTES,
+                job_id="cleanup_runtime_files",
+                description=(
+                    "Czyszczenie plików runtime starszych niż "
+                    f"{SETTINGS.RUNTIME_RETENTION_DAYS} dni"
+                ),
+            )
+            logger.info(
+                "Zadanie cleanup_runtime_files zarejestrowane "
+                f"(retencja {SETTINGS.RUNTIME_RETENTION_DAYS} dni)"
+            )
+            should_run_initial_retention = await asyncio.to_thread(
+                job_scheduler.should_run_runtime_retention_now,
+                min_interval_minutes=SETTINGS.RUNTIME_RETENTION_INTERVAL_MINUTES,
+                base_dir=Path(SETTINGS.REPO_ROOT),
+            )
+            if should_run_initial_retention:
+                # Start with one immediate background retention pass, then keep interval schedule.
+                asyncio.create_task(_cleanup_runtime_files_wrapper())
+                logger.info(
+                    "Uruchomiono jednorazowe czyszczenie runtime po starcie aplikacji"
+                )
+            else:
+                logger.info(
+                    "Pomijam jednorazowe czyszczenie runtime na starcie "
+                    "(ostatni run w bieżącym interwale retencji)"
+                )
+
     except Exception as exc:
         logger.warning(f"Nie udało się uruchomić BackgroundScheduler: {exc}")
         background_scheduler = None

@@ -74,6 +74,23 @@ For security operating assumptions and localhost admin policy, see `docs/SECURIT
 - `web-next/.next/standalone` – build output (not committed).
 - `scripts/archive-perf-results.sh` – helper backup of Playwright/pytest/Locust results from `perf-artifacts/` directory.
 
+### Runtime Data/Log Retention Policy
+
+Venom runs an automatic retention cleanup job in `BackgroundScheduler` for runtime files.
+
+- **What is cleaned**: directories from `SETTINGS.RUNTIME_RETENTION_TARGETS` (default: `./logs`, `./data/timelines`, `./data/memory`, `./data/training`, `./data/synthetic_training`, `./data/learning`).
+- **Retention period**: `SETTINGS.RUNTIME_RETENTION_DAYS` (default: `7` days).
+- **Execution frequency**: one immediate run after app startup + interval from `SETTINGS.RUNTIME_RETENTION_INTERVAL_MINUTES` (default: `1440`, once per day).
+- **Feature toggle**: `SETTINGS.ENABLE_RUNTIME_RETENTION_CLEANUP` (default: `True`).
+- **Startup guard**: immediate startup run executes only when the last successful retention run is older than the configured interval (prevents repeated cleanup on frequent dev reloads).
+- **State marker**: `./.venom_runtime/runtime_retention.last_run` stores the last runtime retention execution timestamp.
+- **Safety guard**: git-tracked files are excluded from retention deletion.
+
+Implementation references:
+- job function: `venom_core/jobs/scheduler.py` (`cleanup_runtime_files`)
+- scheduler registration: `venom_core/main.py` (`cleanup_runtime_files` interval job)
+- config defaults: `venom_core/config.py` (runtime retention settings)
+
 ## Docker Minimal Packages (Build and Publish)
 
 Detailed step-by-step release procedure:

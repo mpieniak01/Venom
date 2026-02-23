@@ -342,6 +342,11 @@ def test_resolve_audit_actor_prefers_headers_then_state_then_client():
     assert main_module._resolve_audit_actor(empty) == "unknown"
 
 
+def test_resolve_audit_actor_without_state_attribute_uses_client():
+    request = SimpleNamespace(headers={}, client=SimpleNamespace(host="10.0.0.7"))
+    assert main_module._resolve_audit_actor(request) == "10.0.0.7"
+
+
 def test_resolve_audit_status_buckets():
     assert main_module._resolve_audit_status(200) == "success"
     assert main_module._resolve_audit_status(404) == "warning"
@@ -416,6 +421,22 @@ async def test_audit_http_requests_skips_non_audited_paths_and_methods(
     response = await main_module.audit_http_requests(request, _call_next)
     assert response.status_code == 200
     stream.publish.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_audit_http_requests_swallows_publish_errors(monkeypatch):
+    stream = SimpleNamespace(
+        publish=MagicMock(side_effect=RuntimeError("audit-publish-failed"))
+    )
+    monkeypatch.setattr(main_module, "get_audit_stream", lambda: stream)
+    request = _build_request(method="GET", path="/api/v1/system/status")
+
+    async def _call_next(_request):
+        return Response(status_code=200)
+
+    response = await main_module.audit_http_requests(request, _call_next)
+    assert response.status_code == 200
+    stream.publish.assert_called_once()
 
 
 def test_storage_and_memory_store_initialization(monkeypatch, tmp_path):

@@ -184,6 +184,37 @@ async def test_check_http_service_openai_degraded_branch(service_monitor):
 
 
 @pytest.mark.asyncio
+async def test_check_http_service_openai_adds_bearer_header(
+    service_monitor, monkeypatch: pytest.MonkeyPatch
+):
+    service = ServiceInfo(
+        name="OpenAI API",
+        service_type="api",
+        endpoint=TEST_EXAMPLE_HTTP,
+    )
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.SETTINGS.OPENAI_API_KEY",
+        "sk-test",
+    )
+
+    with patch(
+        "venom_core.core.service_monitor.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        await service_monitor._check_http_service(service)
+
+    kwargs = mock_client.aget.await_args.kwargs
+    assert kwargs["headers"]["Authorization"] == "Bearer sk-test"
+    assert service.status == ServiceStatus.ONLINE
+
+
+@pytest.mark.asyncio
 async def test_check_http_service_github_offline_branch(service_monitor):
     service = ServiceInfo(
         name="GitHub API",

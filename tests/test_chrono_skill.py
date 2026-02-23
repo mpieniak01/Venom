@@ -147,6 +147,7 @@ class TestChronoSkill:
     @pytest.mark.asyncio
     async def test_list_timelines_empty(self, chrono_skill):
         """Test listing timelines."""
+        result = await chrono_skill.list_timelines()
 
         # Always at least "main"
         assert "main" in result

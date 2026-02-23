@@ -1,10 +1,14 @@
 """Testy dla SkillManager - dynamiczne zarządzanie umiejętnościami."""
 
+import ast
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import venom_core.execution.skill_manager as skill_manager_module
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.execution.skill_manager import SkillManager, SkillValidationError
 
@@ -235,3 +239,69 @@ class ValidSkill:
     # Tylko valid_skill powinien być załadowany
     assert len(loaded) == 1
     assert "valid_skill" in loaded
+
+
+def test_reload_skill_returns_false_for_missing_file(skill_manager):
+    assert skill_manager.reload_skill("missing_skill") is False
+
+
+def test_reload_skill_returns_false_when_reload_raises(
+    skill_manager, temp_skills_dir, monkeypatch
+):
+    skill_code = '''"""Reloadable skill."""
+from semantic_kernel.functions import kernel_function
+
+class ReloadableSkill:
+    @kernel_function(name="test", description="Test")
+    def test(self) -> str:
+        return "ok"
+'''
+    skill_file = Path(temp_skills_dir) / "reloadable.py"
+    skill_file.write_text(skill_code)
+    assert "reloadable" in skill_manager.load_skills_from_dir()
+
+    def _raise_reload(_module):
+        raise RuntimeError("reload failed")
+
+    monkeypatch.setattr(skill_manager_module.importlib, "reload", _raise_reload)
+    assert skill_manager.reload_skill("reloadable") is False
+
+
+@pytest.mark.asyncio
+async def test_broadcast_skill_event_success_and_failure(kernel, temp_skills_dir):
+    broadcaster = MagicMock()
+    broadcaster.broadcast_event = AsyncMock(return_value=None)
+    manager = SkillManager(
+        kernel, custom_skills_dir=temp_skills_dir, event_broadcaster=broadcaster
+    )
+
+    await manager.broadcast_skill_event("SKILL_STARTED", "docs", action="generate")
+    broadcaster.broadcast_event.assert_awaited_once()
+
+    broadcaster.broadcast_event = AsyncMock(side_effect=RuntimeError("ws down"))
+    await manager.broadcast_skill_event("SKILL_FAILED", "docs", action="build")
+
+
+def test_decorator_name_variants(skill_manager):
+    name_node = ast.Name(id="kernel_function")
+    call_node = ast.Call(func=ast.Name(id="kernel_function"), args=[], keywords=[])
+    attr_node = ast.Attribute(value=ast.Name(id="x"), attr="y")
+
+    assert skill_manager._decorator_name(name_node) == "kernel_function"
+    assert skill_manager._decorator_name(call_node) == "kernel_function"
+    assert skill_manager._decorator_name(attr_node) is None
+
+
+def test_register_skill_in_kernel_skips_foreign_classes(temp_skills_dir):
+    manager = SkillManager(MagicMock(), custom_skills_dir=temp_skills_dir)
+    plugin_cls = type("Plugin", (), {"__module__": "venom_custom_demo"})
+    foreign_cls = type("Foreign", (), {"__module__": "external.mod"})
+    module = SimpleNamespace(Plugin=plugin_cls, Foreign=foreign_cls)
+
+    manager._register_skill_in_kernel("demo", module)
+
+    added = [
+        call.kwargs.get("plugin_name") for call in manager.kernel.add_plugin.mock_calls
+    ]
+    assert "Plugin" in added
+    assert "Foreign" not in added

@@ -99,5 +99,18 @@ tests/test_profile_config.py
 tests/test_ollama_tuning.py
 tests/test_contracts_init.py
 tests/test_coverage_fixes_wave4.py
+tests/test_llm_runtime_utils.py
+tests/test_port_authority.py
+tests/test_logger_utils.py
+tests/test_jobs_scheduler_cleanup.py
+tests/test_docs_skill.py
+tests/test_memory_consolidator.py
+tests/test_skill_manager.py
+tests/test_input_skill.py
+tests/test_media_skill.py
+tests/test_research_skill.py
+tests/test_platform_skill.py
+tests/test_message_broker.py
 
 # AUTO-ADDED by pre-commit (staged backend/test changes)
+tests/test_api_contracts_stability.py

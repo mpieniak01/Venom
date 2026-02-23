@@ -241,6 +241,30 @@ LEKCJE:
     assert "Lekcja trzecia" in lessons
 
 
+def test_parse_consolidation_response_supports_lessons_header_english(consolidator):
+    response = """PODSUMOWANIE:
+Summary text
+
+LESSONS:
+1. First
+2. Second"""
+
+    summary, lessons = consolidator._parse_consolidation_response(response)
+    assert "Summary text" in summary
+    assert lessons == ["First", "Second"]
+
+
+def test_normalize_and_fallback_helpers(consolidator):
+    assert consolidator._normalize_lesson_line("") is None
+    assert consolidator._normalize_lesson_line("-") is None
+    assert consolidator._normalize_lesson_line("2. Valid") == "Valid"
+
+    lessons = consolidator._fallback_numbered_lessons(
+        ["x", "1. Learn A", "other", "2. Learn B"]
+    )
+    assert lessons == ["Learn A", "Learn B"]
+
+
 @pytest.mark.asyncio
 async def test_consolidate_integration_with_real_logs(consolidator, mock_kernel):
     """Test integracyjny z realistycznymi logami."""

@@ -1,6 +1,0 @@
-# Venom profile: Ollama local runtime (DEPRECATED alias)
-# Ollama server is an external daemon (not installed by pip here).
-# This profile keeps Python deps at API baseline.
-# Deprecation note: use `requirements.txt` (or `requirements-profile-api.txt`) directly.
-
--r requirements-profile-api.txt

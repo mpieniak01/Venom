@@ -39,7 +39,7 @@ onnx>=1.14.0            # Standard wymiany modeli
 onnx-ir>=0.1.16         # Wymagane przez onnxruntime_genai.models.builder
 optimum                 # Hugging Face Optimum (Interface do ONNX)
 accelerate              # Zarządzanie pamięcią przy ładowaniu dużych modeli
-protobuf>=4.25.3,<6.0.0 # Stabilny zakres pod ONNX + SDK Google
+protobuf>=5.29.6,<6.0.0 # Zakres po fixie CVE (Uncontrolled Recursion), zgodny z ONNX + SDK Google
 
 
 # --- VENOM HIPPOCAMPUS: PAMIĘĆ (Knowledge Graph) ---

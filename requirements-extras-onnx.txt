@@ -1,14 +1,16 @@
-# Venom ONNX extras: optional packages beyond ONNX LLM profile.
-# Use this when you need ONNX-adjacent speech/voice extras in addition
-# to the ONNX local LLM runtime profile.
+# Venom ONNX extras: optional add-ons for ONNX profiles.
+# This file intentionally DOES NOT install ONNX engine/runtime itself.
+# First install one ONNX profile, then apply extras:
+#   pip install -r requirements-profile-onnx.txt
+#   # or CPU-only:
+#   pip install -r requirements-profile-onnx-cpu.txt
+#   pip install -r requirements-extras-onnx.txt
 # Current extras:
 # - faster-whisper (local STT)
 # - piper-tts (local TTS, ONNX model-based)
 #
 # Example:
 #   pip install -r requirements-extras-onnx.txt
-
--r requirements-profile-onnx.txt
 
 # Audio/voice ONNX-adjacent extras
 faster-whisper

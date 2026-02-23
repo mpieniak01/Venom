@@ -22,10 +22,10 @@ Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje 
    Uwagi:
    - `requirements.txt` = minimalny profil API/cloud (domyślny).
    - Dla lokalnych silników runtime doinstaluj profil:
-     - `pip install -r requirements.txt` (Ollama; `requirements-profile-ollama.txt` to alias deprecated)
+     - `pip install -r requirements.txt` (Ollama)
      - `pip install -r requirements-profile-vllm.txt`
      - `pip install -r requirements-profile-onnx.txt`
-     - opcjonalne extras (to nie jest sam silnik ONNX LLM): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
+     - opcjonalne extras (instaluj po profilu ONNX/ONNX-CPU): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
    - Pełny legacy stack: `pip install -r requirements-full.txt`
 2. **Node.js 18.19+** – frontend:
    ```bash

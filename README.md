@@ -178,11 +178,11 @@ make start
 
 Default `requirements.txt` installs **minimal API/cloud profile**.
 If you want local runtime engines, install one of:
-- `pip install -r requirements.txt` (Ollama: no extra Python deps; `requirements-profile-ollama.txt` is deprecated alias)
+- `pip install -r requirements.txt` (Ollama: no extra Python deps)
 - `pip install -r requirements-profile-vllm.txt`
 - `pip install -r requirements-profile-onnx.txt`
 - `pip install -r requirements-profile-onnx-cpu.txt`
-- `pip install -r requirements-extras-onnx.txt` (optional extras: `faster-whisper` + `piper-tts`)
+- `pip install -r requirements-extras-onnx.txt` (optional extras: `faster-whisper` + `piper-tts`; install after ONNX/ONNX-CPU profile)
 - `pip install -r requirements-full.txt` (legacy full stack)
 
 ### Path B: Docker script setup (single command)
@@ -256,11 +256,10 @@ Python 3.10+ (recommended 3.11)
 
 Profiles:
 - [requirements.txt](requirements.txt) - default minimal API/cloud profile
-- [requirements-profile-ollama.txt](requirements-profile-ollama.txt) - deprecated alias of API profile (`requirements.txt`)
 - [requirements-profile-vllm.txt](requirements-profile-vllm.txt) - API + vLLM profile
 - [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - API + ONNX LLM profile (third engine)
 - [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - API + ONNX CPU-only profile
-- [requirements-extras-onnx.txt](requirements-extras-onnx.txt) - optional extras (`faster-whisper`, `piper-tts`), separate from ONNX LLM profile
+- [requirements-extras-onnx.txt](requirements-extras-onnx.txt) - optional extras (`faster-whisper`, `piper-tts`), installed after ONNX LLM or ONNX CPU profile
 - [requirements-full.txt](requirements-full.txt) - full legacy stack
 
 ## Running (FastAPI + Next.js)

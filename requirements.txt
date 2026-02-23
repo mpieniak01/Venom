@@ -5,11 +5,12 @@
 #
 # Profiles:
 # - API only:      pip install -r requirements.txt
-# - Ollama local:  pip install -r requirements-profile-ollama.txt
+# - Ollama local:  pip install -r requirements.txt
 # - vLLM local:    pip install -r requirements-profile-vllm.txt
 # - ONNX LLM:      pip install -r requirements-profile-onnx.txt
 # - ONNX CPU-only: pip install -r requirements-profile-onnx-cpu.txt
-# - ONNX extras:   pip install -r requirements-extras-onnx.txt  (faster-whisper + piper-tts)
+# - ONNX extras:   install ONNX profile first, then:
+#                  pip install -r requirements-extras-onnx.txt  (faster-whisper + piper-tts)
 # - Full legacy:   pip install -r requirements-full.txt
 
 -r requirements-profile-api.txt

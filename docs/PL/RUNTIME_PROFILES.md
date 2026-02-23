@@ -280,6 +280,10 @@ Zawiera:
 
 Instalacja:
 ```bash
+# Najpierw wybierz profil silnika ONNX:
+# pip install -r requirements-profile-onnx.txt
+# albo:
+# pip install -r requirements-profile-onnx-cpu.txt
 pip install -r requirements-extras-onnx.txt
 ```
 
@@ -295,12 +299,24 @@ pip install -r requirements-full.txt
 
 Zawiera pełny legacy zestaw (core + lokalne silniki + ciężkie extras + narzędzia deweloperskie).
 
+### Full vs Profile (reguła operacyjna)
+
+Domyślna ścieżka to `requirements.txt` + jeden wybrany profil.
+`requirements-full.txt` używamy tylko na hostach specjalnych, które faktycznie wymagają legacy all-in stack.
+
+Rekomendowany dobór:
+- Typowy host dev/API/cloud: `requirements.txt`
+- Lokalna inferencja ONNX (GPU): `requirements-profile-onnx.txt`
+- Lokalna inferencja ONNX (CPU-only): `requirements-profile-onnx-cpu.txt`
+- Lokalny runtime vLLM: `requirements-profile-vllm.txt`
+- Opcjonalne dodatki voice/STT: `requirements-extras-onnx.txt` (po profilu ONNX/ONNX-CPU)
+- Host legacy catch-all (jawny wyjątek): `requirements-full.txt`
+
 ### Instalacja per silnik runtime
 
 ```bash
 # Instalacja pod Ollama (bez dodatkowych paczek Pythona względem API)
 pip install -r requirements.txt
-# (legacy alias nadal działa: requirements-profile-ollama.txt)
 
 # Profil pod vLLM
 pip install -r requirements-profile-vllm.txt
@@ -309,6 +325,7 @@ pip install -r requirements-profile-vllm.txt
 pip install -r requirements-profile-onnx.txt
 
 # Opcjonalne extras ONNX (audio/głos itd.)
+# (instaluj po profilu ONNX/ONNX-CPU)
 pip install -r requirements-extras-onnx.txt
 ```
 
@@ -368,7 +385,7 @@ To zamierzone! Profil Light używa `requirements-docker-minimal.txt`, który wyk
 
 1. Przełącz na profil FULL, lub
 2. Zainstaluj profil ONNX LLM: `pip install -r requirements-profile-onnx.txt`
-3. Opcjonalnie doinstaluj extras: `pip install -r requirements-extras-onnx.txt`
+3. Opcjonalnie doinstaluj extras (po profilu ONNX/ONNX-CPU): `pip install -r requirements-extras-onnx.txt`
 
 ---
 

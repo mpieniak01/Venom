@@ -6,7 +6,7 @@ Detailed data sources, tests and SCC rules will be documented in the dedicated F
 
 ---
 
-## 1. web-next (Next.js 15)
+## 1. web-next (Next.js 16)
 
 ### 1.1 Requirements
 - Node.js 20+

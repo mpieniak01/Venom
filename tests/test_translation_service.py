@@ -419,13 +419,36 @@ def test_resolve_headers_runtime_without_keys_returns_empty(monkeypatch):
     monkeypatch.setattr(translation_module.SETTINGS, "OPENAI_API_KEY", "")
     monkeypatch.setattr(translation_module.SETTINGS, "LLM_LOCAL_API_KEY", "")
     service = translation_module.TranslationService()
-
     monkeypatch.setattr(
         translation_module,
         "get_active_llm_runtime",
         lambda: SimpleNamespace(service_type="local"),
     )
     assert service._resolve_headers() == {}
+
+
+def test_resolve_chat_endpoint_appends_v1_path_for_plain_local_endpoint(monkeypatch):
+    _configure_settings(monkeypatch)
+    service = translation_module.TranslationService()
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: DummyRuntime(),
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS,
+        "LLM_LOCAL_ENDPOINT",
+        "http://localhost:11434/",
+    )
+    assert (
+        service._resolve_chat_endpoint() == "http://localhost:11434/v1/chat/completions"
+    )
+
+
+def test_resolve_headers_unknown_runtime_type_returns_empty():
+    service = translation_module.TranslationService()
+    headers = service._resolve_headers(SimpleNamespace(service_type="custom"))
+    assert headers == {}
 
 
 @pytest.mark.asyncio

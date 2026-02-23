@@ -681,3 +681,150 @@ def test_get_gpu_memory_usage_selects_highest_valid_value(service_monitor):
 def test_get_gpu_memory_usage_returns_none_without_binary(service_monitor):
     with patch("venom_core.core.service_monitor.shutil.which", return_value=None):
         assert service_monitor.get_gpu_memory_usage() is None
+
+
+@pytest.mark.asyncio
+async def test_check_docker_service_nonzero_exit_sets_stderr_message(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(name="Docker Daemon", service_type="docker")
+    process = AsyncMock()
+    process.returncode = 1
+    process.communicate.return_value = (b"", b"daemon down")
+
+    monkeypatch.setattr(
+        "asyncio.create_subprocess_exec", AsyncMock(return_value=process)
+    )
+    monkeypatch.setattr(
+        "asyncio.wait_for", AsyncMock(return_value=(b"", b"daemon down"))
+    )
+
+    await service_monitor._check_docker_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert service.error_message == "daemon down"
+
+
+@pytest.mark.asyncio
+async def test_check_docker_service_unexpected_exception_sets_trimmed_message(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(name="Docker Daemon", service_type="docker")
+
+    async def _raise(*_args, **_kwargs):
+        raise RuntimeError("x" * 150)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", _raise)
+
+    await service_monitor._check_docker_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert len(service.error_message or "") <= 100
+
+
+@pytest.mark.asyncio
+async def test_check_local_database_service_redis_online_and_missing_module(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(
+        name="Redis",
+        service_type="database",
+        endpoint="redis://localhost:6379/0",
+        description="redis",
+    )
+    fake_redis = ModuleType("redis.asyncio")
+    fake_client = SimpleNamespace(ping=AsyncMock(return_value=True))
+    fake_redis.from_url = lambda *_args, **_kwargs: fake_client
+    fake_redis_pkg = ModuleType("redis")
+    fake_redis_pkg.asyncio = fake_redis
+    monkeypatch.setitem(sys.modules, "redis", fake_redis_pkg)
+    monkeypatch.setitem(sys.modules, "redis.asyncio", fake_redis)
+
+    await service_monitor._check_local_database_service(service)
+    assert service.status == ServiceStatus.ONLINE
+    assert service.error_message is None
+
+    monkeypatch.delitem(sys.modules, "redis", raising=False)
+    monkeypatch.delitem(sys.modules, "redis.asyncio", raising=False)
+    await service_monitor._check_local_database_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert service.error_message
+
+
+@pytest.mark.asyncio
+async def test_check_local_database_service_chroma_exception_branch(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(
+        name="ChromaDB", service_type="database", description="chroma"
+    )
+    fake_chroma = SimpleNamespace(
+        Client=MagicMock(side_effect=RuntimeError("boom-chroma"))
+    )
+    monkeypatch.setattr("venom_core.core.service_monitor.chromadb", fake_chroma)
+
+    await service_monitor._check_local_database_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert "boom-chroma" in (service.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_check_local_database_service_lancedb_online_branch(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(name="LanceDB", service_type="database")
+    fake_lancedb = ModuleType("lancedb")
+    fake_conn = SimpleNamespace(table_names=lambda: ["a"])
+    fake_lancedb.connect = MagicMock(return_value=fake_conn)
+    monkeypatch.setitem(sys.modules, "lancedb", fake_lancedb)
+
+    await service_monitor._check_local_database_service(service)
+    assert service.status == ServiceStatus.ONLINE
+    assert service.error_message is None
+
+
+@pytest.mark.asyncio
+async def test_check_mcp_service_generic_exception_branch(service_monitor, monkeypatch):
+    fake_module = ModuleType("venom_core.skills.mcp_manager_skill")
+
+    class RaisingManager:
+        def __init__(self):
+            raise RuntimeError("boom-mcp")
+
+    fake_module.McpManagerSkill = RaisingManager
+    monkeypatch.setitem(
+        __import__("sys").modules, "venom_core.skills.mcp_manager_skill", fake_module
+    )
+    service = ServiceInfo(name="MCP Engine", service_type="mcp")
+
+    await service_monitor._check_mcp_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert "Błąd MCP" in (service.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_check_semantic_kernel_service_exception_branch(service_monitor):
+    service_monitor.orchestrator = SimpleNamespace(task_dispatcher=SimpleNamespace())
+    service = ServiceInfo(name="Semantic Kernel", service_type="orchestrator")
+
+    await service_monitor._check_semantic_kernel_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert "Błąd SK" in (service.error_message or "")
+
+
+def test_get_gpu_memory_usage_handles_timeout_and_unexpected_exception(
+    service_monitor, monkeypatch
+):
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.shutil.which", lambda _x: "/bin/nvidia-smi"
+    )
+
+    def _timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(cmd=["nvidia-smi"], timeout=5)
+
+    monkeypatch.setattr("venom_core.core.service_monitor.subprocess.run", _timeout)
+    assert service_monitor.get_gpu_memory_usage() is None
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("boom-gpu")
+
+    monkeypatch.setattr("venom_core.core.service_monitor.subprocess.run", _boom)
+    assert service_monitor.get_gpu_memory_usage() is None

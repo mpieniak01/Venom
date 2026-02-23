@@ -223,6 +223,48 @@ async def test_start_configured_local_server_noop_when_server_missing(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_start_configured_local_server_noop_without_controller_or_name(
+    monkeypatch,
+):
+    monkeypatch.setattr(main_module, "llm_controller", None)
+    await main_module._start_configured_local_server("ollama")
+
+    class DummyController:
+        def has_server(self, _name):
+            return True
+
+    monkeypatch.setattr(main_module, "llm_controller", DummyController())
+    await main_module._start_configured_local_server("")
+
+
+@pytest.mark.asyncio
+async def test_start_configured_local_server_handles_run_action_exception(monkeypatch):
+    class DummyController:
+        def has_server(self, _name):
+            return True
+
+        def list_servers(self):
+            return [{"name": "other", "supports": {"stop": True}}]
+
+        async def run_action(self, _name, _action):
+            raise RuntimeError("boom-start")
+
+    monkeypatch.setattr(main_module, "llm_controller", DummyController())
+    await main_module._start_configured_local_server("ollama")
+
+
+@pytest.mark.asyncio
+async def test_synchronize_startup_local_model_handles_exception(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "model_manager",
+        SimpleNamespace(list_local_models=AsyncMock(side_effect=RuntimeError("boom"))),
+    )
+    runtime = SimpleNamespace(provider="ollama", endpoint="http://localhost:11434")
+    await main_module._synchronize_startup_local_model(runtime)
+
+
+@pytest.mark.asyncio
 async def test_receive_node_handshake_parsing(monkeypatch):
     handshake_payload = '{"message_type":"HANDSHAKE","payload":{"node_name":"n1","token":"t","capabilities":{}}}'
     ws_ok = MagicMock()

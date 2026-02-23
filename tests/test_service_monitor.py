@@ -1,5 +1,8 @@
 """Testy dla modułu service_monitor."""
 
+import asyncio
+import subprocess
+import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -551,3 +554,130 @@ def test_parse_nvidia_smi_output_filters_invalid_rows(service_monitor):
         "2048, 8192\ninvalid\n1000, xyz\n4096, 8192\n"
     )
     assert parsed == [(2048.0, 8192.0), (4096.0, 8192.0)]
+
+
+@pytest.mark.asyncio
+async def test_check_http_service_without_endpoint_sets_unknown(service_monitor):
+    service = ServiceInfo(name="No Endpoint API", service_type="api", endpoint=None)
+    await service_monitor._check_http_service(service)
+    assert service.status == ServiceStatus.UNKNOWN
+    assert service.error_message == "Brak endpointu"
+
+
+@pytest.mark.asyncio
+async def test_check_docker_service_timeout_sets_offline(service_monitor, monkeypatch):
+    service = ServiceInfo(name="Docker Daemon", service_type="docker")
+
+    process = AsyncMock()
+    process.communicate.return_value = (b"", b"")
+    process.returncode = 0
+
+    monkeypatch.setattr(
+        "asyncio.create_subprocess_exec", AsyncMock(return_value=process)
+    )
+    monkeypatch.setattr(
+        "asyncio.wait_for",
+        AsyncMock(side_effect=asyncio.TimeoutError),
+    )
+
+    await service_monitor._check_docker_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert service.error_message == "Timeout"
+
+
+@pytest.mark.asyncio
+async def test_check_docker_service_missing_binary_sets_offline(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(name="Docker Daemon", service_type="docker")
+
+    async def _raise_file_not_found(*_args, **_kwargs):
+        raise FileNotFoundError
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", _raise_file_not_found)
+
+    await service_monitor._check_docker_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert service.error_message == "Docker nie zainstalowany"
+
+
+@pytest.mark.asyncio
+async def test_check_local_database_service_chroma_missing_dependency_branch(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(
+        name="ChromaDB",
+        service_type="database",
+        description="chroma vector db",
+    )
+    monkeypatch.setattr("venom_core.core.service_monitor.chromadb", None)
+
+    await service_monitor._check_local_database_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert service.error_message == "chromadb nie jest zainstalowane"
+
+
+@pytest.mark.asyncio
+async def test_check_local_database_service_lancedb_missing_dependency_branch(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(name="LanceDB", service_type="database", description="vector")
+    monkeypatch.setitem(sys.modules, "lancedb", None)
+
+    await service_monitor._check_local_database_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert service.error_message == "lancedb nie jest zainstalowane"
+
+
+@pytest.mark.asyncio
+async def test_check_local_database_service_lancedb_exception_branch(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(name="LanceDB", service_type="database", description="vector")
+    fake_lancedb = ModuleType("lancedb")
+    fake_lancedb.connect = MagicMock(side_effect=RuntimeError("boom-lancedb"))
+    monkeypatch.setitem(sys.modules, "lancedb", fake_lancedb)
+
+    await service_monitor._check_local_database_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert "boom-lancedb" in (service.error_message or "")
+
+
+def test_get_memory_metrics_tolerates_nvidia_timeout(service_monitor):
+    with patch("venom_core.core.service_monitor.psutil") as mock_psutil:
+        mock_memory = MagicMock()
+        mock_memory.used = 2 * 1024**3
+        mock_memory.total = 8 * 1024**3
+        mock_memory.percent = 25.0
+        mock_psutil.virtual_memory.return_value = mock_memory
+
+        with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
+            mock_which.return_value = "/usr/bin/nvidia-smi"
+            with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+                mock_run.side_effect = subprocess.TimeoutExpired(
+                    cmd=["nvidia-smi"], timeout=5
+                )
+                metrics = service_monitor.get_memory_metrics()
+
+    assert metrics["memory_usage_percent"] == pytest.approx(25.0)
+    assert metrics["vram_usage_mb"] is None
+    assert metrics["vram_total_mb"] is None
+
+
+def test_get_gpu_memory_usage_selects_highest_valid_value(service_monitor):
+    with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
+        mock_which.return_value = "/usr/bin/nvidia-smi"
+        with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "10\ninvalid\n2048\n1024\n"
+            mock_run.return_value = result
+
+            usage = service_monitor.get_gpu_memory_usage()
+
+    assert usage == pytest.approx(2048.0)
+
+
+def test_get_gpu_memory_usage_returns_none_without_binary(service_monitor):
+    with patch("venom_core.core.service_monitor.shutil.which", return_value=None):
+        assert service_monitor.get_gpu_memory_usage() is None

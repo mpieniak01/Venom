@@ -1,6 +1,7 @@
 """Tests for translation_service."""
 
 import asyncio
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -367,3 +368,91 @@ async def test_translate_text_falls_back_on_generic_exception(monkeypatch):
     service = translation_module.TranslationService()
     result = await service.translate_text("Hello", target_lang="pl")
     assert result == "Hello"
+
+
+def test_get_cached_value_missing_and_valid_entry():
+    service = translation_module.TranslationService(cache_ttl_seconds=100)
+    key = service._build_cache_key("hello", "en", "pl", "m")
+    assert service._get_cached_value(cache_key=key, now=1.0) is None
+
+    service._cache[key] = {"value": "cached-ok", "timestamp": 1.0}
+    assert service._get_cached_value(cache_key=key, now=50.0) == "cached-ok"
+
+
+def test_extract_message_content_blank_string_falls_back():
+    assert (
+        translation_module.TranslationService._extract_message_content(
+            data={"choices": [{"message": {"content": "   "}}]},
+            fallback_text="fallback",
+        )
+        == "fallback"
+    )
+
+
+def test_build_translation_payload_uses_source_and_target_labels():
+    payload = translation_module.TranslationService._build_translation_payload(
+        text="Hello",
+        source_lang="en",
+        target_lang="pl",
+        model_name="test-model",
+    )
+    messages = payload["messages"]
+    assert payload["model"] == "test-model"
+    assert "Translate from English to Polish." in messages[1]["content"]
+
+
+def test_build_translation_payload_uses_source_language_fallback():
+    payload = translation_module.TranslationService._build_translation_payload(
+        text="Hallo",
+        source_lang=None,
+        target_lang="en",
+        model_name="test-model",
+    )
+    assert (
+        "Translate from the source language to English."
+        in payload["messages"][1]["content"]
+    )
+
+
+def test_resolve_headers_runtime_without_keys_returns_empty(monkeypatch):
+    _configure_settings(monkeypatch)
+    monkeypatch.setattr(translation_module.SETTINGS, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(translation_module.SETTINGS, "LLM_LOCAL_API_KEY", "")
+    service = translation_module.TranslationService()
+
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(service_type="local"),
+    )
+    assert service._resolve_headers() == {}
+
+
+@pytest.mark.asyncio
+async def test_translate_text_uses_llm_provider_when_runtime_has_no_markers(
+    monkeypatch,
+):
+    _configure_settings(monkeypatch)
+    runtime = SimpleNamespace(provider=None, service_type=None)
+    monkeypatch.setattr(translation_module, "get_active_llm_runtime", lambda: runtime)
+
+    observed_provider = {"value": None}
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            observed_provider["value"] = kwargs.get("provider")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def apost(self, *args, **kwargs):
+            return DummyResponse({"choices": [{"message": {"content": "Czesc"}}]})
+
+    monkeypatch.setattr(translation_module, "TrafficControlledHttpClient", DummyClient)
+    service = translation_module.TranslationService(cache_ttl_seconds=0)
+    result = await service.translate_text("Hello", target_lang="pl", use_cache=False)
+    assert result == "Czesc"
+    assert observed_provider["value"] == "llm"

@@ -186,6 +186,50 @@ def test_docker_recover_from_name_conflict_notfound_path(monkeypatch, tmp_path):
     assert result is expected_container
 
 
+def test_docker_create_container_raises_runtime_on_non_conflict_api_error(
+    monkeypatch, tmp_path
+):
+    class ApiError(Exception):
+        def __init__(self, msg: str, status_code=None):
+            super().__init__(msg)
+            self.status_code = status_code
+
+    monkeypatch.setattr(docker_habitat_mod, "APIError", ApiError)
+    monkeypatch.setattr(docker_habitat_mod.SETTINGS, "DOCKER_IMAGE_NAME", "venom-image")
+    workspace = tmp_path / "ws"
+    workspace.mkdir(parents=True, exist_ok=True)
+    client = SimpleNamespace(images=SimpleNamespace(get=lambda _img: object()))
+    habitat = _new_docker_habitat_with_client(client)
+    habitat._resolve_workspace_path = lambda: workspace
+    habitat._run_container = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        ApiError("forbidden", status_code=403)
+    )
+
+    with pytest.raises(RuntimeError, match="Błąd API Docker"):
+        habitat._create_container(workspace)
+
+
+def test_docker_recover_from_name_conflict_raises_when_retries_exhausted(
+    monkeypatch, tmp_path
+):
+    class ApiError(Exception):
+        pass
+
+    monkeypatch.setattr(docker_habitat_mod, "APIError", ApiError)
+    workspace = tmp_path / "ws"
+    workspace.mkdir(parents=True, exist_ok=True)
+    habitat = _new_docker_habitat_with_client(
+        SimpleNamespace(containers=SimpleNamespace())
+    )
+
+    with pytest.raises(RuntimeError, match="Wyczerpano limit retry"):
+        habitat._recover_from_name_conflict(
+            error=ApiError("conflict"),
+            workspace_path=workspace,
+            retries_left=0,
+        )
+
+
 def test_system_generate_external_map_covers_config_branches(monkeypatch):
     monkeypatch.setattr(
         system_routes.SETTINGS, "LLM_SERVICE_TYPE", "local", raising=False

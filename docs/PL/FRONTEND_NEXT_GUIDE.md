@@ -39,11 +39,16 @@ web-next/
 | Komenda                               | Cel                                                                                   |
 |---------------------------------------|----------------------------------------------------------------------------------------|
 | `npm --prefix web-next install`       | Instalacja zależności                                                                |
-| `npm --prefix web-next run dev`       | Dev server (Next 15) z automatyczną generacją meta (`predev → generate-meta.mjs`)     |
+| `npm --prefix web-next run dev`       | Dev server (Next 16) z automatyczną generacją meta (`predev → generate-meta.mjs`)     |
 | `npm --prefix web-next run build`     | Build prod, generuje `public/meta.json` i standalone `.next/standalone`               |
 | `npm --prefix web-next run test:e2e`  | Playwright smoke w trybie prod (15 scenariuszy Cockpit + belki)                       |
 | `npm --prefix web-next run lint`      | Next lint (ESLint 9)                                                                  |
 | `npm --prefix web-next run lint:locales` | Walidacja spójności słowników i18n (`scripts/check-locales.ts`)                     |
+
+Wymagania:
+- Node.js `>=20.9.0`
+- npm `>=10.0.0`
+- Zalecenie: użyć `nvm use` w katalogu `web-next/` (`.nvmrc`)
 
 ### 0.4 Konfiguracja i proxy
 - backend FastAPI domyślnie nasłuchuje na porcie 8000 – front łączy się poprzez *rewrites* Next (patrz `next.config.mjs`) lub poprzez zmienne:

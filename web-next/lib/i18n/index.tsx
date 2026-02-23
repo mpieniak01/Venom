@@ -66,21 +66,24 @@ function applyReplacements(value: string, replacements?: Record<string, string |
   }, value);
 }
 
+function resolveInitialLanguage(): LanguageCode {
+  if (globalThis.window === undefined) return "pl";
+  const stored = globalThis.window.localStorage.getItem(STORAGE_KEY) as LanguageCode | null;
+  if (stored && stored in translations) {
+    return stored;
+  }
+  const browser = globalThis.window.navigator.language?.slice(0, 2).toLowerCase();
+  if (browser === "en" || browser === "de") {
+    return browser as LanguageCode;
+  }
+  return "pl";
+}
+
 export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [language, setLanguage] = useState<LanguageCode>("pl");
+  const [language, setLanguage] = useState<LanguageCode>(() => resolveInitialLanguage());
 
   useEffect(() => {
     if (globalThis.window === undefined) return;
-    document.documentElement.dataset.hydrated = "true";
-    const stored = globalThis.window.localStorage.getItem(STORAGE_KEY) as LanguageCode | null;
-    if (stored && stored in translations) {
-      setLanguage(stored);
-      return;
-    }
-    const browser = globalThis.window.navigator.language?.slice(0, 2).toLowerCase();
-    if (browser && (browser === "en" || browser === "de")) {
-      setLanguage(browser as LanguageCode);
-    }
     document.documentElement.dataset.hydrated = "true";
   }, []);
 

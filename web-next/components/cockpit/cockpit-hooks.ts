@@ -238,6 +238,42 @@ export const sessionEntryKey = (entry: SessionHistoryEntry) => {
   return `no-request:${role}:${content}`;
 };
 
+function clearLocalHistory(
+  setLocalSessionHistory: React.Dispatch<React.SetStateAction<SessionHistoryEntry[]>>,
+) {
+  setLocalSessionHistory([]);
+}
+
+function mergeCachedHistory(
+  setLocalSessionHistory: React.Dispatch<React.SetStateAction<SessionHistoryEntry[]>>,
+  normalized: SessionHistoryEntry[],
+) {
+  setLocalSessionHistory((prev) => {
+    const prevKey = prev.map(sessionEntryKey).join("|");
+    const nextKey = normalized.map(sessionEntryKey).join("|");
+    return prevKey === nextKey ? prev : normalized;
+  });
+}
+
+function mergeIncomingHistory(
+  setLocalSessionHistory: React.Dispatch<React.SetStateAction<SessionHistoryEntry[]>>,
+  sessionHistory: SessionHistoryEntry[],
+) {
+  setLocalSessionHistory((prev) => {
+    if (prev.length === 0) return sessionHistory.slice(-MAX_SESSION_HISTORY_ENTRIES);
+    const keys = new Set(prev.map(sessionEntryKey));
+    const merged = [...prev];
+    sessionHistory.forEach((entry) => {
+      const key = sessionEntryKey(entry);
+      if (!keys.has(key)) {
+        keys.add(key);
+        merged.push(entry);
+      }
+    });
+    return merged.slice(-MAX_SESSION_HISTORY_ENTRIES);
+  });
+}
+
 export function useSessionHistoryState({
   sessionId,
   sessionHistoryData,
@@ -251,19 +287,16 @@ export function useSessionHistoryState({
   const [localSessionHistory, setLocalSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const lastSessionIdRef = useRef<string | null>(null);
   const initializedStorageKeyRef = useRef<string | null>(null);
-  const [bootId, setBootId] = useState<string | null>(null);
-  const sessionHistoryStorageKey =
-    sessionId && bootId ? `venom-session-history:${sessionId}:${bootId}` : null;
-
-  useEffect(() => {
-    if (globalThis.window === undefined) return;
+  const bootId = useMemo(() => {
+    if (globalThis.window === undefined) return null;
     try {
-      const storedBootId = globalThis.window.localStorage.getItem("venom-backend-boot-id");
-      setBootId(storedBootId);
+      return globalThis.window.localStorage.getItem("venom-backend-boot-id");
     } catch {
-      setBootId(null);
+      return null;
     }
   }, [sessionId]);
+  const sessionHistoryStorageKey =
+    sessionId && bootId ? `venom-session-history:${sessionId}:${bootId}` : null;
 
   // The effect clearing history on bootId was removed to preserve continuity during navigation.
   // Loading from cache is handled by the effect below, which reacts to sessionHistoryStorageKey.
@@ -274,7 +307,7 @@ export function useSessionHistoryState({
     if (initializedStorageKeyRef.current === initKey) return;
     initializedStorageKeyRef.current = initKey;
     if (lastSessionIdRef.current && lastSessionIdRef.current !== sessionId) {
-      setLocalSessionHistory([]);
+      clearLocalHistory(setLocalSessionHistory);
     }
     lastSessionIdRef.current = sessionId;
     if (sessionHistoryStorageKey) {
@@ -284,11 +317,7 @@ export function useSessionHistoryState({
           const parsed = JSON.parse(cached) as SessionHistoryEntry[];
           if (Array.isArray(parsed) && parsed.length > 0) {
             const normalized = parsed.slice(-MAX_SESSION_HISTORY_ENTRIES);
-            setLocalSessionHistory((prev) => {
-              const prevKey = prev.map(sessionEntryKey).join("|");
-              const nextKey = normalized.map(sessionEntryKey).join("|");
-              return prevKey === nextKey ? prev : normalized;
-            });
+            mergeCachedHistory(setLocalSessionHistory, normalized);
           }
         }
       } catch {
@@ -302,19 +331,7 @@ export function useSessionHistoryState({
   useEffect(() => {
     if (!sessionId) return;
     if (!sessionHistory.length) return;
-    setLocalSessionHistory((prev) => {
-      if (prev.length === 0) return sessionHistory.slice(-MAX_SESSION_HISTORY_ENTRIES);
-      const keys = new Set(prev.map(sessionEntryKey));
-      const merged = [...prev];
-      sessionHistory.forEach((entry) => {
-        const key = sessionEntryKey(entry);
-        if (!keys.has(key)) {
-          keys.add(key);
-          merged.push(entry);
-        }
-      });
-      return merged.slice(-MAX_SESSION_HISTORY_ENTRIES);
-    });
+    mergeIncomingHistory(setLocalSessionHistory, sessionHistory);
   }, [sessionHistory, sessionId]);
 
   useEffect(() => {

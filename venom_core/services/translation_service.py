@@ -64,6 +64,66 @@ class TranslationService:
             return {"Authorization": f"Bearer {SETTINGS.LLM_LOCAL_API_KEY}"}
         return {}
 
+    @staticmethod
+    def _normalize_target_lang(target_lang: str) -> str:
+        normalized = target_lang.lower()
+        if normalized not in _LANG_LABELS:
+            raise ValueError(f"Nieobsługiwany język docelowy: {normalized}")
+        return normalized
+
+    @staticmethod
+    def _resolve_model_name() -> str:
+        model_name = SETTINGS.LLM_MODEL_NAME or ""
+        if not model_name:
+            raise RuntimeError("Brak ustawionego modelu do tłumaczeń.")
+        return model_name
+
+    def _get_cached_value(self, *, cache_key: str, now: float) -> str | None:
+        cached = self._cache.get(cache_key)
+        if not cached:
+            return None
+        if now - cached["timestamp"] >= self._cache_ttl_seconds:
+            return None
+        return cached["value"]
+
+    @staticmethod
+    def _build_translation_payload(
+        *, text: str, source_lang: Optional[str], target_lang: str, model_name: str
+    ) -> dict[str, object]:
+        system_prompt = (
+            "You are a precise translation assistant. "
+            "Translate the user text to the target language. "
+            "Preserve names, URLs, formatting, and technical terms. "
+            "Return only the translated text without extra commentary."
+        )
+        source_hint = _LANG_LABELS.get(source_lang or "", "the source language")
+        target_label = _LANG_LABELS[target_lang]
+        user_prompt = f"Translate from {source_hint} to {target_label}. Text:\n{text}"
+        return {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.2,
+        }
+
+    @staticmethod
+    def _extract_message_content(data: dict[str, object], fallback_text: str) -> str:
+        choices = data.get("choices", [])
+        if not isinstance(choices, list) or not choices:
+            return fallback_text
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            return fallback_text
+        message = first_choice.get("message", {})
+        if not isinstance(message, dict):
+            return fallback_text
+        content = message.get("content", "")
+        if not isinstance(content, str):
+            return fallback_text
+        return content.strip() or fallback_text
+
     async def translate_text(
         self,
         text: str,
@@ -74,48 +134,28 @@ class TranslationService:
     ) -> str:
         if not text:
             return text
-        target_lang = target_lang.lower()
-        if target_lang not in _LANG_LABELS:
-            raise ValueError(f"Nieobsługiwany język docelowy: {target_lang}")
+        target_lang = self._normalize_target_lang(target_lang)
 
         try:
-            model_name = SETTINGS.LLM_MODEL_NAME or ""
-            if not model_name:
-                raise RuntimeError("Brak ustawionego modelu do tłumaczeń.")
-
+            model_name = self._resolve_model_name()
             cache_key = self._build_cache_key(
                 text, source_lang, target_lang, model_name
             )
             now = time.time()
             if use_cache:
-                cached = self._cache.get(cache_key)
-                if cached and now - cached["timestamp"] < self._cache_ttl_seconds:
-                    return cached["value"]
+                cached_value = self._get_cached_value(cache_key=cache_key, now=now)
+                if cached_value is not None:
+                    return cached_value
 
             runtime = get_active_llm_runtime()
             chat_endpoint = self._resolve_chat_endpoint()
             headers = self._resolve_headers(runtime)
-
-            system_prompt = (
-                "You are a precise translation assistant. "
-                "Translate the user text to the target language. "
-                "Preserve names, URLs, formatting, and technical terms. "
-                "Return only the translated text without extra commentary."
+            payload = self._build_translation_payload(
+                text=text,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                model_name=model_name,
             )
-            source_hint = _LANG_LABELS.get(source_lang or "", "the source language")
-            target_label = _LANG_LABELS[target_lang]
-            user_prompt = (
-                f"Translate from {source_hint} to {target_label}. Text:\n{text}"
-            )
-
-            payload = {
-                "model": model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.2,
-            }
 
             async with self._semaphore:
                 provider = (
@@ -131,13 +171,9 @@ class TranslationService:
                         chat_endpoint, headers=headers, json=payload
                     )
                     data = response.json()
-                message = (
-                    data.get("choices", [{}])[0]
-                    .get("message", {})
-                    .get("content", "")
-                    .strip()
-                )
-                result = message or text
+                if not isinstance(data, dict):
+                    data = {}
+                result = self._extract_message_content(data=data, fallback_text=text)
                 if use_cache:
                     self._cache[cache_key] = {"value": result, "timestamp": now}
                 return result

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { useCockpitData } from "./use-cockpit-data";
 
 type Data = ReturnType<typeof useCockpitData>;
@@ -46,20 +46,7 @@ export function useCockpitMetricsDisplay(data: Data) {
     useEffect(() => {
         const total = asNumber(data.tokenMetrics?.total_tokens);
         if (total === undefined || total === null) return;
-
-        setTokenHistory((prev) => {
-            // Keep duplicate timestamps to preserve a simple sample history.
-            const next = [
-                ...prev,
-                {
-                    timestamp: new Date().toLocaleTimeString(),
-                    value: total,
-                },
-            ];
-            // Keep last 30 samples
-            if (next.length > 30) return next.slice(-30);
-            return next;
-        });
+        appendTokenSample(setTokenHistory, total);
     }, [data.tokenMetrics?.total_tokens]);
 
     return {
@@ -67,4 +54,23 @@ export function useCockpitMetricsDisplay(data: Data) {
         tokenSplits,
         tokenHistory,
     };
+}
+
+function appendTokenSample(
+    setTokenHistory: Dispatch<SetStateAction<TokenSample[]>>,
+    total: number,
+) {
+    setTokenHistory((prev) => {
+        // Keep duplicate timestamps to preserve a simple sample history.
+        const next = [
+            ...prev,
+            {
+                timestamp: new Date().toLocaleTimeString(),
+                value: total,
+            },
+        ];
+        // Keep last 30 samples
+        if (next.length > 30) return next.slice(-30);
+        return next;
+    });
 }

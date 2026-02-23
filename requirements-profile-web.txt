@@ -1,0 +1,19 @@
+# Venom profile: API + web-next integration baseline
+#
+# Użyj tego profilu, gdy uruchamiasz backend razem z frontendem `web-next`.
+# Profil bazuje na API runtime i dokłada lekkie zależności backendowe
+# potrzebne przy ścieżkach UI/streaming.
+#
+# Instalacja:
+#   pip install -r requirements-profile-web.txt
+#
+# Wymagania frontend (poza pip):
+# - Node.js >= 20.9.0 (Next.js 16)
+# - npm >= 10.x
+
+-r requirements-profile-api.txt
+
+# Explicit web-integration runtime pins (kept aligned with CI-lite)
+websockets==15.0.1
+python-multipart==0.0.22
+bleach

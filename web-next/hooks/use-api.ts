@@ -170,6 +170,25 @@ function notifyEntry(entry: PollingEntry<unknown>) {
   }
 }
 
+function startEntryTimer<T>(entry: PollingEntry<T>) {
+  if (entry.interval <= 0 || entry.timer) return;
+  entry.timer = setInterval(() => triggerFetch(entry), entry.interval);
+}
+
+function stopEntryTimer<T>(entry: PollingEntry<T>) {
+  if (!entry.timer) return;
+  clearInterval(entry.timer);
+  entry.timer = undefined;
+}
+
+function clearEntrySuspension<T>(entry: PollingEntry<T>) {
+  entry.suspendedUntil = undefined;
+}
+
+function markPollingReady(setReady: (value: boolean) => void) {
+  setReady(true);
+}
+
 function usePolling<T>(
   key: string,
   fetcher: () => Promise<T>,
@@ -199,16 +218,21 @@ function usePolling<T>(
     }),
     [],
   );
+  const isClient = useSyncExternalStore(
+    () => () => { },
+    () => true,
+    () => false,
+  );
   const fetcherRef = useRef(fetcher);
   const entryRef = useRef<PollingEntry<T>>(fallbackEntry);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!isBrowser || pollingDisabled) return;
+    if (!isBrowser || !isClient || pollingDisabled) return;
     const actualEntry = ensureEntry(key, fetcherRef.current, intervalMs);
     entryRef.current = actualEntry;
-    setReady(true);
-  }, [isBrowser, pollingDisabled, key, intervalMs]);
+    markPollingReady(setReady);
+  }, [isBrowser, isClient, pollingDisabled, key, intervalMs]);
 
   useEffect(() => {
     if (pollingDisabled) return;
@@ -227,18 +251,15 @@ function usePolling<T>(
       if (typeof listener !== "function") return () => { };
       entry.listeners.add(listener);
       if (entry.listeners.size === 1) {
-        if (entry.interval > 0 && !entry.timer) {
-          entry.timer = setInterval(() => triggerFetch(entry), entry.interval);
-        }
+        startEntryTimer(entry);
         Promise.resolve().then(() => {
           void triggerFetch(entry);
         });
       }
       return () => {
         entry.listeners.delete(listener);
-        if (entry.listeners.size === 0 && entry.timer) {
-          clearInterval(entry.timer);
-          entry.timer = undefined;
+        if (entry.listeners.size === 0) {
+          stopEntryTimer(entry);
         }
       };
     },
@@ -253,7 +274,7 @@ function usePolling<T>(
 
   const refresh = useCallback(async () => {
     if (pollingDisabled || entry === fallbackEntry) return;
-    entry.suspendedUntil = undefined;
+    clearEntrySuspension(entry);
     await triggerFetch(entry);
   }, [entry, fallbackEntry, pollingDisabled]);
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -42,10 +42,11 @@ export function HistoryList({
   variant = "full",
   viewAllHref,
 }: HistoryListProps) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(
+    () => () => { },
+    () => true,
+    () => false,
+  );
   const prepared = useMemo(() => {
     return selectHistoryWindow(entries, limit);
   }, [entries, limit]);

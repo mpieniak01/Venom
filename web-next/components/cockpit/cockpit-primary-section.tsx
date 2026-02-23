@@ -2,7 +2,7 @@
 
 import { AnimatePresence } from "framer-motion";
 import { CockpitActions } from "@/components/cockpit/cockpit-actions";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import type { ComponentProps, ComponentPropsWithRef, RefObject } from "react";
 import {
   ChatComposer,
@@ -73,10 +73,11 @@ export function CockpitPrimarySection({
   historyPanelProps,
   metricsProps,
 }: CockpitPrimarySectionProps) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(
+    () => () => { },
+    () => true,
+    () => false,
+  );
 
   const hiddenPromptsPanel = <CockpitHiddenPromptsPanel {...hiddenPromptsPanelProps} />;
   const historyRequestsPanel = <CockpitHistoryPanel {...historyPanelProps} />;

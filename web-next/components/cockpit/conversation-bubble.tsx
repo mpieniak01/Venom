@@ -119,6 +119,152 @@ function renderMessageBody(input: {
   );
 }
 
+function shouldRenderFooter(input: {
+  footerActions?: ReactNode;
+  footerExtra?: ReactNode;
+  forcedLabel?: string | null;
+  policyBlocked?: boolean;
+  isUser: boolean;
+  pending?: boolean;
+  status?: string | null;
+  requestId?: string;
+}) {
+  const {
+    footerActions,
+    footerExtra,
+    forcedLabel,
+    policyBlocked,
+    isUser,
+    pending,
+    status,
+    requestId,
+  } = input;
+  if (footerActions || footerExtra || forcedLabel || policyBlocked) return true;
+  if (isUser) return false;
+  return Boolean(pending || status || requestId);
+}
+
+function renderPolicyBlockedNotice(input: {
+  policyBlocked?: boolean;
+  userMessage?: string | null;
+  t: ReturnType<typeof useTranslation>;
+}) {
+  const { policyBlocked, userMessage, t } = input;
+  if (!policyBlocked) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+      <div className="flex items-start gap-2">
+        <span className="text-lg">🚫</span>
+        <div className="flex-1">
+          <p className="text-sm font-medium text-red-200">
+            {t("cockpit.chatLabels.policyBlocked")}
+          </p>
+          <p className="mt-1 text-xs text-red-300/80">
+            {userMessage || t("cockpit.chatLabels.policyBlockedDefault")}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function renderBubbleFooter(input: {
+  shouldRender: boolean;
+  footerActions?: ReactNode;
+  footerExtra?: ReactNode;
+  forcedLabel?: string | null;
+  sourceLabel?: string | null;
+  pending?: boolean;
+  role: "user" | "assistant";
+  isUser: boolean;
+  status?: string | null;
+  policyBlocked?: boolean;
+  reasonCode?: string | null;
+  statusLabel: string | null;
+  modeLabelText: string | null;
+  contextUsed?: {
+    lessons?: string[];
+    memory_entries?: string[];
+  } | null;
+  requestId?: string;
+  footerClickable: boolean;
+  onSelect?: () => void;
+  t: ReturnType<typeof useTranslation>;
+}) {
+  const {
+    shouldRender,
+    footerActions,
+    footerExtra,
+    forcedLabel,
+    sourceLabel,
+    pending,
+    role,
+    isUser,
+    status,
+    policyBlocked,
+    reasonCode,
+    statusLabel,
+    modeLabelText,
+    contextUsed,
+    requestId,
+    footerClickable,
+    onSelect,
+    t,
+  } = input;
+  if (!shouldRender) return null;
+
+  return (
+    <div className="mt-4 border-t border-white/10 pt-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+        {footerActions && (
+          <span className="flex items-center gap-2">{footerActions}</span>
+        )}
+        {forcedLabel && <Badge tone="neutral">{forcedLabel}</Badge>}
+        {sourceLabel && <Badge tone="neutral">{sourceLabel}</Badge>}
+        {pending && role === "assistant" && (
+          <span className="text-amber-300">{t("cockpit.chatStatus.inProgress")}</span>
+        )}
+        {!isUser && status && (
+          <Badge tone={policyBlocked ? "danger" : statusTone(status)}>
+            {policyBlocked
+              ? getPolicyBlockBadgeLabel(reasonCode)
+              : (statusLabel ?? status)}
+          </Badge>
+        )}
+        {!isUser && status && modeLabelText && (
+          <Badge tone="neutral">{modeLabelText}</Badge>
+        )}
+        {contextUsed?.lessons && contextUsed.lessons.length > 0 && (
+          <Badge tone="neutral" title={t("cockpit.chatLabels.lessonsUsed")}>
+            🎓 {contextUsed.lessons.length}
+          </Badge>
+        )}
+        {contextUsed?.memory_entries && contextUsed.memory_entries.length > 0 && (
+          <Badge tone="neutral" title={t("cockpit.chatLabels.memoryUsed")}>
+            🧠 {contextUsed.memory_entries.length}
+          </Badge>
+        )}
+        {requestId && <span>#{requestId.slice(0, 6)}…</span>}
+        {!pending && !isUser && footerClickable && (
+          <span className="ml-auto text-caption">
+            <button
+              type="button"
+              className="text-xs uppercase tracking-wide text-zinc-300 transition hover:text-white"
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelect?.();
+              }}
+            >
+              {t("cockpit.chatLabels.detailsLink")}
+            </button>
+          </span>
+        )}
+      </div>
+      {footerExtra && <div className="mt-2">{footerExtra}</div>}
+    </div>
+  );
+}
+
 export function ConversationBubble({
   role,
   timestamp,
@@ -153,24 +299,11 @@ export function ConversationBubble({
   const [visibleText, setVisibleText] = useState(displayText);
   const typingTimerRef = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
   useEffect(() => {
-    if (isUser) {
-      setVisibleText(displayText);
-      return;
-    }
-    if (!showTyping) {
-      setVisibleText(displayText);
-      return;
-    }
-    setVisibleText((prev) => {
-      if (typingText.startsWith(prev)) return prev;
-      return "";
-    });
-  }, [displayText, isUser, showTyping, typingText]);
-  useEffect(() => {
     if (isUser || !showTyping) return undefined;
     typingTimerRef.current = globalThis.setInterval(() => {
       setVisibleText((prev) => {
         if (prev.length >= typingText.length) return prev;
+        if (!typingText.startsWith(prev)) return "";
         const remaining = typingText.length - prev.length;
         const step = Math.max(
           1,
@@ -191,6 +324,16 @@ export function ConversationBubble({
   const modeLabelText = resolveModeLabelText(modeLabel, t);
   const footerClickable = !disabled && !pending && !isUser;
   const timeLabel = resolveTimeLabel(timestamp);
+  const showFooter = shouldRenderFooter({
+    footerActions,
+    footerExtra,
+    forcedLabel,
+    policyBlocked,
+    isUser,
+    pending,
+    status,
+    requestId,
+  });
   const messageBody = renderMessageBody({
     showTyping,
     visibleText,
@@ -219,73 +362,27 @@ export function ConversationBubble({
         )}
         {messageBody}
       </div>
-      {policyBlocked && (
-        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
-          <div className="flex items-start gap-2">
-            <span className="text-lg">🚫</span>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-red-200">
-                {t("cockpit.chatLabels.policyBlocked")}
-              </p>
-              <p className="mt-1 text-xs text-red-300/80">
-                {userMessage || t("cockpit.chatLabels.policyBlockedDefault")}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-      {(footerActions || footerExtra || forcedLabel || policyBlocked || (!isUser && (pending || status || requestId))) && (
-        <div
-          className="mt-4 border-t border-white/10 pt-3"
-        >
-          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-            {footerActions && (
-              <span className="flex items-center gap-2">{footerActions}</span>
-            )}
-            {forcedLabel && <Badge tone="neutral">{forcedLabel}</Badge>}
-            {sourceLabel && <Badge tone="neutral">{sourceLabel}</Badge>}
-            {pending && role === "assistant" && (
-              <span className="text-amber-300">{t("cockpit.chatStatus.inProgress")}</span>
-            )}
-            {!isUser && status && (
-              <Badge tone={policyBlocked ? "danger" : statusTone(status)}>
-                {policyBlocked
-                  ? getPolicyBlockBadgeLabel(reasonCode)
-                  : (statusLabel ?? status)}
-              </Badge>
-            )}
-            {!isUser && status && modeLabelText && (
-              <Badge tone="neutral">{modeLabelText}</Badge>
-            )}
-            {contextUsed?.lessons && contextUsed.lessons.length > 0 && (
-              <Badge tone="neutral" title={t("cockpit.chatLabels.lessonsUsed")}>
-                🎓 {contextUsed.lessons.length}
-              </Badge>
-            )}
-            {contextUsed?.memory_entries && contextUsed.memory_entries.length > 0 && (
-              <Badge tone="neutral" title={t("cockpit.chatLabels.memoryUsed")}>
-                🧠 {contextUsed.memory_entries.length}
-              </Badge>
-            )}
-            {requestId && <span>#{requestId.slice(0, 6)}…</span>}
-            {!pending && !isUser && footerClickable && (
-              <span className="ml-auto text-caption">
-                <button
-                  type="button"
-                  className="text-xs uppercase tracking-wide text-zinc-300 transition hover:text-white"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSelect?.();
-                  }}
-                >
-                  {t("cockpit.chatLabels.detailsLink")}
-                </button>
-              </span>
-            )}
-          </div>
-          {footerExtra && <div className="mt-2">{footerExtra}</div>}
-        </div>
-      )}
+      {renderPolicyBlockedNotice({ policyBlocked, userMessage, t })}
+      {renderBubbleFooter({
+        shouldRender: showFooter,
+        footerActions,
+        footerExtra,
+        forcedLabel,
+        sourceLabel,
+        pending,
+        role,
+        isUser,
+        status,
+        policyBlocked,
+        reasonCode,
+        statusLabel,
+        modeLabelText,
+        contextUsed,
+        requestId,
+        footerClickable,
+        onSelect,
+        t,
+      })}
     </div>
   );
 }

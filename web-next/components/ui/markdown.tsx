@@ -3,7 +3,7 @@
 import DOMPurify from "dompurify";
 import katex from "katex";
 import { marked } from "marked";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import {
   formatComputationContent,
   normalizeModelTextArtifacts,
@@ -18,15 +18,11 @@ type MarkdownPreviewProps = Readonly<{
 }>;
 
 export function MarkdownPreview({ content, emptyState, mode = "final" }: MarkdownPreviewProps) {
-  const [html, setHtml] = useState<string>("");
   const hasSources = Boolean(content && SOURCES_LABEL_TEST.test(content));
-
-  useEffect(() => {
+  const html = useMemo(() => {
     if (!content || content.trim().length === 0) {
-      setHtml((prev) => (prev === "" ? prev : ""));
-      return;
+      return "";
     }
-
     try {
       const normalizedInput = normalizeModelTextArtifacts(content);
       const formatted =
@@ -39,12 +35,10 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
         mode === "final" && hasSources ? decorateSourcesLabel(tokenized) : tokenized;
       const rendered = marked(withSources, { async: false });
       const withMath = tokens.length > 0 ? renderMathTokens(rendered, tokens) : rendered;
-      const nextHtml = DOMPurify.sanitize(withMath);
-      setHtml((prev) => (prev === nextHtml ? prev : nextHtml));
+      return DOMPurify.sanitize(withMath);
     } catch (err) {
       console.error("Markdown render error:", err);
-      const fallback = DOMPurify.sanitize(content);
-      setHtml((prev) => (prev === fallback ? prev : fallback));
+      return DOMPurify.sanitize(content);
     }
   }, [content, mode, hasSources]);
 

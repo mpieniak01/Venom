@@ -40,6 +40,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<TrainingJobStatus | "connecting" | "streaming" | "disconnected" | "connected" | "error">("connecting");
   const [metrics, setMetrics] = useState<AggregatedMetrics | null>(null);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -133,6 +134,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
     const { scrollTop, scrollHeight, clientHeight } = logContainerRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
     shouldAutoScrollRef.current = isAtBottom;
+    setAutoScrollEnabled(isAtBottom);
   };
 
   const togglePause = () => {
@@ -290,7 +292,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
       <div className="border-t border-white/10 bg-zinc-900 px-4 py-2">
         <p className="text-xs text-zinc-400">
           {logs.length} {t("academy.logs.lines")} • {t(isPaused ? "academy.logs.paused" : "academy.logs.live")}
-          {!shouldAutoScrollRef.current && ` • ${t("academy.logs.autoScrollDisabled")}`}
+          {!autoScrollEnabled && ` • ${t("academy.logs.autoScrollDisabled")}`}
         </p>
       </div>
     </div>

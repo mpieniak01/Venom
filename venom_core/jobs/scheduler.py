@@ -165,6 +165,134 @@ def _mark_runtime_retention_run(*, base_dir: Path) -> None:
     marker_path.write_text(str(datetime.now().timestamp()), encoding="utf-8")
 
 
+def _is_target_scannable(target: Path) -> bool:
+    if not target.exists():
+        logger.debug("Katalog retencji nie istnieje, pomijam: %s", target)
+        return False
+    if not target.is_dir():
+        logger.debug("Ścieżka retencji nie jest katalogiem, pomijam: %s", target)
+        return False
+    return True
+
+
+def _is_file_stale_and_untracked(
+    *,
+    file_path: Path,
+    repo_root: Path,
+    cutoff_timestamp: float,
+    tracked_repo_files: set[str],
+) -> tuple[bool, int]:
+    try:
+        relative_path = file_path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return False, 0
+    if relative_path in tracked_repo_files:
+        return False, 0
+
+    try:
+        stat = file_path.stat(follow_symlinks=False)
+    except (FileNotFoundError, NotADirectoryError):
+        return False, 0
+    except OSError as exc:
+        logger.debug(
+            "Pomijam plik podczas retencji (stat error): %s (%s)",
+            file_path,
+            exc,
+        )
+        return False, 0
+
+    if not file_path.is_file():
+        return False, 0
+    if stat.st_mtime >= cutoff_timestamp:
+        return False, 0
+    return True, int(stat.st_size)
+
+
+def _delete_stale_file(
+    *,
+    file_path: Path,
+    repo_root: Path,
+    cutoff_timestamp: float,
+    tracked_repo_files: set[str],
+) -> tuple[int, int]:
+    should_delete, file_size = _is_file_stale_and_untracked(
+        file_path=file_path,
+        repo_root=repo_root,
+        cutoff_timestamp=cutoff_timestamp,
+        tracked_repo_files=tracked_repo_files,
+    )
+    if not should_delete:
+        return 0, 0
+
+    try:
+        file_path.unlink()
+    except FileNotFoundError:
+        return 0, 0
+    except OSError as exc:
+        logger.debug(
+            "Pomijam plik podczas retencji (unlink error): %s (%s)",
+            file_path,
+            exc,
+        )
+        return 0, 0
+    return 1, file_size
+
+
+def _delete_stale_empty_dir(*, dir_path: Path, cutoff_timestamp: float) -> int:
+    try:
+        stat = dir_path.stat(follow_symlinks=False)
+    except (FileNotFoundError, NotADirectoryError):
+        return 0
+    except OSError as exc:
+        logger.debug(
+            "Pomijam katalog podczas retencji (stat error): %s (%s)",
+            dir_path,
+            exc,
+        )
+        return 0
+
+    if stat.st_mtime >= cutoff_timestamp:
+        return 0
+
+    try:
+        dir_path.rmdir()
+    except OSError:
+        return 0
+    return 1
+
+
+def _cleanup_target_tree(
+    *,
+    target: Path,
+    repo_root: Path,
+    cutoff_timestamp: float,
+    tracked_repo_files: set[str],
+) -> tuple[int, int, int]:
+    deleted_files = 0
+    deleted_dirs = 0
+    freed_bytes = 0
+
+    for root, dirs, files in os.walk(target, topdown=False, followlinks=False):
+        root_path = Path(root)
+        for file_name in files:
+            file_deleted, file_bytes = _delete_stale_file(
+                file_path=root_path / file_name,
+                repo_root=repo_root,
+                cutoff_timestamp=cutoff_timestamp,
+                tracked_repo_files=tracked_repo_files,
+            )
+            deleted_files += file_deleted
+            freed_bytes += file_bytes
+
+        for dir_name in dirs:
+            deleted_dirs += _delete_stale_empty_dir(
+                dir_path=root_path / dir_name,
+                cutoff_timestamp=cutoff_timestamp,
+            )
+
+    return deleted_files, deleted_dirs, freed_bytes
+
+
 def cleanup_runtime_files(
     *,
     retention_days: int = 7,
@@ -202,81 +330,20 @@ def cleanup_runtime_files(
     targets_scanned = 0
 
     for target in targets:
-        if not target.exists():
-            logger.debug("Katalog retencji nie istnieje, pomijam: %s", target)
+        if not _is_target_scannable(target):
             continue
-        if not target.is_dir():
-            logger.debug("Ścieżka retencji nie jest katalogiem, pomijam: %s", target)
-            continue
-
         targets_scanned += 1
-
-        for root, dirs, files in os.walk(target, topdown=False, followlinks=False):
-            root_path = Path(root)
-
-            for file_name in files:
-                file_path = root_path / file_name
-                try:
-                    relative_path = file_path.relative_to(repo_root).as_posix()
-                except ValueError:
-                    continue
-                if relative_path in tracked_repo_files:
-                    continue
-                try:
-                    stat = file_path.stat(follow_symlinks=False)
-                except (FileNotFoundError, NotADirectoryError):
-                    continue
-                except OSError as exc:
-                    logger.debug(
-                        "Pomijam plik podczas retencji (stat error): %s (%s)",
-                        file_path,
-                        exc,
-                    )
-                    continue
-
-                if not file_path.is_file():
-                    continue
-                if stat.st_mtime >= cutoff_timestamp:
-                    continue
-
-                file_size = int(stat.st_size)
-                try:
-                    file_path.unlink()
-                except FileNotFoundError:
-                    continue
-                except OSError as exc:
-                    logger.debug(
-                        "Pomijam plik podczas retencji (unlink error): %s (%s)",
-                        file_path,
-                        exc,
-                    )
-                    continue
-
-                deleted_files += 1
-                freed_bytes += file_size
-
-            for dir_name in dirs:
-                dir_path = root_path / dir_name
-                try:
-                    stat = dir_path.stat(follow_symlinks=False)
-                except (FileNotFoundError, NotADirectoryError):
-                    continue
-                except OSError as exc:
-                    logger.debug(
-                        "Pomijam katalog podczas retencji (stat error): %s (%s)",
-                        dir_path,
-                        exc,
-                    )
-                    continue
-
-                if stat.st_mtime >= cutoff_timestamp:
-                    continue
-
-                try:
-                    dir_path.rmdir()
-                except OSError:
-                    continue
-                deleted_dirs += 1
+        target_deleted_files, target_deleted_dirs, target_freed_bytes = (
+            _cleanup_target_tree(
+                target=target,
+                repo_root=repo_root,
+                cutoff_timestamp=cutoff_timestamp,
+                tracked_repo_files=tracked_repo_files,
+            )
+        )
+        deleted_files += target_deleted_files
+        deleted_dirs += target_deleted_dirs
+        freed_bytes += target_freed_bytes
 
     if targets_scanned == 0:
         logger.debug("Brak dostępnych katalogów do retencji runtime.")

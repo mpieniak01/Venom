@@ -118,81 +118,29 @@ class TrafficControlledHttpClient:
             httpx.HTTPError: Jeśli request nie powiódł się
             RuntimeError: Jeśli circuit breaker jest otwarty lub rate limit
         """
-        # Check traffic control
-        allowed, reason, wait_seconds = self.traffic_controller.check_outbound_request(
-            self.provider,
+        retry_policy = self._resolve_retry_policy(method)
+        execute_request = self._build_sync_executor(
             method=method,
+            url=url,
+            raise_for_status=raise_for_status,
+            kwargs=kwargs,
         )
-        if not allowed:
-            self._raise_if_blocked(reason, wait_seconds)
-
-        # Get retry policy for the same scope as rate limiting (provider + method)
-        scope = self.traffic_controller._build_outbound_scope(self.provider, method)
-        policy = self.traffic_controller._get_or_create_outbound_policy(scope)
-
-        # Execute with retry
-        def _execute():
-            response = self._client.request(method, url, **kwargs)
-            status_code = getattr(response, "status_code", None)
-            if not isinstance(status_code, int):
-                raise TypeError(
-                    "Invalid response object received from httpx client: "
-                    f"{type(response)}"
-                )
-            if raise_for_status:
-                response.raise_for_status()
-            return response
-
-        retry_policy = policy.retry_policy
-        if retry_policy is None:
-            raise RuntimeError(
-                f"Retry policy not configured for provider scope: {scope}"
-            )
 
         if disable_retry:
-            try:
-                response = _execute()
-                response_status = getattr(response, "status_code", None)
-                status_code = (
-                    response_status if isinstance(response_status, int) else None
-                )
-                self.traffic_controller.record_outbound_response(
-                    self.provider, status_code, method=method
-                )
-                return response
-            except Exception as exc:
-                if isinstance(exc, Exception):
-                    self._record_outbound_error_and_raise(exc, method=method)
-                raise
-
-        result, response, error = retry_policy.execute_with_retry(
-            _execute,
-            is_retriable=is_retriable_http_error,
-            on_retry=lambda attempt, exc, delay: (
-                logger.warning(
-                    f"Retry {attempt + 1} for {self.provider} {method} {url}: {exc}. "
-                    f"Waiting {delay:.1f}s"
-                )
-                if self.traffic_controller.config.enable_logging
-                else None
-            ),
-        )
-
-        if response:
-            response_status = getattr(response, "status_code", None)
-            status_code = response_status if isinstance(response_status, int) else None
-            self.traffic_controller.record_outbound_response(
-                self.provider, status_code, method=method
+            return self._execute_sync_without_retry(
+                execute_request=execute_request,
+                method=method,
             )
-            return response
-        if isinstance(error, Exception):
-            self._record_outbound_error_and_raise(error, method=method)
-        self._record_outbound_error_and_raise(
-            RuntimeError(
-                f"Request failed without response for {self.provider} {method} {url}"
-            ),
-            method=method,
+
+        _, response, error = retry_policy.execute_with_retry(
+            execute_request,
+            is_retriable=is_retriable_http_error,
+            on_retry=self._build_retry_logger(method=method, url=url),
         )
+
+        if response is not None:
+            return self._record_outbound_success(response=response, method=method)
+        self._raise_request_failure(error=error, method=method, url=url)
         raise RuntimeError("unreachable")
 
     async def arequest(
@@ -219,73 +167,23 @@ class TrafficControlledHttpClient:
             httpx.HTTPError: Jeśli request nie powiódł się
             RuntimeError: Jeśli circuit breaker jest otwarty lub rate limit
         """
-        # Check traffic control
-        allowed, reason, wait_seconds = self.traffic_controller.check_outbound_request(
-            self.provider,
-            method=method,
-        )
-        if not allowed:
-            self._raise_if_blocked(reason, wait_seconds)
-
-        # Get retry policy for the same scope as rate limiting (provider + method)
-        scope = self.traffic_controller._build_outbound_scope(self.provider, method)
-        policy = self.traffic_controller._get_or_create_outbound_policy(scope)
-
-        # Execute with retry (note: async version needs manual implementation)
+        retry_policy = self._resolve_retry_policy(method)
         last_exception: Exception | None = None
-        retry_policy = policy.retry_policy
-        if retry_policy is None:
-            raise RuntimeError(
-                f"Retry policy not configured for provider scope: {scope}"
-            )
-
         max_attempts = 1 if disable_retry else retry_policy.max_attempts
         for attempt in range(max_attempts):
             try:
-                response: Any
-                request_handler = getattr(self._async_client, "request", None)
-                if callable(request_handler):
-                    request_result = request_handler(method, url, **kwargs)
-                    if inspect.isawaitable(request_result):
-                        response = await request_result
-                    else:
-                        response = request_result
-                else:
-                    method_handler = getattr(self._async_client, method.lower(), None)
-                    if not callable(method_handler):
-                        raise AttributeError(
-                            f"Async client does not support method '{method.lower()}'"
-                        )
-                    method_result = method_handler(url, **kwargs)
-                    if inspect.isawaitable(method_result):
-                        response = await method_result
-                    else:
-                        response = method_result
-                status_code = getattr(response, "status_code", None)
-                if not isinstance(status_code, int):
-                    raise TypeError(
-                        "Invalid response object received from httpx async client: "
-                        f"{type(response)}"
-                    )
-                if raise_for_status:
-                    raise_result = response.raise_for_status()
-                    if inspect.isawaitable(raise_result):
-                        await raise_result
-                response_status = getattr(response, "status_code", None)
-                status_code = (
-                    response_status if isinstance(response_status, int) else None
+                response = await self._execute_async_request_once(
+                    method=method,
+                    url=url,
+                    raise_for_status=raise_for_status,
+                    kwargs=kwargs,
                 )
-                self.traffic_controller.record_outbound_response(
-                    self.provider, status_code, method=method
-                )
-                return response
+                return self._record_outbound_success(response=response, method=method)
             except Exception as exc:
                 last_exception = exc
                 if not is_retriable_http_error(exc):
                     self._record_outbound_error_and_raise(exc, method=method)
                 if attempt >= max_attempts - 1:
-                    break
-                if disable_retry:
                     break
                 await self._sleep_before_retry(
                     attempt=attempt,
@@ -316,57 +214,24 @@ class TrafficControlledHttpClient:
         Użycie:
         `async with client.astream("POST", url, json=payload) as response: ...`
         """
-        allowed, reason, wait_seconds = self.traffic_controller.check_outbound_request(
-            self.provider,
-            method=method,
-        )
-        if not allowed:
-            self._raise_if_blocked(reason, wait_seconds)
-
-        scope = self.traffic_controller._build_outbound_scope(self.provider, method)
-        policy = self.traffic_controller._get_or_create_outbound_policy(scope)
-        retry_policy = policy.retry_policy
-        if retry_policy is None:
-            raise RuntimeError(
-                f"Retry policy not configured for provider scope: {scope}"
-            )
-
+        retry_policy = self._resolve_retry_policy(method)
         last_exception: Exception | None = None
         max_attempts = 1 if disable_retry else retry_policy.max_attempts
         for attempt in range(max_attempts):
-            stream_cm = self._async_client.stream(method, url, **kwargs)
-            response: httpx.Response | None = None
             try:
-                response = await stream_cm.__aenter__()
-                if raise_for_status:
-                    raise_result = response.raise_for_status()
-                    if inspect.isawaitable(raise_result):
-                        await raise_result
-
-                response_status = getattr(response, "status_code", None)
-                status_code = (
-                    response_status if isinstance(response_status, int) else None
-                )
-                self.traffic_controller.record_outbound_response(
-                    self.provider, status_code, method=method
-                )
-                try:
+                async with self._stream_once(
+                    method=method,
+                    url=url,
+                    raise_for_status=raise_for_status,
+                    kwargs=kwargs,
+                ) as response:
                     yield response
-                finally:
-                    await stream_cm.__aexit__(None, None, None)
                 return
             except Exception as exc:
                 last_exception = exc
-                if response is not None:
-                    try:
-                        await stream_cm.__aexit__(type(exc), exc, exc.__traceback__)
-                    except Exception:
-                        pass
                 if not is_retriable_http_error(exc):
                     self._record_outbound_error_and_raise(exc, method=method)
                 if attempt >= max_attempts - 1:
-                    break
-                if disable_retry:
                     break
                 await self._sleep_before_retry(
                     attempt=attempt,
@@ -412,6 +277,148 @@ class TrafficControlledHttpClient:
             self.provider, status_code, error, method=method
         )
         raise error
+
+    def _check_outbound_allowed(self, method: str) -> None:
+        allowed, reason, wait_seconds = self.traffic_controller.check_outbound_request(
+            self.provider,
+            method=method,
+        )
+        if not allowed:
+            self._raise_if_blocked(reason, wait_seconds)
+
+    def _resolve_retry_policy(self, method: str) -> RetryPolicy:
+        self._check_outbound_allowed(method)
+        scope = self.traffic_controller._build_outbound_scope(self.provider, method)
+        policy = self.traffic_controller._get_or_create_outbound_policy(scope)
+        retry_policy = policy.retry_policy
+        if retry_policy is None:
+            raise RuntimeError(
+                f"Retry policy not configured for provider scope: {scope}"
+            )
+        return retry_policy
+
+    def _record_outbound_success(
+        self, *, response: httpx.Response, method: str
+    ) -> httpx.Response:
+        response_status = getattr(response, "status_code", None)
+        status_code = response_status if isinstance(response_status, int) else None
+        self.traffic_controller.record_outbound_response(
+            self.provider, status_code, method=method
+        )
+        return response
+
+    def _build_sync_executor(
+        self,
+        *,
+        method: str,
+        url: str,
+        raise_for_status: bool,
+        kwargs: dict[str, Any],
+    ):
+        def _execute() -> httpx.Response:
+            response = self._client.request(method, url, **kwargs)
+            status_code = getattr(response, "status_code", None)
+            if not isinstance(status_code, int):
+                raise TypeError(
+                    "Invalid response object received from httpx client: "
+                    f"{type(response)}"
+                )
+            if raise_for_status:
+                response.raise_for_status()
+            return response
+
+        return _execute
+
+    def _build_retry_logger(self, *, method: str, url: str):
+        def _on_retry(attempt: int, exc: Exception, delay: float) -> None:
+            if not self.traffic_controller.config.enable_logging:
+                return
+            logger.warning(
+                "Retry %s for %s %s %s: %s. Waiting %.1fs",
+                attempt + 1,
+                self.provider,
+                method,
+                url,
+                exc,
+                delay,
+            )
+
+        return _on_retry
+
+    def _execute_sync_without_retry(
+        self, *, execute_request, method: str
+    ) -> httpx.Response:
+        try:
+            response = execute_request()
+            return self._record_outbound_success(response=response, method=method)
+        except Exception as exc:
+            self._record_outbound_error_and_raise(exc, method=method)
+            raise RuntimeError("unreachable")
+
+    def _raise_request_failure(
+        self, *, error: Exception | None, method: str, url: str
+    ) -> None:
+        if isinstance(error, Exception):
+            self._record_outbound_error_and_raise(error, method=method)
+        self._record_outbound_error_and_raise(
+            RuntimeError(
+                f"Request failed without response for {self.provider} {method} {url}"
+            ),
+            method=method,
+        )
+
+    async def _execute_async_request_once(
+        self,
+        *,
+        method: str,
+        url: str,
+        raise_for_status: bool,
+        kwargs: dict[str, Any],
+    ) -> httpx.Response:
+        request_handler = getattr(self._async_client, "request", None)
+        if callable(request_handler):
+            request_result = request_handler(method, url, **kwargs)
+        else:
+            method_handler = getattr(self._async_client, method.lower(), None)
+            if not callable(method_handler):
+                raise AttributeError(
+                    f"Async client does not support method '{method.lower()}'"
+                )
+            request_result = method_handler(url, **kwargs)
+
+        response = (
+            await request_result
+            if inspect.isawaitable(request_result)
+            else request_result
+        )
+        status_code = getattr(response, "status_code", None)
+        if not isinstance(status_code, int):
+            raise TypeError(
+                "Invalid response object received from httpx async client: "
+                f"{type(response)}"
+            )
+        if raise_for_status:
+            raise_result = response.raise_for_status()
+            if inspect.isawaitable(raise_result):
+                await raise_result
+        return response
+
+    @asynccontextmanager
+    async def _stream_once(
+        self,
+        *,
+        method: str,
+        url: str,
+        raise_for_status: bool,
+        kwargs: dict[str, Any],
+    ) -> AsyncIterator[httpx.Response]:
+        async with self._async_client.stream(method, url, **kwargs) as response:
+            if raise_for_status:
+                raise_result = response.raise_for_status()
+                if inspect.isawaitable(raise_result):
+                    await raise_result
+            self._record_outbound_success(response=response, method=method)
+            yield response
 
     async def _sleep_before_retry(
         self,

@@ -210,7 +210,8 @@ make start-prod  # tryb produkcyjny
 ```
 
 ## Frontend (Next.js - `web-next`)
-Warstwa prezentacji działa na Next.js 15 (App Router, React 19).
+Warstwa prezentacji działa na Next.js 16 (App Router, React 19).
+- Wymagane środowisko: Node.js `>=20.9.0` oraz npm `>=10.0.0` (zob. `web-next/.nvmrc`).
 - **SCC (server/client components)** - komponenty serwerowe domyślne, interaktywne oznaczone jako client.
 - **Wspólny layout** (`components/layout/*`) - TopBar, Sidebar, status bar i overlaye.
 
@@ -257,6 +258,7 @@ Python 3.10+ (zalecane 3.11)
 
 Profile:
 - [requirements.txt](requirements.txt) - domyślny minimalny profil API/cloud
+- [requirements-profile-web.txt](requirements-profile-web.txt) - profil API + integracja z web-next
 - [requirements-profile-vllm.txt](requirements-profile-vllm.txt) - profil API + vLLM
 - [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - profil API + ONNX LLM (trzeci silnik)
 - [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - profil API + ONNX CPU-only

@@ -209,7 +209,8 @@ make start-prod  # production mode
 ```
 
 ## Frontend (Next.js - `web-next`)
-The presentation layer runs on Next.js 15 (App Router, React 19).
+The presentation layer runs on Next.js 16 (App Router, React 19).
+- Required runtime: Node.js `>=20.9.0` and npm `>=10.0.0` (see `web-next/.nvmrc`).
 - **SCC (server/client components)** - server components by default, interactive parts as client components.
 - **Shared layout** (`components/layout/*`) - TopBar, Sidebar, status bar, overlays.
 
@@ -256,6 +257,7 @@ Python 3.10+ (recommended 3.11)
 
 Profiles:
 - [requirements.txt](requirements.txt) - default minimal API/cloud profile
+- [requirements-profile-web.txt](requirements-profile-web.txt) - API + web-next integration profile
 - [requirements-profile-vllm.txt](requirements-profile-vllm.txt) - API + vLLM profile
 - [requirements-profile-onnx.txt](requirements-profile-onnx.txt) - API + ONNX LLM profile (third engine)
 - [requirements-profile-onnx-cpu.txt](requirements-profile-onnx-cpu.txt) - API + ONNX CPU-only profile

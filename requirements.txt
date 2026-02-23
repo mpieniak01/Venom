@@ -5,6 +5,7 @@
 #
 # Profiles:
 # - API only:      pip install -r requirements.txt
+# - API + web:     pip install -r requirements-profile-web.txt
 # - Ollama local:  pip install -r requirements.txt
 # - vLLM local:    pip install -r requirements-profile-vllm.txt
 # - ONNX LLM:      pip install -r requirements-profile-onnx.txt

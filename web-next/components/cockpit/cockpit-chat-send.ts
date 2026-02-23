@@ -47,7 +47,7 @@ export function useChatSend(params: ChatSendParams) {
     setLastResponseDurationMs,
     setResponseDurations,
     scrollChatToBottom,
-    autoScrollEnabled,
+    autoScrollEnabled: autoScrollEnabledRef,
   } = params;
 
   const t = useTranslation();
@@ -100,7 +100,7 @@ export function useChatSend(params: ChatSendParams) {
       }
     }
 
-    autoScrollEnabled.current = true;
+    autoScrollEnabledRef.current = true;
     scrollChatToBottom();
     setSending(true);
     setMessage(null);
@@ -189,7 +189,7 @@ export function useChatSend(params: ChatSendParams) {
     return true;
   }, [
     activeServerInfo,
-    autoScrollEnabled,
+    autoScrollEnabledRef,
     chatMode,
     clearSimpleStream,
     dropOptimisticRequest,

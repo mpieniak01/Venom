@@ -116,7 +116,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "18.19.1"
+          node-version: "20.19.0"
           cache: npm
           cache-dependency-path: web-next/package-lock.json
 
@@ -157,7 +157,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "18.19.1"
+          node-version: "20.19.0"
 
       - name: Export OpenAPI
         run: |

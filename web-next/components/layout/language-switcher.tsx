@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { Globe } from "lucide-react";
 import { useLanguage, useTranslation, type LanguageCode } from "@/lib/i18n";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
@@ -57,8 +57,11 @@ export function LanguageSwitcher({ className }: Readonly<{ className?: string }>
       })),
     [],
   );
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    () => () => { },
+    () => true,
+    () => false,
+  );
 
   const currentLanguage = useMemo(
     () => {

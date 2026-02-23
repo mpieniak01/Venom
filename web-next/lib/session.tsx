@@ -41,8 +41,25 @@ const createSessionId = () => {
   return `session-${Date.now()}-${rand}`;
 };
 
+const resolveInitialSessionId = () => {
+  if (globalThis.window === undefined) return "";
+  try {
+    const buildId = getBuildId();
+    const storedBuild = globalThis.window.localStorage.getItem(SESSION_BUILD_KEY);
+    let storedSession = globalThis.window.localStorage.getItem(SESSION_ID_KEY);
+    if (!storedSession || storedBuild !== buildId) {
+      storedSession = createSessionId();
+      globalThis.window.localStorage.setItem(SESSION_ID_KEY, storedSession);
+      globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, buildId);
+    }
+    return storedSession;
+  } catch {
+    return createSessionId();
+  }
+};
+
 export function SessionProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [sessionId, setSessionIdState] = useState<string>("");
+  const [sessionId, setSessionIdState] = useState<string>(() => resolveInitialSessionId());
 
   const setSessionId = useCallback((value: string) => {
     setSessionIdState(value);
@@ -89,19 +106,6 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
         // ignore fetch failures
       }
     };
-    try {
-      const buildId = getBuildId();
-      const storedBuild = globalThis.window.localStorage.getItem(SESSION_BUILD_KEY);
-      let storedSession = globalThis.window.localStorage.getItem(SESSION_ID_KEY);
-      if (!storedSession || storedBuild !== buildId) {
-        storedSession = createSessionId();
-        globalThis.window.localStorage.setItem(SESSION_ID_KEY, storedSession);
-        globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, buildId);
-      }
-      setSessionIdState(storedSession);
-    } catch {
-      setSessionIdState(createSessionId());
-    }
     void syncBootId();
     const handleFocus = () => {
       void syncBootId();

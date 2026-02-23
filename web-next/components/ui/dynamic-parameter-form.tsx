@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import type { GenerationSchema, GenerationParameterSchema } from "@/lib/types";
 export type { GenerationSchema } from "@/lib/types";
@@ -10,6 +10,14 @@ export type { GenerationSchema } from "@/lib/types";
  */
 type ParameterValue = number | string | boolean | null | undefined;
 type ParameterValues = Record<string, ParameterValue>;
+
+function buildDefaultValues(schema: GenerationSchema): ParameterValues {
+  const defaults: ParameterValues = {};
+  Object.entries(schema).forEach(([key, paramSchema]) => {
+    defaults[key] = paramSchema.default;
+  });
+  return defaults;
+}
 
 /**
  * Props dla DynamicParameterForm
@@ -159,23 +167,12 @@ export function DynamicParameterForm({
   onChange,
   onReset,
 }: DynamicParameterFormProps) {
-  // Stan lokalny z wartościami parametrów
-  const [values, setValues] = useState<ParameterValues>(
-    () => {
-      const defaults: ParameterValues = {};
-      Object.entries(schema).forEach(([key, paramSchema]) => {
-        defaults[key] = paramSchema.default;
-      });
-      return initialValues || defaults;
-    },
+  const isControlled = initialValues !== undefined;
+  const defaultValues = useMemo(() => buildDefaultValues(schema), [schema]);
+  const [localValues, setLocalValues] = useState<ParameterValues>(
+    () => initialValues || defaultValues,
   );
-
-  // Aktualizuj wartości gdy initialValues się zmieni
-  useEffect(() => {
-    if (initialValues) {
-      setValues(initialValues);
-    }
-  }, [initialValues]);
+  const values = isControlled ? (initialValues as ParameterValues) : localValues;
 
   // Wywołaj onChange gdy wartości się zmienią
   // Używamy ref aby uniknąć problemów z zależnościami i potencjalnych pętli
@@ -194,18 +191,25 @@ export function DynamicParameterForm({
     name: string,
     value: ParameterValue,
   ) => {
-    setValues((prev) => ({
-      ...prev,
+    const nextValues = {
+      ...values,
       [name]: value,
-    }));
+    };
+    if (!isControlled) {
+      setLocalValues(nextValues);
+    }
+    if (onChangeRef.current) {
+      onChangeRef.current(nextValues);
+    }
   };
 
   const handleReset = () => {
-    const defaults: ParameterValues = {};
-    Object.entries(schema).forEach(([key, paramSchema]) => {
-      defaults[key] = paramSchema.default;
-    });
-    setValues(defaults);
+    if (!isControlled) {
+      setLocalValues(defaultValues);
+    }
+    if (onChangeRef.current) {
+      onChangeRef.current(defaultValues);
+    }
     if (onReset) {
       onReset();
     }

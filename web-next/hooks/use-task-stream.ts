@@ -172,6 +172,13 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     }
     return filtered;
   }, [taskIds]);
+  const connectedIds = useMemo(
+    () =>
+      Object.entries(streams)
+        .filter(([, state]) => state.connected)
+        .map(([taskId]) => taskId),
+    [streams],
+  );
 
   useEffect(() => {
     onEventRef.current = onEvent;
@@ -199,7 +206,6 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       sourcesRef.current.clear();
       pollTimersRef.current.forEach((t) => globalThis.window.clearTimeout(t));
       pollTimersRef.current.clear();
-      setStreams({});
       return undefined;
     }
 
@@ -432,8 +438,8 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
   }, [dedupedTaskIds, enabled, autoCloseOnFinish, throttleMs, updateStateById]);
 
   return {
-    streams,
-    connectedIds: Array.from(sourcesRef.current.keys()),
+    streams: enabled ? streams : {},
+    connectedIds,
     lastEvent,
   };
 }

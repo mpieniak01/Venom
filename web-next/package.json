@@ -2,6 +2,10 @@
   "name": "web-next",
   "version": "1.6.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "predev": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
     "dev": "next dev",
@@ -40,7 +44,7 @@
     "lucide-react": "^0.561.0",
     "marked": "15.0.12",
     "mermaid": "^11.12.3",
-    "next": "^15.5.10",
+    "next": "^16.1.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-zoom-pan-pinch": "^3.7.0",
@@ -55,7 +59,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "^15.5.10",
+    "eslint-config-next": "^16.1.6",
     "playwright": "^1.57.0",
     "tailwindcss": "^4",
     "tailwindcss-animate": "^1.0.7",

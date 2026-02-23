@@ -85,12 +85,7 @@ class VisionGrounding:
             confidence_threshold: Próg pewności (0.0-1.0) - wyniki poniżej progu są odrzucane
         """
         try:
-            # Konwertuj PIL Image do base64
-            buffered = BytesIO()
-            screenshot.save(buffered, format="PNG")
-            img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-            # Przygotuj prompt
+            img_base64 = self._encode_screenshot(screenshot)
             width, height = screenshot.size
             prompt = f"""Analizujesz zrzut ekranu ({width}x{height} pikseli).
 
@@ -145,48 +140,14 @@ Przykład odpowiedzi:
 
                 logger.debug(f"OpenAI Vision odpowiedź: {answer}")
 
-                # Parsuj odpowiedź
-                if answer.upper() == "BRAK" or "brak" in answer.lower():
+                if self._is_no_result(answer):
                     logger.info(f"Element '{description}' nie został znaleziony")
                     return None
-
-                # Spróbuj wyciągnąć współrzędne i confidence
-                try:
-                    parts = answer.replace(" ", "").split(",")
-                    if len(parts) >= 2:
-                        x = int(parts[0])
-                        y = int(parts[1])
-
-                        # Sprawdź czy jest confidence w odpowiedzi
-                        confidence = 1.0  # Domyślna wartość jeśli brak
-                        if len(parts) >= 3:
-                            try:
-                                confidence = float(parts[2])
-                                # Waliduj zakres confidence (0.0-1.0)
-                                if not 0.0 <= confidence <= 1.0:
-                                    logger.warning(
-                                        f"Confidence poza zakresem [0.0, 1.0]: {confidence}. Używam wartości domyślnej 1.0"
-                                    )
-                                    confidence = 1.0
-                            except ValueError:
-                                logger.warning(
-                                    f"Nie można sparsować confidence: {parts[2]}"
-                                )
-
-                        # Filtruj wyniki poniżej progu confidence
-                        if confidence < confidence_threshold:
-                            logger.info(
-                                f"Element '{description}' znaleziony ale poniżej progu pewności: {confidence} < {confidence_threshold}"
-                            )
-                            return None
-
-                        logger.info(
-                            f"Element '{description}' znaleziony: ({x}, {y}) z pewnością {confidence}"
-                        )
-                        return (x, y)
-                except (ValueError, IndexError):
-                    logger.warning(f"Nie można sparsować współrzędnych: {answer}")
-                    return None
+                return self._parse_location_answer(
+                    answer=answer,
+                    description=description,
+                    confidence_threshold=confidence_threshold,
+                )
 
         except httpx.HTTPError as e:
             logger.error(f"Błąd HTTP podczas lokalizacji przez OpenAI: {e}")
@@ -196,6 +157,69 @@ Przykład odpowiedzi:
             return None
 
         return None
+
+    @staticmethod
+    def _encode_screenshot(screenshot: Image.Image) -> str:
+        buffered = BytesIO()
+        screenshot.save(buffered, format="PNG")
+        return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+    @staticmethod
+    def _is_no_result(answer: str) -> bool:
+        normalized = answer.strip()
+        return normalized.upper() == "BRAK" or "brak" in normalized.lower()
+
+    def _parse_location_answer(
+        self,
+        *,
+        answer: str,
+        description: str,
+        confidence_threshold: float,
+    ) -> Optional[Tuple[int, int]]:
+        try:
+            parts = answer.replace(" ", "").split(",")
+            if len(parts) < 2:
+                logger.warning(f"Nie można sparsować współrzędnych: {answer}")
+                return None
+            x = int(parts[0])
+            y = int(parts[1])
+            confidence = self._parse_confidence(parts[2] if len(parts) >= 3 else None)
+            if confidence < confidence_threshold:
+                logger.info(
+                    "Element '%s' znaleziony ale poniżej progu pewności: %s < %s",
+                    description,
+                    confidence,
+                    confidence_threshold,
+                )
+                return None
+            logger.info(
+                "Element '%s' znaleziony: (%s, %s) z pewnością %s",
+                description,
+                x,
+                y,
+                confidence,
+            )
+            return (x, y)
+        except (ValueError, IndexError):
+            logger.warning(f"Nie można sparsować współrzędnych: {answer}")
+            return None
+
+    @staticmethod
+    def _parse_confidence(raw_confidence: str | None) -> float:
+        if raw_confidence is None:
+            return 1.0
+        try:
+            confidence = float(raw_confidence)
+        except ValueError:
+            logger.warning(f"Nie można sparsować confidence: {raw_confidence}")
+            return 1.0
+        if 0.0 <= confidence <= 1.0:
+            return confidence
+        logger.warning(
+            "Confidence poza zakresem [0.0, 1.0]: %s. Używam wartości domyślnej 1.0",
+            confidence,
+        )
+        return 1.0
 
     def _locate_with_fallback(
         self, screenshot: Image.Image, description: str

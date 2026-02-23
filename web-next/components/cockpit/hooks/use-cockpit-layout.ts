@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 export function useCockpitLayout(variant: "reference" | "home" = "reference") {
     const [showArtifacts, setShowArtifacts] = useState(true);
@@ -14,11 +14,6 @@ export function useCockpitLayout(variant: "reference" | "home" = "reference") {
     // Derived state
     const showReferenceSections = variant === "reference";
     const showSharedSections = variant === "reference" || variant === "home";
-
-    // Effects
-    useEffect(() => {
-        setShowArtifacts(true);
-    }, [showReferenceSections]);
 
     return {
         showArtifacts,

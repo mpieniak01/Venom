@@ -350,6 +350,51 @@ def test_delete_stale_empty_dir_returns_zero_on_stat_oserror(
     )
 
 
+def test_is_file_stale_and_untracked_handles_stat_filenotfound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "logs" / "gone.log"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("x", encoding="utf-8")
+    original_stat = Path.stat
+
+    def _stat_raise_missing(self, *args, **kwargs):
+        if self == target:
+            raise FileNotFoundError
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", _stat_raise_missing)
+    stale, size = _is_file_stale_and_untracked(
+        file_path=target,
+        repo_root=tmp_path.resolve(),
+        cutoff_timestamp=time.time(),
+        tracked_repo_files=set(),
+    )
+    assert stale is False
+    assert size == 0
+
+
+def test_delete_stale_empty_dir_returns_zero_on_stat_filenotfound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stale_dir = tmp_path / "logs" / "missing-while-stat"
+    stale_dir.mkdir(parents=True, exist_ok=True)
+    original_stat = Path.stat
+
+    def _stat_raise_missing(self, *args, **kwargs):
+        if self == stale_dir:
+            raise FileNotFoundError
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", _stat_raise_missing)
+    assert (
+        _delete_stale_empty_dir(
+            dir_path=stale_dir, cutoff_timestamp=time.time() - (7 * 86400)
+        )
+        == 0
+    )
+
+
 def test_cleanup_runtime_files_skips_non_scannable_target(tmp_path: Path) -> None:
     stats = cleanup_runtime_files(
         retention_days=7,

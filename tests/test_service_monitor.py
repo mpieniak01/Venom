@@ -334,6 +334,21 @@ async def test_check_health_converts_exceptions_to_offline_status(service_monito
 
 
 @pytest.mark.asyncio
+async def test_check_health_preserves_service_when_result_shape_is_unexpected(
+    service_monitor,
+):
+    with patch.object(
+        service_monitor,
+        "_check_service_health",
+        new=AsyncMock(return_value=None),
+    ):
+        services = await service_monitor.check_health()
+
+    assert services
+    assert all(isinstance(service, ServiceInfo) for service in services)
+
+
+@pytest.mark.asyncio
 async def test_check_service_health_unknown_type_sets_unknown(service_monitor):
     test_service = ServiceInfo(name="Mystery", service_type="mystery")
     result = await service_monitor._check_service_health(test_service)

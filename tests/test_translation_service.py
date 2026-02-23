@@ -340,3 +340,30 @@ async def test_translate_text_raises_generic_exception_without_fallback(monkeypa
     service = translation_module.TranslationService()
     with pytest.raises(RuntimeError, match="generic-boom"):
         await service.translate_text("Hello", target_lang="pl", allow_fallback=False)
+
+
+@pytest.mark.asyncio
+async def test_translate_text_falls_back_on_generic_exception(monkeypatch):
+    _configure_settings(monkeypatch)
+    monkeypatch.setattr(translation_module, "get_active_llm_runtime", DummyRuntime)
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        async def __aenter__(self):
+            await asyncio.sleep(0)
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await asyncio.sleep(0)
+            return False
+
+        async def apost(self, *args, **kwargs):
+            await asyncio.sleep(0)
+            raise RuntimeError("generic-boom-fallback")
+
+    monkeypatch.setattr(translation_module, "TrafficControlledHttpClient", DummyClient)
+    service = translation_module.TranslationService()
+    result = await service.translate_text("Hello", target_lang="pl")
+    assert result == "Hello"

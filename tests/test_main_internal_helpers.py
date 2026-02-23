@@ -671,6 +671,53 @@ async def test_shutdown_runtime_components_cancels_startup_retention_task(monkey
     assert task.cancelled() is True
 
 
+def test_clear_startup_runtime_retention_task_sets_none():
+    main_module.startup_runtime_retention_task = object()
+    main_module._clear_startup_runtime_retention_task()
+    assert main_module.startup_runtime_retention_task is None
+
+
+@pytest.mark.asyncio
+async def test_shutdown_runtime_components_handles_done_task_and_stops_all(monkeypatch):
+    done_task = asyncio.create_task(asyncio.sleep(0))
+    await done_task
+    main_module.startup_runtime_retention_task = done_task
+
+    monkeypatch.setattr(
+        main_module.llm_simple_routes,
+        "release_onnx_simple_client",
+        MagicMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        main_module.tasks_routes,
+        "release_onnx_task_runtime",
+        MagicMock(return_value=None),
+    )
+
+    main_module.request_tracer = SimpleNamespace(stop_watchdog=AsyncMock())
+    main_module.desktop_sensor = SimpleNamespace(stop=AsyncMock())
+    main_module.shadow_agent = SimpleNamespace(stop=AsyncMock())
+    main_module.node_manager = SimpleNamespace(stop=AsyncMock())
+    main_module.background_scheduler = SimpleNamespace(stop=AsyncMock())
+    main_module.file_watcher = SimpleNamespace(stop=AsyncMock())
+    main_module.gardener_agent = SimpleNamespace(stop=AsyncMock())
+    main_module.hardware_bridge = SimpleNamespace(disconnect=AsyncMock())
+    main_module.state_manager = SimpleNamespace(shutdown=AsyncMock())
+
+    await main_module._shutdown_runtime_components()
+
+    main_module.request_tracer.stop_watchdog.assert_awaited_once()
+    main_module.desktop_sensor.stop.assert_awaited_once()
+    main_module.shadow_agent.stop.assert_awaited_once()
+    main_module.node_manager.stop.assert_awaited_once()
+    main_module.background_scheduler.stop.assert_awaited_once()
+    main_module.file_watcher.stop.assert_awaited_once()
+    main_module.gardener_agent.stop.assert_awaited_once()
+    main_module.hardware_bridge.disconnect.assert_awaited_once()
+    main_module.state_manager.shutdown.assert_awaited_once()
+    assert main_module.startup_runtime_retention_task is None
+
+
 @pytest.mark.asyncio
 async def test_initialize_documenter_and_watcher(monkeypatch, tmp_path):
     class DummyDocumenter:

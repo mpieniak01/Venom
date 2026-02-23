@@ -159,6 +159,20 @@ def test_get_orchestrator_kernel_falls_back_to_orchestrator_kernel(monkeypatch):
     assert main_module._get_orchestrator_kernel() is sentinel_orchestrator_kernel
 
 
+def test_get_orchestrator_kernel_returns_none_when_orchestrator_missing(monkeypatch):
+    monkeypatch.setattr(main_module, "orchestrator", None)
+    assert main_module._get_orchestrator_kernel() is None
+
+
+def test_select_startup_model_prefers_first_available_when_no_match():
+    selected = main_module._select_startup_model(
+        {"model-a", "model-b"},
+        desired_model="missing-desired",
+        previous_model="missing-previous",
+    )
+    assert selected in {"model-a", "model-b"}
+
+
 def _patch_setup_routes(monkeypatch):
     def make_dummy():
         return SimpleNamespace(

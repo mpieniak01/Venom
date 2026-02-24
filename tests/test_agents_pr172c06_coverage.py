@@ -59,6 +59,7 @@ class TestStrategistBranches:
     @pytest.mark.asyncio
     async def test_analyze_task_high_complexity_suggests_subtasks(self, agent):
         """HIGH/EPIC complexity triggers suggest_subtasks."""
+        # Note: 'skalowalne' matches ComplexitySkill.HIGH_COMPLEXITY_KEYWORDS verbatim.
         desc = "Zaprojektuj architekturę mikroserwisów kubernetes enterprise skalowalne"
         result = await agent.analyze_task(desc, task_id="high_001")
         # HIGH or EPIC triggers subtask suggestion
@@ -824,9 +825,9 @@ class TestSimulatedUserBranches:
                 agent, "process", new_callable=AsyncMock
             ) as mock_process:
                 mock_process.return_value = "CEL OSIĄGNIĘTY po kropieniu"
-                report = await agent.run_behavioral_loop(max_steps=5)
-        assert report["goal_achieved"] is True
-        assert "log_file" in report
+                session_report = await agent.run_behavioral_loop(max_steps=5)
+        assert session_report["goal_achieved"] is True
+        assert "log_file" in session_report
 
     # -- run_behavioral_loop: rage quit mid-loop --
     @pytest.mark.asyncio

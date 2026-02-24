@@ -664,6 +664,46 @@ def test_get_memory_metrics_tolerates_nvidia_timeout(service_monitor):
     assert metrics["vram_total_mb"] is None
 
 
+def test_get_memory_metrics_handles_called_process_error(service_monitor):
+    with patch("venom_core.core.service_monitor.psutil") as mock_psutil:
+        mock_memory = MagicMock()
+        mock_memory.used = 2 * 1024**3
+        mock_memory.total = 8 * 1024**3
+        mock_memory.percent = 25.0
+        mock_psutil.virtual_memory.return_value = mock_memory
+
+        with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
+            mock_which.return_value = "/usr/bin/nvidia-smi"
+            with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+                mock_run.side_effect = subprocess.CalledProcessError(
+                    cmd=["nvidia-smi"], returncode=1
+                )
+                metrics = service_monitor.get_memory_metrics()
+
+    assert metrics["memory_usage_percent"] == pytest.approx(25.0)
+    assert metrics["vram_usage_mb"] is None
+    assert metrics["vram_total_mb"] is None
+
+
+def test_get_memory_metrics_handles_file_not_found(service_monitor):
+    with patch("venom_core.core.service_monitor.psutil") as mock_psutil:
+        mock_memory = MagicMock()
+        mock_memory.used = 2 * 1024**3
+        mock_memory.total = 8 * 1024**3
+        mock_memory.percent = 25.0
+        mock_psutil.virtual_memory.return_value = mock_memory
+
+        with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
+            mock_which.return_value = "/usr/bin/nvidia-smi"
+            with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+                mock_run.side_effect = FileNotFoundError
+                metrics = service_monitor.get_memory_metrics()
+
+    assert metrics["memory_usage_percent"] == pytest.approx(25.0)
+    assert metrics["vram_usage_mb"] is None
+    assert metrics["vram_total_mb"] is None
+
+
 def test_get_gpu_memory_usage_selects_highest_valid_value(service_monitor):
     with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
         mock_which.return_value = "/usr/bin/nvidia-smi"
@@ -681,6 +721,24 @@ def test_get_gpu_memory_usage_selects_highest_valid_value(service_monitor):
 def test_get_gpu_memory_usage_returns_none_without_binary(service_monitor):
     with patch("venom_core.core.service_monitor.shutil.which", return_value=None):
         assert service_monitor.get_gpu_memory_usage() is None
+
+
+def test_get_gpu_memory_usage_handles_called_process_error(service_monitor):
+    with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
+        mock_which.return_value = "/usr/bin/nvidia-smi"
+        with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(
+                cmd=["nvidia-smi"], returncode=1
+            )
+            assert service_monitor.get_gpu_memory_usage() is None
+
+
+def test_get_gpu_memory_usage_handles_file_not_found(service_monitor):
+    with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
+        mock_which.return_value = "/usr/bin/nvidia-smi"
+        with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError
+            assert service_monitor.get_gpu_memory_usage() is None
 
 
 @pytest.mark.asyncio

@@ -24,7 +24,172 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function DatasetConversionPanel() {
+interface ConvertedFileItemProps {
+  file: DatasetConversionFileInfo;
+  selectionUpdatingId: string | null;
+  onTrainingSelectionChange: (file: DatasetConversionFileInfo, checked: boolean) => void;
+  onPreviewClick: (file: DatasetConversionFileInfo) => void;
+  t: (key: string) => string;
+}
+
+function ConvertedFileItem({
+  file,
+  selectionUpdatingId,
+  onTrainingSelectionChange,
+  onPreviewClick,
+  t,
+}: ConvertedFileItemProps) {
+  const previewable = [".txt", ".md"].includes(file.extension);
+  return (
+    <div key={file.file_id} className="rounded-lg border border-white/10 bg-black/20 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-sm text-white">{file.name}</p>
+        <span className="text-xs text-zinc-500">{formatFileSize(file.size_bytes)}</span>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <Checkbox
+          checked={file.selected_for_training === true}
+          disabled={selectionUpdatingId === file.file_id}
+          onCheckedChange={(checked) => onTrainingSelectionChange(file, checked === true)}
+        />
+        <span className="text-xs text-zinc-300">{t("academy.conversion.useForTraining")}</span>
+        {selectionUpdatingId === file.file_id ? (
+          <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
+        ) : null}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {previewable ? (
+          <Button size="sm" variant="ghost" onClick={() => onPreviewClick(file)}>
+            {t("academy.conversion.preview")}
+          </Button>
+        ) : null}
+        <a
+          href={`/api/v1/academy/dataset/conversion/files/${file.file_id}/download`}
+          className="inline-flex items-center rounded-md border border-white/15 px-2 py-1 text-xs text-zinc-200 hover:bg-white/5"
+        >
+          {t("academy.conversion.download")}
+        </a>
+      </div>
+    </div>
+  );
+}
+
+interface SourceFileItemProps {
+  file: DatasetConversionFileInfo;
+  target: TargetFormat;
+  convertingId: string | null;
+  onConvertClick: (file: DatasetConversionFileInfo) => void;
+  onPreviewClick: (file: DatasetConversionFileInfo) => void;
+  setTargetBySource: React.Dispatch<React.SetStateAction<Record<string, TargetFormat>>>;
+  t: (key: string) => string;
+}
+
+function SourceFileItem({
+  file,
+  target,
+  convertingId,
+  onConvertClick,
+  onPreviewClick,
+  setTargetBySource,
+  t,
+}: SourceFileItemProps) {
+  const previewable = [".txt", ".md"].includes(file.extension);
+  return (
+    <div key={file.file_id} className="rounded-lg border border-white/10 bg-black/20 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-sm text-white">{file.name}</p>
+        <span className="text-xs text-zinc-500">{formatFileSize(file.size_bytes)}</span>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <select
+          value={target}
+          onChange={(event) =>
+            setTargetBySource((prev) => ({
+              ...prev,
+              [file.file_id]: event.target.value as TargetFormat,
+            }))
+          }
+          className="rounded-md border border-white/15 bg-[#03162a] px-2 py-1 text-xs text-zinc-200"
+        >
+          {TARGET_FORMATS.map((format) => (
+            <option key={format} value={format}>
+              .{format}
+            </option>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1"
+          disabled={convertingId === file.file_id}
+          onClick={() => onConvertClick(file)}
+        >
+          {convertingId === file.file_id ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <WandSparkles className="h-3 w-3" />
+          )}
+          {t("academy.conversion.convert")}
+        </Button>
+        {previewable ? (
+          <Button size="sm" variant="ghost" onClick={() => onPreviewClick(file)}>
+            {t("academy.conversion.preview")}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+interface DatasetFileItemProps {
+  file: DatasetConversionFileInfo;
+  selectionUpdatingId: string | null;
+  convertingId: string | null;
+  onTrainingSelectionChange: (file: DatasetConversionFileInfo, checked: boolean) => void;
+  onConvertClick: (file: DatasetConversionFileInfo) => void;
+  onPreviewClick: (file: DatasetConversionFileInfo) => void;
+  targetBySource?: Record<string, TargetFormat>;
+  setTargetBySource?: React.Dispatch<React.SetStateAction<Record<string, TargetFormat>>>;
+}
+
+function ConvertedFileItem({
+  file,
+  selectionUpdatingId,
+  onTrainingSelectionChange,
+  onPreviewClick,
+}: DatasetFileItemProps) {
+  const previewable = [".txt", ".md"].includes(file.extension);
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-sm text-white">{file.name}</p>
+        <span className="text-xs text-zinc-500">{formatFileSize(file.size_bytes)}</span>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <Checkbox
+          checked={file.selected_for_training === true}
+          disabled={selectionUpdatingId === file.file_id}
+          onCheckedChange={(checked) => onTrainingSelectionChange(file, checked === true)}
+        />
+        <span className="text-xs text-zinc-300">{t("academy.conversion.useForTraining")}</span>
+        {selectionUpdatingId === file.file_id ? <Loader2 className="h-3 w-3 animate-spin text-zinc-400" /> : null}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {previewable ? (
+          <Button size="sm" variant="ghost" onClick={() => onPreviewClick(file)}>
+            {t("academy.conversion.preview")}
+          </Button>
+        ) : null}
+        <a
+          href={`/api/v1/academy/dataset/conversion/files/${file.file_id}/download`}
+          className="inline-flex items-center rounded-md border border-white/15 px-2 py-1 text-xs text-zinc-200 hover:bg-white/5"
+        >
+          {t("academy.conversion.download")}
+        </a>
+      </div>
+    </div>
+  );
+}
   const t = useTranslation();
   const { pushToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);

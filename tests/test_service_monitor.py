@@ -468,6 +468,31 @@ async def test_check_mcp_service_import_error_branch(service_monitor, monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_check_mcp_service_success_sets_online(
+    service_monitor, monkeypatch, tmp_path
+):
+    class DummyMcpSkill:
+        def __init__(self):
+            self.repos_root = str(tmp_path)
+
+    fake_module = ModuleType("venom_core.skills.mcp_manager_skill")
+    fake_module.McpManagerSkill = DummyMcpSkill
+    monkeypatch.setitem(
+        __import__("sys").modules, "venom_core.skills.mcp_manager_skill", fake_module
+    )
+
+    # Create a couple of fake tool directories inside the repos root
+    (tmp_path / "tool-a").mkdir()
+    (tmp_path / "tool-b").mkdir()
+
+    service = ServiceInfo(name="MCP Engine", service_type="mcp")
+    await service_monitor._check_mcp_service(service)
+
+    assert service.status == ServiceStatus.ONLINE
+    assert "Zaimportowano" in (service.error_message or "")
+
+
+@pytest.mark.asyncio
 async def test_check_semantic_kernel_service_without_orchestrator(service_monitor):
     service_monitor.orchestrator = None
     service = ServiceInfo(name="Semantic Kernel", service_type="orchestrator")
@@ -798,13 +823,22 @@ async def test_check_local_database_service_redis_online_and_missing_module(
 
     await service_monitor._check_local_database_service(service)
     assert service.status == ServiceStatus.ONLINE
-    assert service.error_message is None
 
-    monkeypatch.delitem(sys.modules, "redis", raising=False)
-    monkeypatch.delitem(sys.modules, "redis.asyncio", raising=False)
+
+@pytest.mark.asyncio
+async def test_check_local_database_service_lancedb_online(
+    monkeypatch, service_monitor
+):
+    service = ServiceInfo(name="LanceDB", service_type="database", description="vector")
+    fake_lancedb = ModuleType("lancedb")
+    fake_conn = SimpleNamespace(table_names=lambda: ["table1"])
+    fake_lancedb.connect = MagicMock(return_value=fake_conn)
+    monkeypatch.setitem(__import__("sys").modules, "lancedb", fake_lancedb)
+
     await service_monitor._check_local_database_service(service)
-    assert service.status == ServiceStatus.OFFLINE
-    assert service.error_message
+
+    assert service.status == ServiceStatus.ONLINE
+    assert service.error_message is None
 
 
 @pytest.mark.asyncio

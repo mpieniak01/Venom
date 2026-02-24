@@ -142,3 +142,7 @@ tests/test_ux_analyst.py
 # PR-172C-05: Skills - browser/github/shell coverage
 tests/test_shell_skill_coverage.py
 tests/test_github_skill_coverage.py
+
+# PR-172C-06/07: Agent coverage wave
+tests/test_agents_pr172c06_coverage.py
+tests/test_agents_pr172c07_coverage.py

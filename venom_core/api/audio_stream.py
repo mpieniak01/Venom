@@ -201,7 +201,7 @@ class AudioStreamHandler:
             # Porównaj z progiem
             is_voice = normalized_rms > self.vad_threshold
 
-            return is_voice
+            return bool(is_voice)
 
         except Exception:
             return False

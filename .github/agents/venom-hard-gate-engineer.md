@@ -27,6 +27,11 @@ Raport końcowy musi zawierać:
 3. changed-lines coverage,
 4. znane ryzyka/skipy z uzasadnieniem.
 
+Dodatkowo:
+
+- W pętli poprawek uruchamiaj najpierw testy obszarowe, potem `make pr-fast`.
+- `code_review`/`codeql_checker` uruchamiaj tylko raz na końcu, nie w każdej iteracji.
+
 Stosuj polityki z:
 
 - `AGENTS.md`

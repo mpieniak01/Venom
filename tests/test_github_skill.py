@@ -4,9 +4,28 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytest.importorskip("github")
-
+from venom_core.execution.skills import github_skill as github_skill_module
 from venom_core.execution.skills.github_skill import GitHubSkill
+
+
+@pytest.fixture(autouse=True)
+def _force_pygithub_available(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(github_skill_module, "_GITHUB_AVAILABLE", True)
+
+    class _DummyAuth:
+        @staticmethod
+        def Token(token: str):
+            return f"token:{token}"
+
+    monkeypatch.setattr(github_skill_module, "Auth", _DummyAuth)
+
+    class _DummyGithubException(Exception):
+        def __init__(self, status: int, data):
+            super().__init__(data)
+            self.status = status
+            self.data = data
+
+    monkeypatch.setattr(github_skill_module, "GithubException", _DummyGithubException)
 
 
 @pytest.fixture
@@ -146,11 +165,9 @@ def test_get_readme_from_url(github_skill):
 
 def test_get_readme_not_found(github_skill):
     """Test pobierania README - repozytorium nie znalezione."""
-    from github import GithubException
-
     # Mock GithubException dla 404
     github_skill.github.get_repo = MagicMock(
-        side_effect=GithubException(404, {"message": "Not Found"})
+        side_effect=github_skill_module.GithubException(404, {"message": "Not Found"})
     )
 
     result = github_skill.get_readme("user/nonexistent")
@@ -204,10 +221,10 @@ def test_extract_repo_name_invalid(github_skill):
 
 def test_search_repos_error_handling(github_skill):
     """Test obsługi błędów podczas wyszukiwania."""
-    from github import GithubException
-
     github_skill.github.search_repositories = MagicMock(
-        side_effect=GithubException(500, {"message": "Server Error"})
+        side_effect=github_skill_module.GithubException(
+            500, {"message": "Server Error"}
+        )
     )
 
     result = github_skill.search_repos(query="test")

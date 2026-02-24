@@ -86,6 +86,16 @@ def test_render_chart_invalid_data(render_skill):
     assert "Błąd" in result
 
 
+def test_render_chart_invalid_numeric_value(render_skill):
+    result = render_skill.render_chart(
+        chart_type="bar",
+        labels="A,B",
+        values="1,not-a-number",
+        dataset_label="Test",
+    )
+    assert "Błąd tworzenia wykresu" in result
+
+
 def test_render_table(render_skill):
     """Test renderowania tabeli."""
     result = render_skill.render_table(
@@ -96,6 +106,18 @@ def test_render_table(render_skill):
     widgets = render_skill.component_engine.list_widgets()
     assert len(widgets) == 1
     assert widgets[0].type == WidgetType.TABLE
+
+
+def test_render_table_handles_engine_exception(monkeypatch):
+    skill = RenderSkill()
+
+    def _raise_table(**_kwargs):
+        raise RuntimeError("table-failed")
+
+    monkeypatch.setattr(skill.component_engine, "create_table_widget", _raise_table)
+    result = skill.render_table(headers="A", rows_data="x")
+
+    assert "Błąd tworzenia tabeli" in result
 
 
 def test_render_dashboard_widget(render_skill):
@@ -164,6 +186,11 @@ def test_update_nonexistent_widget(render_skill):
     result = render_skill.update_widget("nonexistent-id", '{"data": "test"}')
 
     assert "Nie znaleziono widgetu" in result
+
+
+def test_update_widget_invalid_json_returns_error(render_skill):
+    result = render_skill.update_widget("id", "{invalid-json}")
+    assert "Błąd aktualizacji widgetu" in result
 
 
 def test_remove_widget(render_skill):

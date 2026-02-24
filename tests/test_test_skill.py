@@ -154,3 +154,40 @@ def test_format_test_report_failure():
     assert "Failed: 1" in result
     assert "BŁĘDY:" in result
     assert "AssertionError" in result
+
+
+def test_extract_pytest_summary_handles_mixed_tokens():
+    test_skill = TestSkill()
+    lines = ["=== 12 passed, 3 failed, 2 warnings in 1.23s ==="]
+
+    passed, failed = test_skill._extract_pytest_summary(lines)
+
+    assert passed == 12
+    assert failed == 3
+
+
+def test_parse_pytest_output_uses_fallback_counts():
+    test_skill = TestSkill()
+    output = """
+tests/a.py::test_ok PASSED
+tests/a.py::test_bad FAILED
+"""
+
+    report = test_skill._parse_pytest_output(1, output)
+    assert report.passed == 1
+    assert report.failed == 1
+
+
+@pytest.mark.asyncio
+async def test_run_linter_with_disabled_local_and_missing_docker_returns_warning():
+    skill = TestSkill(allow_local_execution=False)
+    skill.docker_available = False
+    skill.habitat = None
+
+    result = await skill.run_linter(path=".")
+    assert "Docker sandbox jest niedostępny" in result
+
+
+def test_is_valid_lint_path_accepts_and_rejects_values():
+    assert TestSkill._is_valid_lint_path("tests/test_example.py") is True
+    assert TestSkill._is_valid_lint_path("bad path with spaces") is False

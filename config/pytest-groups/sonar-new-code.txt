@@ -152,3 +152,8 @@ tests/test_pr172c08_session_workflow_memory.py
 
 # PR-172C-09: Contract/unit tests for 8 API route modules
 tests/test_pr172c09_api_routes_coverage.py
+
+# Coverage wave: normalized test filenames (no PR numeric tags)
+tests/test_skills_browser_github_shell_coverage.py
+tests/test_nodes_utility_coverage.py
+tests/test_medium_gap_modules_coverage.py

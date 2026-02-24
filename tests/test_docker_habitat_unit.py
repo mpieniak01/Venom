@@ -186,6 +186,27 @@ def test_wait_until_container_absent_returns_on_not_found(monkeypatch):
     instance._wait_until_container_absent()
 
 
+def test_wait_until_container_absent_ignores_generic_exception_then_returns(
+    monkeypatch,
+):
+    instance = _make_habitat_instance()
+    instance.CONTAINER_REMOVE_WAIT_SECONDS = 1
+    instance.CONTAINER_REMOVE_POLL_SECONDS = 0
+    calls = {"count": 0}
+
+    def _get(_name):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("temporary docker API glitch")
+        raise docker_habitat.NotFound
+
+    instance.client.containers = SimpleNamespace(get=_get)
+    monkeypatch.setattr(docker_habitat.time, "sleep", lambda *_args, **_kwargs: None)
+
+    instance._wait_until_container_absent()
+    assert calls["count"] >= 1
+
+
 def test_init_raises_when_docker_sdk_unavailable(monkeypatch):
     monkeypatch.setattr(docker_habitat, "docker", None)
     with pytest.raises(RuntimeError, match="Docker SDK nie jest dostępny"):
@@ -240,6 +261,69 @@ def test_get_or_create_container_recreates_on_workspace_mismatch(monkeypatch, tm
     assert returned is created
     instance._recreate_container.assert_called_once_with(existing)
     instance._create_container.assert_called_once()
+
+
+def test_recover_from_name_conflict_fallbacks_on_reuse_exception(monkeypatch, tmp_path):
+    instance = _make_habitat_instance()
+    instance.client.containers = SimpleNamespace(
+        get=lambda _name: (_ for _ in ()).throw(RuntimeError("cannot inspect"))
+    )
+    monkeypatch.setattr(
+        instance, "_resolve_workspace_path", lambda: tmp_path / "workspace"
+    )
+    remove_mock = MagicMock()
+    create_mock = MagicMock(return_value="created-after-fallback")
+    monkeypatch.setattr(instance, "_remove_container_by_name_if_exists", remove_mock)
+    monkeypatch.setattr(instance, "_create_container", create_mock)
+
+    result = instance._recover_from_name_conflict(
+        error=SimpleNamespace(),
+        workspace_path=tmp_path / "workspace",
+        retries_left=2,
+    )
+
+    assert result == "created-after-fallback"
+    remove_mock.assert_called_once()
+    create_mock.assert_called_once()
+
+
+def test_recover_from_name_conflict_recreates_on_mount_mismatch(monkeypatch, tmp_path):
+    instance = _make_habitat_instance()
+    existing = SimpleNamespace(status="running")
+    instance.client.containers = SimpleNamespace(get=lambda _name: existing)
+    monkeypatch.setattr(instance, "_has_expected_workspace_mount", lambda *_: False)
+    recreate_mock = MagicMock()
+    create_mock = MagicMock(return_value="recreated")
+    monkeypatch.setattr(instance, "_recreate_container", recreate_mock)
+    monkeypatch.setattr(instance, "_create_container", create_mock)
+
+    result = instance._recover_from_name_conflict(
+        error=SimpleNamespace(),
+        workspace_path=tmp_path / "workspace",
+        retries_left=2,
+    )
+
+    assert result == "recreated"
+    recreate_mock.assert_called_once_with(existing)
+    create_mock.assert_called_once()
+
+
+def test_init_initializes_container_from_get_or_create(monkeypatch):
+    fake_client = SimpleNamespace()
+    fake_container = SimpleNamespace(status="running")
+
+    monkeypatch.setattr(
+        docker_habitat,
+        "docker",
+        SimpleNamespace(from_env=lambda: fake_client),
+    )
+    get_or_create = MagicMock(return_value=fake_container)
+    monkeypatch.setattr(DockerHabitat, "_get_or_create_container", get_or_create)
+
+    habitat = DockerHabitat()
+
+    assert habitat.client is fake_client
+    assert habitat.container is fake_container
 
 
 def test_get_or_create_container_creates_new_when_not_found(monkeypatch):

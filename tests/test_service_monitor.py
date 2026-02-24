@@ -673,10 +673,13 @@ async def test_check_docker_service_timeout_sets_offline(service_monitor, monkey
     monkeypatch.setattr(
         "asyncio.create_subprocess_exec", AsyncMock(return_value=process)
     )
-    monkeypatch.setattr(
-        "asyncio.wait_for",
-        AsyncMock(side_effect=asyncio.TimeoutError),
-    )
+
+    async def _wait_for_timeout(awaitable, timeout):
+        _ = timeout
+        await awaitable
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr("asyncio.wait_for", _wait_for_timeout)
 
     await service_monitor._check_docker_service(service)
     assert service.status == ServiceStatus.OFFLINE
@@ -873,9 +876,12 @@ async def test_check_docker_service_nonzero_exit_sets_stderr_message(
     monkeypatch.setattr(
         "asyncio.create_subprocess_exec", AsyncMock(return_value=process)
     )
-    monkeypatch.setattr(
-        "asyncio.wait_for", AsyncMock(return_value=(b"", b"daemon down"))
-    )
+
+    async def _wait_for_passthrough(awaitable, timeout):
+        _ = timeout
+        return await awaitable
+
+    monkeypatch.setattr("asyncio.wait_for", _wait_for_passthrough)
 
     await service_monitor._check_docker_service(service)
     assert service.status == ServiceStatus.OFFLINE

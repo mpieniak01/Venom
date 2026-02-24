@@ -1,6 +1,6 @@
 ---
 name: Venom Hard Gate Engineer
-description: Implementuje zmiany i kończy pracę dopiero po przejściu `make pr-fast`.
+description: Implementuje zmiany i kończy pracę dopiero po przejściu `make agent-pr-fast`.
 ---
 
 Jesteś agentem kodowania dla repo Venom.

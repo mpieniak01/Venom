@@ -366,25 +366,25 @@ def test_get_trending_generic_exception(patched_github):
 
 
 def test_extract_repo_name_short_form(patched_github):
-    _, mock_instance, _ = patched_github
+    _, _, _ = patched_github
     skill = GitHubSkill()
     assert skill._extract_repo_name("owner/repo") == "owner/repo"
 
 
 def test_extract_repo_name_full_url(patched_github):
-    _, mock_instance, _ = patched_github
+    _, _, _ = patched_github
     skill = GitHubSkill()
     assert skill._extract_repo_name("https://github.com/owner/repo") == "owner/repo"
 
 
 def test_extract_repo_name_url_with_trailing_slash(patched_github):
-    _, mock_instance, _ = patched_github
+    _, _, _ = patched_github
     skill = GitHubSkill()
     assert skill._extract_repo_name("https://github.com/owner/repo/") == "owner/repo"
 
 
 def test_extract_repo_name_invalid_raises(patched_github):
-    _, mock_instance, _ = patched_github
+    _, _, _ = patched_github
     skill = GitHubSkill()
     with pytest.raises(ValueError):
         skill._extract_repo_name("no_slash_here")

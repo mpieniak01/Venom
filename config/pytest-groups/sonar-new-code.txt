@@ -149,3 +149,6 @@ tests/test_agents_pr172c07_coverage.py
 
 # PR-172C-08: session_store / workflow_operations / workflow_store / memory_skill / embedding_service
 tests/test_pr172c08_session_workflow_memory.py
+
+# PR-172C-09: Contract/unit tests for 8 API route modules
+tests/test_pr172c09_api_routes_coverage.py

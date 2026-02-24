@@ -128,6 +128,25 @@ def test_service_registry_registers_openai_and_docker_when_enabled(monkeypatch):
     assert "Docker Daemon" in names
 
 
+def test_service_registry_skips_docker_when_sandbox_disabled(monkeypatch):
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.SETTINGS.OPENAI_API_KEY",
+        "",
+    )
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.SETTINGS.LLM_SERVICE_TYPE",
+        "local",
+    )
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.SETTINGS.ENABLE_SANDBOX",
+        False,
+    )
+    registry = ServiceRegistry()
+    names = {service.name for service in registry.get_all_services()}
+    assert "Docker Daemon" not in names
+    assert "LanceDB" in names
+
+
 def test_get_all_services_returns_list(service_monitor):
     services = service_monitor.get_all_services()
     assert isinstance(services, list)
@@ -290,6 +309,37 @@ async def test_check_http_service_github_adds_bearer_header(
 
     kwargs = mock_client.aget.await_args.kwargs
     assert kwargs["headers"]["Authorization"] == "Bearer gh-token"
+    assert service.status == ServiceStatus.ONLINE
+
+
+@pytest.mark.asyncio
+async def test_check_http_service_github_blank_token_skips_auth_header(
+    service_monitor, monkeypatch: pytest.MonkeyPatch
+):
+    service = ServiceInfo(
+        name="GitHub API",
+        service_type="api",
+        endpoint=TEST_EXAMPLE_HTTP,
+    )
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.SETTINGS.GITHUB_TOKEN",
+        SimpleNamespace(get_secret_value=lambda: "   "),
+    )
+
+    with patch(
+        "venom_core.core.service_monitor.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        await service_monitor._check_http_service(service)
+
+    kwargs = mock_client.aget.await_args.kwargs
+    assert "Authorization" not in kwargs["headers"]
     assert service.status == ServiceStatus.ONLINE
 
 

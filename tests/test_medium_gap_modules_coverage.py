@@ -1,4 +1,4 @@
-"""PR-172C-12 coverage tests for medium-gap modules.
+"""Coverage tests for medium-gap modules.
 
 Targets:
   venom_core/learning/training_metrics_parser.py  (92% → ~100%)
@@ -12,8 +12,6 @@ Targets:
 
 import asyncio
 import json
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
@@ -38,7 +36,9 @@ class TestTrainingMetricsParserGaps:
         fake_match = MagicMock()
         # group(1) OK, group(2) raises IndexError → continue
         fake_match.group = MagicMock(side_effect=[1, IndexError("no group")])
-        monkeypatch.setattr(re, "search", MagicMock(side_effect=[fake_match, None, None, None]))
+        monkeypatch.setattr(
+            re, "search", MagicMock(side_effect=[fake_match, None, None, None])
+        )
         result = self.parser._extract_epoch("Epoch 1/3")
         assert result is None
 
@@ -48,7 +48,9 @@ class TestTrainingMetricsParserGaps:
 
         fake_match = MagicMock()
         fake_match.group = MagicMock(side_effect=[ValueError("bad")])
-        monkeypatch.setattr(re, "search", MagicMock(side_effect=[fake_match, None, None]))
+        monkeypatch.setattr(
+            re, "search", MagicMock(side_effect=[fake_match, None, None])
+        )
         result = self.parser._extract_loss("Loss: ???")
         assert result is None
 
@@ -87,12 +89,20 @@ class TestTrainingMetricsParserGaps:
         from venom_core.learning.training_metrics_parser import TrainingMetrics
 
         m1 = TrainingMetrics(
-            epoch=1, total_epochs=5, loss=0.5, learning_rate=1e-4, accuracy=0.8,
-            progress_percent=20.0
+            epoch=1,
+            total_epochs=5,
+            loss=0.5,
+            learning_rate=1e-4,
+            accuracy=0.8,
+            progress_percent=20.0,
         )
         m2 = TrainingMetrics(
-            epoch=2, total_epochs=5, loss=0.4, learning_rate=9e-5, accuracy=0.85,
-            progress_percent=40.0
+            epoch=2,
+            total_epochs=5,
+            loss=0.4,
+            learning_rate=9e-5,
+            accuracy=0.85,
+            progress_percent=40.0,
         )
         result = self.parser.aggregate_metrics([m1, m2])
         assert result["total_epochs"] == 5
@@ -280,7 +290,9 @@ class TestDatasetCuratorGaps:
         from venom_core.learning.dataset_curator import TrainingExample
 
         curator = self._make_curator(tmp_path)
-        curator.examples = [TrainingExample("i", "input long enough text", "output text")]
+        curator.examples = [
+            TrainingExample("i", "input long enough text", "output text")
+        ]
         with pytest.raises(ValueError, match="Nieznany format"):
             curator.save_dataset(format="unknown")  # type: ignore[arg-type]  # intentionally invalid value to test the guard
 
@@ -385,7 +397,14 @@ class TestKernelBuilderGaps:
         kb = KernelBuilder(settings=settings)
 
         registered = {}
-        def mock_register_service(kernel, service_type, service_id=None, model_name=None, enable_grounding=False):
+
+        def mock_register_service(
+            kernel,
+            service_type,
+            service_id=None,
+            model_name=None,
+            enable_grounding=False,
+        ):
             registered["service_type"] = service_type
 
         with patch.object(kb, "_register_service", side_effect=mock_register_service):
@@ -401,7 +420,14 @@ class TestKernelBuilderGaps:
         kb = KernelBuilder(settings=settings)
 
         registered = {}
-        def mock_register_service(kernel, service_type, service_id=None, model_name=None, enable_grounding=False):
+
+        def mock_register_service(
+            kernel,
+            service_type,
+            service_id=None,
+            model_name=None,
+            enable_grounding=False,
+        ):
             registered["service_type"] = service_type
 
         with patch.object(kb, "_register_service", side_effect=mock_register_service):
@@ -411,19 +437,28 @@ class TestKernelBuilderGaps:
 
     def test_build_kernel_with_routing(self):
         """build_kernel uses router recommendation when task is provided."""
-        from venom_core.execution.kernel_builder import KernelBuilder
         from venom_core.core.model_router import ServiceId
+        from venom_core.execution.kernel_builder import KernelBuilder
 
         settings = self._make_mock_settings()
         kb = KernelBuilder(settings=settings, enable_routing=True)
 
-        kb.model_router.get_routing_info = MagicMock(return_value={
-            "selected_service": ServiceId.LOCAL.value,
-            "complexity": "low",
-        })
+        kb.model_router.get_routing_info = MagicMock(
+            return_value={
+                "selected_service": ServiceId.LOCAL.value,
+                "complexity": "low",
+            }
+        )
 
         registered = {}
-        def mock_register_service(kernel, service_type, service_id=None, model_name=None, enable_grounding=False):
+
+        def mock_register_service(
+            kernel,
+            service_type,
+            service_id=None,
+            model_name=None,
+            enable_grounding=False,
+        ):
             registered["service_type"] = service_type
 
         with patch.object(kb, "_register_service", side_effect=mock_register_service):
@@ -433,8 +468,9 @@ class TestKernelBuilderGaps:
 
     def test_register_service_unknown_type_raises(self):
         """_register_service raises ValueError for unknown service type."""
-        from venom_core.execution.kernel_builder import KernelBuilder
         from semantic_kernel import Kernel
+
+        from venom_core.execution.kernel_builder import KernelBuilder
 
         kb = KernelBuilder(settings=self._make_mock_settings())
         with pytest.raises(ValueError, match="Nieznany typ serwisu"):
@@ -442,9 +478,10 @@ class TestKernelBuilderGaps:
 
     def test_register_google_service_unavailable_raises(self):
         """_register_google_service raises ValueError when Google SDK is missing."""
-        from venom_core.execution.kernel_builder import KernelBuilder
-        import venom_core.execution.kernel_builder as kbmod
         from semantic_kernel import Kernel
+
+        import venom_core.execution.kernel_builder as kbmod
+        from venom_core.execution.kernel_builder import KernelBuilder
 
         kb = KernelBuilder(settings=self._make_mock_settings())
         original = kbmod.GOOGLE_AVAILABLE
@@ -457,9 +494,10 @@ class TestKernelBuilderGaps:
 
     def test_register_google_service_no_api_key_raises(self):
         """_register_google_service raises ValueError when GOOGLE_API_KEY missing."""
-        from venom_core.execution.kernel_builder import KernelBuilder
-        import venom_core.execution.kernel_builder as kbmod
         from semantic_kernel import Kernel
+
+        import venom_core.execution.kernel_builder as kbmod
+        from venom_core.execution.kernel_builder import KernelBuilder
 
         kb = KernelBuilder(settings=self._make_mock_settings(GOOGLE_API_KEY=None))
         original = kbmod.GOOGLE_AVAILABLE
@@ -472,8 +510,9 @@ class TestKernelBuilderGaps:
 
     def test_register_openai_service_no_key_raises(self):
         """_register_openai_service raises ValueError when OPENAI_API_KEY missing."""
-        from venom_core.execution.kernel_builder import KernelBuilder
         from semantic_kernel import Kernel
+
+        from venom_core.execution.kernel_builder import KernelBuilder
 
         kb = KernelBuilder(settings=self._make_mock_settings(OPENAI_API_KEY=None))
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
@@ -481,8 +520,9 @@ class TestKernelBuilderGaps:
 
     def test_register_azure_service_missing_config_raises(self):
         """_register_azure_service raises NotImplementedError when credentials missing."""
-        from venom_core.execution.kernel_builder import KernelBuilder
         from semantic_kernel import Kernel
+
+        from venom_core.execution.kernel_builder import KernelBuilder
 
         settings = self._make_mock_settings()
         settings.AZURE_OPENAI_ENDPOINT = None
@@ -504,8 +544,9 @@ class TestKernelBuilderGaps:
 
     def test_register_all_services_local_exception(self):
         """_register_all_services catches local service registration error."""
-        from venom_core.execution.kernel_builder import KernelBuilder
         from semantic_kernel import Kernel
+
+        from venom_core.execution.kernel_builder import KernelBuilder
 
         settings = self._make_mock_settings(OPENAI_API_KEY=None)
         kb = KernelBuilder(settings=settings)
@@ -516,14 +557,22 @@ class TestKernelBuilderGaps:
 
     def test_register_all_services_with_openai_key(self):
         """_register_all_services registers OpenAI services when key available."""
-        from venom_core.execution.kernel_builder import KernelBuilder
         from semantic_kernel import Kernel
+
+        from venom_core.execution.kernel_builder import KernelBuilder
 
         settings = self._make_mock_settings(OPENAI_API_KEY="sk-test-key")
         kb = KernelBuilder(settings=settings)
 
         calls = []
-        def mock_register(kernel, service_type, service_id=None, model_name=None, enable_grounding=False):
+
+        def mock_register(
+            kernel,
+            service_type,
+            service_id=None,
+            model_name=None,
+            enable_grounding=False,
+        ):
             calls.append((service_type, service_id))
 
         with patch.object(kb, "_register_service", side_effect=mock_register):
@@ -580,10 +629,7 @@ class TestCloudProvisionerGaps:
     @pytest.mark.asyncio
     async def test_execute_ssh_command_generic_exception(self):
         """_execute_ssh_command wraps unexpected exceptions in CloudProvisionerError."""
-        from venom_core.infrastructure.cloud_provisioner import (
-            CloudProvisionerError,
-            ASYNCSSH_ERROR,
-        )
+        from venom_core.infrastructure.cloud_provisioner import CloudProvisionerError
 
         cp = self._make_provisioner()
 
@@ -637,7 +683,9 @@ class TestCloudProvisionerGaps:
         from venom_core.infrastructure.cloud_provisioner import CloudProvisionerError
 
         cp = self._make_provisioner()
-        with pytest.raises(CloudProvisionerError, match="Plik docker-compose nie istnieje"):
+        with pytest.raises(
+            CloudProvisionerError, match="Plik docker-compose nie istnieje"
+        ):
             await cp.deploy_stack(
                 "host", "mystack", str(tmp_path / "nonexistent.yml"), password="pw"
             )
@@ -651,7 +699,9 @@ class TestCloudProvisionerGaps:
         compose_file.write_text("version: '3'")
         cp = self._make_provisioner()
         with pytest.raises(CloudProvisionerError, match="Invalid stack_name"):
-            await cp.deploy_stack("host", "bad stack!", str(compose_file), password="pw")
+            await cp.deploy_stack(
+                "host", "bad stack!", str(compose_file), password="pw"
+            )
 
     @pytest.mark.asyncio
     async def test_deploy_stack_no_credentials(self, tmp_path):
@@ -852,7 +902,11 @@ class TestWorkLedgerGaps:
 
         self._log(ledger, "t1")
         updated = ledger.log_task(
-            "t1", "New Name", "New Desc", 60, TaskComplexity.HIGH,
+            "t1",
+            "New Name",
+            "New Desc",
+            60,
+            TaskComplexity.HIGH,
             metadata={"key": "val"},
         )
         assert updated.name == "New Name"
@@ -871,8 +925,12 @@ class TestWorkLedgerGaps:
         """update_progress sets all optional fields."""
         self._log(ledger)
         result = ledger.update_progress(
-            "t1", 50.0, actual_minutes=15, files_touched=3,
-            api_calls=10, tokens=500,
+            "t1",
+            50.0,
+            actual_minutes=15,
+            files_touched=3,
+            api_calls=10,
+            tokens=500,
         )
         assert result is True
         t = ledger.get_task("t1")
@@ -930,7 +988,6 @@ class TestWorkLedgerGaps:
 
     def test_predict_overrun_no_progress_data(self, ledger):
         """predict_overrun returns will_overrun=False when progress_percent is 0."""
-        from venom_core.ops.work_ledger import TaskStatus
 
         self._log(ledger)
         ledger.start_task("t1")
@@ -1160,7 +1217,9 @@ class TestNotifierGaps:
     async def test_send_toast_exception_returns_false(self):
         """send_toast catches exceptions and returns False."""
         n = self._make_notifier(system="Linux", is_wsl=False)
-        with patch.object(n, "_send_toast_linux", AsyncMock(side_effect=RuntimeError("crash"))):
+        with patch.object(
+            n, "_send_toast_linux", AsyncMock(side_effect=RuntimeError("crash"))
+        ):
             result = await n.send_toast("Title", "Msg")
         assert result is False
 

@@ -1,4 +1,4 @@
-"""PR-172C-11 coverage tests for nodes/utility gap modules.
+"""Coverage tests for nodes and utility gap modules.
 
 Covers:
 - venom_core/nodes/protocol.py  – missing NodeMessage.from_heartbeat / from_response
@@ -215,9 +215,16 @@ async def test_council_session_run_timeout():
     """run() catches asyncio.TimeoutError and returns a non-empty error string."""
     session = _make_council_session()
 
-    # Patch to_thread to return a plain sentinel (wait_for raises before awaiting it)
-    with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()), \
-         patch("asyncio.to_thread", return_value=object()):
+    # Await the scheduled coroutine before raising to avoid un-awaited AsyncMock warnings.
+    async def _wait_for_timeout(awaitable, timeout):
+        _ = timeout
+        await awaitable
+        raise asyncio.TimeoutError()
+
+    with (
+        patch("asyncio.wait_for", _wait_for_timeout),
+        patch("asyncio.to_thread", AsyncMock(return_value=object())),
+    ):
         result = await session.run("something")
 
     assert isinstance(result, str) and len(result) > 0
@@ -228,8 +235,15 @@ async def test_council_session_run_generic_exception():
     """run() catches unexpected exceptions and returns a non-empty error string."""
     session = _make_council_session()
 
-    with patch("asyncio.wait_for", side_effect=ValueError("unexpected")), \
-         patch("asyncio.to_thread", return_value=object()):
+    async def _wait_for_error(awaitable, timeout):
+        _ = timeout
+        await awaitable
+        raise ValueError("unexpected")
+
+    with (
+        patch("asyncio.wait_for", _wait_for_error),
+        patch("asyncio.to_thread", AsyncMock(return_value=object())),
+    ):
         result = await session.run("task")
 
     assert isinstance(result, str) and len(result) > 0

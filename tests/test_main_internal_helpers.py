@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -622,6 +623,61 @@ async def test_initialize_gardener_and_git(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_initialize_gardener_and_git_exception_paths(monkeypatch, tmp_path):
+    monkeypatch.setattr(main_module, "graph_store", object())
+    monkeypatch.setattr(main_module, "orchestrator", object())
+    monkeypatch.setattr(main_module, "event_broadcaster", object())
+    monkeypatch.setattr(
+        main_module, "GardenerAgent", MagicMock(side_effect=RuntimeError("gardener"))
+    )
+    monkeypatch.setattr(
+        main_module, "GitSkill", MagicMock(side_effect=RuntimeError("git"))
+    )
+
+    await main_module._initialize_gardener_and_git(tmp_path)
+
+    assert main_module.gardener_agent is None
+    assert main_module.git_skill is None
+
+
+@pytest.mark.asyncio
+async def test_initialize_node_manager_guard_paths(monkeypatch):
+    # Feature disabled: function returns early.
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_NEXUS", False)
+    main_module.node_manager = None
+    await main_module._initialize_node_manager()
+    assert main_module.node_manager is None
+
+    # Feature enabled with empty token: warning path + early return.
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_NEXUS", True)
+    monkeypatch.setattr(
+        main_module.SETTINGS,
+        "NEXUS_SHARED_TOKEN",
+        SimpleNamespace(get_secret_value=lambda: ""),
+    )
+    await main_module._initialize_node_manager()
+    assert main_module.node_manager is None
+
+
+@pytest.mark.asyncio
+async def test_initialize_node_manager_exception_branch(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_NEXUS", True)
+    monkeypatch.setattr(
+        main_module.SETTINGS,
+        "NEXUS_SHARED_TOKEN",
+        SimpleNamespace(get_secret_value=lambda: "token"),
+    )
+    monkeypatch.setattr(main_module.SETTINGS, "NEXUS_HEARTBEAT_TIMEOUT", 10)
+    failing_module = SimpleNamespace(
+        NodeManager=MagicMock(side_effect=RuntimeError("node-manager-boom"))
+    )
+    monkeypatch.setitem(sys.modules, "venom_core.core.node_manager", failing_module)
+
+    await main_module._initialize_node_manager()
+    assert main_module.node_manager is None
+
+
+@pytest.mark.asyncio
 async def test_initialize_background_scheduler_registers_jobs(monkeypatch):
     class DummyScheduler:
         def __init__(self, event_broadcaster):
@@ -854,6 +910,23 @@ async def test_initialize_documenter_and_watcher(monkeypatch, tmp_path):
     assert main_module.file_watcher is not None
     assert main_module.file_watcher.started is True
     assert main_module.file_watcher.on_change_callback is not None
+
+
+@pytest.mark.asyncio
+async def test_initialize_documenter_and_watcher_exception_paths(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        main_module, "DocumenterAgent", MagicMock(side_effect=RuntimeError("doc"))
+    )
+    monkeypatch.setattr(
+        main_module, "FileWatcher", MagicMock(side_effect=RuntimeError("watch"))
+    )
+    monkeypatch.setattr(main_module, "git_skill", object())
+    monkeypatch.setattr(main_module, "event_broadcaster", object())
+
+    await main_module._initialize_documenter_and_watcher(tmp_path)
+
+    assert main_module.documenter_agent is None
+    assert main_module.file_watcher is None
 
 
 @pytest.mark.asyncio

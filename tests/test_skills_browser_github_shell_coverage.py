@@ -1,4 +1,4 @@
-"""PR-172C-05 coverage gap tests for browser_skill, github_skill, and shell_skill.
+"""Coverage gap tests for browser_skill, github_skill, and shell_skill.
 
 Covers the remaining uncovered branches in browser_skill.py:
   - _validate_url_policy: no-host URL (lines 97-99)
@@ -6,12 +6,12 @@ Covers the remaining uncovered branches in browser_skill.py:
   - _ensure_browser: browser already initialised, new page created (lines 158-164)
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 import venom_core.execution.skills.browser_skill as bmod
 from venom_core.execution.skills.browser_skill import BrowserSkill
-
 
 # ---------------------------------------------------------------------------
 # _validate_url_policy — empty-host branch (lines 97-99)

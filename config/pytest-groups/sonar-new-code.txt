@@ -127,3 +127,8 @@ tests/test_node_protocol.py
 tests/test_graph_store.py
 tests/test_dataset_curator.py
 tests/test_analyst_agent.py
+tests/test_simulated_user.py
+tests/test_audio_stream_handler_roi.py
+tests/test_forge_flow.py
+tests/test_scheduler.py
+tests/test_ux_analyst.py

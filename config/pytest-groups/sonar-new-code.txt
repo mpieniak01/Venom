@@ -138,3 +138,7 @@ tests/test_audio_stream_handler_roi.py
 tests/test_forge_flow.py
 tests/test_scheduler.py
 tests/test_ux_analyst.py
+
+# PR-172C-05: Skills - browser/github/shell coverage
+tests/test_shell_skill_coverage.py
+tests/test_github_skill_coverage.py

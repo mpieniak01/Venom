@@ -157,3 +157,4 @@ tests/test_pr172c09_api_routes_coverage.py
 tests/test_skills_browser_github_shell_coverage.py
 tests/test_nodes_utility_coverage.py
 tests/test_medium_gap_modules_coverage.py
+tests/test_orchestrator_compat_module.py

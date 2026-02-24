@@ -152,3 +152,16 @@ def test_node_message_serialization():
     assert data["message_type"] == "HANDSHAKE"
     assert "payload" in data
     assert "timestamp" in data
+
+
+def test_node_message_from_heartbeat_and_response():
+    """Test conversion helpers for heartbeat and response payloads."""
+    heartbeat = HeartbeatMessage(node_id="node-a")
+    hb_msg = NodeMessage.from_heartbeat(heartbeat)
+    assert hb_msg.message_type == MessageType.HEARTBEAT
+    assert hb_msg.payload["node_id"] == "node-a"
+
+    response = NodeResponse(request_id="req-1", node_id="node-a", success=True)
+    resp_msg = NodeMessage.from_response(response)
+    assert resp_msg.message_type == MessageType.RESPONSE
+    assert resp_msg.payload["request_id"] == "req-1"

@@ -261,3 +261,29 @@ async def test_digest_file_handles_ingestion_exception(tmp_path, monkeypatch):
 
     assert "Błąd podczas przetwarzania pliku" in result
     assert "ingest-file-failed" in result
+
+
+@pytest.mark.asyncio
+async def test_digest_file_success(tmp_path, monkeypatch):
+    monkeypatch.setattr(research_skill_mod, "IngestionEngine", FakeIngestionEngine)
+    graph_rag = DummyGraphRag()
+    skill = research_skill_mod.ResearchSkill(graph_rag_service=graph_rag)
+
+    file_path = tmp_path / "article.txt"
+    file_path.write_text("content", encoding="utf-8")
+    skill.ingestion_engine.next_file_results = [
+        {
+            "text": "content",
+            "chunks": ["content"],
+            "metadata": {"source": "unit-test"},
+            "file_type": "text",
+        }
+    ]
+
+    result = await skill.digest_file(str(file_path))
+
+    assert "Plik przetworzony" in result
+    assert graph_rag.saved is True
+    assert (
+        graph_rag.vector_store.upserts[0]["metadata"]["entity_id"] == "file_article.txt"
+    )

@@ -280,6 +280,35 @@ class TestWorkflowOperationService:
         service2 = get_workflow_operation_service()
         assert service1 is service2
 
+    @pytest.mark.parametrize(
+        "operation,method_name",
+        [
+            (WorkflowOperation.RESUME, "resume_workflow"),
+            (WorkflowOperation.CANCEL, "cancel_workflow"),
+            (WorkflowOperation.RETRY, "retry_workflow"),
+            (WorkflowOperation.DRY_RUN, "dry_run"),
+        ],
+    )
+    def test_invalid_uuid_paths_use_structured_response(
+        self, service, operation, method_name
+    ):
+        """Operations return INVALID_CONFIGURATION for malformed UUID."""
+        method = getattr(service, method_name)
+        response = method("not-a-uuid", "test_user")
+        assert response.operation == operation
+        assert response.reason_code == ReasonCode.INVALID_CONFIGURATION
+        assert response.status == WorkflowStatus.IDLE
+
+    def test_get_latest_workflow_status_fallback_paths(self, service):
+        """Latest status falls back to IDLE for empty/invalid workflow records."""
+        assert service.get_latest_workflow_status() == WorkflowStatus.IDLE
+
+        workflow_id = str(uuid4())
+        record = service._get_or_create_workflow(workflow_id)
+        record["status"] = "NOT_A_STATUS"
+
+        assert service.get_latest_workflow_status() == WorkflowStatus.IDLE
+
 
 class TestWorkflowLifecycle:
     """Test complete workflow lifecycles."""

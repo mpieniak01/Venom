@@ -2,7 +2,6 @@
 branch = True
 source = venom_core
 omit = tests/*
-    venom_core/nodes/protocol.py
     venom_core/agents/writer.py
     venom_core/infrastructure/onnx_runtime.py
     venom_core/perception/antenna.py

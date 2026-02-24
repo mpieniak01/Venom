@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
+from starlette.requests import Request
 
 from venom_core.api.routes import providers as providers_route
 
@@ -263,3 +266,194 @@ async def test_activate_provider_openai_update_failure_raises_500(
         await providers_route.activate_provider("openai", None)
     assert exc.value.status_code == 500
     assert "Failed to activate provider" in exc.value.detail
+
+
+def _make_request(headers: dict[str, str] | None = None) -> Request:
+    raw_headers = [
+        (key.lower().encode("latin-1"), value.encode("latin-1"))
+        for key, value in (headers or {}).items()
+    ]
+    return Request(
+        {"type": "http", "method": "GET", "path": "/", "headers": raw_headers}
+    )
+
+
+def test_extract_user_prefers_request_state_user() -> None:
+    request = _make_request({"x-user": "header-user"})
+    request.state.user = "state-user"
+    assert providers_route._extract_user_from_request(request) == "state-user"
+
+
+def test_extract_user_falls_back_to_headers() -> None:
+    request = _make_request({"x-authenticated-user": "header-user"})
+    assert providers_route._extract_user_from_request(request) == "header-user"
+
+
+def test_extract_user_returns_unknown_on_exception() -> None:
+    class BrokenRequest:
+        state = object()
+
+        @property
+        def headers(self):
+            raise RuntimeError("headers unavailable")
+
+    assert providers_route._extract_user_from_request(BrokenRequest()) == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_get_provider_metrics_returns_empty_structure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metrics_collector = SimpleNamespace(get_provider_metrics=lambda _provider: {})
+    monkeypatch.setattr(
+        "venom_core.core.metrics.get_metrics_collector", lambda: metrics_collector
+    )
+
+    result = await providers_route.get_provider_metrics("openai")
+    assert result["status"] == "success"
+    assert result["metrics"]["latency"]["samples"] == 0
+    assert result["metrics"]["cost"]["total_usd"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_get_provider_health_serializes_slo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slo = SimpleNamespace(
+        health_status=SimpleNamespace(value="healthy"),
+        health_score=99.0,
+        availability=0.999,
+        latency_p99_ms=120.0,
+        error_rate=0.001,
+        cost_usage_usd=1.2,
+        slo_target=SimpleNamespace(
+            availability_target=0.99,
+            latency_p99_ms=300.0,
+            error_rate_target=0.02,
+            cost_budget_usd=10.0,
+        ),
+        breaches=[],
+    )
+    observability = SimpleNamespace(
+        calculate_slo_status=lambda _provider, _metrics: slo
+    )
+    metrics_collector = SimpleNamespace(
+        get_provider_metrics=lambda _provider: {"requests": 1}
+    )
+    monkeypatch.setattr(
+        "venom_core.core.provider_observability.get_provider_observability",
+        lambda: observability,
+    )
+    monkeypatch.setattr(
+        "venom_core.core.metrics.get_metrics_collector", lambda: metrics_collector
+    )
+
+    result = await providers_route.get_provider_health("openai")
+    assert result["health"]["health_status"] == "healthy"
+    assert result["health"]["slo_target"]["cost_budget_usd"] == 10.0
+
+
+@pytest.mark.asyncio
+async def test_get_alerts_filters_invalid_and_valid_severity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alert = SimpleNamespace(
+        id="a1",
+        severity=SimpleNamespace(value="critical"),
+        alert_type=SimpleNamespace(value="latency"),
+        provider="openai",
+        message="high latency",
+        technical_details={"p99_ms": 800},
+        timestamp=datetime.now(timezone.utc),
+        expires_at=None,
+        metadata={},
+    )
+    observability = SimpleNamespace(
+        get_active_alerts=lambda _provider=None: [alert],
+        get_alert_summary=lambda: {"critical": 1},
+    )
+    monkeypatch.setattr(
+        "venom_core.core.provider_observability.get_provider_observability",
+        lambda: observability,
+    )
+
+    ok_result = await providers_route.get_alerts(provider="openai", severity="critical")
+    assert ok_result["count"] == 1
+    assert ok_result["alerts"][0]["severity"] == "critical"
+
+    with pytest.raises(HTTPException) as exc:
+        await providers_route.get_alerts(severity="invalid")
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_test_provider_connection_success_and_error_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = providers_route.ProviderStatus(
+        status="offline",
+        reason_code="missing_api_key",
+        message="missing key",
+        latency_ms=5.0,
+    )
+    audit = MagicMock()
+    monkeypatch.setattr(
+        providers_route, "_check_provider_connection", AsyncMock(return_value=status)
+    )
+    monkeypatch.setattr("venom_core.core.admin_audit.get_audit_trail", lambda: audit)
+
+    request = _make_request({"x-user": "qa-user"})
+    result = await providers_route.test_provider_connection("openai", request)
+    assert result["status"] == "failure"
+    assert result["error_info"]["reason_code"] == "missing_api_key"
+    audit.log_action.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_provider_preflight_check_not_ready_and_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = providers_route.ProviderStatus(
+        status="offline",
+        reason_code="connection_failed",
+        message="down",
+    )
+    audit = MagicMock()
+    monkeypatch.setattr(
+        providers_route, "_check_provider_connection", AsyncMock(return_value=status)
+    )
+    monkeypatch.setattr("venom_core.core.admin_audit.get_audit_trail", lambda: audit)
+    monkeypatch.setattr(providers_route.SETTINGS, "OPENAI_API_KEY", "", raising=False)
+
+    request = _make_request({"x-admin-user": "ops"})
+    result = await providers_route.provider_preflight_check("openai", request)
+    assert result["overall_status"] == "not_ready"
+    assert result["checks"]["credentials"]["passed"] is False
+
+    monkeypatch.setattr(
+        providers_route,
+        "_check_provider_connection",
+        AsyncMock(side_effect=RuntimeError("preflight-fail")),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await providers_route.provider_preflight_check("openai", request)
+    assert exc.value.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_get_admin_audit_log_caps_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    entry = SimpleNamespace(
+        timestamp=datetime.now(timezone.utc),
+        action="test_connection",
+        user="admin",
+        provider="openai",
+        details={},
+        result="success",
+        error_message=None,
+    )
+    audit = SimpleNamespace(get_entries=lambda **_kwargs: [entry])
+    monkeypatch.setattr("venom_core.core.admin_audit.get_audit_trail", lambda: audit)
+
+    result = await providers_route.get_admin_audit_log(limit=999)
+    assert result["status"] == "success"
+    assert result["count"] == 1

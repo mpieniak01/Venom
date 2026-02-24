@@ -146,3 +146,6 @@ tests/test_github_skill_coverage.py
 # PR-172C-06/07: Agent coverage wave
 tests/test_agents_pr172c06_coverage.py
 tests/test_agents_pr172c07_coverage.py
+
+# PR-172C-08: session_store / workflow_operations / workflow_store / memory_skill / embedding_service
+tests/test_pr172c08_session_workflow_memory.py

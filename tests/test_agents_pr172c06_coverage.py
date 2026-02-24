@@ -1189,17 +1189,6 @@ class TestResearcherBranches:
             return_value="Python is a high-level programming language."
         )
 
-        with patch.object(
-            agent, "_invoke_chat_with_fallbacks", new_callable=AsyncMock
-        ) as mock_chat:
-            mock_chat.return_value = MagicMock(
-                __str__=lambda s: "Python is versatile and easy to learn."
-            )
-            with patch("asyncio.to_thread", side_effect=asyncio_mod.coroutine(
-                lambda fn, *args, **kwargs: fn(*args, **kwargs)
-            ) if False else None) as _:
-                pass
-
         # Use a direct approach: mock asyncio.to_thread
         async def fake_to_thread(fn, *args, **kwargs):
             return fn(*args, **kwargs)

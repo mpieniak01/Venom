@@ -13,6 +13,7 @@ All external calls (LLM, model, DB) are mocked.
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -785,7 +786,9 @@ class TestEmbeddingServiceCoverage:
             def __init__(self, api_key):
                 pass
 
-        with patch("openai.OpenAI", FakeOpenAI):
+        fake_openai_module = MagicMock()
+        fake_openai_module.OpenAI = FakeOpenAI
+        with patch.dict(sys.modules, {"openai": fake_openai_module}):
             with patch("venom_core.memory.embedding_service.SETTINGS") as mock_s:
                 mock_s.OPENAI_API_KEY = ""
                 with pytest.raises(ValueError, match="OPENAI_API_KEY"):
@@ -804,7 +807,9 @@ class TestEmbeddingServiceCoverage:
             def __init__(self, api_key):
                 self.api_key = api_key
 
-        with patch("openai.OpenAI", FakeOpenAI):
+        fake_openai_module = MagicMock()
+        fake_openai_module.OpenAI = FakeOpenAI
+        with patch.dict(sys.modules, {"openai": fake_openai_module}):
             with patch("venom_core.memory.embedding_service.SETTINGS") as mock_s:
                 mock_s.OPENAI_API_KEY = "sk-test123"
                 svc._ensure_model_loaded()

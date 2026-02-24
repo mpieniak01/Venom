@@ -1,5 +1,11 @@
 # CI lite = tylko szybkie testy unit/logiki, bez integracji/e2e.
 # Pełny pakiet testów uruchamiany lokalnie.
+# Najwolniejsze z grupy uruchamiamy na początku, żeby szybciej wykrywać regresje czasu.
+tests/test_tracer_persistence.py
+tests/test_academy_api_coverage.py
+tests/test_env_audit.py
+tests/test_docker_habitat_unit.py
+
 tests/test_session_store.py
 tests/test_models_utils_security.py
 tests/test_helpers.py
@@ -21,7 +27,6 @@ tests/test_operator_agent.py
 tests/test_ingestion_engine_roi.py
 tests/test_node_manager.py
 tests/test_tracer.py
-tests/test_tracer_persistence.py
 
 # Recent lightweight regressions (policy gate / knowledge contract / resolver hardening)
 tests/security/test_autonomy_enforcement.py
@@ -38,12 +43,10 @@ tests/test_stack_manager_safety.py
 tests/test_url_policy.py
 
 # Dev environment hygiene scripts
-tests/test_env_audit.py
 tests/test_env_cleanup.py
 tests/test_env_report_diff.py
 tests/test_docker_cleanup_script.py
 
 # Academy lightweight regression coverage
-tests/test_academy_api_coverage.py
 tests/test_academy_api_new_code_edges.py
 tests/test_coverage_fixes_wave4.py

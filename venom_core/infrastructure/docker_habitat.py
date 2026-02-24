@@ -246,7 +246,7 @@ class DockerHabitat:
         )
 
     @staticmethod
-    def _is_name_conflict_error(error: APIError) -> bool:
+    def _is_name_conflict_error(error: Exception) -> bool:
         error_text = str(error).lower()
         status_code = getattr(error, "status_code", None)
         return bool(
@@ -259,7 +259,7 @@ class DockerHabitat:
     def _recover_from_name_conflict(
         self,
         *,
-        error: APIError,
+        error: Exception,
         workspace_path: Path | None,
         retries_left: int,
     ):

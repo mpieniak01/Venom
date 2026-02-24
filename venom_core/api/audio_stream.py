@@ -192,6 +192,9 @@ class AudioStreamHandler:
             True jeśli wykryto głos
         """
         try:
+            if audio_data.size == 0:
+                return False
+
             # Oblicz RMS (Root Mean Square)
             rms = np.sqrt(np.mean(audio_data.astype(float) ** 2))
 

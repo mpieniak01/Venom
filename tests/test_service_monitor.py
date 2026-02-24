@@ -263,6 +263,37 @@ async def test_check_http_service_github_offline_branch(service_monitor):
 
 
 @pytest.mark.asyncio
+async def test_check_http_service_github_adds_bearer_header(
+    service_monitor, monkeypatch: pytest.MonkeyPatch
+):
+    service = ServiceInfo(
+        name="GitHub API",
+        service_type="api",
+        endpoint=TEST_EXAMPLE_HTTP,
+    )
+    monkeypatch.setattr(
+        "venom_core.core.service_monitor.SETTINGS.GITHUB_TOKEN",
+        SimpleNamespace(get_secret_value=lambda: "gh-token"),
+    )
+
+    with patch(
+        "venom_core.core.service_monitor.TrafficControlledHttpClient"
+    ) as mock_client_cls:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_client = MagicMock()
+        mock_client.aget = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        await service_monitor._check_http_service(service)
+
+    kwargs = mock_client.aget.await_args.kwargs
+    assert kwargs["headers"]["Authorization"] == "Bearer gh-token"
+    assert service.status == ServiceStatus.ONLINE
+
+
+@pytest.mark.asyncio
 async def test_check_health_all_services(service_monitor):
     """Test sprawdzania zdrowia wszystkich usług."""
     # Mock check_service_health
@@ -457,6 +488,29 @@ async def test_check_local_database_service_redis_missing_dependency(service_mon
 
 
 @pytest.mark.asyncio
+async def test_check_local_database_service_redis_module_not_found_branch(
+    service_monitor, monkeypatch
+):
+    service = ServiceInfo(
+        name="Redis",
+        service_type="database",
+        endpoint="redis://localhost:6379/0",
+        description="redis",
+    )
+    original_import = __import__
+
+    def _import(name, *args, **kwargs):
+        if name == "redis.asyncio":
+            raise ModuleNotFoundError("redis.asyncio")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", _import)
+    await service_monitor._check_local_database_service(service)
+    assert service.status == ServiceStatus.OFFLINE
+    assert service.error_message == "redis nie jest zainstalowany"
+
+
+@pytest.mark.asyncio
 async def test_check_mcp_service_import_error_branch(service_monitor, monkeypatch):
     fake_module = ModuleType("venom_core.skills.mcp_manager_skill")
     monkeypatch.setitem(
@@ -490,6 +544,25 @@ async def test_check_mcp_service_success_sets_online(
 
     assert service.status == ServiceStatus.ONLINE
     assert "Zaimportowano" in (service.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_check_mcp_service_success_without_repos_dir(
+    service_monitor, monkeypatch, tmp_path
+):
+    class DummyMcpSkill:
+        def __init__(self):
+            self.repos_root = str(tmp_path / "missing-repos")
+
+    fake_module = ModuleType("venom_core.skills.mcp_manager_skill")
+    fake_module.McpManagerSkill = DummyMcpSkill
+    monkeypatch.setitem(
+        __import__("sys").modules, "venom_core.skills.mcp_manager_skill", fake_module
+    )
+    service = ServiceInfo(name="MCP Engine", service_type="mcp")
+    await service_monitor._check_mcp_service(service)
+    assert service.status == ServiceStatus.ONLINE
+    assert service.error_message == "Zaimportowano 0 narzędzi"
 
 
 @pytest.mark.asyncio
@@ -722,6 +795,28 @@ def test_get_memory_metrics_handles_file_not_found(service_monitor):
             mock_which.return_value = "/usr/bin/nvidia-smi"
             with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
                 mock_run.side_effect = FileNotFoundError
+                metrics = service_monitor.get_memory_metrics()
+
+    assert metrics["memory_usage_percent"] == pytest.approx(25.0)
+    assert metrics["vram_usage_mb"] is None
+    assert metrics["vram_total_mb"] is None
+
+
+def test_get_memory_metrics_handles_nonzero_nvidia_exit(service_monitor):
+    with patch("venom_core.core.service_monitor.psutil") as mock_psutil:
+        mock_memory = MagicMock()
+        mock_memory.used = 2 * 1024**3
+        mock_memory.total = 8 * 1024**3
+        mock_memory.percent = 25.0
+        mock_psutil.virtual_memory.return_value = mock_memory
+
+        with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
+            mock_which.return_value = "/usr/bin/nvidia-smi"
+            with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+                result = MagicMock()
+                result.returncode = 1
+                result.stdout = ""
+                mock_run.return_value = result
                 metrics = service_monitor.get_memory_metrics()
 
     assert metrics["memory_usage_percent"] == pytest.approx(25.0)

@@ -9,7 +9,6 @@ import pytest
 import venom_core.api.audio_stream as audio_stream_mod
 from venom_core.api.audio_stream import AudioStreamHandler, get_audio_stream_handler
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -226,9 +225,9 @@ def test_detect_voice_activity_empty_array_returns_false():
     """VAD returns False for an empty array (edge case)."""
     handler = _make_handler()
     empty = np.array([], dtype=np.int16)
-    # Should not raise; returns False on exception
+    # Should not raise and should explicitly classify empty chunk as no voice.
     result = handler._detect_voice_activity(empty)
-    assert isinstance(result, bool)
+    assert result is False
 
 
 # ---------------------------------------------------------------------------

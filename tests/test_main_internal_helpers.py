@@ -19,6 +19,14 @@ def test_extract_available_local_models_filters_by_provider():
     assert main_module._extract_available_local_models(models, "ollama") == {"m1"}
 
 
+def test_extract_available_local_models_casts_name_to_string():
+    models = [
+        {"provider": "ollama", "name": 123},
+        {"provider": "ollama", "name": None},
+    ]
+    assert main_module._extract_available_local_models(models, "ollama") == {"123"}
+
+
 def test_select_startup_model_priority_chain():
     available = {"model-a", "model-b"}
     assert (
@@ -414,6 +422,19 @@ def test_resolve_audit_actor_without_state_attribute_uses_client():
     assert main_module._resolve_audit_actor(request) == "10.0.0.7"
 
 
+def test_resolve_audit_actor_prefers_authenticated_header_over_others():
+    request = SimpleNamespace(
+        headers={
+            "X-Authenticated-User": "auth-user",
+            "X-User": "plain-user",
+            "X-Admin-User": "admin-user",
+        },
+        state=SimpleNamespace(user="state-user"),
+        client=SimpleNamespace(host="10.0.0.9"),
+    )
+    assert main_module._resolve_audit_actor(request) == "auth-user"
+
+
 def test_resolve_audit_actor_with_state_without_user_attr_uses_client():
     request = SimpleNamespace(
         headers={},
@@ -472,6 +493,27 @@ async def test_audit_http_requests_publishes_for_regular_api_calls(monkeypatch):
     assert payload["action"] == "http.get"
     assert payload["status"] == "success"
     assert payload["details"]["api_channel"] == "Queue API"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "expected_status"),
+    [(400, "warning"), (503, "failure")],
+)
+async def test_audit_http_requests_maps_non_success_statuses(
+    monkeypatch, status_code: int, expected_status: str
+):
+    stream = SimpleNamespace(publish=MagicMock())
+    monkeypatch.setattr(main_module, "get_audit_stream", lambda: stream)
+    request = _build_request(method="GET", path="/api/v1/system/status")
+
+    async def _call_next(_request):
+        return Response(status_code=status_code)
+
+    response = await main_module.audit_http_requests(request, _call_next)
+    assert response.status_code == status_code
+    stream.publish.assert_called_once()
+    assert stream.publish.call_args.kwargs["status"] == expected_status
 
 
 @pytest.mark.asyncio

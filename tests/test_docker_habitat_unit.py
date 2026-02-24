@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from venom_core.infrastructure import docker_habitat
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 
@@ -182,3 +184,98 @@ def test_wait_until_container_absent_returns_on_not_found(monkeypatch):
 
     # Should return quickly without sleeping
     instance._wait_until_container_absent()
+
+
+def test_init_raises_when_docker_sdk_unavailable(monkeypatch):
+    monkeypatch.setattr(docker_habitat, "docker", None)
+    with pytest.raises(RuntimeError, match="Docker SDK nie jest dostępny"):
+        DockerHabitat()
+
+
+def test_init_raises_when_docker_connection_fails(monkeypatch):
+    class FakeDocker:
+        @staticmethod
+        def from_env():
+            raise RuntimeError("daemon unavailable")
+
+    monkeypatch.setattr(docker_habitat, "docker", FakeDocker)
+    with pytest.raises(RuntimeError, match="Nie można połączyć się z Docker daemon"):
+        DockerHabitat()
+
+
+def test_get_or_create_container_starts_existing_stopped(monkeypatch, tmp_path):
+    instance = _make_habitat_instance()
+    container = SimpleNamespace(
+        status="exited",
+        start=MagicMock(),
+        reload=MagicMock(),
+    )
+    instance.client.containers = SimpleNamespace(get=lambda _name: container)
+    monkeypatch.setattr(
+        instance, "_resolve_workspace_path", lambda: tmp_path / "workspace"
+    )
+    monkeypatch.setattr(instance, "_has_expected_workspace_mount", lambda *_: True)
+
+    returned = instance._get_or_create_container()
+
+    assert returned is container
+    container.start.assert_called_once()
+    assert container.reload.called
+
+
+def test_get_or_create_container_recreates_on_workspace_mismatch(monkeypatch, tmp_path):
+    instance = _make_habitat_instance()
+    existing = SimpleNamespace(status="running")
+    created = object()
+    instance.client.containers = SimpleNamespace(get=lambda _name: existing)
+    monkeypatch.setattr(
+        instance, "_resolve_workspace_path", lambda: tmp_path / "workspace"
+    )
+    monkeypatch.setattr(instance, "_has_expected_workspace_mount", lambda *_: False)
+    monkeypatch.setattr(instance, "_recreate_container", MagicMock())
+    monkeypatch.setattr(instance, "_create_container", MagicMock(return_value=created))
+
+    returned = instance._get_or_create_container()
+
+    assert returned is created
+    instance._recreate_container.assert_called_once_with(existing)
+    instance._create_container.assert_called_once()
+
+
+def test_get_or_create_container_creates_new_when_not_found(monkeypatch):
+    instance = _make_habitat_instance()
+    instance.client.containers = SimpleNamespace(
+        get=lambda _name: (_ for _ in ()).throw(docker_habitat.NotFound)
+    )
+    monkeypatch.setattr(instance, "_create_container", MagicMock(return_value="new"))
+    assert instance._get_or_create_container() == "new"
+
+
+def test_create_container_wraps_non_conflict_api_error(monkeypatch, tmp_path):
+    instance = _make_habitat_instance()
+    monkeypatch.setattr(instance, "_resolve_conflict_retries", lambda *_: 0)
+    monkeypatch.setattr(instance, "_ensure_image_present", lambda *_: None)
+    monkeypatch.setattr(instance, "_run_container", MagicMock())
+    monkeypatch.setattr(instance, "_is_name_conflict_error", lambda *_: False)
+    monkeypatch.setattr(docker_habitat.SETTINGS, "DOCKER_IMAGE_NAME", "venom:test")
+
+    class FakeApiError(Exception):
+        pass
+
+    instance._run_container.side_effect = FakeApiError("api boom")
+    monkeypatch.setattr(docker_habitat, "APIError", FakeApiError)
+
+    with pytest.raises(
+        RuntimeError, match="Błąd API Docker podczas tworzenia kontenera"
+    ):
+        instance._create_container(tmp_path)
+
+
+def test_recover_from_name_conflict_raises_when_retries_exhausted(tmp_path):
+    instance = _make_habitat_instance()
+    with pytest.raises(RuntimeError, match="Wyczerpano limit retry"):
+        instance._recover_from_name_conflict(
+            error=Exception("conflict"),
+            workspace_path=tmp_path / "workspace",
+            retries_left=0,
+        )

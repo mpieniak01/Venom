@@ -451,6 +451,17 @@ def test_resolve_headers_unknown_runtime_type_returns_empty():
     assert headers == {}
 
 
+def test_normalize_target_lang_accepts_uppercase():
+    assert translation_module.TranslationService._normalize_target_lang("PL") == "pl"
+
+
+def test_build_cache_key_depends_on_source_language():
+    service = translation_module.TranslationService()
+    key_en = service._build_cache_key("Hello", "en", "pl", "model")
+    key_auto = service._build_cache_key("Hello", None, "pl", "model")
+    assert key_en != key_auto
+
+
 @pytest.mark.asyncio
 async def test_translate_text_uses_llm_provider_when_runtime_has_no_markers(
     monkeypatch,

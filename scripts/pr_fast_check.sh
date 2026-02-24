@@ -11,6 +11,19 @@ frontend_changed=0
 
 EMPTY_TREE_HASH="$(git hash-object -t tree /dev/null)"
 
+refresh_base_ref_if_missing() {
+  if git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # Keep the command deterministic for CI and agent runs where origin/main
+  # may not be present in a shallow checkout.
+  if [[ "$BASE_REF" == "origin/main" ]]; then
+    echo "ℹ️ Base ref '$BASE_REF' missing; fetching origin/main..."
+    git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main >/dev/null 2>&1 || true
+  fi
+}
+
 resolve_head_fallback() {
   if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
     DIFF_BASE="HEAD~1"
@@ -21,6 +34,8 @@ resolve_head_fallback() {
     CHANGED_FILES="$(git diff --name-only "${EMPTY_TREE_HASH}..HEAD")"
   fi
 }
+
+refresh_base_ref_if_missing
 
 if git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
   if MERGE_BASE="$(git merge-base HEAD "$BASE_REF" 2>/dev/null)"; then

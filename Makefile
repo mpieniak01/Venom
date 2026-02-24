@@ -33,7 +33,7 @@ SHELL := /bin/bash
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod stop restart status clean-ports \
-	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage check-new-code-coverage-local sonar-reports-backend-new-code pr-fast pr-fast-local \
+	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 	ci-lite-preflight ci-lite-bootstrap \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
@@ -173,6 +173,11 @@ check-new-code-coverage-local:
 
 pr-fast:
 	@bash scripts/pr_fast_check.sh
+
+# Agent-friendly wrapper: refreshes origin/main before gate and uses explicit diff base.
+agent-pr-fast:
+	@git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+	@PR_BASE_REF=origin/main $(MAKE) --no-print-directory pr-fast
 
 # Lokalny skrót zamiast pełnego pr-fast + osobnego check-new-code-coverage.
 pr-fast-local:

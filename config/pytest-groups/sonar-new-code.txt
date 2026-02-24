@@ -54,6 +54,7 @@ tests/test_mcp_manager.py
 tests/test_orchestrator_components.py
 tests/test_orchestrator_bootstrap.py
 tests/test_task_pipeline_coverage.py
+tests/test_scheduler_swarm_flow_streaming.py
 tests/test_markdown_blocks.py
 tests/test_parallel_skill.py
 tests/test_metrics_routes.py

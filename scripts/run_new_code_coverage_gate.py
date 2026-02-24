@@ -9,6 +9,7 @@ import json
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -154,6 +155,69 @@ def _fallback_candidates(
     return scored
 
 
+def _to_pytest_nodeid(classname: str, test_name: str) -> str:
+    parts = [part for part in classname.split(".") if part]
+    if not parts:
+        return f"{classname}::{test_name}" if classname else test_name
+
+    file_path_str: str | None = None
+    split_index = 0
+    for idx in range(len(parts), 0, -1):
+        candidate = Path("/".join(parts[:idx]) + ".py")
+        if candidate.exists():
+            file_path_str = candidate.as_posix()
+            split_index = idx
+            break
+
+    if file_path_str is not None:
+        suffix = parts[split_index:]
+        if suffix:
+            return f"{file_path_str}::{'::'.join(suffix)}::{test_name}"
+        return f"{file_path_str}::{test_name}"
+
+    return f"{classname}::{test_name}"
+
+
+def _extract_failing_nodes(junit_xml: str, limit: int = 8) -> list[str]:
+    path = Path(junit_xml)
+    if not junit_xml or not path.exists():
+        return []
+
+    try:
+        root = ET.parse(path).getroot()
+    except Exception:
+        return []
+
+    nodes: list[str] = []
+    for testcase in root.iter("testcase"):
+        if testcase.find("failure") is None and testcase.find("error") is None:
+            continue
+        classname = testcase.attrib.get("classname", "").strip()
+        test_name = testcase.attrib.get("name", "").strip()
+        if not classname or not test_name:
+            continue
+        nodes.append(_to_pytest_nodeid(classname, test_name))
+        if len(nodes) >= limit:
+            break
+    return nodes
+
+
+def _print_pytest_failure_triage(
+    *, pytest_bin: str, junit_xml: str, selected_tests: list[str]
+) -> None:
+    failing_nodes = _extract_failing_nodes(junit_xml)
+    print("❌ Pytest run failed.")
+    if failing_nodes:
+        print("ℹ️ First failing tests:")
+        for node in failing_nodes:
+            print(f"  - {node}")
+        print(f"ℹ️ Suggested rerun: {pytest_bin} -q {failing_nodes[0]}")
+        return
+    if selected_tests:
+        print("ℹ️ Suggested rerun (first selected test):")
+        print(f"  {pytest_bin} -q {selected_tests[0]}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run new-code coverage gate")
     parser.add_argument("--pytest-bin", default="pytest")
@@ -214,17 +278,26 @@ def main() -> int:
     for item in fast_tests:
         print(f"  {item}")
 
-    pass1_duration = _run_pytest(
-        pytest_bin=args.pytest_bin,
-        tests=fast_tests,
-        mark_expr=args.mark_expr,
-        cov_target=args.cov_target,
-        coverage_xml=args.coverage_xml,
-        coverage_html=args.coverage_html,
-        junit_xml=args.junit_xml,
-        cov_fail_under=args.cov_fail_under,
-        cov_append=False,
-    )
+    try:
+        pass1_duration = _run_pytest(
+            pytest_bin=args.pytest_bin,
+            tests=fast_tests,
+            mark_expr=args.mark_expr,
+            cov_target=args.cov_target,
+            coverage_xml=args.coverage_xml,
+            coverage_html=args.coverage_html,
+            junit_xml=args.junit_xml,
+            cov_fail_under=args.cov_fail_under,
+            cov_append=False,
+        )
+    except RuntimeError as exc:
+        _print_pytest_failure_triage(
+            pytest_bin=args.pytest_bin,
+            junit_xml=args.junit_xml,
+            selected_tests=fast_tests,
+        )
+        print(str(exc))
+        return 1
 
     summary = _compute_uncovered_summary(
         checker_mod,
@@ -254,17 +327,26 @@ def main() -> int:
             for item in fallback_tests:
                 print(f"  {item}")
 
-            pass2_duration = _run_pytest(
-                pytest_bin=args.pytest_bin,
-                tests=fallback_tests,
-                mark_expr=args.mark_expr,
-                cov_target=args.cov_target,
-                coverage_xml=args.coverage_xml,
-                coverage_html=args.coverage_html,
-                junit_xml=args.junit_xml,
-                cov_fail_under=args.cov_fail_under,
-                cov_append=True,
-            )
+            try:
+                pass2_duration = _run_pytest(
+                    pytest_bin=args.pytest_bin,
+                    tests=fallback_tests,
+                    mark_expr=args.mark_expr,
+                    cov_target=args.cov_target,
+                    coverage_xml=args.coverage_xml,
+                    coverage_html=args.coverage_html,
+                    junit_xml=args.junit_xml,
+                    cov_fail_under=args.cov_fail_under,
+                    cov_append=True,
+                )
+            except RuntimeError as exc:
+                _print_pytest_failure_triage(
+                    pytest_bin=args.pytest_bin,
+                    junit_xml=args.junit_xml,
+                    selected_tests=fallback_tests,
+                )
+                print(str(exc))
+                return 1
 
             summary = _compute_uncovered_summary(
                 checker_mod,

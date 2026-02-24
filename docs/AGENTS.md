@@ -20,13 +20,15 @@ Coding agents must not finish a task with red quality gates.
 Required gate sequence before completion:
 
 1. `make pr-fast`
-2. `make check-new-code-coverage`
+
+Note: `make pr-fast` runs the new-code coverage gate internally. The standalone
+`make check-new-code-coverage` command remains available for diagnostics/manual checks.
 
 If any gate fails:
 
 1. fix the issues,
-2. rerun both commands,
-3. repeat until both are green, unless there is a confirmed environment blocker.
+2. rerun the gate,
+3. repeat until green, unless there is a confirmed environment blocker.
 
 A "partial done" status with failing gates is not allowed in this repository policy.
 
@@ -50,7 +52,6 @@ Rules:
 1. If any changed file is outside doc-only scope, full hard-gate policy is mandatory.
 2. For doc-only scope, skip:
    - `make pr-fast`
-   - `make check-new-code-coverage`
 3. Completion report must include explicit note: "doc-only change, hard gates skipped by policy".
 
 ## Completion Report Contract (Mandatory)
@@ -59,7 +60,7 @@ Every agent-generated completion summary (and PR description) must include:
 
 1. list of executed validation commands,
 2. pass/fail result for each command,
-3. changed-lines coverage percentage from `make check-new-code-coverage`,
+3. changed-lines coverage percentage from `make pr-fast` output,
 4. known skips/risks with explicit justification.
 
 Use `.github/pull_request_template.md` as the report format baseline.

@@ -41,10 +41,7 @@ run_gate() {
 status_pr_fast=0
 run_gate make pr-fast || status_pr_fast=1
 
-status_coverage=0
-run_gate make check-new-code-coverage || status_coverage=1
-
-status=$((status_pr_fast + status_coverage))
+status=$((status_pr_fast))
 
 coverage_line="$(grep -E 'Changed lines coverage:' "$tmp_log" | tail -n 1 || true)"
 
@@ -54,11 +51,6 @@ if [[ "$status_pr_fast" -eq 0 ]]; then
   echo "- make pr-fast: PASS"
 else
   echo "- make pr-fast: FAIL"
-fi
-if [[ "$status_coverage" -eq 0 ]]; then
-  echo "- make check-new-code-coverage: PASS"
-else
-  echo "- make check-new-code-coverage: FAIL"
 fi
 if [[ -n "$coverage_line" ]]; then
   echo "- ${coverage_line}"

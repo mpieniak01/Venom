@@ -9,7 +9,6 @@
 ## Quality Gates (Hard Gate)
 
 - [ ] `make pr-fast` passed
-- [ ] `make check-new-code-coverage` passed
 - [ ] CI required checks passed (`Backend lite (pytest)`, `Frontend lite (lint)`, `SonarCloud Scan`, `Quick validator (syntax + CI-lite deps)`)
 
 ## Validation Report

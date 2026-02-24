@@ -1,6 +1,8 @@
 # Makefile dla Venom – rozdzielony backend FastAPI + frontend Next.js
 
 VENV ?= .venv
+PYTHON_BIN ?= $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
+PYTEST_BIN ?= $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 UVICORN ?= $(VENV)/bin/uvicorn
 API_APP ?= venom_core.main:app
 HOST ?= 0.0.0.0
@@ -32,6 +34,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod stop restart status clean-ports \
 	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage check-new-code-coverage-local sonar-reports-backend-new-code pr-fast pr-fast-local \
+	ci-lite-preflight ci-lite-bootstrap \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types \
@@ -129,10 +132,8 @@ test-light-coverage:
 	@mkdir -p "$$(dirname "$(NEW_CODE_COVERAGE_XML)")"
 	@if [ -n "$(NEW_CODE_JUNIT_XML)" ]; then mkdir -p "$$(dirname "$(NEW_CODE_JUNIT_XML)")"; fi
 	@if [ -n "$(NEW_CODE_COVERAGE_HTML)" ]; then mkdir -p "$(NEW_CODE_COVERAGE_HTML)"; fi
-	@PYTEST_BIN="pytest"; \
-	if [ -x "$(VENV)/bin/pytest" ]; then PYTEST_BIN="$(VENV)/bin/pytest"; fi; \
-	python3 scripts/run_new_code_coverage_gate.py \
-		--pytest-bin "$$PYTEST_BIN" \
+	@$(PYTHON_BIN) scripts/run_new_code_coverage_gate.py \
+		--pytest-bin "$(PYTEST_BIN)" \
 		--baseline-group "$(NEW_CODE_BASELINE_GROUP)" \
 		--new-code-group "$(NEW_CODE_TEST_GROUP)" \
 		--include-baseline "$(NEW_CODE_INCLUDE_BASELINE)" \
@@ -153,7 +154,7 @@ test-light-coverage:
 		--sonar-config "sonar-project.properties"
 
 check-new-code-coverage: test-light-coverage
-	@python3 scripts/check_new_code_coverage.py \
+	@$(PYTHON_BIN) scripts/check_new_code_coverage.py \
 		--coverage-xml "$(NEW_CODE_COVERAGE_XML)" \
 		--sonar-config "sonar-project.properties" \
 		--diff-base "$(NEW_CODE_DIFF_BASE)" \
@@ -207,20 +208,41 @@ e2e:
 test-optimal: pytest e2e
 
 test-ci-lite:
-	@PYTEST_BIN="pytest"; \
-	if [ -x "$(VENV)/bin/pytest" ]; then PYTEST_BIN="$(VENV)/bin/pytest"; fi; \
 	TESTS=$$(grep -vE '^\s*(#|$$)' config/pytest-groups/ci-lite.txt); \
 	if [ -z "$$TESTS" ]; then \
 		echo "❌ Brak testów w config/pytest-groups/ci-lite.txt"; \
 		exit 1; \
 	fi; \
-	$$PYTEST_BIN -q $$TESTS
+	$(PYTEST_BIN) -q $$TESTS
 
 audit-ci-lite:
+	@$(MAKE) --no-print-directory ci-lite-preflight
 	@echo "🔍 Audyt zależności w testach CI Lite..."
-	@python3 scripts/audit_lite_deps.py --import-smoke
+	@$(PYTHON_BIN) scripts/audit_lite_deps.py --import-smoke
 	@echo "🔍 Lekka walidacja polityki zależności..."
-	@python3 scripts/dev/env_audit.py --ci-check
+	@$(PYTHON_BIN) scripts/dev/env_audit.py --ci-check
+
+ci-lite-preflight:
+	@if ! command -v "$(PYTHON_BIN)" >/dev/null 2>&1; then \
+		echo "❌ Nie znaleziono interpretera Pythona: $(PYTHON_BIN)"; \
+		echo "   Skonfiguruj środowisko (np. make ci-lite-bootstrap) i spróbuj ponownie."; \
+		exit 2; \
+	fi
+	@if [ ! -x "$(VENV)/bin/python" ]; then \
+		if [ "$${CI:-}" = "true" ]; then \
+			echo "ℹ️ CI mode: brak $(VENV), używam $(PYTHON_BIN)"; \
+		else \
+			echo "❌ Brak środowiska $(VENV)."; \
+			echo "   Uruchom: make ci-lite-bootstrap"; \
+			exit 2; \
+		fi; \
+	fi
+	@$(PYTHON_BIN) scripts/ci_lite_preflight.py
+
+ci-lite-bootstrap:
+	@if [ ! -d "$(VENV)" ]; then python3 -m venv "$(VENV)"; fi
+	@"$(VENV)/bin/pip" install --upgrade pip
+	@"$(VENV)/bin/pip" install -r requirements-ci-lite.txt
 
 install-hooks:
 	pre-commit install

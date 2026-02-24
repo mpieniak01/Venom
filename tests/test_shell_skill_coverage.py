@@ -95,14 +95,12 @@ def test_run_shell_local_nonzero_exit(_disable_sandbox):
 def test_run_shell_local_timeout(_disable_sandbox):
     """run_shell in local mode raises RuntimeError on timeout."""
     skill = ShellSkill(use_sandbox=False)
-    mock_result = subprocess.CompletedProcess(args="cmd", returncode=0, stdout="", stderr="")
 
     with patch(
         "venom_core.execution.skills.shell_skill.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="cmd", timeout=1),
     ):
         result = skill.run_shell("sleep 100", timeout=1)
-    # safe_action wraps RuntimeError → returns error string
     assert "❌" in result or "przekroczyła limit" in result
 
 

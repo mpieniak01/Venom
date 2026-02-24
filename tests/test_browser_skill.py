@@ -261,3 +261,166 @@ async def test_click_element_error_path():
 
     result = await skill.click_element("#btn")
     assert "❌" in result
+
+
+@pytest.mark.asyncio
+async def test_get_html_content_success():
+    """get_html_content returns HTML string from page."""
+    page = MagicMock()
+    page.content = AsyncMock(return_value="<html><body>test</body></html>")
+
+    skill = BrowserSkill()
+    skill._ensure_browser = AsyncMock()
+    skill._page = page
+
+    result = await skill.get_html_content()
+    assert "<html>" in result
+    page.content.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_html_content_error_path():
+    """get_html_content returns error string on exception."""
+
+    class FailingPage:
+        async def content(self):
+            raise RuntimeError("content failed")
+
+    skill = BrowserSkill()
+    skill._ensure_browser = AsyncMock()
+    skill._page = FailingPage()
+
+    result = await skill.get_html_content()
+    assert "❌" in result
+
+
+@pytest.mark.asyncio
+async def test_fill_form_error_path():
+    """fill_form returns error string when page raises."""
+
+    class FailingPage:
+        async def fill(self, *_args, **_kwargs):
+            raise RuntimeError("fill failed")
+
+    skill = BrowserSkill()
+    skill._ensure_browser = AsyncMock()
+    skill._page = FailingPage()
+
+    result = await skill.fill_form("#input", "value")
+    assert "❌" in result
+
+
+@pytest.mark.asyncio
+async def test_get_text_content_error_path():
+    """get_text_content returns error string on exception."""
+
+    class FailingPage:
+        async def text_content(self, *_args, **_kwargs):
+            raise RuntimeError("text_content failed")
+
+    skill = BrowserSkill()
+    skill._ensure_browser = AsyncMock()
+    skill._page = FailingPage()
+
+    result = await skill.get_text_content(".msg")
+    assert "❌" in result
+
+
+@pytest.mark.asyncio
+async def test_get_text_content_none_returns_empty():
+    """get_text_content returns empty string when page returns None."""
+    page = MagicMock()
+    page.text_content = AsyncMock(return_value=None)
+
+    skill = BrowserSkill()
+    skill._ensure_browser = AsyncMock()
+    skill._page = page
+
+    result = await skill.get_text_content(".empty")
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_wait_for_element_error_path():
+    """wait_for_element returns error string on timeout."""
+
+    class FailingPage:
+        async def wait_for_selector(self, *_args, **_kwargs):
+            raise RuntimeError("timeout waiting for selector")
+
+    skill = BrowserSkill()
+    skill._ensure_browser = AsyncMock()
+    skill._page = FailingPage()
+
+    result = await skill.wait_for_element("#missing")
+    assert "❌" in result
+
+
+@pytest.mark.asyncio
+async def test_close_browser_error_path():
+    """close_browser returns error string when _close_browser raises."""
+    skill = BrowserSkill()
+    skill._close_browser = AsyncMock(side_effect=RuntimeError("close failed"))
+
+    result = await skill.close_browser()
+    assert "❌" in result
+
+
+@pytest.mark.asyncio
+async def test_close_browser_closes_resources():
+    """_close_browser properly closes page, browser, and playwright."""
+    mock_page = MagicMock()
+    mock_page.close = AsyncMock()
+    mock_browser = MagicMock()
+    mock_browser.close = AsyncMock()
+    mock_playwright = MagicMock()
+    mock_playwright.stop = AsyncMock()
+
+    skill = BrowserSkill()
+    skill._page = mock_page
+    skill._browser = mock_browser
+    skill._playwright = mock_playwright
+
+    await skill._close_browser()
+
+    mock_page.close.assert_awaited_once()
+    mock_browser.close.assert_awaited_once()
+    mock_playwright.stop.assert_awaited_once()
+    assert skill._page is None
+    assert skill._browser is None
+    assert skill._playwright is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_browser_playwright_import_error():
+    """_ensure_browser raises RuntimeError when playwright is not installed."""
+    import venom_core.execution.skills.browser_skill as bmod
+
+    skill = BrowserSkill()
+    orig = bmod.import_module
+
+    def fail_playwright(name, *args, **kwargs):
+        if "playwright" in name:
+            raise ImportError("no playwright")
+        return orig(name, *args, **kwargs)
+
+    bmod.import_module = fail_playwright
+    try:
+        with pytest.raises(RuntimeError, match="Playwright is not installed"):
+            await skill._ensure_browser()
+    finally:
+        bmod.import_module = orig
+
+
+def test_ensure_url_scheme_empty_string():
+    """_ensure_url_scheme returns empty string unchanged."""
+    assert BrowserSkill._ensure_url_scheme("") == ""
+
+
+def test_destructor_warns_when_browser_open():
+    """__del__ logs a warning when browser was not closed."""
+    skill = BrowserSkill()
+    skill._browser = MagicMock()  # simulate open browser
+    # Calling __del__ should not raise; just log a warning
+    skill.__del__()
+    assert skill._browser is not None  # not closed by destructor

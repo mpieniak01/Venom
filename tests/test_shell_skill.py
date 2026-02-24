@@ -10,8 +10,6 @@ from venom_core.config import SETTINGS
 from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.shell_skill import ShellSkill
 
-pytestmark = pytest.mark.requires_docker
-
 
 @pytest.fixture
 def temp_workspace():

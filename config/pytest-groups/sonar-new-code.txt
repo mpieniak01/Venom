@@ -138,3 +138,17 @@ tests/test_audio_stream_handler_roi.py
 tests/test_forge_flow.py
 tests/test_scheduler.py
 tests/test_ux_analyst.py
+
+# PR-172C-05: Skills - browser/github/shell coverage
+tests/test_shell_skill_coverage.py
+tests/test_github_skill_coverage.py
+
+# PR-172C-06/07: Agent coverage wave
+tests/test_agents_pr172c06_coverage.py
+tests/test_agents_pr172c07_coverage.py
+
+# PR-172C-08: session_store / workflow_operations / workflow_store / memory_skill / embedding_service
+tests/test_pr172c08_session_workflow_memory.py
+
+# PR-172C-09: Contract/unit tests for 8 API route modules
+tests/test_pr172c09_api_routes_coverage.py

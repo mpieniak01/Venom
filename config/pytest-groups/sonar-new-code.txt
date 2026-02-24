@@ -127,3 +127,4 @@ tests/test_node_protocol.py
 tests/test_graph_store.py
 tests/test_dataset_curator.py
 tests/test_analyst_agent.py
+tests/test_simulated_user.py

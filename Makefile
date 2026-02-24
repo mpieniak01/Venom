@@ -224,11 +224,15 @@ audit-ci-lite:
 
 ci-lite-preflight:
 	@if [ ! -x "$(VENV)/bin/python" ]; then \
-		echo "❌ Brak środowiska $(VENV)."; \
-		echo "   Uruchom: make ci-lite-bootstrap"; \
-		exit 2; \
+		if [ "$${CI:-}" = "true" ]; then \
+			echo "ℹ️ CI mode: brak $(VENV), używam $(PYTHON_BIN)"; \
+		else \
+			echo "❌ Brak środowiska $(VENV)."; \
+			echo "   Uruchom: make ci-lite-bootstrap"; \
+			exit 2; \
+		fi; \
 	fi
-	@$(PYTHON_BIN) -c "import importlib.util; req=['pytest','pydantic','fastapi','semantic_kernel','numpy']; missing=[n for n in req if importlib.util.find_spec(n) is None]; print('✅ CI-lite preflight OK') if not missing else (_ for _ in ()).throw(SystemExit('❌ Brak wymaganych pakietów CI-lite: ' + ', '.join(missing) + '\n   Uruchom: make ci-lite-bootstrap'))"
+	@$(PYTHON_BIN) -c "import importlib.util, os; req=['pytest','pydantic','fastapi','semantic_kernel','numpy']; missing=[n for n in req if importlib.util.find_spec(n) is None]; hint=('Uruchom: pip install -r requirements-ci-lite.txt' if os.environ.get('CI')=='true' else 'Uruchom: make ci-lite-bootstrap'); print('✅ CI-lite preflight OK') if not missing else (_ for _ in ()).throw(SystemExit('❌ Brak wymaganych pakietów CI-lite: ' + ', '.join(missing) + '\\n   ' + hint))"
 
 ci-lite-bootstrap:
 	@if [ ! -d "$(VENV)" ]; then python3 -m venv "$(VENV)"; fi

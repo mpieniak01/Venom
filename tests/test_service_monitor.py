@@ -1074,3 +1074,118 @@ def test_get_gpu_memory_usage_handles_timeout_and_unexpected_exception(
 
     monkeypatch.setattr("venom_core.core.service_monitor.subprocess.run", _boom)
     assert service_monitor.get_gpu_memory_usage() is None
+
+
+def test_get_memory_metrics_handles_zero_vram_total(service_monitor):
+    with patch("venom_core.core.service_monitor.psutil") as mock_psutil:
+        mock_memory = MagicMock()
+        mock_memory.used = 1 * 1024**3
+        mock_memory.total = 8 * 1024**3
+        mock_memory.percent = 12.5
+        mock_psutil.virtual_memory.return_value = mock_memory
+
+        with patch(
+            "venom_core.core.service_monitor.shutil.which",
+            return_value="/usr/bin/nvidia-smi",
+        ):
+            with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+                result = MagicMock()
+                result.returncode = 0
+                result.stdout = "100,0\n"
+                mock_run.return_value = result
+                metrics = service_monitor.get_memory_metrics()
+
+    assert metrics["vram_usage_mb"] == pytest.approx(100.0)
+    assert metrics["vram_total_mb"] == pytest.approx(0.0)
+    assert metrics["vram_usage_percent"] is None
+
+
+def test_get_gpu_memory_usage_returncode_zero_without_valid_values_returns_none(
+    service_monitor,
+):
+    with patch(
+        "venom_core.core.service_monitor.shutil.which",
+        return_value="/usr/bin/nvidia-smi",
+    ):
+        with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "not-a-number\n0\n"
+            mock_run.return_value = result
+
+            assert service_monitor.get_gpu_memory_usage() is None
+
+
+@pytest.mark.asyncio
+async def test_spawn_background_task_tracks_and_cleans_up(service_monitor, monkeypatch):
+    """Spawned background task should be tracked and removed after completion."""
+    task = asyncio.Future()
+
+    def _create_task(coro):
+        coro.close()
+        return task
+
+    monkeypatch.setattr(asyncio, "create_task", _create_task)
+
+    service_monitor._spawn_background_task(asyncio.sleep(0))
+    assert task in service_monitor._background_tasks
+
+    task.set_result(None)
+    await asyncio.sleep(0)
+    assert task not in service_monitor._background_tasks
+
+
+@pytest.mark.asyncio
+async def test_check_service_health_dispatches_mcp(service_monitor):
+    service = ServiceInfo(name="MCP Engine", service_type="mcp")
+    with patch.object(
+        service_monitor, "_check_mcp_service", new_callable=AsyncMock
+    ) as mcp:
+        await service_monitor._check_service_health(service)
+    mcp.assert_awaited_once_with(service)
+
+
+@pytest.mark.asyncio
+async def test_check_service_health_dispatches_orchestrator(service_monitor):
+    service = ServiceInfo(name="Kernel", service_type="orchestrator")
+    with patch.object(
+        service_monitor, "_check_semantic_kernel_service", new_callable=AsyncMock
+    ) as sk:
+        await service_monitor._check_service_health(service)
+    sk.assert_awaited_once_with(service)
+
+
+def test_get_memory_metrics_returncode_zero_with_empty_gpu_data(service_monitor):
+    """nvidia-smi success with empty parse should keep GPU fields as None."""
+    with (
+        patch("venom_core.core.service_monitor.psutil.virtual_memory") as mock_vm,
+        patch(
+            "venom_core.core.service_monitor.shutil.which",
+            return_value="/usr/bin/nvidia-smi",
+        ),
+        patch("venom_core.core.service_monitor.subprocess.run") as mock_run,
+    ):
+        mock_vm.return_value = SimpleNamespace(
+            total=1024 * 1024, used=512 * 1024, percent=50.0
+        )
+        mock_run.return_value = SimpleNamespace(returncode=0, stdout="")
+
+        metrics = service_monitor.get_memory_metrics()
+
+    assert metrics["vram_usage_mb"] is None
+    assert metrics["vram_total_mb"] is None
+    assert metrics["vram_usage_percent"] is None
+
+
+def test_get_gpu_memory_usage_nonzero_returncode_returns_none(service_monitor):
+    with (
+        patch(
+            "venom_core.core.service_monitor.shutil.which",
+            return_value="/usr/bin/nvidia-smi",
+        ),
+        patch(
+            "venom_core.core.service_monitor.subprocess.run",
+            return_value=SimpleNamespace(returncode=1, stdout=""),
+        ),
+    ):
+        assert service_monitor.get_gpu_memory_usage() is None

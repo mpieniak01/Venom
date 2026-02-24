@@ -207,6 +207,28 @@ def test_wait_until_container_absent_ignores_generic_exception_then_returns(
     assert calls["count"] >= 1
 
 
+def test_wait_until_container_absent_handles_repeated_generic_exception(monkeypatch):
+    instance = _make_habitat_instance()
+    instance.CONTAINER_REMOVE_WAIT_SECONDS = 1
+    instance.CONTAINER_REMOVE_POLL_SECONDS = 0
+    original_not_found = docker_habitat.NotFound
+
+    class DummyNotFound(Exception):
+        pass
+
+    monkeypatch.setattr(docker_habitat, "NotFound", DummyNotFound)
+
+    time_values = iter([0.0, 0.1, 0.2, 1.5])
+    monkeypatch.setattr(docker_habitat.time, "time", lambda: next(time_values))
+    monkeypatch.setattr(docker_habitat.time, "sleep", lambda *_args, **_kwargs: None)
+    instance.client.containers = SimpleNamespace(
+        get=lambda _name: (_ for _ in ()).throw(RuntimeError("temporary issue"))
+    )
+
+    instance._wait_until_container_absent()
+    monkeypatch.setattr(docker_habitat, "NotFound", original_not_found)
+
+
 def test_init_raises_when_docker_sdk_unavailable(monkeypatch):
     monkeypatch.setattr(docker_habitat, "docker", None)
     with pytest.raises(RuntimeError, match="Docker SDK nie jest dostępny"):
@@ -285,6 +307,34 @@ def test_recover_from_name_conflict_fallbacks_on_reuse_exception(monkeypatch, tm
     assert result == "created-after-fallback"
     remove_mock.assert_called_once()
     create_mock.assert_called_once()
+
+
+def test_recover_from_name_conflict_handles_generic_exception(monkeypatch, tmp_path):
+    instance = _make_habitat_instance()
+    original_not_found = docker_habitat.NotFound
+
+    class DummyNotFound(Exception):
+        pass
+
+    monkeypatch.setattr(docker_habitat, "NotFound", DummyNotFound)
+    instance.client.containers = SimpleNamespace(
+        get=lambda _name: (_ for _ in ()).throw(ValueError("unexpected failure"))
+    )
+    remove_mock = MagicMock()
+    create_mock = MagicMock(return_value="created-after-generic")
+    monkeypatch.setattr(instance, "_remove_container_by_name_if_exists", remove_mock)
+    monkeypatch.setattr(instance, "_create_container", create_mock)
+
+    result = instance._recover_from_name_conflict(
+        error=SimpleNamespace(),
+        workspace_path=tmp_path / "workspace",
+        retries_left=2,
+    )
+
+    assert result == "created-after-generic"
+    remove_mock.assert_called_once()
+    create_mock.assert_called_once()
+    monkeypatch.setattr(docker_habitat, "NotFound", original_not_found)
 
 
 def test_recover_from_name_conflict_recreates_on_mount_mismatch(monkeypatch, tmp_path):

@@ -1,7 +1,7 @@
 import asyncio
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.requests import Request
@@ -1013,3 +1013,121 @@ async def test_ensure_local_llm_ready_local_and_non_local(monkeypatch):
     sync_mock.assert_not_awaited()
     start_mock.assert_not_awaited()
     warmup_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_initialize_avatar_stack_assigns_globals(monkeypatch):
+    monkeypatch.setattr(
+        main_module, "_initialize_audio_engine_if_enabled", lambda: "audio"
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_initialize_hardware_bridge_if_enabled",
+        AsyncMock(return_value="bridge"),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_initialize_operator_agent_if_possible",
+        lambda audio, bridge: f"operator:{audio}:{bridge}",
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_initialize_audio_stream_handler_if_possible",
+        lambda audio, operator: f"stream:{audio}:{operator}",
+    )
+
+    await main_module._initialize_avatar_stack()
+
+    assert main_module.audio_engine == "audio"
+    assert main_module.hardware_bridge == "bridge"
+    assert main_module.operator_agent == "operator:audio:bridge"
+    assert main_module.audio_stream_handler == "stream:audio:operator:audio:bridge"
+
+
+@pytest.mark.asyncio
+async def test_initialize_shadow_stack_disabled(monkeypatch):
+    monkeypatch.setattr(
+        main_module.SETTINGS, "ENABLE_PROACTIVE_MODE", False, raising=False
+    )
+    main_module.shadow_agent = "old"
+    main_module.desktop_sensor = "old"
+    main_module.notifier = "old"
+
+    await main_module._initialize_shadow_stack()
+
+    assert main_module.shadow_agent == "old"
+    assert main_module.desktop_sensor == "old"
+    assert main_module.notifier == "old"
+
+
+@pytest.mark.asyncio
+async def test_initialize_shadow_stack_exception_sets_none(monkeypatch):
+    monkeypatch.setattr(
+        main_module.SETTINGS, "ENABLE_PROACTIVE_MODE", True, raising=False
+    )
+    monkeypatch.setattr(
+        main_module, "orchestrator", SimpleNamespace(task_dispatcher=SimpleNamespace())
+    )
+    monkeypatch.setattr(main_module, "lessons_store", object())
+    monkeypatch.setattr(
+        main_module, "event_broadcaster", SimpleNamespace(broadcast_event=AsyncMock())
+    )
+
+    with patch(
+        "venom_core.agents.shadow.ShadowAgent", side_effect=RuntimeError("shadow-fail")
+    ):
+        await main_module._initialize_shadow_stack()
+
+    assert main_module.shadow_agent is None
+    assert main_module.desktop_sensor is None
+    assert main_module.notifier is None
+
+
+@pytest.mark.asyncio
+async def test_initialize_background_scheduler_exception_sets_none(monkeypatch):
+    monkeypatch.setattr(main_module, "background_scheduler", None)
+    monkeypatch.setattr(main_module, "startup_runtime_retention_task", None)
+    monkeypatch.setattr(main_module, "event_broadcaster", MagicMock())
+
+    with patch(
+        "venom_core.main.BackgroundScheduler",
+        side_effect=RuntimeError("scheduler-fail"),
+    ):
+        await main_module._initialize_background_scheduler()
+
+    assert main_module.background_scheduler is None
+
+
+def test_initialize_audio_engine_disabled_returns_none(monkeypatch):
+    monkeypatch.setattr(
+        main_module.SETTINGS, "ENABLE_AUDIO_INTERFACE", False, raising=False
+    )
+    assert main_module._initialize_audio_engine_if_enabled() is None
+
+
+def test_initialize_audio_engine_exception_returns_none(monkeypatch):
+    monkeypatch.setattr(
+        main_module.SETTINGS, "ENABLE_AUDIO_INTERFACE", True, raising=False
+    )
+    monkeypatch.setattr(
+        main_module, "AudioEngine", MagicMock(side_effect=RuntimeError("audio-fail"))
+    )
+    assert main_module._initialize_audio_engine_if_enabled() is None
+
+
+@pytest.mark.asyncio
+async def test_initialize_hardware_bridge_disabled_returns_none(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_IOT_BRIDGE", False, raising=False)
+    assert await main_module._initialize_hardware_bridge_if_enabled() is None
+
+
+@pytest.mark.asyncio
+async def test_initialize_hardware_bridge_exception_returns_none(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_IOT_BRIDGE", True, raising=False)
+    monkeypatch.setattr(main_module, "extract_secret_value", lambda _value: "pw")
+    monkeypatch.setattr(
+        main_module,
+        "HardwareBridge",
+        MagicMock(side_effect=RuntimeError("bridge-fail")),
+    )
+    assert await main_module._initialize_hardware_bridge_if_enabled() is None

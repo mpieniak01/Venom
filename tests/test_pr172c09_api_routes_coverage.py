@@ -1812,8 +1812,9 @@ class TestSystemConfig:
 
         mock_req = MagicMock()
         mock_req.client = SimpleNamespace(host="127.0.0.1")
-        # Should not raise
-        require_localhost_request(mock_req)
+        # Should not raise — returns None on success
+        result = require_localhost_request(mock_req)
+        assert result is None
 
     def test_require_localhost_request_allows_ipv6_localhost(self):
         """Test require_localhost_request passes for ::1."""
@@ -1821,7 +1822,8 @@ class TestSystemConfig:
 
         mock_req = MagicMock()
         mock_req.client = SimpleNamespace(host="::1")
-        require_localhost_request(mock_req)
+        result = require_localhost_request(mock_req)
+        assert result is None
 
     def test_require_localhost_request_allows_named_localhost(self):
         """Test require_localhost_request passes for 'localhost'."""
@@ -1829,7 +1831,8 @@ class TestSystemConfig:
 
         mock_req = MagicMock()
         mock_req.client = SimpleNamespace(host="localhost")
-        require_localhost_request(mock_req)
+        result = require_localhost_request(mock_req)
+        assert result is None
 
     def test_require_localhost_request_denies_remote(self):
         """Test require_localhost_request raises 403 for remote IPs."""

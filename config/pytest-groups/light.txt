@@ -203,3 +203,5 @@ tests/test_skills_browser_github_shell_coverage.py
 tests/test_nodes_utility_coverage.py
 tests/test_medium_gap_modules_coverage.py
 tests/test_orchestrator_compat_module.py
+tests/test_strategy_and_routes_hotfix.py
+tests/test_orchestrator_flows_hotfix.py

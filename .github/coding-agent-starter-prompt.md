@@ -5,14 +5,14 @@ Use this prompt when assigning coding tasks to GitHub Coding Agent:
 ```text
 Implement the change end-to-end.
 Before completion, run:
-1) make agent-pr-fast
+1) make pr-fast
 
 If gate fails, fix and rerun until green.
 If a test hangs/timeouts, treat it as a bug to fix (not a rerun-until-green loop).
 
 Execution policy:
 - Run heavy checks (CodeQL/code_review) only once at the end.
-- During fix loops, run only targeted tests + `make agent-pr-fast`.
+- During fix loops, run only targeted tests + `make pr-fast` (you may use `make agent-pr-fast` as a helper wrapper if available).
 
 In the final summary include:
 - commands run,

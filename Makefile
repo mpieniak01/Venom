@@ -174,9 +174,15 @@ check-new-code-coverage-local:
 pr-fast:
 	@bash scripts/pr_fast_check.sh
 
-# Agent-friendly wrapper: refreshes origin/main before gate and uses explicit diff base.
+# Agent-friendly wrapper: best-effort refresh of origin/main, then runs pr-fast.
 agent-pr-fast:
-	@git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+	@# Best-effort refresh of origin/main: skip or warn if remote is missing/unreachable.
+	@if git remote get-url origin >/dev/null 2>&1; then \
+		git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main || \
+		echo "Warning: git fetch origin/main failed; continuing without refreshed base ref."; \
+	else \
+		echo "Warning: remote 'origin' not found; skipping git fetch for agent-pr-fast."; \
+	fi
 	@PR_BASE_REF=origin/main $(MAKE) --no-print-directory pr-fast
 
 # Lokalny skrót zamiast pełnego pr-fast + osobnego check-new-code-coverage.

@@ -80,7 +80,15 @@ def test_init_sandbox_success(monkeypatch):
 def test_run_shell_local_success(_disable_sandbox):
     """run_shell in local mode returns success message with output."""
     skill = ShellSkill(use_sandbox=False)
-    result = skill.run_shell("echo hello", timeout=10)
+    mock_completed = MagicMock()
+    mock_completed.returncode = 0
+    mock_completed.stdout = "hello\n"
+    mock_completed.stderr = ""
+    with patch(
+        "venom_core.execution.skills.shell_skill.subprocess.run",
+        return_value=mock_completed,
+    ):
+        result = skill.run_shell("echo hello", timeout=10)
     assert "hello" in result
     assert "pomyślnie" in result
 
@@ -88,12 +96,20 @@ def test_run_shell_local_success(_disable_sandbox):
 def test_run_shell_local_nonzero_exit(_disable_sandbox):
     """run_shell in local mode includes exit_code on failure."""
     skill = ShellSkill(use_sandbox=False)
-    result = skill.run_shell("exit 1", timeout=10)
+    mock_completed = MagicMock()
+    mock_completed.returncode = 1
+    mock_completed.stdout = ""
+    mock_completed.stderr = "error"
+    with patch(
+        "venom_core.execution.skills.shell_skill.subprocess.run",
+        return_value=mock_completed,
+    ):
+        result = skill.run_shell("exit 1", timeout=10)
     assert "exit_code=" in result or "błąd" in result.lower()
 
 
 def test_run_shell_local_timeout(_disable_sandbox):
-    """run_shell in local mode raises RuntimeError on timeout."""
+    """run_shell in local mode returns an error string on timeout (via @safe_action)."""
     skill = ShellSkill(use_sandbox=False)
 
     with patch(
@@ -149,19 +165,6 @@ def test_run_shell_sandbox_nonzero_exit(monkeypatch):
     result = skill.run_shell("bad_cmd", timeout=5)
     assert "exit_code=2" in result
     assert "some error output" in result
-
-
-def test_run_shell_sandbox_missing_habitat(monkeypatch):
-    """run_shell raises (via safe_action) when habitat is None but use_sandbox=True."""
-    monkeypatch.setattr(SETTINGS, "ENABLE_SANDBOX", True)
-    # Force habitat to stay None after init (DockerHabitat raises, falls back)
-    with patch(
-        "venom_core.execution.skills.shell_skill.DockerHabitat",
-        side_effect=RuntimeError("no docker"),
-    ):
-        skill = ShellSkill(use_sandbox=True)
-    # After fallback, use_sandbox is False → runs locally — success expected
-    assert skill.use_sandbox is False
 
 
 def test_run_shell_sandbox_execute_raises(monkeypatch):

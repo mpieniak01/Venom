@@ -21,6 +21,9 @@ Required gate sequence before completion:
 
 1. `make pr-fast`
 
+Note: `make pr-fast` runs the new-code coverage gate internally. The standalone
+`make check-new-code-coverage` command remains available for diagnostics/manual checks.
+
 If any gate fails:
 
 1. fix the issues,

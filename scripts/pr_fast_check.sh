@@ -9,6 +9,19 @@ DIFF_BASE_REASON="explicit base ref"
 backend_changed=0
 frontend_changed=0
 
+EMPTY_TREE_HASH="$(git hash-object -t tree /dev/null)"
+
+resolve_head_fallback() {
+  if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+    DIFF_BASE="HEAD~1"
+    CHANGED_FILES="$(git diff --name-only HEAD~1..HEAD)"
+  else
+    echo "⚠️ No parent commit for HEAD. Falling back to root diff against empty tree."
+    DIFF_BASE="${EMPTY_TREE_HASH}"
+    CHANGED_FILES="$(git diff --name-only "${EMPTY_TREE_HASH}..HEAD")"
+  fi
+}
+
 if git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
   if MERGE_BASE="$(git merge-base HEAD "$BASE_REF" 2>/dev/null)"; then
     DIFF_BASE="$MERGE_BASE"
@@ -16,15 +29,13 @@ if git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
     CHANGED_FILES="$(git diff --name-only "${MERGE_BASE}...HEAD")"
   else
     echo "⚠️ Cannot resolve merge-base with '$BASE_REF' (shallow/grafted history)."
-    DIFF_BASE="HEAD~1"
     DIFF_BASE_REASON="fallback because merge-base is unavailable"
-    CHANGED_FILES="$(git diff --name-only HEAD~1..HEAD)"
+    resolve_head_fallback
   fi
 else
-  echo "⚠️ Base ref '$BASE_REF' not found. Falling back to HEAD~1."
-  DIFF_BASE="HEAD~1"
+  echo "⚠️ Base ref '$BASE_REF' not found."
   DIFF_BASE_REASON="fallback because base ref is unavailable"
-  CHANGED_FILES="$(git diff --name-only HEAD~1..HEAD)"
+  resolve_head_fallback
 fi
 
 if [[ -z "${CHANGED_FILES}" ]]; then

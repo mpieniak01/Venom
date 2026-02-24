@@ -21,6 +21,9 @@ Obowiązkowa sekwencja przed zakończeniem:
 
 1. `make pr-fast`
 
+Uwaga: `make pr-fast` uruchamia wewnętrznie gate pokrycia nowego kodu.
+Samodzielne `make check-new-code-coverage` zostaje jako komenda diagnostyczna/manualna.
+
 Jeśli którykolwiek gate failuje:
 
 1. napraw problem,

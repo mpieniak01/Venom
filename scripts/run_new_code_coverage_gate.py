@@ -157,11 +157,24 @@ def _fallback_candidates(
 
 def _to_pytest_nodeid(classname: str, test_name: str) -> str:
     parts = [part for part in classname.split(".") if part]
-    if len(parts) >= 2 and parts[0] == "tests":
-        file_path = "/".join(parts[:2]) + ".py"
-        if len(parts) > 2:
-            return f"{file_path}::{'::'.join(parts[2:])}::{test_name}"
-        return f"{file_path}::{test_name}"
+    if not parts:
+        return f"{classname}::{test_name}" if classname else test_name
+
+    file_path_str: str | None = None
+    split_index = 0
+    for idx in range(len(parts), 0, -1):
+        candidate = Path("/".join(parts[:idx]) + ".py")
+        if candidate.exists():
+            file_path_str = candidate.as_posix()
+            split_index = idx
+            break
+
+    if file_path_str is not None:
+        suffix = parts[split_index:]
+        if suffix:
+            return f"{file_path_str}::{'::'.join(suffix)}::{test_name}"
+        return f"{file_path_str}::{test_name}"
+
     return f"{classname}::{test_name}"
 
 

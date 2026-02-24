@@ -223,6 +223,11 @@ audit-ci-lite:
 	@$(PYTHON_BIN) scripts/dev/env_audit.py --ci-check
 
 ci-lite-preflight:
+	@if ! command -v "$(PYTHON_BIN)" >/dev/null 2>&1; then \
+		echo "❌ Nie znaleziono interpretera Pythona: $(PYTHON_BIN)"; \
+		echo "   Skonfiguruj środowisko (np. make ci-lite-bootstrap) i spróbuj ponownie."; \
+		exit 2; \
+	fi
 	@if [ ! -x "$(VENV)/bin/python" ]; then \
 		if [ "$${CI:-}" = "true" ]; then \
 			echo "ℹ️ CI mode: brak $(VENV), używam $(PYTHON_BIN)"; \
@@ -232,7 +237,7 @@ ci-lite-preflight:
 			exit 2; \
 		fi; \
 	fi
-	@$(PYTHON_BIN) -c "import importlib.util, os; req=['pytest','pydantic','fastapi','semantic_kernel','numpy']; missing=[n for n in req if importlib.util.find_spec(n) is None]; hint=('Uruchom: pip install -r requirements-ci-lite.txt' if os.environ.get('CI')=='true' else 'Uruchom: make ci-lite-bootstrap'); print('✅ CI-lite preflight OK') if not missing else (_ for _ in ()).throw(SystemExit('❌ Brak wymaganych pakietów CI-lite: ' + ', '.join(missing) + '\\n   ' + hint))"
+	@$(PYTHON_BIN) scripts/ci_lite_preflight.py
 
 ci-lite-bootstrap:
 	@if [ ! -d "$(VENV)" ]; then python3 -m venv "$(VENV)"; fi

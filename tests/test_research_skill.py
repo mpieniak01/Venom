@@ -89,6 +89,22 @@ async def test_digest_url_success(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_digest_url_handles_ingestion_exception(monkeypatch):
+    monkeypatch.setattr(research_skill_mod, "IngestionEngine", FakeIngestionEngine)
+    graph_rag = DummyGraphRag()
+    skill = research_skill_mod.ResearchSkill(graph_rag_service=graph_rag)
+
+    async def _raise_ingest(_url: str):
+        raise RuntimeError("ingest-url-failed")
+
+    skill.ingestion_engine.ingest_url = _raise_ingest
+    result = await skill.digest_url("https://example.com")
+
+    assert "Błąd podczas przetwarzania URL" in result
+    assert "ingest-url-failed" in result
+
+
+@pytest.mark.asyncio
 async def test_digest_directory_rejects_outside_workspace(tmp_path, monkeypatch):
     monkeypatch.setattr(research_skill_mod, "IngestionEngine", FakeIngestionEngine)
     graph_rag = DummyGraphRag()
@@ -101,6 +117,20 @@ async def test_digest_directory_rejects_outside_workspace(tmp_path, monkeypatch)
     result = await skill.digest_directory(str(forbidden))
 
     assert "zabroniony" in result
+
+
+@pytest.mark.asyncio
+async def test_digest_directory_missing_path_in_workspace(tmp_path, monkeypatch):
+    monkeypatch.setattr(research_skill_mod, "IngestionEngine", FakeIngestionEngine)
+    skill = research_skill_mod.ResearchSkill(graph_rag_service=DummyGraphRag())
+
+    monkeypatch.chdir(tmp_path)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    missing = workspace / "missing-dir"
+
+    result = await skill.digest_directory(str(missing))
+    assert "Katalog nie istnieje" in result
 
 
 @pytest.mark.asyncio
@@ -137,6 +167,53 @@ async def test_digest_directory_processes_files(tmp_path, monkeypatch):
     assert len(graph_rag.vector_store.upserts) == 2
 
 
+@pytest.mark.asyncio
+async def test_digest_directory_recursive_mode_and_failed_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(research_skill_mod, "IngestionEngine", FakeIngestionEngine)
+    graph_rag = DummyGraphRag()
+    skill = research_skill_mod.ResearchSkill(graph_rag_service=graph_rag)
+
+    async def _ingest_file(path: str):
+        if path.endswith("broken.md"):
+            raise RuntimeError("broken-file")
+        return {
+            "text": "ok",
+            "chunks": ["ok"],
+            "metadata": {"source": path},
+            "file_type": "txt",
+        }
+
+    skill.ingestion_engine.ingest_file = _ingest_file
+
+    monkeypatch.chdir(tmp_path)
+    workspace = tmp_path / "workspace"
+    nested = workspace / "nested"
+    nested.mkdir(parents=True)
+    (workspace / "ok.txt").write_text("alpha", encoding="utf-8")
+    (nested / "broken.md").write_text("beta", encoding="utf-8")
+
+    result = await skill.digest_directory(str(workspace), recursive=True)
+
+    assert "Katalog przetworzony" in result
+    assert "Przetworzone pliki: 1/2" in result
+    assert "Błędy: 1" in result
+    assert len(graph_rag.vector_store.upserts) == 1
+
+
+@pytest.mark.asyncio
+async def test_digest_directory_returns_no_supported_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(research_skill_mod, "IngestionEngine", FakeIngestionEngine)
+    skill = research_skill_mod.ResearchSkill(graph_rag_service=DummyGraphRag())
+
+    monkeypatch.chdir(tmp_path)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "image.bmp").write_text("not-supported", encoding="utf-8")
+
+    result = await skill.digest_directory(str(workspace))
+    assert "Nie znaleziono obsługiwanych plików" in result
+
+
 def test_get_knowledge_stats_success(monkeypatch):
     monkeypatch.setattr(research_skill_mod, "IngestionEngine", FakeIngestionEngine)
     stats = {
@@ -166,3 +243,21 @@ def test_get_knowledge_stats_failure(monkeypatch):
     result = skill.get_knowledge_stats()
 
     assert "❌ Błąd" in result
+
+
+@pytest.mark.asyncio
+async def test_digest_file_handles_ingestion_exception(tmp_path, monkeypatch):
+    monkeypatch.setattr(research_skill_mod, "IngestionEngine", FakeIngestionEngine)
+    skill = research_skill_mod.ResearchSkill(graph_rag_service=DummyGraphRag())
+
+    file_path = tmp_path / "sample.txt"
+    file_path.write_text("data", encoding="utf-8")
+
+    async def _raise_ingest(_path: str):
+        raise RuntimeError("ingest-file-failed")
+
+    skill.ingestion_engine.ingest_file = _raise_ingest
+    result = await skill.digest_file(str(file_path))
+
+    assert "Błąd podczas przetwarzania pliku" in result
+    assert "ingest-file-failed" in result

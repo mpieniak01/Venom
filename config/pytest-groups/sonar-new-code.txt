@@ -52,6 +52,9 @@ tests/test_process_monitor.py
 tests/test_generation_params_adapter.py
 tests/test_mcp_manager.py
 tests/test_orchestrator_components.py
+tests/test_orchestrator_bootstrap.py
+tests/test_task_pipeline_coverage.py
+tests/test_scheduler_swarm_flow_streaming.py
 tests/test_markdown_blocks.py
 tests/test_parallel_skill.py
 tests/test_metrics_routes.py
@@ -110,6 +113,8 @@ tests/test_skill_manager.py
 tests/test_input_skill.py
 tests/test_media_skill.py
 tests/test_research_skill.py
+tests/test_test_skill.py
+tests/test_core_skill.py
 tests/test_platform_skill.py
 tests/test_message_broker.py
 

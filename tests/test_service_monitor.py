@@ -675,6 +675,9 @@ async def test_check_docker_service_timeout_sets_offline(service_monitor, monkey
     )
 
     async def _wait_for_timeout(awaitable, timeout):
+        # AsyncMock(side_effect=TimeoutError) nie awaituje przekazanej coroutine,
+        # co zostawia "coroutine was never awaited". Ten helper zachowuje
+        # semantykę wait_for: najpierw await, potem timeout.
         _ = timeout
         await awaitable
         raise asyncio.TimeoutError

@@ -52,6 +52,7 @@ tests/test_process_monitor.py
 tests/test_generation_params_adapter.py
 tests/test_mcp_manager.py
 tests/test_orchestrator_components.py
+tests/test_orchestrator_bootstrap.py
 tests/test_markdown_blocks.py
 tests/test_parallel_skill.py
 tests/test_metrics_routes.py

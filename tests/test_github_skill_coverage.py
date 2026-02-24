@@ -12,7 +12,6 @@ from venom_core.execution.skills.github_skill import (
     GitHubSkill,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers to build mock repo objects
 # ---------------------------------------------------------------------------
@@ -51,14 +50,21 @@ def _make_mock_repo(
 def patched_github():
     """Patch Github class and provide a mock instance + Auth.
 
-    Note: GithubException is intentionally NOT patched here so that the module's
-    own fallback GithubException class (a plain Exception subclass) stays in place.
-    Tests that need to trigger the GithubException handler use that class directly.
+    GithubException jest patchowany do prostego typu z mutowalnym ``status``,
+    aby testy były deterministyczne niezależnie od tego, czy PyGithub jest
+    zainstalowany w środowisku.
     """
+
+    class _DummyGithubException(Exception):
+        def __init__(self, message: str = "", status: int | None = None):
+            super().__init__(message)
+            self.status = status
+
     with (
         patch.object(github_skill_module, "_GITHUB_AVAILABLE", True),
         patch.object(github_skill_module, "Github") as mock_cls,
         patch.object(github_skill_module, "Auth") as mock_auth,
+        patch.object(github_skill_module, "GithubException", _DummyGithubException),
     ):
         mock_instance = MagicMock()
         mock_cls.return_value = mock_instance
@@ -81,17 +87,17 @@ def test_init_without_token_no_env(patched_github, monkeypatch):
 
 def test_init_with_explicit_token(patched_github):
     """Initialises with Auth.Token when explicit token provided."""
-    mock_cls, mock_instance, mock_auth = patched_github
-    skill = GitHubSkill(github_token="tok123")
+    mock_cls, _mock_instance, mock_auth = patched_github
+    GitHubSkill(github_token="tok123")
     mock_auth.Token.assert_called_once_with("tok123")
     mock_cls.assert_called_once()
 
 
 def test_init_with_env_token(patched_github, monkeypatch):
     """Reads GITHUB_TOKEN from environment when no explicit token."""
-    mock_cls, mock_instance, mock_auth = patched_github
+    mock_cls, _mock_instance, mock_auth = patched_github
     monkeypatch.setenv("GITHUB_TOKEN", "env_token")
-    skill = GitHubSkill()
+    GitHubSkill()
     mock_auth.Token.assert_called_once_with("env_token")
 
 

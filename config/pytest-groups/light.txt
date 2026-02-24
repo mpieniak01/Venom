@@ -144,6 +144,7 @@ tests/test_session_history.py
 tests/test_session_store.py
 tests/test_shadow_agent.py
 tests/test_shell_skill.py
+tests/test_simulated_user.py
 tests/test_skill_manager.py
 tests/test_skills_init.py
 tests/test_slash_commands.py
@@ -191,3 +192,10 @@ tests/test_resolve_sonar_new_code_tests.py
 tests/test_stack_manager_safety.py
 tests/test_url_policy.py
 tests/test_model_registry_clients.py
+tests/test_creative_director_agent.py
+tests/test_devops_agent.py
+tests/test_docker_habitat_coverage.py
+tests/test_issue_handler_flow_light.py
+tests/test_jobs_scheduler_cleanup.py
+tests/test_main_internal_helpers.py
+tests/test_model_validators.py

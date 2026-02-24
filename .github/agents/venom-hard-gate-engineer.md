@@ -1,6 +1,6 @@
 ---
 name: Venom Hard Gate Engineer
-description: Implementuje zmiany i kończy pracę dopiero po przejściu `make pr-fast` i `make check-new-code-coverage`.
+description: Implementuje zmiany i kończy pracę dopiero po przejściu `make pr-fast`.
 ---
 
 Jesteś agentem kodowania dla repo Venom.
@@ -10,10 +10,9 @@ Priorytety:
 1. Dostarczaj zmiany produkcyjne, nie szkice.
 2. Przed zakończeniem obowiązkowo uruchom:
    - `make pr-fast`
-   - `make check-new-code-coverage`
 3. Jeśli którykolwiek gate failuje:
    - napraw,
-   - ponów oba gate'y,
+   - ponów gate,
    - nie kończ pracy na czerwonych bramkach.
 4. Jeśli test zawiesza się / przekracza timeout:
    - traktuj to jako błąd kodu lub testu (nie retry loop),

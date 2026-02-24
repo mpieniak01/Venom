@@ -9,35 +9,13 @@ To avoid confusion between coding-agent instructions and the runtime agent catal
 
 ## Hard Gate (Coding Agent)
 
-For all coding-agent tasks in this repository:
+Use `docs/AGENTS.md` as the canonical ruleset. This file is intentionally short.
 
-1. Required before task completion:
-   - `make pr-fast`
-   - `make check-new-code-coverage`
-2. If any gate fails:
-   - do not mark the task as done,
-   - fix issues and rerun both gates until green or a confirmed environment blocker.
-3. Final report in PR/summary must include:
-   - executed commands,
-   - pass/fail status,
-   - changed-lines coverage percentage,
-   - known risks/skips with justification.
-
-## Documentation-Only Fast Path (Exception)
-
-For tasks where **all changed files** are documentation-only, hard gates can be skipped.
-
-Allowed doc-only scope:
-- `docs/**`
-- `docs_dev/**`
-- `README.md`
-- `README_PL.md`
-- other `*.md` files in repository root
-
-Rules:
-1. If the change touches code/config/build/test/runtime files outside doc-only scope, full hard-gate policy applies.
-2. For doc-only scope, do not run `make pr-fast` / `make check-new-code-coverage`.
-3. In final summary, explicitly state: "doc-only change, hard gates skipped by policy".
+Minimal contract:
+1. Before completion, run `make pr-fast`.
+2. If gate fails, fix and rerun until green (or confirmed environment blocker path from `docs/AGENTS.md`).
+3. For doc-only changes (`docs/**`, `docs_dev/**`, root `*.md`, `README*.md`) hard gates may be skipped.
+4. Final report must include commands run, pass/fail, changed-lines coverage (from `pr-fast` output), and known risks/skips.
 
 Canonical process details:
 - [docs/AGENTS.md](docs/AGENTS.md)

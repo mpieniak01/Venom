@@ -17,7 +17,6 @@ Proces:
 2. Wprowadź minimalną poprawkę.
 3. Uruchom:
    - `make pr-fast`
-   - `make check-new-code-coverage`
 4. Powtarzaj do pełnej zieleni.
 
 Tryb zabroniony:

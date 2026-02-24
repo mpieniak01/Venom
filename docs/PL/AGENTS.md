@@ -20,12 +20,11 @@ Agent kodowania nie może kończyć zadania przy czerwonych bramkach jakości.
 Obowiązkowa sekwencja przed zakończeniem:
 
 1. `make pr-fast`
-2. `make check-new-code-coverage`
 
 Jeśli którykolwiek gate failuje:
 
 1. napraw problem,
-2. uruchom ponownie obie komendy,
+2. uruchom ponownie gate,
 3. powtarzaj aż do zielonego wyniku lub potwierdzonego blokera środowiskowego.
 
 Tryb "partial done" przy failujących gate'ach jest zabroniony.
@@ -50,7 +49,6 @@ Zasady:
 1. Jeśli choć jeden zmieniony plik jest poza zakresem doc-only, obowiązuje pełna polityka hard-gate.
 2. Dla zakresu doc-only pomijamy:
    - `make pr-fast`
-   - `make check-new-code-coverage`
 3. W raporcie końcowym obowiązkowo dopisać: "zmiana doc-only, hard gate pominięte zgodnie z polityką".
 
 ## Kontrakt raportu końcowego (obowiązkowy)
@@ -59,7 +57,7 @@ Raport końcowy (oraz opis PR) musi zawierać:
 
 1. listę wykonanych komend walidacyjnych,
 2. wynik pass/fail dla każdej komendy,
-3. changed-lines coverage z `make check-new-code-coverage`,
+3. changed-lines coverage z outputu `make pr-fast`,
 4. znane ryzyka/skipy z uzasadnieniem.
 
 Baza formatu: `.github/pull_request_template.md`.

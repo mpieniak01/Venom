@@ -481,7 +481,7 @@ def test_cleanup_local_job_uses_process_pid_fallback_when_job_pid_is_not_int():
 
     habitat._terminate_local_process = _fake_terminate
 
-    habitat._cleanup_local_job("job-local", {"process": process, "pid": "bad"})
+    habitat._cleanup_local_job({"process": process, "pid": "bad"})
 
     assert captured == [(process, 777)]
 
@@ -503,7 +503,7 @@ def test_cleanup_local_job_skips_terminate_when_process_pid_missing(monkeypatch)
         lambda msg, *args: warnings.append(msg % args if args else msg),
     )
 
-    habitat._cleanup_local_job("job-local", {"process": process, "pid": "bad"})
+    habitat._cleanup_local_job({"process": process, "pid": "bad"})
 
     assert terminate_calls == []
     assert warnings

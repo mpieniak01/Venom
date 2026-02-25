@@ -999,12 +999,11 @@ print("=" * 60)
             except subprocess.TimeoutExpired:
                 process.kill()
 
-    def _cleanup_local_job(self, job_name: str, job_info: Dict[str, Any]) -> None:
+    def _cleanup_local_job(self, job_info: Dict[str, Any]) -> None:
         """
         Czyści zadanie lokalne (process lub pid).
 
         Args:
-            job_name: Nazwa joba
             job_info: Informacje o jobie
         """
         process = job_info.get("process")
@@ -1071,7 +1070,7 @@ print("=" * 60)
             job_info = self.training_containers[job_name]
 
             if job_info.get("type") == "local":
-                self._cleanup_local_job(job_name, job_info)
+                self._cleanup_local_job(job_info)
             else:
                 self._cleanup_docker_job(job_name)
 

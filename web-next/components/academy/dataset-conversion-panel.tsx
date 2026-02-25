@@ -17,6 +17,26 @@ import { useTranslation } from "@/lib/i18n";
 
 const TARGET_FORMATS = ["md", "txt", "json", "jsonl", "csv"] as const;
 type TargetFormat = (typeof TARGET_FORMATS)[number];
+const PREVIEWABLE_EXTENSIONS = new Set([".txt", ".md"]);
+
+function isPreviewableExtension(extension: string): boolean {
+  return PREVIEWABLE_EXTENSIONS.has(extension);
+}
+
+function mergeTargetFormat(
+  previous: Record<string, TargetFormat>,
+  fileId: string,
+  targetFormat: TargetFormat
+): Record<string, TargetFormat> {
+  return {
+    ...previous,
+    [fileId]: targetFormat,
+  };
+}
+
+function toTargetFormat(value: string): TargetFormat {
+  return TARGET_FORMATS.includes(value as TargetFormat) ? (value as TargetFormat) : "md";
+}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -145,6 +165,20 @@ export function DatasetConversionPanel() {
     handleConvert(file).catch(() => undefined);
   }
 
+  const handleTargetFormatChange = useCallback((fileId: string, rawValue: string) => {
+    const targetFormat = toTargetFormat(rawValue);
+    setTargetBySource((previous) => mergeTargetFormat(previous, fileId, targetFormat));
+  }, []);
+
+  const handleTargetFormatSelectChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const fileId = event.currentTarget.dataset.fileId;
+      if (!fileId) return;
+      handleTargetFormatChange(fileId, event.currentTarget.value);
+    },
+    [handleTargetFormatChange]
+  );
+
   const renderConvertedListContent = () => {
     if (loading) {
       return <p className="text-sm text-zinc-400">{t("academy.common.loadingAcademy")}</p>;
@@ -170,7 +204,7 @@ export function DatasetConversionPanel() {
           ) : null}
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {[".txt", ".md"].includes(file.extension) ? (
+          {isPreviewableExtension(file.extension) ? (
             <Button size="sm" variant="ghost" onClick={() => onPreviewClick(file)}>
               {t("academy.conversion.preview")}
             </Button>
@@ -201,13 +235,9 @@ export function DatasetConversionPanel() {
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <select
+            data-file-id={file.file_id}
             value={targetBySource[file.file_id] ?? "md"}
-            onChange={(event) =>
-              setTargetBySource((prev) => ({
-                ...prev,
-                [file.file_id]: event.target.value as TargetFormat,
-              }))
-            }
+            onChange={handleTargetFormatSelectChange}
             className="rounded-md border border-white/15 bg-[#03162a] px-2 py-1 text-xs text-zinc-200"
           >
             {TARGET_FORMATS.map((format) => (
@@ -230,7 +260,7 @@ export function DatasetConversionPanel() {
             )}
             {t("academy.conversion.convert")}
           </Button>
-          {[".txt", ".md"].includes(file.extension) ? (
+          {isPreviewableExtension(file.extension) ? (
             <Button size="sm" variant="ghost" onClick={() => onPreviewClick(file)}>
               {t("academy.conversion.preview")}
             </Button>

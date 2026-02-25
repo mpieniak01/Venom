@@ -3,14 +3,12 @@
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![Sonar](https://img.shields.io/badge/Sonar-code%20quality-F3702A?logo=sonar&logoColor=white)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 [![Snyk Dependency Scan](https://img.shields.io/badge/Snyk-dependencies%20scanned-4C4A73?logo=snyk&logoColor=white)](https://app.snyk.io/org/pppnews/projects)
-[![Compliance Signal](https://img.shields.io/badge/compliance-audit--ready-1f6feb)](#jakość-i-bezpieczeństwo)
 
 **Sygnały jakości**
 - *GitGuardian:* wykrywanie sekretów i zapobieganie wyciekom w historii repo i pull requestach.
 - *OpenAPI Contract:* weryfikuje eksport OpenAPI i synchronizację codegen typów TypeScript.
 - *Sonar:* bramka jakości kodu i pokrycia nowego kodu dla backendu i frontendu.
 - *Snyk Dependency Scan:* weryfikuje podatności pakietów zewnętrznych (Python/npm) i monitoruje ryzyko zależności w czasie.
-- *Compliance Signal:* zbiorczy wskaźnik, że kontrole jakości i bezpieczeństwa są aktywne oraz gotowe do audytu.
 
 > **| [English Documentation Available](README.md)**
 

@@ -135,6 +135,22 @@ def test_find_free_port_logs_warning_when_no_port(monkeypatch):
     warn.assert_called_once()
 
 
+def test_find_free_port_uses_custom_host(monkeypatch):
+    info = Mock()
+    calls: list[tuple[int, str]] = []
+
+    def fake_in_use(port: int, host: str = "localhost") -> bool:
+        calls.append((port, host))
+        return port < 8002
+
+    monkeypatch.setattr(port_authority.logger, "info", info)
+    monkeypatch.setattr(port_authority, "is_port_in_use", fake_in_use)
+
+    assert find_free_port(start=8000, end=8003, host="127.0.0.1") == 8002
+    assert calls[-1] == (8002, "127.0.0.1")
+    info.assert_called_once()
+
+
 def test_get_free_ports_logs_and_raises_when_not_enough(monkeypatch):
     debug = Mock()
     info = Mock()
@@ -151,6 +167,25 @@ def test_get_free_ports_logs_and_raises_when_not_enough(monkeypatch):
     # tylko jeden port został dodany
     debug.assert_called_once()
     info.assert_not_called()
+
+
+def test_get_free_ports_passes_host_to_checker(monkeypatch):
+    info = Mock()
+    debug = Mock()
+    calls: list[tuple[int, str]] = []
+
+    def fake_checker(port: int, host: str = "localhost") -> bool:
+        calls.append((port, host))
+        return port != 9101
+
+    monkeypatch.setattr(port_authority.logger, "info", info)
+    monkeypatch.setattr(port_authority.logger, "debug", debug)
+    monkeypatch.setattr(port_authority, "is_port_in_use", fake_checker)
+
+    assert get_free_ports(1, start=9100, end=9102, host="0.0.0.0") == [9101]
+    assert calls == [(9100, "0.0.0.0"), (9101, "0.0.0.0")]
+    debug.assert_called_once_with("Dodano wolny port: 9101")
+    info.assert_called_once_with("Znaleziono 1 wolnych portów: [9101]")
 
 
 def test_get_free_ports_success_logs_info(monkeypatch):

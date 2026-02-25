@@ -3,4 +3,5 @@
 -r requirements-profile-api.txt
 
 # vLLM runtime package (provides .venv/bin/vllm)
-vllm==0.15.1
+# Keep compatibility with repo stack pinned to pydantic 2.11.x.
+vllm==0.11.0

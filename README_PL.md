@@ -3,6 +3,8 @@
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
+[![Snyk Dependency Scan](https://img.shields.io/badge/Snyk-dependencies%20scanned-4C4A73?logo=snyk&logoColor=white)](https://app.snyk.io/org/pppnews/projects)
+[![Compliance Signal](https://img.shields.io/badge/compliance-audit--ready-1f6feb)](#jakość-i-bezpieczeństwo)
 
 **Sygnały jakości**
 - *Quick Validate:* szybkie bramki GitHub (smoke compile Pythona, audyt zależności CI-lite, kontrola skryptów frontendu).
@@ -22,6 +24,8 @@ W praktyce Venom działa jako warstwa decyzyjno-wykonawcza dla zespołów techni
 - Utrzymuje wiedzę w firmie przez pamięć długoterminową i lessons learned.
 - Daje kontrolę operacyjną: status usług, konfiguracja i governance modeli.
 - Porządkuje współpracę zespołową przez wspólne workflow i standardy QA.
+- Ogranicza ryzyko wdrożeń przez podwójną kontrolę: SonarCloud dla jakości kodu i Snyk dla podatności zależności.
+- Wzmacnia gotowość compliance przez mierzalne i audytowalne sygnały jakości oraz bezpieczeństwa w CI.
 
 ## Kluczowe możliwości
 - 🤖 **Orkiestracja agentów** - planowanie i wykonanie zadań przez wyspecjalizowane role.
@@ -375,7 +379,9 @@ scripts/docker/run-release.sh restart
 
 ## Jakość i bezpieczeństwo
 - CI: Quick Validate + OpenAPI Contract + SonarCloud.
-- Security: GitGuardian + okresowe skany zależności.
+- Security: GitGuardian + skany zależności Snyk.
+- SonarCloud = jakość kodu i pokrycie nowego kodu (maintainability, reliability, coverage).
+- Snyk = podatności pakietów/zależności (ryzyko third-party w ekosystemie Python i npm).
 - `pre-commit run --all-files` uruchamia: `block-docs-dev-staged`, `end-of-file-fixer`, `trailing-whitespace`, `check-added-large-files`, `check-yaml`, `debug-statements`, `ruff-check --fix`, `ruff-format`, `isort`.
 - Dodatkowe hooki poza tą komendą: `block-docs-dev-tracked` (stage `pre-push`) oraz `update-sonar-new-code-group` (stage `manual`).
 - `pre-commit` może modyfikować pliki (autofix), wtedy uruchom go ponownie aż wszystkie hooki będą `Passed`.

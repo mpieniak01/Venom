@@ -3,6 +3,8 @@
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
+[![Snyk Dependency Scan](https://img.shields.io/badge/Snyk-dependencies%20scanned-4C4A73?logo=snyk&logoColor=white)](https://app.snyk.io/org/pppnews/projects)
+[![Compliance Signal](https://img.shields.io/badge/compliance-audit--ready-1f6feb)](#quality-and-security)
 
 **Quality Signals**
 - *Quick Validate:* fast GitHub checks (Python compile smoke, CI-lite dependency audit, frontend script checks).
@@ -22,6 +24,8 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 - Keeps organizational knowledge through long-term memory and lessons learned.
 - Improves operational control: service status, configuration, and model governance.
 - Standardizes team workflows and QA expectations.
+- Lowers release risk with dual control planes: SonarCloud for code quality and Snyk for dependency vulnerabilities.
+- Strengthens audit/compliance posture with traceable quality and security signals across CI.
 
 ## Key capabilities
 - 🤖 **Agent orchestration** - planning and execution through specialized roles.
@@ -371,7 +375,9 @@ scripts/docker/run-release.sh restart
 
 ## Quality and security
 - CI: Quick Validate + OpenAPI Contract + SonarCloud.
-- Security: GitGuardian + periodic dependency scans.
+- Security: GitGuardian + Snyk dependency scans.
+- SonarCloud = code quality and coverage on new code (maintainability, reliability, test coverage).
+- Snyk = package/dependency vulnerability posture (third-party risk in Python and npm ecosystems).
 - `pre-commit run --all-files` runs: `block-docs-dev-staged`, `end-of-file-fixer`, `trailing-whitespace`, `check-added-large-files`, `check-yaml`, `debug-statements`, `ruff-check --fix`, `ruff-format`, `isort`.
 - Extra hooks outside this command: `block-docs-dev-tracked` (stage `pre-push`) and `update-sonar-new-code-group` (stage `manual`).
 - `pre-commit` can auto-fix files; rerun it until all hooks are `Passed`.

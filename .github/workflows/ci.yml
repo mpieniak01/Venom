@@ -185,6 +185,7 @@ jobs:
     env:
       CI: "true"
       PYTHONUNBUFFERED: "1"
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -197,11 +198,30 @@ jobs:
           name: sonar-backend-reports
           path: test-results/sonar
 
+      - name: Evaluate Sonar eligibility
+        id: sonar_guard
+        run: |
+          if [ -z "${SONAR_TOKEN:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping SonarCloud Scan: SONAR_TOKEN is not configured (likely fork/missing secret)."
+            exit 0
+          fi
+
+          if [ "${{ github.repository_owner }}" != "mpieniak01" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping SonarCloud Scan on fork owner '${{ github.repository_owner }}'."
+            exit 0
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "SonarCloud Scan enabled."
+
       - name: SonarCloud Scan
+        if: ${{ steps.sonar_guard.outputs.enabled == 'true' }}
         uses: SonarSource/sonarqube-scan-action@bfd4e558cda28cda6b5defafb9232d191be8c203
         with:
           args: >
             -Dsonar.newCode.referenceBranch=main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}

@@ -389,6 +389,16 @@ def test_extract_message_content_blank_string_falls_back():
     )
 
 
+def test_extract_message_content_returns_stripped_value():
+    assert (
+        translation_module.TranslationService._extract_message_content(
+            data={"choices": [{"message": {"content": "  Czesc  "}}]},
+            fallback_text="fallback",
+        )
+        == "Czesc"
+    )
+
+
 def test_build_translation_payload_uses_source_and_target_labels():
     payload = translation_module.TranslationService._build_translation_payload(
         text="Hello",
@@ -490,3 +500,31 @@ async def test_translate_text_uses_llm_provider_when_runtime_has_no_markers(
     result = await service.translate_text("Hello", target_lang="pl", use_cache=False)
     assert result == "Czesc"
     assert observed_provider["value"] == "llm"
+
+
+@pytest.mark.asyncio
+async def test_translate_text_prefers_runtime_provider_for_http_client(monkeypatch):
+    _configure_settings(monkeypatch)
+    runtime = SimpleNamespace(provider="custom-provider", service_type="local")
+    monkeypatch.setattr(translation_module, "get_active_llm_runtime", lambda: runtime)
+
+    observed_provider = {"value": None}
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            observed_provider["value"] = kwargs.get("provider")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def apost(self, *args, **kwargs):
+            return DummyResponse({"choices": [{"message": {"content": "Hej"}}]})
+
+    monkeypatch.setattr(translation_module, "TrafficControlledHttpClient", DummyClient)
+    service = translation_module.TranslationService(cache_ttl_seconds=0)
+    result = await service.translate_text("Hello", target_lang="pl", use_cache=False)
+    assert result == "Hej"
+    assert observed_provider["value"] == "custom-provider"

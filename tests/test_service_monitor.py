@@ -433,6 +433,26 @@ async def test_check_health_preserves_service_when_result_shape_is_unexpected(
 
 
 @pytest.mark.asyncio
+async def test_check_health_accepts_serviceinfo_result_instance(service_monitor):
+    original = service_monitor.registry.get_all_services()[0]
+    replacement = ServiceInfo(
+        name=original.name,
+        service_type=original.service_type,
+        endpoint=original.endpoint,
+        status=ServiceStatus.DEGRADED,
+    )
+
+    with patch.object(
+        service_monitor,
+        "_check_service_health",
+        new=AsyncMock(return_value=replacement),
+    ):
+        services = await service_monitor.check_health(service_name=original.name)
+
+    assert services == [replacement]
+
+
+@pytest.mark.asyncio
 async def test_check_service_health_unknown_type_sets_unknown(service_monitor):
     test_service = ServiceInfo(name="Mystery", service_type="mystery")
     result = await service_monitor._check_service_health(test_service)
@@ -450,6 +470,26 @@ async def test_check_service_health_ws_broadcast_error_is_non_fatal():
     )
     service = ServiceInfo(name="Mystery", service_type="mystery")
     result = await monitor._check_service_health(service)
+    assert result.status == ServiceStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_check_service_health_ws_import_error_is_non_fatal(
+    service_monitor, monkeypatch
+):
+    original_import = __import__
+
+    def _import(name, *args, **kwargs):
+        if name == "venom_core.api.stream":
+            raise ImportError("stream unavailable")
+        return original_import(name, *args, **kwargs)
+
+    service_monitor.event_broadcaster = SimpleNamespace(broadcast_event=AsyncMock())
+    monkeypatch.setattr("builtins.__import__", _import)
+
+    service = ServiceInfo(name="Mystery", service_type="mystery")
+    result = await service_monitor._check_service_health(service)
+
     assert result.status == ServiceStatus.UNKNOWN
 
 

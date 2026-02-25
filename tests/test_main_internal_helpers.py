@@ -263,6 +263,33 @@ async def test_start_configured_local_server_handles_run_action_exception(monkey
 
 
 @pytest.mark.asyncio
+async def test_start_configured_local_server_skips_empty_and_same_entries(monkeypatch):
+    calls = []
+
+    class DummyController:
+        def has_server(self, _name):
+            return True
+
+        def list_servers(self):
+            return [
+                {"name": "", "supports": {"stop": True}},
+                {"name": "ollama", "supports": {"stop": True}},
+                {"name": "other", "supports": {"stop": False}},
+                {"name": "vllm", "supports": {"stop": True}},
+            ]
+
+        async def run_action(self, name, action):
+            calls.append((name, action))
+
+    monkeypatch.setattr(main_module, "llm_controller", DummyController())
+    await main_module._start_configured_local_server("ollama")
+
+    assert ("ollama", "start") in calls
+    assert ("vllm", "stop") in calls
+    assert ("other", "stop") not in calls
+
+
+@pytest.mark.asyncio
 async def test_synchronize_startup_local_model_handles_exception(monkeypatch):
     monkeypatch.setattr(
         main_module,

@@ -176,6 +176,30 @@ def test_remove_container_by_name_if_exists_handles_missing(monkeypatch):
     instance._wait_until_container_absent.assert_called_once()
 
 
+def test_recreate_container_continues_when_stop_and_remove_fail(monkeypatch):
+    instance = _make_habitat_instance()
+
+    class FakeContainer:
+        status = "running"
+
+        def reload(self):
+            return None
+
+        def stop(self):
+            raise RuntimeError("stop-fail")
+
+        def remove(self, force=False):
+            _ = force
+            raise RuntimeError("remove-fail")
+
+    remove_by_name = MagicMock()
+    monkeypatch.setattr(instance, "_remove_container_by_name_if_exists", remove_by_name)
+
+    instance._recreate_container(FakeContainer())
+
+    remove_by_name.assert_called_once()
+
+
 def test_wait_until_container_absent_returns_on_not_found(monkeypatch):
     instance = _make_habitat_instance()
     instance.client.containers = SimpleNamespace(
@@ -413,3 +437,32 @@ def test_recover_from_name_conflict_raises_when_retries_exhausted(tmp_path):
             workspace_path=tmp_path / "workspace",
             retries_left=0,
         )
+
+
+def test_recover_from_name_conflict_handles_not_found_branch(monkeypatch, tmp_path):
+    instance = _make_habitat_instance()
+    original_not_found = docker_habitat.NotFound
+
+    class DummyNotFound(Exception):
+        pass
+
+    monkeypatch.setattr(docker_habitat, "NotFound", DummyNotFound)
+    instance.client.containers = SimpleNamespace(
+        get=lambda _name: (_ for _ in ()).throw(DummyNotFound("gone"))
+    )
+
+    remove_mock = MagicMock()
+    create_mock = MagicMock(return_value="created-after-not-found")
+    monkeypatch.setattr(instance, "_remove_container_by_name_if_exists", remove_mock)
+    monkeypatch.setattr(instance, "_create_container", create_mock)
+
+    result = instance._recover_from_name_conflict(
+        error=SimpleNamespace(),
+        workspace_path=tmp_path / "workspace",
+        retries_left=2,
+    )
+
+    assert result == "created-after-not-found"
+    remove_mock.assert_called_once()
+    create_mock.assert_called_once()
+    monkeypatch.setattr(docker_habitat, "NotFound", original_not_found)

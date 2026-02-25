@@ -33,9 +33,21 @@ data/models_test/
 data/timelines/
 
 .env
+.env.*
+!.env.example
 config/env-history/
 config/google_calendar_credentials.json
 config/google_calendar_token.json
+config/*secret*
+config/*token*
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.code-workspace
 
 
 .venom.pid

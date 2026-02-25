@@ -461,6 +461,18 @@ def test_resolve_headers_unknown_runtime_type_returns_empty():
     assert headers == {}
 
 
+def test_resolve_headers_reads_runtime_when_argument_not_passed(monkeypatch):
+    _configure_settings(monkeypatch)
+    monkeypatch.setattr(translation_module.SETTINGS, "OPENAI_API_KEY", "openai-key")
+    service = translation_module.TranslationService()
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: DummyOpenAIRuntime(),
+    )
+    assert service._resolve_headers() == {"Authorization": "Bearer openai-key"}
+
+
 def test_normalize_target_lang_accepts_uppercase():
     assert translation_module.TranslationService._normalize_target_lang("PL") == "pl"
 
@@ -528,3 +540,45 @@ async def test_translate_text_prefers_runtime_provider_for_http_client(monkeypat
     result = await service.translate_text("Hello", target_lang="pl", use_cache=False)
     assert result == "Hej"
     assert observed_provider["value"] == "custom-provider"
+
+
+def test_extract_message_content_empty_choices_falls_back():
+    assert (
+        translation_module.TranslationService._extract_message_content(
+            data={"choices": []},
+            fallback_text="fallback-empty",
+        )
+        == "fallback-empty"
+    )
+
+
+@pytest.mark.asyncio
+async def test_translate_text_uses_service_type_provider_and_skips_cache_write(
+    monkeypatch,
+):
+    _configure_settings(monkeypatch)
+    runtime = SimpleNamespace(provider=None, service_type="local")
+    monkeypatch.setattr(translation_module, "get_active_llm_runtime", lambda: runtime)
+
+    observed_provider = {"value": None}
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            observed_provider["value"] = kwargs.get("provider")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def apost(self, *args, **kwargs):
+            return DummyResponse({"choices": [{"message": {"content": "Hejka"}}]})
+
+    monkeypatch.setattr(translation_module, "TrafficControlledHttpClient", DummyClient)
+    service = translation_module.TranslationService(cache_ttl_seconds=300)
+    result = await service.translate_text("Hello", target_lang="pl", use_cache=False)
+
+    assert result == "Hejka"
+    assert observed_provider["value"] == "local"
+    assert service._cache == {}

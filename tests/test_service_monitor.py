@@ -493,6 +493,46 @@ async def test_check_service_health_ws_import_error_is_non_fatal(
     assert result.status == ServiceStatus.UNKNOWN
 
 
+@pytest.mark.asyncio
+async def test_spawn_background_task_discards_completed_task(service_monitor):
+    service_monitor._spawn_background_task(asyncio.sleep(0))
+    assert len(service_monitor._background_tasks) == 1
+    await asyncio.gather(*list(service_monitor._background_tasks))
+    await asyncio.sleep(0)
+    assert len(service_monitor._background_tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_check_service_health_broadcast_payload_has_service_type_alias():
+    registry = ServiceRegistry()
+    broadcaster = SimpleNamespace(broadcast_event=AsyncMock())
+    monitor = ServiceHealthMonitor(registry, event_broadcaster=broadcaster)
+    service = ServiceInfo(name="Alias Service", service_type="mystery")
+
+    await monitor._check_service_health(service)
+    await asyncio.sleep(0)
+
+    assert broadcaster.broadcast_event.await_count >= 1
+    kwargs = broadcaster.broadcast_event.await_args.kwargs
+    assert kwargs["data"]["type"] == "mystery"
+    assert kwargs["data"]["service_type"] == "mystery"
+
+
+@pytest.mark.asyncio
+async def test_check_service_health_broadcast_schedule_error_is_non_fatal():
+    registry = ServiceRegistry()
+    broadcaster = SimpleNamespace(broadcast_event=AsyncMock())
+    monitor = ServiceHealthMonitor(registry, event_broadcaster=broadcaster)
+    monitor._spawn_background_task = MagicMock(
+        side_effect=RuntimeError("schedule-fail")
+    )
+    service = ServiceInfo(name="Schedule Fail", service_type="mystery")
+
+    result = await monitor._check_service_health(service)
+
+    assert result.status == ServiceStatus.UNKNOWN
+
+
 def test_get_summary(service_monitor, service_registry):
     """Test generowania podsumowania zdrowia systemu."""
     # Dodaj usługi z różnymi statusami

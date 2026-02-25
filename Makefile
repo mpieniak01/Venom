@@ -332,7 +332,10 @@ _start:
 	start_ollama() { \
 		echo "▶️  Uruchamiam Ollama..."; \
 		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
-		$(MAKE) --no-print-directory ollama-start >/dev/null || true; \
+		if ! $(MAKE) --no-print-directory ollama-start >/dev/null; then \
+			echo "❌ Nie udało się wywołać 'ollama-start' (sprawdź instalację/usługę Ollama)."; \
+			return 1; \
+		fi; \
 		echo "⏳ Czekam na Ollama (/api/tags)..."; \
 		ollama_fatal=""; \
 		for attempt in {1..90}; do \
@@ -397,15 +400,19 @@ _start:
 		exit 1; \
 	fi; \
 	if [ -z "$$llm_ready" ]; then \
-		if [ "$(ALLOW_DEGRADED_START)" = "1" ]; then \
+		if [ "$$active_server" = "ollama" ] && [ "$(START_MODE)" = "dev" ]; then \
+			echo "⚠️  Ollama niedostępna. Kontynuuję start-dev bez lokalnego LLM (ACTIVE_LLM_SERVER=none)."; \
+			echo "ℹ️  Tryb restrykcyjny bez fallbacku: użyj 'make start-prod ACTIVE_LLM_SERVER=ollama'."; \
+			llm_ready="none"; \
+		elif [ "$(ALLOW_DEGRADED_START)" = "1" ]; then \
 			echo "⚠️  Tryb degradowany: kontynuuję start bez aktywnego LLM (ALLOW_DEGRADED_START=1)"; \
+			llm_ready="none"; \
 		else \
 			echo "❌ Nie udało się uruchomić aktywnego LLM: $$active_server"; \
 			exit 1; \
 		fi; \
-	else \
-		echo "🧠 LLM gotowy: $$llm_ready"; \
-	fi
+	fi; \
+	echo "🧠 LLM gotowy: $$llm_ready"
 	@backend_reused=""; \
 	if curl -fsS http://$(HOST_DISPLAY):$(PORT)/api/v1/system/status >/dev/null 2>&1; then \
 		echo "⚠️  Backend już odpowiada na $(HOST_DISPLAY):$(PORT). Pomijam drugi start backendu."; \

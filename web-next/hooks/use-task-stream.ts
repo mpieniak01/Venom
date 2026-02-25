@@ -52,6 +52,11 @@ type UseTaskStreamOptions = {
   throttleMs?: number;
 };
 
+type TaskStreamDebugWindow = Window & {
+  __lastTaskStreamEvent?: TaskStreamEvent;
+  __taskStreamEvents?: TaskStreamEvent[];
+};
+
 const defaultState: TaskStreamState = {
   status: null,
   logs: [],
@@ -109,6 +114,14 @@ function extractRuntime(payload: Record<string, unknown>) {
 
 function normalizeStatus(status: unknown): TaskStatus | null {
   if (!status) return null;
+  if (
+    typeof status !== "string" &&
+    typeof status !== "number" &&
+    typeof status !== "boolean" &&
+    typeof status !== "bigint"
+  ) {
+    return null;
+  }
   const s = String(status).toUpperCase();
   if (TERMINAL_STATUSES.has(s as TaskStatus)) return s as TaskStatus;
   if (s === "PENDING" || s === "PROCESSING") return s as TaskStatus;
@@ -200,7 +213,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
   }, []);
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return undefined;
+    if (globalThis.window === undefined) return undefined;
     if (!enabled) {
       sourcesRef.current.forEach((s) => s.close());
       sourcesRef.current.clear();
@@ -216,12 +229,9 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     const emitEvent = (event: TaskStreamEvent) => {
       setLastEvent(event);
       onEventRef.current?.(event);
-      if (typeof globalThis.window !== "undefined") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const win = globalThis.window as any;
-        win.__lastTaskStreamEvent = event;
-        win.__taskStreamEvents = [...(win.__taskStreamEvents ?? []), event].slice(-25);
-      }
+      const win = globalThis.window as TaskStreamDebugWindow;
+      win.__lastTaskStreamEvent = event;
+      win.__taskStreamEvents = [...(win.__taskStreamEvents ?? []), event].slice(-25);
     };
 
     const stopPolling = (taskId: string) => {
@@ -236,11 +246,9 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       try {
         const task = await fetchTaskDetail(taskId);
         const status = normalizeStatus(task.status);
-        const logs = task.logs as string[] | undefined;
-        const result = task.result as string | undefined;
-        const updatedAt =
-          (task as typeof task & { updated_at?: string | null }).updated_at ??
-          new Date().toISOString();
+        const logs = Array.isArray(task.logs) ? task.logs.map(String) : undefined;
+        const result = typeof task.result === "string" || task.result === null ? task.result : undefined;
+        const updatedAt = typeof task.updated_at === "string" ? task.updated_at : new Date().toISOString();
 
         updateStateById(taskId, {
           status: status ?? null,
@@ -251,7 +259,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           error: "SSE connection lost, using polling.",
         });
 
-        const runtime = extractRuntime(task as unknown as Record<string, unknown>);
+        const runtime = extractRuntime(task);
         emitEvent({
           taskId,
           event: status === "COMPLETED" ? "task_finished" : "task_update",

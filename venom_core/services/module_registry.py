@@ -83,7 +83,7 @@ def _parse_version(value: str) -> tuple[int, ...]:
 def _normalize_api_version(value: str) -> tuple[int, ...]:
     parsed = _parse_version(value)
     if not parsed:
-        return tuple()
+        return ()
     normalized = list(parsed)
     while len(normalized) > 1 and normalized[-1] == 0:
         normalized.pop()

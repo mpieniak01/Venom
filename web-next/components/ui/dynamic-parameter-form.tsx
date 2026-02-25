@@ -172,7 +172,7 @@ export function DynamicParameterForm({
   const [localValues, setLocalValues] = useState<ParameterValues>(
     () => initialValues || defaultValues,
   );
-  const values = isControlled ? (initialValues as ParameterValues) : localValues;
+  const values = isControlled ? initialValues : localValues;
 
   // Wywołaj onChange gdy wartości się zmienią
   // Używamy ref aby uniknąć problemów z zależnościami i potencjalnych pętli

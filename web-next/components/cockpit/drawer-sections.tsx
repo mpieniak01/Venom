@@ -255,13 +255,13 @@ export function TimingSection({
                         <div>
                             <span className="text-zinc-400">{t("cockpit.requestDetails.uiTimingHistory")}</span>
                             <div className="text-sm text-white">
-                                {uiTimingEntry.historyMs !== undefined ? `${Math.round(uiTimingEntry.historyMs)} ms` : "—"}
+                                {uiTimingEntry.historyMs === undefined ? "—" : `${Math.round(uiTimingEntry.historyMs)} ms`}
                             </div>
                         </div>
                         <div>
                             <span className="text-zinc-400">TTFT (UI)</span>
                             <div className="text-sm text-white">
-                                {uiTimingEntry.ttftMs !== undefined ? `${Math.round(uiTimingEntry.ttftMs)} ms` : "—"}
+                                {uiTimingEntry.ttftMs === undefined ? "—" : `${Math.round(uiTimingEntry.ttftMs)} ms`}
                             </div>
                         </div>
                     </div>
@@ -290,7 +290,7 @@ export function TimingSection({
                                 {t("cockpit.requestDetails.backendTimingsFirstToken")}
                             </span>
                             <div className="text-sm text-white">
-                                {historyDetail.first_token?.elapsed_ms != null ? `${Math.round(historyDetail.first_token.elapsed_ms)} ms` : "—"}
+                                {historyDetail.first_token?.elapsed_ms == null ? "—" : `${Math.round(historyDetail.first_token.elapsed_ms)} ms`}
                             </div>
                         </div>
                         <div className="overflow-hidden">
@@ -298,7 +298,7 @@ export function TimingSection({
                                 {t("cockpit.requestDetails.backendTimingsFirstChunk")}
                             </span>
                             <div className="text-sm text-white">
-                                {historyDetail.streaming?.first_chunk_ms != null ? `${Math.round(historyDetail.streaming.first_chunk_ms)} ms` : "—"}
+                                {historyDetail.streaming?.first_chunk_ms == null ? "—" : `${Math.round(historyDetail.streaming.first_chunk_ms)} ms`}
                             </div>
                         </div>
                         <div className="overflow-hidden">

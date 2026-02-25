@@ -16,7 +16,7 @@ interface TrainableModelsCache {
 }
 
 function readCache(): TrainableModelInfo[] | null {
-  if (typeof globalThis.window === "undefined") return null;
+  if (globalThis.window === undefined) return null;
 
   try {
     const cached = globalThis.window.localStorage.getItem(CACHE_KEY);
@@ -39,7 +39,7 @@ function readCache(): TrainableModelInfo[] | null {
 }
 
 function writeCache(data: TrainableModelInfo[]) {
-  if (typeof globalThis.window === "undefined") return;
+  if (globalThis.window === undefined) return;
 
   try {
     const cache: TrainableModelsCache = {

@@ -43,7 +43,7 @@ export function removeSpacesBeforePunctuation(line: string) {
 
   for (const char of line) {
     if (punctuation.has(char)) {
-      while (out.length > 0 && (out[out.length - 1] === " " || out[out.length - 1] === "\t")) {
+      while (out.length > 0 && (out.at(-1) === " " || out.at(-1) === "\t")) {
         out.pop();
       }
     }
@@ -262,6 +262,7 @@ function formatCell(value: unknown): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (Array.isArray(value)) return value.map((entry) => formatCell(entry)).join(", ");
   if (isPlainObject(value)) return JSON.stringify(value);
+  if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
 

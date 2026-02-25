@@ -2656,7 +2656,7 @@ async def convert_dataset_file(
                 target_format,
             )
             converted_file_id = converted_path.name
-        except (ValueError, OSError, json.JSONDecodeError) as exc:
+        except (ValueError, OSError) as exc:
             raise HTTPException(
                 status_code=400, detail=f"Conversion failed: {str(exc)}"
             ) from exc

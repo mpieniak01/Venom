@@ -12,7 +12,7 @@ from venom_core.utils.logger import get_logger
 docker: Any = None
 try:  # pragma: no cover - zależne od środowiska
     docker = importlib.import_module("docker")
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     docker = None
 
 logger = get_logger(__name__)
@@ -102,7 +102,7 @@ class StackManager:
                 logger.info(f"Docker Compose dostępny: {result.stdout.strip()}")
             else:
                 raise RuntimeError("Docker Compose nie odpowiada poprawnie")
-        except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
+        except (subprocess.SubprocessError, OSError) as e:
             error_msg = f"Docker Compose nie jest dostępny: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e

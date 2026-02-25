@@ -67,7 +67,7 @@ def _get_method_signatures(app: FastAPI, prefix: str) -> List[str]:
                 continue
             methods_set.add(f"{method} {path}")
 
-    return sorted(list(methods_set))
+    return sorted(methods_set)
 
 
 def _generate_internal_map(request: Request) -> List[ApiConnection]:
@@ -223,7 +223,7 @@ def _generate_internal_map(request: Request) -> List[ApiConnection]:
             status=ConnectionStatus.OK,
             description=item["desc"],
             is_critical=item["critical"],
-            methods=sorted(list(set(methods))),
+            methods=sorted(set(methods)),
         )
         internal.append(connection)
 

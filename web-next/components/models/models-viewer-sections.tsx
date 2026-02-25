@@ -565,7 +565,7 @@ export function InstalledAndOperations({
     );
 }
 
-export function RemoteModelsSection(props: ModelsViewerLogic) {
+export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
     const {
         t,
         remoteProviders,

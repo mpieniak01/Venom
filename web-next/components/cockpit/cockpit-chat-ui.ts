@@ -286,19 +286,19 @@ export function useCockpitChatUi({
       Math.max(responseDurations.length, 1)
       : null;
   const responseBadgeText =
-    lastResponseDurationMs !== null ? `${(lastResponseDurationMs / 1000).toFixed(1)}s` : t("cockpit.response.notAvailable");
+    lastResponseDurationMs === null ? t("cockpit.response.notAvailable") : `${(lastResponseDurationMs / 1000).toFixed(1)}s`;
   const responseBadgeTone = (() => {
     if (lastResponseDurationMs === null) return "neutral";
     if (lastResponseDurationMs <= 4000) return "success";
     return "warning";
   })();
   const responseBadgeTitle =
-    averageResponseDurationMs !== null
-      ? t("cockpit.response.avg", {
+    averageResponseDurationMs === null
+      ? t("cockpit.response.noData")
+      : t("cockpit.response.avg", {
         count: responseDurations.length,
         avg: (averageResponseDurationMs / 1000).toFixed(1)
-      })
-      : t("cockpit.response.noData");
+      });
   const handleSend = useChatSend({
     labMode,
     chatMode,

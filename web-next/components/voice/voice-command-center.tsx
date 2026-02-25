@@ -41,6 +41,18 @@ const secureRandomInt = (maxExclusive: number): number => {
   return nextSecureRandomFallbackInt() % maxExclusive;
 };
 
+const toPrimitiveString = (value: unknown): string | null => {
+  if (typeof value === "string") return value;
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  return null;
+};
+
 export function VoiceCommandCenter() {
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
   const iotStatusEnabled = process.env.NEXT_PUBLIC_ENABLE_IOT_STATUS === "true";
@@ -63,16 +75,16 @@ export function VoiceCommandCenter() {
   const handleAudioMessage = useCallback((data: Record<string, unknown>) => {
     switch (data.type) {
       case "processing":
-        setStatusMessage(`Przetwarzanie (${String(data.status)})`);
+        setStatusMessage(`Przetwarzanie (${toPrimitiveString(data.status) ?? "unknown"})`);
         break;
       case "transcription":
-        setTranscription(String(data.text ?? "Nie rozpoznano mowy."));
+        setTranscription(toPrimitiveString(data.text) ?? "Nie rozpoznano mowy.");
         break;
       case "response_text":
-        setResponse(String(data.text ?? "—"));
+        setResponse(toPrimitiveString(data.text) ?? "—");
         break;
       case "error":
-        setStatusMessage(String(data.message ?? "Błąd kanału audio."));
+        setStatusMessage(toPrimitiveString(data.message) ?? "Błąd kanału audio.");
         break;
     }
   }, []);

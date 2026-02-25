@@ -131,7 +131,7 @@ export function CockpitKpiSection({
           />
           <StatCard
             label={t("cockpit.metrics.labels.quality")}
-            value={successRate !== null ? `${successRate}%` : "—"}
+            value={successRate === null ? "—" : `${successRate}%`}
             hint={t("cockpit.metrics.labels.currentQuality")}
             accent="green"
           />
@@ -147,7 +147,7 @@ export function CockpitKpiSection({
           />
           <StatCard
             label={t("cockpit.metrics.labels.quality")}
-            value={feedbackScore !== null ? `${feedbackScore}%` : "—"}
+            value={feedbackScore === null ? "—" : `${feedbackScore}%`}
             hint={`${feedbackUp} 👍 / ${feedbackDown} 👎`}
             accent="violet"
           />

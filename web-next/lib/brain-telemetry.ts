@@ -5,12 +5,12 @@ export type BrainTelemetryMetric =
   | "brain_full_mode_usage";
 
 export function emitBrainMetric(name: BrainTelemetryMetric, value: number): void {
-  if (typeof window === "undefined") return;
+  if (globalThis.window === undefined) return;
   try {
     if (process.env.NODE_ENV !== "production") {
       console.info(`[brain-telemetry] ${name}=${value}`);
     }
-    window.dispatchEvent(
+    globalThis.window.dispatchEvent(
       new CustomEvent("venom:brain:metric", {
         detail: { name, value, timestamp: Date.now() },
       }),

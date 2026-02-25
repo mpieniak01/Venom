@@ -288,7 +288,7 @@ class RuntimeController:
                 timeout=1.5,
                 check=False,
             )
-        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        except (subprocess.TimeoutExpired, OSError):
             return None
 
         output = (result.stdout or result.stderr or "").strip()

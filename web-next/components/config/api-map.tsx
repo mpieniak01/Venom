@@ -32,13 +32,13 @@ import type { components } from "@/lib/generated/api-types";
 type ApiMapResponse = components["schemas"]["ApiMapResponse"];
 export type ApiConnection = components["schemas"]["ApiConnection"];
 
-type ConnectionCardProps = {
+type ConnectionCardProps = Readonly<{
     connection: ApiConnection;
     isSelected: boolean;
     onClick: () => void;
     criticalLabel: string;
     statusIcon: ReactNode;
-};
+}>;
 
 function ConnectionCard({
     connection,
@@ -397,13 +397,13 @@ export function ApiMap() {
                                 <div className="space-y-1">
                                     <p className="text-xs text-zinc-500">{t("config.apiMap.connection.auth")}</p>
                                     <div className="flex items-center gap-2">
-                                        {selectedConnection.auth_type !== "none" ? (
+                                        {selectedConnection.auth_type === "none" ? (
+                                            <span className="text-sm text-zinc-500">-</span>
+                                        ) : (
                                             <span className="flex items-center gap-1.5 text-sm text-zinc-300">
                                                 <Lock className="h-3.5 w-3.5 text-zinc-500" />
                                                 <span className="uppercase">{t(`config.apiMap.auth.${selectedConnection.auth_type}`)}</span>
                                             </span>
-                                        ) : (
-                                            <span className="text-sm text-zinc-500">-</span>
                                         )}
                                     </div>
                                 </div>

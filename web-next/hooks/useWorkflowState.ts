@@ -46,7 +46,7 @@ function createUuidV4(): string {
 // Generate a valid UUID v4 for the workflow
 // In production, this should come from the backend or be persisted
 const getOrCreateWorkflowId = (): string => {
-  if (typeof globalThis.window === "undefined") return DEFAULT_WORKFLOW_ID;
+  if (globalThis.window === undefined) return DEFAULT_WORKFLOW_ID;
 
   const stored = globalThis.window.localStorage.getItem(WORKFLOW_STORAGE_KEY);
   if (stored) return stored;
@@ -96,7 +96,7 @@ function stableSerialize(value: unknown): string {
 }
 
 function readCache<T>(key: string): T | null {
-  if (typeof globalThis.window === "undefined") return null;
+  if (globalThis.window === undefined) return null;
   try {
     const raw = globalThis.window.sessionStorage.getItem(key);
     if (!raw) return null;
@@ -110,7 +110,7 @@ function readCache<T>(key: string): T | null {
 }
 
 function writeCache<T>(key: string, data: T): void {
-  if (typeof globalThis.window === "undefined") return;
+  if (globalThis.window === undefined) return;
   try {
     globalThis.window.sessionStorage.setItem(
       key,

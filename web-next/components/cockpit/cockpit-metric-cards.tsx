@@ -27,12 +27,12 @@ export function TokenShareBar({ label, percent, accent }: TokenShareBarProps) {
     <div className="rounded-2xl box-base p-3">
       <div className="flex items-center justify-between text-sm text-white">
         <span>{label}</span>
-        <span>{percent !== null ? `${percent}%` : "—"}</span>
+        <span>{percent === null ? "—" : `${percent}%`}</span>
       </div>
       <div className="mt-2 h-2 rounded-full bg-white/5">
         <div
           className={`h-full rounded-full bg-gradient-to-r ${accent}`}
-          style={{ width: percent !== null ? `${Math.min(percent, 100)}%` : "0%" }}
+          style={{ width: percent === null ? "0%" : `${Math.min(percent, 100)}%` }}
         />
       </div>
     </div>

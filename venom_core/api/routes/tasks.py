@@ -99,7 +99,7 @@ def shutdown_onnx_task_executor(*, wait: bool = False) -> None:
 def release_onnx_task_runtime(*, wait: bool = False) -> None:
     """Best-effort cleanup for ONNX task runtime (pool + in-process fallback client)."""
     global _ONNX_WORKER_CLIENT
-    for task in list(_ONNX_BACKGROUND_TASKS):
+    for task in _ONNX_BACKGROUND_TASKS:
         task.cancel()
     _ONNX_BACKGROUND_TASKS.clear()
     client = _ONNX_WORKER_CLIENT

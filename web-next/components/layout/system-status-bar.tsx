@@ -246,7 +246,7 @@ function resolveRepoStatus(
 
 function formatVersionDisplay(version: string | undefined): string | null {
   if (!version) return null;
-  const match = version.trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());
   if (!match) return version.trim();
   const [, major, minor, patch] = match;
   if (patch === "0") {

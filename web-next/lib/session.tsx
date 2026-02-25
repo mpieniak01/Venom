@@ -59,10 +59,10 @@ const resolveInitialSessionId = () => {
 };
 
 export function SessionProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [sessionId, setSessionIdState] = useState<string>(() => resolveInitialSessionId());
+  const [sessionId, setSessionId] = useState<string>(() => resolveInitialSessionId());
 
-  const setSessionId = useCallback((value: string) => {
-    setSessionIdState(value);
+  const persistSessionId = useCallback((value: string) => {
+    setSessionId(value);
     if (globalThis.window === undefined) return;
     try {
       globalThis.window.localStorage.setItem(SESSION_ID_KEY, value);
@@ -74,9 +74,9 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
 
   const resetSession = useCallback(() => {
     const next = createSessionId();
-    setSessionId(next);
+    persistSessionId(next);
     return next;
-  }, [setSessionId]);
+  }, [persistSessionId]);
 
   useEffect(() => {
     if (globalThis.window === undefined) return;
@@ -99,7 +99,7 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
           globalThis.window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
           globalThis.window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
           if (active) {
-            setSessionIdState(nextSession);
+            setSessionId(nextSession);
           }
         }
       } catch {
@@ -130,9 +130,9 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
     () => ({
       sessionId,
       resetSession,
-      setSessionId,
+      setSessionId: persistSessionId,
     }),
-    [sessionId, resetSession, setSessionId],
+    [sessionId, resetSession, persistSessionId],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

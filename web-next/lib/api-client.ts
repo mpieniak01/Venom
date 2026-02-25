@@ -21,19 +21,14 @@ export async function apiFetch<T = unknown>(
   const baseUrl = skipBaseUrl ? "" : getApiBaseUrl();
   const target = baseUrl ? `${baseUrl}${path}` : path;
 
-  let response: Response;
-  try {
-    response = await fetch(target, {
-      ...rest,
-      cache: cache ?? "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        ...(headers ?? {}),
-      },
-    });
-  } catch (error) {
-    throw error;
-  }
+  const requestHeaders = headers
+    ? { "Content-Type": "application/json", ...headers }
+    : { "Content-Type": "application/json" };
+  const response = await fetch(target, {
+    ...rest,
+    cache: cache ?? "no-store",
+    headers: requestHeaders,
+  });
 
   if (!response.ok) {
     const text = await response.text();

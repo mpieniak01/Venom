@@ -83,7 +83,7 @@ class TrafficControlMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else None
 
         # Check traffic control
-        allowed, reason, wait_seconds = self.traffic_controller.check_inbound_request(
+        allowed, _, wait_seconds = self.traffic_controller.check_inbound_request(
             endpoint_group,
             actor=actor,
             session_id=session_id,

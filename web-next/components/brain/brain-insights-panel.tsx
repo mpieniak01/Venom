@@ -24,10 +24,13 @@ export function BrainInsightsPanel({
   recentOperations,
   onOpenDetails,
 }: BrainInsightsPanelProps) {
+  const selectedId =
+    selected && typeof selected.id === "string" ? selected.id : "";
+
   return (
     <div className="grid gap-4 lg:grid-cols-3" data-testid="brain-insights-panel">
       <BrainSelectionSummary selected={selected} relations={relations} onOpenDetails={onOpenDetails} />
-      <RelationList selectedId={String(selected?.id || "")} relations={relations} />
+      <RelationList selectedId={selectedId} relations={relations} />
       <RecentOperations operations={recentOperations} />
     </div>
   );

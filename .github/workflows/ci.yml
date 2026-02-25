@@ -197,7 +197,22 @@ jobs:
           name: sonar-backend-reports
           path: test-results/sonar
 
+      - name: Evaluate Sonar eligibility
+        id: sonar_guard
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "${SONAR_TOKEN:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping SonarCloud Scan: SONAR_TOKEN is not configured (likely fork/missing secret)."
+            exit 0
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "SonarCloud Scan enabled."
+
       - name: SonarCloud Scan
+        if: ${{ steps.sonar_guard.outputs.enabled == 'true' }}
         uses: SonarSource/sonarqube-scan-action@bfd4e558cda28cda6b5defafb9232d191be8c203
         with:
           args: >

@@ -11,6 +11,7 @@
 - *GitGuardian:* secret detection and leak prevention in repository history and pull requests.
 - *OpenAPI Contract:* validates OpenAPI export and TypeScript codegen synchronization.
 - *Quality Gate Status:* SonarCloud quality gate for backend and frontend.
+- *Snyk Dependency Scan:* verifies third-party package vulnerabilities (Python/npm) and tracks dependency risk over time.
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 

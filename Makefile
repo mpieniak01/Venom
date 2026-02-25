@@ -33,13 +33,13 @@ SHELL := /bin/bash
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod stop restart status clean-ports \
-	pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
-	ci-lite-preflight ci-lite-bootstrap \
-	api api-dev api-stop web web-dev web-stop \
-	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
-	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types \
-	env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff \
-	modules-status modules-pull modules-branches modules-exec
+		pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
+		ci-lite-preflight ci-lite-bootstrap \
+		api api-dev api-stop web web-dev web-stop \
+		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
+		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
+		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff \
+		modules-status modules-pull modules-branches modules-exec
 
 lint:
 	pre-commit run --all-files
@@ -296,11 +296,24 @@ start: start-dev
 
 start-dev: START_MODE=dev
 start-dev:
+	$(MAKE) --no-print-directory ensure-env-file
 	$(MAKE) --no-print-directory _start
 
 start-prod: START_MODE=prod
 start-prod:
+	$(MAKE) --no-print-directory ensure-env-file
 	$(MAKE) --no-print-directory _start
+
+ensure-env-file:
+	@if [ ! -f .env ]; then \
+		if [ -f .env.example ]; then \
+			cp .env.example .env; \
+			echo "ℹ️  Utworzono .env na podstawie .env.example."; \
+			echo "ℹ️  Uzupełnij klucze/secrets w .env (jeśli wymagane) i uruchom ponownie start."; \
+		else \
+			echo "⚠️  Brak .env i .env.example. Start użyje wartości domyślnych tam, gdzie to możliwe."; \
+		fi; \
+	fi
 
 _start:
 	@if [ ! -x "$(UVICORN)" ]; then \
@@ -309,7 +322,12 @@ _start:
 	fi
 	@mkdir -p logs
 	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
-	@active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' .env 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]'); \
+	@active_server=""; \
+	if [ -f .env ]; then \
+		active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' .env 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true); \
+	elif [ -f .env.example ]; then \
+		active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' .env.example 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true); \
+	fi; \
 	if [ -z "$$active_server" ]; then active_server="ollama"; fi; \
 	start_ollama() { \
 		echo "▶️  Uruchamiam Ollama..."; \

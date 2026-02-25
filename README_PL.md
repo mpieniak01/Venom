@@ -10,6 +10,7 @@
 - *OpenAPI Contract:* weryfikuje eksport OpenAPI i synchronizację codegen typów TypeScript.
 - *Sonar:* bramka jakości kodu i pokrycia nowego kodu dla backendu i frontendu.
 - *Snyk Dependency Scan:* weryfikuje podatności pakietów zewnętrznych (Python/npm) i monitoruje ryzyko zależności w czasie.
+- *Compliance Signal:* zbiorczy wskaźnik, że kontrole jakości i bezpieczeństwa są aktywne oraz gotowe do audytu.
 
 > **| [English Documentation Available](README.md)**
 

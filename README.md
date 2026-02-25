@@ -10,6 +10,7 @@
 - *OpenAPI Contract:* validates OpenAPI export and TypeScript codegen synchronization.
 - *Sonar:* code quality and new-code coverage gate for backend and frontend.
 - *Snyk Dependency Scan:* verifies third-party package vulnerabilities (Python/npm) and tracks dependency risk over time.
+- *Compliance Signal:* summary indicator that quality/security controls are active and audit-ready.
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 

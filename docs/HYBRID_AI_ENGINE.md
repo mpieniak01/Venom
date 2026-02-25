@@ -112,7 +112,7 @@ AI_MODE=HYBRID
 GOOGLE_API_KEY=your_google_api_key
 HYBRID_CLOUD_PROVIDER=google
 HYBRID_LOCAL_MODEL=llama3
-HYBRID_CLOUD_MODEL=gemini-1.5-pro
+HYBRID_CLOUD_MODEL=gemini-2.5-pro
 ```
 
 ### Hybrid with OpenAI

@@ -301,6 +301,61 @@ async def test_synchronize_startup_local_model_handles_exception(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_synchronize_startup_local_model_handles_settings_assignment_failures(
+    monkeypatch,
+):
+    fake_model_manager = SimpleNamespace(
+        list_local_models=AsyncMock(
+            return_value=[{"provider": "ollama", "name": "model-1"}]
+        )
+    )
+    monkeypatch.setattr(main_module, "model_manager", fake_model_manager)
+
+    fake_config_manager = SimpleNamespace(
+        get_config=lambda mask_secrets=False: {
+            "LLM_MODEL_NAME": "missing-model",
+            "LAST_MODEL_OLLAMA": "missing-model",
+            "PREVIOUS_MODEL_OLLAMA": "",
+            "HYBRID_LOCAL_MODEL": "missing-model",
+        },
+        update_config=MagicMock(),
+    )
+
+    import venom_core.services.config_manager as config_manager_module
+    import venom_core.utils.llm_runtime as llm_runtime_module
+
+    monkeypatch.setattr(config_manager_module, "config_manager", fake_config_manager)
+    monkeypatch.setattr(
+        llm_runtime_module,
+        "compute_llm_config_hash",
+        lambda server, endpoint, model: f"{server}:{endpoint}:{model}",
+    )
+
+    class BrokenSettings:
+        ACTIVE_LLM_SERVER = "ollama"
+        LLM_MODEL_NAME = "missing-model"
+        HYBRID_LOCAL_MODEL = "missing-model"
+        LLM_CONFIG_HASH = ""
+
+        def __setattr__(self, name, value):
+            if name in {
+                "LLM_MODEL_NAME",
+                "HYBRID_LOCAL_MODEL",
+                "LLM_CONFIG_HASH",
+                "ACTIVE_LLM_SERVER",
+            }:
+                raise RuntimeError(f"cannot assign {name}")
+            object.__setattr__(self, name, value)
+
+    monkeypatch.setattr(main_module, "SETTINGS", BrokenSettings())
+
+    runtime = SimpleNamespace(provider="ollama", endpoint="http://localhost:11434")
+    await main_module._synchronize_startup_local_model(runtime)
+
+    assert fake_config_manager.update_config.call_count >= 2
+
+
+@pytest.mark.asyncio
 async def test_receive_node_handshake_parsing(monkeypatch):
     handshake_payload = '{"message_type":"HANDSHAKE","payload":{"node_name":"n1","token":"t","capabilities":{}}}'
     ws_ok = MagicMock()

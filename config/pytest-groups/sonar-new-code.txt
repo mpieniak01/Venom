@@ -67,6 +67,7 @@ tests/test_prompt_manager.py
 tests/test_service_monitor.py
 tests/test_service_monitor_streaming.py
 tests/test_docker_habitat_unit.py
+tests/test_docker_habitat_coverage.py
 tests/test_lessons_manager.py
 tests/test_retrieval_policy.py
 tests/test_browser_skill.py

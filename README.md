@@ -1,14 +1,14 @@
 # Venom v1.6.0 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
-[![Quality Gate Status (Sonar)](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
+[![Sonar](https://img.shields.io/badge/Sonar-code%20quality-F3702A?logo=sonar&logoColor=white)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 [![Snyk Dependency Scan](https://img.shields.io/badge/Snyk-dependencies%20scanned-4C4A73?logo=snyk&logoColor=white)](https://app.snyk.io/org/pppnews/projects)
 [![Compliance Signal](https://img.shields.io/badge/compliance-audit--ready-1f6feb)](#quality-and-security)
 
 **Quality Signals**
 - *GitGuardian:* secret detection and leak prevention in repository history and pull requests.
 - *OpenAPI Contract:* validates OpenAPI export and TypeScript codegen synchronization.
-- *Quality Gate Status (Sonar):* SonarCloud quality gate for backend and frontend.
+- *Sonar:* code quality and new-code coverage gate for backend and frontend.
 - *Snyk Dependency Scan:* verifies third-party package vulnerabilities (Python/npm) and tracks dependency risk over time.
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**

@@ -53,6 +53,21 @@ const toPrimitiveString = (value: unknown): string | null => {
   return null;
 };
 
+const AUDIO_WORKLET_PROCESSOR_NAME = "venom-pcm-forwarder";
+const AUDIO_WORKLET_SOURCE = `
+class VenomPcmForwarder extends AudioWorkletProcessor {
+  process(inputs) {
+    const input = inputs[0];
+    if (input && input[0]) {
+      const channelData = input[0];
+      this.port.postMessage(channelData.slice(0));
+    }
+    return true;
+  }
+}
+registerProcessor("${AUDIO_WORKLET_PROCESSOR_NAME}", VenomPcmForwarder);
+`;
+
 export function VoiceCommandCenter() {
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
   const iotStatusEnabled = process.env.NEXT_PUBLIC_ENABLE_IOT_STATUS === "true";
@@ -67,7 +82,10 @@ export function VoiceCommandCenter() {
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const processorRef = useRef<AudioWorkletNode | null>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const silenceGainRef = useRef<GainNode | null>(null);
+  const workletModuleUrlRef = useRef<string | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const recordingRef = useRef(false);
@@ -89,8 +107,25 @@ export function VoiceCommandCenter() {
     }
   }, []);
 
+  const releaseAudioResources = useCallback(() => {
+    processorRef.current?.disconnect();
+    processorRef.current = null;
+    sourceNodeRef.current?.disconnect();
+    sourceNodeRef.current = null;
+    silenceGainRef.current?.disconnect();
+    silenceGainRef.current = null;
+    if (workletModuleUrlRef.current) {
+      URL.revokeObjectURL(workletModuleUrlRef.current);
+      workletModuleUrlRef.current = null;
+    }
+    void audioContextRef.current?.close();
+    audioContextRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }, []);
+
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return;
+    if (globalThis.window === undefined) return;
     if (!audioEnabled) {
       setConnected(false);
       setStatusMessage("Kanał audio wyłączony w konfiguracji.");
@@ -142,8 +177,9 @@ export function VoiceCommandCenter() {
         globalThis.window.clearTimeout(reconnectTimeoutRef.current);
       }
       wsRef.current?.close();
+      releaseAudioResources();
     };
-  }, [audioEnabled, handleAudioMessage]);
+  }, [audioEnabled, handleAudioMessage, releaseAudioResources]);
 
   const refreshIoTStatus = useCallback(async () => {
     if (!iotStatusEnabled) {
@@ -199,26 +235,30 @@ export function VoiceCommandCenter() {
       const audioContext = new AudioContextCtor();
       audioContextRef.current = audioContext;
       const source = audioContext.createMediaStreamSource(mediaStream);
-
-      // DEPRECATED API WARNING: createScriptProcessor() is deprecated
-      // Migration to AudioWorklet deferred due to:
-      // 1. Requires separate worklet.js file and build integration
-      // 2. More complex message passing vs direct onaudioprocess
-      // 3. Current impl works across all modern browsers
-      // 4. Migration requires testing real-time WS audio streaming
-      // TODO (2024-Q2): Migrate to AudioWorklet with proper worklet module
-      // Reference: https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletNode
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      sourceNodeRef.current = source;
+      const moduleBlob = new Blob([AUDIO_WORKLET_SOURCE], { type: "application/javascript" });
+      const moduleUrl = URL.createObjectURL(moduleBlob);
+      workletModuleUrlRef.current = moduleUrl;
+      await audioContext.audioWorklet.addModule(moduleUrl);
+      const processor = new AudioWorkletNode(audioContext, AUDIO_WORKLET_PROCESSOR_NAME, {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        channelCount: 1,
+      });
       processorRef.current = processor;
+      const silenceGain = audioContext.createGain();
+      silenceGain.gain.value = 0;
+      silenceGainRef.current = silenceGain;
       source.connect(processor);
-      processor.connect(audioContext.destination);
+      processor.connect(silenceGain);
+      silenceGain.connect(audioContext.destination);
       recordingRef.current = true;
       setRecording(true);
       setStatusMessage("Nagrywanie…");
       wsRef.current.send(JSON.stringify({ command: "start_recording" }));
-      processor.onaudioprocess = (event) => {
+      processor.port.onmessage = (event) => {
         if (!recordingRef.current) return;
-        const channelData = event.inputBuffer.getChannelData(0);
+        const channelData = event.data as Float32Array;
         const int16 = new Int16Array(channelData.length);
         for (let i = 0; i < channelData.length; i += 1) {
           int16[i] = Math.max(-32768, Math.min(32767, channelData[i] * 32768));
@@ -230,24 +270,20 @@ export function VoiceCommandCenter() {
       };
     } catch (error) {
       console.error("recording error", error);
+      releaseAudioResources();
       setStatusMessage("Nie udało się uruchomić mikrofonu.");
     }
-  }, []);
+  }, [releaseAudioResources]);
 
   const stopRecording = useCallback(() => {
     if (!recordingRef.current) return;
     recordingRef.current = false;
     setRecording(false);
     wsRef.current?.send(JSON.stringify({ command: "stop_recording" }));
-    processorRef.current?.disconnect();
-    processorRef.current = null;
-    audioContextRef.current?.close();
-    audioContextRef.current = null;
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaStreamRef.current = null;
+    releaseAudioResources();
     clearVisualizer();
     setStatusMessage("Nagrywanie zakończone.");
-  }, []);
+  }, [releaseAudioResources]);
 
   const drawVisualizer = (samples: Float32Array) => {
     const canvas = canvasRef.current;

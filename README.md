@@ -2,7 +2,7 @@
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![Sonar Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
-[![Snyk Vulnerabilities](https://snyk.io/test/github/mpieniak01/Venom/badge.svg)](https://snyk.io/test/github/mpieniak01/Venom)
+[![Known Vulnerabilities](https://snyk.io/test/github/mpieniak01/Venom/badge.svg)](https://snyk.io/test/github/mpieniak01/Venom)
 
 **Quality Signals**
 - *GitGuardian:* secret detection and leak prevention in repository history and pull requests.
@@ -186,6 +186,23 @@ If you want local runtime engines, install one of:
 - `pip install -r requirements-profile-onnx-cpu.txt`
 - `pip install -r requirements-extras-onnx.txt` (optional extras: `faster-whisper` + `piper-tts`; install after ONNX/ONNX-CPU profile)
 - `pip install -r requirements-full.txt` (legacy full stack)
+
+### Dependency Profile Guarantees
+Use this matrix as the source of truth for "is this missing package expected or a profile bug?".
+
+| Profile | Guaranteed scope | Explicitly not included |
+|---|---|---|
+| `requirements.txt` (`requirements-profile-api.txt`) | API/cloud baseline (`fastapi`, `uvicorn`, cloud providers) | Local heavy runtime packages (`vllm`, `onnxruntime*`, `lancedb`, `sentence-transformers`) |
+| `requirements-profile-web.txt` | API baseline + web integration runtime deps | Same heavy local runtime packages as API profile |
+| `requirements-profile-vllm.txt` | API baseline + `vllm` | ONNX stack, RAG/vector stack (`lancedb`, `sentence-transformers`) |
+| `requirements-profile-onnx.txt` | API baseline + ONNX runtime stack | vLLM, RAG/vector stack (`lancedb`, `sentence-transformers`) |
+| `requirements-profile-onnx-cpu.txt` | API baseline + ONNX CPU runtime stack | vLLM, ONNX CUDA packages, RAG/vector stack (`lancedb`, `sentence-transformers`) |
+| `requirements-full.txt` | Legacy all-in profile (includes `vllm`, ONNX, `lancedb`, `sentence-transformers`) | n/a |
+
+Rules for incident triage:
+1. If a package is missing because the corresponding profile was not installed, this is expected behavior.
+2. If a package is missing and it is not guaranteed by the active profile, this is expected behavior.
+3. If a package is listed in the selected profile but still missing after install, this is an environment/install issue and should be treated as a defect.
 
 ### Path B: Docker script setup (single command)
 ```bash

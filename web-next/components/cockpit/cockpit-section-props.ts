@@ -109,14 +109,25 @@ export function useCockpitSectionProps() {
     if (modelName.toLowerCase().includes("onnx")) return "onnx";
     return modelName.includes(":") ? "ollama" : "vllm";
   }, []);
+  const isModelChatCompatible = useCallback((model: { name?: string; provider?: string | null; chat_compatible?: boolean }) => {
+    if (typeof model.chat_compatible === "boolean") return model.chat_compatible;
+    // Backward-compatible fallback for stale backend payloads.
+    const provider = resolveModelProvider(model.name || "", model.provider);
+    if (provider !== "onnx") return true;
+    return !(model.name || "").toLowerCase().includes("build-test");
+  }, [resolveModelProvider]);
   const llmModelOptions = useMemo(() => data.models?.models
     ?.filter((m) => {
+      if (!isModelChatCompatible(m)) return false;
       const provider = resolveModelProvider(m.name || "", m.provider);
       if (selectedLlmServer) return provider === selectedLlmServer.toLowerCase();
       return allowedLlmProviders.size === 0 || allowedLlmProviders.has(provider);
     })
-    ?.map(m => ({ label: m.name, value: m.name })) || [], [data.models?.models, selectedLlmServer, allowedLlmProviders, resolveModelProvider]);
-  const hasModels = useMemo(() => ((data.models?.models?.length ?? 0) > 0), [data.models?.models]);
+    ?.map(m => ({ label: m.name, value: m.name })) || [], [data.models?.models, selectedLlmServer, allowedLlmProviders, resolveModelProvider, isModelChatCompatible]);
+  const hasModels = useMemo(
+    () => (data.models?.models?.some((m) => isModelChatCompatible(m)) ?? false),
+    [data.models?.models, isModelChatCompatible],
+  );
 
   const onOpenTuning = logic.chatUi.handleOpenTuning;
   const tuningLabel = t("common.tuning");
@@ -131,11 +142,12 @@ export function useCockpitSectionProps() {
 
   const availableModelsForServer = useMemo(() => data.models?.models
     ?.filter((m) => {
+      if (!isModelChatCompatible(m)) return false;
       const provider = resolveModelProvider(m.name || "", m.provider);
       if (selectedLlmServer) return provider === selectedLlmServer.toLowerCase();
       return allowedLlmProviders.size === 0 || allowedLlmProviders.has(provider);
     })
-    ?.map(m => ({ name: m.name })) || [], [data.models?.models, selectedLlmServer, allowedLlmProviders, resolveModelProvider]);
+    ?.map(m => ({ name: m.name })) || [], [data.models?.models, selectedLlmServer, allowedLlmProviders, resolveModelProvider, isModelChatCompatible]);
 
   const selectedServerEntry = useMemo(() => data.llmServers?.find(s => s.name === selectedLlmServer) || null, [data.llmServers, selectedLlmServer]);
 

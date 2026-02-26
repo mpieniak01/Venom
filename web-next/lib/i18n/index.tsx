@@ -53,7 +53,7 @@ function resolvePath(locale: Record<string, unknown>, path: string): string | nu
 }
 
 function escapeRegexSpecialChars(str: string): string {
-  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 function applyReplacements(value: string, replacements?: Record<string, string | number>) {
@@ -61,7 +61,7 @@ function applyReplacements(value: string, replacements?: Record<string, string |
   return Object.entries(replacements).reduce((acc, [key, replacement]) => {
     // Use escaped key for safer regex construction
     const escapedKey = escapeRegexSpecialChars(key);
-    const pattern = new RegExp(`\\{\\{\\s*${escapedKey}\\s*\\}\\}`, "g");
+    const pattern = new RegExp(String.raw`\{\{\s*${escapedKey}\s*\}\}`, "g");
     return acc.replace(pattern, String(replacement));
   }, value);
 }

@@ -1,5 +1,6 @@
 """Endpointy instalacji i wyboru modeli (local models)."""
 
+import json
 from pathlib import Path
 from typing import Dict, List
 
@@ -56,6 +57,82 @@ def _ensure_model_exists(models: list[dict], model_name: str) -> None:
     if any(m["name"] == model_name for m in models):
         return
     raise HTTPException(status_code=404, detail=f"Model {model_name} nie znaleziony")
+
+
+def _resolve_onnx_runtime_dir(model: dict) -> Path | None:
+    raw_path = model.get("path")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return None
+    resolved = _resolve_onnx_runtime_path(raw_path)
+    if not isinstance(resolved, str) or not resolved.strip():
+        return None
+    path = Path(resolved)
+    return path if path.exists() else None
+
+
+def _validate_onnx_chat_compatibility(model: dict) -> tuple[bool, str | None]:
+    runtime_dir = _resolve_onnx_runtime_dir(model)
+    if runtime_dir is None:
+        return False, "Brak ścieżki runtime ONNX lub katalog modelu nie istnieje."
+    if not runtime_dir.is_dir():
+        return False, "Ścieżka runtime ONNX nie wskazuje katalogu modelu."
+
+    config_path = runtime_dir / GENAI_CONFIG_FILENAME
+    if not config_path.exists():
+        return False, "Brak genai_config.json w katalogu modelu ONNX."
+
+    decoder_filename = "model.onnx"
+    try:
+        payload = json.loads(config_path.read_text("utf-8"))
+        if isinstance(payload, dict):
+            model_cfg = payload.get("model")
+            if isinstance(model_cfg, dict):
+                decoder_cfg = model_cfg.get("decoder")
+                if isinstance(decoder_cfg, dict):
+                    raw_name = decoder_cfg.get("filename")
+                    if isinstance(raw_name, str) and raw_name.strip():
+                        decoder_filename = raw_name.strip()
+    except Exception as exc:
+        return False, f"Nieprawidłowy genai_config.json: {exc}"
+
+    decoder_path = runtime_dir / decoder_filename
+    if not decoder_path.exists():
+        return False, f"Brak pliku dekodera ONNX: {decoder_filename}"
+    if not decoder_path.is_file():
+        return False, f"Plik dekodera ONNX ma nieprawidłowy typ: {decoder_filename}"
+    return True, None
+
+
+def _annotate_chat_compatibility(models: list[dict]) -> None:
+    for model in models:
+        provider = str(
+            infer_model_provider(model) or model.get("provider") or ""
+        ).lower()
+        model["provider"] = provider or model.get("provider")
+
+        compatible = True
+        reason: str | None = None
+        if provider == "onnx":
+            compatible, reason = _validate_onnx_chat_compatibility(model)
+        elif provider == "vllm":
+            raw_path = model.get("path")
+            if (
+                isinstance(raw_path, str)
+                and raw_path
+                and raw_path.startswith("ollama://")
+            ):
+                compatible = False
+                reason = "Model vLLM wskazuje nieprawidłową ścieżkę typu ollama://."
+
+        model["chat_compatible"] = compatible
+        model["chat_block_reason"] = reason
+
+
+def _ensure_model_chat_compatible(model: dict) -> None:
+    compatible = model.get("chat_compatible")
+    if compatible is False:
+        detail = model.get("chat_block_reason") or "Model niezgodny z profilem czatu."
+        raise HTTPException(status_code=400, detail=str(detail))
 
 
 def _ensure_runtime_provider_match(
@@ -191,6 +268,7 @@ async def list_models():
                 model["active"] = True
                 model.setdefault("source", runtime_info.provider)
 
+        _annotate_chat_compatibility(models)
         provider_buckets = _resolve_provider_bucket(models)
 
         return {
@@ -280,6 +358,12 @@ async def switch_model(request: ModelSwitchRequest):
         selected_model = next(
             (m for m in models if m.get("name") == request.name), None
         )
+        if selected_model is None:
+            raise HTTPException(
+                status_code=404, detail=f"Model {request.name} nie znaleziony"
+            )
+        _annotate_chat_compatibility(models)
+        _ensure_model_chat_compatible(selected_model)
         selected_model_path = (
             str(selected_model.get("path"))
             if selected_model and selected_model.get("path")

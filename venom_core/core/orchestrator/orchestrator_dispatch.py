@@ -12,12 +12,14 @@ from venom_core.agents.base import reset_llm_stream_callback, set_llm_stream_cal
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
 from venom_core.core.models import TaskRequest, TaskStatus
+from venom_core.core.permission_guard import permission_guard
 from venom_core.core.policy_gate import (
     PolicyDecision,
     PolicyEvaluationContext,
     policy_gate,
 )
 from venom_core.core.tracer import TraceStatus
+from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.logger import get_logger
 
 from .constants import (
@@ -67,6 +69,29 @@ async def _handle_policy_block_before_tool_execution(
     # Zadanie zostało zablokowane
     logger.warning(
         f"Policy gate blocked tool execution for task {task_id}: {policy_result.reason_code}"
+    )
+    current_level = permission_guard.get_current_level()
+    reason_code = (
+        getattr(policy_result.reason_code, "value", policy_result.reason_code)
+        if policy_result.reason_code
+        else None
+    )
+    get_audit_stream().publish(
+        source="core.policy",
+        action="policy.blocked.before_tool",
+        actor="system",
+        status="blocked",
+        details={
+            "reason_code": reason_code,
+            "intent": getattr(policy_context, "intent", None),
+            "planned_provider": getattr(policy_context, "planned_provider", None),
+            "forced_tool": getattr(policy_context, "forced_tool", None),
+            "forced_provider": getattr(policy_context, "forced_provider", None),
+            "session_id": getattr(policy_context, "session_id", None),
+            "task_id": str(task_id),
+            "current_autonomy_level": current_level,
+            "current_autonomy_level_name": permission_guard.get_current_level_name(),
+        },
     )
     orch.state_manager.add_log(
         task_id,

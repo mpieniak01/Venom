@@ -10,10 +10,19 @@ from venom_core.core.models import TaskRequest, TaskStatus
 from venom_core.core.orchestrator.orchestrator_submit import submit_task
 from venom_core.core.policy_gate import (
     PolicyDecision,
+    PolicyEvaluationContext,
     PolicyEvaluationResult,
     PolicyReasonCode,
 )
 from venom_core.core.tracer import TraceStatus
+from venom_core.services.audit_stream import get_audit_stream
+
+
+@pytest.fixture(autouse=True)
+def _clear_audit_stream():
+    get_audit_stream().clear()
+    yield
+    get_audit_stream().clear()
 
 
 @pytest.fixture
@@ -160,6 +169,71 @@ async def test_policy_gate_enabled_block_before_provider(mock_orchestrator):
 
                 # Verify task was marked as failed
                 mock_orchestrator.state_manager.update_status.assert_called_once()
+                entry = get_audit_stream().get_entries(
+                    action="policy.blocked.before_provider", limit=1
+                )[0]
+                assert entry.source == "core.policy"
+                assert entry.status == "blocked"
+                assert entry.details["reason_code"] == "POLICY_UNSAFE_CONTENT"
+                assert entry.details["task_id"] == str(response.task_id)
+                assert isinstance(entry.details["current_autonomy_level"], int)
+                assert entry.details["current_autonomy_level_name"]
+
+
+@pytest.mark.asyncio
+async def test_policy_gate_enabled_block_before_tool_emits_audit(mock_orchestrator):
+    """Test: blokada przed uruchomieniem narzędzia emituje wpis audytowy."""
+    with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "true"}):
+        from venom_core.core.policy_gate import policy_gate
+
+        policy_gate._initialized = False
+        policy_gate.__init__()
+
+        with patch.object(
+            policy_gate,
+            "evaluate_before_tool_execution",
+            return_value=PolicyEvaluationResult(
+                decision=PolicyDecision.BLOCK,
+                reason_code=PolicyReasonCode.POLICY_TOOL_RESTRICTED,
+                message="Tool blocked by policy",
+            ),
+        ):
+            task_id = mock_orchestrator.state_manager.create_task.return_value.id
+            request = TaskRequest(
+                content="test tool request",
+                forced_tool="browser",
+                session_id="session-1",
+            )
+            context = PolicyEvaluationContext(
+                content=request.content,
+                intent="RESEARCH",
+                planned_provider="openai",
+                planned_tools=["browser"],
+                session_id=request.session_id,
+                forced_tool=request.forced_tool,
+                forced_provider=request.forced_provider,
+            )
+            handler = __import__(
+                "venom_core.core.orchestrator.orchestrator_dispatch",
+                fromlist=["_handle_policy_block_before_tool_execution"],
+            )._handle_policy_block_before_tool_execution
+
+            blocked = await handler(mock_orchestrator, task_id, request, context)
+
+            assert blocked is True
+            entry = get_audit_stream().get_entries(
+                action="policy.blocked.before_tool", limit=1
+            )[0]
+            assert entry.source == "core.policy"
+            assert entry.status == "blocked"
+            assert entry.details["reason_code"] == "POLICY_TOOL_RESTRICTED"
+            assert entry.details["intent"] == "RESEARCH"
+            assert entry.details["planned_provider"] == "openai"
+            assert entry.details["forced_tool"] == "browser"
+            assert entry.details["session_id"] == "session-1"
+            assert entry.details["task_id"] == str(task_id)
+            assert isinstance(entry.details["current_autonomy_level"], int)
+            assert entry.details["current_autonomy_level_name"]
 
 
 @pytest.mark.asyncio

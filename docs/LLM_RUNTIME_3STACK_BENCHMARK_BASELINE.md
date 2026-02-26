@@ -16,6 +16,22 @@ This document captures the latest full run with explicit command set and measure
    - CPU: Intel i5-14400F
    - Linux runtime RAM: ~15 GiB
 
+## Models Under Test
+
+1. `gemma-3-1b-it-onnx-q4` (`onnx`)
+2. `gemma-3-1b-it-onnx-q4-genai` (`onnx`)
+3. `gemma-3-4b-it-onnx-build-test` (`onnx`)
+4. `gemma-3-4b-it-onnx-cpu-int4` (`onnx`)
+5. `gemma-3-4b-it-onnx-int4` (`onnx`)
+6. `gemma3:4b` (`ollama`)
+7. `gemma-3-4b-it` (`vllm`)
+
+## Stacks Under Test
+
+1. `onnx`
+2. `ollama`
+3. `vllm`
+
 ## What Was Run
 
 ### ONNX set (all locally available Gemma3 ONNX variants)
@@ -29,13 +45,6 @@ VENOM_LLM_MODEL=<MODEL> VENOM_LLM_REPEATS=2 .venv/bin/pytest -q -s tests/perf/te
 VENOM_LLM_MODEL=<MODEL> VENOM_LLM_REPEATS=2 .venv/bin/pytest -q -s tests/perf/test_llm_latency_e2e.py
 VENOM_LLM_MODEL=<MODEL> VENOM_LLM_REPEATS=2 .venv/bin/pytest -q -s tests/perf/test_latency_modes_e2e.py
 ```
-
-ONNX models tested:
-1. `gemma-3-1b-it-onnx-q4`
-2. `gemma-3-1b-it-onnx-q4-genai`
-3. `gemma-3-4b-it-onnx-build-test`
-4. `gemma-3-4b-it-onnx-cpu-int4`
-5. `gemma-3-4b-it-onnx-int4`
 
 ### Ollama
 

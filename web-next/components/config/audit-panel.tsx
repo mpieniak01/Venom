@@ -282,6 +282,33 @@ export function AuditPanel() {
     };
   }, [selectedRow]);
 
+  const selectedAutonomyPolicy = useMemo(() => {
+    if (!selectedRow) return null;
+    const d = selectedRow.details;
+    const check = readString(d.autonomy_policy_check);
+    const compliant =
+      typeof d.autonomy_policy_compliant === "boolean"
+        ? d.autonomy_policy_compliant
+        : null;
+    return { check, compliant };
+  }, [selectedRow]);
+
+  const hasAutonomyDetails = useMemo(() => {
+    if (!selectedAutonomyLevel) return false;
+    return (
+      selectedAutonomyLevel.current !== null ||
+      selectedAutonomyLevel.required !== null ||
+      selectedAutonomyLevel.oldLevel !== null ||
+      selectedAutonomyLevel.newLevel !== null
+    );
+  }, [selectedAutonomyLevel]);
+
+  const hasAutonomySection = useMemo(() => {
+    if (hasAutonomyDetails) return true;
+    if (!selectedAutonomyPolicy) return false;
+    return selectedAutonomyPolicy.check !== null || selectedAutonomyPolicy.compliant !== null;
+  }, [hasAutonomyDetails, selectedAutonomyPolicy]);
+
   return (
     <div className="space-y-4">
       <div className="glass-panel rounded-2xl border border-cyan-500/20 p-4">
@@ -411,7 +438,7 @@ export function AuditPanel() {
                     <div className="text-zinc-200">{selectedRow.status}</div>
                   </div>
 
-                  {selectedAutonomyLevel ? (
+                  {selectedAutonomyLevel && hasAutonomySection ? (
                     <div className="space-y-1 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-2">
                       <p className="text-[11px] uppercase tracking-wide text-cyan-300">Poziom autonomii</p>
                       {selectedAutonomyLevel.current !== null ? (
@@ -433,6 +460,14 @@ export function AuditPanel() {
                           {" -> "}
                           {selectedAutonomyLevel.newLevel ?? "?"}
                           {selectedAutonomyLevel.newName ? ` (${selectedAutonomyLevel.newName})` : ""}
+                        </p>
+                      ) : null}
+                      {selectedAutonomyPolicy?.check ? (
+                        <p className="text-zinc-100">Polityka: {selectedAutonomyPolicy.check}</p>
+                      ) : null}
+                      {selectedAutonomyPolicy?.compliant !== null ? (
+                        <p className="text-zinc-100">
+                          Zgodnosc: {selectedAutonomyPolicy?.compliant ? "tak" : "nie"}
                         </p>
                       ) : null}
                     </div>

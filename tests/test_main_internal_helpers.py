@@ -558,6 +558,10 @@ def _build_request(
 async def test_audit_http_requests_publishes_for_regular_api_calls(monkeypatch):
     stream = SimpleNamespace(publish=MagicMock())
     monkeypatch.setattr(main_module, "get_audit_stream", lambda: stream)
+    monkeypatch.setattr(main_module.permission_guard, "get_current_level", lambda: 20)
+    monkeypatch.setattr(
+        main_module.permission_guard, "get_current_level_name", lambda: "AUTONOMOUS"
+    )
     request = _build_request(
         method="GET",
         path="/api/v1/queue/items",
@@ -576,6 +580,35 @@ async def test_audit_http_requests_publishes_for_regular_api_calls(monkeypatch):
     assert payload["action"] == "http.get"
     assert payload["status"] == "success"
     assert payload["details"]["api_channel"] == "Queue API"
+    assert payload["details"]["current_autonomy_level"] == 20
+    assert payload["details"]["current_autonomy_level_name"] == "AUTONOMOUS"
+    assert payload["details"]["autonomy_policy_check"] == "not_applicable_read_only"
+    assert payload["details"]["autonomy_policy_compliant"] is True
+
+
+@pytest.mark.asyncio
+async def test_audit_http_requests_marks_mutating_forbidden_as_policy_blocked(
+    monkeypatch,
+):
+    stream = SimpleNamespace(publish=MagicMock())
+    monkeypatch.setattr(main_module, "get_audit_stream", lambda: stream)
+    monkeypatch.setattr(main_module.permission_guard, "get_current_level", lambda: 10)
+    monkeypatch.setattr(
+        main_module.permission_guard, "get_current_level_name", lambda: "SANDBOXED"
+    )
+    request = _build_request(method="POST", path="/api/v1/tasks")
+
+    async def _call_next(_request):
+        return Response(status_code=403)
+
+    response = await main_module.audit_http_requests(request, _call_next)
+    assert response.status_code == 403
+    stream.publish.assert_called_once()
+    payload = stream.publish.call_args.kwargs
+    assert payload["action"] == "http.post"
+    assert payload["status"] == "warning"
+    assert payload["details"]["autonomy_policy_check"] == "blocked"
+    assert payload["details"]["autonomy_policy_compliant"] is False
 
 
 @pytest.mark.asyncio

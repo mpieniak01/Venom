@@ -1147,6 +1147,32 @@ def _resolve_audit_status(status_code: int) -> str:
     return "success"
 
 
+def _resolve_audit_autonomy_snapshot() -> tuple[int, str]:
+    try:
+        return (
+            permission_guard.get_current_level(),
+            permission_guard.get_current_level_name(),
+        )
+    except Exception:
+        return (-1, "UNKNOWN")
+
+
+def _resolve_http_autonomy_policy(
+    method: str, status_code: int
+) -> tuple[str, bool | None]:
+    read_only_methods = {"GET"}
+    mutating_methods = {"POST", "PUT", "PATCH", "DELETE"}
+    normalized_method = method.upper()
+
+    if normalized_method in read_only_methods:
+        return ("not_applicable_read_only", True)
+    if normalized_method in mutating_methods and status_code in {401, 403}:
+        return ("blocked", False)
+    if normalized_method in mutating_methods and 200 <= status_code < 400:
+        return ("allowed", True)
+    return ("unknown", None)
+
+
 @app.middleware("http")
 async def audit_http_requests(request: Request, call_next):
     response = await call_next(request)
@@ -1163,6 +1189,10 @@ async def audit_http_requests(request: Request, call_next):
         api_channel = _resolve_audit_channel_for_path(path)
         method = request.method.upper()
         status = _resolve_audit_status(response.status_code)
+        current_level, current_level_name = _resolve_audit_autonomy_snapshot()
+        autonomy_policy_check, autonomy_policy_compliant = (
+            _resolve_http_autonomy_policy(method, response.status_code)
+        )
         get_audit_stream().publish(
             source="core.http",
             action=f"http.{method.lower()}",
@@ -1174,6 +1204,10 @@ async def audit_http_requests(request: Request, call_next):
                 "http_method": method,
                 "http_path": path,
                 "status_code": response.status_code,
+                "current_autonomy_level": current_level,
+                "current_autonomy_level_name": current_level_name,
+                "autonomy_policy_check": autonomy_policy_check,
+                "autonomy_policy_compliant": autonomy_policy_compliant,
             },
         )
     except Exception:

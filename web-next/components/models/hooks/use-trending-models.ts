@@ -11,13 +11,28 @@ export function useTrendingModels() {
     useEffect(() => {
         const cachedHf = readStorageJson<CatalogCachePayload>("models-trending-hf");
         const cachedOllama = readStorageJson<CatalogCachePayload>("models-trending-ollama");
+        const frameId = globalThis.window.requestAnimationFrame(() => {
+            if (cachedHf) {
+                setTrendingHf({
+                    data: cachedHf.data ?? [],
+                    stale: cachedHf.stale,
+                    error: cachedHf.error,
+                    loading: false,
+                });
+            }
+            if (cachedOllama) {
+                setTrendingOllama({
+                    data: cachedOllama.data ?? [],
+                    stale: cachedOllama.stale,
+                    error: cachedOllama.error,
+                    loading: false,
+                });
+            }
+        });
 
-        if (cachedHf) {
-            setTrendingHf((prev) => ({ ...prev, data: cachedHf.data ?? [], stale: cachedHf.stale, error: cachedHf.error }));
-        }
-        if (cachedOllama) {
-            setTrendingOllama((prev) => ({ ...prev, data: cachedOllama.data ?? [], stale: cachedOllama.stale, error: cachedOllama.error }));
-        }
+        return () => {
+            globalThis.window.cancelAnimationFrame(frameId);
+        };
     }, []);
 
     const refreshTrending = async () => {

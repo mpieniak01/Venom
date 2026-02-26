@@ -385,29 +385,261 @@ const SKELETON_ROW_KEYS = [
   "audit-skeleton-row-8",
 ] as const;
 
+type AuditPanelViewModel = ReturnType<typeof useAuditPanelModel>;
+
+function AuditFiltersSection({
+  t,
+  model,
+}: Readonly<{ t: ReturnType<typeof useTranslation>; model: AuditPanelViewModel }>) {
+  return (
+    <div className="grid gap-2 md:grid-cols-2">
+      <label className="space-y-1">
+        <span className="text-[11px] uppercase text-zinc-500">{t("config.audit.filters.source")}</span>
+        <select
+          value={model.apiChannelFilter}
+          onChange={(event) => model.setApiChannelFilter(event.target.value)}
+          className="w-full rounded-lg border border-zinc-700 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-100"
+        >
+          <option value={ALL_CHANNELS}>{t("config.audit.filters.allSources")}</option>
+          {model.apiChannels.map((channel) => (
+            <option key={channel} value={channel}>
+              {channel}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="space-y-1">
+        <span className="text-[11px] uppercase text-zinc-500">{t("config.audit.filters.outcome")}</span>
+        <select
+          value={model.outcomeFilter}
+          onChange={(event) => model.setOutcomeFilter(event.target.value as OutcomeFilter)}
+          className="w-full rounded-lg border border-zinc-700 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-100"
+        >
+          <option value="all">{t("config.audit.filters.allOutcomes")}</option>
+          <option value="success">{t("config.audit.filters.success")}</option>
+          <option value="warning">{t("config.audit.filters.warning")}</option>
+          <option value="danger">{t("config.audit.filters.error")}</option>
+          <option value="neutral">{t("config.audit.filters.neutral")}</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+function AuditLoadingSkeleton() {
+  return (
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
+      <div
+        className="space-y-2 pr-2"
+        style={{
+          maxHeight: "690px",
+          overflowY: "scroll",
+          scrollbarGutter: "stable",
+          overscrollBehavior: "contain",
+        }}
+      >
+        {SKELETON_ROW_KEYS.map((rowKey) => (
+          <div
+            key={rowKey}
+            className="glass-panel rounded-2xl box-subtle h-8 animate-pulse"
+          />
+        ))}
+      </div>
+      <aside className="glass-panel rounded-2xl box-subtle p-4 animate-pulse">
+        <div className="space-y-3">
+          <div className="h-4 w-28 rounded bg-white/10" />
+          <div className="h-6 w-40 rounded bg-white/10" />
+          <div className="h-4 w-32 rounded bg-white/10" />
+          <div className="mt-4 space-y-2">
+            <div className="h-4 w-full rounded bg-white/10" />
+            <div className="h-4 w-5/6 rounded bg-white/10" />
+            <div className="h-4 w-4/6 rounded bg-white/10" />
+          </div>
+          <div className="mt-4 h-40 rounded-xl bg-white/10" />
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function AuditRows({
+  t,
+  model,
+}: Readonly<{ t: ReturnType<typeof useTranslation>; model: AuditPanelViewModel }>) {
+  return (
+    <div
+      className="pr-2"
+      onScroll={model.onRowsScroll}
+      style={{
+        maxHeight: "690px",
+        overflowY: "scroll",
+        scrollbarGutter: "stable",
+        overscrollBehavior: "contain",
+      }}
+    >
+      <ul className="divide-y divide-white/5">
+        {model.visibleRows.map((row) => {
+          const isActive = model.selectedRow?.idRef === row.idRef;
+          return (
+            <li key={`${row.idRef}:${row.timestamp}`} className="px-1 py-1">
+              <button
+                type="button"
+                className={`w-full rounded-md px-1 py-1 text-left transition-colors ${
+                  isActive ? "bg-blue-500/10 ring-1 ring-blue-400/40" : "hover:bg-white/5"
+                }`}
+                onClick={() => model.setSelectedEntryId(row.idRef)}
+              >
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="w-[19ch] shrink-0 text-zinc-500">
+                    {formatFixedDateTime(row.timestamp, model.noDataLabel)}
+                  </span>
+                  <span className="shrink-0 font-semibold uppercase text-zinc-300">{row.action}</span>
+                  <span className="shrink-0 text-zinc-500">{truncateMiddle(row.source, 16)}</span>
+                  <span className="shrink-0 text-zinc-500">{truncateMiddle(row.actor, 18)}</span>
+                  <span className="min-w-0 truncate text-zinc-500">{truncateMiddle(row.context, 18)}</span>
+                  <span className="shrink-0 text-zinc-500">{truncateMiddle(row.idRef, 14)}</span>
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    <Badge
+                      tone="neutral"
+                      className="w-[10.5rem] justify-start border-blue-400/30 bg-blue-500/15 px-2 py-0.5 text-left text-[11px] text-blue-200"
+                      title={row.apiChannel}
+                    >
+                      {truncateMiddle(row.apiChannel, 22)}
+                    </Badge>
+                    <Badge tone={row.outcome} className="px-2 py-0.5 text-[11px]">
+                      {toToneBadgeLabel(row.status)}
+                    </Badge>
+                  </div>
+                </div>
+              </button>
+            </li>
+          );
+        })}
+        {model.hasMoreRows ? (
+          <li className="px-1 py-2 text-center text-[11px] text-zinc-500">
+            {t("common.loading")}
+          </li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
+
+function AuditDetails({
+  t,
+  model,
+}: Readonly<{ t: ReturnType<typeof useTranslation>; model: AuditPanelViewModel }>) {
+  if (!model.selectedRow) {
+    return (
+      <aside className="glass-panel rounded-2xl box-subtle p-4 text-xs">
+        <div className="rounded-2xl border border-white/10 bg-black/25 p-4 text-zinc-400">
+          {t("config.audit.details.noneSelected")}
+        </div>
+      </aside>
+    );
+  }
+
+  const selectedRow = model.selectedRow;
+  const autonomy = model.selectedAutonomyLevel;
+  const policy = model.selectedAutonomyPolicy;
+  return (
+    <aside className="glass-panel rounded-2xl box-subtle p-4 text-xs">
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("config.audit.details.entryTitle")}
+          </p>
+          <p className="font-semibold text-zinc-100">{selectedRow.action}</p>
+          <p className="text-zinc-400">{formatFixedDateTime(selectedRow.timestamp, model.noDataLabel)}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/25 p-3 text-[11px]">
+          <div className="text-zinc-500">{t("config.audit.details.actor")}</div>
+          <div className="text-zinc-200">{selectedRow.actor}</div>
+          <div className="text-zinc-500">{t("config.audit.details.source")}</div>
+          <div className="text-zinc-200">{selectedRow.source}</div>
+          <div className="text-zinc-500">{t("config.audit.details.apiChannel")}</div>
+          <div className="text-zinc-200">{selectedRow.apiChannel}</div>
+          <div className="text-zinc-500">{t("config.audit.details.status")}</div>
+          <div className="text-zinc-200">{selectedRow.status}</div>
+        </div>
+
+        {autonomy && model.hasAutonomySection ? (
+          <div className="space-y-1 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-2">
+            <p className="text-[11px] uppercase tracking-wide text-cyan-300">
+              {t("config.audit.details.autonomy.title")}
+            </p>
+            {autonomy.current === null ? null : (
+              <p className="text-zinc-100">
+                {t("config.audit.details.autonomy.current")}: {autonomy.current}
+                {autonomy.currentName ? ` (${autonomy.currentName})` : ""}
+              </p>
+            )}
+            {autonomy.required === null ? null : (
+              <p className="text-zinc-100">
+                {t("config.audit.details.autonomy.required")}: {autonomy.required}
+                {autonomy.requiredName ? ` (${autonomy.requiredName})` : ""}
+              </p>
+            )}
+            {autonomy.oldLevel !== null || autonomy.newLevel !== null ? (
+              <p className="text-zinc-100">
+                {t("config.audit.details.autonomy.change")}: {autonomy.oldLevel ?? "?"}
+                {autonomy.oldName ? ` (${autonomy.oldName})` : ""}
+                {" -> "}
+                {autonomy.newLevel ?? "?"}
+                {autonomy.newName ? ` (${autonomy.newName})` : ""}
+              </p>
+            ) : null}
+            {policy?.check ? (
+              <p className="text-zinc-100">
+                {t("config.audit.details.autonomy.policy")}: {policy.check}
+              </p>
+            ) : null}
+            {policy?.compliant === null ? null : (
+              <p className="text-zinc-100">
+                {t("config.audit.details.autonomy.compliance")}:{" "}
+                {policy?.compliant
+                  ? t("config.audit.details.autonomy.yes")
+                  : t("config.audit.details.autonomy.no")}
+              </p>
+            )}
+          </div>
+        ) : null}
+
+        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+          <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">
+            {t("config.audit.details.json")}
+          </p>
+          <pre className="max-h-56 overflow-auto rounded-md border border-white/10 bg-zinc-950/70 p-2 text-[11px] text-zinc-300">
+            {JSON.stringify(selectedRow.details ?? {}, null, 2)}
+          </pre>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function AuditBody({
+  t,
+  model,
+}: Readonly<{ t: ReturnType<typeof useTranslation>; model: AuditPanelViewModel }>) {
+  if (model.loading) {
+    return <AuditLoadingSkeleton />;
+  }
+  if (!model.filteredRows.length) {
+    return <p className="text-zinc-400">{t("config.audit.empty")}</p>;
+  }
+  return (
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
+      <AuditRows t={t} model={model} />
+      <AuditDetails t={t} model={model} />
+    </div>
+  );
+}
+
 export function AuditPanel() {
   const t = useTranslation();
-  const {
-    noDataLabel,
-    apiChannelFilter,
-    setApiChannelFilter,
-    outcomeFilter,
-    setOutcomeFilter,
-    refresh,
-    refreshing,
-    loadError,
-    loading,
-    filteredRows,
-    apiChannels,
-    visibleRows,
-    onRowsScroll,
-    hasMoreRows,
-    selectedRow,
-    setSelectedEntryId,
-    selectedAutonomyLevel,
-    hasAutonomySection,
-    selectedAutonomyPolicy,
-  } = useAuditPanelModel(t);
+  const model = useAuditPanelModel(t);
 
   return (
     <div className="space-y-4">
@@ -421,222 +653,18 @@ export function AuditPanel() {
             type="button"
             size="sm"
             variant="outline"
-            onClick={refresh}
-            disabled={refreshing}
+            onClick={model.refresh}
+            disabled={model.refreshing}
           >
-            {refreshing ? t("config.audit.refreshing") : t("config.audit.refresh")}
+            {model.refreshing ? t("config.audit.refreshing") : t("config.audit.refresh")}
           </Button>
         </div>
       </div>
 
       <div className="glass-panel space-y-3 rounded-2xl border border-white/10 p-4">
-        <div className="grid gap-2 md:grid-cols-2">
-          <label className="space-y-1">
-            <span className="text-[11px] uppercase text-zinc-500">{t("config.audit.filters.source")}</span>
-            <select
-              value={apiChannelFilter}
-              onChange={(event) => setApiChannelFilter(event.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-100"
-            >
-              <option value={ALL_CHANNELS}>{t("config.audit.filters.allSources")}</option>
-              {apiChannels.map((channel) => (
-                <option key={channel} value={channel}>
-                  {channel}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-[11px] uppercase text-zinc-500">{t("config.audit.filters.outcome")}</span>
-            <select
-              value={outcomeFilter}
-              onChange={(event) => setOutcomeFilter(event.target.value as OutcomeFilter)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-100"
-            >
-              <option value="all">{t("config.audit.filters.allOutcomes")}</option>
-              <option value="success">{t("config.audit.filters.success")}</option>
-              <option value="warning">{t("config.audit.filters.warning")}</option>
-              <option value="danger">{t("config.audit.filters.error")}</option>
-              <option value="neutral">{t("config.audit.filters.neutral")}</option>
-            </select>
-          </label>
-        </div>
-
-        {loadError ? <p className="text-xs text-amber-300">{loadError}</p> : null}
-        {loading ? (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
-            <div
-              className="space-y-2 pr-2"
-              style={{
-                maxHeight: "690px",
-                overflowY: "scroll",
-                scrollbarGutter: "stable",
-                overscrollBehavior: "contain",
-              }}
-            >
-              {SKELETON_ROW_KEYS.map((rowKey) => (
-                <div
-                  key={rowKey}
-                  className="glass-panel rounded-2xl box-subtle h-8 animate-pulse"
-                />
-              ))}
-            </div>
-            <aside className="glass-panel rounded-2xl box-subtle p-4 animate-pulse">
-              <div className="space-y-3">
-                <div className="h-4 w-28 rounded bg-white/10" />
-                <div className="h-6 w-40 rounded bg-white/10" />
-                <div className="h-4 w-32 rounded bg-white/10" />
-                <div className="mt-4 space-y-2">
-                  <div className="h-4 w-full rounded bg-white/10" />
-                  <div className="h-4 w-5/6 rounded bg-white/10" />
-                  <div className="h-4 w-4/6 rounded bg-white/10" />
-                </div>
-                <div className="mt-4 h-40 rounded-xl bg-white/10" />
-              </div>
-            </aside>
-          </div>
-        ) : null}
-        {!loading && !filteredRows.length ? <p className="text-zinc-400">{t("config.audit.empty")}</p> : null}
-
-        {!loading && filteredRows.length ? (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
-            <div
-              className="pr-2"
-              onScroll={onRowsScroll}
-              style={{
-                maxHeight: "690px",
-                overflowY: "scroll",
-                scrollbarGutter: "stable",
-                overscrollBehavior: "contain",
-              }}
-            >
-              <ul className="divide-y divide-white/5">
-                {visibleRows.map((row) => {
-                  const isActive = selectedRow?.idRef === row.idRef;
-                  return (
-                    <li key={`${row.idRef}:${row.timestamp}`} className="px-1 py-1">
-                      <button
-                        type="button"
-                        className={`w-full rounded-md px-1 py-1 text-left transition-colors ${
-                          isActive ? "bg-blue-500/10 ring-1 ring-blue-400/40" : "hover:bg-white/5"
-                        }`}
-                        onClick={() => setSelectedEntryId(row.idRef)}
-                      >
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="w-[19ch] shrink-0 text-zinc-500">
-                            {formatFixedDateTime(row.timestamp, noDataLabel)}
-                          </span>
-                          <span className="shrink-0 font-semibold uppercase text-zinc-300">{row.action}</span>
-                          <span className="shrink-0 text-zinc-500">{truncateMiddle(row.source, 16)}</span>
-                          <span className="shrink-0 text-zinc-500">{truncateMiddle(row.actor, 18)}</span>
-                          <span className="min-w-0 truncate text-zinc-500">{truncateMiddle(row.context, 18)}</span>
-                          <span className="shrink-0 text-zinc-500">{truncateMiddle(row.idRef, 14)}</span>
-                          <div className="ml-auto flex shrink-0 items-center gap-2">
-                            <Badge
-                              tone="neutral"
-                              className="w-[10.5rem] justify-start border-blue-400/30 bg-blue-500/15 px-2 py-0.5 text-left text-[11px] text-blue-200"
-                              title={row.apiChannel}
-                            >
-                              {truncateMiddle(row.apiChannel, 22)}
-                            </Badge>
-                            <Badge tone={row.outcome} className="px-2 py-0.5 text-[11px]">
-                              {toToneBadgeLabel(row.status)}
-                            </Badge>
-                          </div>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-                {hasMoreRows ? (
-                  <li className="px-1 py-2 text-center text-[11px] text-zinc-500">
-                    {t("common.loading")}
-                  </li>
-                ) : null}
-              </ul>
-            </div>
-
-            <aside className="glass-panel rounded-2xl box-subtle p-4 text-xs">
-              {selectedRow ? (
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("config.audit.details.entryTitle")}
-                    </p>
-                    <p className="font-semibold text-zinc-100">{selectedRow.action}</p>
-                    <p className="text-zinc-400">{formatFixedDateTime(selectedRow.timestamp, noDataLabel)}</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/25 p-3 text-[11px]">
-                    <div className="text-zinc-500">{t("config.audit.details.actor")}</div>
-                    <div className="text-zinc-200">{selectedRow.actor}</div>
-                    <div className="text-zinc-500">{t("config.audit.details.source")}</div>
-                    <div className="text-zinc-200">{selectedRow.source}</div>
-                    <div className="text-zinc-500">{t("config.audit.details.apiChannel")}</div>
-                    <div className="text-zinc-200">{selectedRow.apiChannel}</div>
-                    <div className="text-zinc-500">{t("config.audit.details.status")}</div>
-                    <div className="text-zinc-200">{selectedRow.status}</div>
-                  </div>
-
-                  {selectedAutonomyLevel && hasAutonomySection ? (
-                    <div className="space-y-1 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-2">
-                      <p className="text-[11px] uppercase tracking-wide text-cyan-300">
-                        {t("config.audit.details.autonomy.title")}
-                      </p>
-                      {selectedAutonomyLevel.current === null ? null : (
-                        <p className="text-zinc-100">
-                          {t("config.audit.details.autonomy.current")}: {selectedAutonomyLevel.current}
-                          {selectedAutonomyLevel.currentName ? ` (${selectedAutonomyLevel.currentName})` : ""}
-                        </p>
-                      )}
-                      {selectedAutonomyLevel.required === null ? null : (
-                        <p className="text-zinc-100">
-                          {t("config.audit.details.autonomy.required")}: {selectedAutonomyLevel.required}
-                          {selectedAutonomyLevel.requiredName ? ` (${selectedAutonomyLevel.requiredName})` : ""}
-                        </p>
-                      )}
-                      {selectedAutonomyLevel.oldLevel !== null || selectedAutonomyLevel.newLevel !== null ? (
-                        <p className="text-zinc-100">
-                          {t("config.audit.details.autonomy.change")}: {selectedAutonomyLevel.oldLevel ?? "?"}
-                          {selectedAutonomyLevel.oldName ? ` (${selectedAutonomyLevel.oldName})` : ""}
-                          {" -> "}
-                          {selectedAutonomyLevel.newLevel ?? "?"}
-                          {selectedAutonomyLevel.newName ? ` (${selectedAutonomyLevel.newName})` : ""}
-                        </p>
-                      ) : null}
-                      {selectedAutonomyPolicy?.check ? (
-                        <p className="text-zinc-100">
-                          {t("config.audit.details.autonomy.policy")}: {selectedAutonomyPolicy.check}
-                        </p>
-                      ) : null}
-                      {selectedAutonomyPolicy?.compliant === null ? null : (
-                        <p className="text-zinc-100">
-                          {t("config.audit.details.autonomy.compliance")}:{" "}
-                          {selectedAutonomyPolicy?.compliant
-                            ? t("config.audit.details.autonomy.yes")
-                            : t("config.audit.details.autonomy.no")}
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
-
-                  <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-                    <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">
-                      {t("config.audit.details.json")}
-                    </p>
-                    <pre className="max-h-56 overflow-auto rounded-md border border-white/10 bg-zinc-950/70 p-2 text-[11px] text-zinc-300">
-                      {JSON.stringify(selectedRow.details ?? {}, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-white/10 bg-black/25 p-4 text-zinc-400">
-                  {t("config.audit.details.noneSelected")}
-                </div>
-              )}
-            </aside>
-          </div>
-        ) : null}
+        <AuditFiltersSection t={t} model={model} />
+        {model.loadError ? <p className="text-xs text-amber-300">{model.loadError}</p> : null}
+        <AuditBody t={t} model={model} />
       </div>
     </div>
   );

@@ -249,6 +249,48 @@ def test_validate_optional_modules_config_manifest_missing_file():
     assert "manifest not found" in errors[0]
 
 
+def test_validate_optional_modules_config_manifest_invalid_structure(tmp_path):
+    manifest_path = tmp_path / "broken.json"
+    manifest_path.write_text(
+        json.dumps({"module_id": "broken", "backend": {}}),
+        encoding="utf-8",
+    )
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = f"manifest:{manifest_path}"
+    errors = module_registry.validate_optional_modules_config(settings)
+    assert len(errors) == 1
+    assert "invalid optional module manifest" in errors[0]
+
+
+def test_load_router_returns_none_for_invalid_router_import():
+    assert module_registry._load_router("not-a-router-import") is None
+
+
+def test_load_router_returns_none_when_attr_is_not_router(monkeypatch):
+    module = types.ModuleType("x_invalid_router_mod")
+    module.not_router = object()
+
+    def _fake_import(name: str):
+        if name == "x_invalid_router_mod":
+            return module
+        return __import__(name)
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
+    assert module_registry._load_router("x_invalid_router_mod:not_router") is None
+
+
+def test_parse_version_handles_empty_tokens_and_non_numeric_suffix():
+    assert module_registry._parse_version("1..2.beta") == (1, 2)
+    assert module_registry._normalize_api_version("") == ()
+
+
+def test_validate_optional_modules_config_skips_empty_csv_items():
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = "   ,mod|pkg.router:router,  "
+    errors = module_registry.validate_optional_modules_config(settings)
+    assert errors == []
+
+
 def test_load_router_ignores_path_remove_value_error(monkeypatch, tmp_path):
     router = APIRouter(prefix="/x-test")
 

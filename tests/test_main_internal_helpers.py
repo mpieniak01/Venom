@@ -28,6 +28,15 @@ def test_extract_available_local_models_casts_name_to_string():
     assert main_module._extract_available_local_models(models, "ollama") == {"123"}
 
 
+def test_extract_available_local_models_skips_missing_name_key():
+    models = [
+        {"provider": "ollama"},
+        {"provider": "ollama", "name": ""},
+        {"provider": "ollama", "name": "ok"},
+    ]
+    assert main_module._extract_available_local_models(models, "ollama") == {"ok"}
+
+
 def test_select_startup_model_priority_chain():
     available = {"model-a", "model-b"}
     assert (

@@ -232,6 +232,32 @@ def test_resolve_headers_openai_local_and_empty(monkeypatch):
     assert service._resolve_headers(DummyRuntime()) == {}
 
 
+def test_resolve_headers_uses_active_runtime_when_none_passed(monkeypatch):
+    _configure_settings(monkeypatch)
+    service = translation_module.TranslationService()
+    monkeypatch.setattr(translation_module.SETTINGS, "OPENAI_API_KEY", "openai-key")
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: DummyOpenAIRuntime(),
+    )
+    assert service._resolve_headers() == {"Authorization": "Bearer openai-key"}
+
+
+def test_build_translation_payload_uses_source_language_fallback_label():
+    payload = translation_module.TranslationService._build_translation_payload(
+        text="Hello",
+        source_lang="xx",
+        target_lang="pl",
+        model_name="m",
+    )
+    assert payload["model"] == "m"
+    assert (
+        "Translate from the source language to Polish"
+        in payload["messages"][1]["content"]
+    )
+
+
 @pytest.mark.asyncio
 async def test_translate_text_returns_early_on_empty_text():
     service = translation_module.TranslationService()

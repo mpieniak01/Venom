@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_app(*routers) -> FastAPI:
     """Create a minimal FastAPI app with the given routers."""
     app = FastAPI()
@@ -41,6 +42,7 @@ def _client(*routers) -> TestClient:
 # ===========================================================================
 # 1. workflow_operations.py
 # ===========================================================================
+
 
 class TestWorkflowOperations:
     """Contract tests for /api/v1/workflow/operations/* endpoints."""
@@ -60,6 +62,7 @@ class TestWorkflowOperations:
     @pytest.fixture(autouse=True)
     def _setup(self):
         from venom_core.api.routes import workflow_operations as mod
+
         self.mod = mod
 
     def _client_with_mock(self, method_name, return_value=None, side_effect=None):
@@ -388,16 +391,17 @@ class TestWorkflowOperations:
 # 2. workflow_control.py
 # ===========================================================================
 
+
 class TestWorkflowControl:
     """Contract tests for /api/v1/workflow/control/* endpoints."""
 
     @pytest.fixture()
     def app_and_client(self):
-        from venom_core.api.routes import workflow_control as mod
         from venom_core.api.dependencies import (
-            get_control_plane_service,
             get_control_plane_audit_trail,
+            get_control_plane_service,
         )
+        from venom_core.api.routes import workflow_control as mod
 
         mock_service = MagicMock()
         mock_audit = MagicMock()
@@ -427,7 +431,6 @@ class TestWorkflowControl:
     def _make_plan_response(self):
         """Build a valid ControlPlanResponse instance."""
         from venom_core.api.schemas.workflow_control import (
-            ApplyMode,
             CompatibilityReport,
             ControlPlanResponse,
             ReasonCode,
@@ -652,6 +655,7 @@ class TestWorkflowControl:
 # 3. nodes.py
 # ===========================================================================
 
+
 class TestNodes:
     """Contract tests for /api/v1/nodes/* endpoints."""
 
@@ -659,17 +663,20 @@ class TestNodes:
     def _reset_node_manager(self):
         """Reset node manager between tests."""
         from venom_core.api.routes import nodes as mod
+
         original = mod._node_manager
         yield
         mod._node_manager = original
 
     def _client_with_manager(self, manager):
         from venom_core.api.routes import nodes as mod
+
         mod.set_dependencies(manager)
         return _client(mod.router)
 
     def _client_no_manager(self):
         from venom_core.api.routes import nodes as mod
+
         mod._node_manager = None
         return _client(mod.router)
 
@@ -795,6 +802,7 @@ class TestNodes:
         manager.execute_on_node = AsyncMock(return_value={"result": "ok"})
 
         from venom_core.api.routes import nodes as mod
+
         mod.set_dependencies(manager)
 
         client = _client(mod.router)
@@ -812,6 +820,7 @@ class TestNodes:
         manager.execute_on_node = AsyncMock(side_effect=TimeoutError())
 
         from venom_core.api.routes import nodes as mod
+
         mod.set_dependencies(manager)
 
         client = _client(mod.router)
@@ -828,6 +837,7 @@ class TestNodes:
         manager.execute_on_node = AsyncMock(side_effect=RuntimeError("exec error"))
 
         from venom_core.api.routes import nodes as mod
+
         mod.set_dependencies(manager)
 
         client = _client(mod.router)
@@ -841,6 +851,7 @@ class TestNodes:
 # ===========================================================================
 # 4. queue.py
 # ===========================================================================
+
 
 class TestQueue:
     """Contract tests for /api/v1/queue/* endpoints."""
@@ -858,11 +869,13 @@ class TestQueue:
 
     def _client_with_orchestrator(self, orchestrator):
         from venom_core.api.routes import queue as mod
+
         mod.set_dependencies(orchestrator)
         return _client(mod.router)
 
     def _client_no_orchestrator(self):
         from venom_core.api.routes import queue as mod
+
         mod._orchestrator = None
         return _client(mod.router)
 
@@ -1066,12 +1079,14 @@ class TestQueue:
 # 5. agents.py
 # ===========================================================================
 
+
 class TestAgents:
     """Contract tests for agent status/control endpoints."""
 
     @pytest.fixture(autouse=True)
     def _reset_agents(self):
         from venom_core.api.routes import agents as mod
+
         originals = (
             mod._gardener_agent,
             mod._shadow_agent,
@@ -1097,6 +1112,7 @@ class TestAgents:
         orchestrator=None,
     ):
         from venom_core.api.routes import agents as mod
+
         mod.set_dependencies(gardener, shadow, watcher, documenter, orchestrator)
         return _client(mod.router)
 
@@ -1251,23 +1267,29 @@ class TestAgents:
 # 6. system_scheduler.py
 # ===========================================================================
 
+
 class TestSystemScheduler:
     """Contract tests for /api/v1/scheduler/* endpoints."""
 
     @pytest.fixture(autouse=True)
     def _patch_system_deps(self):
         from venom_core.api.routes import system_deps
+
         original = system_deps._background_scheduler
         yield
         system_deps._background_scheduler = original
 
     def _client_with_scheduler(self, scheduler):
-        from venom_core.api.routes import system_deps, system_scheduler as mod
+        from venom_core.api.routes import system_deps
+        from venom_core.api.routes import system_scheduler as mod
+
         system_deps._background_scheduler = scheduler
         return _client(mod.router)
 
     def _client_no_scheduler(self):
-        from venom_core.api.routes import system_deps, system_scheduler as mod
+        from venom_core.api.routes import system_deps
+        from venom_core.api.routes import system_scheduler as mod
+
         system_deps._background_scheduler = None
         return _client(mod.router)
 
@@ -1381,23 +1403,29 @@ class TestSystemScheduler:
 # 7. system_governance.py
 # ===========================================================================
 
+
 class TestSystemGovernance:
     """Contract tests for /api/v1/system/cost-mode and /system/autonomy endpoints."""
 
     @pytest.fixture(autouse=True)
     def _patch_deps(self):
         from venom_core.api.routes import system_deps
+
         original_sm = system_deps._state_manager
         yield
         system_deps._state_manager = original_sm
 
     def _client_with_state_manager(self, sm):
-        from venom_core.api.routes import system_deps, system_governance as mod
+        from venom_core.api.routes import system_deps
+        from venom_core.api.routes import system_governance as mod
+
         system_deps._state_manager = sm
         return _client(mod.router)
 
     def _client_no_state_manager(self):
-        from venom_core.api.routes import system_deps, system_governance as mod
+        from venom_core.api.routes import system_deps
+        from venom_core.api.routes import system_governance as mod
+
         system_deps._state_manager = None
         return _client(mod.router)
 
@@ -1477,10 +1505,11 @@ class TestSystemGovernance:
             risk_level="low",  # str, not int
         )
 
-        with patch.object(
-            mod.permission_guard, "get_current_level", return_value=10
-        ), patch.object(
-            mod.permission_guard, "get_level_info", return_value=level_info
+        with (
+            patch.object(mod.permission_guard, "get_current_level", return_value=10),
+            patch.object(
+                mod.permission_guard, "get_level_info", return_value=level_info
+            ),
         ):
             client = _client(mod.router)
             response = client.get("/api/v1/system/autonomy")
@@ -1493,9 +1522,10 @@ class TestSystemGovernance:
     def test_get_autonomy_level_500_when_no_level_info(self):
         from venom_core.api.routes import system_governance as mod
 
-        with patch.object(
-            mod.permission_guard, "get_current_level", return_value=99
-        ), patch.object(mod.permission_guard, "get_level_info", return_value=None):
+        with (
+            patch.object(mod.permission_guard, "get_current_level", return_value=99),
+            patch.object(mod.permission_guard, "get_level_info", return_value=None),
+        ):
             client = _client(mod.router)
             response = client.get("/api/v1/system/autonomy")
 
@@ -1525,9 +1555,12 @@ class TestSystemGovernance:
             permissions={"read": True},  # dict, not list
         )
 
-        with patch.object(
-            mod.permission_guard, "set_level", return_value=True
-        ), patch.object(mod.permission_guard, "get_level_info", return_value=level_info):
+        with (
+            patch.object(mod.permission_guard, "set_level", return_value=True),
+            patch.object(
+                mod.permission_guard, "get_level_info", return_value=level_info
+            ),
+        ):
             client = _client(mod.router)
             response = client.post("/api/v1/system/autonomy", json={"level": 10})
 
@@ -1548,9 +1581,10 @@ class TestSystemGovernance:
     def test_set_autonomy_level_500_when_no_level_info_after_set(self):
         from venom_core.api.routes import system_governance as mod
 
-        with patch.object(
-            mod.permission_guard, "set_level", return_value=True
-        ), patch.object(mod.permission_guard, "get_level_info", return_value=None):
+        with (
+            patch.object(mod.permission_guard, "set_level", return_value=True),
+            patch.object(mod.permission_guard, "get_level_info", return_value=None),
+        ):
             client = _client(mod.router)
             response = client.post("/api/v1/system/autonomy", json={"level": 10})
 
@@ -1566,6 +1600,30 @@ class TestSystemGovernance:
             response = client.post("/api/v1/system/autonomy", json={"level": 10})
 
         assert response.status_code == 500
+
+    def test_extract_actor_from_request_prefers_state_user_and_header_fallback(self):
+        from venom_core.api.routes import system_governance as mod
+
+        class _StateRequest:
+            state = SimpleNamespace(user="state-actor")
+            headers = {"X-Actor": "header-actor", "X-User-Id": "user-id"}
+
+        class _HeaderRequest:
+            state = SimpleNamespace(user=None)
+            headers = {"X-User-Id": "user-id-only"}
+
+        assert mod._extract_actor_from_request(_StateRequest()) == "state-actor"
+        assert mod._extract_actor_from_request(_HeaderRequest()) == "user-id-only"
+
+    def test_extract_actor_from_request_handles_exception(self):
+        from venom_core.api.routes import system_governance as mod
+
+        class _BrokenRequest:
+            @property
+            def state(self):
+                raise RuntimeError("broken-state")
+
+        assert mod._extract_actor_from_request(_BrokenRequest()) == "unknown"
 
     # --- autonomy levels list ---
 
@@ -1612,6 +1670,7 @@ class TestSystemGovernance:
 # ===========================================================================
 # 8. system_config.py
 # ===========================================================================
+
 
 class TestSystemConfig:
     """Contract tests for /api/v1/config/* endpoints."""
@@ -1686,8 +1745,9 @@ class TestSystemConfig:
         """Verify update config succeeds when localhost check is bypassed."""
         from venom_core.api.routes import system_config as mod
 
-        with patch.object(mod, "config_manager", self.mock_cm), patch.object(
-            mod, "require_localhost_request", return_value=None
+        with (
+            patch.object(mod, "config_manager", self.mock_cm),
+            patch.object(mod, "require_localhost_request", return_value=None),
         ):
             client = _client(mod.router)
             response = client.post(
@@ -1702,8 +1762,9 @@ class TestSystemConfig:
 
     def test_update_runtime_config_403_for_remote_host(self):
         """Verify require_localhost_request raises 403 for non-local IPs."""
-        from venom_core.api.routes.system_config import require_localhost_request
         from fastapi import HTTPException
+
+        from venom_core.api.routes.system_config import require_localhost_request
 
         mock_req = MagicMock()
         mock_req.client = SimpleNamespace(host="192.168.1.100")
@@ -1717,8 +1778,9 @@ class TestSystemConfig:
         mock_cm = MagicMock()
         mock_cm.update_config.side_effect = RuntimeError("update error")
 
-        with patch.object(mod, "config_manager", mock_cm), patch.object(
-            mod, "require_localhost_request", return_value=None
+        with (
+            patch.object(mod, "config_manager", mock_cm),
+            patch.object(mod, "require_localhost_request", return_value=None),
         ):
             client = _client(mod.router)
             response = client.post(
@@ -1733,8 +1795,9 @@ class TestSystemConfig:
     def test_get_config_backups_success(self):
         from venom_core.api.routes import system_config as mod
 
-        with patch.object(mod, "config_manager", self.mock_cm), patch.object(
-            mod, "require_localhost_request", return_value=None
+        with (
+            patch.object(mod, "config_manager", self.mock_cm),
+            patch.object(mod, "require_localhost_request", return_value=None),
         ):
             client = _client(mod.router)
             response = client.get("/api/v1/config/backups")
@@ -1747,8 +1810,9 @@ class TestSystemConfig:
     def test_get_config_backups_with_limit(self):
         from venom_core.api.routes import system_config as mod
 
-        with patch.object(mod, "config_manager", self.mock_cm), patch.object(
-            mod, "require_localhost_request", return_value=None
+        with (
+            patch.object(mod, "config_manager", self.mock_cm),
+            patch.object(mod, "require_localhost_request", return_value=None),
         ):
             client = _client(mod.router)
             response = client.get("/api/v1/config/backups?limit=5")
@@ -1762,8 +1826,9 @@ class TestSystemConfig:
         mock_cm = MagicMock()
         mock_cm.get_backup_list.side_effect = RuntimeError("backup list error")
 
-        with patch.object(mod, "config_manager", mock_cm), patch.object(
-            mod, "require_localhost_request", return_value=None
+        with (
+            patch.object(mod, "config_manager", mock_cm),
+            patch.object(mod, "require_localhost_request", return_value=None),
         ):
             client = _client(mod.router)
             response = client.get("/api/v1/config/backups")
@@ -1775,8 +1840,9 @@ class TestSystemConfig:
     def test_restore_config_backup_success(self):
         from venom_core.api.routes import system_config as mod
 
-        with patch.object(mod, "config_manager", self.mock_cm), patch.object(
-            mod, "require_localhost_request", return_value=None
+        with (
+            patch.object(mod, "config_manager", self.mock_cm),
+            patch.object(mod, "require_localhost_request", return_value=None),
         ):
             client = _client(mod.router)
             response = client.post(
@@ -1795,8 +1861,9 @@ class TestSystemConfig:
         mock_cm = MagicMock()
         mock_cm.restore_backup.side_effect = RuntimeError("restore error")
 
-        with patch.object(mod, "config_manager", mock_cm), patch.object(
-            mod, "require_localhost_request", return_value=None
+        with (
+            patch.object(mod, "config_manager", mock_cm),
+            patch.object(mod, "require_localhost_request", return_value=None),
         ):
             client = _client(mod.router)
             response = client.post(
@@ -1836,8 +1903,9 @@ class TestSystemConfig:
 
     def test_require_localhost_request_denies_remote(self):
         """Test require_localhost_request raises 403 for remote IPs."""
-        from venom_core.api.routes.system_config import require_localhost_request
         from fastapi import HTTPException
+
+        from venom_core.api.routes.system_config import require_localhost_request
 
         mock_req = MagicMock()
         mock_req.client = SimpleNamespace(host="10.0.0.1")
@@ -1847,8 +1915,9 @@ class TestSystemConfig:
 
     def test_require_localhost_request_denies_no_client(self):
         """Test require_localhost_request raises 403 when client is None."""
-        from venom_core.api.routes.system_config import require_localhost_request
         from fastapi import HTTPException
+
+        from venom_core.api.routes.system_config import require_localhost_request
 
         mock_req = MagicMock()
         mock_req.client = None

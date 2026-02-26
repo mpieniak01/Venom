@@ -69,7 +69,7 @@ In practice, Venom acts as a decision-and-execution layer for technical teams: i
 - [Contributing](docs/CONTRIBUTING.md) - Contribution process and PR expectations.
 - [Testing policy](docs/TESTING_POLICY.md) - Test scope, validation commands, and quality requirements.
 - [QA Delivery Guide](docs/QA_DELIVERY_GUIDE.md) - Delivery checklist from validation to release readiness.
-- [LLM 3-stack benchmark baseline (2026-02-22)](docs/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE_2026-02-22.md) - Frozen reference metrics for `ollama`/`vllm`/`onnx` and E2E comparison.
+- [LLM 3-stack benchmark baseline](docs/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE.md) - Frozen reference metrics for `ollama`/`vllm`/`onnx` and E2E comparison.
 
 ## UI preview
 <table>

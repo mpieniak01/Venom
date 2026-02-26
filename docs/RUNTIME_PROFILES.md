@@ -6,7 +6,7 @@ Venom supports three distinct runtime profiles to accommodate different hardware
 
 ## Canonical References
 
-- Benchmark baseline (3-stack): `docs/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE_2026-02-22.md`
+- Benchmark baseline (3-stack): `docs/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE.md`
 - WSL setup and guardrails: `docs/WINDOWS_WSL_D_DRIVE_INSTALL.md`
 - Operational monitoring: `README.md` (`Monitoring and environment hygiene`)
 

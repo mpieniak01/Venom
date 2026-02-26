@@ -69,7 +69,7 @@ W praktyce Venom działa jako warstwa decyzyjno-wykonawcza dla zespołów techni
 - [Contributing](docs/PL/CONTRIBUTING.md) - Proces współpracy, standard zmian i oczekiwania do PR.
 - [Polityka testów](docs/PL/TESTING_POLICY.md) - Zakres testów, komendy walidacyjne i wymagania jakościowe.
 - [QA Delivery Guide](docs/PL/QA_DELIVERY_GUIDE.md) - Checklista dostarczenia zmian od walidacji do gotowości release.
-- [Baseline benchmarku LLM 3-stack (2026-02-22)](docs/PL/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE_2026-02-22.md) - Zamrożone metryki referencyjne dla `ollama`/`vllm`/`onnx` i porównania E2E.
+- [Baseline benchmarku LLM 3-stack](docs/PL/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE.md) - Zamrożone metryki referencyjne dla `ollama`/`vllm`/`onnx` i porównania E2E.
 
 ## Podgląd interfejsu
 <table>

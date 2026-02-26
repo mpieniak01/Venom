@@ -6,7 +6,7 @@ Venom wspiera trzy różne profile runtime, aby dostosować się do różnych wy
 
 ## Kanoniczne odnośniki
 
-- Baseline benchmarków (3-stack): `docs/PL/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE_2026-02-22.md`
+- Baseline benchmarków (3-stack): `docs/PL/LLM_RUNTIME_3STACK_BENCHMARK_BASELINE.md`
 - Instalacja WSL i zasady pamięci: `docs/PL/WINDOWS_WSL_D_DRIVE_INSTALL.md`
 - Monitoring operacyjny: `README_PL.md` (sekcja `Monitoring i higiena środowiska`)
 

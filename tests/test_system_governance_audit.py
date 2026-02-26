@@ -81,3 +81,25 @@ def test_extract_actor_from_request_handles_internal_errors() -> None:
             raise RuntimeError("broken-state")
 
     assert system_governance._extract_actor_from_request(_BrokenRequest()) == "unknown"
+
+
+def test_extract_actor_from_request_prefers_state_user() -> None:
+    class _State:
+        user = "state-user"
+
+    class _Request:
+        state = _State()
+        headers = {"X-Actor": "header-actor", "X-User-Id": "user-id"}
+
+    assert system_governance._extract_actor_from_request(_Request()) == "state-user"
+
+
+def test_extract_actor_from_request_uses_headers_fallback() -> None:
+    class _State:
+        user = None
+
+    class _Request:
+        state = _State()
+        headers = {"X-Actor": "header-actor"}
+
+    assert system_governance._extract_actor_from_request(_Request()) == "header-actor"

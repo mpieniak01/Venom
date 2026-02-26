@@ -20,6 +20,9 @@ import { getServerApiBaseUrl } from "@/lib/env";
 import { normalizeMetrics } from "@/lib/metrics-adapter";
 
 const KNOWLEDGE_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT ?? "500");
+const SERVER_DATA_REVALIDATE_SECONDS = Number(
+  process.env.NEXT_SERVER_DATA_REVALIDATE_SECONDS ?? "30",
+);
 
 const API_BASE = getServerApiBaseUrl();
 
@@ -34,7 +37,7 @@ const buildUrl = (path: string) => {
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
     const response = await fetch(buildUrl(path), {
-      cache: "no-store",
+      next: { revalidate: SERVER_DATA_REVALIDATE_SECONDS },
       headers: {
         "Content-Type": "application/json",
       },

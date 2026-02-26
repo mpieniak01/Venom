@@ -267,7 +267,7 @@ function formatCell(value: unknown): string {
   if (isPlainObject(value)) return JSON.stringify(value);
   if (typeof value === "object") {
     const serialized = JSON.stringify(value);
-    return serialized === undefined ? "—" : serialized;
+    return serialized ?? "—";
   }
   return "—";
 }

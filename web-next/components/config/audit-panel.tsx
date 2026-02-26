@@ -123,8 +123,7 @@ function readString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-export function AuditPanel() {
-  const t = useTranslation();
+function useAuditPanelModel(t: ReturnType<typeof useTranslation>) {
   const unknownLabel = t("common.unknown");
   const noDataLabel = t("common.noData");
   const [entries, setEntries] = useState<AuditStreamEntry[]>([]);
@@ -352,6 +351,64 @@ export function AuditPanel() {
     return selectedAutonomyPolicy.check !== null || selectedAutonomyPolicy.compliant !== null;
   }, [hasAutonomyDetails, selectedAutonomyPolicy]);
 
+  return {
+    noDataLabel,
+    apiChannelFilter,
+    setApiChannelFilter,
+    outcomeFilter,
+    setOutcomeFilter,
+    refresh: onRefreshClick,
+    refreshing,
+    loadError,
+    loading,
+    filteredRows,
+    apiChannels,
+    visibleRows,
+    onRowsScroll,
+    hasMoreRows,
+    selectedRow,
+    setSelectedEntryId,
+    selectedAutonomyLevel,
+    hasAutonomySection,
+    selectedAutonomyPolicy,
+  };
+}
+
+const SKELETON_ROW_KEYS = [
+  "audit-skeleton-row-1",
+  "audit-skeleton-row-2",
+  "audit-skeleton-row-3",
+  "audit-skeleton-row-4",
+  "audit-skeleton-row-5",
+  "audit-skeleton-row-6",
+  "audit-skeleton-row-7",
+  "audit-skeleton-row-8",
+] as const;
+
+export function AuditPanel() {
+  const t = useTranslation();
+  const {
+    noDataLabel,
+    apiChannelFilter,
+    setApiChannelFilter,
+    outcomeFilter,
+    setOutcomeFilter,
+    refresh,
+    refreshing,
+    loadError,
+    loading,
+    filteredRows,
+    apiChannels,
+    visibleRows,
+    onRowsScroll,
+    hasMoreRows,
+    selectedRow,
+    setSelectedEntryId,
+    selectedAutonomyLevel,
+    hasAutonomySection,
+    selectedAutonomyPolicy,
+  } = useAuditPanelModel(t);
+
   return (
     <div className="space-y-4">
       <div className="glass-panel rounded-2xl border border-cyan-500/20 p-4">
@@ -364,7 +421,7 @@ export function AuditPanel() {
             type="button"
             size="sm"
             variant="outline"
-            onClick={onRefreshClick}
+            onClick={refresh}
             disabled={refreshing}
           >
             {refreshing ? t("config.audit.refreshing") : t("config.audit.refresh")}
@@ -417,9 +474,9 @@ export function AuditPanel() {
                 overscrollBehavior: "contain",
               }}
             >
-              {Array.from({ length: 8 }).map((_, index) => (
+              {SKELETON_ROW_KEYS.map((rowKey) => (
                 <div
-                  key={`audit-skeleton-row-${index}`}
+                  key={rowKey}
                   className="glass-panel rounded-2xl box-subtle h-8 animate-pulse"
                 />
               ))}
@@ -526,18 +583,18 @@ export function AuditPanel() {
                       <p className="text-[11px] uppercase tracking-wide text-cyan-300">
                         {t("config.audit.details.autonomy.title")}
                       </p>
-                      {selectedAutonomyLevel.current !== null ? (
+                      {selectedAutonomyLevel.current === null ? null : (
                         <p className="text-zinc-100">
                           {t("config.audit.details.autonomy.current")}: {selectedAutonomyLevel.current}
                           {selectedAutonomyLevel.currentName ? ` (${selectedAutonomyLevel.currentName})` : ""}
                         </p>
-                      ) : null}
-                      {selectedAutonomyLevel.required !== null ? (
+                      )}
+                      {selectedAutonomyLevel.required === null ? null : (
                         <p className="text-zinc-100">
                           {t("config.audit.details.autonomy.required")}: {selectedAutonomyLevel.required}
                           {selectedAutonomyLevel.requiredName ? ` (${selectedAutonomyLevel.requiredName})` : ""}
                         </p>
-                      ) : null}
+                      )}
                       {selectedAutonomyLevel.oldLevel !== null || selectedAutonomyLevel.newLevel !== null ? (
                         <p className="text-zinc-100">
                           {t("config.audit.details.autonomy.change")}: {selectedAutonomyLevel.oldLevel ?? "?"}
@@ -552,14 +609,14 @@ export function AuditPanel() {
                           {t("config.audit.details.autonomy.policy")}: {selectedAutonomyPolicy.check}
                         </p>
                       ) : null}
-                      {selectedAutonomyPolicy?.compliant !== null ? (
+                      {selectedAutonomyPolicy?.compliant === null ? null : (
                         <p className="text-zinc-100">
                           {t("config.audit.details.autonomy.compliance")}:{" "}
                           {selectedAutonomyPolicy?.compliant
                             ? t("config.audit.details.autonomy.yes")
                             : t("config.audit.details.autonomy.no")}
                         </p>
-                      ) : null}
+                      )}
                     </div>
                   ) : null}
 

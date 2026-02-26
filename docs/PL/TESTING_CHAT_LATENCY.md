@@ -83,3 +83,4 @@ Tworzy `perf-artifacts/<timestamp>/` i kopiuje:
 | --- | --- | --- |
 | 2026-01-05 | `tests/perf/chat-latency.spec.ts` (Next Cockpit) | PASS, 4.0s |
 | 2026-02-05 | `scripts/perf_check_help.py` (Fast Path Warm) | PASS, ~0.09s |
+| 2026-02-26 | `tests/perf/test_llm_simple_e2e.py` + `tests/perf/test_llm_latency_e2e.py` + `tests/perf/test_latency_modes_e2e.py` (`onnx`/`ollama`/`vllm`, warianty Gemma3) | PASS; szczegóły: `docs/_to_do/175_onnx_gemma3_latency_diagnostics_2026_02_26.md` |

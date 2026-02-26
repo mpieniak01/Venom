@@ -265,17 +265,3 @@ def get_all_autonomy_levels() -> AutonomyLevelsResponse:
     except Exception as e:
         logger.exception("Błąd podczas pobierania listy poziomów")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
-        get_audit_stream().publish(
-            source="core.governance",
-            action="autonomy.level_changed",
-            actor=actor,
-            status="success",
-            details={
-                "old_level": old_level,
-                "old_level_name": old_level_info.name if old_level_info else "UNKNOWN",
-                "new_level": request.level,
-                "new_level_name": level_info.name,
-                "actor": actor,
-                "request_path": "/api/v1/system/autonomy",
-            },
-        )

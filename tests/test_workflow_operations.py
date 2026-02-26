@@ -309,6 +309,29 @@ class TestWorkflowOperationService:
 
         assert service.get_latest_workflow_status() == WorkflowStatus.IDLE
 
+    def test_get_latest_workflow_status_handles_missing_status_key(self, service):
+        """Missing status key in latest record should safely fall back to IDLE."""
+        workflow_id = str(uuid4())
+        record = service._get_or_create_workflow(workflow_id)
+        record.pop("status", None)
+        record["updated_at"] = "9999-01-01T00:00:00+00:00"
+
+        assert service.get_latest_workflow_status() == WorkflowStatus.IDLE
+
+    def test_pause_invalid_uuid_returns_structured_error(self, service):
+        """Pause path should also return INVALID_CONFIGURATION for malformed UUID."""
+        response = service.pause_workflow("invalid-uuid", "test_user")
+
+        assert response.operation == WorkflowOperation.PAUSE
+        assert response.reason_code == ReasonCode.INVALID_CONFIGURATION
+        assert response.status == WorkflowStatus.IDLE
+
+    def test_get_workflow_service_alias_uses_singleton(self):
+        """Backward-compatible alias should return singleton service instance."""
+        from venom_core.services.workflow_operations import get_workflow_service
+
+        assert get_workflow_service() is get_workflow_operation_service()
+
 
 class TestWorkflowLifecycle:
     """Test complete workflow lifecycles."""

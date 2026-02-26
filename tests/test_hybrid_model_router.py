@@ -305,7 +305,7 @@ class TestHybridModelRouter:
         routing = router._route_to_cloud_fast("Test reason")
 
         assert routing["target"] == "cloud"
-        assert routing["model_name"] == "gemini-1.5-flash"
+        assert routing["model_name"] == settings.GOOGLE_GEMINI_FLASH_MODEL
         assert routing["provider"] == "google"
         assert routing["tier"] == "fast"
 

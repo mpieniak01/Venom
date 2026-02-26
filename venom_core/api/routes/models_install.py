@@ -70,6 +70,30 @@ def _resolve_onnx_runtime_dir(model: dict) -> Path | None:
     return path if path.exists() else None
 
 
+def _read_decoder_filename(config_path: Path) -> tuple[str, str | None]:
+    decoder_filename = "model.onnx"
+    try:
+        payload = json.loads(config_path.read_text("utf-8"))
+    except Exception as exc:
+        return decoder_filename, f"Nieprawidłowy genai_config.json: {exc}"
+
+    if not isinstance(payload, dict):
+        return decoder_filename, None
+
+    model_cfg = payload.get("model")
+    if not isinstance(model_cfg, dict):
+        return decoder_filename, None
+
+    decoder_cfg = model_cfg.get("decoder")
+    if not isinstance(decoder_cfg, dict):
+        return decoder_filename, None
+
+    raw_name = decoder_cfg.get("filename")
+    if isinstance(raw_name, str) and raw_name.strip():
+        decoder_filename = raw_name.strip()
+    return decoder_filename, None
+
+
 def _validate_onnx_chat_compatibility(model: dict) -> tuple[bool, str | None]:
     runtime_dir = _resolve_onnx_runtime_dir(model)
     if runtime_dir is None:
@@ -81,19 +105,9 @@ def _validate_onnx_chat_compatibility(model: dict) -> tuple[bool, str | None]:
     if not config_path.exists():
         return False, "Brak genai_config.json w katalogu modelu ONNX."
 
-    decoder_filename = "model.onnx"
-    try:
-        payload = json.loads(config_path.read_text("utf-8"))
-        if isinstance(payload, dict):
-            model_cfg = payload.get("model")
-            if isinstance(model_cfg, dict):
-                decoder_cfg = model_cfg.get("decoder")
-                if isinstance(decoder_cfg, dict):
-                    raw_name = decoder_cfg.get("filename")
-                    if isinstance(raw_name, str) and raw_name.strip():
-                        decoder_filename = raw_name.strip()
-    except Exception as exc:
-        return False, f"Nieprawidłowy genai_config.json: {exc}"
+    decoder_filename, decoder_err = _read_decoder_filename(config_path)
+    if decoder_err:
+        return False, decoder_err
 
     decoder_path = runtime_dir / decoder_filename
     if not decoder_path.exists():

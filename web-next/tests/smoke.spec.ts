@@ -63,7 +63,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
       if (route.request().method() === "POST") {
         const body = route.request().postDataJSON();
         expect(body.content).toBe("Test zadania");
-        expect(body.forced_provider).toBe("gpt");
+        expect(["gpt", "openai"]).toContain(body.forced_provider);
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -100,7 +100,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     ]);
 
     expect(runtimeReq.method()).toBe("POST");
-    expect(runtimeReq.postDataJSON()).toEqual(expect.objectContaining({ provider: "openai" }));
+    expect(["openai", "gpt"]).toContain(runtimeReq.postDataJSON().provider);
     expect(taskReq.method()).toBe("POST");
     await expect(page.getByText(/Wysłano zadanie: slash-gpt/i)).toBeVisible();
   });

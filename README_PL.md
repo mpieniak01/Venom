@@ -12,18 +12,18 @@
 
 > **| [English Documentation Available](README.md)**
 
-**Venom** to lokalna platforma AI do automatyzacji pracy inżynierskiej, która łączy orkiestrację agentów, wykonanie narzędzi oraz pamięć organizacyjną w jednym operacyjnym środowisku. System został zaprojektowany tak, aby skracać czas dostarczania zmian: od analizy zadania, przez plan, po implementację i kontrolę jakości. Dzięki podejściu local-first firma zachowuje większą kontrolę nad danymi, kosztami i przewidywalnością działania.
+**Venom** to open-source'owy, local-first stack AI do realnej automatyzacji pracy inżynierskiej. Łączy orkiestrację agentów, wykonywanie narzędzi i pamięć długoterminową w jednym środowisku, które możesz uruchomić i rozwijać lokalnie.
 
-W praktyce Venom działa jako warstwa decyzyjno-wykonawcza dla zespołów technicznych: automatyzuje powtarzalne fragmenty pracy, porządkuje wiedzę projektową i zapewnia spójny punkt zarządzania runtime, konfiguracją oraz governance modeli. To podejście ułatwia skalowanie pracy bez proporcjonalnego zwiększania obciążenia operacyjnego.
+To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (Workflow Control Plane), przejrzyste decyzje runtime i pełny ślad audytowy requestów. Do tego 3 stosy modeli do wyboru: `ONNX`, `vLLM`, `Ollama` - zależnie od sprzętu, kosztu i celu.
 
-## Dlaczego biznesowo
-- Skraca czas realizacji zadań technicznych (planowanie + wykonanie + weryfikacja).
-- Obniża koszt operacyjny dzięki trybowi lokalnemu i kontroli providerów.
-- Utrzymuje wiedzę w firmie przez pamięć długoterminową i lessons learned.
-- Daje kontrolę operacyjną: status usług, konfiguracja i governance modeli.
-- Porządkuje współpracę zespołową przez wspólne workflow i standardy QA.
-- Ogranicza ryzyko wdrożeń przez podwójną kontrolę: SonarCloud dla jakości kodu i Snyk dla podatności zależności.
-- Wzmacnia gotowość compliance przez mierzalne i audytowalne sygnały jakości oraz bezpieczeństwa w CI.
+## Dlaczego Venom
+- Local-first z opcją cloud: dane i inferencja mogą zostać lokalnie, a nie w zewnętrznym SaaS.
+- Trzy runtime do wyboru (`ONNX` / `vLLM` / `Ollama`): dobierasz stos pod sprzęt i wymagany latency/cost.
+- Sterowanie procesem zamiast "magii": Workflow Control Plane pokazuje co działa, co jest aktywne i co się zmienia.
+- Transparentność i audyt: request tracing pokazuje decyzje, kroki i wyniki end-to-end.
+- Pamięć i lessons learned: wiedza nie znika po jednym czacie, tylko wraca w kolejnych zadaniach.
+- Otwarta baza kodu i dokumentacji: łatwiej debugować, rozszerzać i utrzymać własny fork.
+- Mierzalne bramki jakości w CI: SonarCloud, Snyk i kontrakt OpenAPI działają jako jawne sygnały jakości.
 
 ## Kluczowe możliwości
 - 🤖 **Orkiestracja agentów** - planowanie i wykonanie zadań przez wyspecjalizowane role.

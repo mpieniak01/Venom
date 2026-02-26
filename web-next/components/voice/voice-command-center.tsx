@@ -118,7 +118,12 @@ export function VoiceCommandCenter() {
       URL.revokeObjectURL(workletModuleUrlRef.current);
       workletModuleUrlRef.current = null;
     }
-    void audioContextRef.current?.close();
+    const audioContext = audioContextRef.current;
+    if (audioContext) {
+      audioContext.close().catch(() => {
+        // Ignore close errors when context is already shutting down.
+      });
+    }
     audioContextRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;

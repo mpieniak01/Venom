@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
-import asyncio
+import importlib.util
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+
+from venom_core.core.orchestrator.kernel_manager import KernelManager
+from venom_core.core.orchestrator.middleware import Middleware
+from venom_core.core.orchestrator.orchestrator_events import (
+    build_error_envelope,
+    set_runtime_error,
+    trace_llm_start,
+    trace_step_async,
+)
 
 # ---------------------------------------------------------------------------
 # orchestrator.py – re-export module (backward-compat shim)
@@ -17,7 +27,6 @@ import pytest
 def test_orchestrator_reexport_module_exposes_orchestrator_class():
     """Importing from the re-export shim should work and expose Orchestrator."""
     import venom_core.core.orchestrator as orch_module
-
     from venom_core.core.orchestrator.orchestrator_core import (
         Orchestrator as DirectOrch,
     )
@@ -28,7 +37,6 @@ def test_orchestrator_reexport_module_exposes_orchestrator_class():
 def test_orchestrator_reexport_module_exposes_constants():
     """Constants re-exported by the shim should match the package values."""
     import venom_core.core.orchestrator as orch_module
-
     from venom_core.core.orchestrator.constants import (
         COUNCIL_TASK_THRESHOLD,
         MAX_CONTEXT_CHARS,
@@ -42,16 +50,27 @@ def test_orchestrator_reexport_module_exposes_constants():
     assert orch_module.SESSION_HISTORY_LIMIT == SESSION_HISTORY_LIMIT
 
 
+def test_legacy_orchestrator_shim_file_exports_public_api():
+    """Legacy shim file venom_core/core/orchestrator.py should expose expected symbols."""
+    shim_path = (
+        Path(__file__).resolve().parents[1] / "venom_core" / "core" / "orchestrator.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "venom_core.core.orchestrator_legacy_shim", shim_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    from venom_core.core.orchestrator import Orchestrator as PackageOrchestrator
+
+    assert "Orchestrator" in module.__all__
+    assert module.Orchestrator is PackageOrchestrator
+
+
 # ---------------------------------------------------------------------------
 # orchestrator_events.py – None-tracer branches
 # ---------------------------------------------------------------------------
-
-from venom_core.core.orchestrator.orchestrator_events import (
-    build_error_envelope,
-    set_runtime_error,
-    trace_llm_start,
-    trace_step_async,
-)
 
 
 def test_trace_llm_start_noop_when_tracer_is_none():
@@ -115,8 +134,6 @@ def test_build_error_envelope_with_all_fields():
 # middleware.py – Middleware class
 # ---------------------------------------------------------------------------
 
-from venom_core.core.orchestrator.middleware import Middleware
-
 
 def test_middleware_init_stores_dependencies():
     """Middleware.__init__ should assign state_manager, broadcaster and tracer."""
@@ -124,7 +141,9 @@ def test_middleware_init_stores_dependencies():
     broadcaster = MagicMock()
     tracer = MagicMock()
 
-    mw = Middleware(state_manager=state, event_broadcaster=broadcaster, request_tracer=tracer)
+    mw = Middleware(
+        state_manager=state, event_broadcaster=broadcaster, request_tracer=tracer
+    )
 
     assert mw.state_manager is state
     assert mw.event_broadcaster is broadcaster
@@ -259,8 +278,6 @@ def test_middleware_set_runtime_error_skips_tracer_when_none():
 # kernel_manager.py – KernelManager class
 # ---------------------------------------------------------------------------
 
-from venom_core.core.orchestrator.kernel_manager import KernelManager
-
 
 def _make_runtime(config_hash: str = "hash-v1"):
     return SimpleNamespace(config_hash=config_hash)
@@ -344,10 +361,6 @@ def test_kernel_manager_refresh_kernel_rebuilds_dispatcher(monkeypatch):
             lambda: runtime_info,
         )
         # Patch the TaskDispatcher import inside refresh_kernel
-        import venom_core.core.orchestrator.kernel_manager as km_module
-
-        orig_dispatcher_cls = None
-        import importlib
         import venom_core.core.dispatcher as dispatcher_module
 
         orig_cls = dispatcher_module.TaskDispatcher

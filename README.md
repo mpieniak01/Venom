@@ -12,18 +12,18 @@
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 
-**Venom** is a local AI platform for engineering automation that combines agent orchestration, tool execution, and organizational memory in one operational environment. It is designed to shorten delivery time from task analysis and planning to implementation and quality control. With a local-first approach, teams keep stronger control over data, costs, and runtime predictability.
+**Venom** is an open-source, local-first AI stack for practical engineering automation. It combines agent orchestration, tool execution, and long-term memory in one environment you can run and evolve locally.
 
-In practice, Venom acts as a decision-and-execution layer for technical teams: it automates repetitive work, structures project knowledge, and provides a consistent control point for runtime, configuration, and model governance. This makes scaling delivery easier without proportional growth in operational overhead.
+It is not a black box. You get explicit process control (Workflow Control Plane), transparent runtime decisions, and full request-level audit trails. You can also choose between three model stacks: `ONNX`, `vLLM`, `Ollama`, depending on hardware, cost, and latency goals.
 
-## Why it matters for business
-- Reduces end-to-end delivery time for technical tasks (plan + execute + verify).
-- Lowers operating cost with local runtime and provider control.
-- Keeps organizational knowledge through long-term memory and lessons learned.
-- Improves operational control: service status, configuration, and model governance.
-- Standardizes team workflows and QA expectations.
-- Lowers release risk with dual control planes: SonarCloud for code quality and Snyk for dependency vulnerabilities.
-- Strengthens audit/compliance posture with traceable quality and security signals across CI.
+## Why Venom
+- Local-first by default, cloud when needed: keep data and inference local instead of pushing everything to SaaS.
+- Three runtime stacks (`ONNX` / `vLLM` / `Ollama`): pick the best fit for your hardware and latency/cost target.
+- Process control instead of hidden behavior: Workflow Control Plane shows what runs, what is active, and what changes.
+- Transparency and auditability: request tracing exposes decisions, steps, and outcomes end-to-end.
+- Memory and lessons learned: knowledge persists beyond a single chat session.
+- Open code and docs: easier to debug, extend, and maintain your own fork.
+- Explicit quality gates in CI: SonarCloud, Snyk, and OpenAPI Contract remain visible and measurable.
 
 ## Key capabilities
 - 🤖 **Agent orchestration** - planning and execution through specialized roles.

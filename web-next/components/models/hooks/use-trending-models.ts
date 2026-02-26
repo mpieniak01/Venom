@@ -1,22 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import type { ModelCatalogEntry, ModelCatalogResponse } from "@/lib/types";
 import { readStorageJson, writeStorageJson, CatalogCachePayload } from "../models-helpers";
 
-const resolveInitialCatalogState = (storageKey: string) => {
-    const cached = readStorageJson<CatalogCachePayload>(storageKey);
-    if (!cached) return { data: [], loading: false };
-    return { data: cached.data ?? [], stale: cached.stale, error: cached.error, loading: false };
-};
-
 export function useTrendingModels() {
     const [trendingCollapsed, setTrendingCollapsed] = useState(false);
-    const [trendingHf, setTrendingHf] = useState<{ data: ModelCatalogEntry[]; stale?: boolean; error?: string | null; loading: boolean }>(() =>
-        resolveInitialCatalogState("models-trending-hf"),
-    );
-    const [trendingOllama, setTrendingOllama] = useState<{ data: ModelCatalogEntry[]; stale?: boolean; error?: string | null; loading: boolean }>(() =>
-        resolveInitialCatalogState("models-trending-ollama"),
-    );
+    const [trendingHf, setTrendingHf] = useState<{ data: ModelCatalogEntry[]; stale?: boolean; error?: string | null; loading: boolean }>({ data: [], loading: false });
+    const [trendingOllama, setTrendingOllama] = useState<{ data: ModelCatalogEntry[]; stale?: boolean; error?: string | null; loading: boolean }>({ data: [], loading: false });
+
+    useEffect(() => {
+        const cachedHf = readStorageJson<CatalogCachePayload>("models-trending-hf");
+        const cachedOllama = readStorageJson<CatalogCachePayload>("models-trending-ollama");
+
+        if (cachedHf) {
+            setTrendingHf((prev) => ({ ...prev, data: cachedHf.data ?? [], stale: cachedHf.stale, error: cachedHf.error }));
+        }
+        if (cachedOllama) {
+            setTrendingOllama((prev) => ({ ...prev, data: cachedOllama.data ?? [], stale: cachedOllama.stale, error: cachedOllama.error }));
+        }
+    }, []);
 
     const refreshTrending = async () => {
         setTrendingHf((prev) => ({ ...prev, loading: true, error: null }));

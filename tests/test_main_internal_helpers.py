@@ -533,6 +533,28 @@ def test_resolve_audit_status_buckets():
     assert main_module._resolve_audit_status(503) == "failure"
 
 
+def test_resolve_http_autonomy_policy_variants():
+    assert main_module._resolve_http_autonomy_policy("GET", 200) == (
+        "not_applicable_read_only",
+        True,
+    )
+    assert main_module._resolve_http_autonomy_policy("POST", 201) == ("allowed", True)
+    assert main_module._resolve_http_autonomy_policy("DELETE", 403) == (
+        "blocked",
+        False,
+    )
+    assert main_module._resolve_http_autonomy_policy("TRACE", 200) == ("unknown", None)
+
+
+def test_resolve_audit_autonomy_snapshot_falls_back_on_guard_error(monkeypatch):
+    monkeypatch.setattr(
+        main_module.permission_guard,
+        "get_current_level",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    assert main_module._resolve_audit_autonomy_snapshot() == (-1, "UNKNOWN")
+
+
 def _build_request(
     *,
     method: str,

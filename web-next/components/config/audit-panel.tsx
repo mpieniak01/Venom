@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type UIEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
+import { isNearBottom, mergeAuditEntries, nextVisibleCount } from "@/lib/audit-panel-helpers";
 
 type AuditStreamEntry = {
   id: string;
@@ -33,8 +34,12 @@ type AuditRow = {
 type OutcomeFilter = "all" | "success" | "warning" | "danger" | "neutral";
 
 const ALL_CHANNELS = "all";
-const AUDIT_STREAM_URL = "/api/v1/audit/stream?limit=200";
+const AUDIT_STREAM_URL = "/api/v1/audit/stream";
+const AUDIT_INITIAL_LIMIT = 60;
+const AUDIT_FULL_LIMIT = 200;
+const AUDIT_RENDER_BATCH = 60;
 const API_MAP_URL = "/api/v1/system/api-map";
+const API_MAP_FETCH_TIMEOUT_MS = 1500;
 
 type ApiMapConnection = {
   target_component?: string;
@@ -127,60 +132,77 @@ export function AuditPanel() {
   const [apiChannelFilter, setApiChannelFilter] = useState<string>(ALL_CHANNELS);
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(AUDIT_RENDER_BATCH);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const fetchApiMapChannels = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_MAP_FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(API_MAP_URL, { signal: controller.signal });
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as ApiMapPayload;
+      const channels = new Set<string>();
+      payload.internal_connections?.forEach((connection) => {
+        const name = (connection.target_component || "").trim();
+        if (name) channels.add(name);
+      });
+      payload.external_connections?.forEach((connection) => {
+        const name = (connection.target_component || "").trim();
+        if (name) channels.add(name);
+      });
+      setApiMapChannels(Array.from(channels).sort((a, b) => a.localeCompare(b)));
+    } catch {
+      // API map is auxiliary metadata; ignore timeout/network errors.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }, []);
+
   const fetchAudits = useCallback(async () => {
     setLoadError(null);
-    const [auditResponse, apiMapResponse] = await Promise.allSettled([
-      fetch(AUDIT_STREAM_URL),
-      fetch(API_MAP_URL),
-    ]);
-
-    if (apiMapResponse.status === "fulfilled" && apiMapResponse.value.ok) {
-      try {
-        const payload = (await apiMapResponse.value.json()) as ApiMapPayload;
-        const channels = new Set<string>();
-        payload.internal_connections?.forEach((connection) => {
-          const name = (connection.target_component || "").trim();
-          if (name) channels.add(name);
-        });
-        payload.external_connections?.forEach((connection) => {
-          const name = (connection.target_component || "").trim();
-          if (name) channels.add(name);
-        });
-        setApiMapChannels(Array.from(channels).sort((a, b) => a.localeCompare(b)));
-      } catch {
-        setApiMapChannels([]);
-      }
-    } else {
-      setApiMapChannels([]);
-    }
+    setVisibleCount(AUDIT_RENDER_BATCH);
 
     try {
-      if (auditResponse.status !== "fulfilled") {
-        throw new Error(t("config.audit.loadError"));
-      }
-      const response = auditResponse.value;
-      if (!response.ok) {
+      const initialResponse = await fetch(`${AUDIT_STREAM_URL}?limit=${AUDIT_INITIAL_LIMIT}`);
+      if (!initialResponse.ok) {
         setEntries([]);
         setLoadError(
           t("config.audit.loadErrorWithStatus", {
             message: t("config.audit.loadError"),
-            status: response.status,
+            status: initialResponse.status,
           }),
         );
         return;
       }
-      const payload = (await response.json()) as { entries?: AuditStreamEntry[] };
-      setEntries(Array.isArray(payload.entries) ? payload.entries : []);
+      const initialPayload = (await initialResponse.json()) as { entries?: AuditStreamEntry[] };
+      const initialEntries = Array.isArray(initialPayload.entries) ? initialPayload.entries : [];
+      setEntries(initialEntries);
+
+      // Fetch older entries in background to keep first paint fast.
+      fetch(`${AUDIT_STREAM_URL}?limit=${AUDIT_FULL_LIMIT}`)
+        .then(async (response) => {
+          if (!response.ok) return;
+          const payload = (await response.json()) as { entries?: AuditStreamEntry[] };
+          const fullEntries = Array.isArray(payload.entries) ? payload.entries : [];
+          if (!fullEntries.length) return;
+          setEntries((prev) => {
+            return mergeAuditEntries(prev, fullEntries);
+          });
+        })
+        .catch(() => undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : t("config.audit.loadError");
       setLoadError(message);
       setEntries([]);
     }
-  }, [t]);
+    // Do not block visible log rendering on slower API map endpoint.
+    fetchApiMapChannels().catch(() => undefined);
+  }, [fetchApiMapChannels, t]);
 
   useEffect(() => {
     const load = async () => {
@@ -241,6 +263,27 @@ export function AuditPanel() {
         return true;
       }),
     [apiChannelFilter, outcomeFilter, rows],
+  );
+
+  useEffect(() => {
+    setVisibleCount(AUDIT_RENDER_BATCH);
+  }, [apiChannelFilter, outcomeFilter]);
+
+  const visibleRows = useMemo(
+    () => filteredRows.slice(0, visibleCount),
+    [filteredRows, visibleCount],
+  );
+
+  const hasMoreRows = visibleRows.length < filteredRows.length;
+
+  const onRowsScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      if (!hasMoreRows) return;
+      const target = event.currentTarget;
+      if (!isNearBottom(target.scrollHeight, target.scrollTop, target.clientHeight)) return;
+      setVisibleCount((prev) => nextVisibleCount(prev, filteredRows.length, AUDIT_RENDER_BATCH));
+    },
+    [filteredRows.length, hasMoreRows],
   );
 
   useEffect(() => {
@@ -363,13 +406,46 @@ export function AuditPanel() {
         </div>
 
         {loadError ? <p className="text-xs text-amber-300">{loadError}</p> : null}
-        {loading ? <p className="text-zinc-400">{t("common.loading")}</p> : null}
+        {loading ? (
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
+            <div
+              className="space-y-2 pr-2"
+              style={{
+                maxHeight: "690px",
+                overflowY: "scroll",
+                scrollbarGutter: "stable",
+                overscrollBehavior: "contain",
+              }}
+            >
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div
+                  key={`audit-skeleton-row-${index}`}
+                  className="glass-panel rounded-2xl box-subtle h-8 animate-pulse"
+                />
+              ))}
+            </div>
+            <aside className="glass-panel rounded-2xl box-subtle p-4 animate-pulse">
+              <div className="space-y-3">
+                <div className="h-4 w-28 rounded bg-white/10" />
+                <div className="h-6 w-40 rounded bg-white/10" />
+                <div className="h-4 w-32 rounded bg-white/10" />
+                <div className="mt-4 space-y-2">
+                  <div className="h-4 w-full rounded bg-white/10" />
+                  <div className="h-4 w-5/6 rounded bg-white/10" />
+                  <div className="h-4 w-4/6 rounded bg-white/10" />
+                </div>
+                <div className="mt-4 h-40 rounded-xl bg-white/10" />
+              </div>
+            </aside>
+          </div>
+        ) : null}
         {!loading && !filteredRows.length ? <p className="text-zinc-400">{t("config.audit.empty")}</p> : null}
 
         {!loading && filteredRows.length ? (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
             <div
               className="pr-2"
+              onScroll={onRowsScroll}
               style={{
                 maxHeight: "690px",
                 overflowY: "scroll",
@@ -378,7 +454,7 @@ export function AuditPanel() {
               }}
             >
               <ul className="divide-y divide-white/5">
-                {filteredRows.map((row) => {
+                {visibleRows.map((row) => {
                   const isActive = selectedRow?.idRef === row.idRef;
                   return (
                     <li key={`${row.idRef}:${row.timestamp}`} className="px-1 py-1">
@@ -415,47 +491,56 @@ export function AuditPanel() {
                     </li>
                   );
                 })}
+                {hasMoreRows ? (
+                  <li className="px-1 py-2 text-center text-[11px] text-zinc-500">
+                    {t("common.loading")}
+                  </li>
+                ) : null}
               </ul>
             </div>
 
-            <aside className="rounded-lg border border-white/10 bg-zinc-950/50 p-3 text-xs">
+            <aside className="glass-panel rounded-2xl box-subtle p-4 text-xs">
               {selectedRow ? (
                 <div className="space-y-3">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">Szczegoly wpisu</p>
+                  <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("config.audit.details.entryTitle")}
+                    </p>
                     <p className="font-semibold text-zinc-100">{selectedRow.action}</p>
                     <p className="text-zinc-400">{formatFixedDateTime(selectedRow.timestamp, noDataLabel)}</p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="text-zinc-500">Aktor</div>
+                  <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/25 p-3 text-[11px]">
+                    <div className="text-zinc-500">{t("config.audit.details.actor")}</div>
                     <div className="text-zinc-200">{selectedRow.actor}</div>
-                    <div className="text-zinc-500">Source</div>
+                    <div className="text-zinc-500">{t("config.audit.details.source")}</div>
                     <div className="text-zinc-200">{selectedRow.source}</div>
-                    <div className="text-zinc-500">Kanal API</div>
+                    <div className="text-zinc-500">{t("config.audit.details.apiChannel")}</div>
                     <div className="text-zinc-200">{selectedRow.apiChannel}</div>
-                    <div className="text-zinc-500">Status</div>
+                    <div className="text-zinc-500">{t("config.audit.details.status")}</div>
                     <div className="text-zinc-200">{selectedRow.status}</div>
                   </div>
 
                   {selectedAutonomyLevel && hasAutonomySection ? (
                     <div className="space-y-1 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-2">
-                      <p className="text-[11px] uppercase tracking-wide text-cyan-300">Poziom autonomii</p>
+                      <p className="text-[11px] uppercase tracking-wide text-cyan-300">
+                        {t("config.audit.details.autonomy.title")}
+                      </p>
                       {selectedAutonomyLevel.current !== null ? (
                         <p className="text-zinc-100">
-                          Biezacy: {selectedAutonomyLevel.current}
+                          {t("config.audit.details.autonomy.current")}: {selectedAutonomyLevel.current}
                           {selectedAutonomyLevel.currentName ? ` (${selectedAutonomyLevel.currentName})` : ""}
                         </p>
                       ) : null}
                       {selectedAutonomyLevel.required !== null ? (
                         <p className="text-zinc-100">
-                          Wymagany: {selectedAutonomyLevel.required}
+                          {t("config.audit.details.autonomy.required")}: {selectedAutonomyLevel.required}
                           {selectedAutonomyLevel.requiredName ? ` (${selectedAutonomyLevel.requiredName})` : ""}
                         </p>
                       ) : null}
                       {selectedAutonomyLevel.oldLevel !== null || selectedAutonomyLevel.newLevel !== null ? (
                         <p className="text-zinc-100">
-                          Zmiana: {selectedAutonomyLevel.oldLevel ?? "?"}
+                          {t("config.audit.details.autonomy.change")}: {selectedAutonomyLevel.oldLevel ?? "?"}
                           {selectedAutonomyLevel.oldName ? ` (${selectedAutonomyLevel.oldName})` : ""}
                           {" -> "}
                           {selectedAutonomyLevel.newLevel ?? "?"}
@@ -463,25 +548,34 @@ export function AuditPanel() {
                         </p>
                       ) : null}
                       {selectedAutonomyPolicy?.check ? (
-                        <p className="text-zinc-100">Polityka: {selectedAutonomyPolicy.check}</p>
+                        <p className="text-zinc-100">
+                          {t("config.audit.details.autonomy.policy")}: {selectedAutonomyPolicy.check}
+                        </p>
                       ) : null}
                       {selectedAutonomyPolicy?.compliant !== null ? (
                         <p className="text-zinc-100">
-                          Zgodnosc: {selectedAutonomyPolicy?.compliant ? "tak" : "nie"}
+                          {t("config.audit.details.autonomy.compliance")}:{" "}
+                          {selectedAutonomyPolicy?.compliant
+                            ? t("config.audit.details.autonomy.yes")
+                            : t("config.audit.details.autonomy.no")}
                         </p>
                       ) : null}
                     </div>
                   ) : null}
 
-                  <div>
-                    <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">Details (JSON)</p>
+                  <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                    <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">
+                      {t("config.audit.details.json")}
+                    </p>
                     <pre className="max-h-56 overflow-auto rounded-md border border-white/10 bg-zinc-950/70 p-2 text-[11px] text-zinc-300">
                       {JSON.stringify(selectedRow.details ?? {}, null, 2)}
                     </pre>
                   </div>
                 </div>
               ) : (
-                <p className="text-zinc-400">Brak zaznaczonego wpisu.</p>
+                <div className="rounded-2xl border border-white/10 bg-black/25 p-4 text-zinc-400">
+                  {t("config.audit.details.noneSelected")}
+                </div>
               )}
             </aside>
           </div>

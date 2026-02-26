@@ -651,6 +651,14 @@ def test_resolve_audit_autonomy_snapshot_falls_back_on_guard_error(monkeypatch):
     assert main_module._resolve_audit_autonomy_snapshot() == (-1, "UNKNOWN")
 
 
+def test_resolve_audit_autonomy_snapshot_success(monkeypatch):
+    monkeypatch.setattr(main_module.permission_guard, "get_current_level", lambda: 10)
+    monkeypatch.setattr(
+        main_module.permission_guard, "get_current_level_name", lambda: "SANDBOXED"
+    )
+    assert main_module._resolve_audit_autonomy_snapshot() == (10, "SANDBOXED")
+
+
 def _build_request(
     *,
     method: str,

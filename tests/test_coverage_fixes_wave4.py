@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import system as system_routes
+from venom_core.api.routes import system_governance as governance_routes
 from venom_core.api.routes import system_iot as iot_routes
 from venom_core.core import learning_log as learning_log_mod
 from venom_core.core import provider_observability as observability_mod
+from venom_core.core.permission_guard import permission_guard
 from venom_core.core.provider_observability import (
     Alert,
     AlertSeverity,
@@ -21,8 +24,15 @@ from venom_core.core.provider_observability import (
     ProviderObservability,
     SLOTarget,
 )
+from venom_core.core.service_monitor import (
+    ServiceHealthMonitor,
+    ServiceInfo,
+    ServiceRegistry,
+    ServiceStatus,
+)
 from venom_core.infrastructure import docker_habitat as docker_habitat_mod
 from venom_core.services import translation_service as translation_module
+from venom_core.services.audit_stream import get_audit_stream
 
 
 class _Secret:
@@ -98,6 +108,92 @@ async def test_translation_missing_model_uses_fallback_when_enabled(monkeypatch)
     )
     service = translation_module.TranslationService()
     assert await service.translate_text("Hello", target_lang="pl") == "Hello"
+
+
+@pytest.mark.asyncio
+async def test_translation_non_http_error_raises_without_fallback(monkeypatch):
+    _configure_translation_settings(monkeypatch)
+    service = translation_module.TranslationService()
+    monkeypatch.setattr(
+        service,
+        "_resolve_model_name",
+        lambda: (_ for _ in ()).throw(RuntimeError("no-model")),
+    )
+
+    with pytest.raises(RuntimeError, match="no-model"):
+        await service.translate_text("Hello", target_lang="pl", allow_fallback=False)
+
+
+def test_translation_get_cached_value_expired_returns_none():
+    service = translation_module.TranslationService(cache_ttl_seconds=1)
+    cache_key = "k"
+    service._cache[cache_key] = {"value": "cached", "timestamp": 10.0}
+
+    assert service._get_cached_value(cache_key=cache_key, now=11.0) is None
+
+
+def test_service_monitor_check_health_missing_service_returns_empty_list():
+    registry = ServiceRegistry()
+    monitor = ServiceHealthMonitor(registry)
+    result = asyncio.run(monitor.check_health(service_name="missing"))
+    assert result == []
+
+
+def test_service_monitor_check_health_exception_marks_service_offline(monkeypatch):
+    registry = ServiceRegistry()
+    registry.services = {
+        "svc": ServiceInfo(name="svc", service_type="api", endpoint="http://x"),
+    }
+    monitor = ServiceHealthMonitor(registry)
+
+    async def _fail(_service):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(monitor, "_check_service_health", _fail)
+    result = asyncio.run(monitor.check_health())
+
+    assert len(result) == 1
+    assert result[0].status == ServiceStatus.OFFLINE
+    assert result[0].error_message == "boom"
+
+
+def test_governance_extract_actor_uses_x_user_id_fallback():
+    request = SimpleNamespace(
+        state=SimpleNamespace(user=None),
+        headers={"X-User-Id": "uid-1"},
+    )
+    assert governance_routes._extract_actor_from_request(request) == "uid-1"
+
+
+def test_governance_set_autonomy_invalid_level_publishes_failure(monkeypatch):
+    previous = permission_guard.get_current_level()
+    stream = get_audit_stream()
+    stream.clear()
+
+    monkeypatch.setattr(governance_routes, "get_audit_stream", lambda: stream)
+    monkeypatch.setattr(permission_guard, "get_current_level", lambda: 0)
+    monkeypatch.setattr(permission_guard, "set_level", lambda _level: False)
+    monkeypatch.setattr(
+        permission_guard,
+        "get_level_info",
+        lambda level: SimpleNamespace(name="ISOLATED") if level == 0 else None,
+    )
+
+    request = SimpleNamespace(
+        state=SimpleNamespace(user=None),
+        headers={"X-Actor": "roi-tester"},
+    )
+    with pytest.raises(HTTPException) as exc:
+        governance_routes.set_autonomy_level(
+            request=request,
+            payload=SimpleNamespace(level=99),
+        )
+    assert exc.value.status_code == 400
+    entries = stream.get_entries(action="autonomy.level_changed", limit=1)
+    assert entries and entries[0].status == "failure"
+    assert entries[0].details["new_level"] == 99
+    permission_guard.set_level(previous)
+    stream.clear()
 
 
 def test_docker_conflict_helpers_cover_branches(monkeypatch):

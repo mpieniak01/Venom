@@ -25,8 +25,26 @@ Założenia bezpieczeństwa operacyjnego oraz politykę localhost-admin opisuje 
      - `pip install -r requirements.txt` (Ollama)
      - `pip install -r requirements-profile-vllm.txt`
      - `pip install -r requirements-profile-onnx.txt`
-     - opcjonalne extras (instaluj po profilu ONNX/ONNX-CPU): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
+     - `pip install -r requirements-profile-onnx-cpu.txt`
+   - opcjonalne extras (instaluj po profilu ONNX/ONNX-CPU): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
    - Pełny legacy stack: `pip install -r requirements-full.txt`
+
+### Kontrakt profili zależności (ważne)
+
+Tych gwarancji używamy do rozróżnienia "to normalne" vs "to błąd":
+
+| Profil | Co gwarantuje | Czego nie gwarantuje |
+|---|---|---|
+| `requirements.txt` / API | backend + integracje cloud | lokalne ciężkie stosy: `vllm`, stos ONNX, `lancedb`, `sentence-transformers` |
+| `requirements-profile-web.txt` | API + zależności integracji web | te same ciężkie stosy lokalne co profil API |
+| `requirements-profile-vllm.txt` | API + `vllm` | stos ONNX, `lancedb`, `sentence-transformers` |
+| `requirements-profile-onnx*.txt` | API + stos runtime ONNX | `vllm`, `lancedb`, `sentence-transformers` |
+| `requirements-full.txt` | pełny legacy stack (wszystkie główne stosy razem) | n/a |
+
+Zasady interpretacji:
+1. Brak pakietu po instalacji niewłaściwego profilu jest zachowaniem oczekiwanym.
+2. Brak pakietu, który nie należy do zakresu wybranego profilu, jest zachowaniem oczekiwanym.
+3. Brak pakietu, który jest jawnie wpisany w pliku wybranego profilu, oznacza problem instalacji/środowiska i traktujemy to jako defekt.
 2. **Node.js 18.19+** – frontend:
    ```bash
    npm --prefix web-next install

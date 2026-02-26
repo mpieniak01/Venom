@@ -260,10 +260,16 @@ function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") return value.trim() || "—";
   if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "symbol") return value.description ? `Symbol(${value.description})` : "Symbol()";
+  if (typeof value === "function") return value.name ? `[Function ${value.name}]` : "[Function]";
   if (Array.isArray(value)) return value.map((entry) => formatCell(entry)).join(", ");
   if (isPlainObject(value)) return JSON.stringify(value);
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+  if (typeof value === "object") {
+    const serialized = JSON.stringify(value);
+    return serialized === undefined ? "—" : serialized;
+  }
+  return "—";
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

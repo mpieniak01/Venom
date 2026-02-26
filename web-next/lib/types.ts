@@ -170,6 +170,8 @@ export interface ModelInfo {
   quantization?: string;
   path?: string;
   provider?: string | null;
+  chat_compatible?: boolean;
+  chat_block_reason?: string | null;
 }
 
 export interface ModelCatalogEntry {

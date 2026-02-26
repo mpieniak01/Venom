@@ -84,7 +84,21 @@ function cloneState(state: SystemState): SystemState {
   if (typeof globalThis.structuredClone === "function") {
     return globalThis.structuredClone(state);
   }
-  return JSON.parse(JSON.stringify(state)) as SystemState;
+  return cloneStateFallback(state);
+}
+
+function cloneStateFallback<T>(value: T): T {
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneStateFallback(entry)) as T;
+  }
+  const cloned: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    cloned[key] = cloneStateFallback(entry);
+  }
+  return cloned as T;
 }
 
 function stableSerialize(value: unknown): string {

@@ -25,8 +25,26 @@ For security operating assumptions and localhost admin policy, see `docs/SECURIT
      - `pip install -r requirements.txt` (Ollama)
      - `pip install -r requirements-profile-vllm.txt`
      - `pip install -r requirements-profile-onnx.txt`
+     - `pip install -r requirements-profile-onnx-cpu.txt`
      - optional extras (install after ONNX/ONNX-CPU profile): `pip install -r requirements-extras-onnx.txt` (`faster-whisper`, `piper-tts`)
    - Full legacy stack: `pip install -r requirements-full.txt`
+
+### Dependency Profile Contract (Important)
+
+Use these guarantees to classify issues correctly:
+
+| Profile | What it guarantees | What it does not guarantee |
+|---|---|---|
+| `requirements.txt` / API | backend + cloud integrations | local heavy stacks: `vllm`, ONNX runtime stack, `lancedb`, `sentence-transformers` |
+| `requirements-profile-web.txt` | API + web integration deps | same heavy local stacks as API profile |
+| `requirements-profile-vllm.txt` | API + `vllm` | ONNX stack, `lancedb`, `sentence-transformers` |
+| `requirements-profile-onnx*.txt` | API + ONNX runtime stack | `vllm`, `lancedb`, `sentence-transformers` |
+| `requirements-full.txt` | all legacy runtime stacks together | n/a |
+
+Interpretation rules:
+1. Missing package after installing the wrong profile is expected.
+2. Missing package that is outside selected profile scope is expected.
+3. Missing package that is explicitly present in selected profile file indicates install/environment defect.
 2. **Node.js 18.19+** – frontend:
    ```bash
    npm --prefix web-next install

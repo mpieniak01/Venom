@@ -2,7 +2,7 @@
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![Sonar Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
-[![Snyk Vulnerabilities](https://snyk.io/test/github/mpieniak01/Venom/badge.svg)](https://snyk.io/test/github/mpieniak01/Venom)
+[![Known Vulnerabilities](https://snyk.io/test/github/mpieniak01/Venom/badge.svg)](https://snyk.io/test/github/mpieniak01/Venom)
 
 **Sygnały jakości**
 - *GitGuardian:* wykrywanie sekretów i zapobieganie wyciekom w historii repo i pull requestach.
@@ -187,6 +187,23 @@ Jeśli chcesz lokalne silniki runtime, doinstaluj jeden z profili:
 - `pip install -r requirements-profile-onnx-cpu.txt`
 - `pip install -r requirements-extras-onnx.txt` (opcjonalne extras: `faster-whisper` + `piper-tts`; instaluj po profilu ONNX/ONNX-CPU)
 - `pip install -r requirements-full.txt` (legacy full stack)
+
+### Gwarancje profili zależności
+Traktuj tę tabelę jako źródło prawdy dla rozróżnienia: "to oczekiwane" vs "to błąd profilu".
+
+| Profil | Gwarantowany zakres | Jawnie nie zawiera |
+|---|---|---|
+| `requirements.txt` (`requirements-profile-api.txt`) | baseline API/cloud (`fastapi`, `uvicorn`, providerzy cloud) | ciężkie lokalne pakiety runtime (`vllm`, `onnxruntime*`, `lancedb`, `sentence-transformers`) |
+| `requirements-profile-web.txt` | baseline API + zależności integracji web | te same ciężkie lokalne pakiety runtime co profil API |
+| `requirements-profile-vllm.txt` | baseline API + `vllm` | stos ONNX, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
+| `requirements-profile-onnx.txt` | baseline API + stos runtime ONNX | vLLM, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
+| `requirements-profile-onnx-cpu.txt` | baseline API + stos runtime ONNX CPU | vLLM, pakiety ONNX CUDA, stos RAG/wektorowy (`lancedb`, `sentence-transformers`) |
+| `requirements-full.txt` | legacy profil all-in (zawiera `vllm`, ONNX, `lancedb`, `sentence-transformers`) | n/a |
+
+Zasady triage incydentów:
+1. Jeśli pakietu brakuje, bo nie zainstalowano właściwego profilu, to zachowanie oczekiwane.
+2. Jeśli pakiet nie jest gwarantowany przez aktywny profil, to zachowanie oczekiwane.
+3. Jeśli pakiet jest wpisany w wybranym profilu, ale nadal go brakuje po instalacji, to problem instalacji/środowiska i traktujemy to jako defekt.
 
 ### Ścieżka B: instalacja przez skrypt Docker (jedna komenda)
 ```bash

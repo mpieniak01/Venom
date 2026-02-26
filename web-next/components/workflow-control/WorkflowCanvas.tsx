@@ -215,7 +215,7 @@ export function WorkflowCanvas({
           style: { strokeWidth: 3, stroke: '#e2e8f0' }, // Brighter and thicker for visibility
         }}
         fitView
-        fitViewOptions={{ padding: 0.1, minZoom: 0.71, maxZoom: 1.5 }}
+        fitViewOptions={{ padding: 0.1, minZoom: 0.68, maxZoom: 1.35 }}
         proOptions={{ hideAttribution: true }}
       >
 

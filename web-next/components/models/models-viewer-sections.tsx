@@ -519,26 +519,28 @@ export function InstalledAndOperations({
                                 {providerSections.length === 0 && (
                                     <p className="text-[11px] text-slate-500">{t("models.sections.installed.noModels")}</p>
                                 )}
-                                {providerSections.map(p => (
-                                    <div key={p.label} className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                                        <div className="flex items-center justify-between mb-3">
-                                            <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">{p.label}</p>
-                                            <Badge tone="neutral" className="text-[9px]">{p.data.length}</Badge>
+                                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                    {providerSections.map(p => (
+                                        <div key={p.label} className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-200">{p.label}</p>
+                                                <Badge tone="neutral" className="text-[9px]">{p.data.length}</Badge>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {p.data.length ? p.data.map((m: ModelInfo) => (
+                                                    <InstalledCard
+                                                        key={m.name} model={m}
+                                                        pendingActivate={pendingActions[`activate:${m.name}`]}
+                                                        pendingRemove={pendingActions[`remove:${m.name}`]}
+                                                        onActivate={() => handleActivate(m)}
+                                                        onRemove={allowRemoveProviders.has(m.provider ?? m.source ?? "") ? () => handleRemove(m) : undefined}
+                                                        allowRemoveProviders={allowRemoveProviders}
+                                                    />
+                                                )) : <p className="text-[11px] text-slate-500">{t("models.sections.installed.noModels")}</p>}
+                                            </div>
                                         </div>
-                                        <div className="grid gap-3">
-                                            {p.data.length ? p.data.map((m: ModelInfo) => (
-                                                <InstalledCard
-                                                    key={m.name} model={m}
-                                                    pendingActivate={pendingActions[`activate:${m.name}`]}
-                                                    pendingRemove={pendingActions[`remove:${m.name}`]}
-                                                    onActivate={() => handleActivate(m)}
-                                                    onRemove={allowRemoveProviders.has(m.provider ?? m.source ?? "") ? () => handleRemove(m) : undefined}
-                                                    allowRemoveProviders={allowRemoveProviders}
-                                                />
-                                            )) : <p className="text-[11px] text-slate-500">{t("models.sections.installed.noModels")}</p>}
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </>
                         )}
                     </div>

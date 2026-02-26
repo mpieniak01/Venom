@@ -214,22 +214,22 @@ export const InstalledCard = ({
     const { t } = useLanguage();
     const providerLabel = model.provider ?? model.source ?? "vllm";
     return (
-        <div className="rounded-3xl box-base p-5 text-white shadow-card">
+        <div className="rounded-2xl box-base px-3 py-3 text-white shadow-card">
             <div className="flex items-start justify-between gap-4">
                 <div>
-                    <p className="text-lg font-semibold">{model.name}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-sm font-medium leading-tight">{model.name}</p>
+                    <p className="mt-1 text-[11px] text-slate-400">
                         {getInstalledModelSizeLabel(t, model.size_gb)}{" "}
                         • {providerLabel}
                     </p>
                 </div>
-                <Badge tone={model.active ? "success" : "neutral"}>
+                <Badge tone={model.active ? "success" : "neutral"} className="text-[10px]">
                     {model.active ? t("models.status.active") : t("models.status.installed")}
                 </Badge>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
                 <Button
-                    className="rounded-full px-4"
+                    className="rounded-full px-3 text-[11px]"
                     size="sm"
                     variant={model.active ? "secondary" : "outline"}
                     disabled={model.active || pendingActivate}
@@ -239,7 +239,7 @@ export const InstalledCard = ({
                 </Button>
                 {onRemove && allowRemoveProviders.has(model.provider ?? model.source ?? "") && (
                     <Button
-                        className="rounded-full px-4"
+                        className="rounded-full px-3 text-[11px]"
                         size="sm"
                         variant="danger"
                         disabled={pendingRemove}

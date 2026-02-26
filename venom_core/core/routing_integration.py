@@ -135,7 +135,7 @@ def build_routing_decision(
             selected_provider=selected_provider,
             fallback_applied=bool(governance_decision.fallback_applied),
         ),
-        policy_gate_passed=True,
+        policy_gate_passed=bool(governance_decision.allowed),
         estimated_cost_usd=0.0,
         budget_remaining_usd=None,
         decision_latency_ms=(time.perf_counter() - start) * 1000.0,

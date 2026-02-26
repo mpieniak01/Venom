@@ -133,3 +133,52 @@ def test_build_fallback_chain_variants():
         )
         == []
     )
+
+
+def test_build_routing_decision_sets_policy_gate_passed_from_governance(monkeypatch):
+    class DummyRouter:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def route_task(self, task_type, prompt):
+            return {
+                "target": "cloud",
+                "model_name": "gpt-4o-mini",
+                "provider": "openai",
+                "reason": "restricted by governance",
+                "is_paid": True,
+            }
+
+        def calculate_complexity(self, prompt, task_type):
+            return 7
+
+    class DummyGovernance:
+        def select_provider_with_fallback(self, preferred_provider, reason=None):
+            return SimpleNamespace(
+                allowed=False,
+                provider=preferred_provider,
+                reason_code="PRIMARY_PROVIDER_SELECTED",
+                fallback_applied=False,
+                user_message="blocked",
+            )
+
+    monkeypatch.setattr(
+        "venom_core.core.routing_integration.HybridModelRouter", DummyRouter
+    )
+    monkeypatch.setattr(
+        "venom_core.core.routing_integration.get_provider_governance",
+        lambda: DummyGovernance(),
+    )
+
+    decision = build_routing_decision(
+        request=SimpleNamespace(
+            content="blocked request",
+            forced_intent=None,
+            forced_tool=None,
+            forced_provider="openai",
+        ),
+        runtime_info=SimpleNamespace(provider="ollama", model_name="gemma3:4b"),
+        state_manager=None,
+    )
+
+    assert decision.policy_gate_passed is False

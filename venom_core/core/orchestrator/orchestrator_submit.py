@@ -78,20 +78,23 @@ async def _check_policy_before_provider(
     # Zadanie zostało zablokowane
     logger.warning(f"Policy gate blocked task {task.id}: {policy_result.reason_code}")
     current_level = permission_guard.get_current_level()
+    reason_code = (
+        getattr(policy_result.reason_code, "value", policy_result.reason_code)
+        if policy_result.reason_code
+        else None
+    )
     get_audit_stream().publish(
         source="core.policy",
         action="policy.blocked.before_provider",
         actor="system",
         status="blocked",
         details={
-            "reason_code": policy_result.reason_code.value
-            if policy_result.reason_code
-            else None,
-            "intent": policy_context.intent,
-            "planned_provider": policy_context.planned_provider,
-            "forced_tool": policy_context.forced_tool,
-            "forced_provider": policy_context.forced_provider,
-            "session_id": policy_context.session_id,
+            "reason_code": reason_code,
+            "intent": getattr(policy_context, "intent", None),
+            "planned_provider": getattr(policy_context, "planned_provider", None),
+            "forced_tool": getattr(policy_context, "forced_tool", None),
+            "forced_provider": getattr(policy_context, "forced_provider", None),
+            "session_id": getattr(policy_context, "session_id", None),
             "task_id": str(task.id),
             "current_autonomy_level": current_level,
             "current_autonomy_level_name": permission_guard.get_current_level_name(),

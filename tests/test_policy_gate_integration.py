@@ -7,9 +7,6 @@ import pytest
 
 from venom_core.contracts.routing import ReasonCode, RoutingDecision, RuntimeTarget
 from venom_core.core.models import TaskRequest, TaskStatus
-from venom_core.core.orchestrator.orchestrator_dispatch import (
-    _handle_policy_block_before_tool_execution,
-)
 from venom_core.core.orchestrator.orchestrator_submit import submit_task
 from venom_core.core.policy_gate import (
     PolicyDecision,
@@ -216,10 +213,12 @@ async def test_policy_gate_enabled_block_before_tool_emits_audit(mock_orchestrat
                 forced_tool=request.forced_tool,
                 forced_provider=request.forced_provider,
             )
+            handler = __import__(
+                "venom_core.core.orchestrator.orchestrator_dispatch",
+                fromlist=["_handle_policy_block_before_tool_execution"],
+            )._handle_policy_block_before_tool_execution
 
-            blocked = await _handle_policy_block_before_tool_execution(
-                mock_orchestrator, task_id, request, context
-            )
+            blocked = await handler(mock_orchestrator, task_id, request, context)
 
             assert blocked is True
             entry = get_audit_stream().get_entries(

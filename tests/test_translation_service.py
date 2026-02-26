@@ -552,6 +552,24 @@ def test_extract_message_content_empty_choices_falls_back():
     )
 
 
+def test_resolve_chat_endpoint_accepts_explicit_v1_suffix(monkeypatch):
+    _configure_settings(monkeypatch)
+    service = translation_module.TranslationService()
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: DummyRuntime(),
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS,
+        "LLM_LOCAL_ENDPOINT",
+        "http://localhost:11434/v1",
+    )
+    assert (
+        service._resolve_chat_endpoint() == "http://localhost:11434/v1/chat/completions"
+    )
+
+
 @pytest.mark.asyncio
 async def test_translate_text_uses_service_type_provider_and_skips_cache_write(
     monkeypatch,

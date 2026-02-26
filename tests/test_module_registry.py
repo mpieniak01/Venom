@@ -247,3 +247,30 @@ def test_validate_optional_modules_config_manifest_missing_file():
     errors = module_registry.validate_optional_modules_config(settings)
     assert len(errors) == 1
     assert "manifest not found" in errors[0]
+
+
+def test_load_router_ignores_path_remove_value_error(monkeypatch, tmp_path):
+    router = APIRouter(prefix="/x-test")
+
+    @router.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    module = types.ModuleType("x_test_mod_remove")
+    module.router = router
+    module_root = str(tmp_path)
+
+    def _fake_import(name: str):
+        if name == "x_test_mod_remove":
+            resolved = str(tmp_path.resolve())
+            if resolved in module_registry.sys.path:
+                module_registry.sys.path.remove(resolved)
+            return module
+        return __import__(name)
+
+    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
+    loaded = module_registry._load_router(
+        "x_test_mod_remove:router",
+        module_root=module_root,
+    )
+    assert isinstance(loaded, APIRouter)

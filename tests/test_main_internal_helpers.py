@@ -463,6 +463,93 @@ def test_initialize_model_services_handles_missing_monitor(monkeypatch, tmp_path
     assert main_module.benchmark_service is None
 
 
+@pytest.mark.asyncio
+async def test_initialize_observability_success(monkeypatch, tmp_path):
+    class DummyTracer:
+        def __init__(self, watchdog_timeout_minutes, trace_file_path):
+            self.watchdog_timeout_minutes = watchdog_timeout_minutes
+            self.trace_file_path = trace_file_path
+
+        async def start_watchdog(self):
+            return None
+
+    class DummyRegistry:
+        pass
+
+    class DummyMonitor:
+        def __init__(self, registry, event_broadcaster=None):
+            self.registry = registry
+            self.event_broadcaster = event_broadcaster
+
+    class DummyController:
+        def __init__(self, _settings):
+            self.ready = True
+
+    marker = {"called": False}
+
+    monkeypatch.setattr(
+        main_module,
+        "init_metrics_collector",
+        lambda: marker.__setitem__("called", True),
+    )
+    monkeypatch.setattr(main_module, "RequestTracer", DummyTracer)
+    monkeypatch.setattr(main_module, "ServiceRegistry", DummyRegistry)
+    monkeypatch.setattr(main_module, "ServiceHealthMonitor", DummyMonitor)
+    monkeypatch.setattr(main_module, "LlmServerController", DummyController)
+    monkeypatch.setattr(
+        main_module.SETTINGS, "MEMORY_ROOT", str(tmp_path), raising=False
+    )
+    monkeypatch.setattr(
+        "venom_core.utils.logger.set_event_broadcaster",
+        lambda _broadcaster: None,
+        raising=True,
+    )
+
+    await main_module._initialize_observability()
+
+    assert marker["called"] is True
+    assert isinstance(main_module.request_tracer, DummyTracer)
+    assert isinstance(main_module.service_registry, DummyRegistry)
+    assert isinstance(main_module.service_monitor, DummyMonitor)
+    assert isinstance(main_module.llm_controller, DummyController)
+
+
+@pytest.mark.asyncio
+async def test_initialize_observability_handles_component_errors(monkeypatch, tmp_path):
+    monkeypatch.setattr(main_module, "init_metrics_collector", lambda: None)
+    monkeypatch.setattr(
+        "venom_core.utils.logger.set_event_broadcaster",
+        lambda _broadcaster: None,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        main_module.SETTINGS, "MEMORY_ROOT", str(tmp_path), raising=False
+    )
+
+    class FailingTracer:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("tracer-boom")
+
+    monkeypatch.setattr(main_module, "RequestTracer", FailingTracer)
+    monkeypatch.setattr(
+        main_module,
+        "ServiceRegistry",
+        lambda: (_ for _ in ()).throw(RuntimeError("registry-boom")),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "LlmServerController",
+        lambda _settings: (_ for _ in ()).throw(RuntimeError("controller-boom")),
+    )
+
+    await main_module._initialize_observability()
+
+    assert main_module.request_tracer is None
+    assert main_module.service_registry is None
+    assert main_module.service_monitor is None
+    assert main_module.llm_controller is None
+
+
 def test_resolve_audit_channel_for_path_known_and_fallback():
     assert (
         main_module._resolve_audit_channel_for_path("/api/v1/queue/items")

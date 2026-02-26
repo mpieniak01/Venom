@@ -1269,3 +1269,49 @@ def test_get_gpu_memory_usage_nonzero_returncode_returns_none(service_monitor):
         ),
     ):
         assert service_monitor.get_gpu_memory_usage() is None
+
+
+@pytest.mark.asyncio
+async def test_check_health_handles_non_serviceinfo_results(service_monitor):
+    service = service_monitor.registry.get_all_services()[0]
+    with patch.object(
+        service_monitor,
+        "_check_service_health",
+        new=AsyncMock(return_value=None),
+    ):
+        result = await service_monitor.check_health(service_name=service.name)
+    assert len(result) == 1
+    assert result[0] is service
+
+
+@pytest.mark.asyncio
+async def test_check_http_service_uses_default_provider_for_generic_api(
+    service_monitor,
+):
+    captured = {"provider": None}
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            captured["provider"] = kwargs.get("provider")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def aget(self, *_args, **_kwargs):
+            return SimpleNamespace(status_code=204)
+
+    service = ServiceInfo(
+        name="Custom API",
+        service_type="api",
+        endpoint="https://example.local/health",
+    )
+    with patch(
+        "venom_core.core.service_monitor.TrafficControlledHttpClient", DummyClient
+    ):
+        await service_monitor._check_http_service(service)
+
+    assert captured["provider"] == "service_monitor"
+    assert service.status == ServiceStatus.ONLINE

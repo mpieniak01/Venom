@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import system_governance
@@ -103,3 +105,42 @@ def test_extract_actor_from_request_uses_headers_fallback() -> None:
         headers = {"X-Actor": "header-actor"}
 
     assert system_governance._extract_actor_from_request(_Request()) == "header-actor"
+
+
+def test_get_system_autonomy_returns_500_when_level_info_missing(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(permission_guard, "get_level_info", lambda level: None)
+    response = client.get("/api/v1/system/autonomy")
+    assert response.status_code == 500
+    assert "Nie można pobrać informacji o poziomie" in response.json()["detail"]
+
+
+def test_post_system_autonomy_returns_500_when_new_level_info_missing(
+    monkeypatch,
+) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(permission_guard, "get_current_level", lambda: 0)
+    monkeypatch.setattr(permission_guard, "set_level", lambda level: True)
+    monkeypatch.setattr(
+        permission_guard,
+        "get_level_info",
+        lambda level: SimpleNamespace(name="ISOLATED") if level == 0 else None,
+    )
+
+    response = client.post("/api/v1/system/autonomy", json={"level": 10})
+    assert response.status_code == 500
+    assert (
+        "Nie można pobrać informacji o poziomie po zmianie" in response.json()["detail"]
+    )
+
+
+def test_get_system_autonomy_levels_returns_500_on_guard_exception(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(
+        permission_guard,
+        "get_all_levels",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    response = client.get("/api/v1/system/autonomy/levels")
+    assert response.status_code == 500
+    assert "Błąd wewnętrzny" in response.json()["detail"]

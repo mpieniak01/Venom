@@ -27,7 +27,7 @@ async def activate_model(registry: Any, model_name: str, runtime: str) -> bool:
         return False
 
     try:
-        settings = apply_model_activation_config(registry, model_name, runtime, meta)
+        settings = apply_model_activation_config(model_name, runtime, meta)
         await restart_runtime_after_activation(runtime, settings)
     except Exception as e:
         logger.warning(
@@ -66,9 +66,7 @@ async def ensure_model_metadata_for_activation(
         return False
 
 
-def apply_model_activation_config(
-    registry: Any, model_name: str, runtime: str, meta: ModelMetadata
-):
+def apply_model_activation_config(model_name: str, runtime: str, meta: ModelMetadata):
     from venom_core.config import SETTINGS
     from venom_core.services.config_manager import config_manager
 

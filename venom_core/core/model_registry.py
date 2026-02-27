@@ -224,7 +224,7 @@ class ModelRegistry:
     def _apply_model_activation_config(
         self, model_name: str, runtime: str, meta: "ModelMetadata"
     ):
-        return runtime_apply_model_activation_config(self, model_name, runtime, meta)
+        return runtime_apply_model_activation_config(model_name, runtime, meta)
 
     def _apply_vllm_activation_updates(
         self,

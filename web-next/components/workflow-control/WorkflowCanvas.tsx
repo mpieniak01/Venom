@@ -53,9 +53,6 @@ export function WorkflowCanvas({
   const lastGraphSignatureRef = useRef<string>("");
 
   useEffect(() => {
-    if (initialNodes.length === 0) {
-      return;
-    }
     const signature = graphSignature(initialNodes, initialEdges);
     if (lastGraphSignatureRef.current === signature) {
       return;

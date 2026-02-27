@@ -64,9 +64,12 @@ export function graphSignature(nodes: Node[], edges: Edge[]): string {
   return JSON.stringify({
     nodes: nodes.map((node) => ({
       id: node.id,
+      type: node.type,
       position: node.position,
       data: node.data,
       parentId: node.parentId,
+      draggable: node.draggable,
+      selectable: node.selectable,
     })),
     edges: edges.map((edge) => ({
       id: edge.id,

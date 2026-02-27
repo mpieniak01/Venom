@@ -9,6 +9,7 @@ export const workflowControl =
       na: "N/A",
       auto: "auto",
       missing: "brak",
+      unknown: "nieznane",
       errorTitle: "Błąd",
     },
     panels: {

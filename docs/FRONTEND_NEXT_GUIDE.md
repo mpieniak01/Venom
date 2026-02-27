@@ -59,6 +59,7 @@ Requirements:
   - `workflow-control/*`
   - `top-bar/*`, `sidebar/*`, `module-host/*`, `system-status/*`, `mobile-nav/*`
   - `command-palette/*`, `command-center/*`, `quick-actions/*`
+  - `academy/*`, `models/*`
 - Guard tests ensure key parity (`pl/en/de`) and required keys:
   - `web-next/tests/workflow-i18n-keys.test.ts`
   - `web-next/tests/topbar-i18n-keys.test.ts`

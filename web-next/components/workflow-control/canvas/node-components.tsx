@@ -5,7 +5,7 @@ import { Info, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
 
-import { SWIMLANE_STYLES } from "./config";
+import { SWIMLANE_STYLES, WORKFLOW_NODE_THEME, type WorkflowCanvasNodeType } from "./config";
 import { readSourceTag, resolveDisplayValue, runtimeBadgeValue } from "./value-formatters";
 
 function NodeActions() {
@@ -94,6 +94,39 @@ function NodeShell({
   );
 }
 
+function NodeTitle({
+  label,
+  type,
+}: Readonly<{
+  label: string;
+  type: WorkflowCanvasNodeType;
+}>) {
+  const theme = WORKFLOW_NODE_THEME[type];
+  return <div className={`truncate text-center text-xl font-bold ${theme.titleClass}`}>{label}</div>;
+}
+
+function NodeHandles({
+  type,
+  withTarget = true,
+  withSource = true,
+}: Readonly<{
+  type: WorkflowCanvasNodeType;
+  withTarget?: boolean;
+  withSource?: boolean;
+}>) {
+  const theme = WORKFLOW_NODE_THEME[type];
+  return (
+    <>
+      {withTarget ? (
+        <Handle type="target" position={Position.Left} className={theme.handleClass} />
+      ) : null}
+      {withSource ? (
+        <Handle type="source" position={Position.Bottom} className={theme.handleClass} />
+      ) : null}
+    </>
+  );
+}
+
 export function SwimlaneNode({
   data,
 }: NodeProps<{ label: string; index: number }>) {
@@ -126,6 +159,7 @@ export function SwimlaneNode({
 
 export function DecisionNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const theme = WORKFLOW_NODE_THEME.decision;
   const badgeValue = resolveDisplayValue(
     (data as { strategy?: unknown } | undefined)?.strategy,
     t,
@@ -134,21 +168,20 @@ export function DecisionNode({ selected = false, data }: NodeProps) {
   return (
     <NodeShell
       selected={selected}
-      glowClass="border-blue-300/90 shadow-[0_0_24px_rgba(96,165,250,0.45)]"
-      className="group relative flex h-[80px] min-w-[210px] flex-col justify-center rounded-xl border-2 border-blue-500 bg-slate-900 px-8 py-6 text-blue-100 shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(59,130,246,0.5)]"
+      glowClass={theme.glowClass}
+      className={theme.shellClass}
     >
       <ValueBadge value={badgeValue} />
-      <Handle type="source" position={Position.Bottom} className="!h-3 !w-3 !bg-blue-500" />
+      <NodeHandles type="decision" withTarget={false} />
       <NodeActions />
-      <div className="truncate text-center text-xl font-bold text-blue-400">
-        {t("workflowControl.sections.decision")}
-      </div>
+      <NodeTitle type="decision" label={t("workflowControl.sections.decision")} />
     </NodeShell>
   );
 }
 
 export function IntentNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const theme = WORKFLOW_NODE_THEME.intent;
   const badgeValue = resolveDisplayValue(
     (data as { intentMode?: unknown } | undefined)?.intentMode,
     t,
@@ -157,22 +190,20 @@ export function IntentNode({ selected = false, data }: NodeProps) {
   return (
     <NodeShell
       selected={selected}
-      glowClass="border-yellow-300/90 shadow-[0_0_24px_rgba(253,224,71,0.45)]"
-      className="group relative flex h-[80px] min-w-[210px] flex-col justify-center rounded-xl border-2 border-yellow-500 bg-slate-900 px-8 py-6 text-yellow-100 shadow-[0_0_15px_rgba(234,179,8,0.3)] transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(234,179,8,0.5)]"
+      glowClass={theme.glowClass}
+      className={theme.shellClass}
     >
       <ValueBadge value={badgeValue} />
-      <Handle type="target" position={Position.Left} className="!h-3 !w-3 !bg-yellow-500" />
-      <Handle type="source" position={Position.Bottom} className="!h-3 !w-3 !bg-yellow-500" />
+      <NodeHandles type="intent" />
       <NodeActions />
-      <div className="truncate text-center text-xl font-bold text-yellow-400">
-        {t("workflowControl.sections.intent")}
-      </div>
+      <NodeTitle type="intent" label={t("workflowControl.sections.intent")} />
     </NodeShell>
   );
 }
 
 export function KernelNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const theme = WORKFLOW_NODE_THEME.kernel;
   const badgeValue = resolveDisplayValue(
     (data as { kernel?: unknown } | undefined)?.kernel,
     t,
@@ -181,75 +212,67 @@ export function KernelNode({ selected = false, data }: NodeProps) {
   return (
     <NodeShell
       selected={selected}
-      glowClass="border-green-300/90 shadow-[0_0_24px_rgba(74,222,128,0.45)]"
-      className="group relative flex h-[80px] min-w-[210px] flex-col justify-center rounded-xl border-2 border-green-500 bg-slate-900 px-8 py-6 text-green-100 shadow-[0_0_15px_rgba(34,197,94,0.3)] transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(34,197,94,0.5)]"
+      glowClass={theme.glowClass}
+      className={theme.shellClass}
     >
       <ValueBadge value={badgeValue} />
-      <Handle type="target" position={Position.Left} className="!h-3 !w-3 !bg-green-500" />
-      <Handle type="source" position={Position.Bottom} className="!h-3 !w-3 !bg-green-500" />
+      <NodeHandles type="kernel" />
       <NodeActions />
-      <div className="truncate text-center text-xl font-bold text-green-400">
-        {t("workflowControl.labels.currentKernel")}
-      </div>
+      <NodeTitle type="kernel" label={t("workflowControl.labels.currentKernel")} />
     </NodeShell>
   );
 }
 
 export function RuntimeNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const theme = WORKFLOW_NODE_THEME.runtime;
   const badgeValue = runtimeBadgeValue(data, t);
   return (
     <NodeShell
       selected={selected}
-      glowClass="border-purple-300/90 shadow-[0_0_24px_rgba(196,181,253,0.45)]"
-      className="group relative flex h-[80px] min-w-[210px] flex-col justify-center rounded-xl border-2 border-purple-500 bg-slate-900 px-8 py-6 text-purple-100 shadow-[0_0_15px_rgba(168,85,247,0.3)] transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(168,85,247,0.5)]"
+      glowClass={theme.glowClass}
+      className={theme.shellClass}
     >
       <ValueBadge value={badgeValue} />
-      <Handle type="target" position={Position.Left} className="!h-3 !w-3 !bg-purple-500" />
-      <Handle type="source" position={Position.Bottom} className="!h-3 !w-3 !bg-purple-500" />
+      <NodeHandles type="runtime" />
       <NodeActions />
-      <div className="truncate text-center text-xl font-bold text-purple-400">
-        {t("workflowControl.labels.runtimeServices")}
-      </div>
+      <NodeTitle type="runtime" label={t("workflowControl.labels.runtimeServices")} />
     </NodeShell>
   );
 }
 
 export function EmbeddingNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const theme = WORKFLOW_NODE_THEME.embedding;
   const sourceTag = readSourceTag(data);
   return (
     <NodeShell
       selected={selected}
-      glowClass="border-pink-300/90 shadow-[0_0_24px_rgba(249,168,212,0.45)]"
-      className="group relative flex h-[80px] min-w-[210px] flex-col justify-center rounded-xl border-2 border-pink-500 bg-slate-900 px-8 py-6 text-pink-100 shadow-[0_0_15px_rgba(236,72,153,0.3)] transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(236,72,153,0.5)]"
+      glowClass={theme.glowClass}
+      className={theme.shellClass}
     >
       <SourceBadge sourceTag={sourceTag} />
-      <Handle type="target" position={Position.Left} className="!h-3 !w-3 !bg-pink-500" />
-      <Handle type="source" position={Position.Bottom} className="!h-3 !w-3 !bg-pink-500" />
+      <NodeHandles type="embedding" />
       <NodeActions />
-      <div className="truncate text-center text-xl font-bold text-pink-400">
-        {t("workflowControl.labels.currentEmbedding")}
-      </div>
+      <NodeTitle type="embedding" label={t("workflowControl.labels.currentEmbedding")} />
     </NodeShell>
   );
 }
 
 export function ProviderNode({ selected = false, data }: NodeProps) {
   const t = useTranslation();
+  const theme = WORKFLOW_NODE_THEME.provider;
   const sourceTag = readSourceTag(data);
   return (
     <NodeShell
       selected={selected}
-      glowClass="border-orange-300/90 shadow-[0_0_24px_rgba(253,186,116,0.45)]"
-      className="group relative flex h-[80px] min-w-[210px] flex-col justify-center rounded-xl border-2 border-orange-500 bg-slate-900 px-8 py-6 text-orange-100 shadow-[0_0_15px_rgba(249,115,22,0.3)] transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(249,115,22,0.5)]"
+      glowClass={theme.glowClass}
+      className={theme.shellClass}
     >
       <SourceBadge sourceTag={sourceTag} />
-      <Handle type="target" position={Position.Left} className="!h-3 !w-3 !bg-orange-500" />
+      <NodeHandles type="provider" withSource={false} />
       <NodeActions />
-      <div className="truncate text-center text-xl font-bold text-orange-400">
-        {t("workflowControl.labels.currentProvider")}
-      </div>
+      <NodeTitle type="provider" label={t("workflowControl.labels.currentProvider")} />
     </NodeShell>
   );
 }

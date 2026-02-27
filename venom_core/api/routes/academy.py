@@ -6,7 +6,7 @@ import os
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Dict, List, Optional, TextIO, cast
+from typing import Annotated, Any, Callable, Dict, List, Optional, TextIO, cast
 from unittest.mock import Mock
 
 import anyio
@@ -1563,15 +1563,57 @@ def _markdown_from_csv(source_path: Path) -> str:
 
 
 def _markdown_from_binary_document(source_path: Path, ext: str) -> str:
-    return academy_conversion.markdown_from_binary_document(source_path, ext)
+    temp_md_path = source_path.with_suffix(source_path.suffix + ".pandoc.md")
+    if _convert_with_pandoc(source_path, temp_md_path):
+        content = temp_md_path.read_text(encoding="utf-8", errors="ignore")
+        temp_md_path.unlink(missing_ok=True)
+        return content
+    temp_md_path.unlink(missing_ok=True)
+    if ext == academy_conversion.EXT_PDF:
+        return _extract_text_from_pdf(source_path)
+    if ext == academy_conversion.EXT_DOCX:
+        return _extract_text_from_docx(source_path)
+    raise ValueError(
+        "DOC conversion requires Pandoc with system support for legacy .doc files"
+    )
 
 
 def _source_to_markdown(source_path: Path) -> str:
-    return academy_conversion.source_to_markdown(source_path)
+    ext = source_path.suffix.lower()
+    if ext in {academy_conversion.EXT_MD, academy_conversion.EXT_TXT}:
+        return source_path.read_text(encoding="utf-8", errors="ignore")
+
+    markdown_builders: dict[str, Callable[[Path], str]] = {
+        academy_conversion.EXT_JSON: _markdown_from_json,
+        academy_conversion.EXT_JSONL: _markdown_from_jsonl,
+        academy_conversion.EXT_CSV: _markdown_from_csv,
+    }
+    builder = markdown_builders.get(ext)
+    if builder:
+        return builder(source_path)
+
+    if ext in {
+        academy_conversion.EXT_DOC,
+        academy_conversion.EXT_DOCX,
+        academy_conversion.EXT_PDF,
+    }:
+        return _markdown_from_binary_document(source_path, ext)
+
+    raise ValueError(f"Unsupported source extension: {ext}")
 
 
 def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
-    return academy_conversion.source_to_records(source_path)
+    ext = source_path.suffix.lower()
+    record_builders: dict[str, Callable[[Path], List[Dict[str, str]]]] = {
+        academy_conversion.EXT_JSON: _records_from_json_file,
+        academy_conversion.EXT_JSONL: _records_from_jsonl_file,
+        academy_conversion.EXT_CSV: _records_from_csv_file,
+    }
+    builder = record_builders.get(ext)
+    if builder:
+        return builder(source_path)
+    text = _source_to_markdown(source_path)
+    return _records_from_text(text)
 
 
 def _write_target_markdown(out_file: TextIO, records: List[Dict[str, str]]) -> None:

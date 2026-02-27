@@ -525,6 +525,107 @@ function AuditRows({
   );
 }
 
+function AuditEntrySummary({
+  t,
+  row,
+  noDataLabel,
+}: Readonly<{
+  t: ReturnType<typeof useTranslation>;
+  row: AuditRow;
+  noDataLabel: string;
+}>) {
+  return (
+    <>
+      <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+          {t("config.audit.details.entryTitle")}
+        </p>
+        <p className="font-semibold text-zinc-100">{row.action}</p>
+        <p className="text-zinc-400">{formatFixedDateTime(row.timestamp, noDataLabel)}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/25 p-3 text-[11px]">
+        <div className="text-zinc-500">{t("config.audit.details.actor")}</div>
+        <div className="text-zinc-200">{row.actor}</div>
+        <div className="text-zinc-500">{t("config.audit.details.source")}</div>
+        <div className="text-zinc-200">{row.source}</div>
+        <div className="text-zinc-500">{t("config.audit.details.apiChannel")}</div>
+        <div className="text-zinc-200">{row.apiChannel}</div>
+        <div className="text-zinc-500">{t("config.audit.details.status")}</div>
+        <div className="text-zinc-200">{row.status}</div>
+      </div>
+    </>
+  );
+}
+
+function AuditAutonomyDetails({
+  t,
+  autonomy,
+  policy,
+}: Readonly<{
+  t: ReturnType<typeof useTranslation>;
+  autonomy: NonNullable<AuditPanelViewModel["selectedAutonomyLevel"]>;
+  policy: AuditPanelViewModel["selectedAutonomyPolicy"];
+}>) {
+  return (
+    <div className="space-y-1 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-2">
+      <p className="text-[11px] uppercase tracking-wide text-cyan-300">
+        {t("config.audit.details.autonomy.title")}
+      </p>
+      {autonomy.current === null ? null : (
+        <p className="text-zinc-100">
+          {t("config.audit.details.autonomy.current")}: {autonomy.current}
+          {autonomy.currentName ? ` (${autonomy.currentName})` : ""}
+        </p>
+      )}
+      {autonomy.required === null ? null : (
+        <p className="text-zinc-100">
+          {t("config.audit.details.autonomy.required")}: {autonomy.required}
+          {autonomy.requiredName ? ` (${autonomy.requiredName})` : ""}
+        </p>
+      )}
+      {autonomy.oldLevel !== null || autonomy.newLevel !== null ? (
+        <p className="text-zinc-100">
+          {t("config.audit.details.autonomy.change")}: {autonomy.oldLevel ?? "?"}
+          {autonomy.oldName ? ` (${autonomy.oldName})` : ""}
+          {" -> "}
+          {autonomy.newLevel ?? "?"}
+          {autonomy.newName ? ` (${autonomy.newName})` : ""}
+        </p>
+      ) : null}
+      {policy?.check ? (
+        <p className="text-zinc-100">
+          {t("config.audit.details.autonomy.policy")}: {policy.check}
+        </p>
+      ) : null}
+      {policy?.compliant === null ? null : (
+        <p className="text-zinc-100">
+          {t("config.audit.details.autonomy.compliance")}:{" "}
+          {policy?.compliant
+            ? t("config.audit.details.autonomy.yes")
+            : t("config.audit.details.autonomy.no")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AuditDetailsJson({
+  t,
+  details,
+}: Readonly<{ t: ReturnType<typeof useTranslation>; details: Record<string, unknown> }>) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+      <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">
+        {t("config.audit.details.json")}
+      </p>
+      <pre className="max-h-56 overflow-auto rounded-md border border-white/10 bg-zinc-950/70 p-2 text-[11px] text-zinc-300">
+        {JSON.stringify(details, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
 function AuditDetails({
   t,
   model,
@@ -542,78 +643,15 @@ function AuditDetails({
   const selectedRow = model.selectedRow;
   const autonomy = model.selectedAutonomyLevel;
   const policy = model.selectedAutonomyPolicy;
+
   return (
     <aside className="glass-panel rounded-2xl box-subtle p-4 text-xs">
       <div className="space-y-3">
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-            {t("config.audit.details.entryTitle")}
-          </p>
-          <p className="font-semibold text-zinc-100">{selectedRow.action}</p>
-          <p className="text-zinc-400">{formatFixedDateTime(selectedRow.timestamp, model.noDataLabel)}</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/25 p-3 text-[11px]">
-          <div className="text-zinc-500">{t("config.audit.details.actor")}</div>
-          <div className="text-zinc-200">{selectedRow.actor}</div>
-          <div className="text-zinc-500">{t("config.audit.details.source")}</div>
-          <div className="text-zinc-200">{selectedRow.source}</div>
-          <div className="text-zinc-500">{t("config.audit.details.apiChannel")}</div>
-          <div className="text-zinc-200">{selectedRow.apiChannel}</div>
-          <div className="text-zinc-500">{t("config.audit.details.status")}</div>
-          <div className="text-zinc-200">{selectedRow.status}</div>
-        </div>
-
+        <AuditEntrySummary t={t} row={selectedRow} noDataLabel={model.noDataLabel} />
         {autonomy && model.hasAutonomySection ? (
-          <div className="space-y-1 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-2">
-            <p className="text-[11px] uppercase tracking-wide text-cyan-300">
-              {t("config.audit.details.autonomy.title")}
-            </p>
-            {autonomy.current === null ? null : (
-              <p className="text-zinc-100">
-                {t("config.audit.details.autonomy.current")}: {autonomy.current}
-                {autonomy.currentName ? ` (${autonomy.currentName})` : ""}
-              </p>
-            )}
-            {autonomy.required === null ? null : (
-              <p className="text-zinc-100">
-                {t("config.audit.details.autonomy.required")}: {autonomy.required}
-                {autonomy.requiredName ? ` (${autonomy.requiredName})` : ""}
-              </p>
-            )}
-            {autonomy.oldLevel !== null || autonomy.newLevel !== null ? (
-              <p className="text-zinc-100">
-                {t("config.audit.details.autonomy.change")}: {autonomy.oldLevel ?? "?"}
-                {autonomy.oldName ? ` (${autonomy.oldName})` : ""}
-                {" -> "}
-                {autonomy.newLevel ?? "?"}
-                {autonomy.newName ? ` (${autonomy.newName})` : ""}
-              </p>
-            ) : null}
-            {policy?.check ? (
-              <p className="text-zinc-100">
-                {t("config.audit.details.autonomy.policy")}: {policy.check}
-              </p>
-            ) : null}
-            {policy?.compliant === null ? null : (
-              <p className="text-zinc-100">
-                {t("config.audit.details.autonomy.compliance")}:{" "}
-                {policy?.compliant
-                  ? t("config.audit.details.autonomy.yes")
-                  : t("config.audit.details.autonomy.no")}
-              </p>
-            )}
-          </div>
+          <AuditAutonomyDetails t={t} autonomy={autonomy} policy={policy} />
         ) : null}
-
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-          <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">
-            {t("config.audit.details.json")}
-          </p>
-          <pre className="max-h-56 overflow-auto rounded-md border border-white/10 bg-zinc-950/70 p-2 text-[11px] text-zinc-300">
-            {JSON.stringify(selectedRow.details ?? {}, null, 2)}
-          </pre>
-        </div>
+        <AuditDetailsJson t={t} details={selectedRow.details ?? {}} />
       </div>
     </aside>
   );

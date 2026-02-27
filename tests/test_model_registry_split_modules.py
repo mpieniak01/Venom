@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -317,6 +318,53 @@ async def test_runtime_paths(monkeypatch, tmp_path: Path):
         "ollama",
     )
     assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_runtime_restart_and_vllm_signature_guard(tmp_path: Path):
+    settings = SimpleNamespace(REPO_ROOT=str(tmp_path))
+
+    with pytest.raises(TypeError, match="expects 4 args"):
+        runtime.apply_vllm_activation_updates("only-one")
+
+    controller_module = SimpleNamespace()
+
+    class _Controller:
+        last_instance = None
+
+        def __init__(self, _settings):
+            self.calls = []
+            _Controller.last_instance = self
+
+        def has_server(self, runtime_name: str) -> bool:
+            self.calls.append(("has_server", runtime_name))
+            return True
+
+        async def run_action(self, runtime_name: str, action: str):
+            self.calls.append(("run_action", runtime_name, action))
+            return SimpleNamespace(ok=False, stderr="restart failed")
+
+    controller_module.LlmServerController = _Controller
+    with patch.dict(
+        sys.modules,
+        {"venom_core.core.llm_server_controller": controller_module},
+    ):
+        await runtime.restart_runtime_after_activation("vllm", settings)
+
+    assert _Controller.last_instance is not None
+    assert ("has_server", "vllm") in _Controller.last_instance.calls
+    assert ("run_action", "vllm", "restart") in _Controller.last_instance.calls
+
+    class _BrokenController:
+        def __init__(self, _settings):
+            raise RuntimeError("boom")
+
+    controller_module.LlmServerController = _BrokenController
+    with patch.dict(
+        sys.modules,
+        {"venom_core.core.llm_server_controller": controller_module},
+    ):
+        await runtime.restart_runtime_after_activation("vllm", settings)
 
 
 @pytest.mark.asyncio

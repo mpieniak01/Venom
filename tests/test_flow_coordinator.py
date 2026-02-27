@@ -113,6 +113,19 @@ async def test_run_council_returns_fallback_on_error():
     assert state.add_log.call_count >= 2
 
 
+@pytest.mark.asyncio
+async def test_run_council_returns_fallback_when_architect_missing():
+    state = _StateManager()
+    task_dispatcher = _task_dispatcher(architect_agent=None)
+    coordinator = FlowCoordinator(state, task_dispatcher, event_broadcaster=None)
+    middleware = _Middleware()
+
+    result = await coordinator.run_council(uuid4(), "ctx", middleware)
+
+    assert "Council mode nie powiódł się" in result
+    middleware.broadcast_event.assert_awaited()
+
+
 def test_normalize_council_tuple_variants():
     state = _StateManager()
     task_dispatcher = _task_dispatcher()

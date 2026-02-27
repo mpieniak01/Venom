@@ -193,6 +193,56 @@ def test_include_optional_api_routers_skips_when_core_too_old(monkeypatch):
     assert included == []
 
 
+def test_include_optional_api_routers_skips_disabled_and_missing_router(monkeypatch):
+    app = FastAPI()
+    settings = _Settings()
+
+    manifests = [
+        module_registry.ApiModuleManifest(
+            module_id="disabled",
+            router_import="x_mod:disabled",
+        ),
+        module_registry.ApiModuleManifest(
+            module_id="missing",
+            router_import="x_mod:missing",
+        ),
+        module_registry.ApiModuleManifest(
+            module_id="ok",
+            router_import="x_mod:ok",
+        ),
+    ]
+
+    monkeypatch.setattr(
+        module_registry,
+        "iter_api_module_manifests",
+        lambda _settings: iter(manifests),
+    )
+    monkeypatch.setattr(
+        module_registry,
+        "_is_enabled",
+        lambda manifest, _settings: manifest.module_id != "disabled",
+    )
+    monkeypatch.setattr(module_registry, "_is_compatible", lambda *_args: True)
+
+    ok_router = APIRouter(prefix="/ok")
+
+    @ok_router.get("/health")
+    async def _health():
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        module_registry,
+        "_load_router",
+        lambda router_import, _module_root=None: (
+            None if router_import.endswith(":missing") else ok_router
+        ),
+    )
+
+    included = module_registry.include_optional_api_routers(app, settings)
+    assert included == ["ok"]
+    assert any(route.path == "/ok/health" for route in app.routes)
+
+
 def test_validate_optional_modules_config_returns_errors():
     settings = _Settings()
     settings.API_OPTIONAL_MODULES = "broken_entry,no_colon|module.path"

@@ -255,6 +255,45 @@ async def test_analyze_with_openai_http_error_is_raised():
 
 
 @pytest.mark.asyncio
+async def test_analyze_with_openai_detects_webp_mime_type():
+    with (
+        patch("venom_core.perception.eyes.SETTINGS") as mock_settings,
+        patch.object(Eyes, "_check_local_vision", return_value=False),
+        patch(
+            "venom_core.perception.eyes.TrafficControlledHttpClient"
+        ) as mock_client_cls,
+    ):
+        mock_settings.OPENAI_API_KEY = "test-key"
+        mock_settings.OPENAI_GPT4O_MODEL = "gpt-4o"
+        mock_settings.VISION_MAX_TOKENS = 64
+        mock_settings.OPENAI_API_TIMEOUT = 10.0
+        mock_settings.OPENAI_CHAT_COMPLETIONS_ENDPOINT = (
+            "https://api.openai.com/v1/chat/completions"
+        )
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+        mock_settings.OLLAMA_CHECK_TIMEOUT = 5
+        mock_settings.LOCAL_VISION_TIMEOUT = 20.0
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "opis-webp"}}]
+        }
+        mock_client = MagicMock()
+        mock_client.apost = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        webp_base64 = base64.b64encode(b"RIFF1234WEBP").decode("ascii")
+        eyes = Eyes()
+        result = await eyes._analyze_with_openai(webp_base64, "co widzisz?")
+
+    assert result == "opis-webp"
+    payload = mock_client.apost.await_args.kwargs["json"]
+    image_url = payload["messages"][0]["content"][1]["image_url"]["url"]
+    assert image_url.startswith("data:image/webp;base64,")
+
+
+@pytest.mark.asyncio
 async def test_analyze_with_local_uses_traffic_client_and_http_error_branch():
     with (
         patch("venom_core.perception.eyes.SETTINGS") as mock_settings,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -299,3 +299,134 @@ async def test_initialize_documenter_and_watcher_paths(tmp_path: Path):
     )
     assert documenter is not None
     assert watcher is not None
+
+
+@pytest.mark.asyncio
+async def test_initialize_shadow_stack_enabled_paths_and_callbacks():
+    logger = _logger()
+    event_broadcaster = SimpleNamespace(broadcast_event=AsyncMock())
+    settings = SimpleNamespace(
+        ENABLE_PROACTIVE_MODE=True,
+        SHADOW_CONFIDENCE_THRESHOLD=0.42,
+        ENABLE_DESKTOP_SENSOR=True,
+        SHADOW_PRIVACY_FILTER=True,
+    )
+    orchestrator = SimpleNamespace(goal_store={"ok": True})
+
+    class _Suggestion:
+        title = "Fix"
+        message = "Do it"
+        action_payload = {"type": "task_update"}
+
+        def to_dict(self):
+            return {"title": self.title}
+
+    class _ShadowAgent:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.started = False
+
+        async def start(self):
+            self.started = True
+
+        async def analyze_sensor_data(self, _data):
+            return _Suggestion()
+
+    class _DesktopSensor:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.started = False
+
+        async def start(self):
+            self.started = True
+
+    class _Notifier:
+        def __init__(self, webhook_handler):
+            self.webhook_handler = webhook_handler
+            self.send_toast = AsyncMock()
+
+    kernel_module = ModuleType("venom_core.execution.kernel_builder")
+    shadow_module = ModuleType("venom_core.agents.shadow")
+    desktop_module = ModuleType("venom_core.perception.desktop_sensor")
+    notifier_module = ModuleType("venom_core.ui.notifier")
+
+    class _KB:
+        def build_kernel(self):
+            return object()
+
+    kernel_module.KernelBuilder = _KB
+    shadow_module.ShadowAgent = _ShadowAgent
+    desktop_module.DesktopSensor = _DesktopSensor
+    notifier_module.Notifier = _Notifier
+
+    with patch.dict(
+        "sys.modules",
+        {
+            kernel_module.__name__: kernel_module,
+            shadow_module.__name__: shadow_module,
+            desktop_module.__name__: desktop_module,
+            notifier_module.__name__: notifier_module,
+        },
+    ):
+        shadow_agent, desktop_sensor, notifier = await stack.initialize_shadow_stack(
+            settings=settings,
+            logger=logger,
+            orchestrator=orchestrator,
+            lessons_store=object(),
+            event_broadcaster=event_broadcaster,
+            system_log_event_type="SYS",
+        )
+
+    assert shadow_agent is not None and shadow_agent.started is True
+    assert desktop_sensor is not None and desktop_sensor.started is True
+    assert notifier is not None
+
+    clipboard_cb = desktop_sensor.kwargs["clipboard_callback"]
+    await clipboard_cb({"type": "clipboard"})
+    notifier.send_toast.assert_awaited_once()
+    assert event_broadcaster.broadcast_event.await_count >= 1
+
+    await notifier.webhook_handler({"type": "unknown"})
+    assert event_broadcaster.broadcast_event.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_initialize_shadow_stack_returns_none_on_exception():
+    logger = _logger()
+    settings = SimpleNamespace(
+        ENABLE_PROACTIVE_MODE=True,
+        SHADOW_CONFIDENCE_THRESHOLD=0.1,
+        ENABLE_DESKTOP_SENSOR=False,
+        SHADOW_PRIVACY_FILTER=False,
+    )
+
+    shadow_module = ModuleType("venom_core.agents.shadow")
+    shadow_module.ShadowAgent = None  # will fail at ShadowAgent(...)
+    kernel_module = ModuleType("venom_core.execution.kernel_builder")
+    kernel_module.KernelBuilder = lambda: SimpleNamespace(build_kernel=lambda: object())
+    desktop_module = ModuleType("venom_core.perception.desktop_sensor")
+    desktop_module.DesktopSensor = object
+    notifier_module = ModuleType("venom_core.ui.notifier")
+    notifier_module.Notifier = lambda webhook_handler: SimpleNamespace(
+        webhook_handler=webhook_handler, send_toast=AsyncMock()
+    )
+
+    with patch.dict(
+        "sys.modules",
+        {
+            shadow_module.__name__: shadow_module,
+            kernel_module.__name__: kernel_module,
+            desktop_module.__name__: desktop_module,
+            notifier_module.__name__: notifier_module,
+        },
+    ):
+        result = await stack.initialize_shadow_stack(
+            settings=settings,
+            logger=logger,
+            orchestrator=SimpleNamespace(goal_store=None),
+            lessons_store=None,
+            event_broadcaster=SimpleNamespace(broadcast_event=AsyncMock()),
+            system_log_event_type="SYS",
+        )
+
+    assert result == (None, None, None)

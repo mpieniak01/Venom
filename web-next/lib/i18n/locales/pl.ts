@@ -1,4 +1,5 @@
 import { workflowControl } from "./workflow-control/pl";
+import { topBar } from "./top-bar/pl";
 export const pl = {
   common: {
     switchLanguage: "Przełącz język",
@@ -18,17 +19,7 @@ export const pl = {
     loading: "Ładowanie...",
   },
 
-  topBar: {
-    wsLabel: "WS",
-    connected: "Połączono",
-    offline: "Offline",
-    alertCenter: "Centrum alertów",
-    notifications: "Powiadomienia",
-    commandPalette: "Paleta ⌘K",
-    quickActions: "Szybkie akcje",
-    services: "Usługi",
-    commandCenter: "Centrum dowodzenia",
-  },
+  topBar,
   sidebar: {
     brand: {
       caption: "Venom",

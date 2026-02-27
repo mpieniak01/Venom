@@ -143,14 +143,20 @@ class ContextBuilder:
     ) -> str:
         """Buduje pełny kontekst (prompt + historia + extra context)."""
         full_context = await self.prepare_context(task_id, request)
-        session_block = self.orch._build_session_context_block(
-            request,
-            task_id,
-            include_memory=not fast_path,
-        )
-
-        if session_block:
-            full_context = session_block + "\n\n" + full_context
+        include_session_context = not bool(request.forced_tool)
+        if include_session_context:
+            session_block = self.orch._build_session_context_block(
+                request,
+                task_id,
+                include_memory=not fast_path,
+            )
+            if session_block:
+                full_context = session_block + "\n\n" + full_context
+        else:
+            self.orch.state_manager.add_log(
+                task_id,
+                "Pominięto kontekst sesji dla wymuszonego toola (/...), aby narzędzie dostało czyste zapytanie.",
+            )
 
         # Trimming
         full_context, trimmed = trim_to_char_limit(full_context, MAX_CONTEXT_CHARS)

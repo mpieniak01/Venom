@@ -2,11 +2,11 @@
 
 Dokument opisuje dashboard Next.js (`web-next`).
 
-Szczegłowe źródła danych, testy i zasady SCC znajdziesz również w `docs/PL/FRONTEND_NEXT_GUIDE.md`.
+Szczegółowe źródła danych, testy i zasady SCC znajdziesz również w `docs/PL/FRONTEND_NEXT_GUIDE.md`.
 
 ---
 
-## 1. web-next (Next.js 15)
+## 1. web-next (Next.js 16)
 
 ### 1.1 Wymagania
 - Node.js 20+
@@ -64,6 +64,9 @@ Najważniejsze bloki w Cockpicie (web-next):
 - **Feedback użytkownika** – kciuk w górę/dół przy odpowiedzi, logi feedbacku i metryki jakości (👍/👎).
 - **Hidden prompts** – agregacja, filtracja i aktywacja zatwierdzonych odpowiedzi.
 - **Logi nauki** – podgląd zapisów LLM-only z `data/learning/requests.jsonl`.
+
+### 1.7 Szybki start tooli
+- Zobacz [TOOLS_USAGE_GUIDE.md](TOOLS_USAGE_GUIDE.md), gdzie jest aktualna mapa slash tooli, zasady routingu `forced_tool` i wymagane zależności web-search w `.venv`.
 
 ---
 

@@ -47,6 +47,8 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 ## Documentation
 ### Start and operations
 - [Deployment + startup](docs/DEPLOYMENT_NEXT.md) - Development/production startup flow and runtime requirements.
+- [Dashboard Guide](docs/DASHBOARD_GUIDE.md) - Web dashboard startup, scripts, and operational cockpit overview.
+- [Tools Usage Guide](docs/TOOLS_USAGE_GUIDE.md) - Slash-tool routing, tool behavior, and web-search runtime requirements.
 - [Configuration panel](docs/CONFIG_PANEL.md) - What can be edited from UI and safe editing rules.
 - [Frontend Next.js](docs/FRONTEND_NEXT_GUIDE.md) - `web-next` structure, views, and implementation standards.
 - [API traffic control](docs/API_TRAFFIC_CONTROL.md) - Global anti-spam/anti-ban model for inbound and outbound API traffic.

@@ -65,6 +65,9 @@ Most important blocks in Cockpit (web-next):
 - **Hidden prompts** – aggregation, filtering and activation of approved responses.
 - **Learning logs** – preview of LLM-only records from `data/learning/requests.jsonl`.
 
+### 1.7 Tools Quickstart
+- See [TOOLS_USAGE_GUIDE.md](TOOLS_USAGE_GUIDE.md) for current slash-tool mapping, `forced_tool` routing behavior, and required web-search dependencies in `.venv`.
+
 ---
 
 ## License

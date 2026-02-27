@@ -559,6 +559,9 @@ async def test_translation_service_non_dict_payload_and_no_fallback(monkeypatch)
         translation_module.SETTINGS, "OPENAI_API_TIMEOUT", 1.0, raising=False
     )
     monkeypatch.setattr(
+        translation_module.SETTINGS, "LLM_LOCAL_API_KEY", None, raising=False
+    )
+    monkeypatch.setattr(
         translation_module,
         "get_active_llm_runtime",
         lambda: SimpleNamespace(service_type="local"),
@@ -600,3 +603,329 @@ async def test_translation_service_non_dict_payload_and_no_fallback(monkeypatch)
     monkeypatch.setattr(translation_module, "TrafficControlledHttpClient", _ClientBoom)
     with pytest.raises(RuntimeError, match="translate-boom"):
         await service.translate_text("hello", target_lang="pl", allow_fallback=False)
+
+
+def test_model_services_error_branches(monkeypatch, tmp_path: Path):
+    logger = _Logger()
+    settings = SimpleNamespace(ACADEMY_MODELS_DIR=str(tmp_path / "models"))
+
+    module_manager = ModuleType("venom_core.core.model_manager")
+
+    class BrokenManager:
+        def __init__(self, *_args, **_kwargs):
+            raise RuntimeError("manager-boom")
+
+    module_manager.ModelManager = BrokenManager
+
+    module_registry = ModuleType("venom_core.core.model_registry")
+    module_registry.ModelRegistry = lambda: object()
+    module_bench = ModuleType("venom_core.services.benchmark")
+    module_bench.BenchmarkService = lambda **_kwargs: (_ for _ in ()).throw(
+        RuntimeError("bench-boom")
+    )
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setitem(__import__("sys").modules, module_manager.__name__, module_manager)
+        mp.setitem(__import__("sys").modules, module_registry.__name__, module_registry)
+        mp.setitem(__import__("sys").modules, module_bench.__name__, module_bench)
+
+        model_manager, model_registry_obj, benchmark = (
+            model_services_module.initialize_model_services(
+                settings=settings,
+                service_monitor=object(),
+                llm_controller=object(),
+                logger=logger,
+            )
+        )
+    assert model_manager is None
+    assert model_registry_obj is not None
+    assert benchmark is None
+
+
+@pytest.mark.asyncio
+async def test_provider_runtime_additional_branches(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(
+        providers_module, "SETTINGS", SimpleNamespace(HF_TOKEN="hf-raw")
+    )
+    assert providers_module.resolve_hf_token() == "hf-raw"
+
+    ollama = providers_module.OllamaModelProvider(endpoint="http://ollama:11434")
+    ollama.client = SimpleNamespace(
+        list_tags=AsyncMock(side_effect=RuntimeError("tags-boom")),
+        pull_model=AsyncMock(return_value=True),
+        remove_model=AsyncMock(return_value=True),
+    )
+    assert await ollama.list_available_models() == []
+    assert await ollama.install_model("valid-model", None) is True
+    assert await ollama.remove_model("valid-model") is True
+    assert await ollama.get_model_info("missing-model") is None
+
+    hf = providers_module.HuggingFaceModelProvider(cache_dir=str(tmp_path))
+    hf.client = SimpleNamespace(
+        list_models=AsyncMock(
+            return_value=[
+                {"id": ""},
+                {"id": "ok/model"},
+                object(),
+            ]
+        ),
+        download_snapshot=AsyncMock(return_value=None),
+        remove_cached_model=Mock(side_effect=RuntimeError("rm-boom")),
+        get_model_info=AsyncMock(side_effect=RuntimeError("info-boom")),
+    )
+    listed = await hf.list_available_models()
+    assert any(m.name == "ok/model" for m in listed)
+    assert await hf.install_model("ok/model") is False
+    assert await hf.remove_model("ok/model") is False
+
+    hf.list_available_models = AsyncMock(
+        return_value=[
+            ModelMetadata(
+                name="ok/model",
+                provider=ModelProvider.HUGGINGFACE,
+                display_name="ok/model",
+                runtime="vllm",
+            )
+        ]
+    )
+    info = await hf.get_model_info("ok/model")
+    assert info is not None and info.name == "ok/model"
+
+
+@pytest.mark.asyncio
+async def test_translation_helpers_and_cache_paths(monkeypatch):
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "LLM_MODEL_NAME", "test-model", raising=False
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS,
+        "LLM_LOCAL_ENDPOINT",
+        "http://localhost:8000/chat/completions",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "OPENAI_API_TIMEOUT", 1.0, raising=False
+    )
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(service_type="local", provider="local"),
+    )
+
+    service = translation_module.TranslationService(cache_ttl_seconds=3600)
+    assert service._resolve_chat_endpoint().endswith("/chat/completions")
+    assert "Authorization" in service._resolve_headers()
+    with pytest.raises(ValueError, match="Nieobsługiwany język"):
+        service._normalize_target_lang("xx")
+
+    key = service._build_cache_key("abc", None, "pl", "m")
+    service._cache[key] = {"value": "cached", "timestamp": 1.0}
+    assert service._get_cached_value(cache_key=key, now=2.0) == "cached"
+    service._cache[key] = {"value": "expired", "timestamp": 1.0}
+    service._cache_ttl_seconds = 0.5
+    assert service._get_cached_value(cache_key=key, now=2.0) is None
+
+    assert (
+        service._extract_message_content(
+            {"choices": [{"message": {"content": "  done  "}}]}, "fallback"
+        )
+        == "done"
+    )
+    assert service._extract_message_content({"choices": [{}]}, "fallback") == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_skill_adapter_unknown_and_async_paths():
+    class AsyncSkill:
+        async def async_tool(self, required: str):
+            return f"ok:{required}"
+
+    AsyncSkill.async_tool.__kernel_function_name__ = "async_tool"
+    AsyncSkill.async_tool.__kernel_function_description__ = "async desc"
+    AsyncSkill.async_tool.__kernel_function_parameters__ = [
+        {"name": "required", "type_": "str", "description": "r", "is_required": True}
+    ]
+
+    adapter = skill_adapter_module.SkillMcpLikeAdapter(AsyncSkill())
+    result = await adapter.invoke_tool("async_tool", {"required": "x"})
+    assert result == "ok:x"
+
+    with pytest.raises(ValueError, match="Unknown tool"):
+        await adapter.invoke_tool("missing-tool", {})
+
+
+@pytest.mark.asyncio
+async def test_runtime_module_branches_for_activation_and_restart(monkeypatch):
+    registry = SimpleNamespace(
+        manifest={"m": object()}, providers={}, _save_manifest=Mock()
+    )
+    assert await runtime_module.ensure_model_metadata_for_activation(
+        registry, "m", "vllm"
+    )
+
+    settings = SimpleNamespace(
+        REPO_ROOT=".",
+        LLM_MODEL_NAME="",
+        ACTIVE_LLM_SERVER="",
+    )
+    with (
+        pytest.MonkeyPatch.context() as mp,
+    ):
+        mp.setattr(runtime_module, "safe_setattr", lambda *_args, **_kwargs: None)
+        mp.setitem(
+            __import__("sys").modules,
+            "venom_core.config",
+            SimpleNamespace(SETTINGS=settings),
+        )
+        mp.setitem(
+            __import__("sys").modules,
+            "venom_core.services.config_manager",
+            SimpleNamespace(
+                config_manager=SimpleNamespace(update_config=lambda _u: None)
+            ),
+        )
+        runtime_module.apply_model_activation_config(
+            "m",
+            "ollama",
+            ModelMetadata(
+                name="m",
+                provider=ModelProvider.OLLAMA,
+                display_name="m",
+                runtime="ollama",
+            ),
+        )
+    assert settings.ACTIVE_LLM_SERVER == "ollama"
+
+    controller_module = ModuleType("venom_core.core.llm_server_controller")
+
+    class _Controller:
+        def __init__(self, _settings):
+            pass
+
+        def has_server(self, _runtime: str) -> bool:
+            return False
+
+    controller_module.LlmServerController = _Controller
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setitem(
+            __import__("sys").modules, controller_module.__name__, controller_module
+        )
+        await runtime_module.restart_runtime_after_activation("vllm", settings)
+
+
+@pytest.mark.asyncio
+async def test_runtime_stack_additional_branches(tmp_path: Path):
+    logger = _Logger()
+    event_broadcaster = object()
+
+    class _Doc:
+        def __init__(self, **_kwargs):
+            raise RuntimeError("doc-boom")
+
+    class _Watcher:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def start(self):
+            raise RuntimeError("watch-boom")
+
+    doc, watcher = await runtime_stack_module.initialize_documenter_and_watcher(
+        workspace_path=tmp_path,
+        git_skill=object(),
+        skill_manager=None,
+        event_broadcaster=event_broadcaster,
+        logger=logger,
+        documenter_agent_cls=_Doc,
+        file_watcher_cls=_Watcher,
+    )
+    assert doc is None and watcher is None
+
+    settings = SimpleNamespace(
+        ENABLE_AUDIO_INTERFACE=True,
+        WHISPER_MODEL_SIZE="tiny",
+        TTS_MODEL_PATH="tts.bin",
+        AUDIO_DEVICE="cpu",
+        ENABLE_IOT_BRIDGE=False,
+        VAD_THRESHOLD=0.4,
+        SILENCE_DURATION=1.0,
+    )
+    assert (
+        runtime_stack_module.initialize_audio_engine_if_enabled(
+            settings=settings,
+            logger=logger,
+            audio_engine_cls=lambda **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("audio-boom")
+            ),
+        )
+        is None
+    )
+
+    assert (
+        await runtime_stack_module.initialize_hardware_bridge_if_enabled(
+            settings=settings,
+            logger=logger,
+            extract_secret_value_fn=lambda _v: None,
+            hardware_bridge_cls=lambda **_kwargs: object(),
+        )
+        is None
+    )
+
+    assert (
+        runtime_stack_module.initialize_operator_agent_if_possible(
+            settings=SimpleNamespace(ENABLE_AUDIO_INTERFACE=False),
+            logger=logger,
+            current_audio_engine=object(),
+            current_hardware_bridge=None,
+            operator_agent_cls=lambda **_kwargs: object(),
+        )
+        is None
+    )
+    assert (
+        runtime_stack_module.initialize_audio_stream_handler_if_possible(
+            settings=settings,
+            logger=logger,
+            current_audio_engine=None,
+            current_operator_agent=object(),
+            audio_stream_handler_cls=lambda **_kwargs: object(),
+        )
+        is None
+    )
+
+    failing_bridge_settings = SimpleNamespace(
+        ENABLE_IOT_BRIDGE=True,
+        RIDER_PI_PASSWORD=SimpleNamespace(get_secret_value=lambda: "pw"),
+        RIDER_PI_HOST="host",
+        RIDER_PI_PORT=22,
+        RIDER_PI_USERNAME="user",
+        RIDER_PI_PROTOCOL="ssh",
+    )
+    bridge = await runtime_stack_module.initialize_hardware_bridge_if_enabled(
+        settings=failing_bridge_settings,
+        logger=logger,
+        extract_secret_value_fn=lambda secret: secret.get_secret_value(),
+        hardware_bridge_cls=lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("bridge-boom")
+        ),
+    )
+    assert bridge is None
+
+
+@pytest.mark.asyncio
+async def test_coder_and_toolmaker_skill_manager_paths():
+    from venom_core.agents.coder import CoderAgent
+    from venom_core.agents.toolmaker import ToolmakerAgent
+
+    coder = CoderAgent.__new__(CoderAgent)
+    coder.skill_manager = SimpleNamespace(
+        invoke_mcp_tool=AsyncMock(return_value="read-ok")
+    )
+    coder.file_skill = SimpleNamespace(read_file=AsyncMock(return_value="legacy"))
+    assert await coder._read_file("a.py") == "read-ok"
+
+    toolmaker = ToolmakerAgent.__new__(ToolmakerAgent)
+    toolmaker.skill_manager = SimpleNamespace(
+        invoke_mcp_tool=AsyncMock(return_value=None)
+    )
+    toolmaker.file_skill = SimpleNamespace(write_file=AsyncMock(return_value=None))
+    await toolmaker._write_file("x.py", "print(1)")
+    toolmaker.skill_manager.invoke_mcp_tool.assert_awaited_once()

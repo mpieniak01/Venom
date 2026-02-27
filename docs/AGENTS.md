@@ -12,6 +12,7 @@ If you are looking for the list of Venom system agents, use:
 - Keep security checks green (Sonar/Snyk findings should be addressed, not ignored).
 - Avoid dead code and placeholder branches.
 - Make error paths explicit and covered by tests where practical.
+- Do not run `source .venv/bin/activate`; execute tools directly via `.venv/bin/<tool>` (for example `.venv/bin/mypy venom_core`).
 
 ## Hard Gate Policy (Mandatory)
 

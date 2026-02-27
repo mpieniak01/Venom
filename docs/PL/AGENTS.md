@@ -12,6 +12,7 @@ Jeśli szukasz listy agentów systemu Venom, użyj:
 - Utrzymuj bezpieczeństwo (znaleziska Sonar/Snyk naprawiamy, nie ignorujemy).
 - Unikaj martwego kodu i placeholderów.
 - Ścieżki błędów mają być jawne i, gdzie sensowne, pokryte testami.
+- Nie uruchamiaj `source .venv/bin/activate`; narzędzia odpalaj bezpośrednio przez `.venv/bin/<narzędzie>` (np. `.venv/bin/mypy venom_core`).
 
 ## Polityka Hard Gate (obowiązkowa)
 

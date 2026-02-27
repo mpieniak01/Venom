@@ -248,7 +248,7 @@ async def test_runtime_paths(monkeypatch, tmp_path: Path):
         assert updates["VLLM_SERVED_MODEL_NAME"] == "m1"
         assert updates["VLLM_CHAT_TEMPLATE"].endswith("chat_template.jinja")
 
-        runtime.apply_model_activation_config(SimpleNamespace(), "m1", "vllm", meta)
+        runtime.apply_model_activation_config("m1", "vllm", meta)
         assert settings.ACTIVE_LLM_SERVER == "vllm"
 
     bad = SimpleNamespace()

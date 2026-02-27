@@ -95,14 +95,9 @@ export function LanguageProvider({ children }: Readonly<{ children: ReactNode }>
 
   const translate = useCallback(
     (path: string, replacements?: Record<string, string | number>) => {
-      // Backward-compat for legacy locale nesting where Academy keys
-      // were placed under `cockpit.academy.*` instead of top-level `academy.*`.
-      const legacyPath = path.startsWith("academy.") ? `cockpit.${path}` : null;
       const value =
         resolvePath(translations[language], path) ??
-        (legacyPath ? resolvePath(translations[language], legacyPath) : null) ??
         resolvePath(translations.pl, path) ??
-        (legacyPath ? resolvePath(translations.pl, legacyPath) : null) ??
         path;
       return applyReplacements(value, replacements);
     },

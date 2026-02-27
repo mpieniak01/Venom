@@ -1,0 +1,41 @@
+export const commandCenter = {
+  title: "Centrum dowodzenia",
+  description: "Globalny podgląd kolejki, tasków i usług z szybkimi skrótami nawigacyjnymi.",
+  stats: {
+    queueLabel: "Kolejka",
+    queueHintActive: "Aktywna",
+    queueHintPaused: "Wstrzymana",
+    queueHintOffline: "Brak danych",
+    pendingLabel: "Oczekujące",
+    pendingHint: "Oczekujące zadania",
+    successLabel: "Skuteczność",
+    successHint: "Metryki /api/v1/metrics",
+    successOffline: "Metryki offline",
+  },
+  queueOffline: "Brak danych kolejki – sprawdź połączenie API.",
+  shortcuts: {
+    eyebrow: "Skróty",
+    title: "Nawigacja operacyjna",
+    goTo: "Przejdź",
+    links: {
+      cockpit: { label: "Kokpit", description: "Czat i logi w czasie rzeczywistym" },
+      inspector: { label: "Inspektor", description: "Śledzenie requestów i kroków" },
+      brain: { label: "Graf wiedzy", description: "Graf wiedzy i lekcje" },
+      strategy: { label: "Strategia", description: "Strategia i KPI operacyjne" },
+    },
+  },
+  tasks: {
+    eyebrow: "Aktywne taski",
+    title: "Status agentów",
+    fallbackTitle: "Brak aktywnych zadań",
+    fallbackDescription: "Kolejka chwilowo nie przetwarza tasków.",
+    fallbackHint: "Centrum dowodzenia",
+  },
+  services: {
+    eyebrow: "Usługi systemowe",
+    title: "Status integracji",
+    fallbackTitle: "Brak usług",
+    fallbackDescription: "Sprawdź połączenie z backendem.",
+    fallbackHint: "Centrum dowodzenia",
+  },
+};

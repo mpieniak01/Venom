@@ -1,0 +1,41 @@
+export const commandCenter = {
+  title: "Command Center",
+  description: "Global view of queue, tasks and services with navigation shortcuts.",
+  stats: {
+    queueLabel: "Queue",
+    queueHintActive: "Active",
+    queueHintPaused: "Paused",
+    queueHintOffline: "No data",
+    pendingLabel: "Pending",
+    pendingHint: "Pending tasks",
+    successLabel: "Success rate",
+    successHint: "Metrics /api/v1/metrics",
+    successOffline: "Metrics offline",
+  },
+  queueOffline: "Queue data unavailable – check API connection.",
+  shortcuts: {
+    eyebrow: "Shortcuts",
+    title: "Operational navigation",
+    goTo: "Go",
+    links: {
+      cockpit: { label: "Cockpit", description: "Chat and runtime logs" },
+      inspector: { label: "Inspector", description: "Trace viewer" },
+      brain: { label: "Knowledge Graph", description: "Graph and lessons" },
+      strategy: { label: "Strategy", description: "Strategy and KPIs" },
+    },
+  },
+  tasks: {
+    eyebrow: "Active tasks",
+    title: "Agent status",
+    fallbackTitle: "No active tasks",
+    fallbackDescription: "The queue is idle right now.",
+    fallbackHint: "Command Center",
+  },
+  services: {
+    eyebrow: "System services",
+    title: "Integration status",
+    fallbackTitle: "No services",
+    fallbackDescription: "Check the backend connection.",
+    fallbackHint: "Command Center",
+  },
+};

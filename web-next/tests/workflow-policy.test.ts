@@ -15,7 +15,15 @@ describe("workflow policy", () => {
       { id: "provider", type: "provider", data: {}, position: { x: 0, y: 0 } },
     );
     assert.equal(decisionToProvider.isValid, false);
-    assert.match(decisionToProvider.reason ?? "", /invalid_connection/);
+    assert.equal(decisionToProvider.reasonCode, "invalid_connection");
+  });
+
+  it("allows runtime to embedding for graph consistency", () => {
+    const runtimeToEmbedding = validateConnection(
+      { id: "runtime", type: "runtime", data: {}, position: { x: 0, y: 0 } },
+      { id: "embedding", type: "embedding", data: {}, position: { x: 0, y: 0 } },
+    );
+    assert.equal(runtimeToEmbedding.isValid, true);
   });
 
   it("maps swimlane ordering deterministically", () => {

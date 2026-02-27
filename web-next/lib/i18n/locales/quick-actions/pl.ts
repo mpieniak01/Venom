@@ -1,0 +1,21 @@
+export const quickActions = {
+  title: "Szybkie akcje",
+  description: "Najczęstsze akcje operacyjne /api/v1/queue z każdego widoku.",
+  offlineMessage: "Brak danych kolejki – sprawdź połączenie API.",
+  badgeQueue: "Kolejka",
+  badgeEmergency: "Awaryjne",
+  sending: "Wysyłam...",
+  successMessage: "{{action}} wykonane.",
+  errorMessage: "Błąd podczas {{action}}.",
+  actions: {
+    togglePause: "Wstrzymaj kolejkę",
+    toggleResume: "Wznów kolejkę",
+    toggleDescription: "Steruje stanem kolejki (pauza/wznowienie).",
+    purgeLabel: "Wyczyść kolejkę",
+    purgeDescription: "Usuwa wszystkie oczekujące zadania.",
+    purgeConfirm: "Wyczyścić wszystkie oczekujące zadania?",
+    emergencyLabel: "Awaryjne zatrzymanie",
+    emergencyDescription: "Natychmiast zatrzymuje kolejkę (tryb awaryjny).",
+    emergencyConfirm: "Awaryjny stop zatrzyma wszystkie operacje. Kontynuować?",
+  },
+};

@@ -1,0 +1,21 @@
+export const quickActions = {
+  title: "Schnellaktionen",
+  description: "Häufige `/api/v1/queue`-Operationen aus jedem View.",
+  offlineMessage: "Keine Queue-Daten – API Verbindung prüfen.",
+  badgeQueue: "Queue",
+  badgeEmergency: "Notfall",
+  sending: "Sende...",
+  successMessage: "{{action}} ausgeführt.",
+  errorMessage: "Fehler beim Ausführen von {{action}}.",
+  actions: {
+    togglePause: "Queue pausieren",
+    toggleResume: "Queue fortsetzen",
+    toggleDescription: "Steuert den Queue-Status (Pause/Fortsetzen).",
+    purgeLabel: "Queue leeren",
+    purgeDescription: "Entfernt alle wartenden Tasks.",
+    purgeConfirm: "Alle wartenden Tasks löschen?",
+    emergencyLabel: "Notstopp",
+    emergencyDescription: "Stoppt die Queue sofort (Notfall).",
+    emergencyConfirm: "Notstopp hält alle Operationen an. Fortfahren?",
+  },
+};

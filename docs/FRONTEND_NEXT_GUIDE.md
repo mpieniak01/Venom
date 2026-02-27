@@ -42,6 +42,9 @@ web-next/
 | `npm --prefix web-next run dev`       | Dev server (Next 16) with automatic meta generation (`predev → generate-meta.mjs`)   |
 | `npm --prefix web-next run build`     | Prod build, generates `public/meta.json` and standalone `.next/standalone`           |
 | `npm --prefix web-next run test:e2e`  | Playwright smoke in prod mode (15 Cockpit + bars scenarios)                          |
+| `npm --prefix web-next run test:unit` | Node test runner for frontend unit suites (`tests/*.test.ts`)                        |
+| `npm --prefix web-next run test:unit:components` | Component tests (`tsx` + `jsdom`) for React UI modules                  |
+| `npm --prefix web-next run test:unit:ci-lite` | CI-lite frontend lane (`test:unit` + `test:unit:components`)             |
 | `npm --prefix web-next run lint`      | Next lint (ESLint 9)                                                                 |
 | `npm --prefix web-next run lint:locales` | Validate i18n dictionary consistency (`scripts/check-locales.ts`)                  |
 
@@ -49,6 +52,19 @@ Requirements:
 - Node.js `>=20.9.0`
 - npm `>=10.0.0`
 - Recommended: use `nvm use` in `web-next/` (`.nvmrc` pinned)
+
+### 0.3.1 i18n dictionary modularization (current state)
+- Locale roots (`web-next/lib/i18n/locales/pl.ts`, `en.ts`, `de.ts`) aggregate domain modules.
+- Completed module groups:
+  - `workflow-control/*`
+  - `top-bar/*`, `sidebar/*`, `module-host/*`, `system-status/*`, `mobile-nav/*`
+  - `command-palette/*`, `command-center/*`, `quick-actions/*`
+  - `academy/*`, `models/*`
+- Guard tests ensure key parity (`pl/en/de`) and required keys:
+  - `web-next/tests/workflow-i18n-keys.test.ts`
+  - `web-next/tests/topbar-i18n-keys.test.ts`
+  - `web-next/tests/navigation-i18n-keys.test.ts`
+  - `web-next/tests/operations-i18n-keys.test.ts`
 
 ### 0.4 Configuration and proxy
 - Backend FastAPI listens on port 8000 by default – frontend connects via Next *rewrites* (see `next.config.mjs`) or via variables:

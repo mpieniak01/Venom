@@ -1,0 +1,21 @@
+export const quickActions = {
+  title: "Quick actions",
+  description: "Most common `/api/v1/queue` operations available everywhere.",
+  offlineMessage: "Queue data unavailable – check API connection.",
+  badgeQueue: "Queue",
+  badgeEmergency: "Emergency",
+  sending: "Sending...",
+  successMessage: "{{action}} executed.",
+  errorMessage: "Error while running {{action}}.",
+  actions: {
+    togglePause: "Pause queue",
+    toggleResume: "Resume queue",
+    toggleDescription: "Controls queue state (pause/resume).",
+    purgeLabel: "Purge queue",
+    purgeDescription: "Removes all pending tasks.",
+    purgeConfirm: "Purge all pending tasks?",
+    emergencyLabel: "Emergency stop",
+    emergencyDescription: "Immediately stops the queue (emergency).",
+    emergencyConfirm: "Emergency stop will halt all operations. Continue?",
+  },
+};

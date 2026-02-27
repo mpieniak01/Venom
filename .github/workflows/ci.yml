@@ -129,7 +129,8 @@ jobs:
 
       - name: Unit Tests
         timeout-minutes: 5
-        run: npm --prefix web-next run test:unit
+        working-directory: web-next
+        run: node --import tsx --test --test-concurrency=1 --test-reporter=dot tests/*.test.ts
 
   openapi-contract:
     name: OpenAPI Contract (export + TS codegen)

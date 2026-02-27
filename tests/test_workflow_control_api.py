@@ -70,10 +70,11 @@ def isolated_control_plane(monkeypatch):
     control_plane_module._control_plane_service = None
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def client():
     """Fixture for FastAPI TestClient."""
-    return TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 class TestPlanEndpoint:

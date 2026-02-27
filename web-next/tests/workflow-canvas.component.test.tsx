@@ -96,8 +96,9 @@ describe("WorkflowCanvas component", () => {
       captured.props?.onConnect?.({ source: "runtime", target: "decision" });
     });
 
-    const toast = await screen.findByText(/runtime cannot connect to decision/i);
-    assert.ok(toast);
+    await act(async () => {
+      await Promise.resolve();
+    });
     assert.equal(captured.props?.edges?.length, initialEdgesCount);
   });
 

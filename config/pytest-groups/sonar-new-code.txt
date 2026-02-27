@@ -168,3 +168,6 @@ tests/test_strategy_and_routes_hotfix.py
 tests/test_orchestrator_flows_hotfix.py
 tests/test_flow_coordinator.py
 tests/test_browser_skill_unit_coverage.py
+
+# Sonar coverage fix wave
+tests/test_sonar_coverage_new_code_wave.py

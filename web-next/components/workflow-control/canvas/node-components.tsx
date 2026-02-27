@@ -12,7 +12,7 @@ type DecisionNodeData = { strategy?: string };
 type IntentNodeData = { intentMode?: string };
 type KernelNodeData = { kernel?: string };
 type RuntimeNodeData = { runtime?: { services?: string[] } };
-type SourceNodeData = { sourceTag?: "local" | "cloud" | string };
+type SourceNodeData = { sourceTag?: string };
 
 function NodeActions() {
   const t = useTranslation();

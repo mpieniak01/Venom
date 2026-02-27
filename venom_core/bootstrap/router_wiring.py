@@ -1,106 +1,126 @@
 """Router and dependency wiring extracted from main bootstrap flow."""
 
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass(frozen=True)
+class RouterModules:
+    feedback_routes: Any
+    queue_routes: Any
+    metrics_routes: Any
+    git_routes: Any
+    agents_routes: Any
+    nodes_routes: Any
+    strategy_routes: Any
+    models_routes: Any
+    benchmark_routes: Any
+    calendar_routes: Any
+    memory_projection_routes: Any
+    academy_routes: Any
+
+
+@dataclass(frozen=True)
+class RuntimeDependencies:
+    orchestrator: Any
+    state_manager: Any
+    vector_store: Any
+    graph_store: Any
+    lessons_store: Any
+    session_store: Any
+    request_tracer: Any
+    service_monitor: Any
+    background_scheduler: Any
+    llm_controller: Any
+    model_manager: Any
+    hardware_bridge: Any
+    token_economist: Any
+    git_skill: Any
+    gardener_agent: Any
+    shadow_agent: Any
+    file_watcher: Any
+    documenter_agent: Any
+    node_manager: Any
+    model_registry: Any
+    benchmark_service: Any
+    google_calendar_skill: Any
+    professor: Any
+    dataset_curator: Any
+    gpu_habitat: Any
 
 
 def apply_router_dependencies(
     *,
     api_deps: Any,
     system_deps: Any,
-    feedback_routes: Any,
-    queue_routes: Any,
-    metrics_routes: Any,
-    git_routes: Any,
-    agents_routes: Any,
-    nodes_routes: Any,
-    strategy_routes: Any,
-    models_routes: Any,
-    benchmark_routes: Any,
-    calendar_routes: Any,
-    memory_projection_routes: Any,
-    academy_routes: Any,
-    orchestrator: Any,
-    state_manager: Any,
-    vector_store: Any,
-    graph_store: Any,
-    lessons_store: Any,
-    session_store: Any,
-    request_tracer: Any,
-    service_monitor: Any,
-    background_scheduler: Any,
-    llm_controller: Any,
-    model_manager: Any,
-    hardware_bridge: Any,
-    token_economist: Any,
-    git_skill: Any,
-    gardener_agent: Any,
-    shadow_agent: Any,
-    file_watcher: Any,
-    documenter_agent: Any,
-    node_manager: Any,
-    model_registry: Any,
-    benchmark_service: Any,
-    google_calendar_skill: Any,
-    professor: Any,
-    dataset_curator: Any,
-    gpu_habitat: Any,
+    routes: RouterModules,
+    runtime: RuntimeDependencies,
 ) -> None:
     """Apply all runtime dependencies to API routes and global dependency holders."""
-    if orchestrator:
-        api_deps.set_orchestrator(orchestrator)
-    if state_manager:
-        api_deps.set_state_manager(state_manager)
-    if vector_store:
-        api_deps.set_vector_store(vector_store)
-    if graph_store:
-        api_deps.set_graph_store(graph_store)
-    if lessons_store:
-        api_deps.set_lessons_store(lessons_store)
-    if session_store:
-        api_deps.set_session_store(session_store)
-    if request_tracer:
-        api_deps.set_request_tracer(request_tracer)
+    if runtime.orchestrator:
+        api_deps.set_orchestrator(runtime.orchestrator)
+    if runtime.state_manager:
+        api_deps.set_state_manager(runtime.state_manager)
+    if runtime.vector_store:
+        api_deps.set_vector_store(runtime.vector_store)
+    if runtime.graph_store:
+        api_deps.set_graph_store(runtime.graph_store)
+    if runtime.lessons_store:
+        api_deps.set_lessons_store(runtime.lessons_store)
+    if runtime.session_store:
+        api_deps.set_session_store(runtime.session_store)
+    if runtime.request_tracer:
+        api_deps.set_request_tracer(runtime.request_tracer)
 
-    if service_monitor:
-        service_monitor.set_orchestrator(orchestrator)
+    if runtime.service_monitor:
+        runtime.service_monitor.set_orchestrator(runtime.orchestrator)
 
     # Keep legacy invocation shape to avoid behavior drift.
     system_deps.set_dependencies(
-        background_scheduler,
-        service_monitor,
-        state_manager,
-        llm_controller,
-        model_manager,
-        request_tracer,
-        hardware_bridge,
-        orchestrator,
+        runtime.background_scheduler,
+        runtime.service_monitor,
+        runtime.state_manager,
+        runtime.llm_controller,
+        runtime.model_manager,
+        runtime.request_tracer,
+        runtime.hardware_bridge,
+        runtime.orchestrator,
     )
-    feedback_routes.set_dependencies(orchestrator, state_manager, request_tracer)
-    queue_routes.set_dependencies(orchestrator)
-    metrics_routes.set_dependencies(token_economist=token_economist)
-    git_routes.set_dependencies(git_skill)
-    agents_routes.set_dependencies(
-        gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
+    routes.feedback_routes.set_dependencies(
+        runtime.orchestrator, runtime.state_manager, runtime.request_tracer
+    )
+    routes.queue_routes.set_dependencies(runtime.orchestrator)
+    routes.metrics_routes.set_dependencies(token_economist=runtime.token_economist)
+    routes.git_routes.set_dependencies(runtime.git_skill)
+    routes.agents_routes.set_dependencies(
+        runtime.gardener_agent,
+        runtime.shadow_agent,
+        runtime.file_watcher,
+        runtime.documenter_agent,
+        runtime.orchestrator,
     )
     system_deps.set_dependencies(
-        background_scheduler,
-        service_monitor,
-        state_manager,
-        llm_controller,
-        model_manager,
-        request_tracer,
-        hardware_bridge,
+        runtime.background_scheduler,
+        runtime.service_monitor,
+        runtime.state_manager,
+        runtime.llm_controller,
+        runtime.model_manager,
+        runtime.request_tracer,
+        runtime.hardware_bridge,
     )
-    nodes_routes.set_dependencies(node_manager)
-    strategy_routes.set_dependencies(orchestrator)
-    models_routes.set_dependencies(model_manager, model_registry=model_registry)
-    benchmark_routes.set_dependencies(benchmark_service)
-    calendar_routes.set_dependencies(google_calendar_skill)
-    memory_projection_routes.set_dependencies(vector_store)
-    academy_routes.set_dependencies(
-        professor=professor,
-        dataset_curator=dataset_curator,
-        gpu_habitat=gpu_habitat,
-        lessons_store=lessons_store,
-        model_manager=model_manager,
+    routes.nodes_routes.set_dependencies(runtime.node_manager)
+    routes.strategy_routes.set_dependencies(runtime.orchestrator)
+    routes.models_routes.set_dependencies(
+        runtime.model_manager,
+        model_registry=runtime.model_registry,
+    )
+    routes.benchmark_routes.set_dependencies(runtime.benchmark_service)
+    routes.calendar_routes.set_dependencies(runtime.google_calendar_skill)
+    routes.memory_projection_routes.set_dependencies(runtime.vector_store)
+    routes.academy_routes.set_dependencies(
+        professor=runtime.professor,
+        dataset_curator=runtime.dataset_curator,
+        gpu_habitat=runtime.gpu_habitat,
+        lessons_store=runtime.lessons_store,
+        model_manager=runtime.model_manager,
     )

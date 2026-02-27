@@ -233,7 +233,7 @@ class ModelRegistry:
         updates: Dict[str, Any],
         settings: Any,
     ) -> None:
-        runtime_apply_vllm_activation_updates(self, model_name, meta, updates, settings)
+        runtime_apply_vllm_activation_updates(model_name, meta, updates, settings)
 
     def _safe_setattr(self, target: Any, attr: str, value: Any) -> None:
         runtime_safe_setattr(target, attr, value)

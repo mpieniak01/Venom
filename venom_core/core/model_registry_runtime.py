@@ -77,7 +77,7 @@ def apply_model_activation_config(
         "ACTIVE_LLM_SERVER": runtime,
     }
     if runtime == "vllm":
-        apply_vllm_activation_updates(registry, model_name, meta, updates, SETTINGS)
+        apply_vllm_activation_updates(model_name, meta, updates, SETTINGS)
     if runtime == "ollama":
         updates["LAST_MODEL_OLLAMA"] = model_name
 
@@ -91,13 +91,17 @@ def apply_model_activation_config(
     return SETTINGS
 
 
-def apply_vllm_activation_updates(
-    registry: Any,
-    model_name: str,
-    meta: ModelMetadata,
-    updates: dict[str, Any],
-    settings: Any,
-) -> None:
+def apply_vllm_activation_updates(*args: Any) -> None:
+    if len(args) == 4:
+        model_name, meta, updates, settings = args
+    elif len(args) == 5:
+        _, model_name, meta, updates, settings = args
+    else:
+        raise TypeError(
+            "apply_vllm_activation_updates expects 4 args "
+            "(model_name, meta, updates, settings) or legacy 5 args"
+        )
+
     template_value = ""
     local_path = meta.local_path or model_name
     template_candidate = Path(local_path) / "chat_template.jinja"

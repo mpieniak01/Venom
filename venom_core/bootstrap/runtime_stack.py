@@ -39,12 +39,12 @@ async def initialize_node_manager(*, settings: Any, logger: Any) -> Any:
 
 def initialize_memory_stores(
     *,
-    settings: Any,
     logger: Any,
     vector_store_cls: Any,
     graph_store_cls: Any,
     lessons_store_cls: Any,
     orchestrator: Any,
+    **_unused: Any,
 ) -> Tuple[Any, Any, Any]:
     """Initialize VectorStore/GraphStore/LessonsStore and wire lessons into orchestrator."""
     vector_store = None

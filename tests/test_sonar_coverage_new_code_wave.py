@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import httpx
 import pytest
 
 from venom_core.bootstrap import model_services as model_services_module
@@ -860,6 +862,232 @@ async def test_runtime_stack_additional_branches(tmp_path: Path):
         is None
     )
 
+
+@pytest.mark.asyncio
+async def test_service_monitor_check_health_non_serviceinfo_result_branch(monkeypatch):
+    registry = ServiceRegistry()
+    registry.services = {
+        "A": ServiceInfo(name="A", service_type="api", status=ServiceStatus.UNKNOWN),
+    }
+    monitor = ServiceHealthMonitor(registry)
+
+    async def _return_non_service(_service):
+        return {"unexpected": True}
+
+    monkeypatch.setattr(monitor, "_check_service_health", _return_non_service)
+    services = await monitor.check_health(service_name="A")
+
+    assert len(services) == 1
+    assert isinstance(services[0], ServiceInfo)
+    assert registry.services["A"].name == "A"
+
+
+@pytest.mark.asyncio
+async def test_service_monitor_event_broadcast_failure_is_swallowed(monkeypatch):
+    class _Broadcaster:
+        def broadcast_event(self, **_kwargs):
+            return None
+
+    monitor = ServiceHealthMonitor(ServiceRegistry(), event_broadcaster=_Broadcaster())
+    service = ServiceInfo(name="SVC", service_type="api", endpoint="http://x")
+
+    async def _http_ok(_service):
+        _service.status = ServiceStatus.ONLINE
+        _service.error_message = None
+
+    monkeypatch.setattr(monitor, "_check_http_service", _http_ok)
+    monkeypatch.setattr(
+        monitor,
+        "_spawn_background_task",
+        lambda _coro: (_ for _ in ()).throw(RuntimeError("ws-boom")),
+    )
+
+    checked = await monitor._check_service_health(service)
+    assert checked.status == ServiceStatus.ONLINE
+
+
+@pytest.mark.asyncio
+async def test_provider_more_branches_for_ollama_and_hf(tmp_path: Path):
+    ollama = providers_module.OllamaModelProvider(endpoint="http://ollama:11434")
+    ollama.client = SimpleNamespace(
+        list_tags=AsyncMock(return_value={"models": [{"name": "model-a", "size": 10}]}),
+        pull_model=AsyncMock(return_value=True),
+        remove_model=AsyncMock(return_value=True),
+    )
+    found = await ollama.get_model_info("model-a")
+    missing = await ollama.get_model_info("model-b")
+    assert found is not None and found.name == "model-a"
+    assert missing is None
+
+    hf = providers_module.HuggingFaceModelProvider(cache_dir=str(tmp_path))
+    hf.client = SimpleNamespace(
+        list_models=AsyncMock(return_value=[{"id": "org/model-a"}]),
+        download_snapshot=AsyncMock(side_effect=RuntimeError("download-boom")),
+        remove_cached_model=Mock(return_value=False),
+        get_model_info=AsyncMock(side_effect=RuntimeError("info-boom")),
+    )
+    assert await hf.install_model("org/model-a") is False
+    assert await hf.remove_model("org/model-a") is False
+    assert await hf.get_model_info("org/missing") is None
+
+
+@pytest.mark.asyncio
+async def test_translation_openai_endpoint_headers_and_http_error(monkeypatch):
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "LLM_MODEL_NAME", "test-model", raising=False
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS,
+        "OPENAI_CHAT_COMPLETIONS_ENDPOINT",
+        "https://api.openai.com/v1/chat/completions",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "OPENAI_API_KEY", "k-openai", raising=False
+    )
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "OPENAI_API_TIMEOUT", 1.0, raising=False
+    )
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(service_type="openai", provider="openai"),
+    )
+
+    service = translation_module.TranslationService(cache_ttl_seconds=3600)
+    assert service._resolve_chat_endpoint().startswith("https://api.openai.com/")
+    assert "Authorization" in service._resolve_headers()
+
+    class _HttpBoomClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def apost(self, *args, **kwargs):
+            raise httpx.HTTPError("http-fail")
+
+    monkeypatch.setattr(
+        translation_module, "TrafficControlledHttpClient", _HttpBoomClient
+    )
+    with pytest.raises(httpx.HTTPError, match="http-fail"):
+        await service.translate_text("hello", target_lang="pl", allow_fallback=False)
+
+
+@pytest.mark.asyncio
+async def test_translation_cache_hit_skips_http_call(monkeypatch):
+    monkeypatch.setattr(
+        translation_module.SETTINGS, "LLM_MODEL_NAME", "cache-model", raising=False
+    )
+    monkeypatch.setattr(
+        translation_module,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(service_type="local", provider="local"),
+    )
+    service = translation_module.TranslationService(cache_ttl_seconds=999)
+
+    calls = {"http": 0}
+
+    class _NeverUsedClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def apost(self, *args, **kwargs):
+            calls["http"] += 1
+            return SimpleNamespace(json=lambda: {"choices": []})
+
+    monkeypatch.setattr(
+        translation_module, "TrafficControlledHttpClient", _NeverUsedClient
+    )
+
+    key = service._build_cache_key("hello", None, "pl", "cache-model")
+    service._cache[key] = {"value": "czesc", "timestamp": time.time()}
+    result = await service.translate_text("hello", target_lang="pl", use_cache=True)
+    assert result == "czesc"
+    assert calls["http"] == 0
+
+
+@pytest.mark.asyncio
+async def test_skill_adapter_subclass_constructors(monkeypatch):
+    monkeypatch.setattr(
+        skill_adapter_module, "GitSkill", lambda **kwargs: SimpleNamespace()
+    )
+    monkeypatch.setattr(
+        skill_adapter_module, "FileSkill", lambda **kwargs: SimpleNamespace()
+    )
+    monkeypatch.setattr(
+        skill_adapter_module, "GoogleCalendarSkill", lambda **kwargs: SimpleNamespace()
+    )
+
+    git_adapter = skill_adapter_module.GitSkillMcpAdapter(workspace_root=".")
+    file_adapter = skill_adapter_module.FileSkillMcpAdapter(workspace_root=".")
+    cal_adapter = skill_adapter_module.GoogleCalendarSkillMcpAdapter(
+        credentials_path="c.json",
+        token_path="t.json",
+        venom_calendar_id="id",
+    )
+    assert git_adapter.list_tools() == []
+    assert file_adapter.list_tools() == []
+    assert cal_adapter.list_tools() == []
+
+
+def test_onnx_runtime_additional_branches_for_empty_path_and_prompt(tmp_path):
+    from venom_core.execution.onnx_llm_client import OnnxLlmClient
+
+    empty_path_client = OnnxLlmClient(
+        settings=SimpleNamespace(
+            ONNX_LLM_ENABLED=True,
+            ONNX_LLM_MODEL_PATH="",
+            ONNX_LLM_EXECUTION_PROVIDER="cuda",
+            ONNX_LLM_PRECISION="int4",
+            ONNX_LLM_MAX_NEW_TOKENS=10,
+            ONNX_LLM_TEMPERATURE=0.2,
+        )
+    )
+    assert empty_path_client.has_model_path() is False
+
+    model_dir = tmp_path / "onnx"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "genai_config.json").write_text("{}", encoding="utf-8")
+    client = OnnxLlmClient(
+        settings=SimpleNamespace(
+            ONNX_LLM_ENABLED=True,
+            ONNX_LLM_MODEL_PATH=str(model_dir),
+            ONNX_LLM_EXECUTION_PROVIDER="cuda",
+            ONNX_LLM_PRECISION="int4",
+            ONNX_LLM_MAX_NEW_TOKENS=10,
+            ONNX_LLM_TEMPERATURE=0.2,
+        )
+    )
+    client._tokenizer = SimpleNamespace(
+        apply_chat_template=lambda _msg, add_generation_prompt: "templated"
+    )
+    assert client._build_prompt([{"role": "user", "content": "x"}]) == "templated"
+
+
+@pytest.mark.asyncio
+async def test_runtime_stack_hardware_and_audio_handler_additional_guards():
+    logger = _Logger()
+    settings = SimpleNamespace(
+        ENABLE_AUDIO_INTERFACE=True,
+        ENABLE_IOT_BRIDGE=False,
+        WHISPER_MODEL_SIZE="tiny",
+        TTS_MODEL_PATH="tts.bin",
+        AUDIO_DEVICE="cpu",
+        VAD_THRESHOLD=0.4,
+        SILENCE_DURATION=1.0,
+    )
+
     assert (
         await runtime_stack_module.initialize_hardware_bridge_if_enabled(
             settings=settings,
@@ -869,7 +1097,6 @@ async def test_runtime_stack_additional_branches(tmp_path: Path):
         )
         is None
     )
-
     assert (
         runtime_stack_module.initialize_operator_agent_if_possible(
             settings=SimpleNamespace(ENABLE_AUDIO_INTERFACE=False),

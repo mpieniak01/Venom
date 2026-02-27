@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
-from typing import Any, Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
 from venom_core.core.models import TaskRequest
-
+from venom_core.core.orchestrator.task_pipeline.context_builder import ContextBuilder
+from venom_core.core.orchestrator.task_pipeline.execution_strategy import (
+    ExecutionStrategy,
+)
+from venom_core.core.orchestrator.task_pipeline.result_processor import ResultProcessor
+from venom_core.core.orchestrator.task_pipeline.task_validator import TaskValidator
 
 # ---------------------------------------------------------------------------
 # Helpers / shared fixtures
@@ -99,7 +102,9 @@ def _make_orch(
         _trace_llm_start=MagicMock(),
         _append_session_history=MagicMock(),
         _broadcast_event=AsyncMock(),
-        _apply_preferred_language=AsyncMock(side_effect=lambda tid, req, result: result),
+        _apply_preferred_language=AsyncMock(
+            side_effect=lambda tid, req, result: result
+        ),
         run_council=AsyncMock(return_value="council_result"),
         _code_generation_with_review=AsyncMock(return_value="code_result"),
         _generate_help_response=AsyncMock(return_value="help_result"),
@@ -114,8 +119,6 @@ def _make_orch(
 # ---------------------------------------------------------------------------
 # TaskValidator
 # ---------------------------------------------------------------------------
-
-from venom_core.core.orchestrator.task_pipeline.task_validator import TaskValidator
 
 
 class TestTaskValidatorForcedTool:
@@ -158,7 +161,9 @@ class TestTaskValidatorCapabilities:
         task_id = uuid4()
 
         with pytest.raises(RuntimeError, match="execution_contract_violation"):
-            validator.validate_capabilities(task_id, kernel_required=True, tool_required=False)
+            validator.validate_capabilities(
+                task_id, kernel_required=True, tool_required=False
+            )
 
         assert task_id in orch._errors_set
         assert orch._errors_set[task_id]["error_code"] == "execution_contract_violation"
@@ -170,14 +175,18 @@ class TestTaskValidatorCapabilities:
         orch = _make_orch(dispatcher_kernel=None)
         validator = TaskValidator(orch)
         # Should not raise
-        validator.validate_capabilities(uuid4(), kernel_required=False, tool_required=True)
+        validator.validate_capabilities(
+            uuid4(), kernel_required=False, tool_required=True
+        )
 
     def test_validate_capabilities_ok_when_kernel_present(self):
         """validate_capabilities should not raise when kernel exists."""
         orch = _make_orch(dispatcher_kernel=MagicMock())
         validator = TaskValidator(orch)
         # Should not raise
-        validator.validate_capabilities(uuid4(), kernel_required=True, tool_required=False)
+        validator.validate_capabilities(
+            uuid4(), kernel_required=True, tool_required=False
+        )
 
     def test_validate_capabilities_logs_tracer_step_on_success(self):
         """validate_capabilities should add a tracer step on success path."""
@@ -187,7 +196,9 @@ class TestTaskValidatorCapabilities:
         validator = TaskValidator(orch)
         task_id = uuid4()
 
-        validator.validate_capabilities(task_id, kernel_required=True, tool_required=True)
+        validator.validate_capabilities(
+            task_id, kernel_required=True, tool_required=True
+        )
 
         tracer.add_step.assert_called_once()
         call_args = tracer.add_step.call_args
@@ -201,7 +212,9 @@ class TestTaskValidatorCapabilities:
         task_id = uuid4()
 
         with pytest.raises(RuntimeError):
-            validator.validate_capabilities(task_id, kernel_required=True, tool_required=False)
+            validator.validate_capabilities(
+                task_id, kernel_required=True, tool_required=False
+            )
 
 
 class TestTaskValidatorRouting:
@@ -326,8 +339,6 @@ class TestTaskValidatorRouting:
 # ResultProcessor
 # ---------------------------------------------------------------------------
 
-from venom_core.core.orchestrator.task_pipeline.result_processor import ResultProcessor
-
 
 class TestResultProcessorExtractErrorDetails:
     def test_extract_error_details_with_none_request_and_context(self):
@@ -396,6 +407,7 @@ class TestResultProcessorProcessError:
         orch.state_manager.update_status.assert_awaited_once()
         call_args = orch.state_manager.update_status.call_args
         from venom_core.core.models import TaskStatus
+
         assert call_args[0][1] == TaskStatus.FAILED
 
     async def test_process_error_broadcasts_task_failed(self):
@@ -450,6 +462,7 @@ class TestResultProcessorProcessError:
         await rp.process_error(task_id, RuntimeError("err"), None)
 
         from venom_core.core.tracer import TraceStatus
+
         tracer.update_status.assert_called_once_with(task_id, TraceStatus.FAILED)
 
 
@@ -464,10 +477,13 @@ class TestResultProcessorProcessSuccess:
         task_id = uuid4()
         request = TaskRequest(content="hello", session_id="s1")
 
-        await rp.process_success(task_id, "result", "GENERAL_CHAT", "ctx", request, False)
+        await rp.process_success(
+            task_id, "result", "GENERAL_CHAT", "ctx", request, False
+        )
 
         orch.state_manager.update_status.assert_awaited_once()
         from venom_core.core.models import TaskStatus
+
         assert orch.state_manager.update_status.call_args[0][1] == TaskStatus.COMPLETED
 
     async def test_process_success_broadcasts_task_completed(self):
@@ -477,7 +493,9 @@ class TestResultProcessorProcessSuccess:
         task_id = uuid4()
         request = TaskRequest(content="hello")
 
-        await rp.process_success(task_id, "result", "GENERAL_CHAT", "ctx", request, False)
+        await rp.process_success(
+            task_id, "result", "GENERAL_CHAT", "ctx", request, False
+        )
 
         orch._broadcast_event.assert_awaited()
         event_types = [c[1]["event_type"] for c in orch._broadcast_event.call_args_list]
@@ -492,9 +510,12 @@ class TestResultProcessorProcessSuccess:
         task_id = uuid4()
         request = TaskRequest(content="hi")
 
-        await rp.process_success(task_id, "result", "GENERAL_CHAT", "ctx", request, False)
+        await rp.process_success(
+            task_id, "result", "GENERAL_CHAT", "ctx", request, False
+        )
 
         from venom_core.core.tracer import TraceStatus
+
         tracer.update_status.assert_called_with(task_id, TraceStatus.COMPLETED)
 
     async def test_process_success_saves_lesson_when_should_store(self):
@@ -504,7 +525,9 @@ class TestResultProcessorProcessSuccess:
         task_id = uuid4()
         request = TaskRequest(content="hi")
 
-        await rp.process_success(task_id, "result", "GENERAL_CHAT", "ctx", request, False)
+        await rp.process_success(
+            task_id, "result", "GENERAL_CHAT", "ctx", request, False
+        )
 
         orch.lessons_manager.save_task_lesson.assert_awaited_once()
 
@@ -515,7 +538,9 @@ class TestResultProcessorProcessSuccess:
         task_id = uuid4()
         request = TaskRequest(content="hi")
 
-        await rp.process_success(task_id, "result", "GENERAL_CHAT", "ctx", request, False)
+        await rp.process_success(
+            task_id, "result", "GENERAL_CHAT", "ctx", request, False
+        )
 
         orch.lessons_manager.save_task_lesson.assert_not_awaited()
 
@@ -526,7 +551,9 @@ class TestResultProcessorProcessSuccess:
         task_id = uuid4()
         request = TaskRequest(content="hi")
 
-        await rp.process_success(task_id, "result", "GENERAL_CHAT", "ctx", request, False)
+        await rp.process_success(
+            task_id, "result", "GENERAL_CHAT", "ctx", request, False
+        )
 
         orch.lessons_manager.append_learning_log.assert_called_once()
 
@@ -537,7 +564,9 @@ class TestResultProcessorProcessSuccess:
         task_id = uuid4()
         request = TaskRequest(content="hi", session_id="sess-1")
 
-        await rp.process_success(task_id, "result text", "GENERAL_CHAT", "ctx", request, False)
+        await rp.process_success(
+            task_id, "result text", "GENERAL_CHAT", "ctx", request, False
+        )
 
         orch.session_handler._memory_upsert.assert_called_once()
 
@@ -570,8 +599,6 @@ class TestResultProcessorProcessSuccess:
 # ---------------------------------------------------------------------------
 # ExecutionStrategy
 # ---------------------------------------------------------------------------
-
-from venom_core.core.orchestrator.task_pipeline.execution_strategy import ExecutionStrategy
 
 
 @pytest.mark.asyncio
@@ -680,7 +707,9 @@ class TestExecutionStrategy:
         result = await strategy.execute(task_id, "COMPLEX_PLANNING", "ctx", request)
 
         assert result == "dispatch_result"
-        orch.task_dispatcher.dispatch.assert_awaited_once_with("COMPLEX_PLANNING", "ctx")
+        orch.task_dispatcher.dispatch.assert_awaited_once_with(
+            "COMPLEX_PLANNING", "ctx"
+        )
 
     async def test_execute_default_intent_dispatches(self):
         """execute should dispatch unrecognized intent via default path."""
@@ -717,7 +746,9 @@ class TestExecutionStrategy:
         orch.request_tracer = tracer
         strategy = ExecutionStrategy(orch)
 
-        await strategy.execute(uuid4(), "HELP_REQUEST", "ctx", TaskRequest(content="help"))
+        await strategy.execute(
+            uuid4(), "HELP_REQUEST", "ctx", TaskRequest(content="help")
+        )
 
         step_actions = [c[0][2] for c in tracer.add_step.call_args_list]
         assert "route_help" in step_actions
@@ -732,7 +763,9 @@ class TestExecutionStrategy:
         orch._campaign_flow = fake_flow
         strategy = ExecutionStrategy(orch)
 
-        await strategy.execute(uuid4(), "START_CAMPAIGN", "ctx", TaskRequest(content="start"))
+        await strategy.execute(
+            uuid4(), "START_CAMPAIGN", "ctx", TaskRequest(content="start")
+        )
 
         step_actions = [c[0][2] for c in tracer.add_step.call_args_list]
         assert "route_campaign" in step_actions
@@ -749,7 +782,9 @@ class TestExecutionStrategy:
         orch.request_tracer = tracer
         strategy = ExecutionStrategy(orch)
 
-        await strategy.execute(uuid4(), "RESEARCH", "ctx", TaskRequest(content="research"))
+        await strategy.execute(
+            uuid4(), "RESEARCH", "ctx", TaskRequest(content="research")
+        )
 
         step_details = [str(c) for c in tracer.add_step.call_args_list]
         assert any("SpecificAgent" in d for d in step_details)
@@ -758,8 +793,6 @@ class TestExecutionStrategy:
 # ---------------------------------------------------------------------------
 # ContextBuilder (additional branches not covered by test_orchestrator_components)
 # ---------------------------------------------------------------------------
-
-from venom_core.core.orchestrator.task_pipeline.context_builder import ContextBuilder
 
 
 @pytest.mark.asyncio
@@ -799,9 +832,13 @@ class TestContextBuilderPreprocessRequest:
         request = TaskRequest(content="/clear", session_id="s1")
         await builder.preprocess_request(task_id, request)
 
-        assert any("Wyczyszczono" in log for log in logs)  # Production code log message (Polish)
+        assert any(
+            "Wyczyszczono" in log for log in logs
+        )  # Production code log message (Polish)
 
-    async def test_preprocess_request_forced_tool_triggers_resolve_intent(self, monkeypatch):
+    async def test_preprocess_request_forced_tool_triggers_resolve_intent(
+        self, monkeypatch
+    ):
         """preprocess_request should resolve intent when forced_tool set without forced_intent."""
         state = SimpleNamespace(update_context=MagicMock(), add_log=MagicMock())
         tracer = MagicMock()
@@ -845,7 +882,9 @@ class TestContextBuilderPreprocessRequest:
         )
         builder = ContextBuilder(orch)
         task_id = uuid4()
-        request = TaskRequest(content="some content", forced_tool="browser", forced_intent="BROWSE")
+        request = TaskRequest(
+            content="some content", forced_tool="browser", forced_intent="BROWSE"
+        )
         # Should not raise and should not call parse_slash_command
         await builder.preprocess_request(task_id, request)
         # forced_tool stays unchanged
@@ -877,7 +916,9 @@ class TestContextBuilderPrepareContext:
         assert "description of img1" in ctx
         assert "[OBRAZ 2]" in ctx
 
-    async def test_prepare_context_logs_error_when_image_analysis_fails(self, monkeypatch):
+    async def test_prepare_context_logs_error_when_image_analysis_fails(
+        self, monkeypatch
+    ):
         """prepare_context should log an error when image analysis raises."""
         logs = []
         state = SimpleNamespace(add_log=lambda tid, msg: logs.append(msg))
@@ -898,14 +939,18 @@ class TestContextBuilderPrepareContext:
         ctx = await builder.prepare_context(task_id, request)
 
         assert "[OBRAZ 1]" not in ctx
-        assert any("Nie udało się" in log for log in logs)  # Production code log message (Polish)
+        assert any(
+            "Nie udało się" in log for log in logs
+        )  # Production code log message (Polish)
 
     async def test_prepare_context_with_extra_context_appends_block(self):
         """prepare_context should append extra_context block when non-empty."""
         from venom_core.core.models import TaskExtraContext
 
         state = SimpleNamespace(add_log=MagicMock())
-        orch = SimpleNamespace(state_manager=state, eyes=MagicMock(), request_tracer=None)
+        orch = SimpleNamespace(
+            state_manager=state, eyes=MagicMock(), request_tracer=None
+        )
         builder = ContextBuilder(orch)
         task_id = uuid4()
         extra = TaskExtraContext(files=["a.py"], links=[], paths=[], notes=[])
@@ -915,6 +960,63 @@ class TestContextBuilderPrepareContext:
 
         assert "[DODATKOWE DANE]" in ctx  # Production code marker (Polish)
         assert "a.py" in ctx
+
+
+@pytest.mark.asyncio
+class TestContextBuilderBuildContext:
+    async def test_build_context_skips_session_block_for_forced_tool(self, monkeypatch):
+        """build_context should not prepend session context when forced_tool is set."""
+        logs = []
+        orch = SimpleNamespace(
+            state_manager=SimpleNamespace(add_log=lambda _tid, msg: logs.append(msg)),
+            request_tracer=None,
+            _build_session_context_block=MagicMock(
+                return_value="[KONTEKST SESJI]\nmeta"
+            ),
+            _get_runtime_context_char_limit=lambda _runtime: 100000,
+        )
+        builder = ContextBuilder(orch)
+        task_id = uuid4()
+        request = TaskRequest(content="ceny DDR5", forced_tool="research")
+
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.task_pipeline.context_builder.get_active_llm_runtime",
+            lambda: SimpleNamespace(provider="ollama"),
+        )
+
+        out = await builder.build_context(task_id, request, fast_path=False)
+
+        assert out == "ceny DDR5"
+        orch._build_session_context_block.assert_not_called()
+        assert any(
+            "Pominięto kontekst sesji dla wymuszonego toola" in log for log in logs
+        )
+
+    async def test_build_context_keeps_session_block_without_forced_tool(
+        self, monkeypatch
+    ):
+        """build_context should prepend session context for normal requests."""
+        orch = SimpleNamespace(
+            state_manager=SimpleNamespace(add_log=lambda *_args, **_kwargs: None),
+            request_tracer=None,
+            _build_session_context_block=MagicMock(
+                return_value="[KONTEKST SESJI]\nmeta"
+            ),
+            _get_runtime_context_char_limit=lambda _runtime: 100000,
+        )
+        builder = ContextBuilder(orch)
+        task_id = uuid4()
+        request = TaskRequest(content="zwykłe pytanie")
+
+        monkeypatch.setattr(
+            "venom_core.core.orchestrator.task_pipeline.context_builder.get_active_llm_runtime",
+            lambda: SimpleNamespace(provider="ollama"),
+        )
+
+        out = await builder.build_context(task_id, request, fast_path=False)
+
+        assert out.startswith("[KONTEKST SESJI]\nmeta\n\n")
+        orch._build_session_context_block.assert_called_once()
 
 
 @pytest.mark.asyncio

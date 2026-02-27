@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
+from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.utils.logger import get_logger
@@ -27,6 +28,7 @@ class DocumenterAgent:
         git_skill: Optional[GitSkill] = None,
         file_skill: Optional[FileSkill] = None,
         event_broadcaster: Optional[Any] = None,
+        skill_manager: Optional[SkillManager] = None,
     ):
         """
         Inicjalizacja DocumenterAgent.
@@ -36,6 +38,7 @@ class DocumenterAgent:
             git_skill: Instancja GitSkill (opcjonalna)
             file_skill: Instancja FileSkill (opcjonalna)
             event_broadcaster: Broadcaster zdarzeń do WebSocket
+            skill_manager: SkillManager dla ścieżki MCP-like (opcjonalny)
         """
         self.workspace_root = Path(workspace_root or SETTINGS.WORKSPACE_ROOT).resolve()
         self.git_skill = git_skill or GitSkill(workspace_root=str(self.workspace_root))
@@ -43,6 +46,7 @@ class DocumenterAgent:
             workspace_root=str(self.workspace_root)
         )
         self.event_broadcaster = event_broadcaster
+        self.skill_manager = skill_manager
 
         # Tracking: ostatnie zmiany aby uniknąć pętli
         self._last_processed_files: set[str] = set()
@@ -205,11 +209,27 @@ class DocumenterAgent:
                 )
                 return ""
 
-            result = await self.git_skill.get_diff(file_path=relative_path)
+            result = await self._invoke_git_tool(
+                "get_diff",
+                {"file_path": relative_path},
+            )
             return result
         except Exception as e:
             logger.debug(f"Błąd podczas pobierania diff: {e}")
             return ""
+
+    async def _invoke_git_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
+        """Uruchamia Git przez SkillManager (MCP-like) z fallbackiem legacy."""
+        if self.skill_manager:
+            result = await self.skill_manager.invoke_mcp_tool(
+                "git",
+                tool_name,
+                arguments,
+            )
+            return result.result
+
+        method = getattr(self.git_skill, tool_name)
+        return await method(**arguments)
 
     def _get_last_commit_author(self) -> Optional[str]:
         """
@@ -337,7 +357,10 @@ class DocumenterAgent:
 
                 # Sprawdź czy są zmiany do commitu
                 if repo.index.diff("HEAD"):
-                    result = await self.git_skill.commit(message)
+                    result = await self._invoke_git_tool(
+                        "commit",
+                        {"message": message},
+                    )
                     logger.info(f"Commit dokumentacji: {result}")
                 else:
                     logger.debug("Brak zmian do commitu w dokumentacji")

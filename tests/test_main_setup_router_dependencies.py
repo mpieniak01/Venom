@@ -164,6 +164,29 @@ def test_get_orchestrator_kernel_returns_none_when_orchestrator_missing(monkeypa
     assert main_module._get_orchestrator_kernel() is None
 
 
+def test_get_orchestrator_skill_manager_from_task_dispatcher(monkeypatch):
+    sentinel_skill_manager = object()
+    monkeypatch.setattr(
+        main_module,
+        "orchestrator",
+        SimpleNamespace(
+            task_dispatcher=SimpleNamespace(skill_manager=sentinel_skill_manager)
+        ),
+    )
+
+    assert main_module._get_orchestrator_skill_manager() is sentinel_skill_manager
+
+
+def test_get_orchestrator_skill_manager_returns_none_when_missing(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "orchestrator",
+        SimpleNamespace(task_dispatcher=SimpleNamespace()),
+    )
+
+    assert main_module._get_orchestrator_skill_manager() is None
+
+
 def test_select_startup_model_prefers_first_available_when_no_match():
     selected = main_module._select_startup_model(
         {"model-a", "model-b"},

@@ -305,3 +305,119 @@ def test_register_skill_in_kernel_skips_foreign_classes(temp_skills_dir):
     ]
     assert "Plugin" in added
     assert "Foreign" not in added
+
+
+class _DummyMcpAdapter:
+    def __init__(self, result="ok", should_fail=False):
+        self._result = result
+        self._should_fail = should_fail
+
+    def list_tools(self):
+        return [SimpleNamespace(name="tool_a")]
+
+    async def invoke_tool(self, tool_name, arguments):
+        if self._should_fail:
+            raise RuntimeError("tool failed")
+        return f"{tool_name}:{arguments.get('x', self._result)}"
+
+
+def test_register_mcp_adapter_rejects_missing_interface(skill_manager):
+    with pytest.raises(ValueError, match="list_tools"):
+        skill_manager.register_mcp_adapter("broken", object())
+
+
+def test_list_mcp_tools_for_single_adapter(skill_manager):
+    skill_manager.register_mcp_adapter(
+        "dummy", _DummyMcpAdapter(), skill_name="FileSkill"
+    )
+
+    tools = skill_manager.list_mcp_tools("dummy")
+    assert "dummy" in tools
+    assert tools["dummy"][0].name == "tool_a"
+
+
+@pytest.mark.asyncio
+async def test_invoke_mcp_tool_success_emits_started_and_completed(
+    kernel, temp_skills_dir, monkeypatch
+):
+    broadcaster = MagicMock()
+    broadcaster.broadcast_event = AsyncMock(return_value=None)
+    manager = SkillManager(
+        kernel, custom_skills_dir=temp_skills_dir, event_broadcaster=broadcaster
+    )
+    manager.register_mcp_adapter("dummy", _DummyMcpAdapter(), skill_name="FileSkill")
+
+    monkeypatch.setattr(
+        skill_manager_module.permission_guard, "check_permission", lambda _name: True
+    )
+
+    result = await manager.invoke_mcp_tool("dummy", "tool_a", {"x": "ok"})
+    assert result == "tool_a:ok"
+    assert broadcaster.broadcast_event.await_count == 2
+    event_types = [
+        call.kwargs["event_type"]
+        for call in broadcaster.broadcast_event.await_args_list
+    ]
+    assert event_types == ["SKILL_STARTED", "SKILL_COMPLETED"]
+    completed_data = broadcaster.broadcast_event.await_args_list[1].kwargs["data"]
+    assert "duration_ms" in completed_data
+    assert isinstance(completed_data["duration_ms"], int)
+
+
+@pytest.mark.asyncio
+async def test_invoke_mcp_tool_permission_denied_emits_failed(
+    kernel, temp_skills_dir, monkeypatch
+):
+    broadcaster = MagicMock()
+    broadcaster.broadcast_event = AsyncMock(return_value=None)
+    manager = SkillManager(
+        kernel, custom_skills_dir=temp_skills_dir, event_broadcaster=broadcaster
+    )
+    manager.register_mcp_adapter("dummy", _DummyMcpAdapter(), skill_name="GitSkill")
+
+    def _deny(_name):
+        raise RuntimeError("denied")
+
+    monkeypatch.setattr(
+        skill_manager_module.permission_guard, "check_permission", _deny
+    )
+
+    with pytest.raises(RuntimeError, match="denied"):
+        await manager.invoke_mcp_tool("dummy", "tool_a", {})
+
+    assert broadcaster.broadcast_event.await_count == 1
+    assert broadcaster.broadcast_event.await_args.kwargs["event_type"] == "SKILL_FAILED"
+    failed_data = broadcaster.broadcast_event.await_args.kwargs["data"]
+    assert failed_data["error_class"] == "PermissionDenied"
+    assert "duration_ms" in failed_data
+
+
+@pytest.mark.asyncio
+async def test_invoke_mcp_tool_tool_error_emits_failed(
+    kernel, temp_skills_dir, monkeypatch
+):
+    broadcaster = MagicMock()
+    broadcaster.broadcast_event = AsyncMock(return_value=None)
+    manager = SkillManager(
+        kernel, custom_skills_dir=temp_skills_dir, event_broadcaster=broadcaster
+    )
+    manager.register_mcp_adapter(
+        "dummy", _DummyMcpAdapter(should_fail=True), skill_name="FileSkill"
+    )
+
+    monkeypatch.setattr(
+        skill_manager_module.permission_guard, "check_permission", lambda _name: True
+    )
+
+    with pytest.raises(RuntimeError, match="tool failed"):
+        await manager.invoke_mcp_tool("dummy", "tool_a", {})
+
+    assert broadcaster.broadcast_event.await_count == 2
+    event_types = [
+        call.kwargs["event_type"]
+        for call in broadcaster.broadcast_event.await_args_list
+    ]
+    assert event_types == ["SKILL_STARTED", "SKILL_FAILED"]
+    failed_data = broadcaster.broadcast_event.await_args_list[1].kwargs["data"]
+    assert failed_data["error_class"] == "RuntimeError"
+    assert "duration_ms" in failed_data

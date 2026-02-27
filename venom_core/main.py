@@ -51,6 +51,40 @@ from venom_core.api.routes import traffic_control as traffic_control_routes
 from venom_core.api.routes import workflow_control as workflow_control_routes
 from venom_core.api.routes import workflow_operations as workflow_operations_routes
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
+from venom_core.bootstrap.agents import initialize_academy, initialize_calendar_skill
+from venom_core.bootstrap.model_services import initialize_model_services
+from venom_core.bootstrap.observability import initialize_observability
+from venom_core.bootstrap.router_wiring import apply_router_dependencies
+from venom_core.bootstrap.runtime_stack import (
+    initialize_audio_engine_if_enabled as rt_initialize_audio_engine_if_enabled,
+)
+from venom_core.bootstrap.runtime_stack import (
+    initialize_audio_stream_handler_if_possible as rt_initialize_audio_stream_handler_if_possible,
+)
+from venom_core.bootstrap.runtime_stack import (
+    initialize_background_scheduler as rt_initialize_background_scheduler,
+)
+from venom_core.bootstrap.runtime_stack import (
+    initialize_documenter_and_watcher as rt_initialize_documenter_and_watcher,
+)
+from venom_core.bootstrap.runtime_stack import (
+    initialize_gardener_and_git as rt_initialize_gardener_and_git,
+)
+from venom_core.bootstrap.runtime_stack import (
+    initialize_hardware_bridge_if_enabled as rt_initialize_hardware_bridge_if_enabled,
+)
+from venom_core.bootstrap.runtime_stack import (
+    initialize_memory_stores as rt_initialize_memory_stores,
+)
+from venom_core.bootstrap.runtime_stack import (
+    initialize_node_manager as rt_initialize_node_manager,
+)
+from venom_core.bootstrap.runtime_stack import (
+    initialize_operator_agent_if_possible as rt_initialize_operator_agent_if_possible,
+)
+from venom_core.bootstrap.runtime_stack import (
+    initialize_shadow_stack as rt_initialize_shadow_stack,
+)
 from venom_core.config import SETTINGS
 from venom_core.core.llm_server_controller import LlmServerController
 from venom_core.core.metrics import init_metrics_collector
@@ -77,7 +111,7 @@ from venom_core.utils.llm_runtime import (
     probe_runtime_status,
     warmup_local_runtime,
 )
-from venom_core.utils.logger import get_logger
+from venom_core.utils.logger import get_logger, set_event_broadcaster
 
 logger = get_logger(__name__)
 TESTING_MODE = bool(os.getenv("PYTEST_CURRENT_TEST"))
@@ -162,6 +196,16 @@ def _get_orchestrator_kernel():
         if kernel is not None:
             return kernel
     return getattr(orchestrator, "kernel", None)
+
+
+def _get_orchestrator_skill_manager():
+    """Zwraca SkillManager orchestratora, jeśli dostępny."""
+    if not orchestrator:
+        return None
+    task_dispatcher = getattr(orchestrator, "task_dispatcher", None)
+    if task_dispatcher is None:
+        return None
+    return getattr(task_dispatcher, "skill_manager", None)
 
 
 def _extract_available_local_models(
@@ -352,171 +396,62 @@ async def _run_node_message_loop(websocket: WebSocket, current_node_id: str) -> 
 async def _initialize_observability() -> None:
     global request_tracer, service_registry, service_monitor, llm_controller
 
-    init_metrics_collector()
-
-    from venom_core.utils import logger as logger_module
-
-    logger_module.set_event_broadcaster(event_broadcaster)
-    logger.info("Live log streaming włączony")
-
-    try:
-        traces_path = str(Path(SETTINGS.MEMORY_ROOT) / "request_traces.json")
-        request_tracer = RequestTracer(
-            watchdog_timeout_minutes=5, trace_file_path=traces_path
-        )
-        await request_tracer.start_watchdog()
-        logger.info(f"RequestTracer zainicjalizowany z historią w {traces_path}")
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować RequestTracer: {exc}")
-        request_tracer = None
-
-    try:
-        service_registry = ServiceRegistry()
-        service_monitor = ServiceHealthMonitor(
-            service_registry, event_broadcaster=event_broadcaster
-        )
-        logger.info("Service Health Monitor zainicjalizowany")
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować Service Health Monitor: {exc}")
-        service_registry = None
-        service_monitor = None
-
-    try:
-        llm_controller = LlmServerController(SETTINGS)
-    except Exception as exc:  # pragma: no cover - błędy inicjalizacji są logowane
-        logger.warning(f"Nie udało się utworzyć kontrolera LLM: {exc}")
-        llm_controller = None
+    (
+        request_tracer,
+        service_registry,
+        service_monitor,
+        llm_controller,
+    ) = await initialize_observability(
+        settings=SETTINGS,
+        event_broadcaster=event_broadcaster,
+        logger=logger,
+        init_metrics_collector_fn=init_metrics_collector,
+        request_tracer_cls=RequestTracer,
+        service_registry_cls=ServiceRegistry,
+        service_health_monitor_cls=ServiceHealthMonitor,
+        llm_server_controller_cls=LlmServerController,
+        set_event_broadcaster_fn=set_event_broadcaster,
+    )
 
 
 def _initialize_model_services() -> None:
     global model_manager, model_registry, benchmark_service
 
-    from venom_core.core.model_manager import ModelManager
-
-    try:
-        model_manager = ModelManager(models_dir=str(Path(SETTINGS.ACADEMY_MODELS_DIR)))
-        logger.info(
-            f"ModelManager zainicjalizowany (models_dir={model_manager.models_dir})"
-        )
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować ModelManager: {exc}")
-        model_manager = None
-
-    try:
-        from venom_core.core.model_registry import ModelRegistry
-        from venom_core.services.benchmark import BenchmarkService
-
-        if not service_monitor:
-            raise RuntimeError("Service monitor niedostępny - pomijam BenchmarkService")
-        model_registry = ModelRegistry()
-        benchmark_service = BenchmarkService(
-            model_registry=model_registry,
-            service_monitor=service_monitor,
-            llm_controller=llm_controller,
-        )
-        logger.info("BenchmarkService zainicjalizowany")
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować BenchmarkService: {exc}")
-        benchmark_service = None
+    previous_model_registry = model_registry
+    model_manager, new_model_registry, benchmark_service = initialize_model_services(
+        settings=SETTINGS,
+        service_monitor=service_monitor,
+        llm_controller=llm_controller,
+        logger=logger,
+    )
+    if new_model_registry is not None:
+        model_registry = new_model_registry
+    else:
+        model_registry = previous_model_registry
 
 
 def _initialize_calendar_skill() -> None:
     global google_calendar_skill
 
-    if not SETTINGS.ENABLE_GOOGLE_CALENDAR:
-        logger.info("GoogleCalendarSkill wyłączony w konfiguracji")
-        return
-
-    try:
-        from venom_core.execution.skills.google_calendar_skill import (
-            GoogleCalendarSkill,
-        )
-
-        google_calendar_skill = GoogleCalendarSkill()
-        if google_calendar_skill.credentials_available:
-            logger.info("GoogleCalendarSkill zainicjalizowany dla API")
-        else:
-            logger.info(
-                "GoogleCalendarSkill zainicjalizowany bez credentials - "
-                "graceful degradation"
-            )
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować GoogleCalendarSkill: {exc}")
-        google_calendar_skill = None
+    calendar_skill = initialize_calendar_skill(
+        settings=SETTINGS,
+        logger=logger,
+    )
+    if calendar_skill is not None:
+        google_calendar_skill = calendar_skill
 
 
 def _initialize_academy() -> None:
     """Inicjalizacja komponentów THE_ACADEMY (trenowanie modeli)."""
     global professor, dataset_curator, gpu_habitat
 
-    if not SETTINGS.ENABLE_ACADEMY:
-        logger.info("THE_ACADEMY wyłączone w konfiguracji (ENABLE_ACADEMY=False)")
-        return
-
-    try:
-        logger.info("Inicjalizacja THE_ACADEMY...")
-
-        # Import komponentów Academy
-        from venom_core.agents.professor import Professor
-        from venom_core.infrastructure.gpu_habitat import GPUHabitat
-        from venom_core.learning.dataset_curator import DatasetCurator
-
-        # Inicjalizacja DatasetCurator
-        dataset_curator = DatasetCurator(lessons_store=lessons_store)
-        logger.info("✅ DatasetCurator zainicjalizowany")
-
-        # Inicjalizacja GPUHabitat
-        gpu_habitat = GPUHabitat(enable_gpu=SETTINGS.ACADEMY_ENABLE_GPU)
-        logger.info(
-            f"✅ GPUHabitat zainicjalizowany (GPU: {SETTINGS.ACADEMY_ENABLE_GPU})"
-        )
-
-        # Inicjalizacja Professor (wymaga kernela z task_dispatchera orchestratora).
-        # Jeśli kernel nie jest jeszcze gotowy, zrobimy retry w setup_router_dependencies().
-        kernel = _get_orchestrator_kernel()
-        if kernel is not None:
-            professor = Professor(
-                kernel=kernel,
-                dataset_curator=dataset_curator,
-                gpu_habitat=gpu_habitat,
-                lessons_store=lessons_store,
-            )
-            logger.info("✅ Professor zainicjalizowany")
-        else:
-            logger.warning(
-                "Orchestrator lub kernel niedostępny - Professor zostanie "
-                "zainicjalizowany później"
-            )
-
-        # Restore aktywnego adaptera po restarcie (strict + fallback do modelu bazowego).
-        if model_manager:
-            try:
-                restored = model_manager.restore_active_adapter()
-                if restored:
-                    logger.info("✅ Odtworzono aktywny adapter Academy po starcie")
-                else:
-                    logger.info("Brak aktywnego adaptera do odtworzenia po starcie")
-            except Exception as exc:
-                logger.warning(
-                    "Nie udało się odtworzyć aktywnego adaptera Academy: %s",
-                    exc,
-                )
-
-        logger.info("✅ THE_ACADEMY zainicjalizowane pomyślnie")
-
-    except ImportError as exc:
-        logger.warning(
-            f"THE_ACADEMY dependencies not installed. Install with: "
-            f"pip install -r requirements-academy.txt. Error: {exc}"
-        )
-        professor = None
-        dataset_curator = None
-        gpu_habitat = None
-    except Exception as exc:
-        logger.error(f"❌ Błąd podczas inicjalizacji THE_ACADEMY: {exc}", exc_info=True)
-        professor = None
-        dataset_curator = None
-        gpu_habitat = None
+    professor, dataset_curator, gpu_habitat = initialize_academy(
+        settings=SETTINGS,
+        logger=logger,
+        lessons_store=lessons_store,
+        model_manager=model_manager,
+        get_orchestrator_kernel=_get_orchestrator_kernel,
+    )
 
 
 def _initialize_token_economist() -> None:
@@ -544,32 +479,10 @@ def _initialize_token_economist() -> None:
 async def _initialize_node_manager() -> None:
     global node_manager
 
-    if not SETTINGS.ENABLE_NEXUS:
-        return
-
-    try:
-        from venom_core.core.node_manager import NodeManager
-
-        token = SETTINGS.NEXUS_SHARED_TOKEN.get_secret_value()
-        if not token:
-            logger.warning(
-                "ENABLE_NEXUS=true ale NEXUS_SHARED_TOKEN jest pusty. "
-                "Węzły nie będą mogły się połączyć."
-            )
-            return
-        node_manager = NodeManager(
-            shared_token=token,
-            heartbeat_timeout=SETTINGS.NEXUS_HEARTBEAT_TIMEOUT,
-        )
-        await node_manager.start()
-        logger.info("NodeManager uruchomiony - Venom działa w trybie Nexus")
-        app_port = getattr(SETTINGS, "APP_PORT", 8000)
-        logger.info(
-            f"Węzły mogą łączyć się przez WebSocket: ws://localhost:{app_port}/ws/nodes"
-        )
-    except Exception as exc:
-        logger.warning(f"Nie udało się uruchomić NodeManager: {exc}")
-        node_manager = None
+    node_manager = await rt_initialize_node_manager(
+        settings=SETTINGS,
+        logger=logger,
+    )
 
 
 def _initialize_orchestrator() -> None:
@@ -609,267 +522,104 @@ def _ensure_storage_dirs() -> Path:
 def _initialize_memory_stores() -> None:
     global vector_store, graph_store, lessons_store
 
-    try:
-        vector_store = VectorStore()
-        logger.info("VectorStore zainicjalizowany")
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować VectorStore: {exc}")
-        vector_store = None
-
-    try:
-        graph_store = CodeGraphStore()
-        graph_store.load_graph()
-        logger.info("CodeGraphStore zainicjalizowany")
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować CodeGraphStore: {exc}")
-        graph_store = None
-
-    try:
-        lessons_store = LessonsStore(vector_store=vector_store)
-        logger.info(
-            f"LessonsStore zainicjalizowany z {len(lessons_store.lessons)} lekcjami"
-        )
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować LessonsStore: {exc}")
-        lessons_store = None
-
-    if lessons_store and orchestrator:
-        orchestrator.lessons_store = lessons_store
-        logger.info("LessonsStore podłączony do Orchestrator (meta-uczenie włączone)")
+    vector_store, graph_store, lessons_store = rt_initialize_memory_stores(
+        settings=SETTINGS,
+        logger=logger,
+        vector_store_cls=VectorStore,
+        graph_store_cls=CodeGraphStore,
+        lessons_store_cls=LessonsStore,
+        orchestrator=orchestrator,
+    )
 
 
 async def _initialize_gardener_and_git(workspace_path: Path) -> None:
     global gardener_agent, git_skill
 
-    try:
-        gardener_agent = GardenerAgent(
-            graph_store=graph_store,
-            orchestrator=orchestrator,
-            event_broadcaster=event_broadcaster,
-        )
-        await gardener_agent.start()
-        logger.info("GardenerAgent uruchomiony")
-    except Exception as exc:
-        logger.warning(f"Nie udało się uruchomić GardenerAgent: {exc}")
-        gardener_agent = None
-
-    try:
-        git_skill = GitSkill(workspace_root=str(workspace_path))
-        logger.info("GitSkill zainicjalizowany dla API")
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować GitSkill: {exc}")
-        git_skill = None
+    gardener_agent, git_skill = await rt_initialize_gardener_and_git(
+        workspace_path=workspace_path,
+        graph_store=graph_store,
+        orchestrator=orchestrator,
+        event_broadcaster=event_broadcaster,
+        logger=logger,
+        gardener_agent_cls=GardenerAgent,
+        git_skill_cls=GitSkill,
+    )
 
 
 async def _initialize_background_scheduler() -> None:
     global background_scheduler, startup_runtime_retention_task
 
-    try:
-        background_scheduler = BackgroundScheduler(event_broadcaster=event_broadcaster)
-        await background_scheduler.start()
-        logger.info("BackgroundScheduler uruchomiony")
-
-        if vector_store and SETTINGS.ENABLE_MEMORY_CONSOLIDATION:
-
-            async def _consolidate_memory_wrapper():
-                await job_scheduler.consolidate_memory(event_broadcaster)
-
-            background_scheduler.add_interval_job(
-                func=_consolidate_memory_wrapper,
-                minutes=SETTINGS.MEMORY_CONSOLIDATION_INTERVAL_MINUTES,
-                job_id="consolidate_memory",
-                description="common.comingSoon",
-            )
-            logger.info("Zadanie consolidate_memory zarejestrowane (COMING SOON)")
-
-        if SETTINGS.ENABLE_HEALTH_CHECKS:
-
-            async def _check_health_wrapper():
-                await job_scheduler.check_health(event_broadcaster)
-
-            background_scheduler.add_interval_job(
-                func=_check_health_wrapper,
-                minutes=SETTINGS.HEALTH_CHECK_INTERVAL_MINUTES,
-                job_id="check_health",
-                description="common.comingSoon",
-            )
-            logger.info("Zadanie check_health zarejestrowane (COMING SOON)")
-
-        if request_tracer:
-
-            async def _cleanup_traces_wrapper():
-                try:
-                    await asyncio.to_thread(request_tracer.clear_old_traces, days=7)
-                except Exception as exc:
-                    logger.warning(f"Błąd podczas czyszczenia śladów: {exc}")
-
-            background_scheduler.add_interval_job(
-                func=_cleanup_traces_wrapper,
-                minutes=1440,
-                job_id="cleanup_traces",
-                description="Czyszczenie starych śladów żądań (retencja 7 dni)",
-            )
-            logger.info("Zadanie cleanup_traces zarejestrowane (retencja 7 dni)")
-
-        if SETTINGS.ENABLE_RUNTIME_RETENTION_CLEANUP:
-
-            async def _cleanup_runtime_files_wrapper():
-                try:
-                    await asyncio.to_thread(
-                        job_scheduler.cleanup_runtime_files,
-                        retention_days=SETTINGS.RUNTIME_RETENTION_DAYS,
-                        target_dirs=SETTINGS.RUNTIME_RETENTION_TARGETS,
-                        base_dir=Path(SETTINGS.REPO_ROOT),
-                    )
-                except Exception as exc:
-                    logger.warning(f"Błąd podczas retencji plików runtime: {exc}")
-
-            background_scheduler.add_interval_job(
-                func=_cleanup_runtime_files_wrapper,
-                minutes=SETTINGS.RUNTIME_RETENTION_INTERVAL_MINUTES,
-                job_id="cleanup_runtime_files",
-                description=(
-                    "Czyszczenie plików runtime starszych niż "
-                    f"{SETTINGS.RUNTIME_RETENTION_DAYS} dni"
-                ),
-            )
-            logger.info(
-                "Zadanie cleanup_runtime_files zarejestrowane "
-                f"(retencja {SETTINGS.RUNTIME_RETENTION_DAYS} dni)"
-            )
-            should_run_initial_retention = await asyncio.to_thread(
-                job_scheduler.should_run_runtime_retention_now,
-                min_interval_minutes=SETTINGS.RUNTIME_RETENTION_INTERVAL_MINUTES,
-                base_dir=Path(SETTINGS.REPO_ROOT),
-            )
-            if should_run_initial_retention:
-                # Start with one immediate background retention pass, then keep interval schedule.
-                startup_runtime_retention_task = asyncio.create_task(
-                    _cleanup_runtime_files_wrapper()
-                )
-                startup_runtime_retention_task.add_done_callback(
-                    lambda _task: _clear_startup_runtime_retention_task()
-                )
-                logger.info(
-                    "Uruchomiono jednorazowe czyszczenie runtime po starcie aplikacji"
-                )
-            else:
-                logger.info(
-                    "Pomijam jednorazowe czyszczenie runtime na starcie "
-                    "(ostatni run w bieżącym interwale retencji)"
-                )
-
-    except Exception as exc:
-        logger.warning(f"Nie udało się uruchomić BackgroundScheduler: {exc}")
-        background_scheduler = None
+    (
+        background_scheduler,
+        startup_runtime_retention_task,
+    ) = await rt_initialize_background_scheduler(
+        settings=SETTINGS,
+        logger=logger,
+        event_broadcaster=event_broadcaster,
+        vector_store=vector_store,
+        request_tracer=request_tracer,
+        background_scheduler_cls=BackgroundScheduler,
+        job_scheduler_module=job_scheduler,
+        asyncio_module=asyncio,
+        clear_startup_runtime_retention_task=_clear_startup_runtime_retention_task,
+    )
 
 
 async def _initialize_documenter_and_watcher(workspace_path: Path) -> None:
     global documenter_agent, file_watcher
 
-    try:
-        documenter_agent = DocumenterAgent(
-            workspace_root=str(workspace_path),
-            git_skill=git_skill,
-            event_broadcaster=event_broadcaster,
-        )
-        logger.info("DocumenterAgent zainicjalizowany")
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować DocumenterAgent: {exc}")
-        documenter_agent = None
-
-    try:
-        file_watcher = FileWatcher(
-            workspace_root=str(workspace_path),
-            on_change_callback=(
-                documenter_agent.handle_code_change if documenter_agent else None
-            ),
-            event_broadcaster=event_broadcaster,
-        )
-        await file_watcher.start()
-        logger.info("FileWatcher uruchomiony")
-    except Exception as exc:
-        logger.warning(f"Nie udało się uruchomić FileWatcher: {exc}")
-        file_watcher = None
+    documenter_agent, file_watcher = await rt_initialize_documenter_and_watcher(
+        workspace_path=workspace_path,
+        git_skill=git_skill,
+        skill_manager=_get_orchestrator_skill_manager(),
+        event_broadcaster=event_broadcaster,
+        logger=logger,
+        documenter_agent_cls=DocumenterAgent,
+        file_watcher_cls=FileWatcher,
+    )
 
 
 def _initialize_audio_engine_if_enabled() -> AudioEngine | None:
-    if not SETTINGS.ENABLE_AUDIO_INTERFACE:
-        return None
-    try:
-        audio = AudioEngine(
-            whisper_model_size=SETTINGS.WHISPER_MODEL_SIZE,
-            tts_model_path=SETTINGS.TTS_MODEL_PATH,
-            device=SETTINGS.AUDIO_DEVICE,
-        )
-        logger.info("AudioEngine zainicjalizowany")
-        return audio
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować AudioEngine: {exc}")
-        return None
+    return rt_initialize_audio_engine_if_enabled(
+        settings=SETTINGS,
+        logger=logger,
+        audio_engine_cls=AudioEngine,
+    )
 
 
 async def _initialize_hardware_bridge_if_enabled() -> HardwareBridge | None:
-    if not SETTINGS.ENABLE_IOT_BRIDGE:
-        return None
-    try:
-        password_value = extract_secret_value(SETTINGS.RIDER_PI_PASSWORD)
-        bridge = HardwareBridge(
-            host=SETTINGS.RIDER_PI_HOST,
-            port=SETTINGS.RIDER_PI_PORT,
-            username=SETTINGS.RIDER_PI_USERNAME,
-            password=password_value,
-            protocol=SETTINGS.RIDER_PI_PROTOCOL,
-        )
-        connected = await bridge.connect()
-        if connected:
-            logger.info("HardwareBridge połączony z Rider-Pi")
-        else:
-            logger.warning("Nie udało się połączyć z Rider-Pi")
-        return bridge
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować HardwareBridge: {exc}")
-        return None
+    return await rt_initialize_hardware_bridge_if_enabled(
+        settings=SETTINGS,
+        logger=logger,
+        extract_secret_value_fn=extract_secret_value,
+        hardware_bridge_cls=HardwareBridge,
+    )
 
 
 def _initialize_operator_agent_if_possible(
     current_audio_engine: AudioEngine | None,
     current_hardware_bridge: HardwareBridge | None,
 ) -> OperatorAgent | None:
-    if not (SETTINGS.ENABLE_AUDIO_INTERFACE and current_audio_engine):
-        return None
-    try:
-        from venom_core.execution.kernel_builder import KernelBuilder
-
-        operator_kernel = KernelBuilder().build_kernel()
-        agent = OperatorAgent(
-            kernel=operator_kernel,
-            hardware_bridge=current_hardware_bridge,
-        )
-        logger.info("OperatorAgent zainicjalizowany")
-        return agent
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować OperatorAgent: {exc}")
-        return None
+    return rt_initialize_operator_agent_if_possible(
+        settings=SETTINGS,
+        logger=logger,
+        current_audio_engine=current_audio_engine,
+        current_hardware_bridge=current_hardware_bridge,
+        operator_agent_cls=OperatorAgent,
+    )
 
 
 def _initialize_audio_stream_handler_if_possible(
     current_audio_engine: AudioEngine | None,
     current_operator_agent: OperatorAgent | None,
 ) -> AudioStreamHandler | None:
-    if not (current_audio_engine and current_operator_agent):
-        return None
-    try:
-        handler = AudioStreamHandler(
-            audio_engine=current_audio_engine,
-            vad_threshold=SETTINGS.VAD_THRESHOLD,
-            silence_duration=SETTINGS.SILENCE_DURATION,
-        )
-        logger.info("AudioStreamHandler zainicjalizowany")
-        return handler
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować AudioStreamHandler: {exc}")
-        return None
+    return rt_initialize_audio_stream_handler_if_possible(
+        settings=SETTINGS,
+        logger=logger,
+        current_audio_engine=current_audio_engine,
+        current_operator_agent=current_operator_agent,
+        audio_stream_handler_cls=AudioStreamHandler,
+    )
 
 
 async def _initialize_avatar_stack() -> None:
@@ -892,81 +642,14 @@ async def _initialize_shadow_stack() -> None:
         logger.info("Proactive Mode wyłączony (ENABLE_PROACTIVE_MODE=False)")
         return
 
-    try:
-        from venom_core.agents.shadow import ShadowAgent
-        from venom_core.execution.kernel_builder import KernelBuilder
-        from venom_core.perception.desktop_sensor import DesktopSensor
-        from venom_core.ui.notifier import Notifier
-
-        async def handle_shadow_action(action_payload: dict):
-            logger.info(f"Shadow Agent action triggered: {action_payload}")
-            action_type = action_payload.get("type", "unknown")
-            if action_type == "error_fix":
-                logger.info("Action: Error fix requested (not implemented)")
-            elif action_type == "code_improvement":
-                logger.info("Action: Code improvement requested (not implemented)")
-            elif action_type == "task_update":
-                logger.info("Action: Task update requested (not implemented)")
-            else:
-                logger.warning(f"Unknown action type: {action_type}")
-            await event_broadcaster.broadcast_event(
-                event_type=EventType.SYSTEM_LOG,
-                message="config.parameters.sections.shadowActions.foundProblem",
-                data=action_payload,
-            )
-
-        notifier = Notifier(webhook_handler=handle_shadow_action)
-        logger.info("Notifier zainicjalizowany")
-
-        shadow_kernel = KernelBuilder().build_kernel()
-        goal_store = getattr(orchestrator, "goal_store", None)
-        shadow_agent = ShadowAgent(
-            kernel=shadow_kernel,
-            goal_store=goal_store,
-            lessons_store=lessons_store,
-            confidence_threshold=SETTINGS.SHADOW_CONFIDENCE_THRESHOLD,
-        )
-        await shadow_agent.start()
-        logger.info("ShadowAgent uruchomiony")
-        shadow = shadow_agent
-        note = notifier
-        assert shadow is not None
-        assert note is not None
-
-        async def handle_sensor_data(sensor_data: dict):
-            logger.debug(f"Desktop Sensor data: {sensor_data.get('type')}")
-            suggestion = await shadow.analyze_sensor_data(sensor_data)
-            if suggestion:
-                logger.info(f"Shadow Agent suggestion: {suggestion.title}")
-                await note.send_toast(
-                    title=suggestion.title,
-                    message=suggestion.message,
-                    action_payload=suggestion.action_payload,
-                )
-                await event_broadcaster.broadcast_event(
-                    event_type=EventType.SYSTEM_LOG,
-                    message=f"Shadow: {suggestion.title}",
-                    data=suggestion.to_dict(),
-                )
-
-        if SETTINGS.ENABLE_DESKTOP_SENSOR:
-            desktop_sensor = DesktopSensor(
-                clipboard_callback=handle_sensor_data,
-                window_callback=handle_sensor_data,
-                privacy_filter=SETTINGS.SHADOW_PRIVACY_FILTER,
-            )
-            await desktop_sensor.start()
-            logger.info(
-                "DesktopSensor uruchomiony - monitorowanie schowka i okien aktywne"
-            )
-        else:
-            logger.info("DesktopSensor wyłączony (ENABLE_DESKTOP_SENSOR=False)")
-
-    except Exception as exc:
-        logger.warning(f"Nie udało się zainicjalizować Shadow Agent: {exc}")
-        shadow_agent = None
-        desktop_sensor = None
-        notifier = None
+    shadow_agent, desktop_sensor, notifier = await rt_initialize_shadow_stack(
+        settings=SETTINGS,
+        logger=logger,
+        orchestrator=orchestrator,
+        lessons_store=lessons_store,
+        event_broadcaster=event_broadcaster,
+        system_log_event_type=EventType.SYSTEM_LOG,
+    )
 
 
 async def _ensure_local_llm_ready() -> None:
@@ -1253,64 +936,46 @@ def setup_router_dependencies():
                 exc,
             )
 
-    # Set global dependencies in api/dependencies.py
-    if orchestrator:
-        api_deps.set_orchestrator(orchestrator)
-    if state_manager:
-        api_deps.set_state_manager(state_manager)
-    if vector_store:
-        api_deps.set_vector_store(vector_store)
-    if graph_store:
-        api_deps.set_graph_store(graph_store)
-    if lessons_store:
-        api_deps.set_lessons_store(lessons_store)
-    if session_store:
-        api_deps.set_session_store(session_store)
-    if request_tracer:
-        api_deps.set_request_tracer(request_tracer)
-
-    if service_monitor:
-        service_monitor.set_orchestrator(orchestrator)
-
-    system_deps.set_dependencies(
-        background_scheduler,
-        service_monitor,
-        state_manager,
-        llm_controller,
-        model_manager,
-        request_tracer,
-        hardware_bridge,
-        orchestrator,
-    )
-    feedback_routes.set_dependencies(orchestrator, state_manager, request_tracer)
-    queue_routes.set_dependencies(orchestrator)
-    # TokenEconomist zainicjalizowany w _initialize_token_economist()
-    metrics_routes.set_dependencies(token_economist=token_economist)
-    git_routes.set_dependencies(git_skill)
-    agents_routes.set_dependencies(
-        gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
-    )
-    system_deps.set_dependencies(
-        background_scheduler,
-        service_monitor,
-        state_manager,
-        llm_controller,
-        model_manager,
-        request_tracer,
-        hardware_bridge,
-    )
-    nodes_routes.set_dependencies(node_manager)
-    strategy_routes.set_dependencies(orchestrator)
-    models_routes.set_dependencies(model_manager, model_registry=model_registry)
-    benchmark_routes.set_dependencies(benchmark_service)
-    calendar_routes.set_dependencies(google_calendar_skill)
-    memory_projection_routes.set_dependencies(vector_store)
-    academy_routes.set_dependencies(
+    apply_router_dependencies(
+        api_deps=api_deps,
+        system_deps=system_deps,
+        feedback_routes=feedback_routes,
+        queue_routes=queue_routes,
+        metrics_routes=metrics_routes,
+        git_routes=git_routes,
+        agents_routes=agents_routes,
+        nodes_routes=nodes_routes,
+        strategy_routes=strategy_routes,
+        models_routes=models_routes,
+        benchmark_routes=benchmark_routes,
+        calendar_routes=calendar_routes,
+        memory_projection_routes=memory_projection_routes,
+        academy_routes=academy_routes,
+        orchestrator=orchestrator,
+        state_manager=state_manager,
+        vector_store=vector_store,
+        graph_store=graph_store,
+        lessons_store=lessons_store,
+        session_store=session_store,
+        request_tracer=request_tracer,
+        service_monitor=service_monitor,
+        background_scheduler=background_scheduler,
+        llm_controller=llm_controller,
+        model_manager=model_manager,
+        hardware_bridge=hardware_bridge,
+        token_economist=token_economist,
+        git_skill=git_skill,
+        gardener_agent=gardener_agent,
+        shadow_agent=shadow_agent,
+        file_watcher=file_watcher,
+        documenter_agent=documenter_agent,
+        node_manager=node_manager,
+        model_registry=model_registry,
+        benchmark_service=benchmark_service,
+        google_calendar_skill=google_calendar_skill,
         professor=professor,
         dataset_curator=dataset_curator,
         gpu_habitat=gpu_habitat,
-        lessons_store=lessons_store,
-        model_manager=model_manager,
     )
 
 

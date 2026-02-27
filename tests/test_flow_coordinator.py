@@ -155,6 +155,28 @@ async def test_code_generation_with_review_uses_lazy_loop(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_code_generation_with_review_passes_skill_manager(monkeypatch):
+    state = _StateManager()
+    sentinel_skill_manager = object()
+    task_dispatcher = _task_dispatcher(skill_manager=sentinel_skill_manager)
+    coordinator = FlowCoordinator(state, task_dispatcher, event_broadcaster=None)
+
+    fake_loop = SimpleNamespace(execute=AsyncMock(return_value="loop-result"))
+    captured_kwargs = {}
+
+    def _code_review_ctor(**kwargs):
+        captured_kwargs.update(kwargs)
+        return fake_loop
+
+    monkeypatch.setattr(fc_mod, "CodeReviewLoop", _code_review_ctor)
+
+    result = await coordinator.code_generation_with_review(uuid4(), "implement parser")
+
+    assert result == "loop-result"
+    assert captured_kwargs["skill_manager"] is sentinel_skill_manager
+
+
+@pytest.mark.asyncio
 async def test_flow_methods_lazy_initialize_and_execute(monkeypatch):
     state = _StateManager()
     task_dispatcher = _task_dispatcher()

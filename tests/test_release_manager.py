@@ -1,5 +1,7 @@
 """Testy dla ReleaseManagerAgent."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from venom_core.agents.release_manager import ReleaseManagerAgent
@@ -179,3 +181,38 @@ def test_prepare_release_summary_helpers(release_manager):
         "patch", "patch"
     )
     assert "Następne kroki" in release_manager._build_release_next_steps()
+
+
+@pytest.mark.asyncio
+async def test_prepare_release_uses_skill_manager_for_git_and_file():
+    kernel = MagicMock()
+    kernel.add_plugin = MagicMock()
+    kernel.get_service.return_value = MagicMock()
+    skill_manager = MagicMock()
+    skill_manager.invoke_mcp_tool = AsyncMock(
+        side_effect=[
+            "abc1234 - John Doe - 2024-01-15 10:00 - feat(core): add release flow",
+            "ok",
+        ]
+    )
+
+    with (
+        patch("venom_core.agents.release_manager.GitSkill"),
+        patch("venom_core.agents.release_manager.FileSkill"),
+    ):
+        agent = ReleaseManagerAgent(kernel, skill_manager=skill_manager)
+
+    result = await agent.prepare_release(version_type="auto", commit_count=7)
+
+    assert "Pobrano 7 ostatnich commitów" in result
+    calls = skill_manager.invoke_mcp_tool.await_args_list
+    assert calls[0].args == (
+        "git",
+        "get_last_commit_log",
+        {"n": 7},
+    )
+    assert calls[0].kwargs == {"is_external": False}
+    assert calls[1].args[0] == "file"
+    assert calls[1].args[1] == "write_file"
+    assert calls[1].args[2]["file_path"].endswith("CHANGELOG.md")
+    assert calls[1].kwargs == {"is_external": False}

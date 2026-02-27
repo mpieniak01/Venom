@@ -15,6 +15,7 @@ An Architecture Decision Record captures a single architecture decision such as 
 | ID | Title | Status | Date |
 |----|-------|--------|------|
 | [ADR-001](./ADR-001-runtime-strategy-llm-first.md) | Runtime Strategy: LLM-First with ONNX Fallback | Accepted | 2026-02-18 |
+| [ADR-002](./ADR-002-skills-mcp-convergence.md) | Skills/MCP Convergence via Local MCP-like Adapter | Accepted | 2026-02-27 |
 
 ## ADR Naming Convention
 

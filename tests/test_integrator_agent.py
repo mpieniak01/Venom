@@ -166,3 +166,66 @@ async def test_finalize_issue_success(integrator_agent):
     # Sprawdź czy Issue zostało sfinalizowane
     assert "✅" in result
     assert "sfinalizowane" in result
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_uses_skill_manager_path(mock_kernel):
+    skill_manager = MagicMock()
+    skill_manager.invoke_mcp_tool = AsyncMock(return_value="✅ checkout done")
+
+    with (
+        patch("venom_core.agents.integrator.GitSkill"),
+        patch("venom_core.agents.integrator.PlatformSkill"),
+    ):
+        agent = IntegratorAgent(mock_kernel, skill_manager=skill_manager)
+
+    agent.platform_skill.get_issue_details = AsyncMock(
+        return_value="Issue #7: Test Issue\nOpis: Test description"
+    )
+
+    result = await agent.handle_issue(7)
+
+    assert "✅" in result
+    skill_manager.invoke_mcp_tool.assert_awaited_once_with(
+        "git",
+        "checkout",
+        {"branch_name": "issue-7", "create_new": True},
+        is_external=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_finalize_issue_uses_skill_manager_path(mock_kernel):
+    skill_manager = MagicMock()
+    skill_manager.invoke_mcp_tool = AsyncMock(return_value="✅ pushed")
+
+    with (
+        patch("venom_core.agents.integrator.GitSkill"),
+        patch("venom_core.agents.integrator.PlatformSkill"),
+    ):
+        agent = IntegratorAgent(mock_kernel, skill_manager=skill_manager)
+
+    agent.platform_skill.create_pull_request = AsyncMock(
+        return_value="✅ Utworzono Pull Request #11"
+    )
+    agent.platform_skill.comment_on_issue = AsyncMock(
+        return_value="✅ Dodano komentarz"
+    )
+    agent.platform_skill.send_notification = AsyncMock(
+        return_value="✅ Wysłano powiadomienie"
+    )
+
+    result = await agent.finalize_issue(
+        issue_number=7,
+        branch_name="issue-7",
+        pr_title="fix: resolve issue #7",
+        pr_body="Automatic fix for issue #7",
+    )
+
+    assert "✅" in result
+    skill_manager.invoke_mcp_tool.assert_awaited_once_with(
+        "git",
+        "push",
+        {},
+        is_external=False,
+    )

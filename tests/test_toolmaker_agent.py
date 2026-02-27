@@ -130,3 +130,58 @@ def test_create_tool_ui_card(toolmaker):
     assert card["type"] == "card"
     assert card["data"]["title"] == "My Tool"
     assert "use_tool:my_tool" in str(card["data"]["actions"])
+
+
+@pytest.mark.asyncio
+async def test_create_tool_uses_skill_manager_when_available(
+    mock_kernel, mock_file_skill
+):
+    skill_manager = MagicMock()
+    skill_manager.invoke_mcp_tool = AsyncMock(return_value="ok")
+
+    with patch("venom_core.agents.toolmaker.FileSkill", return_value=mock_file_skill):
+        agent = ToolmakerAgent(
+            mock_kernel, file_skill=mock_file_skill, skill_manager=skill_manager
+        )
+
+    with patch.object(agent, "process", new_callable=AsyncMock) as mock_process:
+        mock_process.return_value = "class Tool:\n    pass"
+        success, _ = await agent.create_tool("spec", "my_tool")
+
+    assert success is True
+    skill_manager.invoke_mcp_tool.assert_awaited_once_with(
+        "file",
+        "write_file",
+        {"file_path": "custom/my_tool.py", "content": "class Tool:\n    pass"},
+        is_external=False,
+    )
+    mock_file_skill.write_file.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_test_uses_skill_manager_when_available(
+    mock_kernel, mock_file_skill
+):
+    skill_manager = MagicMock()
+    skill_manager.invoke_mcp_tool = AsyncMock(return_value="ok")
+
+    with patch("venom_core.agents.toolmaker.FileSkill", return_value=mock_file_skill):
+        agent = ToolmakerAgent(
+            mock_kernel, file_skill=mock_file_skill, skill_manager=skill_manager
+        )
+
+    with patch.object(agent, "process", new_callable=AsyncMock) as mock_process:
+        mock_process.return_value = "def test_tool():\n    assert True"
+        success, _ = await agent.create_test("my_tool", "code...")
+
+    assert success is True
+    skill_manager.invoke_mcp_tool.assert_awaited_once_with(
+        "file",
+        "write_file",
+        {
+            "file_path": "custom/test_my_tool.py",
+            "content": "def test_tool():\n    assert True",
+        },
+        is_external=False,
+    )
+    mock_file_skill.write_file.assert_not_called()

@@ -38,6 +38,25 @@ def test_save_and_update_job_in_history(tmp_path: Path):
     assert jobs[0]["container_id"] == "abc"
 
 
+def test_update_job_in_history_noop_when_job_missing(tmp_path: Path):
+    jobs_file = tmp_path / "jobs.jsonl"
+    logger = _logger()
+    academy_history.save_job_to_history(
+        {"job_id": "job-1", "status": "queued"}, jobs_file, logger=logger
+    )
+    before = jobs_file.read_text(encoding="utf-8")
+
+    academy_history.update_job_in_history(
+        "job-does-not-exist",
+        {"status": "running"},
+        jobs_file,
+        logger=logger,
+    )
+
+    after = jobs_file.read_text(encoding="utf-8")
+    assert after == before
+
+
 def test_save_adapter_metadata(tmp_path: Path):
     adapter_path = tmp_path / "job-x" / "adapter"
     adapter_path.parent.mkdir(parents=True, exist_ok=True)

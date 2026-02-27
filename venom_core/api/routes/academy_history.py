@@ -57,10 +57,14 @@ def update_job_in_history(
 
     try:
         jobs = load_jobs_history(jobs_file, logger=logger)
+        updated = False
         for job in jobs:
             if job.get("job_id") == job_id:
                 job.update(updates)
+                updated = True
                 break
+        if not updated:
+            return
 
         with open(jobs_file, "w", encoding="utf-8") as handle:
             for job in jobs:

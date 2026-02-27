@@ -74,7 +74,7 @@ describe("workflow canvas value formatters", () => {
 
     assert.equal(
       resolveConnectionReasonText("invalid_connection", "detail", translated),
-      "Invalid connection",
+      "Invalid connection: detail",
     );
     assert.equal(
       resolveConnectionReasonText("invalid_connection", "detail", untranslated),

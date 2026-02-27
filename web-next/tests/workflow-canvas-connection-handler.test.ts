@@ -68,7 +68,10 @@ describe("workflow canvas connection handler", () => {
 
     assert.equal(setEdgesCount, 0);
     assert.equal(pushedVariant, "error");
-    assert.equal(pushedMessage, "Connection rejected: Invalid connection");
+    assert.equal(
+      pushedMessage,
+      "Connection rejected: Invalid connection: runtime cannot connect to provider",
+    );
   });
 
   it("adds edge for valid connection", () => {

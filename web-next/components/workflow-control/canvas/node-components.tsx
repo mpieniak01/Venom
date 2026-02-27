@@ -8,6 +8,12 @@ import { useTranslation } from "@/lib/i18n";
 import { SWIMLANE_STYLES, WORKFLOW_NODE_THEME, type WorkflowCanvasNodeType } from "./config";
 import { readSourceTag, resolveDisplayValue, runtimeBadgeValue } from "./value-formatters";
 
+type DecisionNodeData = { strategy?: string };
+type IntentNodeData = { intentMode?: string };
+type KernelNodeData = { kernel?: string };
+type RuntimeNodeData = { runtime?: { services?: string[] } };
+type SourceNodeData = { sourceTag?: "local" | "cloud" | string };
+
 function NodeActions() {
   const t = useTranslation();
   return (
@@ -157,14 +163,10 @@ export function SwimlaneNode({
   );
 }
 
-export function DecisionNode({ selected = false, data }: NodeProps) {
+export function DecisionNode({ selected = false, data }: NodeProps<DecisionNodeData>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.decision;
-  const badgeValue = resolveDisplayValue(
-    (data as { strategy?: unknown } | undefined)?.strategy,
-    t,
-    "workflowControl.strategies"
-  );
+  const badgeValue = resolveDisplayValue(data?.strategy, t, "workflowControl.strategies");
   return (
     <NodeShell
       selected={selected}
@@ -179,14 +181,10 @@ export function DecisionNode({ selected = false, data }: NodeProps) {
   );
 }
 
-export function IntentNode({ selected = false, data }: NodeProps) {
+export function IntentNode({ selected = false, data }: NodeProps<IntentNodeData>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.intent;
-  const badgeValue = resolveDisplayValue(
-    (data as { intentMode?: unknown } | undefined)?.intentMode,
-    t,
-    "workflowControl.intentModes"
-  );
+  const badgeValue = resolveDisplayValue(data?.intentMode, t, "workflowControl.intentModes");
   return (
     <NodeShell
       selected={selected}
@@ -201,14 +199,10 @@ export function IntentNode({ selected = false, data }: NodeProps) {
   );
 }
 
-export function KernelNode({ selected = false, data }: NodeProps) {
+export function KernelNode({ selected = false, data }: NodeProps<KernelNodeData>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.kernel;
-  const badgeValue = resolveDisplayValue(
-    (data as { kernel?: unknown } | undefined)?.kernel,
-    t,
-    "workflowControl.kernelTypes"
-  );
+  const badgeValue = resolveDisplayValue(data?.kernel, t, "workflowControl.kernelTypes");
   return (
     <NodeShell
       selected={selected}
@@ -223,7 +217,7 @@ export function KernelNode({ selected = false, data }: NodeProps) {
   );
 }
 
-export function RuntimeNode({ selected = false, data }: NodeProps) {
+export function RuntimeNode({ selected = false, data }: NodeProps<RuntimeNodeData>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.runtime;
   const badgeValue = runtimeBadgeValue(data, t);
@@ -241,7 +235,7 @@ export function RuntimeNode({ selected = false, data }: NodeProps) {
   );
 }
 
-export function EmbeddingNode({ selected = false, data }: NodeProps) {
+export function EmbeddingNode({ selected = false, data }: NodeProps<SourceNodeData>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.embedding;
   const sourceTag = readSourceTag(data);
@@ -259,7 +253,7 @@ export function EmbeddingNode({ selected = false, data }: NodeProps) {
   );
 }
 
-export function ProviderNode({ selected = false, data }: NodeProps) {
+export function ProviderNode({ selected = false, data }: NodeProps<SourceNodeData>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.provider;
   const sourceTag = readSourceTag(data);

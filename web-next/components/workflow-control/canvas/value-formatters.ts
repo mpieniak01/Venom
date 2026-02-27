@@ -5,11 +5,14 @@ export type TranslateFn = (
   replacements?: Record<string, string | number>
 ) => string;
 
-export function readSourceTag(data: unknown): "local" | "cloud" {
-  if (!data || typeof data !== "object") {
+type SourceTagData = { sourceTag?: unknown };
+type RuntimeData = { runtime?: { services?: unknown } };
+
+export function readSourceTag(data: SourceTagData | null | undefined): "local" | "cloud" {
+  if (!data) {
     return "local";
   }
-  const sourceTag = (data as { sourceTag?: unknown }).sourceTag;
+  const sourceTag = data.sourceTag;
   return sourceTag === "cloud" ? "cloud" : "local";
 }
 
@@ -31,11 +34,11 @@ export function resolveDisplayValue(
   return t("workflowControl.common.missing");
 }
 
-export function runtimeBadgeValue(data: unknown, t: TranslateFn): string {
-  if (!data || typeof data !== "object") {
+export function runtimeBadgeValue(data: RuntimeData | null | undefined, t: TranslateFn): string {
+  if (!data) {
     return t("workflowControl.common.auto");
   }
-  const runtime = (data as { runtime?: { services?: unknown } }).runtime;
+  const runtime = data.runtime;
   const services = Array.isArray(runtime?.services)
     ? runtime.services.filter(
         (service) => typeof service === "string" && service.trim().length > 0
@@ -57,7 +60,7 @@ export function resolveConnectionReasonText(
   const key = `workflowControl.messages.${reasonCode}`;
   const translated = t(key);
   if (translated !== key) {
-    return translated;
+    return reasonDetail ? `${translated}: ${reasonDetail}` : translated;
   }
   return reasonDetail || reasonCode;
 }

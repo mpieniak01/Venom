@@ -71,6 +71,7 @@ async function installMockTaskEventSource(
         onopen: ((event: Event) => void) | null = null;
         onerror: ((event: Event) => void) | null = null;
         private listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
+        private emittedEvents: Record<string, MessageEvent[]> = {};
 
         constructor(url: string) {
           this.url = url;
@@ -87,6 +88,7 @@ async function installMockTaskEventSource(
             { event: payload.event, ...payload.data },
           ].slice(-25);
           const event = new MessageEvent(payload.event, { data: JSON.stringify(payload.data) });
+          this.emittedEvents[payload.event] = [...(this.emittedEvents[payload.event] ?? []), event].slice(-10);
           for (const handler of this.listeners[payload.event] || []) {
             handler(event);
           }
@@ -105,6 +107,9 @@ async function installMockTaskEventSource(
         addEventListener(event: string, handler: (event: MessageEvent) => void) {
           this.listeners[event] = this.listeners[event] || [];
           this.listeners[event].push(handler);
+          for (const emittedEvent of this.emittedEvents[event] || []) {
+            setTimeout(() => handler(emittedEvent), 0);
+          }
         }
 
         close() {
@@ -248,6 +253,10 @@ test.describe("Chat mode routing", () => {
     await waitForSessionReady(page);
     await waitForHydration(page);
     await waitForCockpitReady(page);
+    const userBubbles = page.getByTestId("conversation-bubble-user");
+    const assistantBubbles = page.getByTestId("conversation-bubble-assistant");
+    const initialUserCount = await userBubbles.count();
+    const initialAssistantCount = await assistantBubbles.count();
     await selectChatMode(page, "Normal");
     await page.getByTestId("cockpit-prompt-input").fill("Test normal");
     const taskRequest = page.waitForRequest(
@@ -260,9 +269,9 @@ test.describe("Chat mode routing", () => {
     await expect.poll(() => taskBody, { timeout: 10000 }).not.toBeNull();
     expect((taskBody as Record<string, unknown> | null)?.forced_intent).toBeUndefined();
 
-    // Verify exactly one user question and one assistant response (no duplicates)
-    await expect(page.getByTestId("conversation-bubble-user")).toHaveCount(1);
-    await expect(page.getByTestId("conversation-bubble-assistant")).toHaveCount(1);
+    // Verify one user question and one assistant response were added (no duplicates for this turn).
+    await expect.poll(() => userBubbles.count(), { timeout: 10000 }).toBe(initialUserCount + 1);
+    await expect.poll(() => assistantBubbles.count(), { timeout: 10000 }).toBe(initialAssistantCount + 1);
   });
 
   test("Direct mode uses simple stream and skips tasks", async ({ page }) => {
@@ -301,6 +310,10 @@ test.describe("Chat mode routing", () => {
     await waitForSessionReady(page);
     await waitForHydration(page);
     await waitForCockpitReady(page);
+    const userBubbles = page.getByTestId("conversation-bubble-user");
+    const assistantBubbles = page.getByTestId("conversation-bubble-assistant");
+    const initialUserCount = await userBubbles.count();
+    const initialAssistantCount = await assistantBubbles.count();
     await selectChatMode(page, "Direct");
     await page.getByTestId("cockpit-prompt-input").fill("Test direct");
     const simpleRequest = page.waitForRequest(
@@ -315,9 +328,9 @@ test.describe("Chat mode routing", () => {
     expect(taskCalls).toBe(0);
     expect((simpleBody as Record<string, unknown> | null)?.session_id).toBeTruthy();
 
-    // Verify exactly one user question and one assistant response (no duplicates)
-    await expect(page.getByTestId("conversation-bubble-user")).toHaveCount(1);
-    await expect(page.getByTestId("conversation-bubble-assistant")).toHaveCount(1);
+    // Verify one user question and one assistant response were added (no duplicates for this turn).
+    await expect.poll(() => userBubbles.count(), { timeout: 10000 }).toBe(initialUserCount + 1);
+    await expect.poll(() => assistantBubbles.count(), { timeout: 10000 }).toBe(initialAssistantCount + 1);
   });
 
   test("Streaming TTFT shows partial before final result", async ({ page }) => {

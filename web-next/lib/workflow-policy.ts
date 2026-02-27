@@ -12,19 +12,24 @@ export const NODE_CATEGORIES = {
 
 export type NodeCategory = (typeof NODE_CATEGORIES)[keyof typeof NODE_CATEGORIES];
 
+export type ConnectionValidationReasonCode =
+  | "unknown_node_type"
+  | "invalid_connection";
+
 // Define Allowed Connections (Source Category -> Target Category[])
 const ALLOWED_CONNECTIONS: Record<NodeCategory, NodeCategory[]> = {
     [NODE_CATEGORIES.DECISION]: [NODE_CATEGORIES.INTENT],
     [NODE_CATEGORIES.INTENT]: [NODE_CATEGORIES.KERNEL],
     [NODE_CATEGORIES.KERNEL]: [NODE_CATEGORIES.RUNTIME, NODE_CATEGORIES.EMBEDDING],
-    [NODE_CATEGORIES.RUNTIME]: [NODE_CATEGORIES.PROVIDER],
+    [NODE_CATEGORIES.RUNTIME]: [NODE_CATEGORIES.EMBEDDING, NODE_CATEGORIES.PROVIDER],
     [NODE_CATEGORIES.PROVIDER]: [], // End of chain usually
     [NODE_CATEGORIES.EMBEDDING]: [NODE_CATEGORIES.PROVIDER], // Logic: Embedding needs a provider
 };
 
 export interface ValidationResult {
     isValid: boolean;
-    reason?: string;
+    reasonCode?: ConnectionValidationReasonCode;
+    reasonDetail?: string;
 }
 
 export function getNodeCategory(nodeType: string): NodeCategory | undefined {
@@ -38,7 +43,7 @@ export function validateConnection(source: Node, target: Node): ValidationResult
     const targetCategory = getNodeCategory(target.type || "");
 
     if (!sourceCategory || !targetCategory) {
-        return { isValid: false, reason: "unknown_node_type" };
+        return { isValid: false, reasonCode: "unknown_node_type" };
     }
 
     const allowedTargets = ALLOWED_CONNECTIONS[sourceCategory];
@@ -48,7 +53,8 @@ export function validateConnection(source: Node, target: Node): ValidationResult
 
     return {
         isValid: false,
-        reason: `invalid_connection: ${sourceCategory} cannot connect to ${targetCategory}`
+        reasonCode: "invalid_connection",
+        reasonDetail: `${sourceCategory} cannot connect to ${targetCategory}`,
     };
 }
 

@@ -24,6 +24,8 @@ const REQUIRED_WORKFLOW_KEYS = [
   "workflowControl.labels.rawData",
   "workflowControl.messages.selectNode",
   "workflowControl.messages.connectionRejected",
+  "workflowControl.messages.unknown_node_type",
+  "workflowControl.messages.invalid_connection",
   "workflowControl.sections.intent",
   "workflowControl.sections.embedding",
   "workflowControl.sections.provider",

@@ -74,7 +74,12 @@ def hello_world():
     print("Hello World")
 ```"""
 
-    def __init__(self, kernel: Kernel, enable_self_repair: bool = True):
+    def __init__(
+        self,
+        kernel: Kernel,
+        enable_self_repair: bool = True,
+        skill_manager: Optional[Any] = None,
+    ):
         """
         Inicjalizacja CoderAgent.
 
@@ -83,6 +88,7 @@ def hello_world():
             enable_self_repair: Czy włączyć pętlę samonaprawy (domyślnie True)
         """
         super().__init__(kernel)
+        self.skill_manager = skill_manager
 
         # Zarejestruj FileSkill
         self.file_skill = FileSkill()
@@ -100,6 +106,21 @@ def hello_world():
         logger.info(
             f"CoderAgent zainicjalizowany z FileSkill, ShellSkill i ComposeSkill (self_repair={enable_self_repair})"
         )
+
+    async def _read_file(self, file_path: str) -> str:
+        """
+        Odczytuje plik przez wspólną ścieżkę SkillManager (Etap C),
+        a gdy nie jest dostępna - używa legacy FileSkill.
+        """
+        if self.skill_manager is not None:
+            result = await self.skill_manager.invoke_mcp_tool(
+                "file",
+                "read_file",
+                {"file_path": file_path},
+                is_external=False,
+            )
+            return str(result)
+        return await self.file_skill.read_file(file_path)
 
     async def process_with_params(
         self, input_text: str, generation_params: dict[str, Any]
@@ -309,7 +330,7 @@ def hello_world():
         )
 
         try:
-            code_content = await self.file_skill.read_file(script_name)
+            code_content = await self._read_file(script_name)
             logger.info(f"Kod zapisany do {script_name} ({len(code_content)} znaków)")
         except FileNotFoundError:
             logger.warning(

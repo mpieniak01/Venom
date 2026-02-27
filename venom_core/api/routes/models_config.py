@@ -33,13 +33,13 @@ def _load_generation_schema(model_registry, model_name: str, *, update_mode: boo
     if capabilities is not None and capabilities.generation_schema is not None:
         return capabilities.generation_schema
 
-    from venom_core.core.model_registry import _create_default_generation_schema
+    from venom_core.core.model_registry import create_default_generation_schema
 
     if update_mode:
         logger.warning("Brak schematu w manifeście podczas zapisu, używam domyślnego")
     else:
         logger.warning("Brak schematu w manifeście, używam domyślnego")
-    return _create_default_generation_schema()
+    return create_default_generation_schema()
 
 
 def _resolve_runtime_key(runtime: Optional[str]) -> str:

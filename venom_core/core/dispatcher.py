@@ -30,6 +30,11 @@ from venom_core.core.goal_store import GoalStore
 from venom_core.core.models import Intent
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.assistant_skill import AssistantSkill
+from venom_core.skills.mcp.skill_adapter import (
+    FileSkillMcpAdapter,
+    GitSkillMcpAdapter,
+    GoogleCalendarSkillMcpAdapter,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -131,6 +136,26 @@ class TaskDispatcher:
         except Exception as e:
             logger.warning(f"Nie udało się załadować custom skills: {e}")
 
+        # Zarejestruj lokalne adaptery MCP-like (Etap C konwergencji Skills/MCP)
+        try:
+            self.skill_manager.register_mcp_adapter(
+                "git",
+                GitSkillMcpAdapter(),
+                skill_name="GitSkill",
+            )
+            self.skill_manager.register_mcp_adapter(
+                "file",
+                FileSkillMcpAdapter(),
+                skill_name="FileSkill",
+            )
+            self.skill_manager.register_mcp_adapter(
+                "calendar",
+                GoogleCalendarSkillMcpAdapter(),
+                skill_name="GoogleCalendarSkill",
+            )
+        except Exception as e:
+            logger.warning(f"Nie udało się zarejestrować adapterów MCP-like: {e}")
+
         # Zarejestruj wbudowane podstawowe umiejętności asystenta
         try:
             self.kernel.add_plugin(AssistantSkill(), plugin_name="AssistantSkill")
@@ -139,19 +164,23 @@ class TaskDispatcher:
             logger.warning(f"Nie udało się zarejestrować AssistantSkill: {e}")
 
         # Inicjalizuj agentów
-        self.coder_agent = CoderAgent(kernel)
+        self.coder_agent = CoderAgent(kernel, skill_manager=self.skill_manager)
         self.chat_agent = ChatAgent(kernel)
         self.librarian_agent = LibrarianAgent(kernel)
         self.critic_agent = CriticAgent(kernel)
         self.researcher_agent = ResearcherAgent(kernel)
-        self.integrator_agent = IntegratorAgent(kernel)
-        self.toolmaker_agent = ToolmakerAgent(kernel)
+        self.integrator_agent = IntegratorAgent(
+            kernel, skill_manager=self.skill_manager
+        )
+        self.toolmaker_agent = ToolmakerAgent(kernel, skill_manager=self.skill_manager)
         self.architect_agent = ArchitectAgent(
             kernel, event_broadcaster=event_broadcaster
         )
         self.tester_agent = TesterAgent(kernel)
         self.publisher_agent = PublisherAgent(kernel)
-        self.release_manager_agent = ReleaseManagerAgent(kernel)
+        self.release_manager_agent = ReleaseManagerAgent(
+            kernel, skill_manager=self.skill_manager
+        )
         self.executive_agent = ExecutiveAgent(kernel, self.goal_store)
         self.system_status_agent = SystemStatusAgent(kernel)
         self.time_assistant_agent = TimeAssistantAgent(kernel)

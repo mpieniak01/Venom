@@ -1,6 +1,6 @@
 """Moduł: integrator - agent zarządzający wersjonowaniem i DevOps."""
 
-from typing import Any
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
@@ -113,7 +113,7 @@ Akcja:
 Żądanie: "Jaki jest aktualny branch?"
 Akcja: get_current_branch()"""
 
-    def __init__(self, kernel: Kernel):
+    def __init__(self, kernel: Kernel, skill_manager: Optional[Any] = None):
         """
         Inicjalizacja IntegratorAgent.
 
@@ -121,6 +121,7 @@ Akcja: get_current_branch()"""
             kernel: Skonfigurowane jądro Semantic Kernel
         """
         super().__init__(kernel)
+        self.skill_manager = skill_manager
 
         # Dodaj GitSkill do kernela
         self.git_skill = GitSkill()
@@ -131,6 +132,27 @@ Akcja: get_current_branch()"""
         kernel.add_plugin(self.platform_skill, plugin_name="platform")
 
         logger.info("IntegratorAgent zainicjalizowany z GitSkill i PlatformSkill")
+
+    async def _invoke_git_tool(
+        self, tool_name: str, arguments: Optional[dict[str, Any]] = None
+    ) -> str:
+        """
+        Wywołuje narzędzie Git przez wspólną ścieżkę SkillManager (Etap C),
+        a gdy nie jest dostępna - używa legacy GitSkill bezpośrednio.
+        """
+        payload = arguments or {}
+        if self.skill_manager is not None:
+            result = await self.skill_manager.invoke_mcp_tool(
+                "git",
+                tool_name,
+                payload,
+                is_external=False,
+            )
+            return str(result)
+
+        method = getattr(self.git_skill, tool_name)
+        result = await method(**payload)
+        return str(result)
 
     async def process(self, input_text: str) -> str:
         """
@@ -310,8 +332,9 @@ Przykład: "feat(git): add GitSkill implementation"
 
             # 2. Utwórz branch dla Issue
             branch_name = f"issue-{issue_number}"
-            checkout_result = await self.git_skill.checkout(
-                branch_name=branch_name, create_new=True
+            checkout_result = await self._invoke_git_tool(
+                "checkout",
+                {"branch_name": branch_name, "create_new": True},
             )
             logger.info(f"Branch utworzony: {checkout_result}")
 
@@ -342,7 +365,7 @@ Przykład: "feat(git): add GitSkill implementation"
             logger.info(f"Finalizacja Issue #{issue_number}")
 
             # 1. Upewnij się że zmiany są spushowane
-            push_result = await self.git_skill.push()
+            push_result = await self._invoke_git_tool("push")
             logger.info(f"Push: {push_result}")
 
             # 2. Utwórz Pull Request

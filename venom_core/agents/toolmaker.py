@@ -157,7 +157,12 @@ WAŻNE:
 - Używaj async/await gdy robisz operacje I/O (HTTP requests)
 - Zwracaj zawsze string (nie dict, nie list)"""
 
-    def __init__(self, kernel: Kernel, file_skill: Optional[FileSkill] = None):
+    def __init__(
+        self,
+        kernel: Kernel,
+        file_skill: Optional[FileSkill] = None,
+        skill_manager: Optional[Any] = None,
+    ):
         """
         Inicjalizacja ToolmakerAgent.
 
@@ -166,6 +171,7 @@ WAŻNE:
             file_skill: Opcjonalny FileSkill do zapisu narzędzi
         """
         super().__init__(kernel)
+        self.skill_manager = skill_manager
 
         # FileSkill do zapisu wygenerowanych narzędzi
         self.file_skill = file_skill or FileSkill()
@@ -182,6 +188,21 @@ WAŻNE:
         self.chat_service: Any = self.kernel.get_service(service_id="default")
 
         logger.info("ToolmakerAgent zainicjalizowany")
+
+    async def _write_file(self, file_path: str, content: str) -> None:
+        """
+        Zapisuje plik przez wspólną ścieżkę SkillManager (Etap C),
+        a jeśli nie jest dostępna - używa legacy FileSkill.
+        """
+        if self.skill_manager is not None:
+            await self.skill_manager.invoke_mcp_tool(
+                "file",
+                "write_file",
+                {"file_path": file_path, "content": content},
+                is_external=False,
+            )
+            return
+        await self.file_skill.write_file(file_path, content)
 
     async def process(self, input_text: str) -> str:
         """
@@ -299,7 +320,7 @@ WYMAGANIA:
                 custom_dir = Path(self.file_skill.workspace_root) / "custom"
                 custom_dir.mkdir(parents=True, exist_ok=True)
 
-            await self.file_skill.write_file(file_path, generated_code)
+            await self._write_file(file_path, generated_code)
 
             logger.info(f"✅ Narzędzie zapisane: {file_path}")
 
@@ -411,7 +432,7 @@ Wygeneruj TYLKO kod testu (bez markdown).
                 else f"{output_dir}/test_{tool_name}.py"
             )
 
-            await self.file_skill.write_file(test_file_path, test_code)
+            await self._write_file(test_file_path, test_code)
 
             logger.info(f"✅ Test zapisany: {test_file_path}")
             return True, test_code

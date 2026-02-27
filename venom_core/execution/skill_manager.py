@@ -3,12 +3,14 @@
 import ast
 import importlib.util
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from semantic_kernel import Kernel
 
 from venom_core.config import SETTINGS
+from venom_core.core.permission_guard import permission_guard
 from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 
@@ -62,10 +64,128 @@ class SkillManager:
 
         # Rejestr załadowanych skills: {skill_name: module}
         self.loaded_skills: Dict[str, Any] = {}
+        # Rejestr adapterów MCP-like: {adapter_name: adapter}
+        self.mcp_adapters: Dict[str, Any] = {}
+        # Mapowanie adaptera na nazwę skilla używaną przez policy gate.
+        self.mcp_adapter_skill_names: Dict[str, str] = {}
 
         logger.info(
             f"SkillManager zainicjalizowany z katalogiem: {self.custom_skills_dir}"
         )
+
+    def register_mcp_adapter(
+        self,
+        adapter_name: str,
+        adapter: Any,
+        skill_name: Optional[str] = None,
+    ) -> None:
+        """
+        Rejestruje adapter MCP-like do wspólnej ścieżki wykonania.
+
+        Args:
+            adapter_name: Unikalna nazwa adaptera (np. "git")
+            adapter: Obiekt implementujący list_tools() i async invoke_tool()
+            skill_name: Nazwa skilla dla policy gate (domyślnie adapter_name)
+        """
+        if not callable(getattr(adapter, "list_tools", None)):
+            raise ValueError(f"Adapter '{adapter_name}' nie implementuje list_tools()")
+        if not callable(getattr(adapter, "invoke_tool", None)):
+            raise ValueError(f"Adapter '{adapter_name}' nie implementuje invoke_tool()")
+
+        self.mcp_adapters[adapter_name] = adapter
+        self.mcp_adapter_skill_names[adapter_name] = skill_name or adapter_name
+        logger.info(
+            "Zarejestrowano adapter MCP-like: %s (skill=%s)",
+            adapter_name,
+            self.mcp_adapter_skill_names[adapter_name],
+        )
+
+    def list_mcp_tools(
+        self, adapter_name: Optional[str] = None
+    ) -> Dict[str, List[Any]]:
+        """
+        Zwraca listę narzędzi MCP-like dla jednego lub wszystkich adapterów.
+
+        Args:
+            adapter_name: Opcjonalna nazwa adaptera
+        """
+        if adapter_name is not None:
+            adapter = self.mcp_adapters.get(adapter_name)
+            if adapter is None:
+                raise ValueError(f"Nieznany adapter MCP-like: {adapter_name}")
+            return {adapter_name: list(adapter.list_tools())}
+
+        return {
+            name: list(adapter.list_tools())
+            for name, adapter in self.mcp_adapters.items()
+        }
+
+    async def invoke_mcp_tool(
+        self,
+        adapter_name: str,
+        tool_name: str,
+        arguments: Optional[Dict[str, Any]] = None,
+        is_external: bool = False,
+    ) -> Any:
+        """
+        Wspólna ścieżka wykonania narzędzia MCP-like z governance + observability.
+
+        1. Policy gate (AutonomyGate via PermissionGuard)
+        2. Event SKILL_STARTED
+        3. Wykonanie narzędzia
+        4. Event SKILL_COMPLETED / SKILL_FAILED
+        """
+        adapter = self.mcp_adapters.get(adapter_name)
+        if adapter is None:
+            raise ValueError(f"Nieznany adapter MCP-like: {adapter_name}")
+
+        policy_skill_name = self.mcp_adapter_skill_names.get(adapter_name, adapter_name)
+        started_at = time.perf_counter()
+        try:
+            permission_guard.check_permission(policy_skill_name)
+        except Exception:
+            await self.broadcast_skill_event(
+                "SKILL_FAILED",
+                adapter_name,
+                action=tool_name,
+                is_external=is_external,
+                extra_data={
+                    "error_class": "PermissionDenied",
+                    "duration_ms": int((time.perf_counter() - started_at) * 1000),
+                },
+            )
+            raise
+
+        await self.broadcast_skill_event(
+            "SKILL_STARTED",
+            adapter_name,
+            action=tool_name,
+            is_external=is_external,
+        )
+
+        try:
+            result = await adapter.invoke_tool(tool_name, arguments or {})
+        except Exception as exc:
+            await self.broadcast_skill_event(
+                "SKILL_FAILED",
+                adapter_name,
+                action=tool_name,
+                is_external=is_external,
+                extra_data={
+                    "error_class": exc.__class__.__name__,
+                    "duration_ms": int((time.perf_counter() - started_at) * 1000),
+                },
+            )
+            raise
+
+        await self.broadcast_skill_event(
+            "SKILL_COMPLETED",
+            adapter_name,
+            action=tool_name,
+            is_external=is_external,
+            extra_data={"duration_ms": int((time.perf_counter() - started_at) * 1000)},
+        )
+        return result
 
     def load_skills_from_dir(self, path: Optional[str] = None) -> List[str]:
         """
@@ -392,6 +512,7 @@ class SkillManager:
         skill_name: str,
         action: str = "",
         is_external: bool = False,
+        extra_data: Optional[dict[str, Any]] = None,
     ):
         """
         Emituje event WebSocket o wykonaniu skilla.
@@ -402,6 +523,7 @@ class SkillManager:
             skill_name: Nazwa skilla
             action: Opcjonalnie akcja wykonywana przez skill
             is_external: Czy skill komunikuje się z zewnętrznymi API
+            extra_data: Dodatkowe metadane telemetryczne
 
         Note:
             Ta metoda musi być wywołana przez kod używający skills aby
@@ -417,7 +539,8 @@ class SkillManager:
                         "skill": skill_name,
                         "action": action,
                         "is_external": is_external,
-                    },
+                    }
+                    | (extra_data or {}),
                 )
             except Exception as e:
                 logger.warning(f"Nie udało się wysłać eventu skill: {e}")

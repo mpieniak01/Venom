@@ -26,6 +26,8 @@ tests/test_academy_api_coverage.py
 tests/test_academy_api_new_code_edges.py
 tests/test_academy_api_v2.py
 tests/test_academy_api_v2_edge_cases.py
+tests/test_academy_models_module.py
+tests/test_academy_route_helpers_modules.py
 tests/test_autonomy_enforcement.py
 tests/test_gpu_habitat_coverage.py
 tests/test_gpu_habitat_new_code_edges.py

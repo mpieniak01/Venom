@@ -1,5 +1,6 @@
 """Testy dla optymalizacji samo-naprawy w CodeReviewLoop."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -317,6 +318,61 @@ def test_should_stop_for_budget_returns_warning_when_exceeded(
     warning = loop._should_stop_for_budget()
     assert warning is not None
     assert "Przekroczono budżet sesji" in warning
+
+
+@pytest.mark.asyncio
+async def test_code_review_read_file_uses_skill_manager(
+    mock_state_manager,
+    mock_coder_agent,
+    mock_critic_agent,
+    mock_token_economist,
+    mock_file_skill,
+):
+    skill_manager = MagicMock()
+    skill_manager.invoke_mcp_tool = AsyncMock(
+        return_value=SimpleNamespace(result="mcp file content")
+    )
+    loop = CodeReviewLoop(
+        mock_state_manager,
+        mock_coder_agent,
+        mock_critic_agent,
+        mock_token_economist,
+        mock_file_skill,
+        skill_manager=skill_manager,
+    )
+
+    content = await loop._read_file("api.py")
+
+    assert content == "mcp file content"
+    skill_manager.invoke_mcp_tool.assert_awaited_once_with(
+        "file",
+        "read_file",
+        {"file_path": "api.py"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_code_review_read_file_falls_back_to_file_skill(
+    mock_state_manager,
+    mock_coder_agent,
+    mock_critic_agent,
+    mock_token_economist,
+    mock_file_skill,
+):
+    mock_file_skill.read_file.return_value = "legacy file content"
+    loop = CodeReviewLoop(
+        mock_state_manager,
+        mock_coder_agent,
+        mock_critic_agent,
+        mock_token_economist,
+        mock_file_skill,
+        skill_manager=None,
+    )
+
+    content = await loop._read_file("api.py")
+
+    assert content == "legacy file content"
+    mock_file_skill.read_file.assert_awaited_once_with("api.py")
 
 
 def test_is_feedback_approved():

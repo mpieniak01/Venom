@@ -7,6 +7,7 @@ from venom_core.agents.critic import CriticAgent
 from venom_core.config import SETTINGS
 from venom_core.core.state_manager import StateManager
 from venom_core.core.token_economist import TokenEconomist
+from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.utils.logger import get_logger
 
@@ -36,6 +37,7 @@ class CodeReviewLoop:
         critic_agent: CriticAgent,
         token_economist: TokenEconomist | None = None,
         file_skill: FileSkill | None = None,
+        skill_manager: SkillManager | None = None,
     ):
         """
         Inicjalizacja CodeReviewLoop.
@@ -48,6 +50,7 @@ class CodeReviewLoop:
                 Jeśli None, zostanie utworzona domyślna instancja.
             file_skill: FileSkill do operacji na plikach (opcjonalny).
                 Jeśli None, zostanie utworzona domyślna instancja.
+            skill_manager: SkillManager dla ścieżki MCP-like (opcjonalny).
 
         Note:
             TokenEconomist i FileSkill używają domyślnej konfiguracji z SETTINGS
@@ -59,6 +62,7 @@ class CodeReviewLoop:
         self.critic_agent = critic_agent
         self.token_economist = token_economist or TokenEconomist()
         self.file_skill = file_skill or FileSkill()
+        self.skill_manager = skill_manager
 
         # Tracking kosztów i błędów dla danej sesji
         self.session_cost = 0.0
@@ -125,7 +129,7 @@ class CodeReviewLoop:
                 "ponieważ testy/kod wykazały błąd w tym pliku."
             )
             try:
-                file_content = await self.file_skill.read_file(current_file)
+                file_content = await self._read_file(current_file)
                 file_context += (
                     f"\n\nOBECNA TREŚĆ PLIKU '{current_file}':\n"
                     f"{self._summarize_text(file_content)}"
@@ -146,6 +150,17 @@ POPRZEDNI KOD (fragment):
 Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
         generated = await self.coder_agent.process(repair_prompt)
         return generated, repair_prompt
+
+    async def _read_file(self, file_path: str) -> str:
+        """Odczytuje plik przez SkillManager (MCP-like) z fallbackiem legacy."""
+        if self.skill_manager:
+            result = await self.skill_manager.invoke_mcp_tool(
+                "file",
+                "read_file",
+                {"file_path": file_path},
+            )
+            return str(result.result)
+        return await self.file_skill.read_file(file_path)
 
     async def execute(self, task_id: UUID, user_request: str) -> str:
         """

@@ -4,6 +4,9 @@ import { sidebar } from "./sidebar/pl";
 import { moduleHost } from "./module-host/pl";
 import { systemStatus } from "./system-status/pl";
 import { mobileNav } from "./mobile-nav/pl";
+import { commandPalette } from "./command-palette/pl";
+import { commandCenter } from "./command-center/pl";
+import { quickActions } from "./quick-actions/pl";
 export const pl = {
   common: {
     switchLanguage: "Przełącz język",
@@ -28,81 +31,9 @@ export const pl = {
   moduleHost,
   systemStatus,
   mobileNav,
-  commandPalette: {
-    title: "Paleta poleceń",
-    description: "Nawigacja (`⌘K` / `Ctrl+K`) i szybkie akcje kolejki.",
-    searchPlaceholder: "Szukaj poleceń...",
-    navCategory: "Nawigacja",
-    queueCategory: "Kolejka",
-    goTo: "Przejdź do",
-    openQuickActions: "Otwórz Szybkie Akcje",
-    openQuickActionsDesc: "Panel /api/v1/queue (pauza, czyszczenie, awaryjne stop).",
-    runSuccess: "wykonane.",
-    runError: "Nie udało się wykonać",
-    empty: "Brak komend pasujących do filtra.",
-  },
-  commandCenter: {
-    title: "Centrum dowodzenia",
-    description: "Globalny podgląd kolejki, tasków i usług z szybkimi skrótami nawigacyjnymi.",
-    stats: {
-      queueLabel: "Kolejka",
-      queueHintActive: "Aktywna",
-      queueHintPaused: "Wstrzymana",
-      queueHintOffline: "Brak danych",
-      pendingLabel: "Oczekujące",
-      pendingHint: "Oczekujące zadania",
-      successLabel: "Skuteczność",
-      successHint: "Metryki /api/v1/metrics",
-      successOffline: "Metryki offline",
-    },
-    queueOffline: "Brak danych kolejki – sprawdź połączenie API.",
-    shortcuts: {
-      eyebrow: "Skróty",
-      title: "Nawigacja operacyjna",
-      goTo: "Przejdź",
-      links: {
-        cockpit: { label: "Kokpit", description: "Czat i logi w czasie rzeczywistym" },
-        inspector: { label: "Inspektor", description: "Śledzenie requestów i kroków" },
-        brain: { label: "Graf wiedzy", description: "Graf wiedzy i lekcje" },
-        strategy: { label: "Strategia", description: "Strategia i KPI operacyjne" },
-      },
-    },
-    tasks: {
-      eyebrow: "Aktywne taski",
-      title: "Status agentów",
-      fallbackTitle: "Brak aktywnych zadań",
-      fallbackDescription: "Kolejka chwilowo nie przetwarza tasków.",
-      fallbackHint: "Centrum dowodzenia",
-    },
-    services: {
-      eyebrow: "Usługi systemowe",
-      title: "Status integracji",
-      fallbackTitle: "Brak usług",
-      fallbackDescription: "Sprawdź połączenie z backendem.",
-      fallbackHint: "Centrum dowodzenia",
-    },
-  },
-  quickActions: {
-    title: "Szybkie akcje",
-    description: "Najczęstsze akcje operacyjne /api/v1/queue z każdego widoku.",
-    offlineMessage: "Brak danych kolejki – sprawdź połączenie API.",
-    badgeQueue: "Kolejka",
-    badgeEmergency: "Awaryjne",
-    sending: "Wysyłam...",
-    successMessage: "{{action}} wykonane.",
-    errorMessage: "Błąd podczas {{action}}.",
-    actions: {
-      togglePause: "Wstrzymaj kolejkę",
-      toggleResume: "Wznów kolejkę",
-      toggleDescription: "Steruje stanem kolejki (pauza/wznowienie).",
-      purgeLabel: "Wyczyść kolejkę",
-      purgeDescription: "Usuwa wszystkie oczekujące zadania.",
-      purgeConfirm: "Wyczyścić wszystkie oczekujące zadania?",
-      emergencyLabel: "Awaryjne zatrzymanie",
-      emergencyDescription: "Natychmiast zatrzymuje kolejkę (tryb awaryjny).",
-      emergencyConfirm: "Awaryjny stop zatrzyma wszystkie operacje. Kontynuować?",
-    },
-  },
+  commandPalette,
+  commandCenter,
+  quickActions,
   alertCenter: {
     title: "Centrum alertów",
     description: "Potok WebSocket `/ws/events` z filtrowaniem poziomów logów i szybkim kopiowaniem.",

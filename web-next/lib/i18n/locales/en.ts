@@ -4,6 +4,9 @@ import { sidebar } from "./sidebar/en";
 import { moduleHost } from "./module-host/en";
 import { systemStatus } from "./system-status/en";
 import { mobileNav } from "./mobile-nav/en";
+import { commandPalette } from "./command-palette/en";
+import { commandCenter } from "./command-center/en";
+import { quickActions } from "./quick-actions/en";
 export const en = {
   common: {
     switchLanguage: "Switch language",
@@ -27,81 +30,9 @@ export const en = {
   moduleHost,
   systemStatus,
   mobileNav,
-  commandPalette: {
-    title: "Command palette",
-    description: "Navigation (`⌘K` / `Ctrl+K`) and quick queue actions.",
-    searchPlaceholder: "Search commands...",
-    navCategory: "Navigation",
-    queueCategory: "Queue",
-    goTo: "Go to",
-    openQuickActions: "Open Quick Actions",
-    openQuickActionsDesc: "Panel /api/v1/queue (pause, purge, emergency stop).",
-    runSuccess: "executed.",
-    runError: "Failed to run",
-    empty: "No commands match the filter.",
-  },
-  commandCenter: {
-    title: "Command Center",
-    description: "Global view of queue, tasks and services with navigation shortcuts.",
-    stats: {
-      queueLabel: "Queue",
-      queueHintActive: "Active",
-      queueHintPaused: "Paused",
-      queueHintOffline: "No data",
-      pendingLabel: "Pending",
-      pendingHint: "Pending tasks",
-      successLabel: "Success rate",
-      successHint: "Metrics /api/v1/metrics",
-      successOffline: "Metrics offline",
-    },
-    queueOffline: "Queue data unavailable – check API connection.",
-    shortcuts: {
-      eyebrow: "Shortcuts",
-      title: "Operational navigation",
-      goTo: "Go",
-      links: {
-        cockpit: { label: "Cockpit", description: "Chat and runtime logs" },
-        inspector: { label: "Inspector", description: "Trace viewer" },
-        brain: { label: "Knowledge Graph", description: "Graph and lessons" },
-        strategy: { label: "Strategy", description: "Strategy and KPIs" },
-      },
-    },
-    tasks: {
-      eyebrow: "Active tasks",
-      title: "Agent status",
-      fallbackTitle: "No active tasks",
-      fallbackDescription: "The queue is idle right now.",
-      fallbackHint: "Command Center",
-    },
-    services: {
-      eyebrow: "System services",
-      title: "Integration status",
-      fallbackTitle: "No services",
-      fallbackDescription: "Check the backend connection.",
-      fallbackHint: "Command Center",
-    },
-  },
-  quickActions: {
-    title: "Quick actions",
-    description: "Most common `/api/v1/queue` operations available everywhere.",
-    offlineMessage: "Queue data unavailable – check API connection.",
-    badgeQueue: "Queue",
-    badgeEmergency: "Emergency",
-    sending: "Sending...",
-    successMessage: "{{action}} executed.",
-    errorMessage: "Error while running {{action}}.",
-    actions: {
-      togglePause: "Pause queue",
-      toggleResume: "Resume queue",
-      toggleDescription: "Controls queue state (pause/resume).",
-      purgeLabel: "Purge queue",
-      purgeDescription: "Removes all pending tasks.",
-      purgeConfirm: "Purge all pending tasks?",
-      emergencyLabel: "Emergency stop",
-      emergencyDescription: "Immediately stops the queue (emergency).",
-      emergencyConfirm: "Emergency stop will halt all operations. Continue?",
-    },
-  },
+  commandPalette,
+  commandCenter,
+  quickActions,
   alertCenter: {
     title: "Alert Center",
     description: "WebSocket `/ws/events` stream with severity filters and quick copy.",

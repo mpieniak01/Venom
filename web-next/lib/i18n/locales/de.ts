@@ -4,6 +4,9 @@ import { sidebar } from "./sidebar/de";
 import { moduleHost } from "./module-host/de";
 import { systemStatus } from "./system-status/de";
 import { mobileNav } from "./mobile-nav/de";
+import { commandPalette } from "./command-palette/de";
+import { commandCenter } from "./command-center/de";
+import { quickActions } from "./quick-actions/de";
 export const de = {
   common: {
     switchLanguage: "Sprache wechseln",
@@ -27,81 +30,9 @@ export const de = {
   moduleHost,
   systemStatus,
   mobileNav,
-  commandPalette: {
-    title: "Befehlspalette",
-    description: "Navigation (`⌘K` / `Ctrl+K`) und schnelle Queue-Aktionen.",
-    searchPlaceholder: "Befehle suchen...",
-    navCategory: "Navigation",
-    queueCategory: "Queue",
-    goTo: "Gehe zu",
-    openQuickActions: "Öffne Schnellaktionen",
-    openQuickActionsDesc: "Panel /api/v1/queue (Pause, Bereinigung, Notstopp).",
-    runSuccess: "ausgeführt.",
-    runError: "Konnte nicht ausgeführt werden",
-    empty: "Keine Befehle entsprechen dem Filter.",
-  },
-  commandCenter: {
-    title: "Leitstand",
-    description: "Globaler Überblick über Queue, Tasks und Dienste mit Navigation.",
-    stats: {
-      queueLabel: "Queue",
-      queueHintActive: "Aktiv",
-      queueHintPaused: "Pausiert",
-      queueHintOffline: "Keine Daten",
-      pendingLabel: "Ausstehend",
-      pendingHint: "Wartende Tasks",
-      successLabel: "Erfolgsrate",
-      successHint: "Metriken /api/v1/metrics",
-      successOffline: "Metriken offline",
-    },
-    queueOffline: "Kein Queue-Feed – API Verbindung prüfen.",
-    shortcuts: {
-      eyebrow: "Tastenkürzel",
-      title: "Operative Navigation",
-      goTo: "Öffnen",
-      links: {
-        cockpit: { label: "Cockpit", description: "Chat und Runtime-Logs" },
-        inspector: { label: "Inspektor", description: "Trace-Analyse" },
-        brain: { label: "Wissensgraph", description: "Graph & Lessons" },
-        strategy: { label: "Strategie", description: "Strategie und KPIs" },
-      },
-    },
-    tasks: {
-      eyebrow: "Aktive Tasks",
-      title: "Agentenstatus",
-      fallbackTitle: "Keine aktiven Tasks",
-      fallbackDescription: "Queue verarbeitet aktuell nichts.",
-      fallbackHint: "Leitstand",
-    },
-    services: {
-      eyebrow: "Systemdienste",
-      title: "Integrationsstatus",
-      fallbackTitle: "Keine Dienste",
-      fallbackDescription: "Backend-Verbindung prüfen.",
-      fallbackHint: "Leitstand",
-    },
-  },
-  quickActions: {
-    title: "Schnellaktionen",
-    description: "Häufige `/api/v1/queue`-Operationen aus jedem View.",
-    offlineMessage: "Keine Queue-Daten – API Verbindung prüfen.",
-    badgeQueue: "Queue",
-    badgeEmergency: "Notfall",
-    sending: "Sende...",
-    successMessage: "{{action}} ausgeführt.",
-    errorMessage: "Fehler beim Ausführen von {{action}}.",
-    actions: {
-      togglePause: "Queue pausieren",
-      toggleResume: "Queue fortsetzen",
-      toggleDescription: "Steuert den Queue-Status (Pause/Fortsetzen).",
-      purgeLabel: "Queue leeren",
-      purgeDescription: "Entfernt alle wartenden Tasks.",
-      purgeConfirm: "Alle wartenden Tasks löschen?",
-      emergencyLabel: "Notstopp",
-      emergencyDescription: "Stoppt die Queue sofort (Notfall).",
-      emergencyConfirm: "Notstopp hält alle Operationen an. Fortfahren?",
-    },
-  },
+  commandPalette,
+  commandCenter,
+  quickActions,
   alertCenter: {
     title: "Alarmcenter",
     description: "WebSocket `/ws/events` mit Level-Filtern und schnellem Kopieren.",

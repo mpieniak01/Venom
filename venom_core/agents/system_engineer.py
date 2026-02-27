@@ -11,6 +11,7 @@ from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
+from venom_core.execution.skill_manager import SkillManager
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.execution.skills.github_skill import GitHubSkill
@@ -84,6 +85,7 @@ Ty:
         kernel: Kernel,
         graph_store: Optional[CodeGraphStore] = None,
         workspace_root: Optional[str] = None,
+        skill_manager: Optional[SkillManager] = None,
     ):
         """
         Inicjalizacja SystemEngineerAgent.
@@ -92,8 +94,10 @@ Ty:
             kernel: Skonfigurowane jądro Semantic Kernel
             graph_store: Graf kodu do analizy struktury (opcjonalne)
             workspace_root: Katalog główny projektu (domyślnie katalog nadrzędny workspace)
+            skill_manager: SkillManager dla ścieżki MCP-like (opcjonalny)
         """
         super().__init__(kernel)
+        self.skill_manager = skill_manager
 
         # Katalog roboczy to katalog główny projektu, nie workspace
         if workspace_root:
@@ -229,9 +233,25 @@ Ty:
         if not branch_name.startswith("evolution/"):
             branch_name = f"evolution/{branch_name}"
 
-        result = await self.git_skill.checkout(branch_name=branch_name, create_new=True)
+        result = await self._invoke_git_tool(
+            "checkout",
+            {"branch_name": branch_name, "create_new": True},
+        )
         logger.info(f"Utworzono branch ewolucyjny: {branch_name}")
         return result
+
+    async def _invoke_git_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
+        """Uruchamia Git przez SkillManager (MCP-like) z fallbackiem legacy."""
+        if self.skill_manager:
+            result = await self.skill_manager.invoke_mcp_tool(
+                "git",
+                tool_name,
+                arguments,
+            )
+            return result.result
+
+        method = getattr(self.git_skill, tool_name)
+        return await method(**arguments)
 
     def get_project_root(self) -> Path:
         """

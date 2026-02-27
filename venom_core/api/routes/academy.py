@@ -1,12 +1,8 @@
 """Moduł: routes/academy - Endpointy API dla The Academy (trenowanie modeli)."""
 
-import asyncio
 import json
 import mimetypes
 import os
-import re
-import tempfile
-import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +13,13 @@ import anyio
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
+from venom_core.api.routes import (
+    academy_conversion,
+    academy_models,
+    academy_storage,
+    academy_training,
+    academy_uploads,
+)
 from venom_core.api.schemas.academy import (
     AcademyJobsListResponse,
     AcademyJobSummary,
@@ -40,25 +43,6 @@ from venom_core.api.schemas.academy import (
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-# Import platform-specific file locking
-fcntl: Any = None
-msvcrt: Any = None
-HAS_FCNTL = False
-HAS_MSVCRT = False
-try:
-    import fcntl as _fcntl
-
-    fcntl = _fcntl
-    HAS_FCNTL = True
-except ImportError:
-    try:
-        import msvcrt as _msvcrt
-
-        msvcrt = _msvcrt
-        HAS_MSVCRT = True
-    except ImportError:
-        HAS_MSVCRT = False
 
 router = APIRouter(prefix="/api/v1/academy", tags=["academy"])
 
@@ -306,11 +290,7 @@ def _save_adapter_metadata(job: Dict[str, Any], adapter_path: Path) -> None:
 
 def _is_path_within_base(path: Path, base: Path) -> bool:
     """Sprawdza czy `path` znajduje się w `base` (po resolve)."""
-    try:
-        path.relative_to(base)
-        return True
-    except ValueError:
-        return False
+    return academy_storage.is_path_within_base(path=path, base=base)
 
 
 # ==================== Upload Utilities ====================
@@ -318,58 +298,37 @@ def _is_path_within_base(path: Path, base: Path) -> bool:
 
 def _get_uploads_dir() -> Path:
     """Zwraca katalog uploads pod ACADEMY_TRAINING_DIR."""
-    from venom_core.config import SETTINGS
-
-    uploads_dir = Path(SETTINGS.ACADEMY_TRAINING_DIR) / "uploads"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-    return uploads_dir
+    return academy_storage.get_uploads_dir()
 
 
 def _get_uploads_metadata_file() -> Path:
     """Zwraca plik z metadanymi uploadów."""
-    uploads_dir = _get_uploads_dir()
-    metadata_file = uploads_dir / "metadata.jsonl"
-    return metadata_file
+    return academy_storage.get_uploads_metadata_file()
 
 
 def _validate_file_extension(
     filename: str, *, allowed_extensions: list[str] | None = None
 ) -> bool:
     """Waliduje rozszerzenie pliku."""
-    from venom_core.config import SETTINGS
-
-    ext = Path(filename).suffix.lower()
-    resolved_allowed_extensions = allowed_extensions
-    if resolved_allowed_extensions is None:
-        resolved_allowed_extensions = getattr(
-            SETTINGS,
-            "ACADEMY_ALLOWED_DATASET_EXTENSIONS",
-            SETTINGS.ACADEMY_ALLOWED_EXTENSIONS,
-        )
-    return ext in resolved_allowed_extensions
+    return academy_storage.validate_file_extension(
+        filename,
+        allowed_extensions=allowed_extensions,
+    )
 
 
 def _validate_file_size(size_bytes: int) -> bool:
     """Waliduje rozmiar pliku."""
-    from venom_core.config import SETTINGS
-
-    max_bytes = SETTINGS.ACADEMY_MAX_UPLOAD_SIZE_MB * 1024 * 1024
-    return size_bytes <= max_bytes
+    return academy_storage.validate_file_size(size_bytes)
 
 
 def _check_path_traversal(filename: str) -> bool:
     """Sprawdza czy filename nie zawiera path traversal."""
-    # Nie dopuszczamy '..' ani '/' w nazwie pliku
-    if ".." in filename or "/" in filename or "\\" in filename:
-        return False
-    return True
+    return academy_storage.check_path_traversal(filename)
 
 
 def _is_safe_file_id(filename: str) -> bool:
     """Dodatkowa walidacja identyfikatora pliku używanego do ścieżek."""
-    if not _check_path_traversal(filename):
-        return False
-    return bool(re.fullmatch(r"[A-Za-z0-9._-]{1,255}", filename))
+    return academy_storage.is_safe_file_id(filename)
 
 
 @contextmanager
@@ -380,48 +339,18 @@ def _file_lock(file_path: Path, mode: str = "r"):
     Używa fcntl na Unix/Linux lub msvcrt na Windows.
     Fallback: brak lockowania jeśli nie ma dostępnych bibliotek.
     """
-    with open(file_path, mode, encoding="utf-8") as f:
-        locked = False
-        try:
-            if HAS_FCNTL:
-                # Unix/Linux file locking
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                locked = True
-            elif HAS_MSVCRT and msvcrt is not None:
-                # Windows file locking
-                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-                locked = True
-            # Jeśli brak lockowania, po prostu yield (localhost-only, niskie ryzyko)
-            yield f
-        finally:
-            if locked:
-                if HAS_FCNTL:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                elif HAS_MSVCRT and msvcrt is not None:
-                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+    with academy_storage.file_lock(file_path=file_path, mode=mode) as handle:
+        yield handle
 
 
 def _load_uploads_metadata() -> List[Dict[str, Any]]:
     """Ładuje metadane uploadów z pliku JSONL."""
-    metadata_file = _get_uploads_metadata_file()
-    uploads = []
-    try:
-        with _uploads_metadata_lock():
-            if not metadata_file.exists():
-                return []
-            with open(metadata_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    if line.strip():
-                        uploads.append(json.loads(line))
-    except Exception as e:
-        logger.warning(f"Failed to load uploads metadata: {e}")
-    return uploads
+    return academy_storage.load_uploads_metadata()
 
 
 def _get_uploads_metadata_lock_file() -> Path:
     """Zwraca ścieżkę lock-file dla operacji na metadata uploads."""
-    metadata_file = _get_uploads_metadata_file()
-    return metadata_file.with_suffix(".lock")
+    return academy_storage.get_uploads_metadata_lock_file()
 
 
 @contextmanager
@@ -431,103 +360,36 @@ def _uploads_metadata_lock():
 
     Chroni pełny cykl read-modify-write, nie tylko pojedynczy odczyt.
     """
-    lock_file = _get_uploads_metadata_lock_file()
-    lock_file.parent.mkdir(parents=True, exist_ok=True)
-    lock_file.touch(exist_ok=True)
-    with _file_lock(lock_file, "a"):
+    with academy_storage.uploads_metadata_lock():
         yield
 
 
 def _save_upload_metadata(upload_info: Dict[str, Any]):
     """Zapisuje metadata uploadu (append do JSONL) z lockowaniem."""
-    metadata_file = _get_uploads_metadata_file()
-    try:
-        with _uploads_metadata_lock():
-            # Upewnij się że plik istnieje
-            metadata_file.touch(exist_ok=True)
-            with open(metadata_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(upload_info, ensure_ascii=False) + "\n")
-    except Exception as e:
-        logger.error("Failed to save upload metadata: %s", e, exc_info=True)
-        raise
+    academy_storage.save_upload_metadata(upload_info)
 
 
 def _delete_upload_metadata(file_id: str):
     """Usuwa metadata uploadu z pliku z atomową operacją read-modify-write."""
-    metadata_file = _get_uploads_metadata_file()
-    temp_file = metadata_file.with_suffix(".tmp")
-    try:
-        with _uploads_metadata_lock():
-            if not metadata_file.exists():
-                return
-
-            uploads = []
-            with open(metadata_file, "r", encoding="utf-8") as f_in:
-                for line in f_in:
-                    if line.strip():
-                        upload = json.loads(line)
-                        if upload.get("id") != file_id:
-                            uploads.append(upload)
-
-            # Write to temp file first
-            with open(temp_file, "w", encoding="utf-8") as f_out:
-                for upload in uploads:
-                    f_out.write(json.dumps(upload, ensure_ascii=False) + "\n")
-
-            # Atomic replace
-            temp_file.replace(metadata_file)
-
-    except Exception as e:
-        logger.error(f"Failed to delete upload metadata: {e}")
-        # Clean up temp file if it exists
-        if temp_file.exists():
-            try:
-                temp_file.unlink()
-            except Exception as cleanup_error:
-                logger.warning(
-                    f"Failed to remove temporary metadata file {temp_file}: {cleanup_error}"
-                )
+    academy_storage.delete_upload_metadata(file_id)
 
 
 def _compute_file_hash(file_path: Path) -> str:
     """Oblicza SHA256 hash pliku."""
-    import hashlib
-
-    sha256 = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            sha256.update(chunk)
-    return sha256.hexdigest()
+    return academy_storage.compute_file_hash(file_path)
 
 
 def _compute_bytes_hash(content: bytes) -> str:
     """Oblicza SHA256 hash dla bajtów w pamięci."""
-    import hashlib
-
-    return hashlib.sha256(content).hexdigest()
+    return academy_storage.compute_bytes_hash(content)
 
 
 def _estimate_records_from_content(filename: str, content: bytes) -> int:
     """Szacuje liczbę rekordów na podstawie zawartości pliku w pamięci."""
-    records_estimate = 0
-    filename_lc = filename.lower()
-
-    if filename_lc.endswith(EXT_JSONL):
-        text = content.decode("utf-8", errors="ignore")
-        return sum(1 for line in text.splitlines() if line.strip())
-
-    if filename_lc.endswith(EXT_JSON):
-        text = content.decode("utf-8", errors="ignore")
-        data = json.loads(text)
-        if isinstance(data, list):
-            return len(data)
-        return 1
-
-    if filename_lc.endswith((EXT_MD, EXT_TXT, EXT_CSV)):
-        text = content.decode("utf-8", errors="ignore")
-        return max(1, len(text.split("\n\n")))
-
-    return records_estimate
+    return academy_storage.estimate_records_from_content(
+        filename=filename,
+        content=content,
+    )
 
 
 def _is_model_trainable(model_id: str) -> bool:
@@ -537,7 +399,7 @@ def _is_model_trainable(model_id: str) -> bool:
     Returns:
         True jeśli model jest trenowalny
     """
-    return _get_model_non_trainable_reason(model_id=model_id, provider=None) is None
+    return academy_models.is_model_trainable(model_id=model_id)
 
 
 def _get_model_non_trainable_reason(
@@ -549,45 +411,21 @@ def _get_model_non_trainable_reason(
     Academy trenuje adaptery LoRA/QLoRA na modelach HuggingFace/Unsloth.
     Lokalne modele Ollama (GGUF) pozostają inferencyjne.
     """
-    model_id_lc = model_id.lower()
-    provider_lc = (provider or "").lower()
-
-    if provider_lc in {"openai", "azure-openai", "anthropic", "google-gemini"}:
-        return "External API models do not support local Academy LoRA training"
-
-    if provider_lc == "ollama":
-        return (
-            "Ollama runtime models are inference-focused in this pipeline; "
-            "select a HuggingFace/Unsloth base model for Academy training"
-        )
-
-    # Popular API-only model names should be rejected even without provider metadata.
-    blocked_name_markers = ("gpt-", "claude", "gemini")
-    if any(marker in model_id_lc for marker in blocked_name_markers):
-        return "Model family does not support local Academy LoRA training"
-
-    # Lista wzorców rodzin modeli wspieranych przez nasz pipeline LoRA/QLoRA.
-    trainable_patterns = (
-        "unsloth/",
-        "phi-3",
-        "llama-3",
-        "mistral",
-        "qwen",
-        "gemma",
-        "test-",  # Allow test models in tests
+    return academy_models.get_model_non_trainable_reason(
+        model_id=model_id,
+        provider=provider,
     )
-    if any(pattern in model_id_lc for pattern in trainable_patterns):
-        return None
-
-    return "Model is not in Academy trainable families list"
 
 
 def _build_model_label(
     model_id: str, provider: str, source: Optional[str] = None
 ) -> str:
     """Buduje czytelną etykietę modelu dla UI Academy."""
-    source_suffix = f" [{source}]" if source else ""
-    return f"{model_id} ({provider}){source_suffix}"
+    return academy_models.build_model_label(
+        model_id=model_id,
+        provider=provider,
+        source=source,
+    )
 
 
 def _get_default_trainable_models_catalog() -> List[TrainableModelInfo]:
@@ -596,36 +434,7 @@ def _get_default_trainable_models_catalog() -> List[TrainableModelInfo]:
 
     To fallback na wypadek braku lokalnych metadanych modeli.
     """
-    return [
-        TrainableModelInfo(
-            model_id="unsloth/Phi-3-mini-4k-instruct",
-            label="Phi-3 Mini 4K (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=True,
-        ),
-        TrainableModelInfo(
-            model_id="unsloth/Phi-3.5-mini-instruct",
-            label="Phi-3.5 Mini (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=False,
-        ),
-        TrainableModelInfo(
-            model_id="unsloth/Llama-3.2-1B-Instruct",
-            label="Llama 3.2 1B (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=False,
-        ),
-        TrainableModelInfo(
-            model_id="unsloth/Llama-3.2-3B-Instruct",
-            label="Llama 3.2 3B (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=False,
-        ),
-    ]
+    return academy_models.get_default_trainable_models_catalog()
 
 
 # ==================== Endpointy ====================
@@ -832,61 +641,29 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
         )
         habitat = _get_gpu_habitat()
 
-        # Jeśli nie podano dataset_path, użyj ostatniego
-        dataset_path = request.dataset_path
-        if not dataset_path:
-            training_dir = Path(SETTINGS.ACADEMY_TRAINING_DIR)
-            if not training_dir.exists():
-                raise HTTPException(
-                    status_code=400,
-                    detail=DATASET_REQUIRED_DETAIL,
-                )
-
-            datasets = sorted(training_dir.glob("dataset_*.jsonl"))
-            if not datasets:
-                raise HTTPException(
-                    status_code=400,
-                    detail=DATASET_REQUIRED_DETAIL,
-                )
-
-            dataset_path = str(datasets[-1])
-
-        # Jeśli nie podano base_model, użyj domyślnego
-        base_model = request.base_model or SETTINGS.ACADEMY_DEFAULT_BASE_MODEL
-
-        # Walidacja: model musi być trenowalny
-        if not _is_model_trainable(base_model):
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "MODEL_NOT_TRAINABLE",
-                    "message": f"Model '{base_model}' is not trainable. Use /api/v1/academy/models/trainable to see supported models.",
-                    "reason_code": "MODEL_NOT_TRAINABLE",
-                },
-            )
+        dataset_path = academy_training.resolve_dataset_path(
+            request.dataset_path,
+            academy_training_dir=SETTINGS.ACADEMY_TRAINING_DIR,
+            dataset_required_detail=DATASET_REQUIRED_DETAIL,
+        )
+        base_model = academy_training.ensure_trainable_base_model(
+            request_base_model=request.base_model,
+            default_base_model=SETTINGS.ACADEMY_DEFAULT_BASE_MODEL,
+            is_model_trainable_fn=_is_model_trainable,
+        )
 
         # Przygotuj output directory
         job_id = f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         output_dir = Path(SETTINGS.ACADEMY_MODELS_DIR) / job_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Zapisz rekord queued przed faktycznym odpaleniem joba
-        job_record = {
-            "job_id": job_id,
-            "job_name": job_id,
-            "dataset_path": dataset_path,
-            "base_model": base_model,
-            "parameters": {
-                "lora_rank": request.lora_rank,
-                "learning_rate": request.learning_rate,
-                "num_epochs": request.num_epochs,
-                "batch_size": request.batch_size,
-                "max_seq_length": request.max_seq_length,
-            },
-            "status": "queued",
-            "started_at": datetime.now().isoformat(),
-            "output_dir": str(output_dir),
-        }
+        job_record = academy_training.build_job_record(
+            dataset_path=dataset_path,
+            base_model=base_model,
+            output_dir=output_dir,
+            request=request,
+        )
+        job_id = str(job_record["job_id"])
         _save_job_to_history(job_record)
         _update_job_in_history(job_id, {"status": "preparing"})
 
@@ -943,29 +720,24 @@ async def start_training(request: TrainingRequest, req: Request) -> TrainingResp
 
 
 def _find_job_or_404(job_id: str) -> Dict[str, Any]:
-    jobs = _load_jobs_history()
-    job = next((j for j in jobs if j.get("job_id") == job_id), None)
-    if not job:
-        raise AcademyRouteError(status_code=404, detail=f"Job {job_id} not found")
-    return job
+    try:
+        return academy_training.find_job_or_404(job_id, jobs=_load_jobs_history())
+    except HTTPException as exc:
+        raise AcademyRouteError(status_code=exc.status_code, detail=str(exc.detail))
 
 
 def _sync_job_status_with_habitat(
     habitat: Any, job_id: str, job: Dict[str, Any], job_name: str
 ) -> tuple[Dict[str, Any], str]:
-    status_info = habitat.get_training_status(job_name)
-    current_status = _normalize_job_status(status_info.get("status"))
-    if current_status != job.get("status"):
-        updates = {"status": current_status}
-        if current_status in TERMINAL_JOB_STATUSES:
-            updates["finished_at"] = datetime.now().isoformat()
-        if current_status == "finished":
-            adapter_path = Path(job.get("output_dir", "")) / "adapter"
-            if adapter_path.exists():
-                updates["adapter_path"] = str(adapter_path)
-        _update_job_in_history(job_id, updates)
-        job.update(updates)
-    return status_info, current_status
+    return academy_training.sync_job_status_with_habitat(
+        habitat=habitat,
+        job_id=job_id,
+        job=job,
+        job_name=job_name,
+        normalize_status_fn=_normalize_job_status,
+        terminal_statuses=TERMINAL_JOB_STATUSES,
+        update_job_fn=_update_job_in_history,
+    )
 
 
 def _log_internal_operation_failure(message: str) -> None:
@@ -974,28 +746,27 @@ def _log_internal_operation_failure(message: str) -> None:
 
 
 def _save_finished_job_metadata(job: Dict[str, Any], current_status: str) -> None:
-    if current_status != "finished" or not job.get("adapter_path"):
-        return
-    adapter_path_obj = Path(job["adapter_path"])
-    if not adapter_path_obj.exists():
-        return
-    try:
-        _save_adapter_metadata(job, adapter_path_obj)
-    except Exception:
-        _log_internal_operation_failure("Failed to save adapter metadata")
+    academy_training.save_finished_job_metadata(
+        job=job,
+        current_status=current_status,
+        save_adapter_metadata_fn=_save_adapter_metadata,
+        log_internal_operation_failure_fn=_log_internal_operation_failure,
+    )
 
 
 def _cleanup_terminal_job_container(
     habitat: Any, job_id: str, job: Dict[str, Any], job_name: str, current_status: str
 ) -> None:
-    if current_status not in TERMINAL_JOB_STATUSES or job.get("container_cleaned"):
-        return
-    try:
-        habitat.cleanup_job(job_name)
-        _update_job_in_history(job_id, {"container_cleaned": True})
-        job["container_cleaned"] = True
-    except Exception:
-        _log_internal_operation_failure("Failed to cleanup container")
+    academy_training.cleanup_terminal_job_container(
+        habitat=habitat,
+        job_id=job_id,
+        job=job,
+        job_name=job_name,
+        current_status=current_status,
+        terminal_statuses=TERMINAL_JOB_STATUSES,
+        update_job_fn=_update_job_in_history,
+        log_internal_operation_failure_fn=_log_internal_operation_failure,
+    )
 
 
 @router.get(
@@ -1044,29 +815,21 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
 
 
 def _sse_event(payload: Dict[str, Any]) -> str:
-    return f"data: {json.dumps(payload)}\n\n"
+    return academy_training.sse_event(payload)
 
 
 def _parse_stream_log_line(log_line: str) -> tuple[Optional[str], str]:
-    if " " not in log_line:
-        return None, log_line
-    timestamp, message = log_line.split(" ", 1)
-    return timestamp, message
+    return academy_training.parse_stream_log_line(log_line)
 
 
 def _extract_metrics_data(
     parser: Any, all_metrics: List[Any], message: str
 ) -> Optional[Dict[str, Any]]:
-    metrics = parser.parse_line(message)
-    if not metrics:
-        return None
-    all_metrics.append(metrics)
-    return {
-        "epoch": metrics.epoch,
-        "total_epochs": metrics.total_epochs,
-        "loss": metrics.loss,
-        "progress_percent": metrics.progress_percent,
-    }
+    return academy_training.extract_metrics_data(
+        parser=parser,
+        all_metrics=all_metrics,
+        message=message,
+    )
 
 
 def _build_log_event(
@@ -1075,34 +838,26 @@ def _build_log_event(
     timestamp: Optional[str],
     metrics_data: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {
-        "type": "log",
-        "line": line_no,
-        "message": message,
-        "timestamp": timestamp,
-    }
-    if metrics_data:
-        payload["metrics"] = metrics_data
-    return payload
+    return academy_training.build_log_event(
+        line_no=line_no,
+        message=message,
+        timestamp=timestamp,
+        metrics_data=metrics_data,
+    )
 
 
 def _periodic_stream_events(
     line_no: int, habitat: Any, job_name: str, parser: Any, all_metrics: List[Any]
 ) -> tuple[List[Dict[str, Any]], bool]:
-    if line_no % 10 != 0:
-        return [], False
-    events: List[Dict[str, Any]] = []
-    status_info = habitat.get_training_status(job_name)
-    current_status = _normalize_job_status(status_info.get("status"))
-    if all_metrics:
-        events.append(
-            {"type": "metrics", "data": parser.aggregate_metrics(all_metrics)}
-        )
-    should_stop = False
-    if current_status in TERMINAL_JOB_STATUSES:
-        events.append({"type": "status", "status": current_status})
-        should_stop = True
-    return events, should_stop
+    return academy_training.periodic_stream_events(
+        line_no=line_no,
+        habitat=habitat,
+        job_name=job_name,
+        parser=parser,
+        all_metrics=all_metrics,
+        normalize_status_fn=_normalize_job_status,
+        terminal_statuses=TERMINAL_JOB_STATUSES,
+    )
 
 
 @router.get(
@@ -1143,50 +898,18 @@ async def stream_training_logs(job_id: str):
 
 async def _stream_training_logs_events(job_id: str, job_name: str):
     """Generator eventów SSE dla streamingu logów treningu."""
-    try:
-        habitat = _get_gpu_habitat()
-        from venom_core.learning.training_metrics_parser import TrainingMetricsParser
+    from venom_core.learning.training_metrics_parser import TrainingMetricsParser
 
-        parser = TrainingMetricsParser()
-        all_metrics: List[Any] = []
-
-        # Wyślij początkowy event
-        yield _sse_event({"type": "connected", "job_id": job_id})
-
-        # Sprawdź czy job istnieje w GPU Habitat
-        if not habitat or job_name not in habitat.training_containers:
-            yield _sse_event(
-                {"type": "error", "message": "Training container not found"}
-            )
-            return
-
-        # Streamuj logi
-        last_line_sent = 0
-        for log_line in habitat.stream_job_logs(job_name):
-            timestamp, message = _parse_stream_log_line(log_line)
-            metrics_data = _extract_metrics_data(parser, all_metrics, message)
-            yield _sse_event(
-                _build_log_event(last_line_sent, message, timestamp, metrics_data)
-            )
-            last_line_sent += 1
-            events, should_stop = _periodic_stream_events(
-                last_line_sent, habitat, job_name, parser, all_metrics
-            )
-            for event in events:
-                yield _sse_event(event)
-            if should_stop:
-                break
-
-            # Małe opóźnienie żeby nie przeciążyć
-            await asyncio.sleep(0.1)
-
-    except KeyError:
-        yield _sse_event(
-            {"type": "error", "message": "Job not found in container registry"}
-        )
-    except Exception as e:
-        logger.error(f"Error streaming logs: {e}", exc_info=True)
-        yield _sse_event({"type": "error", "message": str(e)})
+    async for event in academy_training.stream_training_logs_events(
+        job_id=job_id,
+        job_name=job_name,
+        habitat=_get_gpu_habitat(),
+        parser_factory=TrainingMetricsParser,
+        normalize_status_fn=_normalize_job_status,
+        terminal_statuses=TERMINAL_JOB_STATUSES,
+        logger=logger,
+    ):
+        yield event
 
 
 @router.get(
@@ -1212,15 +935,12 @@ async def list_jobs(
     """
     try:
         _ensure_academy_enabled()
-        jobs = [_to_job_summary(job) for job in _load_jobs_history()]
-
-        # Filtruj po statusie jeśli podano
-        if status:
-            jobs = [j for j in jobs if j.status == status]
-
-        # Sortuj od najnowszych
-        jobs = sorted(jobs, key=lambda j: j.started_at or "", reverse=True)[:limit]
-
+        jobs = academy_training.list_jobs_response(
+            jobs=_load_jobs_history(),
+            to_job_summary_fn=_to_job_summary,
+            limit=limit,
+            status=status,
+        )
         return AcademyJobsListResponse(count=len(jobs), jobs=jobs)
 
     except AcademyRouteError as e:
@@ -1248,57 +968,7 @@ async def list_adapters() -> List[AdapterInfo]:
     """
     try:
         _ensure_academy_enabled()
-        manager = _get_model_manager()
-        from venom_core.config import SETTINGS
-
-        adapters = []
-        models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR)
-
-        if not models_dir.exists():
-            return []
-
-        # Pobierz info o aktywnym adapterze
-        active_adapter_id = None
-        if manager:
-            active_info = manager.get_active_adapter_info()
-            if active_info:
-                active_adapter_id = active_info.get("adapter_id")
-
-        # Przejrzyj katalogi treningowe
-        for training_dir in models_dir.iterdir():
-            if not training_dir.is_dir():
-                continue
-
-            adapter_path = training_dir / "adapter"
-            if not adapter_path.exists():
-                continue
-
-            # Wczytaj metadata jeśli istnieje
-            metadata_file = training_dir / "metadata.json"
-            metadata = {}
-            if metadata_file.exists():
-                metadata_raw = await anyio.Path(metadata_file).read_text(
-                    encoding="utf-8"
-                )
-                metadata = json.loads(metadata_raw)
-
-            # Sprawdź czy to aktywny adapter
-            is_active = training_dir.name == active_adapter_id
-
-            adapters.append(
-                AdapterInfo(
-                    adapter_id=training_dir.name,
-                    adapter_path=str(adapter_path),
-                    base_model=metadata.get(
-                        "base_model", SETTINGS.ACADEMY_DEFAULT_BASE_MODEL
-                    ),
-                    created_at=metadata.get("created_at", "unknown"),
-                    training_params=metadata.get("parameters", {}),
-                    is_active=is_active,
-                )
-            )
-
-        return adapters
+        return await academy_models.list_adapters(mgr=_get_model_manager())
 
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
@@ -1338,37 +1008,17 @@ async def activate_adapter(
                 status_code=503,
                 detail="ModelManager not available for adapter activation",
             )
-
-        from venom_core.config import SETTINGS
-
-        models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
-        adapter_path = (models_dir / request.adapter_id / "adapter").resolve()
-
-        if not adapter_path.exists():
-            raise HTTPException(status_code=404, detail="Adapter not found")
-
-        # Aktywuj adapter przez ModelManager
-        success = manager.activate_adapter(
-            adapter_id=request.adapter_id, adapter_path=str(adapter_path)
+        return academy_models.activate_adapter(
+            mgr=manager,
+            adapter_id=request.adapter_id,
         )
-
-        if not success:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to activate adapter {request.adapter_id}",
-            )
-
-        logger.info(f"✅ Activated adapter: {request.adapter_id}")
-
-        return {
-            "success": True,
-            "message": f"Adapter {request.adapter_id} activated successfully",
-            "adapter_id": request.adapter_id,
-            "adapter_path": str(adapter_path),
-        }
 
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Adapter not found") from None
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -1402,22 +1052,7 @@ async def deactivate_adapter(req: Request) -> Dict[str, Any]:
                 status_code=503,
                 detail="ModelManager not available for adapter deactivation",
             )
-
-        # Dezaktywuj adapter
-        success = manager.deactivate_adapter()
-
-        if not success:
-            return {
-                "success": False,
-                "message": "No active adapter to deactivate",
-            }
-
-        logger.info("✅ Adapter deactivated - rolled back to base model")
-
-        return {
-            "success": True,
-            "message": "Adapter deactivated successfully - using base model",
-        }
+        return academy_models.deactivate_adapter(mgr=manager)
 
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
@@ -1449,38 +1084,13 @@ async def cancel_training(job_id: str, req: Request) -> Dict[str, Any]:
     try:
         _ensure_academy_enabled()
         require_localhost_request(req)
-        habitat = _get_gpu_habitat()
-        # Znajdź job
-        jobs = _load_jobs_history()
-        job = next((j for j in jobs if j.get("job_id") == job_id), None)
-
-        if not job:
-            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-
-        job_name = job.get("job_name", job_id)
-
-        # Zatrzymaj i wyczyść kontener przez GPUHabitat
-        if habitat:
-            try:
-                habitat.cleanup_job(job_name)
-                logger.info(f"Container cleaned up for job: {job_name}")
-            except Exception as e:
-                logger.warning(f"Failed to cleanup container: {e}")
-
-        # Aktualizuj status
-        _update_job_in_history(
-            job_id,
-            {
-                "status": "cancelled",
-                "finished_at": datetime.now().isoformat(),
-            },
+        return academy_training.cancel_training_job(
+            job_id=job_id,
+            habitat=_get_gpu_habitat(),
+            jobs=_load_jobs_history(),
+            update_job_fn=_update_job_in_history,
+            logger=logger,
         )
-
-        return {
-            "success": True,
-            "message": f"Training job {job_id} cancelled",
-            "job_id": job_id,
-        }
 
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
@@ -1573,35 +1183,19 @@ async def academy_status() -> Dict[str, Any]:
 async def _persist_uploaded_file(
     file: Any, file_path: Path, max_size_bytes: int
 ) -> tuple[int, bytes]:
-    size_bytes = 0
-    collected_chunks: list[bytes] = []
-    async with await anyio.open_file(file_path, "wb") as out_file:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            size_bytes += len(chunk)
-            if size_bytes > max_size_bytes:
-                raise ValueError(f"FILE_TOO_LARGE:{size_bytes}")
-            await out_file.write(chunk)
-            collected_chunks.append(chunk)
-    return size_bytes, b"".join(collected_chunks)
+    return await academy_uploads.persist_uploaded_file(
+        file=file,
+        file_path=file_path,
+        max_size_bytes=max_size_bytes,
+    )
 
 
 def _cleanup_uploaded_file(file_path: Path) -> None:
-    if not file_path.exists():
-        return
-    try:
-        file_path.unlink()
-    except OSError as cleanup_error:
-        logger.warning(
-            "Failed to cleanup orphan upload file (error=%s)",
-            type(cleanup_error).__name__,
-        )
+    academy_uploads.cleanup_uploaded_file(file_path, logger=logger)
 
 
 def _upload_error(filename: str, message: str) -> tuple[None, Dict[str, str]]:
-    return None, {"name": filename, "error": message}
+    return academy_uploads.upload_error(filename, message)
 
 
 def _validate_upload_filename(
@@ -1610,27 +1204,13 @@ def _validate_upload_filename(
     *,
     allowed_extensions: list[str] | None = None,
 ) -> tuple[Optional[str], Optional[Dict[str, str]]]:
-    if not hasattr(file, "filename") or not file.filename:
-        return None, None
-
-    filename = file.filename
-    if not _check_path_traversal(filename):
-        return None, {"name": filename, "error": "Invalid filename (path traversal)"}
-    resolved_allowed_extensions = allowed_extensions or getattr(
-        settings,
-        "ACADEMY_ALLOWED_DATASET_EXTENSIONS",
-        settings.ACADEMY_ALLOWED_EXTENSIONS,
+    return academy_uploads.validate_upload_filename(
+        file=file,
+        settings=settings,
+        check_path_traversal_fn=_check_path_traversal,
+        validate_file_extension_fn=_validate_file_extension,
+        allowed_extensions=allowed_extensions,
     )
-    if not _validate_file_extension(
-        filename, allowed_extensions=resolved_allowed_extensions
-    ):
-        return None, {
-            "name": filename,
-            "error": (
-                f"Invalid file extension. Allowed: {resolved_allowed_extensions}"
-            ),
-        }
-    return filename, None
 
 
 async def _persist_with_limits(
@@ -1639,31 +1219,14 @@ async def _persist_with_limits(
     filename: str,
     settings: Any,
 ) -> tuple[Optional[tuple[int, bytes]], Optional[Dict[str, str]]]:
-    try:
-        max_size_bytes = settings.ACADEMY_MAX_UPLOAD_SIZE_MB * 1024 * 1024
-        size_bytes, content_bytes = await _persist_uploaded_file(
-            file=file, file_path=file_path, max_size_bytes=max_size_bytes
-        )
-        return (size_bytes, content_bytes), None
-    except ValueError as e:
-        _cleanup_uploaded_file(file_path)
-        if str(e).startswith("FILE_TOO_LARGE:"):
-            size_bytes = int(str(e).split(":", 1)[1])
-            return None, {
-                "name": filename,
-                "error": (
-                    f"File too large ({size_bytes} bytes, "
-                    f"max {settings.ACADEMY_MAX_UPLOAD_SIZE_MB} MB)"
-                ),
-            }
-        return _upload_error(filename, f"Failed to save file: {str(e)}")
-    except Exception as e:
-        _cleanup_uploaded_file(file_path)
-        logger.error(
-            "Failed to persist uploaded file (error=%s)",
-            type(e).__name__,
-        )
-        return _upload_error(filename, f"Failed to save file: {str(e)}")
+    return await academy_uploads.persist_with_limits(
+        file=file,
+        file_path=file_path,
+        filename=filename,
+        settings=settings,
+        logger=logger,
+        cleanup_uploaded_file_fn=_cleanup_uploaded_file,
+    )
 
 
 def _build_upload_info(
@@ -1674,104 +1237,44 @@ def _build_upload_info(
     tag: str,
     description: str,
 ) -> Dict[str, Any]:
-    import mimetypes
-    from datetime import datetime
-
-    sha256_hash = _compute_bytes_hash(content_bytes)
-    mime_type, _ = mimetypes.guess_type(filename)
-    mime_type = mime_type or "application/octet-stream"
-    records_estimate = 0
-    try:
-        records_estimate = _estimate_records_from_content(filename, content_bytes)
-    except Exception as e:
-        logger.warning(
-            "Failed to estimate records for uploaded file (error=%s)",
-            type(e).__name__,
-        )
-
-    return {
-        "id": file_id,
-        "name": filename,
-        "size_bytes": size_bytes,
-        "mime": mime_type,
-        "created_at": datetime.now().isoformat(),
-        "status": "ready",
-        "records_estimate": records_estimate,
-        "sha256": sha256_hash,
-        "tag": tag,
-        "description": description,
-    }
+    return academy_uploads.build_upload_info(
+        file_id=file_id,
+        filename=filename,
+        size_bytes=size_bytes,
+        content_bytes=content_bytes,
+        tag=tag,
+        description=description,
+        compute_bytes_hash_fn=_compute_bytes_hash,
+        estimate_records_from_content_fn=_estimate_records_from_content,
+        logger=logger,
+    )
 
 
 async def _process_uploaded_file(
     file: Any, uploads_dir: Path, tag: str, description: str
 ) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, str]]]:
-    from datetime import datetime
-
     from venom_core.config import SETTINGS
 
-    filename, filename_error = _validate_upload_filename(
-        file,
-        SETTINGS,
-        allowed_extensions=getattr(
-            SETTINGS,
-            "ACADEMY_ALLOWED_DATASET_EXTENSIONS",
-            SETTINGS.ACADEMY_ALLOWED_EXTENSIONS,
-        ),
-    )
-    if filename_error:
-        return None, filename_error
-    if not filename:
-        return None, None
-
-    file_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}"
-    file_path = uploads_dir / file_id
-    persisted, persist_error = await _persist_with_limits(
+    return await academy_uploads.process_uploaded_file(
         file=file,
-        file_path=file_path,
-        filename=filename,
+        uploads_dir=uploads_dir,
+        tag=tag,
+        description=description,
         settings=SETTINGS,
+        check_path_traversal_fn=_check_path_traversal,
+        validate_file_extension_fn=_validate_file_extension,
+        compute_bytes_hash_fn=_compute_bytes_hash,
+        estimate_records_from_content_fn=_estimate_records_from_content,
+        save_upload_metadata_fn=_save_upload_metadata,
+        cleanup_uploaded_file_fn=_cleanup_uploaded_file,
+        logger=logger,
     )
-    if persist_error:
-        return None, persist_error
-    if not persisted:
-        return _upload_error(filename, "Failed to persist file")
-    size_bytes, content_bytes = persisted
-
-    try:
-        upload_info = _build_upload_info(
-            file_id=file_id,
-            filename=filename,
-            size_bytes=size_bytes,
-            content_bytes=content_bytes,
-            tag=tag,
-            description=description,
-        )
-        _save_upload_metadata(upload_info)
-        return upload_info, None
-    except Exception as e:
-        _cleanup_uploaded_file(file_path)
-        logger.error(
-            "Unexpected error while processing uploaded file (error=%s)",
-            type(e).__name__,
-        )
-        return None, {"name": filename, "error": f"Unexpected error: {str(e)}"}
 
 
 def _build_upload_response(
     uploaded_files: List[Dict[str, Any]], failed_files: List[Dict[str, str]]
 ) -> Dict[str, Any]:
-    message = f"Uploaded {len(uploaded_files)} file(s) successfully"
-    if failed_files:
-        message += f", {len(failed_files)} file(s) failed"
-    return {
-        "success": len(uploaded_files) > 0,
-        "uploaded": len(uploaded_files),
-        "failed": len(failed_files),
-        "files": uploaded_files,
-        "errors": failed_files,
-        "message": message,
-    }
+    return academy_uploads.build_upload_response(uploaded_files, failed_files)
 
 
 @router.post(
@@ -1804,13 +1307,7 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
 
     # Parse multipart form data manually
     form = await req.form()
-    files = form.getlist("files")
-    tag = form.get("tag", "user-upload")
-    description = form.get("description", "")
-    if not isinstance(tag, str):
-        tag = "user-upload"
-    if not isinstance(description, str):
-        description = ""
+    files, tag, description = academy_uploads.parse_upload_form(form)
 
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -1887,28 +1384,20 @@ async def delete_dataset_upload(file_id: str, req: Request) -> Dict[str, Any]:
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
-    # Validate file_id to prevent path traversal
-    if not _check_path_traversal(file_id):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file_id (path traversal): {file_id}",
-        )
-
-    uploads_dir = _get_uploads_dir()
-    file_path = uploads_dir / file_id
-
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"Upload not found: {file_id}")
-
-    # Delete file
     try:
-        file_path.unlink()
-        _delete_upload_metadata(file_id)
-        logger.info(f"Deleted upload: {file_id}")
-        return {
-            "success": True,
-            "message": f"Upload deleted: {file_id}",
-        }
+        return academy_uploads.delete_upload_file(
+            file_id=file_id,
+            uploads_dir=_get_uploads_dir(),
+            check_path_traversal_fn=_check_path_traversal,
+            delete_upload_metadata_fn=_delete_upload_metadata,
+            logger=logger,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404, detail=f"Upload not found: {file_id}"
+        ) from None
     except Exception as e:
         logger.error(f"Failed to delete upload {file_id}: {e}")
         raise HTTPException(
@@ -1917,9 +1406,7 @@ async def delete_dataset_upload(file_id: str, req: Request) -> Dict[str, Any]:
 
 
 def _sanitize_user_id(user_id: str) -> str:
-    # Keep user workspace path-safe: only alnum, dash, underscore.
-    safe = "".join(ch for ch in user_id if ch.isalnum() or ch in {"-", "_"})
-    return safe or "local-user"
+    return academy_conversion.sanitize_user_id(user_id)
 
 
 def _resolve_user_id(req: Request) -> str:
@@ -1928,94 +1415,41 @@ def _resolve_user_id(req: Request) -> str:
 
 
 def _get_user_conversion_workspace(user_id: str) -> Dict[str, Path]:
-    from venom_core.config import SETTINGS
-
-    base_dir = Path(SETTINGS.ACADEMY_USER_DATA_DIR) / user_id
-    source_dir = base_dir / "source"
-    converted_dir = base_dir / "converted"
-    metadata_file = base_dir / "files.json"
-    for path in (base_dir, source_dir, converted_dir):
-        path.mkdir(parents=True, exist_ok=True)
-    return {
-        "base_dir": base_dir,
-        "source_dir": source_dir,
-        "converted_dir": converted_dir,
-        "metadata_file": metadata_file,
-    }
+    return academy_conversion.get_user_conversion_workspace(user_id)
 
 
 def _get_conversion_output_dir() -> Path:
-    from venom_core.config import SETTINGS
-
-    output_dir = Path(SETTINGS.ACADEMY_CONVERSION_OUTPUT_DIR).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    return output_dir
+    return academy_conversion.get_conversion_output_dir()
 
 
 def _get_user_conversion_lock_file(base_dir: Path) -> Path:
-    return base_dir / ".metadata.lock"
+    return academy_conversion.get_user_conversion_lock_file(base_dir)
 
 
 @contextmanager
 def _user_conversion_metadata_lock(base_dir: Path):
-    lock_file = _get_user_conversion_lock_file(base_dir)
-    lock_file.parent.mkdir(parents=True, exist_ok=True)
-    lock_file.touch(exist_ok=True)
-    with _file_lock(lock_file, "a"):
+    with academy_conversion.user_conversion_metadata_lock(base_dir):
         yield
 
 
 def _load_user_conversion_metadata(metadata_file: Path) -> List[Dict[str, Any]]:
-    if not metadata_file.exists():
-        return []
-    try:
-        with open(metadata_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                return [item for item in data if isinstance(item, dict)]
-    except Exception as exc:
-        logger.warning("Failed to read conversion metadata: %s", exc)
-    return []
+    return academy_conversion.load_user_conversion_metadata(metadata_file)
 
 
 def _save_user_conversion_metadata(
     metadata_file: Path, items: List[Dict[str, Any]]
 ) -> None:
-    temp_file = metadata_file.with_suffix(".tmp")
-    with open(temp_file, "w", encoding="utf-8") as f:
-        json.dump(items, f, ensure_ascii=False, indent=2)
-    temp_file.replace(metadata_file)
+    academy_conversion.save_user_conversion_metadata(metadata_file, items)
 
 
 def _normalize_conversion_item(raw: Dict[str, Any]) -> DatasetConversionFileInfo:
-    return DatasetConversionFileInfo(
-        file_id=str(raw.get("file_id") or ""),
-        name=str(raw.get("name") or ""),
-        extension=str(raw.get("extension") or ""),
-        size_bytes=int(raw.get("size_bytes") or 0),
-        created_at=str(raw.get("created_at") or datetime.now().isoformat()),
-        category=str(raw.get("category") or "source"),
-        source_file_id=(
-            str(raw.get("source_file_id"))
-            if raw.get("source_file_id") is not None
-            else None
-        ),
-        target_format=(
-            str(raw.get("target_format")) if raw.get("target_format") else None
-        ),
-        selected_for_training=bool(raw.get("selected_for_training", False)),
-        status=str(raw.get("status") or "ready"),
-        error=(str(raw.get("error")) if raw.get("error") else None),
-    )
+    return academy_conversion.normalize_conversion_item(raw)
 
 
 def _find_conversion_item(
     items: List[Dict[str, Any]], file_id: str
 ) -> Dict[str, Any] | None:
-    for item in items:
-        if str(item.get("file_id")) == file_id:
-            return item
-    return None
+    return academy_conversion.find_conversion_item(items, file_id)
 
 
 def _resolve_workspace_file_path(
@@ -2081,207 +1515,51 @@ def _resolve_existing_user_file(
 
 
 def _build_conversion_file_id(*, extension: str | None = None) -> str:
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    unique_id = uuid.uuid4().hex[:8]
-    suffix = ""
-    if extension:
-        normalized_extension = extension.lower()
-        if not normalized_extension.startswith("."):
-            normalized_extension = f".{normalized_extension}"
-        suffix = normalized_extension
-    return f"{ts}_{unique_id}{suffix}"
+    return academy_conversion.build_conversion_file_id(extension=extension)
 
 
 def _serialize_records_to_markdown(records: List[Dict[str, str]]) -> str:
-    chunks: List[str] = []
-    for idx, item in enumerate(records, start=1):
-        instruction = item.get("instruction", "").strip()
-        input_text = item.get("input", "").strip()
-        output = item.get("output", "").strip()
-        chunks.append(f"## Example {idx}")
-        chunks.append(f"### Instruction\n{instruction or '(empty)'}")
-        if input_text:
-            chunks.append(f"### Input\n{input_text}")
-        chunks.append(f"### Output\n{output or '(empty)'}")
-    return "\n\n".join(chunks).strip() + ("\n" if chunks else "")
+    return academy_conversion.serialize_records_to_markdown(records)
 
 
 def _records_from_text(content: str) -> List[Dict[str, str]]:
-    sections = [item.strip() for item in content.split("\n\n") if item.strip()]
-    records: List[Dict[str, str]] = []
-    for i in range(0, len(sections), 2):
-        instruction = sections[i]
-        output = sections[i + 1] if i + 1 < len(sections) else ""
-        if not instruction:
-            continue
-        if not output:
-            output = instruction
-        records.append(
-            {
-                "instruction": instruction[:2000],
-                "input": "",
-                "output": output[:8000],
-            }
-        )
-    if not records and content.strip():
-        records.append(
-            {
-                "instruction": "Summarize and structure the document content.",
-                "input": "",
-                "output": content.strip()[:12000],
-            }
-        )
-    return records
+    return academy_conversion.records_from_text(content)
 
 
 def _records_from_json_file(source_path: Path) -> List[Dict[str, str]]:
-    with open(source_path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
-    items: List[Dict[str, Any]]
-    if isinstance(payload, list):
-        items = [item for item in payload if isinstance(item, dict)]
-    elif isinstance(payload, dict):
-        items = [payload]
-    else:
-        return []
-
-    records: List[Dict[str, str]] = []
-    for item in items:
-        instruction = str(item.get("instruction") or item.get("prompt") or "").strip()
-        input_text = str(item.get("input") or "").strip()
-        output = str(item.get("output") or item.get("response") or "").strip()
-        if not instruction and output:
-            instruction = "Prepare an answer based on the provided data."
-        if instruction and output:
-            records.append(
-                {"instruction": instruction, "input": input_text, "output": output}
-            )
-    return records
+    return academy_conversion.records_from_json_file(source_path)
 
 
 def _records_from_jsonl_file(source_path: Path) -> List[Dict[str, str]]:
-    records: List[Dict[str, str]] = []
-    with open(source_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                item = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(item, dict):
-                continue
-            instruction = str(
-                item.get("instruction") or item.get("prompt") or ""
-            ).strip()
-            input_text = str(item.get("input") or "").strip()
-            output = str(item.get("output") or item.get("response") or "").strip()
-            if instruction and output:
-                records.append(
-                    {"instruction": instruction, "input": input_text, "output": output}
-                )
-    return records
+    return academy_conversion.records_from_jsonl_file(source_path)
 
 
 def _records_from_csv_file(source_path: Path) -> List[Dict[str, str]]:
-    import csv
-
-    records: List[Dict[str, str]] = []
-    with open(source_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            instruction = str(row.get("instruction") or row.get("prompt") or "").strip()
-            input_text = str(row.get("input") or "").strip()
-            output = str(row.get("output") or row.get("response") or "").strip()
-            if instruction and output:
-                records.append(
-                    {"instruction": instruction, "input": input_text, "output": output}
-                )
-    return records
+    return academy_conversion.records_from_csv_file(source_path)
 
 
 def _extract_text_from_pdf(source_path: Path) -> str:
-    try:
-        from pypdf import PdfReader
-    except ImportError as exc:
-        raise ValueError(
-            "PDF conversion requires optional dependency 'pypdf'."
-        ) from exc
-
-    reader = PdfReader(str(source_path))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    return "\n\n".join(item.strip() for item in pages if item.strip())
+    return academy_conversion.extract_text_from_pdf(source_path)
 
 
 def _extract_text_from_docx(source_path: Path) -> str:
-    try:
-        from docx import Document
-    except ImportError as exc:
-        raise ValueError(
-            "DOCX conversion requires optional dependency 'python-docx'."
-        ) from exc
-
-    doc = Document(str(source_path))
-    paragraphs = [item.text.strip() for item in doc.paragraphs if item.text.strip()]
-    return "\n\n".join(paragraphs)
+    return academy_conversion.extract_text_from_docx(source_path)
 
 
 def _convert_with_pandoc(source_path: Path, output_path: Path) -> bool:
-    try:
-        import pypandoc
-    except ImportError:
-        return False
-
-    source_ext = source_path.suffix.lower().lstrip(".")
-    input_format: str | None = None
-    if source_ext == "docx":
-        input_format = "docx"
-    elif source_ext == "doc":
-        input_format = "doc"
-    try:
-        if input_format:
-            pypandoc.convert_file(
-                str(source_path),
-                to="md",
-                format=input_format,
-                outputfile=str(output_path),
-            )
-        else:
-            pypandoc.convert_file(
-                str(source_path), to="md", outputfile=str(output_path)
-            )
-        return output_path.exists() and output_path.stat().st_size > 0
-    except Exception as exc:
-        logger.warning(
-            "Pandoc conversion failed for '%s': %s",
-            source_path.name,
-            exc,
-        )
-        return False
+    return academy_conversion.convert_with_pandoc(source_path, output_path)
 
 
 def _markdown_from_json(source_path: Path) -> str:
-    payload = json.loads(source_path.read_text(encoding="utf-8", errors="ignore"))
-    return f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+    return academy_conversion.markdown_from_json(source_path)
 
 
 def _markdown_from_jsonl(source_path: Path) -> str:
-    lines = source_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    pretty_lines: list[str] = []
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            pretty_lines.append(json.dumps(json.loads(line), ensure_ascii=False))
-        except json.JSONDecodeError:
-            pretty_lines.append(line)
-    return "```jsonl\n" + "\n".join(pretty_lines) + "\n```"
+    return academy_conversion.markdown_from_jsonl(source_path)
 
 
 def _markdown_from_csv(source_path: Path) -> str:
-    return (
-        "```csv\n" + source_path.read_text(encoding="utf-8", errors="ignore") + "\n```"
-    )
+    return academy_conversion.markdown_from_csv(source_path)
 
 
 def _markdown_from_binary_document(source_path: Path, ext: str) -> str:
@@ -2291,9 +1569,9 @@ def _markdown_from_binary_document(source_path: Path, ext: str) -> str:
         temp_md_path.unlink(missing_ok=True)
         return content
     temp_md_path.unlink(missing_ok=True)
-    if ext == EXT_PDF:
+    if ext == academy_conversion.EXT_PDF:
         return _extract_text_from_pdf(source_path)
-    if ext == EXT_DOCX:
+    if ext == academy_conversion.EXT_DOCX:
         return _extract_text_from_docx(source_path)
     raise ValueError(
         "DOC conversion requires Pandoc with system support for legacy .doc files"
@@ -2302,19 +1580,23 @@ def _markdown_from_binary_document(source_path: Path, ext: str) -> str:
 
 def _source_to_markdown(source_path: Path) -> str:
     ext = source_path.suffix.lower()
-    if ext in {EXT_MD, EXT_TXT}:
+    if ext in {academy_conversion.EXT_MD, academy_conversion.EXT_TXT}:
         return source_path.read_text(encoding="utf-8", errors="ignore")
 
     markdown_builders: dict[str, Callable[[Path], str]] = {
-        EXT_JSON: _markdown_from_json,
-        EXT_JSONL: _markdown_from_jsonl,
-        EXT_CSV: _markdown_from_csv,
+        academy_conversion.EXT_JSON: _markdown_from_json,
+        academy_conversion.EXT_JSONL: _markdown_from_jsonl,
+        academy_conversion.EXT_CSV: _markdown_from_csv,
     }
     builder = markdown_builders.get(ext)
     if builder:
         return builder(source_path)
 
-    if ext in {EXT_DOC, EXT_DOCX, EXT_PDF}:
+    if ext in {
+        academy_conversion.EXT_DOC,
+        academy_conversion.EXT_DOCX,
+        academy_conversion.EXT_PDF,
+    }:
         return _markdown_from_binary_document(source_path, ext)
 
     raise ValueError(f"Unsupported source extension: {ext}")
@@ -2323,9 +1605,9 @@ def _source_to_markdown(source_path: Path) -> str:
 def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
     ext = source_path.suffix.lower()
     record_builders: dict[str, Callable[[Path], List[Dict[str, str]]]] = {
-        EXT_JSON: _records_from_json_file,
-        EXT_JSONL: _records_from_jsonl_file,
-        EXT_CSV: _records_from_csv_file,
+        academy_conversion.EXT_JSON: _records_from_json_file,
+        academy_conversion.EXT_JSONL: _records_from_jsonl_file,
+        academy_conversion.EXT_CSV: _records_from_csv_file,
     }
     builder = record_builders.get(ext)
     if builder:
@@ -2335,102 +1617,30 @@ def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
 
 
 def _write_target_markdown(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    out_file.write(_serialize_records_to_markdown(records))
+    academy_conversion.write_target_markdown(out_file, records)
 
 
 def _write_target_text(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    lines: list[str] = []
-    for item in records:
-        lines.append(item.get("instruction", ""))
-        lines.append(item.get("output", ""))
-        lines.append("")
-    out_file.write("\n".join(lines).strip() + "\n")
+    academy_conversion.write_target_text(out_file, records)
 
 
 def _write_target_json(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    out_file.write(json.dumps(records, ensure_ascii=False, indent=2))
+    academy_conversion.write_target_json(out_file, records)
 
 
 def _write_target_jsonl(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    jsonl_text = (
-        "\n".join(json.dumps(item, ensure_ascii=False) for item in records) + "\n"
-    )
-    out_file.write(jsonl_text)
+    academy_conversion.write_target_jsonl(out_file, records)
 
 
 def _write_target_csv(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    import csv
-
-    writer = csv.DictWriter(out_file, fieldnames=["instruction", "input", "output"])
-    writer.writeheader()
-    for item in records:
-        writer.writerow(
-            {
-                "instruction": item.get("instruction", ""),
-                "input": item.get("input", ""),
-                "output": item.get("output", ""),
-            }
-        )
+    academy_conversion.write_target_csv(out_file, records)
 
 
 def _write_records_as_target(
     records: List[Dict[str, str]],
     target_format: str,
 ) -> Path:
-    from venom_core.config import SETTINGS
-
-    default_target_extensions = {
-        "md": EXT_MD,
-        "txt": EXT_TXT,
-        "json": EXT_JSON,
-        "jsonl": EXT_JSONL,
-        "csv": EXT_CSV,
-    }
-    target_extensions = getattr(
-        SETTINGS,
-        "ACADEMY_CONVERSION_TARGET_EXTENSIONS",
-        default_target_extensions,
-    )
-    ext = target_extensions.get(target_format)
-    if not ext:
-        raise ValueError(f"Unsupported target format: {target_format}")
-
-    target_writers: dict[str, Callable[[TextIO, List[Dict[str, str]]], None]] = {
-        "md": _write_target_markdown,
-        "txt": _write_target_text,
-        "json": _write_target_json,
-        "jsonl": _write_target_jsonl,
-        "csv": _write_target_csv,
-    }
-    writer = target_writers.get(target_format)
-    if not writer:
-        raise ValueError(f"Unsupported target format: {target_format}")
-
-    output_dir = _get_conversion_output_dir()
-    fd, temp_path = tempfile.mkstemp(
-        prefix="conv_",
-        suffix=ext,
-        dir=str(output_dir),
-    )
-    safe_output_path = Path(temp_path).resolve()
-    output_dir_resolved = output_dir.resolve()
-    if not safe_output_path.is_relative_to(output_dir_resolved):
-        os.close(fd)
-        try:
-            safe_output_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise ValueError("Conversion output path escapes configured output directory")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as out_file:
-            writer(out_file, records)
-        return safe_output_path
-    except Exception:
-        try:
-            safe_output_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
+    return academy_conversion.write_records_as_target(records, target_format)
 
 
 def _build_conversion_item(
@@ -2442,19 +1652,14 @@ def _build_conversion_item(
     source_file_id: str | None = None,
     target_format: str | None = None,
 ) -> Dict[str, Any]:
-    return {
-        "file_id": file_id,
-        "name": filename,
-        "extension": path.suffix.lower(),
-        "size_bytes": path.stat().st_size if path.exists() else 0,
-        "created_at": datetime.now().isoformat(),
-        "category": category,
-        "source_file_id": source_file_id,
-        "target_format": target_format,
-        "selected_for_training": False,
-        "status": "ready",
-        "error": None,
-    }
+    return academy_conversion.build_conversion_item(
+        file_id=file_id,
+        filename=filename,
+        path=path,
+        category=category,
+        source_file_id=source_file_id,
+        target_format=target_format,
+    )
 
 
 def _get_selected_converted_file_ids(req: Request) -> List[str]:
@@ -3108,72 +2313,46 @@ def _add_trainable_model_from_catalog(
     reason: Optional[str] = None,
     installed_local: bool = False,
 ) -> None:
-    if not model_id or model_id in seen:
-        return
-    result.append(
-        TrainableModelInfo(
-            model_id=model_id,
-            label=label,
-            provider=provider,
-            trainable=reason is None,
-            reason_if_not_trainable=reason,
-            recommended=(model_id == default_model),
-            installed_local=installed_local,
-        )
+    academy_models.add_trainable_model_from_catalog(
+        result=result,
+        seen=seen,
+        model_id=model_id,
+        provider=provider,
+        label=label,
+        default_model=default_model,
+        reason=reason,
+        installed_local=installed_local,
     )
-    seen.add(model_id)
 
 
 async def _collect_local_trainable_models(
     mgr: Any, default_model: str, result: List[TrainableModelInfo], seen: set[str]
 ) -> None:
-    local_models = await mgr.list_local_models()
-    for model in local_models:
-        model_id = str(model.get("name") or "").strip()
-        if not model_id or model_id in seen:
-            continue
-        provider = str(model.get("provider") or model.get("source") or "unknown")
-        source = str(model.get("source") or "")
-        reason = _get_model_non_trainable_reason(model_id=model_id, provider=provider)
-        _add_trainable_model_from_catalog(
-            result=result,
-            seen=seen,
-            model_id=model_id,
-            provider=provider,
-            label=_build_model_label(
-                model_id=model_id, provider=provider, source=source
-            ),
-            default_model=default_model,
-            reason=reason,
-            installed_local=True,
-        )
+    await academy_models.collect_local_trainable_models(
+        mgr=mgr,
+        default_model=default_model,
+        result=result,
+        seen=seen,
+    )
 
 
 def _collect_default_trainable_models(
     default_model: str, result: List[TrainableModelInfo], seen: set[str]
 ) -> None:
-    for entry in _get_default_trainable_models_catalog():
-        if entry.model_id in seen:
-            continue
-        entry.recommended = entry.model_id == default_model
-        result.append(entry)
-        seen.add(entry.model_id)
+    academy_models.collect_default_trainable_models(
+        default_model=default_model,
+        result=result,
+        seen=seen,
+    )
 
 
 def _ensure_default_model_visible(
     default_model: str, result: List[TrainableModelInfo], seen: set[str]
 ) -> None:
-    if not default_model or default_model in seen:
-        return
-    reason = _get_model_non_trainable_reason(model_id=default_model, provider=None)
-    _add_trainable_model_from_catalog(
+    academy_models.ensure_default_model_visible(
+        default_model=default_model,
         result=result,
         seen=seen,
-        model_id=default_model,
-        provider="config",
-        label=f"{default_model} (default)",
-        default_model=default_model,
-        reason=reason,
     )
 
 
@@ -3190,36 +2369,4 @@ async def get_trainable_models() -> List[TrainableModelInfo]:
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
-    from venom_core.config import SETTINGS
-
-    result: List[TrainableModelInfo] = []
-    seen: set[str] = set()
-    default_model_raw = getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")
-    default_model = (
-        default_model_raw.strip() if isinstance(default_model_raw, str) else ""
-    )
-    mgr = _get_model_manager()
-
-    # 1) Modele z aktualnego katalogu lokalnego (jeśli manager dostępny)
-    if mgr is not None:
-        try:
-            await _collect_local_trainable_models(
-                mgr=mgr,
-                default_model=default_model,
-                result=result,
-                seen=seen,
-            )
-        except Exception as exc:
-            logger.warning("Failed to load local model catalog for Academy: %s", exc)
-
-    # 2) Fallback: domyślny katalog trenowalnych modeli (HF/Unsloth)
-    _collect_default_trainable_models(
-        default_model=default_model, result=result, seen=seen
-    )
-
-    # 3) Upewnij się, że model domyślny jest zawsze widoczny (nawet jeśli niestandardowy).
-    _ensure_default_model_visible(default_model=default_model, result=result, seen=seen)
-
-    # 4) Sortowanie: recommended -> trainable -> label
-    result.sort(key=lambda item: (not item.recommended, not item.trainable, item.label))
-    return result
+    return await academy_models.list_trainable_models(mgr=_get_model_manager())

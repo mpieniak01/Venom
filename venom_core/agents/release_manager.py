@@ -98,6 +98,7 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
         kernel: Kernel,
         git_skill: Optional[GitSkill] = None,
         file_skill: Optional[FileSkill] = None,
+        skill_manager: Optional[Any] = None,
     ):
         """
         Inicjalizacja ReleaseManagerAgent.
@@ -108,6 +109,7 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
             file_skill: Instancja FileSkill (jeśli None, zostanie utworzona)
         """
         super().__init__(kernel)
+        self.skill_manager = skill_manager
 
         # Zarejestruj skille
         self.git_skill = git_skill or GitSkill()
@@ -129,6 +131,42 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
         self.chat_service: Any = self.kernel.get_service(service_id="default")
 
         logger.info("ReleaseManagerAgent zainicjalizowany")
+
+    async def _invoke_git_tool(
+        self, tool_name: str, arguments: Optional[dict[str, Any]] = None
+    ) -> str:
+        """
+        Wywołuje narzędzie Git przez wspólną ścieżkę SkillManager (Etap C),
+        a gdy nie jest dostępna - używa legacy GitSkill.
+        """
+        payload = arguments or {}
+        if self.skill_manager is not None:
+            result = await self.skill_manager.invoke_mcp_tool(
+                "git",
+                tool_name,
+                payload,
+                is_external=False,
+            )
+            return str(result)
+
+        method = getattr(self.git_skill, tool_name)
+        result = await method(**payload)
+        return str(result)
+
+    async def _write_file(self, file_path: str, content: str) -> None:
+        """
+        Zapisuje plik przez wspólną ścieżkę SkillManager (Etap C),
+        a gdy nie jest dostępna - używa legacy FileSkill.
+        """
+        if self.skill_manager is not None:
+            await self.skill_manager.invoke_mcp_tool(
+                "file",
+                "write_file",
+                {"file_path": file_path, "content": content},
+                is_external=False,
+            )
+            return
+        await self.file_skill.write_file(file_path=file_path, content=content)
 
     async def process(self, input_text: str) -> str:
         """
@@ -197,7 +235,9 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
         report_lines = ["📦 Przygotowanie release'u\n"]
 
         try:
-            commit_log = await self.git_skill.get_last_commit_log(commit_count)
+            commit_log = await self._invoke_git_tool(
+                "get_last_commit_log", {"n": commit_count}
+            )
             report_lines.append(f"1. Pobrano {commit_count} ostatnich commitów\n")
 
             commits = self._parse_commits(commit_log)
@@ -211,9 +251,7 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
             changelog = self._generate_changelog(commits)
             changelog_path = Path(self.git_skill.workspace_root) / "CHANGELOG.md"
             new_content = self._merge_changelog(changelog_path, changelog)
-            await self.file_skill.write_file(
-                path=str(changelog_path), content=new_content
-            )
+            await self._write_file(file_path=str(changelog_path), content=new_content)
             report_lines.append("4. Zaktualizowano CHANGELOG.md\n")
 
             report_lines.append(self._build_release_next_steps())

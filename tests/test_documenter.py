@@ -3,6 +3,8 @@
 import asyncio
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -96,3 +98,45 @@ async def test_documenter_prevents_infinite_loop(temp_workspace):
     assert status["workspace_root"] == str(temp_workspace.resolve())
     assert isinstance(status["enabled"], bool)
     assert status["processing_files"] == 1
+
+
+@pytest.mark.asyncio
+async def test_documenter_get_file_diff_uses_skill_manager(temp_workspace):
+    skill_manager = MagicMock()
+    skill_manager.invoke_mcp_tool = AsyncMock(
+        return_value=SimpleNamespace(result="diff --git a/x b/x\n+def foo(): pass")
+    )
+    agent = DocumenterAgent(
+        workspace_root=str(temp_workspace),
+        skill_manager=skill_manager,
+    )
+
+    test_file = temp_workspace / "module.py"
+    test_file.write_text("def foo():\n    pass\n")
+    diff = await agent._get_file_diff(str(test_file))
+
+    assert "diff --git" in diff
+    skill_manager.invoke_mcp_tool.assert_awaited_once_with(
+        "git",
+        "get_diff",
+        {"file_path": "module.py"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_documenter_invoke_git_tool_falls_back_to_legacy(temp_workspace):
+    git_skill = MagicMock()
+    git_skill.commit = AsyncMock(return_value={"status": "success"})
+    agent = DocumenterAgent(
+        workspace_root=str(temp_workspace),
+        git_skill=git_skill,
+        skill_manager=None,
+    )
+
+    result = await agent._invoke_git_tool(
+        "commit",
+        {"message": "docs: auto-update"},
+    )
+
+    assert result == {"status": "success"}
+    git_skill.commit.assert_awaited_once_with(message="docs: auto-update")

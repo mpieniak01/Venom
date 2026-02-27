@@ -253,10 +253,12 @@ class FlowCoordinator:
 
         # Lazy init CodeReviewLoop
         if self._code_review_loop is None:
+            skill_manager = getattr(self.task_dispatcher, "skill_manager", None)
             self._code_review_loop = CodeReviewLoop(
                 state_manager=self.state_manager,
                 coder_agent=coder,
                 critic_agent=critic,
+                skill_manager=skill_manager,
             )
 
         # Deleguj do CodeReviewLoop

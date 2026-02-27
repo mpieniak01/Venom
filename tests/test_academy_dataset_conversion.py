@@ -364,7 +364,7 @@ def test_conversion_helpers_metadata_and_workspace(tmp_path):
             extension=".txt"
         )
         assert generated_id.endswith(".txt")
-        assert "abc" not in generated_id
+        assert generated_id.count("_") >= 2
 
         workspace["metadata_file"].write_text("{bad-json", encoding="utf-8")
         assert (

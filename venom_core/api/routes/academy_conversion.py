@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import tempfile
 import uuid
@@ -10,6 +11,8 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, TextIO
+
+import anyio
 
 from venom_core.api.routes import academy_storage
 from venom_core.api.schemas.academy import DatasetConversionFileInfo
@@ -533,3 +536,326 @@ def build_conversion_item(
         "status": "ready",
         "error": None,
     }
+
+
+def resolve_workspace_file_path(
+    workspace: Dict[str, Path],
+    *,
+    file_id: str,
+    category: str,
+    get_conversion_output_dir_fn: Callable[[], Path],
+) -> Path:
+    """Resolve file path in source/converted workspace with path guards."""
+    if category == "source":
+        base_dir = workspace["source_dir"]
+        base_dir_resolved = base_dir.resolve()
+        candidate = (base_dir / file_id).resolve()
+        if not candidate.is_relative_to(base_dir_resolved):
+            raise ValueError("Invalid file path")
+        return candidate
+    if category == "converted":
+        converted_output_dir = get_conversion_output_dir_fn()
+        converted_output_dir_resolved = converted_output_dir.resolve()
+        global_candidate = (converted_output_dir / file_id).resolve()
+        if global_candidate.is_relative_to(converted_output_dir_resolved):
+            if global_candidate.exists():
+                return global_candidate
+        # Backward-compat fallback for historical files created per-user.
+        legacy_dir = workspace["converted_dir"]
+        legacy_dir_resolved = legacy_dir.resolve()
+        legacy_candidate = (legacy_dir / file_id).resolve()
+        if not legacy_candidate.is_relative_to(legacy_dir_resolved):
+            raise ValueError("Invalid file path")
+        return legacy_candidate
+    raise ValueError("Invalid file category")
+
+
+def load_conversion_item_from_workspace(
+    workspace: Dict[str, Path],
+    *,
+    file_id: str,
+    user_conversion_metadata_lock_fn: Callable[[Path], Any],
+    load_user_conversion_metadata_fn: Callable[[Path], List[Dict[str, Any]]],
+    find_conversion_item_fn: Callable[
+        [List[Dict[str, Any]], str], Dict[str, Any] | None
+    ],
+) -> Dict[str, Any]:
+    """Load one conversion item from workspace metadata."""
+    with user_conversion_metadata_lock_fn(workspace["base_dir"]):
+        items = load_user_conversion_metadata_fn(workspace["metadata_file"])
+        item = find_conversion_item_fn(items, file_id)
+    if not item:
+        raise FileNotFoundError("File not found")
+    return item
+
+
+def resolve_existing_user_file(
+    *,
+    workspace: Dict[str, Path],
+    file_id: str,
+    user_conversion_metadata_lock_fn: Callable[[Path], Any],
+    load_user_conversion_metadata_fn: Callable[[Path], List[Dict[str, Any]]],
+    find_conversion_item_fn: Callable[
+        [List[Dict[str, Any]], str], Dict[str, Any] | None
+    ],
+    resolve_workspace_file_path_fn: Callable[[Dict[str, Path]], Path] | None = None,
+    get_conversion_output_dir_fn: Callable[[], Path] | None = None,
+) -> tuple[Dict[str, Any], Path]:
+    """Resolve metadata item and validated on-disk path for a user file."""
+    item = load_conversion_item_from_workspace(
+        workspace,
+        file_id=file_id,
+        user_conversion_metadata_lock_fn=user_conversion_metadata_lock_fn,
+        load_user_conversion_metadata_fn=load_user_conversion_metadata_fn,
+        find_conversion_item_fn=find_conversion_item_fn,
+    )
+    if resolve_workspace_file_path_fn is not None:
+        file_path = resolve_workspace_file_path_fn(workspace)
+    else:
+        file_path = resolve_workspace_file_path(
+            workspace,
+            file_id=file_id,
+            category=str(item.get("category") or "source"),
+            get_conversion_output_dir_fn=(
+                get_conversion_output_dir_fn or get_conversion_output_dir
+            ),
+        )
+    if not file_path.exists():
+        raise FileNotFoundError("File not found on disk")
+    return item, file_path
+
+
+def get_selected_converted_file_ids(
+    *,
+    workspace: Dict[str, Path],
+    user_conversion_metadata_lock_fn: Callable[[Path], Any],
+    load_user_conversion_metadata_fn: Callable[[Path], List[Dict[str, Any]]],
+    check_path_traversal_fn: Callable[[str], bool],
+) -> List[str]:
+    """Get converted file ids marked for training."""
+    with user_conversion_metadata_lock_fn(workspace["base_dir"]):
+        items = load_user_conversion_metadata_fn(workspace["metadata_file"])
+    selected_ids: List[str] = []
+    for item in items:
+        if str(item.get("category") or "") != "converted":
+            continue
+        if not bool(item.get("selected_for_training", False)):
+            continue
+        file_id = str(item.get("file_id") or "")
+        if file_id and check_path_traversal_fn(file_id):
+            selected_ids.append(file_id)
+    return selected_ids
+
+
+def resolve_conversion_file_ids_for_dataset(
+    *,
+    requested_ids: List[str] | None = None,
+    selected_ids_fn: Callable[[], List[str]],
+) -> List[str]:
+    """Resolve explicit conversion ids or fallback to selected ones."""
+    if requested_ids is not None:
+        return requested_ids
+    return selected_ids_fn()
+
+
+def list_conversion_files_for_user(
+    *,
+    user_id: str,
+    workspace: Dict[str, Path],
+    user_conversion_metadata_lock_fn: Callable[[Path], Any],
+    load_user_conversion_metadata_fn: Callable[[Path], List[Dict[str, Any]]],
+    normalize_conversion_item_fn: Callable[[Dict[str, Any]], Any],
+) -> Dict[str, Any]:
+    """Build response payload for listing user conversion files."""
+    with user_conversion_metadata_lock_fn(workspace["base_dir"]):
+        items = load_user_conversion_metadata_fn(workspace["metadata_file"])
+    source_files = [
+        normalize_conversion_item_fn(item)
+        for item in items
+        if str(item.get("category")) == "source"
+    ]
+    converted_files = [
+        normalize_conversion_item_fn(item)
+        for item in items
+        if str(item.get("category")) == "converted"
+    ]
+    return {
+        "user_id": user_id,
+        "workspace_dir": str(workspace["base_dir"]),
+        "source_files": source_files,
+        "converted_files": converted_files,
+    }
+
+
+async def upload_conversion_files_for_user(
+    *,
+    files: list[Any],
+    workspace: Dict[str, Path],
+    settings: Any,
+    user_conversion_metadata_lock_fn: Callable[[Path], Any],
+    load_user_conversion_metadata_fn: Callable[[Path], List[Dict[str, Any]]],
+    save_user_conversion_metadata_fn: Callable[[Path, List[Dict[str, Any]]], None],
+    validate_upload_filename_fn: Callable[
+        ..., tuple[str | None, Dict[str, str] | None]
+    ],
+    persist_with_limits_fn: Callable[..., Any],
+    build_conversion_file_id_fn: Callable[..., str],
+    build_conversion_item_fn: Callable[..., Dict[str, Any]],
+    normalize_conversion_item_fn: Callable[[Dict[str, Any]], Any],
+) -> Dict[str, Any]:
+    """Upload source files for conversion and update per-user metadata."""
+    uploaded: List[Dict[str, Any]] = []
+    failed: List[Dict[str, str]] = []
+    with user_conversion_metadata_lock_fn(workspace["base_dir"]):
+        items = load_user_conversion_metadata_fn(workspace["metadata_file"])
+        for file in files:
+            filename, filename_error = validate_upload_filename_fn(
+                file,
+                settings,
+                allowed_extensions=getattr(
+                    settings,
+                    "ACADEMY_ALLOWED_CONVERSION_EXTENSIONS",
+                    settings.ACADEMY_ALLOWED_EXTENSIONS,
+                ),
+            )
+            if filename_error:
+                failed.append(filename_error)
+                continue
+            if not filename:
+                continue
+            file_id = build_conversion_file_id_fn(
+                extension=Path(filename).suffix.lower()
+            )
+            file_path = workspace["source_dir"] / file_id
+            persisted, persist_error = await persist_with_limits_fn(
+                file=file,
+                file_path=file_path,
+                filename=filename,
+                settings=settings,
+            )
+            if persist_error or not persisted:
+                failed.append(
+                    persist_error
+                    or {"name": filename, "error": "Failed to persist uploaded file"}
+                )
+                continue
+            item = build_conversion_item_fn(
+                file_id=file_id,
+                filename=filename,
+                path=file_path,
+                category="source",
+            )
+            items.append(item)
+            uploaded.append(item)
+        save_user_conversion_metadata_fn(workspace["metadata_file"], items)
+    return {
+        "success": len(uploaded) > 0,
+        "uploaded": len(uploaded),
+        "failed": len(failed),
+        "files": [normalize_conversion_item_fn(item).model_dump() for item in uploaded],
+        "errors": failed,
+        "message": f"Uploaded {len(uploaded)} file(s), failed {len(failed)}",
+    }
+
+
+def convert_dataset_source_file(
+    *,
+    file_id: str,
+    workspace: Dict[str, Path],
+    target_format: str,
+    check_path_traversal_fn: Callable[[str], bool],
+    user_conversion_metadata_lock_fn: Callable[[Path], Any],
+    load_user_conversion_metadata_fn: Callable[[Path], List[Dict[str, Any]]],
+    save_user_conversion_metadata_fn: Callable[[Path, List[Dict[str, Any]]], None],
+    find_conversion_item_fn: Callable[
+        [List[Dict[str, Any]], str], Dict[str, Any] | None
+    ],
+    resolve_workspace_file_path_fn: Callable[..., Path],
+    source_to_records_fn: Callable[[Path], List[Dict[str, str]]],
+    write_records_as_target_fn: Callable[[List[Dict[str, str]], str], Path],
+    build_conversion_item_fn: Callable[..., Dict[str, Any]],
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Convert a source file to selected target format and persist metadata."""
+    if not check_path_traversal_fn(file_id):
+        raise ValueError(f"Invalid file_id: {file_id}")
+    with user_conversion_metadata_lock_fn(workspace["base_dir"]):
+        items = load_user_conversion_metadata_fn(workspace["metadata_file"])
+        source_item = find_conversion_item_fn(items, file_id)
+        if not source_item:
+            raise FileNotFoundError("Source file not found")
+        if str(source_item.get("category")) != "source":
+            raise ValueError("Conversion requires source file")
+        source_path = resolve_workspace_file_path_fn(
+            workspace,
+            file_id=file_id,
+            category="source",
+        )
+        if not source_path.exists():
+            raise FileNotFoundError("Source file not found on disk")
+        records = source_to_records_fn(source_path)
+        if not records:
+            raise ValueError("No valid records produced from source file")
+        converted_path = write_records_as_target_fn(records, target_format)
+        source_stem = Path(str(source_item.get("name") or "dataset")).name
+        converted_name = f"{Path(source_stem).stem}.{target_format}"
+        converted_item = build_conversion_item_fn(
+            file_id=converted_path.name,
+            filename=converted_name,
+            path=converted_path,
+            category="converted",
+            source_file_id=file_id,
+            target_format=target_format,
+        )
+        items.append(converted_item)
+        save_user_conversion_metadata_fn(workspace["metadata_file"], items)
+    return source_item, converted_item
+
+
+def set_conversion_training_selection(
+    *,
+    file_id: str,
+    selected_for_training: bool,
+    workspace: Dict[str, Path],
+    check_path_traversal_fn: Callable[[str], bool],
+    user_conversion_metadata_lock_fn: Callable[[Path], Any],
+    load_user_conversion_metadata_fn: Callable[[Path], List[Dict[str, Any]]],
+    save_user_conversion_metadata_fn: Callable[[Path, List[Dict[str, Any]]], None],
+    find_conversion_item_fn: Callable[
+        [List[Dict[str, Any]], str], Dict[str, Any] | None
+    ],
+) -> Dict[str, Any]:
+    """Mark converted file as selected/unselected for training."""
+    if not check_path_traversal_fn(file_id):
+        raise ValueError(f"Invalid file_id: {file_id}")
+    with user_conversion_metadata_lock_fn(workspace["base_dir"]):
+        items = load_user_conversion_metadata_fn(workspace["metadata_file"])
+        item = find_conversion_item_fn(items, file_id)
+        if not item:
+            raise FileNotFoundError("File not found")
+        if str(item.get("category") or "") != "converted":
+            raise ValueError("Only converted files can be marked for training")
+        item["selected_for_training"] = bool(selected_for_training)
+        save_user_conversion_metadata_fn(workspace["metadata_file"], items)
+    return item
+
+
+async def read_text_preview(
+    *,
+    file_path: Path,
+    max_chars: int = 20_000,
+) -> tuple[str, bool]:
+    """Read UTF-8 file preview with truncation marker."""
+    async with await anyio.open_file(
+        file_path,
+        "r",
+        encoding="utf-8",
+        errors="ignore",
+    ) as file_obj:
+        preview_plus_one = await file_obj.read(max_chars + 1)
+    truncated = len(preview_plus_one) > max_chars
+    return preview_plus_one[:max_chars], truncated
+
+
+def guess_media_type(file_path: Path) -> str:
+    """Guess download media type from file extension."""
+    return mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"

@@ -7,23 +7,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.helpers.academy_wiring import build_academy_app
 from venom_core.api.routes import academy as academy_routes
 
 
 def _make_client() -> TestClient:
-    app = FastAPI()
-    academy_routes.set_dependencies(
-        professor=MagicMock(),
-        dataset_curator=MagicMock(),
-        gpu_habitat=MagicMock(training_containers={}),
-        lessons_store=MagicMock(),
-        model_manager=MagicMock(),
-    )
-    app.include_router(academy_routes.router)
-    return TestClient(app)
+    return TestClient(build_academy_app())
 
 
 def test_load_jobs_history_returns_empty_when_file_missing(tmp_path, monkeypatch):

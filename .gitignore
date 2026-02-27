@@ -6,6 +6,8 @@ __pycache__/
 *.pyo
 
 logs/
+!web-next/lib/i18n/locales/logs/
+!web-next/lib/i18n/locales/logs/*.ts
 
 # Workspace (user-generated projects)
 workspace/*

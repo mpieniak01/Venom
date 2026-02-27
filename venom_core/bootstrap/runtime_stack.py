@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Any, Callable, Tuple
 
@@ -253,7 +254,9 @@ async def initialize_documenter_and_watcher(
             "git_skill": git_skill,
             "event_broadcaster": event_broadcaster,
         }
-        if skill_manager is not None:
+        if skill_manager is not None and _supports_keyword_argument(
+            documenter_agent_cls, "skill_manager"
+        ):
             documenter_kwargs["skill_manager"] = skill_manager
         documenter_agent = documenter_agent_cls(
             **documenter_kwargs,
@@ -277,6 +280,24 @@ async def initialize_documenter_and_watcher(
         file_watcher = None
 
     return documenter_agent, file_watcher
+
+
+def _supports_keyword_argument(callable_obj: Any, argument_name: str) -> bool:
+    """Return True when callable accepts a given keyword argument."""
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return False
+
+    for parameter in signature.parameters.values():
+        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+        if parameter.name == argument_name and parameter.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        ):
+            return True
+    return False
 
 
 def initialize_audio_engine_if_enabled(

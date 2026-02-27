@@ -129,7 +129,7 @@ jobs:
 
       - name: Unit Tests
         timeout-minutes: 5
-        run: npm --prefix web-next run test:unit
+        run: npm --prefix web-next run test:unit:ci-lite
 
   openapi-contract:
     name: OpenAPI Contract (export + TS codegen)

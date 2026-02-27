@@ -81,6 +81,119 @@ def build_job_record(
     }
 
 
+def curate_dataset_scope(
+    *,
+    request: Any,
+    req: Any,
+    resolve_conversion_file_ids_for_dataset_fn: Callable[..., List[str]],
+    get_dataset_curator_fn: Callable[[], Any],
+    collect_scope_counts_fn: Callable[[Any, Any], Dict[str, int]],
+    ingest_uploads_for_curate_fn: Callable[[Any, List[str]], int],
+    ingest_converted_files_for_curate_fn: Callable[[Any, Any, List[str]], int],
+    logger: Any,
+) -> Dict[str, Any]:
+    """Run full dataset curation flow for selected scope."""
+    conversion_file_ids = resolve_conversion_file_ids_for_dataset_fn(
+        req=req,
+        requested_ids=request.conversion_file_ids,
+    )
+    logger.info(
+        "Curating dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",
+        request.include_lessons,
+        request.include_git,
+        request.include_task_history,
+        len(request.upload_ids or []),
+        len(conversion_file_ids),
+    )
+    curator = get_dataset_curator_fn()
+    curator.clear()
+
+    scope_counts = collect_scope_counts_fn(curator, request)
+    uploads_count = 0
+    if request.upload_ids:
+        uploads_count = ingest_uploads_for_curate_fn(curator, request.upload_ids)
+    converted_count = 0
+    if conversion_file_ids:
+        converted_count = ingest_converted_files_for_curate_fn(
+            curator,
+            req,
+            conversion_file_ids,
+        )
+    removed = curator.filter_low_quality()
+    dataset_path = curator.save_dataset(format=request.format)
+    stats = curator.get_statistics()
+    return {
+        "dataset_path": dataset_path,
+        "stats": stats,
+        "scope_counts": scope_counts,
+        "uploads_count": uploads_count,
+        "converted_count": converted_count,
+        "removed_low_quality": removed,
+        "quality_profile": request.quality_profile,
+    }
+
+
+def preview_dataset_scope(
+    *,
+    request: Any,
+    req: Any,
+    resolve_conversion_file_ids_for_dataset_fn: Callable[..., List[str]],
+    get_dataset_curator_fn: Callable[[], Any],
+    collect_scope_counts_fn: Callable[[Any, Any], Dict[str, int]],
+    ingest_uploads_for_preview_fn: Callable[[Any, List[str], List[str]], int],
+    ingest_converted_files_for_preview_fn: Callable[
+        [Any, Any, List[str], List[str]], int
+    ],
+    add_low_examples_warning_fn: Callable[[List[str], int, str], None],
+    build_preview_samples_fn: Callable[[Any], List[Dict[str, str]]],
+    logger: Any,
+) -> Dict[str, Any]:
+    """Run preview flow for selected scope without persisting dataset."""
+    conversion_file_ids = resolve_conversion_file_ids_for_dataset_fn(
+        req=req,
+        requested_ids=request.conversion_file_ids,
+    )
+    logger.info(
+        "Previewing dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",
+        request.include_lessons,
+        request.include_git,
+        request.include_task_history,
+        len(request.upload_ids or []),
+        len(conversion_file_ids),
+    )
+    curator = get_dataset_curator_fn()
+    curator.clear()
+
+    by_source = collect_scope_counts_fn(curator, request)
+    warnings: List[str] = []
+    if request.upload_ids:
+        by_source["uploads"] = ingest_uploads_for_preview_fn(
+            curator,
+            request.upload_ids,
+            warnings,
+        )
+    if conversion_file_ids:
+        by_source["converted"] = ingest_converted_files_for_preview_fn(
+            curator,
+            req,
+            conversion_file_ids,
+            warnings,
+        )
+
+    removed = curator.filter_low_quality()
+    stats = curator.get_statistics()
+    total_examples = stats.get("total_examples", 0)
+    add_low_examples_warning_fn(warnings, total_examples, request.quality_profile)
+    samples = build_preview_samples_fn(curator)
+    return {
+        "total_examples": total_examples,
+        "by_source": by_source,
+        "removed_low_quality": removed,
+        "warnings": warnings,
+        "samples": samples,
+    }
+
+
 def find_job_or_404(job_id: str, *, jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Find job in history or raise 404 HTTPException."""
     job = next((j for j in jobs if j.get("job_id") == job_id), None)

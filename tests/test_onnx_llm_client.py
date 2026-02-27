@@ -269,6 +269,39 @@ def test_create_model_with_provider_uses_auto_when_all_aliases_fail(tmp_path):
     assert client.status_payload()["active_execution_provider"] == "auto"
 
 
+def test_create_model_with_provider_raises_runtime_error_when_auto_fails(tmp_path):
+    model_dir = _prepare_model_dir(tmp_path)
+    client = OnnxLlmClient(settings=_settings(ONNX_LLM_MODEL_PATH=str(model_dir)))
+
+    class _Config:
+        def __init__(self, _model_path):
+            self.providers = []
+
+        def clear_providers(self):
+            self.providers = []
+
+        def append_provider(self, provider):
+            self.providers.append(provider)
+
+    class _Model:
+        def __init__(self, arg):
+            if isinstance(arg, _Config):
+                alias = arg.providers[-1] if arg.providers else "unknown"
+                raise RuntimeError(f"provider failed: {alias}")
+            raise RuntimeError("auto failed")
+
+    fake_og = SimpleNamespace(
+        Config=_Config,
+        Model=_Model,
+        Tokenizer=lambda _m: None,
+        GeneratorParams=lambda _m: None,
+        Generator=lambda _m, _p: None,
+    )
+
+    with pytest.raises(RuntimeError, match="Last explicit provider error"):
+        client._create_model_with_provider(fake_og, str(model_dir))
+
+
 def test_messages_to_text_and_build_prompt_fallback(tmp_path):
     model_dir = _prepare_model_dir(tmp_path)
     client = OnnxLlmClient(settings=_settings(ONNX_LLM_MODEL_PATH=str(model_dir)))

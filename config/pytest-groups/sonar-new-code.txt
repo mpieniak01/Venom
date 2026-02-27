@@ -62,6 +62,8 @@ tests/test_parallel_skill.py
 tests/test_metrics_routes.py
 tests/test_model_registry_clients.py
 tests/test_model_registry_clients_additional.py
+tests/test_model_registry_split_modules.py
+tests/test_bootstrap_runtime_stack_modules.py
 tests/test_critic_agent.py
 tests/test_architect_agent.py
 tests/test_coder_critic_loop.py

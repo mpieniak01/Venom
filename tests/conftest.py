@@ -40,6 +40,12 @@ warnings.filterwarnings(
     message=".*PydanticDeprecatedSince211.*",
     module="pydantic._internal._generate_schema",
 )
+# Noise from intentionally simulated timeout/error branches with AsyncMock in tests.
+warnings.filterwarnings(
+    "ignore",
+    category=RuntimeWarning,
+    message=r"coroutine 'AsyncMockMixin\._execute_mock_call' was never awaited",
+)
 
 try:
     from requests.exceptions import RequestsDependencyWarning

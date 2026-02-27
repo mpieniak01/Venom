@@ -5,25 +5,16 @@ from __future__ import annotations
 import builtins
 import io
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.helpers.academy_wiring import build_academy_app
 from venom_core.api.routes import academy as academy_routes
 
 
 def _build_client() -> TestClient:
-    app = FastAPI()
-    academy_routes.set_dependencies(
-        professor=MagicMock(),
-        dataset_curator=MagicMock(),
-        gpu_habitat=MagicMock(training_containers={}),
-        lessons_store=MagicMock(),
-        model_manager=MagicMock(),
-    )
-    app.include_router(academy_routes.router)
-    return TestClient(app)
+    return TestClient(build_academy_app())
 
 
 def test_conversion_upload_and_list(tmp_path):

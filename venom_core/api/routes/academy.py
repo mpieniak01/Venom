@@ -1,20 +1,17 @@
 """Moduł: routes/academy - Endpointy API dla The Academy (trenowanie modeli)."""
 
-import json
-import mimetypes
 import os
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Callable, Dict, List, Optional, TextIO, cast
+from typing import Annotated, Any, Callable, Dict, List, Optional, cast
 from unittest.mock import Mock
 
-import anyio
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
 from venom_core.api.routes import (
     academy_conversion,
+    academy_history,
     academy_models,
     academy_storage,
     academy_training,
@@ -71,14 +68,6 @@ CANONICAL_JOB_STATUSES = {
 TERMINAL_JOB_STATUSES = {"finished", "failed", "cancelled"}
 JOBS_HISTORY_FILE = Path("./data/training/jobs.jsonl")
 DATASET_REQUIRED_DETAIL = "No dataset found. Please curate dataset first."
-EXT_JSON = ".json"
-EXT_JSONL = ".jsonl"
-EXT_MD = ".md"
-EXT_TXT = ".txt"
-EXT_CSV = ".csv"
-EXT_DOC = ".doc"
-EXT_DOCX = ".docx"
-EXT_PDF = ".pdf"
 
 RESP_400_DATASET_REQUIRED = {"description": DATASET_REQUIRED_DETAIL}
 RESP_403_LOCALHOST_ONLY = {
@@ -220,80 +209,35 @@ def _to_job_summary(job: Dict[str, Any]) -> AcademyJobSummary:
 
 def _load_jobs_history() -> List[Dict[str, Any]]:
     """Ładuje historię jobów z pliku JSONL."""
-    jobs_file = JOBS_HISTORY_FILE
-    if not jobs_file.exists():
-        return []
-
-    jobs = []
-    try:
-        with open(jobs_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    jobs.append(json.loads(line))
-    except Exception as e:
-        logger.warning(f"Failed to load jobs history: {e}")
-    return jobs
+    return academy_history.load_jobs_history(JOBS_HISTORY_FILE, logger=logger)
 
 
 def _save_job_to_history(job: Dict[str, Any]):
     """Zapisuje job do historii (append do JSONL)."""
-    jobs_file = JOBS_HISTORY_FILE
-    jobs_file.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        with open(jobs_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(job, ensure_ascii=False) + "\n")
-    except Exception as e:
-        logger.error(f"Failed to save job to history: {e}")
+    academy_history.save_job_to_history(job, JOBS_HISTORY_FILE, logger=logger)
 
 
 def _update_job_in_history(job_id: str, updates: Dict[str, Any]):
     """Aktualizuje job w historii."""
-    jobs_file = JOBS_HISTORY_FILE
-    if not jobs_file.exists():
-        return
-
-    try:
-        # Wczytaj wszystkie joby
-        jobs = _load_jobs_history()
-
-        # Znajdź i zaktualizuj
-        for job in jobs:
-            if job.get("job_id") == job_id:
-                job.update(updates)
-                break
-
-        # Zapisz z powrotem
-        with open(jobs_file, "w", encoding="utf-8") as f:
-            for job in jobs:
-                f.write(json.dumps(job, ensure_ascii=False) + "\n")
-    except Exception as e:
-        logger.error(f"Failed to update job in history: {e}")
+    academy_history.update_job_in_history(
+        job_id,
+        updates,
+        JOBS_HISTORY_FILE,
+        logger=logger,
+    )
 
 
 def _save_adapter_metadata(job: Dict[str, Any], adapter_path: Path) -> None:
     """Zapisuje deterministyczne metadata adaptera po udanym treningu."""
-    metadata_file = adapter_path.parent / "metadata.json"
-    metadata = {
-        "job_id": job.get("job_id"),
-        "base_model": job.get("base_model"),
-        "dataset_path": job.get("dataset_path"),
-        "parameters": job.get("parameters", {}),
-        "created_at": job.get("finished_at") or datetime.now().isoformat(),
-        "started_at": job.get("started_at"),
-        "finished_at": job.get("finished_at"),
-        "source": "academy",
-    }
-    with open(metadata_file, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=2)
+    academy_history.save_adapter_metadata(job, adapter_path)
+
+
+# ==================== Upload Utilities ====================
 
 
 def _is_path_within_base(path: Path, base: Path) -> bool:
     """Sprawdza czy `path` znajduje się w `base` (po resolve)."""
     return academy_storage.is_path_within_base(path=path, base=base)
-
-
-# ==================== Upload Utilities ====================
 
 
 def _get_uploads_dir() -> Path:
@@ -326,42 +270,9 @@ def _check_path_traversal(filename: str) -> bool:
     return academy_storage.check_path_traversal(filename)
 
 
-def _is_safe_file_id(filename: str) -> bool:
-    """Dodatkowa walidacja identyfikatora pliku używanego do ścieżek."""
-    return academy_storage.is_safe_file_id(filename)
-
-
-@contextmanager
-def _file_lock(file_path: Path, mode: str = "r"):
-    """
-    Context manager dla atomicznego dostępu do pliku z lockowaniem.
-
-    Używa fcntl na Unix/Linux lub msvcrt na Windows.
-    Fallback: brak lockowania jeśli nie ma dostępnych bibliotek.
-    """
-    with academy_storage.file_lock(file_path=file_path, mode=mode) as handle:
-        yield handle
-
-
 def _load_uploads_metadata() -> List[Dict[str, Any]]:
     """Ładuje metadane uploadów z pliku JSONL."""
     return academy_storage.load_uploads_metadata()
-
-
-def _get_uploads_metadata_lock_file() -> Path:
-    """Zwraca ścieżkę lock-file dla operacji na metadata uploads."""
-    return academy_storage.get_uploads_metadata_lock_file()
-
-
-@contextmanager
-def _uploads_metadata_lock():
-    """
-    Globalny lock dla operacji read/write/delete na metadata uploads.
-
-    Chroni pełny cykl read-modify-write, nie tylko pojedynczy odczyt.
-    """
-    with academy_storage.uploads_metadata_lock():
-        yield
 
 
 def _save_upload_metadata(upload_info: Dict[str, Any]):
@@ -393,48 +304,7 @@ def _estimate_records_from_content(filename: str, content: bytes) -> int:
 
 
 def _is_model_trainable(model_id: str) -> bool:
-    """
-    Sprawdza czy model jest trenowalny (wspiera LoRA/QLoRA).
-
-    Returns:
-        True jeśli model jest trenowalny
-    """
     return academy_models.is_model_trainable(model_id=model_id)
-
-
-def _get_model_non_trainable_reason(
-    model_id: str, provider: Optional[str] = None
-) -> Optional[str]:
-    """
-    Zwraca powód braku trenowalności modelu dla Academy, albo None jeśli trenowalny.
-
-    Academy trenuje adaptery LoRA/QLoRA na modelach HuggingFace/Unsloth.
-    Lokalne modele Ollama (GGUF) pozostają inferencyjne.
-    """
-    return academy_models.get_model_non_trainable_reason(
-        model_id=model_id,
-        provider=provider,
-    )
-
-
-def _build_model_label(
-    model_id: str, provider: str, source: Optional[str] = None
-) -> str:
-    """Buduje czytelną etykietę modelu dla UI Academy."""
-    return academy_models.build_model_label(
-        model_id=model_id,
-        provider=provider,
-        source=source,
-    )
-
-
-def _get_default_trainable_models_catalog() -> List[TrainableModelInfo]:
-    """
-    Zwraca domyślny katalog modeli trenowalnych.
-
-    To fallback na wypadek braku lokalnych metadanych modeli.
-    """
-    return academy_models.get_default_trainable_models_catalog()
 
 
 # ==================== Endpointy ====================
@@ -454,33 +324,14 @@ def _collect_scope_counts(curator: Any, request: DatasetScopeRequest) -> Dict[st
 
 
 def _ingest_uploads_for_curate(curator: Any, upload_ids: List[str]) -> int:
-    uploads_count = 0
-    uploads_dir = _get_uploads_dir()
-    for upload_idx, file_id in enumerate(upload_ids, start=1):
-        if not _check_path_traversal(file_id):
-            logger.warning(
-                "Skipped upload entry due to invalid identifier (idx=%s)",
-                upload_idx,
-            )
-            continue
-
-        file_path = uploads_dir / file_id
-        if not file_path.exists():
-            logger.warning(
-                "Skipped upload entry because file was not found (idx=%s)",
-                upload_idx,
-            )
-            continue
-
-        try:
-            uploads_count += _ingest_upload_file(curator, file_path)
-        except Exception as e:
-            logger.warning(
-                "Failed to ingest upload entry (idx=%s, error=%s)",
-                upload_idx,
-                type(e).__name__,
-            )
-    return uploads_count
+    return academy_uploads.ingest_uploads_for_ids(
+        curator=curator,
+        upload_ids=upload_ids,
+        uploads_dir=_get_uploads_dir(),
+        check_path_traversal_fn=_check_path_traversal,
+        ingest_upload_file_fn=_ingest_upload_file,
+        logger=logger,
+    )
 
 
 def _ingest_converted_files_for_curate(
@@ -488,30 +339,16 @@ def _ingest_converted_files_for_curate(
     req: Request,
     conversion_file_ids: List[str],
 ) -> int:
-    converted_count = 0
-    for file_idx, file_id in enumerate(conversion_file_ids, start=1):
-        if not _check_path_traversal(file_id):
-            logger.warning(
-                "Skipped converted file due to invalid identifier (idx=%s)",
-                file_idx,
-            )
-            continue
-        try:
-            item, file_path = _resolve_existing_user_file(req, file_id=file_id)
-            if str(item.get("category") or "") != "converted":
-                logger.warning(
-                    "Skipped conversion file because category is not converted (idx=%s)",
-                    file_idx,
-                )
-                continue
-            converted_count += _ingest_upload_file(curator, file_path)
-        except Exception as e:
-            logger.warning(
-                "Failed to ingest converted file (idx=%s, error=%s)",
-                file_idx,
-                type(e).__name__,
-            )
-    return converted_count
+    return academy_uploads.ingest_converted_files_for_ids(
+        curator=curator,
+        conversion_file_ids=conversion_file_ids,
+        check_path_traversal_fn=_check_path_traversal,
+        resolve_existing_user_file_fn=(
+            lambda file_id: _resolve_existing_user_file(req, file_id=file_id)
+        ),
+        ingest_upload_file_fn=_ingest_upload_file,
+        logger=logger,
+    )
 
 
 @router.post(
@@ -524,64 +361,30 @@ async def curate_dataset(
     request: DatasetScopeRequest,
     req: Request,
 ) -> DatasetResponse:
-    """
-    Kuracja datasetu ze statystykami (v2: wspiera user-defined scope).
-
-    Zbiera dane z:
-    - LessonsStore (successful experiences) - jeśli include_lessons=True
-    - Git history (commits) - jeśli include_git=True
-    - Task history (opcjonalnie) - jeśli include_task_history=True
-    - User uploads - jeśli upload_ids podane
-
-    Returns:
-        DatasetResponse ze ścieżką i statystykami
-    """
     try:
         _ensure_academy_enabled()
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
     try:
-        conversion_file_ids = _resolve_conversion_file_ids_for_dataset(
+        result = academy_training.curate_dataset_scope(
+            request=request,
             req=req,
-            requested_ids=request.conversion_file_ids,
+            resolve_conversion_file_ids_for_dataset_fn=_resolve_conversion_file_ids_for_dataset,
+            get_dataset_curator_fn=_get_dataset_curator,
+            collect_scope_counts_fn=_collect_scope_counts,
+            ingest_uploads_for_curate_fn=_ingest_uploads_for_curate,
+            ingest_converted_files_for_curate_fn=_ingest_converted_files_for_curate,
+            logger=logger,
         )
-        logger.info(
-            "Curating dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",
-            request.include_lessons,
-            request.include_git,
-            request.include_task_history,
-            len(request.upload_ids or []),
-            len(conversion_file_ids),
-        )
-        curator = _get_dataset_curator()
-
-        # Wyczyść poprzednie przykłady
-        curator.clear()
-        scope_counts = _collect_scope_counts(curator, request)
-        uploads_count = 0
-        if request.upload_ids:
-            uploads_count = _ingest_uploads_for_curate(curator, request.upload_ids)
-        converted_count = 0
-        if conversion_file_ids:
-            converted_count = _ingest_converted_files_for_curate(
-                curator=curator,
-                req=req,
-                conversion_file_ids=conversion_file_ids,
-            )
-
-        # Filtruj niską jakość
-        removed = curator.filter_low_quality()
-
-        # Zapisz dataset
-        dataset_path = curator.save_dataset(format=request.format)
-
-        # Statystyki
-        stats = curator.get_statistics()
+        stats = result["stats"]
+        scope_counts = result["scope_counts"]
+        uploads_count = result["uploads_count"]
+        converted_count = result["converted_count"]
 
         return DatasetResponse(
             success=True,
-            dataset_path=str(dataset_path),
+            dataset_path=str(result["dataset_path"]),
             statistics={
                 **stats,
                 "lessons_collected": scope_counts["lessons"],
@@ -589,8 +392,8 @@ async def curate_dataset(
                 "task_history_collected": scope_counts["task_history"],
                 "uploads_collected": uploads_count,
                 "converted_collected": converted_count,
-                "removed_low_quality": removed,
-                "quality_profile": request.quality_profile,
+                "removed_low_quality": result["removed_low_quality"],
+                "quality_profile": result["quality_profile"],
                 "by_source": {
                     "lessons": scope_counts["lessons"],
                     "git": scope_counts["git"],
@@ -618,14 +421,6 @@ async def curate_dataset(
     },
 )
 async def start_training(request: TrainingRequest, req: Request) -> TrainingResponse:
-    """
-    Start zadania treningowego.
-
-    Uruchamia trening LoRA/QLoRA w kontenerze Docker z GPU.
-
-    Returns:
-        TrainingResponse z job_id i parametrami
-    """
     try:
         _ensure_academy_enabled()
         require_localhost_request(req)
@@ -778,12 +573,6 @@ def _cleanup_terminal_job_container(
     },
 )
 async def get_training_status(job_id: str) -> JobStatusResponse:
-    """
-    Pobiera status i logi zadania treningowego.
-
-    Returns:
-        JobStatusResponse ze statusem, logami i ścieżką adaptera
-    """
     try:
         _ensure_academy_enabled()
         habitat = _get_gpu_habitat()
@@ -814,52 +603,6 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
         raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
 
-def _sse_event(payload: Dict[str, Any]) -> str:
-    return academy_training.sse_event(payload)
-
-
-def _parse_stream_log_line(log_line: str) -> tuple[Optional[str], str]:
-    return academy_training.parse_stream_log_line(log_line)
-
-
-def _extract_metrics_data(
-    parser: Any, all_metrics: List[Any], message: str
-) -> Optional[Dict[str, Any]]:
-    return academy_training.extract_metrics_data(
-        parser=parser,
-        all_metrics=all_metrics,
-        message=message,
-    )
-
-
-def _build_log_event(
-    line_no: int,
-    message: str,
-    timestamp: Optional[str],
-    metrics_data: Optional[Dict[str, Any]],
-) -> Dict[str, Any]:
-    return academy_training.build_log_event(
-        line_no=line_no,
-        message=message,
-        timestamp=timestamp,
-        metrics_data=metrics_data,
-    )
-
-
-def _periodic_stream_events(
-    line_no: int, habitat: Any, job_name: str, parser: Any, all_metrics: List[Any]
-) -> tuple[List[Dict[str, Any]], bool]:
-    return academy_training.periodic_stream_events(
-        line_no=line_no,
-        habitat=habitat,
-        job_name=job_name,
-        parser=parser,
-        all_metrics=all_metrics,
-        normalize_status_fn=_normalize_job_status,
-        terminal_statuses=TERMINAL_JOB_STATUSES,
-    )
-
-
 @router.get(
     "/train/{job_id}/logs/stream",
     responses={
@@ -868,15 +611,6 @@ def _periodic_stream_events(
     },
 )
 async def stream_training_logs(job_id: str):
-    """
-    Stream logów z treningu (SSE - Server-Sent Events).
-
-    Args:
-        job_id: ID joba treningowego
-
-    Returns:
-        StreamingResponse z logami w formacie SSE
-    """
     try:
         _ensure_academy_enabled()
         job = _find_job_or_404(job_id)
@@ -923,16 +657,6 @@ async def list_jobs(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     status: Annotated[Optional[str], Query()] = None,
 ) -> AcademyJobsListResponse:
-    """
-    Lista wszystkich jobów treningowych.
-
-    Args:
-        limit: Maksymalna liczba jobów do zwrócenia
-        status: Filtruj po statusie (queued, running, finished, failed)
-
-    Returns:
-        Lista jobów
-    """
     try:
         _ensure_academy_enabled()
         jobs = academy_training.list_jobs_response(
@@ -958,14 +682,6 @@ async def list_jobs(
     },
 )
 async def list_adapters() -> List[AdapterInfo]:
-    """
-    Lista dostępnych adapterów.
-
-    Skanuje katalog z modelami i zwraca listę dostępnych adapterów LoRA.
-
-    Returns:
-        Lista adapterów
-    """
     try:
         _ensure_academy_enabled()
         return await academy_models.list_adapters(mgr=_get_model_manager())
@@ -991,14 +707,6 @@ async def list_adapters() -> List[AdapterInfo]:
 async def activate_adapter(
     request: ActivateAdapterRequest, req: Request
 ) -> Dict[str, Any]:
-    """
-    Aktywacja adaptera LoRA.
-
-    Hot-swap adaptera bez restartu backendu.
-
-    Returns:
-        Status aktywacji
-    """
     try:
         _ensure_academy_enabled()
         require_localhost_request(req)
@@ -1180,24 +888,6 @@ async def academy_status() -> Dict[str, Any]:
 # ==================== Upload Endpoints ====================
 
 
-async def _persist_uploaded_file(
-    file: Any, file_path: Path, max_size_bytes: int
-) -> tuple[int, bytes]:
-    return await academy_uploads.persist_uploaded_file(
-        file=file,
-        file_path=file_path,
-        max_size_bytes=max_size_bytes,
-    )
-
-
-def _cleanup_uploaded_file(file_path: Path) -> None:
-    academy_uploads.cleanup_uploaded_file(file_path, logger=logger)
-
-
-def _upload_error(filename: str, message: str) -> tuple[None, Dict[str, str]]:
-    return academy_uploads.upload_error(filename, message)
-
-
 def _validate_upload_filename(
     file: Any,
     settings: Any,
@@ -1225,28 +915,9 @@ async def _persist_with_limits(
         filename=filename,
         settings=settings,
         logger=logger,
-        cleanup_uploaded_file_fn=_cleanup_uploaded_file,
-    )
-
-
-def _build_upload_info(
-    file_id: str,
-    filename: str,
-    size_bytes: int,
-    content_bytes: bytes,
-    tag: str,
-    description: str,
-) -> Dict[str, Any]:
-    return academy_uploads.build_upload_info(
-        file_id=file_id,
-        filename=filename,
-        size_bytes=size_bytes,
-        content_bytes=content_bytes,
-        tag=tag,
-        description=description,
-        compute_bytes_hash_fn=_compute_bytes_hash,
-        estimate_records_from_content_fn=_estimate_records_from_content,
-        logger=logger,
+        cleanup_uploaded_file_fn=lambda path: academy_uploads.cleanup_uploaded_file(
+            path, logger=logger
+        ),
     )
 
 
@@ -1266,15 +937,11 @@ async def _process_uploaded_file(
         compute_bytes_hash_fn=_compute_bytes_hash,
         estimate_records_from_content_fn=_estimate_records_from_content,
         save_upload_metadata_fn=_save_upload_metadata,
-        cleanup_uploaded_file_fn=_cleanup_uploaded_file,
+        cleanup_uploaded_file_fn=lambda path: academy_uploads.cleanup_uploaded_file(
+            path, logger=logger
+        ),
         logger=logger,
     )
-
-
-def _build_upload_response(
-    uploaded_files: List[Dict[str, Any]], failed_files: List[Dict[str, str]]
-) -> Dict[str, Any]:
-    return academy_uploads.build_upload_response(uploaded_files, failed_files)
 
 
 @router.post(
@@ -1338,7 +1005,7 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
         f"Uploaded {len(uploaded_files)} files to Academy ({len(failed_files)} failed)"
     )
 
-    return _build_upload_response(uploaded_files, failed_files)
+    return academy_uploads.build_upload_response(uploaded_files, failed_files)
 
 
 @router.get("/dataset/uploads")
@@ -1405,8 +1072,7 @@ async def delete_dataset_upload(file_id: str, req: Request) -> Dict[str, Any]:
         )
 
 
-def _sanitize_user_id(user_id: str) -> str:
-    return academy_conversion.sanitize_user_id(user_id)
+_sanitize_user_id = academy_conversion.sanitize_user_id
 
 
 def _resolve_user_id(req: Request) -> str:
@@ -1414,42 +1080,28 @@ def _resolve_user_id(req: Request) -> str:
     return _sanitize_user_id(actor.strip())
 
 
-def _get_user_conversion_workspace(user_id: str) -> Dict[str, Path]:
-    return academy_conversion.get_user_conversion_workspace(user_id)
+_get_user_conversion_workspace = academy_conversion.get_user_conversion_workspace
 
 
-def _get_conversion_output_dir() -> Path:
-    return academy_conversion.get_conversion_output_dir()
+_get_conversion_output_dir = academy_conversion.get_conversion_output_dir
 
 
-def _get_user_conversion_lock_file(base_dir: Path) -> Path:
-    return academy_conversion.get_user_conversion_lock_file(base_dir)
+_get_user_conversion_lock_file = academy_conversion.get_user_conversion_lock_file
 
 
-@contextmanager
-def _user_conversion_metadata_lock(base_dir: Path):
-    with academy_conversion.user_conversion_metadata_lock(base_dir):
-        yield
+_user_conversion_metadata_lock = academy_conversion.user_conversion_metadata_lock
 
 
-def _load_user_conversion_metadata(metadata_file: Path) -> List[Dict[str, Any]]:
-    return academy_conversion.load_user_conversion_metadata(metadata_file)
+_load_user_conversion_metadata = academy_conversion.load_user_conversion_metadata
 
 
-def _save_user_conversion_metadata(
-    metadata_file: Path, items: List[Dict[str, Any]]
-) -> None:
-    academy_conversion.save_user_conversion_metadata(metadata_file, items)
+_save_user_conversion_metadata = academy_conversion.save_user_conversion_metadata
 
 
-def _normalize_conversion_item(raw: Dict[str, Any]) -> DatasetConversionFileInfo:
-    return academy_conversion.normalize_conversion_item(raw)
+_normalize_conversion_item = academy_conversion.normalize_conversion_item
 
 
-def _find_conversion_item(
-    items: List[Dict[str, Any]], file_id: str
-) -> Dict[str, Any] | None:
-    return academy_conversion.find_conversion_item(items, file_id)
+_find_conversion_item = academy_conversion.find_conversion_item
 
 
 def _resolve_workspace_file_path(
@@ -1458,29 +1110,18 @@ def _resolve_workspace_file_path(
     file_id: str,
     category: str,
 ) -> Path:
-    if category == "source":
-        base_dir = workspace["source_dir"]
-        base_dir_resolved = base_dir.resolve()
-        candidate = (base_dir / file_id).resolve()
-        if not candidate.is_relative_to(base_dir_resolved):
-            raise AcademyRouteError(status_code=400, detail="Invalid file path")
-        return candidate
-    elif category == "converted":
-        converted_output_dir = _get_conversion_output_dir()
-        converted_output_dir_resolved = converted_output_dir.resolve()
-        global_candidate = (converted_output_dir / file_id).resolve()
-        if global_candidate.is_relative_to(converted_output_dir_resolved):
-            if global_candidate.exists():
-                return global_candidate
-        # Backward-compat fallback for historical files created per-user.
-        legacy_dir = workspace["converted_dir"]
-        legacy_dir_resolved = legacy_dir.resolve()
-        legacy_candidate = (legacy_dir / file_id).resolve()
-        if not legacy_candidate.is_relative_to(legacy_dir_resolved):
-            raise AcademyRouteError(status_code=400, detail="Invalid file path")
-        return legacy_candidate
-    else:
-        raise AcademyRouteError(status_code=400, detail="Invalid file category")
+    try:
+        return academy_conversion.resolve_workspace_file_path(
+            workspace,
+            file_id=file_id,
+            category=category,
+            get_conversion_output_dir_fn=_get_conversion_output_dir,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "Invalid file category":
+            raise AcademyRouteError(status_code=400, detail=detail) from exc
+        raise AcademyRouteError(status_code=400, detail="Invalid file path") from exc
 
 
 def _load_conversion_item_from_workspace(
@@ -1488,12 +1129,16 @@ def _load_conversion_item_from_workspace(
     *,
     file_id: str,
 ) -> Dict[str, Any]:
-    with _user_conversion_metadata_lock(workspace["base_dir"]):
-        items = _load_user_conversion_metadata(workspace["metadata_file"])
-        item = _find_conversion_item(items, file_id)
-    if not item:
-        raise AcademyRouteError(status_code=404, detail="File not found")
-    return item
+    try:
+        return academy_conversion.load_conversion_item_from_workspace(
+            workspace,
+            file_id=file_id,
+            user_conversion_metadata_lock_fn=_user_conversion_metadata_lock,
+            load_user_conversion_metadata_fn=_load_user_conversion_metadata,
+            find_conversion_item_fn=_find_conversion_item,
+        )
+    except FileNotFoundError as exc:
+        raise AcademyRouteError(status_code=404, detail="File not found") from exc
 
 
 def _resolve_existing_user_file(
@@ -1503,63 +1148,58 @@ def _resolve_existing_user_file(
 ) -> tuple[Dict[str, Any], Path]:
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    item = _load_conversion_item_from_workspace(workspace, file_id=file_id)
-    file_path = _resolve_workspace_file_path(
-        workspace,
-        file_id=file_id,
-        category=str(item.get("category") or "source"),
-    )
-    if not file_path.exists():
-        raise AcademyRouteError(status_code=404, detail="File not found on disk")
-    return item, file_path
+    try:
+        item = _load_conversion_item_from_workspace(workspace, file_id=file_id)
+        file_path = _resolve_workspace_file_path(
+            workspace,
+            file_id=file_id,
+            category=str(item.get("category") or "source"),
+        )
+        if not file_path.exists():
+            raise AcademyRouteError(status_code=404, detail="File not found on disk")
+        return item, file_path
+    except AcademyRouteError:
+        raise
+    except FileNotFoundError as exc:
+        raise AcademyRouteError(
+            status_code=404, detail="File not found on disk"
+        ) from exc
 
 
-def _build_conversion_file_id(*, extension: str | None = None) -> str:
-    return academy_conversion.build_conversion_file_id(extension=extension)
+_build_conversion_file_id = academy_conversion.build_conversion_file_id
 
 
-def _serialize_records_to_markdown(records: List[Dict[str, str]]) -> str:
-    return academy_conversion.serialize_records_to_markdown(records)
+_serialize_records_to_markdown = academy_conversion.serialize_records_to_markdown
 
 
-def _records_from_text(content: str) -> List[Dict[str, str]]:
-    return academy_conversion.records_from_text(content)
+_records_from_text = academy_conversion.records_from_text
 
 
-def _records_from_json_file(source_path: Path) -> List[Dict[str, str]]:
-    return academy_conversion.records_from_json_file(source_path)
+_records_from_json_file = academy_conversion.records_from_json_file
 
 
-def _records_from_jsonl_file(source_path: Path) -> List[Dict[str, str]]:
-    return academy_conversion.records_from_jsonl_file(source_path)
+_records_from_jsonl_file = academy_conversion.records_from_jsonl_file
 
 
-def _records_from_csv_file(source_path: Path) -> List[Dict[str, str]]:
-    return academy_conversion.records_from_csv_file(source_path)
+_records_from_csv_file = academy_conversion.records_from_csv_file
 
 
-def _extract_text_from_pdf(source_path: Path) -> str:
-    return academy_conversion.extract_text_from_pdf(source_path)
+_extract_text_from_pdf = academy_conversion.extract_text_from_pdf
 
 
-def _extract_text_from_docx(source_path: Path) -> str:
-    return academy_conversion.extract_text_from_docx(source_path)
+_extract_text_from_docx = academy_conversion.extract_text_from_docx
 
 
-def _convert_with_pandoc(source_path: Path, output_path: Path) -> bool:
-    return academy_conversion.convert_with_pandoc(source_path, output_path)
+_convert_with_pandoc = academy_conversion.convert_with_pandoc
 
 
-def _markdown_from_json(source_path: Path) -> str:
-    return academy_conversion.markdown_from_json(source_path)
+_markdown_from_json = academy_conversion.markdown_from_json
 
 
-def _markdown_from_jsonl(source_path: Path) -> str:
-    return academy_conversion.markdown_from_jsonl(source_path)
+_markdown_from_jsonl = academy_conversion.markdown_from_jsonl
 
 
-def _markdown_from_csv(source_path: Path) -> str:
-    return academy_conversion.markdown_from_csv(source_path)
+_markdown_from_csv = academy_conversion.markdown_from_csv
 
 
 def _markdown_from_binary_document(source_path: Path, ext: str) -> str:
@@ -1616,76 +1256,46 @@ def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
     return _records_from_text(text)
 
 
-def _write_target_markdown(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    academy_conversion.write_target_markdown(out_file, records)
+_write_target_markdown = academy_conversion.write_target_markdown
 
 
-def _write_target_text(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    academy_conversion.write_target_text(out_file, records)
+_write_target_text = academy_conversion.write_target_text
 
 
-def _write_target_json(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    academy_conversion.write_target_json(out_file, records)
+_write_target_json = academy_conversion.write_target_json
 
 
-def _write_target_jsonl(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    academy_conversion.write_target_jsonl(out_file, records)
+_write_target_jsonl = academy_conversion.write_target_jsonl
 
 
-def _write_target_csv(out_file: TextIO, records: List[Dict[str, str]]) -> None:
-    academy_conversion.write_target_csv(out_file, records)
+_write_target_csv = academy_conversion.write_target_csv
 
 
-def _write_records_as_target(
-    records: List[Dict[str, str]],
-    target_format: str,
-) -> Path:
-    return academy_conversion.write_records_as_target(records, target_format)
+_write_records_as_target = academy_conversion.write_records_as_target
 
 
-def _build_conversion_item(
-    *,
-    file_id: str,
-    filename: str,
-    path: Path,
-    category: str,
-    source_file_id: str | None = None,
-    target_format: str | None = None,
-) -> Dict[str, Any]:
-    return academy_conversion.build_conversion_item(
-        file_id=file_id,
-        filename=filename,
-        path=path,
-        category=category,
-        source_file_id=source_file_id,
-        target_format=target_format,
-    )
+_build_conversion_item = academy_conversion.build_conversion_item
 
 
 def _get_selected_converted_file_ids(req: Request) -> List[str]:
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    with _user_conversion_metadata_lock(workspace["base_dir"]):
-        items = _load_user_conversion_metadata(workspace["metadata_file"])
-    selected_ids: List[str] = []
-    for item in items:
-        if str(item.get("category") or "") != "converted":
-            continue
-        if not bool(item.get("selected_for_training", False)):
-            continue
-        file_id = str(item.get("file_id") or "")
-        if file_id and _check_path_traversal(file_id):
-            selected_ids.append(file_id)
-    return selected_ids
+    return academy_conversion.get_selected_converted_file_ids(
+        workspace=workspace,
+        user_conversion_metadata_lock_fn=_user_conversion_metadata_lock,
+        load_user_conversion_metadata_fn=_load_user_conversion_metadata,
+        check_path_traversal_fn=_check_path_traversal,
+    )
 
 
 def _resolve_conversion_file_ids_for_dataset(
     req: Request,
     requested_ids: List[str] | None = None,
 ) -> List[str]:
-    if requested_ids is not None:
-        return requested_ids
-    return _get_selected_converted_file_ids(req)
+    return academy_conversion.resolve_conversion_file_ids_for_dataset(
+        requested_ids=requested_ids,
+        selected_ids_fn=lambda: _get_selected_converted_file_ids(req),
+    )
 
 
 @router.get("/dataset/conversion/files")
@@ -1697,25 +1307,18 @@ async def list_dataset_conversion_files(req: Request) -> DatasetConversionListRe
 
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    with _user_conversion_metadata_lock(workspace["base_dir"]):
-        items = _load_user_conversion_metadata(workspace["metadata_file"])
-
-    source_files = [
-        _normalize_conversion_item(item)
-        for item in items
-        if str(item.get("category")) == "source"
-    ]
-    converted_files = [
-        _normalize_conversion_item(item)
-        for item in items
-        if str(item.get("category")) == "converted"
-    ]
-
-    return DatasetConversionListResponse(
+    payload = academy_conversion.list_conversion_files_for_user(
         user_id=user_id,
-        workspace_dir=str(workspace["base_dir"]),
-        source_files=source_files,
-        converted_files=converted_files,
+        workspace=workspace,
+        user_conversion_metadata_lock_fn=_user_conversion_metadata_lock,
+        load_user_conversion_metadata_fn=_load_user_conversion_metadata,
+        normalize_conversion_item_fn=_normalize_conversion_item,
+    )
+    return DatasetConversionListResponse(
+        user_id=payload["user_id"],
+        workspace_dir=payload["workspace_dir"],
+        source_files=payload["source_files"],
+        converted_files=payload["converted_files"],
     )
 
 
@@ -1746,60 +1349,19 @@ async def upload_dataset_conversion_files(req: Request) -> Dict[str, Any]:
             status_code=400,
             detail=f"Too many files (max {SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST})",
         )
-
-    uploaded: List[Dict[str, Any]] = []
-    failed: List[Dict[str, str]] = []
-    with _user_conversion_metadata_lock(workspace["base_dir"]):
-        items = _load_user_conversion_metadata(workspace["metadata_file"])
-        for file in files:
-            filename, filename_error = _validate_upload_filename(
-                file,
-                SETTINGS,
-                allowed_extensions=getattr(
-                    SETTINGS,
-                    "ACADEMY_ALLOWED_CONVERSION_EXTENSIONS",
-                    SETTINGS.ACADEMY_ALLOWED_EXTENSIONS,
-                ),
-            )
-            if filename_error:
-                failed.append(filename_error)
-                continue
-            if not filename:
-                continue
-
-            file_id = _build_conversion_file_id(extension=Path(filename).suffix.lower())
-            file_path = workspace["source_dir"] / file_id
-            persisted, persist_error = await _persist_with_limits(
-                file=file,
-                file_path=file_path,
-                filename=filename,
-                settings=SETTINGS,
-            )
-            if persist_error or not persisted:
-                failed.append(
-                    persist_error
-                    or {"name": filename, "error": "Failed to persist uploaded file"}
-                )
-                continue
-
-            item = _build_conversion_item(
-                file_id=file_id,
-                filename=filename,
-                path=file_path,
-                category="source",
-            )
-            items.append(item)
-            uploaded.append(item)
-
-        _save_user_conversion_metadata(workspace["metadata_file"], items)
-    return {
-        "success": len(uploaded) > 0,
-        "uploaded": len(uploaded),
-        "failed": len(failed),
-        "files": [_normalize_conversion_item(item).model_dump() for item in uploaded],
-        "errors": failed,
-        "message": f"Uploaded {len(uploaded)} file(s), failed {len(failed)}",
-    }
+    return await academy_conversion.upload_conversion_files_for_user(
+        files=files,
+        workspace=workspace,
+        settings=SETTINGS,
+        user_conversion_metadata_lock_fn=_user_conversion_metadata_lock,
+        load_user_conversion_metadata_fn=_load_user_conversion_metadata,
+        save_user_conversion_metadata_fn=_save_user_conversion_metadata,
+        validate_upload_filename_fn=_validate_upload_filename,
+        persist_with_limits_fn=_persist_with_limits,
+        build_conversion_file_id_fn=_build_conversion_file_id,
+        build_conversion_item_fn=_build_conversion_item,
+        normalize_conversion_item_fn=_normalize_conversion_item,
+    )
 
 
 @router.post(
@@ -1821,72 +1383,49 @@ async def convert_dataset_file(
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
-    if not _check_path_traversal(file_id):
-        raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
-
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    with _user_conversion_metadata_lock(workspace["base_dir"]):
-        items = _load_user_conversion_metadata(workspace["metadata_file"])
-        source_item = _find_conversion_item(items, file_id)
-        if not source_item:
-            raise HTTPException(status_code=404, detail="Source file not found")
-        if str(source_item.get("category")) != "source":
-            raise HTTPException(
-                status_code=400, detail="Conversion requires source file"
-            )
-
-        try:
-            source_path = _resolve_workspace_file_path(
-                workspace,
-                file_id=file_id,
-                category="source",
-            )
-        except AcademyRouteError as e:
-            raise _to_http_exception(e) from e
-        if not source_path.exists():
-            raise HTTPException(status_code=404, detail="Source file not found on disk")
-
-        target_format = payload.target_format.lower()
-        source_stem = Path(str(source_item.get("name") or "dataset")).name
-        source_stem = Path(source_stem).stem
-        converted_name = f"{source_stem}.{target_format}"
-
-        try:
-            records = _source_to_records(source_path)
-            if not records:
-                raise ValueError("No valid records produced from source file")
-            converted_path = _write_records_as_target(
-                records,
-                target_format,
-            )
-            converted_file_id = converted_path.name
-        except (ValueError, OSError) as exc:
-            raise HTTPException(
-                status_code=400, detail=f"Conversion failed: {str(exc)}"
-            ) from exc
-        except Exception as exc:
-            logger.exception(
-                "Unexpected conversion error for user=%s file_id=%s target=%s",
-                user_id,
-                file_id,
-                target_format,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail="Conversion failed due to internal error",
-            ) from exc
-
-        converted_item = _build_conversion_item(
-            file_id=converted_file_id,
-            filename=converted_name,
-            path=converted_path,
-            category="converted",
-            source_file_id=file_id,
+    target_format = payload.target_format.lower()
+    try:
+        source_item, converted_item = academy_conversion.convert_dataset_source_file(
+            file_id=file_id,
+            workspace=workspace,
             target_format=target_format,
+            check_path_traversal_fn=_check_path_traversal,
+            user_conversion_metadata_lock_fn=_user_conversion_metadata_lock,
+            load_user_conversion_metadata_fn=_load_user_conversion_metadata,
+            save_user_conversion_metadata_fn=_save_user_conversion_metadata,
+            find_conversion_item_fn=_find_conversion_item,
+            resolve_workspace_file_path_fn=_resolve_workspace_file_path,
+            source_to_records_fn=_source_to_records,
+            write_records_as_target_fn=_write_records_as_target,
+            build_conversion_item_fn=_build_conversion_item,
         )
-        items.append(converted_item)
-        _save_user_conversion_metadata(workspace["metadata_file"], items)
+    except AcademyRouteError as e:
+        raise _to_http_exception(e) from e
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ValueError, OSError) as exc:
+        detail = str(exc)
+        if (
+            detail.startswith("Invalid file_id:")
+            or detail == "Conversion requires source file"
+        ):
+            raise HTTPException(status_code=400, detail=detail) from exc
+        raise HTTPException(
+            status_code=400, detail=f"Conversion failed: {detail}"
+        ) from exc
+    except Exception as exc:
+        logger.exception(
+            "Unexpected conversion error for user=%s file_id=%s target=%s",
+            user_id,
+            file_id,
+            target_format,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Conversion failed due to internal error",
+        ) from exc
 
     return DatasetConversionResult(
         success=True,
@@ -1914,23 +1453,23 @@ async def set_dataset_conversion_training_selection(
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
-    if not _check_path_traversal(file_id):
-        raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id}")
-
     user_id = _resolve_user_id(req)
     workspace = _get_user_conversion_workspace(user_id)
-    with _user_conversion_metadata_lock(workspace["base_dir"]):
-        items = _load_user_conversion_metadata(workspace["metadata_file"])
-        item = _find_conversion_item(items, file_id)
-        if not item:
-            raise HTTPException(status_code=404, detail="File not found")
-        if str(item.get("category") or "") != "converted":
-            raise HTTPException(
-                status_code=400,
-                detail="Only converted files can be marked for training",
-            )
-        item["selected_for_training"] = bool(payload.selected_for_training)
-        _save_user_conversion_metadata(workspace["metadata_file"], items)
+    try:
+        item = academy_conversion.set_conversion_training_selection(
+            file_id=file_id,
+            selected_for_training=bool(payload.selected_for_training),
+            workspace=workspace,
+            check_path_traversal_fn=_check_path_traversal,
+            user_conversion_metadata_lock_fn=_user_conversion_metadata_lock,
+            load_user_conversion_metadata_fn=_load_user_conversion_metadata,
+            save_user_conversion_metadata_fn=_save_user_conversion_metadata,
+            find_conversion_item_fn=_find_conversion_item,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _normalize_conversion_item(item)
 
 
@@ -1966,13 +1505,9 @@ async def preview_dataset_conversion_file(
             detail="Preview supported only for .txt and .md files",
         )
 
-    max_chars = 20_000
-    async with await anyio.open_file(
-        file_path, "r", encoding="utf-8", errors="ignore"
-    ) as file_obj:
-        preview_plus_one = await file_obj.read(max_chars + 1)
-    truncated = len(preview_plus_one) > max_chars
-    preview_text = preview_plus_one[:max_chars]
+    preview_text, truncated = await academy_conversion.read_text_preview(
+        file_path=file_path
+    )
 
     return DatasetFilePreviewResponse(
         file_id=file_id,
@@ -2008,100 +1543,12 @@ async def download_dataset_conversion_file(
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
-    media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+    media_type = academy_conversion.guess_media_type(file_path)
     return FileResponse(
         path=str(file_path),
         filename=str(item.get("name") or file_path.name),
         media_type=media_type,
     )
-
-
-def _ingest_uploads_for_preview(
-    curator: Any, upload_ids: List[str], warnings: List[str]
-) -> int:
-    uploads_count = 0
-    uploads_dir = _get_uploads_dir()
-    for upload_idx, file_id in enumerate(upload_ids, start=1):
-        if not _check_path_traversal(file_id):
-            warnings.append(f"Invalid file_id (path traversal): {file_id}")
-            continue
-        file_path = uploads_dir / file_id
-        if not file_path.exists():
-            warnings.append(f"Upload not found: {file_id}")
-            continue
-        try:
-            uploads_count += _ingest_upload_file(curator, file_path)
-        except Exception as e:
-            logger.warning(
-                "Failed to ingest upload entry during preview (idx=%s, error=%s)",
-                upload_idx,
-                type(e).__name__,
-            )
-            warnings.append(f"Failed to ingest {file_id}: {str(e)}")
-    return uploads_count
-
-
-def _ingest_converted_files_for_preview(
-    curator: Any,
-    req: Request,
-    conversion_file_ids: List[str],
-    warnings: List[str],
-) -> int:
-    converted_count = 0
-    for file_idx, file_id in enumerate(conversion_file_ids, start=1):
-        if not _check_path_traversal(file_id):
-            warnings.append(f"Invalid converted file_id (path traversal): {file_id}")
-            continue
-        try:
-            item, file_path = _resolve_existing_user_file(req, file_id=file_id)
-            if str(item.get("category") or "") != "converted":
-                warnings.append(f"File is not converted: {file_id}")
-                continue
-            converted_count += _ingest_upload_file(curator, file_path)
-        except AcademyRouteError as e:
-            warnings.append(f"Converted file unavailable ({file_id}): {e.detail}")
-        except HTTPException as e:
-            warnings.append(f"Converted file unavailable ({file_id}): {e.detail}")
-        except Exception as e:
-            logger.warning(
-                "Failed to ingest converted file during preview (idx=%s, error=%s)",
-                file_idx,
-                type(e).__name__,
-            )
-            warnings.append(f"Failed to ingest converted file {file_id}: {str(e)}")
-    return converted_count
-
-
-def _add_low_examples_warning(
-    warnings: List[str], total_examples: int, quality_profile: str
-) -> None:
-    recommended_min_examples = {
-        "strict": 150,
-        "balanced": 100,
-        "lenient": 50,
-    }.get(quality_profile, 100)
-    if total_examples >= recommended_min_examples:
-        return
-    warnings.append(
-        f"Low number of examples ({total_examples}). Recommended for profile "
-        f"'{quality_profile}': >= {recommended_min_examples}"
-    )
-
-
-def _build_preview_samples(curator: Any) -> List[Dict[str, str]]:
-    samples: List[Dict[str, str]] = []
-    if not hasattr(curator, "examples") or not curator.examples:
-        return samples
-    for example in curator.examples[:5]:
-        output = example.get("output", "")
-        samples.append(
-            {
-                "instruction": example.get("instruction", ""),
-                "input": example.get("input", ""),
-                "output": output[:200] + ("..." if len(output) > 200 else ""),
-            }
-        )
-    return samples
 
 
 @router.post(
@@ -2115,78 +1562,56 @@ async def preview_dataset(
     request: DatasetScopeRequest,
     req: Request,
 ) -> DatasetPreviewResponse:
-    """
-    Preview datasetu przed curate z wybranym scope.
-
-    Zwraca statystyki i sample bez zapisywania datasetu.
-
-    Args:
-        request: DatasetScopeRequest z wybranym scope
-
-    Returns:
-        DatasetPreviewResponse ze statystykami i samples
-    """
     try:
         _ensure_academy_enabled()
     except AcademyRouteError as e:
         raise _to_http_exception(e) from e
 
     try:
-        conversion_file_ids = _resolve_conversion_file_ids_for_dataset(
+        result = academy_training.preview_dataset_scope(
+            request=request,
             req=req,
-            requested_ids=request.conversion_file_ids,
-        )
-        logger.info(
-            "Previewing dataset: lessons=%s git=%s task_history=%s uploads=%s converted=%s",
-            request.include_lessons,
-            request.include_git,
-            request.include_task_history,
-            len(request.upload_ids or []),
-            len(conversion_file_ids),
-        )
-        curator = _get_dataset_curator()
-
-        # Wyczyść poprzednie przykłady
-        curator.clear()
-
-        by_source = _collect_scope_counts(curator, request)
-        warnings: List[str] = []
-
-        # Zbierz z uploadów
-        if request.upload_ids:
-            by_source["uploads"] = _ingest_uploads_for_preview(
+            resolve_conversion_file_ids_for_dataset_fn=_resolve_conversion_file_ids_for_dataset,
+            get_dataset_curator_fn=_get_dataset_curator,
+            collect_scope_counts_fn=_collect_scope_counts,
+            ingest_uploads_for_preview_fn=lambda curator,
+            upload_ids,
+            warnings: academy_uploads.ingest_uploads_for_preview(
                 curator=curator,
-                upload_ids=request.upload_ids,
+                upload_ids=upload_ids,
                 warnings=warnings,
-            )
-        if conversion_file_ids:
-            by_source["converted"] = _ingest_converted_files_for_preview(
+                uploads_dir=_get_uploads_dir(),
+                check_path_traversal_fn=_check_path_traversal,
+                ingest_upload_file_fn=_ingest_upload_file,
+            ),
+            ingest_converted_files_for_preview_fn=lambda curator,
+            req_obj,
+            conversion_file_ids,
+            warnings: academy_uploads.ingest_converted_files_for_preview(
                 curator=curator,
-                req=req,
                 conversion_file_ids=conversion_file_ids,
                 warnings=warnings,
-            )
-
-        # Filtruj niską jakość. quality_profile steruje progiem ostrzeżeń.
-        removed = curator.filter_low_quality()
-
-        # Statystyki
-        stats = curator.get_statistics()
-        total_examples = stats.get("total_examples", 0)
-
-        _add_low_examples_warning(
-            warnings=warnings,
-            total_examples=total_examples,
-            quality_profile=request.quality_profile,
+                check_path_traversal_fn=_check_path_traversal,
+                resolve_existing_user_file_fn=lambda *,
+                file_id: _resolve_existing_user_file(req_obj, file_id=file_id),
+                ingest_upload_file_fn=_ingest_upload_file,
+            ),
+            add_low_examples_warning_fn=lambda warnings,
+            total_examples,
+            quality_profile: academy_uploads.add_low_examples_warning(
+                warnings=warnings,
+                total_examples=total_examples,
+                quality_profile=quality_profile,
+            ),
+            build_preview_samples_fn=academy_uploads.build_preview_samples,
+            logger=logger,
         )
-        samples = _build_preview_samples(curator)
-
         return DatasetPreviewResponse(
-            total_examples=total_examples,
-            by_source=by_source,
-            removed_low_quality=removed,
-            warnings=warnings,
-            samples=samples,
+            total_examples=result["total_examples"],
+            by_source=result["by_source"],
+            removed_low_quality=result["removed_low_quality"],
+            warnings=result["warnings"],
+            samples=result["samples"],
         )
 
     except Exception as e:
@@ -2196,68 +1621,8 @@ async def preview_dataset(
         )
 
 
-def _append_training_record_if_valid(curator: Any, record: Dict[str, Any]) -> int:
-    if not _validate_training_record(record):
-        return 0
-    curator.examples.append(record)
-    return 1
-
-
 def _ingest_jsonl_upload(curator: Any, file_path: Path) -> int:
-    count = 0
-    with open(file_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-                count += _append_training_record_if_valid(curator, record)
-            except Exception as e:
-                logger.warning(f"Failed to parse JSONL line: {e}")
-    return count
-
-
-def _ingest_json_upload(curator: Any, file_path: Path) -> int:
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if isinstance(data, list):
-        return sum(_append_training_record_if_valid(curator, record) for record in data)
-    if isinstance(data, dict):
-        return _append_training_record_if_valid(curator, data)
-    return 0
-
-
-def _ingest_text_upload(curator: Any, file_path: Path) -> int:
-    count = 0
-    with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    sections = content.split("\n\n")
-    for i in range(0, len(sections) - 1, 2):
-        instruction = sections[i].strip()
-        output = sections[i + 1].strip() if i + 1 < len(sections) else ""
-        if not instruction or not output:
-            continue
-        count += _append_training_record_if_valid(
-            curator,
-            {"instruction": instruction, "input": "", "output": output},
-        )
-    return count
-
-
-def _ingest_csv_upload(curator: Any, file_path: Path) -> int:
-    import csv
-
-    count = 0
-    with open(file_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            record = {
-                "instruction": row.get("instruction", row.get("prompt", "")),
-                "input": row.get("input", ""),
-                "output": row.get("output", row.get("response", "")),
-            }
-            count += _append_training_record_if_valid(curator, record)
-    return count
+    return academy_uploads.ingest_jsonl_upload(curator, file_path, logger=logger)
 
 
 def _ingest_upload_file(curator, file_path: Path) -> int:
@@ -2267,40 +1632,12 @@ def _ingest_upload_file(curator, file_path: Path) -> int:
     Returns:
         Liczba dodanych rekordów
     """
-    ext = file_path.suffix.lower()
-    ingest_by_extension = {
-        ".jsonl": _ingest_jsonl_upload,
-        ".json": _ingest_json_upload,
-        ".md": _ingest_text_upload,
-        ".txt": _ingest_text_upload,
-        ".csv": _ingest_csv_upload,
-    }
-
-    try:
-        handler = ingest_by_extension.get(ext)
-        if not handler:
-            return 0
-        return handler(curator, file_path)
-
-    except Exception as e:
-        logger.error(f"Failed to ingest file {file_path}: {e}")
-        raise
+    return academy_uploads.ingest_upload_file(curator, file_path, logger=logger)
 
 
 def _validate_training_record(record: Dict[str, Any]) -> bool:
     """Waliduje czy rekord treningowy jest poprawny."""
-    if not isinstance(record, dict):
-        return False
-
-    # Required fields
-    instruction = record.get("instruction", "")
-    output = record.get("output", "")
-
-    # Min length check
-    if len(instruction) < 10 or len(output) < 10:
-        return False
-
-    return True
+    return academy_uploads.validate_training_record(record)
 
 
 def _add_trainable_model_from_catalog(

@@ -140,9 +140,11 @@ def test_remove_container_by_name_if_exists_remove_error_is_swallowed():
         containers=SimpleNamespace(get=MagicMock(return_value=existing))
     )
     habitat = _new_habitat_with_client(client)
+    habitat._wait_until_container_absent = MagicMock()
 
     habitat._remove_container_by_name_if_exists()
     existing.remove.assert_called_once_with(force=True)
+    habitat._wait_until_container_absent.assert_called_once()
 
 
 def test_create_container_pulls_missing_image_and_runs(tmp_path, monkeypatch):

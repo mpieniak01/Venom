@@ -110,6 +110,31 @@ New-code coverage run behavior:
 - if `ripgrep` (`rg`) is unavailable locally, resolver falls back to pure Python scanning
 - CI backend-lite installs `ripgrep` for faster selection and deterministic logs
 
+Deterministic new-code gate (stability model):
+
+- per-file floor targets are defined in `config/coverage-file-floor.txt`
+- the resolver (`scripts/resolve_sonar_new_code_tests.py`) force-includes floor anchor tests first (module-oriented tests like `tests/test_<module>.py`, plus selected naming variants)
+- CI backend-lite runs with `NEW_CODE_TIME_BUDGET_SEC=0` to avoid budget-based random drops in the fast lane
+- this removes "pass/fail drift" caused by timing variance and keeps local/CI behavior aligned
+
+How to verify coverage locally before push:
+
+```bash
+make check-new-code-coverage
+```
+
+Read these outputs:
+
+- changed-lines verdict (`changed-lines coverage`)
+- per-file floor verdict (`OK: coverage floors passed for ... files`)
+- artifacts: `test-results/sonar/python-coverage.xml`, `test-results/sonar/python-junit.xml`
+
+Quality snapshot (reference, 2026-02-28):
+
+- Sonar new-code coverage: `90.22%` (gate target: `>=80%`)
+- Sonar overall coverage: `86.9%`
+- Quality Gate: `Passed`
+
 ### Level 4: Release-oriented validation (when needed)
 
 Goal: higher confidence for larger changes or pre-release checks.

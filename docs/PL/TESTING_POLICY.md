@@ -110,6 +110,31 @@ Zachowanie runu new-code coverage:
 - gdy lokalnie nie ma `ripgrep` (`rg`), resolver używa fallbacku Python (bez blokowania runu)
 - w CI backend-lite doinstalowuje `ripgrep` dla szybszego wyboru i czytelnych logów
 
+Deterministyczna bramka new-code (model stabilności):
+
+- cele minimalnego pokrycia per plik są trzymane w `config/coverage-file-floor.txt`
+- resolver (`scripts/resolve_sonar_new_code_tests.py`) najpierw wymusza testy-kotwice dla floor (testy modułowe typu `tests/test_<module>.py` oraz wybrane warianty nazewnictwa)
+- job `backend-lite` w CI działa z `NEW_CODE_TIME_BUDGET_SEC=0`, więc nie ucina dynamicznie listy testów przez budżet czasu
+- eliminuje to drift pass/fail wynikający z wahań czasu i wyrównuje zachowanie lokalne z CI
+
+Jak sprawdzić pokrycie lokalnie przed push:
+
+```bash
+make check-new-code-coverage
+```
+
+Na wyjściu sprawdzaj:
+
+- werdykt changed-lines (`changed-lines coverage`)
+- werdykt floor per plik (`OK: coverage floors passed for ... files`)
+- artefakty: `test-results/sonar/python-coverage.xml`, `test-results/sonar/python-junit.xml`
+
+Snapshot jakości (referencja, 2026-02-28):
+
+- Sonar new-code coverage: `90.22%` (wymagane: `>=80%`)
+- Sonar overall coverage: `86.9%`
+- Quality Gate: `Passed`
+
 ### Poziom 4: Walidacja pod wydanie (gdy potrzebna)
 
 Cel: wyższa pewność dla większych zmian lub przed release.

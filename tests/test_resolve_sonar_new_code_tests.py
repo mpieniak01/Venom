@@ -201,7 +201,7 @@ def test_load_coverage_floor_targets_parses_file(tmp_path):
     ]
 
 
-def test_coverage_floor_anchor_tests_selects_cheapest_related(monkeypatch):
+def test_coverage_floor_anchor_tests_prefers_direct_module_test(monkeypatch):
     module = _load_module()
     tests = [
         "tests/test_alpha.py",
@@ -221,20 +221,33 @@ def test_coverage_floor_anchor_tests_selects_cheapest_related(monkeypatch):
         lambda _changed, _tests: {"tests/test_alpha.py", "tests/test_beta.py"},
     )
     monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    anchors = module.coverage_floor_anchor_tests(tests, {})
+    assert anchors == {"tests/test_module_registry.py"}
+
+
+def test_coverage_floor_anchor_tests_prefers_named_module_test(monkeypatch):
+    module = _load_module()
+    tests = [
+        "tests/test_toolmaker_agent.py",
+        "tests/test_agents_skill_manager_paths.py",
+    ]
     monkeypatch.setattr(
         module,
-        "estimate_test_cost",
-        lambda path, _timings: (
-            5.0
-            if path.endswith("beta.py")
-            else 3.0
-            if path.endswith("module_registry.py")
-            else 1.0
-        ),
+        "load_coverage_floor_targets",
+        lambda _path=module.DEFAULT_COVERAGE_FLOOR_FILE: [
+            "venom_core/agents/toolmaker.py"
+        ],
     )
+    monkeypatch.setattr(
+        module,
+        "related_tests_for_modules",
+        lambda _changed, _tests: {"tests/test_agents_skill_manager_paths.py"},
+    )
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: True)
 
-    anchors = module.coverage_floor_anchor_tests(tests, {})
-    assert anchors == {"tests/test_alpha.py"}
+    anchors = module.coverage_floor_anchor_tests(tests, {}, exclude_slow_fastlane=True)
+    assert anchors == {"tests/test_toolmaker_agent.py"}
 
 
 def test_resolve_tests_prioritizes_floor_anchors_under_budget(monkeypatch, tmp_path):

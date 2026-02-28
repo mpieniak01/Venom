@@ -127,6 +127,7 @@ jobs:
             NEW_CODE_COV_TARGET=venom_core \
             NEW_CODE_COVERAGE_MIN=0 \
             NEW_CODE_CHANGED_LINES_MIN=80 \
+            NEW_CODE_TIME_BUDGET_SEC=0 \
             NEW_CODE_DIFF_BASE="${DIFF_BASE}" \
           | tee test-results/sonar/backend-lite.log
 

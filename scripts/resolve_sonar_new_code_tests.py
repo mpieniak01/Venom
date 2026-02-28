@@ -298,6 +298,26 @@ def coverage_floor_anchor_tests(
             continue
         stem = Path(module_path).stem
         direct = f"tests/test_{stem}.py"
+        preferred_candidates = (
+            direct,
+            f"tests/test_{stem}_agent.py",
+            f"tests/test_{stem}_coverage.py",
+            f"tests/test_{stem}_light_coverage.py",
+        )
+        selected_preferred = False
+        for preferred in preferred_candidates:
+            if preferred not in test_set:
+                continue
+            if not is_light_test(preferred):
+                continue
+            if exclude_slow_fastlane and not is_fast_safe_test(preferred):
+                continue
+            anchors.add(preferred)
+            selected_preferred = True
+            break
+        if selected_preferred:
+            continue
+
         candidates = related_tests_for_modules([module_path], tests)
         if direct in test_set:
             candidates.add(direct)

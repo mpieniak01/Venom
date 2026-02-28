@@ -187,3 +187,5 @@ tests/test_agents_skill_manager_paths.py
 tests/test_runtime_registry_light_coverage.py
 tests/test_governance_light_coverage.py
 tests/test_academy_conversion_light_coverage.py
+tests/test_sonar_additional_bootstrap_routes_coverage.py
+tests/test_sonar_additional_runtime_conversion_coverage.py

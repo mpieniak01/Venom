@@ -1,4 +1,4 @@
-"""Testy edge cases dla Academy API v2 - podniesienie pokrycia."""
+"""Testy edge cases dla Academy API (ingest/validation/helpers)."""
 
 from __future__ import annotations
 

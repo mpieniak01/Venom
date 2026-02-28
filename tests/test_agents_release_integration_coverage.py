@@ -1,4 +1,4 @@
-"""Coverage wave tests for PR-172C-07 agents: release_manager, integrator, tester, toolmaker, coder."""
+"""Coverage tests for release_manager, integrator, tester, toolmaker, and coder agents."""
 
 import tempfile
 from pathlib import Path
@@ -119,7 +119,13 @@ class TestReleaseManagerBranches:
         from venom_core.agents.release_manager import ReleaseManagerAgent
 
         commits = [
-            {"type": "feat", "breaking": True, "hash": "a", "message": "x", "scope": None}
+            {
+                "type": "feat",
+                "breaking": True,
+                "hash": "a",
+                "message": "x",
+                "scope": None,
+            }
         ]
         assert ReleaseManagerAgent._resolve_release_type("auto", commits) == "major"
 
@@ -128,7 +134,13 @@ class TestReleaseManagerBranches:
         from venom_core.agents.release_manager import ReleaseManagerAgent
 
         commits = [
-            {"type": "feat", "breaking": False, "hash": "a", "message": "x", "scope": None}
+            {
+                "type": "feat",
+                "breaking": False,
+                "hash": "a",
+                "message": "x",
+                "scope": None,
+            }
         ]
         assert ReleaseManagerAgent._resolve_release_type("auto", commits) == "minor"
 
@@ -137,7 +149,13 @@ class TestReleaseManagerBranches:
         from venom_core.agents.release_manager import ReleaseManagerAgent
 
         commits = [
-            {"type": "fix", "breaking": False, "hash": "a", "message": "x", "scope": None}
+            {
+                "type": "fix",
+                "breaking": False,
+                "hash": "a",
+                "message": "x",
+                "scope": None,
+            }
         ]
         assert ReleaseManagerAgent._resolve_release_type("auto", commits) == "patch"
 
@@ -145,7 +163,15 @@ class TestReleaseManagerBranches:
         """_resolve_release_type returns given type when not 'auto'."""
         from venom_core.agents.release_manager import ReleaseManagerAgent
 
-        commits = [{"type": "fix", "breaking": True, "hash": "a", "message": "x", "scope": None}]
+        commits = [
+            {
+                "type": "fix",
+                "breaking": True,
+                "hash": "a",
+                "message": "x",
+                "scope": None,
+            }
+        ]
         assert ReleaseManagerAgent._resolve_release_type("patch", commits) == "patch"
 
     # -- _merge_changelog branches --
@@ -189,10 +215,34 @@ class TestReleaseManagerBranches:
     def test_generate_changelog_all_sections(self, agent):
         """_generate_changelog renders breaking, features, fixes, other."""
         commits = [
-            {"hash": "a1", "type": "feat", "scope": "auth", "message": "add login", "breaking": True},
-            {"hash": "b2", "type": "feat", "scope": None, "message": "add dashboard", "breaking": False},
-            {"hash": "c3", "type": "fix", "scope": None, "message": "fix crash", "breaking": False},
-            {"hash": "d4", "type": "chore", "scope": None, "message": "update deps", "breaking": False},
+            {
+                "hash": "a1",
+                "type": "feat",
+                "scope": "auth",
+                "message": "add login",
+                "breaking": True,
+            },
+            {
+                "hash": "b2",
+                "type": "feat",
+                "scope": None,
+                "message": "add dashboard",
+                "breaking": False,
+            },
+            {
+                "hash": "c3",
+                "type": "fix",
+                "scope": None,
+                "message": "fix crash",
+                "breaking": False,
+            },
+            {
+                "hash": "d4",
+                "type": "chore",
+                "scope": None,
+                "message": "update deps",
+                "breaking": False,
+            },
         ]
         result = agent._generate_changelog(commits)
         assert "Breaking Changes" in result
@@ -592,7 +642,9 @@ class TestTesterBranches:
         agent.browser_skill.get_text_content = AsyncMock(
             return_value="Welcome back, testuser!"
         )
-        steps = [{"action": "verify_text", "selector": ".welcome", "expected": "Welcome"}]
+        steps = [
+            {"action": "verify_text", "selector": ".welcome", "expected": "Welcome"}
+        ]
         result = await agent.run_e2e_scenario("http://localhost", steps)
         assert "✅ Tekst OK" in result
 
@@ -601,9 +653,7 @@ class TestTesterBranches:
     async def test_run_e2e_verify_text_failure(self, agent):
         """run_e2e_scenario verify_text fails when expected text not found."""
         agent.browser_skill.get_text_content = AsyncMock(return_value="Error 404")
-        steps = [
-            {"action": "verify_text", "selector": ".msg", "expected": "Welcome"}
-        ]
+        steps = [{"action": "verify_text", "selector": ".msg", "expected": "Welcome"}]
         result = await agent.run_e2e_scenario("http://localhost", steps)
         assert "❌ BŁĄD" in result or "BŁĄD" in result
 
@@ -717,7 +767,9 @@ class TestToolmakerBranches:
 
     @pytest.fixture
     def agent(self, mock_kernel, mock_file_skill):
-        with patch("venom_core.agents.toolmaker.FileSkill", return_value=mock_file_skill):
+        with patch(
+            "venom_core.agents.toolmaker.FileSkill", return_value=mock_file_skill
+        ):
             from venom_core.agents.toolmaker import ToolmakerAgent
 
             return ToolmakerAgent(mock_kernel, file_skill=mock_file_skill)
@@ -811,9 +863,7 @@ class TestToolmakerBranches:
         """create_test handles file write errors."""
         with patch.object(agent, "process", new_callable=AsyncMock) as mock_proc:
             mock_proc.return_value = "def test_foo(): pass"
-            agent.file_skill.write_file = AsyncMock(
-                side_effect=IOError("disk full")
-            )
+            agent.file_skill.write_file = AsyncMock(side_effect=IOError("disk full"))
             success, msg = await agent.create_test("my_tool", "code")
         assert success is False
 
@@ -849,7 +899,9 @@ class TestCoderBranches:
         with (
             patch("venom_core.agents.coder.FileSkill", return_value=mock_file_skill),
             patch("venom_core.agents.coder.ShellSkill", return_value=mock_shell_skill),
-            patch("venom_core.agents.coder.ComposeSkill", return_value=mock_compose_skill),
+            patch(
+                "venom_core.agents.coder.ComposeSkill", return_value=mock_compose_skill
+            ),
         ):
             from venom_core.agents.coder import CoderAgent
 
@@ -860,11 +912,15 @@ class TestCoderBranches:
             return agent
 
     @pytest.fixture
-    def agent_no_repair(self, mock_kernel, mock_file_skill, mock_shell_skill, mock_compose_skill):
+    def agent_no_repair(
+        self, mock_kernel, mock_file_skill, mock_shell_skill, mock_compose_skill
+    ):
         with (
             patch("venom_core.agents.coder.FileSkill", return_value=mock_file_skill),
             patch("venom_core.agents.coder.ShellSkill", return_value=mock_shell_skill),
-            patch("venom_core.agents.coder.ComposeSkill", return_value=mock_compose_skill),
+            patch(
+                "venom_core.agents.coder.ComposeSkill", return_value=mock_compose_skill
+            ),
         ):
             from venom_core.agents.coder import CoderAgent
 

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "description": "Explicit lane overrides for tests that must stay in ci-lite.",
+  "overrides": [
+    {
+      "group": "sonar-new-code",
+      "test": "tests/test_architecture_contracts_guard.py",
+      "lane": "ci-lite",
+      "rationale": "Architecture contract validation is a mandatory fast-lane guard."
+    },
+    {
+      "group": "sonar-new-code",
+      "test": "tests/test_environment_policy.py",
+      "lane": "ci-lite",
+      "rationale": "Environment policy checks must fail early in mandatory CI-lite lane."
+    },
+    {
+      "group": "sonar-new-code",
+      "test": "tests/test_preprod_ops_scripts.py",
+      "lane": "ci-lite",
+      "rationale": "Preprod operational script guards are safety-critical for fast feedback."
+    },
+    {
+      "group": "sonar-new-code",
+      "test": "tests/test_workflow_operations.py",
+      "lane": "ci-lite",
+      "rationale": "Workflow operations are core backend control-plane regressions."
+    }
+  ]
+}

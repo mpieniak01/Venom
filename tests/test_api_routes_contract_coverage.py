@@ -1,4 +1,4 @@
-"""Contract/unit tests for 8 API route modules — PR-172C-09 coverage wave.
+"""Contract/unit tests for 8 API route modules.
 
 Covers:
 - venom_core/api/routes/workflow_operations.py

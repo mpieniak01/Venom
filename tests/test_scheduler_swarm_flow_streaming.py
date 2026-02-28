@@ -1,21 +1,21 @@
-"""Tests for PR-172C-03: FlowRouter, StreamingHandler, BackgroundScheduler (gaps), Swarm (gaps)."""
+"""Tests for FlowRouter, StreamingHandler, BackgroundScheduler (gaps), and Swarm."""
+
+# ruff: noqa: E402
 
 from __future__ import annotations
 
-import asyncio
 import time
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
+from venom_core.core.flow_router import FlowRouter
+
 # ---------------------------------------------------------------------------
 # FlowRouter
 # ---------------------------------------------------------------------------
-
-from venom_core.core.flow_router import FlowRouter
 
 
 class TestFlowRouterInit:
@@ -134,7 +134,9 @@ class TestStreamingHandlerShouldEmitPartial:
     def test_always_emits_before_first_chunk(self):
         """_should_emit_partial returns True when first_chunk_sent=False."""
         handler = StreamingHandler(state_manager=MagicMock())
-        result = handler._should_emit_partial(first_chunk_sent=False, now=10.0, last_partial_emit=9.99)
+        result = handler._should_emit_partial(
+            first_chunk_sent=False, now=10.0, last_partial_emit=9.99
+        )
         assert result is True
 
     def test_emits_after_interval_elapsed(self):
@@ -306,7 +308,7 @@ class TestStreamingHandlerCreateStreamCallback:
 # BackgroundScheduler — uncovered gaps
 # ---------------------------------------------------------------------------
 
-from venom_core.core.scheduler import BackgroundScheduler, STATE_PAUSED, STATE_RUNNING, STATE_STOPPED
+from venom_core.core.scheduler import STATE_PAUSED, STATE_RUNNING, BackgroundScheduler
 
 
 @pytest.fixture
@@ -423,9 +425,11 @@ class TestBackgroundSchedulerGetJobs:
         """get_jobs should include job metadata when job is in registry."""
         await scheduler.start()
         try:
+
             def dummy_func():
                 pass
-            job_id = scheduler.add_interval_job(
+
+            scheduler.add_interval_job(
                 func=dummy_func,
                 seconds=30,
                 job_id="test_job",
@@ -442,8 +446,10 @@ class TestBackgroundSchedulerGetJobs:
         """get_jobs should handle datetime next_run_time attribute correctly."""
         await scheduler.start()
         try:
+
             def dummy_func():
                 pass
+
             scheduler.add_interval_job(func=dummy_func, seconds=60, job_id="j1")
             jobs = scheduler.get_jobs()
             assert isinstance(jobs, list)
@@ -462,8 +468,10 @@ class TestBackgroundSchedulerGetJobStatus:
         """get_job_status should return dict with job info for existing job."""
         await scheduler.start()
         try:
+
             def dummy_func():
                 pass
+
             scheduler.add_interval_job(
                 func=dummy_func,
                 seconds=30,
@@ -543,7 +551,9 @@ class TestBackgroundSchedulerScheduleMethods:
         await scheduler.start()
         try:
             dream_engine = MagicMock()
-            job_id = scheduler.schedule_nightly_dreaming(dream_engine, start_hour=2, end_hour=6)
+            job_id = scheduler.schedule_nightly_dreaming(
+                dream_engine, start_hour=2, end_hour=6
+            )
             assert job_id == "nightly_dreaming"
             jobs = scheduler.get_jobs()
             assert any(j["id"] == "nightly_dreaming" for j in jobs)
@@ -556,7 +566,9 @@ class TestBackgroundSchedulerScheduleMethods:
         await scheduler.start()
         try:
             dream_engine = MagicMock()
-            job_id = scheduler.schedule_idle_dreaming(dream_engine, check_interval_minutes=5)
+            job_id = scheduler.schedule_idle_dreaming(
+                dream_engine, check_interval_minutes=5
+            )
             assert job_id == "idle_dreaming_check"
             jobs = scheduler.get_jobs()
             assert any(j["id"] == "idle_dreaming_check" for j in jobs)
@@ -569,7 +581,11 @@ class TestBackgroundSchedulerScheduleMethods:
 # ---------------------------------------------------------------------------
 
 import venom_core.core.swarm as swarm_mod
-from venom_core.core.swarm import VenomAgent, create_venom_agent_wrapper, extract_venom_tools
+from venom_core.core.swarm import (
+    VenomAgent,
+    create_venom_agent_wrapper,
+    extract_venom_tools,
+)
 
 
 class DummyAgent:
@@ -674,7 +690,9 @@ class TestVenomAgentIsKernelMethod:
                 pass
 
         plugin = MockPlugin()
-        assert va._is_kernel_method(plugin, "_private_func", plugin._private_func) is False
+        assert (
+            va._is_kernel_method(plugin, "_private_func", plugin._private_func) is False
+        )
 
     def test_is_kernel_method_returns_false_when_not_in_class_dict(self, monkeypatch):
         """_is_kernel_method should return False when method not in class __dict__."""
@@ -684,8 +702,10 @@ class TestVenomAgentIsKernelMethod:
             pass
 
         plugin = MockPlugin()
+
         def not_in_class_dict():
             pass
+
         assert va._is_kernel_method(plugin, "some_func", not_in_class_dict) is False
 
     def test_is_kernel_method_returns_true_for_kernel_decorated(self, monkeypatch):
@@ -727,5 +747,7 @@ class TestCreateVenomAgentWrapper:
             swarm_mod.VenomAgent, "_register_venom_functions", lambda self: None
         )
         agent = DummyAgent(kernel=DummyKernel())
-        wrapper = create_venom_agent_wrapper(agent, "Agent", system_message="Custom prompt")
+        wrapper = create_venom_agent_wrapper(
+            agent, "Agent", system_message="Custom prompt"
+        )
         assert wrapper.system_message == "Custom prompt"

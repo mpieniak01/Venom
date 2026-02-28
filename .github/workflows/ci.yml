@@ -38,11 +38,38 @@ jobs:
             exit 1
           fi
 
+  architecture-drift-guard:
+    name: Architecture drift guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: [forbidden-paths]
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-ci-lite.txt
+
+      - name: Architecture contracts guard
+        run: |
+          make architecture-drift-check
+
   backend-lite:
     name: Backend lite (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [forbidden-paths]
+    needs: [forbidden-paths, architecture-drift-guard]
     env:
       CI: "true"
       PYTHONUNBUFFERED: "1"
@@ -67,6 +94,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ripgrep
+
+      - name: Test lane contracts guard
+        run: |
+          make test-lane-contracts-check
 
       - name: Preprod readonly smoke
         run: |
@@ -183,7 +214,7 @@ jobs:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [backend-lite, frontend-lite, openapi-contract]
+    needs: [architecture-drift-guard, backend-lite, frontend-lite, openapi-contract]
     # secrets context is not available in job-level `if`, so gate by event/repo only.
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     env:

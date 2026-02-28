@@ -189,3 +189,9 @@ tests/test_governance_light_coverage.py
 tests/test_academy_conversion_light_coverage.py
 tests/test_sonar_additional_bootstrap_routes_coverage.py
 tests/test_sonar_additional_runtime_conversion_coverage.py
+tests/test_tasks_stream_service.py
+tests/test_llm_simple_payload_service.py
+tests/test_providers_service.py
+tests/test_knowledge_graph_service.py
+tests/test_knowledge_context_service.py
+tests/test_memory_graph_service.py

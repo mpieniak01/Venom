@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 from datetime import datetime
 from threading import Lock
@@ -14,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
+from venom_core.services import remote_models_service
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.logger import get_logger
 
@@ -104,43 +104,24 @@ _provider_probe_cache: dict[str, dict[str, Any]] = {}
 
 
 def _env_int(name: str, default: int) -> int:
-    raw = (os.getenv(name) or "").strip()
-    if not raw:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
+    return remote_models_service.env_int(name, default)
 
 
 def _catalog_ttl_seconds() -> int:
-    return max(
-        30,
-        _env_int(
-            "VENOM_REMOTE_MODELS_CATALOG_TTL_SECONDS", _DEFAULT_CATALOG_TTL_SECONDS
-        ),
-    )
+    return remote_models_service.catalog_ttl_seconds()
 
 
 def _provider_probe_ttl_seconds() -> int:
-    return max(
-        10,
-        _env_int(
-            "VENOM_REMOTE_MODELS_PROVIDER_PROBE_TTL_SECONDS",
-            _DEFAULT_PROVIDER_PROBE_TTL_SECONDS,
-        ),
-    )
+    return remote_models_service.provider_probe_ttl_seconds()
 
 
 def _remote_timeout_seconds() -> float:
-    return max(
-        1.0,
-        min(
-            float(
-                getattr(SETTINGS, "OPENAI_API_TIMEOUT", _DEFAULT_REMOTE_TIMEOUT_SECONDS)
-            ),
-            20.0,
-        ),
+    return remote_models_service.remote_timeout_seconds(
+        openai_api_timeout=getattr(
+            SETTINGS,
+            "OPENAI_API_TIMEOUT",
+            _DEFAULT_REMOTE_TIMEOUT_SECONDS,
+        )
     )
 
 
@@ -159,75 +140,40 @@ def _now_iso() -> str:
 
 
 def _openai_models_url() -> str:
-    endpoint = (getattr(SETTINGS, "OPENAI_CHAT_COMPLETIONS_ENDPOINT", "") or "").strip()
-    if endpoint.endswith("/chat/completions"):
-        return f"{endpoint[: -len('/chat/completions')]}/models"
-    if endpoint.endswith("/v1"):
-        return f"{endpoint}/models"
-    if "/v1/" in endpoint:
-        root, _, _ = endpoint.partition("/v1/")
-        return f"{root}/v1/models"
-    return "https://api.openai.com/v1/models"
+    return remote_models_service.openai_models_url(
+        chat_completions_endpoint=(
+            getattr(SETTINGS, "OPENAI_CHAT_COMPLETIONS_ENDPOINT", "") or ""
+        )
+    )
 
 
 def _openai_model_url(model_id: str) -> str:
-    return f"{_openai_models_url().rstrip('/')}/{model_id}"
+    return remote_models_service.openai_model_url(
+        models_url=_openai_models_url(),
+        model_id=model_id,
+    )
 
 
 def _google_models_url() -> str:
-    return "https://generativelanguage.googleapis.com/v1beta/models"
+    return remote_models_service.google_models_url()
 
 
 def _google_model_url(model_id: str) -> str:
-    normalized = model_id if model_id.startswith("models/") else f"models/{model_id}"
-    return f"https://generativelanguage.googleapis.com/v1beta/{normalized}"
+    return remote_models_service.google_model_url(model_id)
 
 
 def _map_openai_capabilities(model_id: str) -> list[str]:
-    model = model_id.lower()
-    capabilities = ["chat", "text-generation"]
-    if "gpt-4" in model or "gpt-5" in model or "o1" in model or "o3" in model:
-        capabilities.append("function-calling")
-    if "gpt-4o" in model or "vision" in model:
-        capabilities.append("vision")
-    return capabilities
+    return remote_models_service.map_openai_capabilities(model_id)
 
 
 def _map_google_capabilities(item: dict[str, Any]) -> list[str]:
-    methods = item.get("supportedGenerationMethods") or []
-    mapped: set[str] = set()
-    for method in methods:
-        method_l = str(method).lower()
-        if "generatecontent" in method_l:
-            mapped.update({"chat", "text-generation"})
-        if "streamgeneratecontent" in method_l:
-            mapped.update({"chat", "text-generation"})
-        if "counttokens" in method_l:
-            mapped.add("token-counting")
-        if "embedcontent" in method_l:
-            mapped.add("embeddings")
-    model_name = str(item.get("name") or "").lower()
-    if (
-        "vision" in model_name
-        or "multimodal" in model_name
-        or "gemini-1.5" in model_name
-    ):
-        mapped.add("vision")
-    return sorted(mapped) if mapped else ["chat", "text-generation"]
+    return remote_models_service.map_google_capabilities(item)
 
 
 def _cache_get(
     cache: dict[str, dict[str, Any]], lock: Lock, key: str, ttl_seconds: int
 ) -> dict[str, Any] | None:
-    now = time.monotonic()
-    with lock:
-        entry = cache.get(key)
-        if not entry:
-            return None
-        if now - float(entry.get("ts_monotonic", 0.0)) > ttl_seconds:
-            cache.pop(key, None)
-            return None
-        return dict(entry)
+    return remote_models_service.cache_get(cache, lock, key, ttl_seconds)
 
 
 def _cache_put(
@@ -237,8 +183,7 @@ def _cache_put(
     *,
     payload: dict[str, Any],
 ) -> None:
-    with lock:
-        cache[key] = {**payload, "ts_monotonic": time.monotonic()}
+    remote_models_service.cache_put(cache, lock, key, payload=payload)
 
 
 def _get_openai_models_catalog_static() -> list[RemoteModelInfo]:

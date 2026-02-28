@@ -23,6 +23,39 @@ from venom_core.execution.onnx_llm_client import OnnxLlmClient
 from venom_core.infrastructure.traffic_control.http_client import (
     TrafficControlledHttpClient,
 )
+from venom_core.services.llm_simple_payload_service import (
+    apply_optional_features_to_payload as _apply_optional_features_to_payload,
+)
+from venom_core.services.llm_simple_payload_service import (
+    apply_output_format_to_payload as _apply_output_format_to_payload,
+)
+from venom_core.services.llm_simple_payload_service import (
+    build_messages as _build_messages,
+)
+from venom_core.services.llm_simple_payload_service import (
+    build_streaming_headers as _build_streaming_headers,
+)
+from venom_core.services.llm_simple_payload_service import (
+    extract_ollama_telemetry as _extract_ollama_telemetry,
+)
+from venom_core.services.llm_simple_payload_service import (
+    extract_sse_contents as _extract_sse_contents,
+)
+from venom_core.services.llm_simple_payload_service import (
+    extract_sse_tool_calls as _extract_sse_tool_calls,
+)
+from venom_core.services.llm_simple_payload_service import (
+    is_retryable_ollama_http_error as _is_retryable_ollama_http_error,
+)
+from venom_core.services.llm_simple_payload_service import (
+    is_retryable_ollama_status as _is_retryable_ollama_status,
+)
+from venom_core.services.llm_simple_payload_service import (
+    normalize_ns_to_ms as _normalize_ns_to_ms,
+)
+from venom_core.services.llm_simple_payload_service import (
+    resolve_output_format as _resolve_output_format,
+)
 from venom_core.utils.llm_runtime import (
     _build_chat_completions_url,
     get_active_llm_runtime,
@@ -200,13 +233,6 @@ def _record_simple_error(
     _call_tracer(request_tracer, "update_status", request_id, TraceStatus.FAILED)
 
 
-def _build_messages(system_prompt: str, user_content: str) -> list[dict[str, str]]:
-    messages = [{"role": "user", "content": user_content}]
-    if system_prompt:
-        messages.insert(0, {"role": "system", "content": system_prompt})
-    return messages
-
-
 def _build_payload(
     request: "SimpleChatRequest",
     runtime,
@@ -227,15 +253,26 @@ def _build_payload(
     # 1) For Ollama we prefer `format` (native structured output support).
     # 2) For non-Ollama providers we prefer client-provided `response_format`.
     # 3) Fallback: `request.format` (if response_format is absent).
-    output_format = _resolve_output_format(request)
+    output_format = _resolve_output_format(
+        request_format=request.format,
+        response_format=request.response_format,
+    )
     _apply_output_format_to_payload(
         payload=payload,
-        request=request,
-        runtime=runtime,
+        provider=runtime.provider,
         output_format=output_format,
+        response_format=request.response_format,
+        request_format=request.format,
+        ollama_structured_outputs_enabled=SETTINGS.OLLAMA_ENABLE_STRUCTURED_OUTPUTS,
     )
     _apply_optional_features_to_payload(
-        payload=payload, request=request, runtime=runtime
+        payload=payload,
+        provider=runtime.provider,
+        tools=request.tools,
+        tool_choice=request.tool_choice,
+        think=request.think,
+        ollama_enable_tool_calling=SETTINGS.OLLAMA_ENABLE_TOOL_CALLING,
+        ollama_enable_think=SETTINGS.OLLAMA_ENABLE_THINK,
     )
 
     if request.max_tokens is not None:
@@ -243,61 +280,6 @@ def _build_payload(
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     return payload
-
-
-def _resolve_output_format(request: "SimpleChatRequest") -> Any:
-    output_format = request.format
-    if output_format is not None or not isinstance(request.response_format, dict):
-        return output_format
-
-    # Compatibility extraction for OpenAI-style shape:
-    # response_format.json_schema.schema -> schema object
-    schema_block = request.response_format.get("json_schema")
-    if not isinstance(schema_block, dict):
-        return output_format
-    return schema_block.get("schema") or schema_block
-
-
-def _apply_output_format_to_payload(
-    *,
-    payload: dict[str, Any],
-    request: "SimpleChatRequest",
-    runtime,
-    output_format: Any,
-) -> None:
-    if runtime.provider == "ollama":
-        if output_format is not None and SETTINGS.OLLAMA_ENABLE_STRUCTURED_OUTPUTS:
-            payload["format"] = output_format
-            return
-        if request.response_format is not None:
-            payload["response_format"] = request.response_format
-        return
-
-    if request.response_format is not None:
-        payload["response_format"] = request.response_format
-    elif request.format is not None:
-        payload["format"] = request.format
-
-
-def _ollama_feature_enabled(runtime, enabled_flag: bool) -> bool:
-    return runtime.provider != "ollama" or enabled_flag
-
-
-def _apply_optional_features_to_payload(
-    *, payload: dict[str, Any], request: "SimpleChatRequest", runtime
-) -> None:
-    if request.tools and _ollama_feature_enabled(
-        runtime, SETTINGS.OLLAMA_ENABLE_TOOL_CALLING
-    ):
-        payload["tools"] = request.tools
-    if request.tool_choice is not None and _ollama_feature_enabled(
-        runtime, SETTINGS.OLLAMA_ENABLE_TOOL_CALLING
-    ):
-        payload["tool_choice"] = request.tool_choice
-    if request.think is not None and _ollama_feature_enabled(
-        runtime, SETTINGS.OLLAMA_ENABLE_THINK
-    ):
-        payload["think"] = request.think
 
 
 def _trim_user_content_for_runtime(
@@ -325,57 +307,6 @@ def _trim_user_content_for_runtime(
             details=f"Trimmed prompt to {available} chars for vLLM limit",
         )
     return trimmed_content
-
-
-def _extract_sse_contents(packet: dict) -> list[str]:
-    contents: list[str] = []
-    choices = packet.get("choices") or []
-    for choice in choices:
-        delta = choice.get("delta") or {}
-        if not isinstance(delta, dict):
-            continue
-        content = delta.get("content")
-        if content:
-            contents.append(content)
-    return contents
-
-
-def _extract_sse_tool_calls(packet: dict) -> list[dict[str, Any]]:
-    tool_calls: list[dict[str, Any]] = []
-    choices = packet.get("choices") or []
-    for choice in choices:
-        delta = choice.get("delta") or {}
-        if not isinstance(delta, dict):
-            continue
-        delta_tool_calls = delta.get("tool_calls")
-        if isinstance(delta_tool_calls, list):
-            tool_calls.extend(
-                call for call in delta_tool_calls if isinstance(call, dict)
-            )
-    return tool_calls
-
-
-def _extract_ollama_telemetry(packet: dict) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for key in (
-        "load_duration",
-        "prompt_eval_count",
-        "eval_count",
-        "prompt_eval_duration",
-        "eval_duration",
-    ):
-        value = packet.get(key)
-        if isinstance(value, int):
-            out[key] = value
-    return out
-
-
-def _normalize_ns_to_ms(value: Optional[int]) -> Optional[float]:
-    if value is None:
-        return None
-    if value <= 0:
-        return 0.0
-    return round(value / 1_000_000.0, 2)
 
 
 async def _iter_stream_packets(resp: httpx.Response) -> AsyncIterator[dict]:
@@ -497,17 +428,6 @@ async def _read_http_error_response_text(response: Optional[httpx.Response]) -> 
     return body.decode(encoding, errors="replace")
 
 
-def _build_streaming_headers(
-    request_id: UUID, session_id: Optional[str]
-) -> dict[str, str]:
-    return {
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no",
-        "X-Request-Id": str(request_id),
-        "X-Session-Id": session_id or "",
-    }
-
-
 @dataclass
 class _SimpleStreamState:
     chunks: list[str]
@@ -516,30 +436,6 @@ class _SimpleStreamState:
     retry_requested: bool = False
     failed: bool = False
     completed: bool = False
-
-
-def _is_retryable_ollama_status(
-    *,
-    runtime,
-    status_code: Optional[int],
-    attempt: int,
-    max_attempts: int,
-    chunk_count: int,
-) -> bool:
-    return bool(
-        runtime.provider == "ollama"
-        and status_code in {429, 500, 502, 503, 504}
-        and attempt < max_attempts
-        and chunk_count == 0
-    )
-
-
-def _is_retryable_ollama_http_error(
-    *, runtime, attempt: int, max_attempts: int, chunk_count: int
-) -> bool:
-    return bool(
-        runtime.provider == "ollama" and attempt < max_attempts and chunk_count == 0
-    )
 
 
 async def _emit_http_status_error_and_mark_failed(
@@ -710,12 +606,11 @@ async def _stream_single_attempt(
                         yield event
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code if exc.response else None
-            if _is_retryable_ollama_status(
-                runtime=runtime,
-                status_code=status_code,
-                attempt=attempt,
-                max_attempts=max_attempts,
-                chunk_count=state.chunk_count,
+            if (
+                state.chunk_count == 0
+                and attempt < max_attempts
+                and _is_retryable_ollama_status(status_code)
+                and runtime.provider == "ollama"
             ):
                 state.retry_requested = True
                 ollama_telemetry.clear()
@@ -821,11 +716,11 @@ async def _handle_stream_http_error(
     chunk_count: int,
     ollama_telemetry: dict[str, int],
 ) -> str:
-    if _is_retryable_ollama_http_error(
-        runtime=runtime,
-        attempt=attempt,
-        max_attempts=max_attempts,
-        chunk_count=chunk_count,
+    if chunk_count == 0 and _is_retryable_ollama_http_error(
+        provider=runtime.provider,
+        status_code=None,
+        attempt_no=attempt,
+        max_retries=max_attempts,
     ):
         ollama_telemetry.clear()
         await asyncio.sleep(retry_backoff * attempt)
@@ -1011,7 +906,7 @@ async def stream_simple_chat(request: SimpleChatRequest):
     messages = _build_messages(system_prompt, user_content)
     payload = _build_payload(request, runtime, model_name, messages)
     _trace_context_preview(request_id, messages)
-    headers = _build_streaming_headers(request_id, request.session_id)
+    headers = _build_streaming_headers(str(request_id), request.session_id or "")
     runtime_provider = str(getattr(runtime, "provider", "") or "").lower()
     runtime_service_type = str(getattr(runtime, "service_type", "") or "").lower()
     if runtime_provider == "onnx" or runtime_service_type == "onnx":

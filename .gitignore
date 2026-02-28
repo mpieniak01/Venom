@@ -36,7 +36,8 @@ data/timelines/
 
 .env
 .env.*
-!.env.example
+!.env.dev.example
+!.env.preprod.example
 config/env-history/
 config/google_calendar_credentials.json
 config/google_calendar_token.json

@@ -21,7 +21,8 @@ RUN python -m pip install --upgrade pip \
 COPY venom_core /app/venom_core
 COPY config /app/config
 COPY scripts /app/scripts
-COPY .env.example /app/.env.example
+COPY .env.dev.example /app/.env.dev.example
+COPY .env.preprod.example /app/.env.preprod.example
 
 RUN mkdir -p /app/data/memory /app/workspace /app/logs
 

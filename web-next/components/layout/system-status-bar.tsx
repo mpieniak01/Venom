@@ -94,6 +94,7 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
   );
 
   const versionDisplay = formatVersionDisplay(appMeta?.version) ?? t("statusBar.versionUnknown");
+  const environmentDisplay = formatEnvironmentDisplay(appMeta?.environmentRole, t);
   const repoState = resolveRepoStatus(gitStatus, gitLoading, appMeta?.commit, t);
   const repoTone = cn("font-medium", repoState.tone);
   const repoTitle = repoState.title;
@@ -122,6 +123,11 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
               <span suppressHydrationWarning>{t("statusBar.versionLabel")}:</span>
               <span data-testid="status-bar-version" className="font-semibold text-white" suppressHydrationWarning>
                 {versionDisplay}
+              </span>
+              <span className="text-zinc-500">|</span>
+              <span className="text-zinc-300" suppressHydrationWarning>{t("statusBar.environmentLabel")}:</span>
+              <span data-testid="status-bar-environment" className="font-semibold text-white" suppressHydrationWarning>
+                {environmentDisplay}
               </span>
             </div>
             <div className="flex max-w-full items-center gap-1.5 text-[11px] text-zinc-400">
@@ -253,4 +259,15 @@ function formatVersionDisplay(version: string | undefined): string | null {
     return `${major}.${minor}`;
   }
   return `${major}.${minor}.${patch}`;
+}
+
+function formatEnvironmentDisplay(
+  role: string | undefined,
+  t: ReturnType<typeof useTranslation>,
+): string {
+  const normalized = (role || "").trim().toLowerCase();
+  if (normalized === "preprod" || normalized === "pre-prod" || normalized === "staging") {
+    return t("statusBar.environmentPreprod");
+  }
+  return t("statusBar.environmentDev");
 }

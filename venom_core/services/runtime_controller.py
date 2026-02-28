@@ -757,8 +757,8 @@ class RuntimeController:
         """Uruchamia Ollama."""
         if SETTINGS.OLLAMA_START_COMMAND:
             try:
-                # SECURITY NOTE: shell=True używany z environment variables z .env
-                # Tylko administrator może edytować .env bezpośrednio (nie przez UI)
+                # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
+                # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
                 # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
                 subprocess.Popen(
                     SETTINGS.OLLAMA_START_COMMAND,
@@ -785,15 +785,15 @@ class RuntimeController:
         else:
             return {
                 "success": False,
-                "message": "Brak skonfigurowanego OLLAMA_START_COMMAND w .env",
+                "message": "Brak skonfigurowanego OLLAMA_START_COMMAND w aktywnym pliku env",
             }
 
     def _stop_ollama(self) -> Dict[str, Any]:
         """Zatrzymuje Ollama."""
         if SETTINGS.OLLAMA_STOP_COMMAND:
             try:
-                # SECURITY NOTE: shell=True używany z environment variables z .env
-                # Tylko administrator może edytować .env bezpośrednio (nie przez UI)
+                # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
+                # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
                 # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
                 result = subprocess.run(
                     SETTINGS.OLLAMA_STOP_COMMAND,
@@ -817,15 +817,15 @@ class RuntimeController:
         else:
             return {
                 "success": False,
-                "message": "Brak skonfigurowanego OLLAMA_STOP_COMMAND w .env",
+                "message": "Brak skonfigurowanego OLLAMA_STOP_COMMAND w aktywnym pliku env",
             }
 
     def _start_vllm(self) -> Dict[str, Any]:
         """Uruchamia vLLM."""
         if SETTINGS.VLLM_START_COMMAND:
             try:
-                # SECURITY NOTE: shell=True używany z environment variables z .env
-                # Tylko administrator może edytować .env bezpośrednio (nie przez UI)
+                # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
+                # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
                 # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
                 subprocess.Popen(
                     SETTINGS.VLLM_START_COMMAND,
@@ -851,15 +851,15 @@ class RuntimeController:
         else:
             return {
                 "success": False,
-                "message": "Brak skonfigurowanego VLLM_START_COMMAND w .env",
+                "message": "Brak skonfigurowanego VLLM_START_COMMAND w aktywnym pliku env",
             }
 
     def _stop_vllm(self) -> Dict[str, Any]:
         """Zatrzymuje vLLM."""
         if SETTINGS.VLLM_STOP_COMMAND:
             try:
-                # SECURITY NOTE: shell=True używany z environment variables z .env
-                # Tylko administrator może edytować .env bezpośrednio (nie przez UI)
+                # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
+                # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
                 # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
                 result = subprocess.run(
                     SETTINGS.VLLM_STOP_COMMAND,
@@ -883,7 +883,7 @@ class RuntimeController:
         else:
             return {
                 "success": False,
-                "message": "Brak skonfigurowanego VLLM_STOP_COMMAND w .env",
+                "message": "Brak skonfigurowanego VLLM_STOP_COMMAND w aktywnym pliku env",
             }
 
     def get_history(self, limit: int = 50) -> List[Dict]:

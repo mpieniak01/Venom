@@ -2,12 +2,13 @@
 Moduł: config_manager - Zarządzanie konfiguracją runtime Venom.
 
 Odpowiada za:
-- Pobieranie whitelisty parametrów z .env
+- Pobieranie whitelisty parametrów z aktywnego pliku env (domyślnie .env.dev)
 - Walidację i zapis zmian konfiguracji
-- Backup .env do config/env-history/
+- Backup aktywnego pliku env do config/env-history/
 - Określanie, które usługi wymagają restartu po zmianie
 """
 
+import os
 import re
 import shutil
 from datetime import datetime
@@ -418,9 +419,17 @@ class ConfigManager:
     def __init__(self):
         """Inicjalizacja managera."""
         self.project_root = Path(__file__).parent.parent.parent
-        self.env_file = self.project_root / ".env"
+        raw_env_file = (os.getenv("ENV_FILE", ".env.dev") or ".env.dev").strip()
+        env_path = Path(raw_env_file)
+        self.env_file = (
+            env_path if env_path.is_absolute() else self.project_root / env_path
+        )
         self.env_history_dir = self.project_root / "config" / "env-history"
         self.env_history_dir.mkdir(parents=True, exist_ok=True)
+
+    def _backup_prefix(self) -> str:
+        """Zwraca prefiks nazwy backupu dla aktywnego pliku env."""
+        return f"{self.env_file.name}-"
 
     def get_config(self, mask_secrets: bool = True) -> Dict[str, Any]:
         """
@@ -434,7 +443,7 @@ class ConfigManager:
         """
         config: Dict[str, Any] = {}
 
-        # Wczytaj .env
+        # Wczytaj aktywny plik env
         env_values = self._read_env_file()
 
         # Zwróć tylko parametry z whitelisty
@@ -503,16 +512,16 @@ class ConfigManager:
                 "restart_required": [],
             }
 
-        # Backup .env
+        # Backup aktywnego pliku env
         backup_path = self._backup_env_file()
         if not backup_path:
             return {
                 "success": False,
-                "message": "Nie udało się utworzyć backupu .env",
+                "message": f"Nie udało się utworzyć backupu {self.env_file.name}",
                 "restart_required": [],
             }
 
-        # Wczytaj aktualny .env
+        # Wczytaj aktualny plik env
         env_values = self._read_env_file()
 
         # Zastosuj zmiany
@@ -549,14 +558,14 @@ class ConfigManager:
                     f"Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na {ollama_endpoint} (Ollama)"
                 )
 
-        # Zapisz .env
+        # Zapisz aktywny plik env
         try:
             self._write_env_file(env_values)
         except Exception as e:
-            logger.exception("Błąd zapisu .env")
+            logger.exception("Błąd zapisu pliku env")
             return {
                 "success": False,
-                "message": f"Błąd zapisu .env: {str(e)}",
+                "message": f"Błąd zapisu {self.env_file.name}: {str(e)}",
                 "restart_required": [],
             }
 
@@ -577,11 +586,11 @@ class ConfigManager:
         }
 
     def _read_env_file(self) -> Dict[str, str]:
-        """Wczytuje .env do słownika."""
+        """Wczytuje aktywny plik env do słownika."""
         env_values: Dict[str, str] = {}
 
         if not self.env_file.exists():
-            logger.warning(f".env nie istnieje: {self.env_file}")
+            logger.warning(f"Plik env nie istnieje: {self.env_file}")
             return env_values
 
         try:
@@ -600,13 +609,13 @@ class ConfigManager:
                         env_values[key] = value
 
         except Exception:
-            logger.exception("Błąd wczytywania .env")
+            logger.exception("Błąd wczytywania pliku env")
 
         return env_values
 
     @staticmethod
     def _default_value_as_string(key: str) -> str:
-        """Konwertuje domyślną wartość z Settings na string kompatybilny z .env."""
+        """Konwertuje domyślną wartość z Settings na string kompatybilny z env."""
         if not hasattr(SETTINGS, key):
             return ""
 
@@ -622,7 +631,7 @@ class ConfigManager:
         return str(value)
 
     def _write_env_file(self, env_values: Dict[str, str]) -> None:
-        """Zapisuje słownik do .env."""
+        """Zapisuje słownik do aktywnego pliku env."""
         # Wczytaj oryginał aby zachować komentarze i strukturę
         original_lines: List[str] = []
         if self.env_file.exists():
@@ -666,17 +675,17 @@ class ConfigManager:
             f.writelines(new_lines)
 
     def _backup_env_file(self) -> Optional[Path]:
-        """Tworzy backup .env do config/env-history/."""
+        """Tworzy backup aktywnego pliku env do config/env-history/."""
         if not self.env_file.exists():
             return None
 
         try:
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            backup_name = f".env-{timestamp}"
+            backup_name = f"{self._backup_prefix()}{timestamp}"
             backup_path = self.env_history_dir / backup_name
 
             shutil.copy2(self.env_file, backup_path)
-            logger.info(f"Utworzono backup .env: {backup_path}")
+            logger.info(f"Utworzono backup {self.env_file.name}: {backup_path}")
 
             # Usuń stare backupy (zachowaj ostatnie 50)
             self._cleanup_old_backups(max_keep=50)
@@ -684,14 +693,14 @@ class ConfigManager:
             return backup_path
 
         except Exception:
-            logger.exception("Błąd tworzenia backupu .env")
+            logger.exception("Błąd tworzenia backupu pliku env")
             return None
 
     def _cleanup_old_backups(self, max_keep: int = 50) -> None:
-        """Usuwa stare backupy .env."""
+        """Usuwa stare backupy aktywnego pliku env."""
         try:
             backups = sorted(
-                self.env_history_dir.glob(".env-*"),
+                self.env_history_dir.glob(f"{self._backup_prefix()}*"),
                 key=lambda p: p.stat().st_mtime,
                 reverse=True,
             )
@@ -726,10 +735,10 @@ class ConfigManager:
         return f"{value[:4]}{'*' * (len(value) - 8)}{value[-4:]}"
 
     def get_backup_list(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """Pobiera listę backupów .env."""
+        """Pobiera listę backupów aktywnego pliku env."""
         try:
             backups = sorted(
-                self.env_history_dir.glob(".env-*"),
+                self.env_history_dir.glob(f"{self._backup_prefix()}*"),
                 key=lambda p: p.stat().st_mtime,
                 reverse=True,
             )
@@ -753,10 +762,11 @@ class ConfigManager:
             return []
 
     def restore_backup(self, backup_filename: str) -> Dict[str, Any]:
-        """Przywraca .env z backupu."""
+        """Przywraca aktywny plik env z backupu."""
         # SECURITY: Validate backup_filename to prevent path traversal
-        # Only allow filenames matching the expected pattern: .env-YYYYMMDD-HHMMSS
-        if not re.match(r"^\.env-\d{8}-\d{6}$", backup_filename):
+        # Only allow filenames matching active backup pattern: <env_file_name>-YYYYMMDD-HHMMSS
+        backup_regex = rf"^{re.escape(self._backup_prefix())}\d{{8}}-\d{{6}}$"
+        if not re.match(backup_regex, backup_filename):
             return {
                 "success": False,
                 "message": "Nieprawidłowa nazwa pliku backupu",
@@ -771,17 +781,19 @@ class ConfigManager:
             }
 
         try:
-            # Najpierw zrób backup aktualnego .env
+            # Najpierw zrób backup aktualnego pliku env
             current_backup = self._backup_env_file()
 
             # Przywróć z backupu
             shutil.copy2(backup_path, self.env_file)
 
-            logger.info(f"Przywrócono .env z backupu: {backup_filename}")
+            logger.info(
+                f"Przywrócono {self.env_file.name} z backupu: {backup_filename}"
+            )
 
             return {
                 "success": True,
-                "message": f"Przywrócono .env z backupu: {backup_filename}. Aktualny .env zapisany jako: {current_backup.name if current_backup else 'N/A'}",
+                "message": f"Przywrócono {self.env_file.name} z backupu: {backup_filename}. Aktualny plik zapisany jako: {current_backup.name if current_backup else 'N/A'}",
                 "restart_required": ["backend", "ui"],
             }
 

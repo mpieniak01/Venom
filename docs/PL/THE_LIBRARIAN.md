@@ -61,7 +61,7 @@ Librarian zapisuje ważne informacje o projekcie do pamięci długoterminowej:
 
 **Co zapisywać:**
 - Struktura katalogów (po `list_files` głównego katalogu)
-- Zawartość plików konfiguracyjnych (`config.json`, `.env.example`)
+- Zawartość plików konfiguracyjnych (`config.json`, `.env.dev.example`, `.env.preprod.example`)
 - Ważne pliki dokumentacji (`README.md`, `CONTRIBUTING.md`)
 - Zależności projektu (`requirements.txt`, `package.json`)
 
@@ -109,9 +109,9 @@ await memorize(f"Struktura główna: {files}", tags=["project-structure"])
 
 ### Przykład 2: Sprawdzenie Konfiguracji
 ```python
-# Użytkownik: "Jakie mam zmienne w .env.example?"
+# Użytkownik: "Jakie mam zmienne w .env.dev.example?"
 # Librarian:
-content = await read_file(".env.example")
+content = await read_file(".env.dev.example")
 await memorize(f"Zmienne env: {summary}", tags=["config"])
 # Zwraca: Lista zmiennych środowiskowych z opisem
 ```
@@ -151,7 +151,7 @@ MEMORY_ROOT=./data/memory   # Pamięć długoterminowa
 
 ## Best Practices
 
-1. **Pamięć dla konfiguracji** - Zapisuj `config.json`, `.env.example` do pamięci
+1. **Pamięć dla konfiguracji** - Zapisuj `config.json`, `.env.dev.example`, `.env.preprod.example` do pamięci
 2. **Struktura projektu** - Po pierwszym `list_files` zapisz strukturę
 3. **Weryfikuj przed zapisem** - Zawsze sprawdź `file_exists` przed `write_file` (inny agent)
 4. **Nie nadużywaj narzędzi** - Dla pytań ogólnych odpowiadaj wprost

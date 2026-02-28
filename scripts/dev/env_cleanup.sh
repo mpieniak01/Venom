@@ -6,6 +6,8 @@ ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
 CONFIRM_DEEP_CLEAN="${CONFIRM_DEEP_CLEAN:-0}"
 DRY_RUN="${DRY_RUN:-0}"
+ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}"
+ALLOW_DATA_MUTATION="${ALLOW_DATA_MUTATION:-0}"
 
 PROTECTED_PATTERNS=(
   "models"
@@ -64,6 +66,15 @@ rm_target() {
   echo "🧹 Removed: $rel"
 }
 
+check_preprod_guard() {
+  local role
+  role="$(echo "$ENVIRONMENT_ROLE" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$role" =~ ^(preprod|pre-prod|pre_prod|staging|stage)$ ]] && [[ "$ALLOW_DATA_MUTATION" != "1" ]]; then
+    echo "❌ Cleanup blocked for pre-prod (ALLOW_DATA_MUTATION=0)."
+    exit 3
+  fi
+}
+
 run_mode_safe() {
   for rel in "${SAFE_TARGETS[@]}"; do
     rm_target "$rel"
@@ -84,9 +95,11 @@ run_mode_deep() {
 
 case "$MODE" in
   safe)
+    check_preprod_guard
     run_mode_safe
     ;;
   deep)
+    check_preprod_guard
     run_mode_deep
     ;;
   *)

@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from venom_core.api.schemas.queue import QueueActionResponse, QueueStatusResponse
+from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.utils.logger import get_logger
 from venom_core.utils.ttl_cache import TTLCache
 
@@ -147,12 +148,15 @@ async def purge_queue():
         raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
+        ensure_data_mutation_allowed("queue.purge")
         result = await _orchestrator.purge_queue()
         _queue_cache.clear()
         logger.warning(
             f"Kolejka zadań wyczyszczona przez API - usunięto {result.get('removed', 0)} zadań"
         )
         return result
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas czyszczenia kolejki")
         raise HTTPException(
@@ -179,9 +183,12 @@ async def emergency_stop():
         raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
+        ensure_data_mutation_allowed("queue.emergency_stop")
         result = await _orchestrator.emergency_stop()
         logger.error("🚨 Emergency Stop wywołany przez API")
         return result
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas Emergency Stop")
         raise HTTPException(

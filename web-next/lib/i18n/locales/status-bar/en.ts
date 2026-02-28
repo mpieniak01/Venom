@@ -1,8 +1,11 @@
 export const statusBarLocale = {
     resourcesLabel: "Model resources",
     versionLabel: "Version",
+    environmentLabel: "Environment",
     versionLoading: "Loading",
     versionUnknown: "Unknown version",
+    environmentDev: "dev",
+    environmentPreprod: "pre-prod",
     commitCopy: "Click to copy hash",
     commitCopied: "Copied",
     repoLabel: "Repository",

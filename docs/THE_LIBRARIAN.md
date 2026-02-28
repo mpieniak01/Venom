@@ -61,7 +61,7 @@ Librarian saves important project information to long-term memory:
 
 **What to save:**
 - Directory structure (after `list_files` of main directory)
-- Configuration file contents (`config.json`, `.env.example`)
+- Configuration file contents (`config.json`, `.env.dev.example`, `.env.preprod.example`)
 - Important documentation files (`README.md`, `CONTRIBUTING.md`)
 - Project dependencies (`requirements.txt`, `package.json`)
 
@@ -109,9 +109,9 @@ await memorize(f"Main structure: {files}", tags=["project-structure"])
 
 ### Example 2: Configuration Check
 ```python
-# User: "What variables are in .env.example?"
+# User: "What variables are in .env.dev.example?"
 # Librarian:
-content = await read_file(".env.example")
+content = await read_file(".env.dev.example")
 await memorize(f"Env variables: {summary}", tags=["config"])
 # Returns: List of environment variables with description
 ```
@@ -151,7 +151,7 @@ MEMORY_ROOT=./data/memory   # Long-term memory
 
 ## Best Practices
 
-1. **Memory for configuration** - Save `config.json`, `.env.example` to memory
+1. **Memory for configuration** - Save `config.json`, `.env.dev.example`, `.env.preprod.example` to memory
 2. **Project structure** - After first `list_files` save structure
 3. **Verify before writing** - Always check `file_exists` before `write_file` (other agent)
 4. **Don't overuse tools** - For general questions answer directly

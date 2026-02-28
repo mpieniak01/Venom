@@ -298,12 +298,16 @@ read_lang_from_menu() {
 
 has_nonempty_env_or_file_key() {
   local key=$1
+  local env_file="${ENV_FILE:-$ROOT_DIR/.env.dev}"
+  if [[ "$env_file" != /* ]]; then
+    env_file="$ROOT_DIR/$env_file"
+  fi
   if [[ -n "${!key:-}" ]]; then
     return 0
   fi
-  if [[ -f "$ROOT_DIR/.env" ]]; then
+  if [[ -f "$env_file" ]]; then
     local value
-    value=$(awk -F '=' -v k="$key" '$1==k {sub(/^[ "]+/,"",$2); sub(/[ "]+$/, "", $2); print $2; exit}' "$ROOT_DIR/.env")
+    value=$(awk -F '=' -v k="$key" '$1==k {sub(/^[ "]+/,"",$2); sub(/[ "]+$/, "", $2); print $2; exit}' "$env_file")
     if [[ -n "$value" ]]; then
       return 0
     fi

@@ -68,6 +68,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ripgrep
 
+      - name: Preprod readonly smoke
+        run: |
+          make test-preprod-readonly-smoke
+
       - name: Run backend lite hard gate + Sonar new-code coverage
         timeout-minutes: 10
         run: |

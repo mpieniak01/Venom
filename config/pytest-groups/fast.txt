@@ -201,3 +201,9 @@ tests/test_issue_handler_flow_light.py
 tests/test_jobs_scheduler_cleanup.py
 tests/test_main_internal_helpers.py
 tests/test_model_validators.py
+tests/test_models_remote_light_coverage.py
+tests/test_service_monitor_light_coverage.py
+tests/test_agents_skill_manager_paths.py
+tests/test_runtime_registry_light_coverage.py
+tests/test_governance_light_coverage.py
+tests/test_academy_conversion_light_coverage.py

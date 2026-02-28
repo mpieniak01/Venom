@@ -181,3 +181,9 @@ tests/test_test_lane_contracts_guard.py
 tests/test_test_intelligence_report.py
 tests/test_preprod_readiness_check.py
 tests/test_new_code_coverage_blocker_179.py
+tests/test_models_remote_light_coverage.py
+tests/test_service_monitor_light_coverage.py
+tests/test_agents_skill_manager_paths.py
+tests/test_runtime_registry_light_coverage.py
+tests/test_governance_light_coverage.py
+tests/test_academy_conversion_light_coverage.py

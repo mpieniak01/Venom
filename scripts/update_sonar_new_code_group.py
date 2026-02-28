@@ -14,7 +14,7 @@ from pathlib import Path
 GROUP_PATH = Path("config/pytest-groups/sonar-new-code.txt")
 AUTO_SECTION_HEADER = "# AUTO-ADDED by pre-commit (staged backend/test changes)"
 SLEEP_RE = re.compile(r"(?:time|asyncio)\.sleep\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)")
-CATALOG_PATH_DEFAULT = Path("config/testing/test_catalog.yaml")
+CATALOG_PATH_DEFAULT = Path("config/testing/test_catalog.json")
 
 
 def _load_resolver_module():
@@ -177,6 +177,8 @@ def _load_catalog_legacy_map(path: Path) -> dict[str, bool]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        return {}
+    if not isinstance(payload, dict):
         return {}
     tests = payload.get("tests", [])
     if not isinstance(tests, list):

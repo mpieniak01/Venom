@@ -333,7 +333,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--catalog",
         type=Path,
-        default=Path("config/testing/test_catalog.yaml"),
+        default=Path("config/testing/test_catalog.json"),
         help="Path to canonical test catalog file.",
     )
     parser.add_argument(

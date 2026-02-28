@@ -15,7 +15,7 @@ LEGACY_TARGETED_RE = re.compile(
     re.IGNORECASE,
 )
 
-DEFAULT_OUTPUT = Path("config/testing/test_catalog.yaml")
+DEFAULT_OUTPUT = Path("config/testing/test_catalog.json")
 
 ALLOWED_DOMAINS = [
     "academy",

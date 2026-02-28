@@ -1,4 +1,4 @@
-# AUTO-GENERATED from config/testing/test_catalog.yaml
+# AUTO-GENERATED from config/testing/test_catalog.json
 # Do not edit manually. Run: make test-groups-sync
 
 tests/test_academy_api.py

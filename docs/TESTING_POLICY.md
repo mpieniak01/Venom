@@ -89,7 +89,7 @@ Lane/group naming contract:
 - `config/pytest-groups/fast.txt` is the canonical fast-scope backend list.
 - `config/pytest-groups/light.txt` is a compatibility alias of `fast.txt` and should not be edited independently.
 
-Test taxonomy model (canonical source: `config/testing/test_catalog.yaml`):
+Test taxonomy model (canonical source: `config/testing/test_catalog.json`):
 
 - `domain`: business/system scope (for example `academy`, `workflow`, `providers`, `runtime`)
 - `test_type`: `unit`, `route_contract`, `service_contract`, `integration`, `perf`, `gate`
@@ -98,7 +98,8 @@ Test taxonomy model (canonical source: `config/testing/test_catalog.yaml`):
 
 Single source of truth contract:
 
-- `config/testing/test_catalog.yaml` is canonical for test metadata and lane eligibility.
+- `config/testing/test_catalog.json` is canonical for test metadata and lane eligibility.
+- `config/testing/test_catalog.yaml` is kept as a compatibility symlink to `test_catalog.json` for legacy tooling.
 - Pytest group files are generated/synchronized from catalog (`make test-groups-sync`).
 - Manual edits in generated group files are not supported; use sync command instead.
 
@@ -166,7 +167,7 @@ New-code coverage run behavior:
 - automatic include of changed tests/modules is enabled by default (`NEW_CODE_AUTO_INCLUDE_CHANGED=1`)
 - changed test auto-include pattern: `tests/**/test_*.py`
 - resolver script: `scripts/resolve_sonar_new_code_tests.py` (catalog-aware selection with metadata: `selection_reason`, `domain`, `legacy_targeted`)
-- group sync source: `scripts/sync_pytest_groups_from_catalog.py` (`test_catalog.yaml` -> `ci-lite/new-code/fast/long/heavy`)
+- group sync source: `scripts/sync_pytest_groups_from_catalog.py` (`test_catalog.json` -> `ci-lite/new-code/fast/long/heavy`)
 - if `ripgrep` (`rg`) is unavailable locally, resolver falls back to pure Python scanning
 - CI backend-lite installs `ripgrep` for faster selection and deterministic logs
 

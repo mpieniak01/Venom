@@ -22,7 +22,7 @@ GROUP_FILES = {
 }
 
 HEADER_LINES = [
-    "# AUTO-GENERATED from config/testing/test_catalog.yaml",
+    "# AUTO-GENERATED from config/testing/test_catalog.json",
     "# Do not edit manually. Run: make test-groups-sync",
     "",
 ]
@@ -36,7 +36,12 @@ class Violation:
 
 
 def _load_catalog(path: Path) -> list[dict[str, Any]]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("Catalog file must contain valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Catalog root must be a JSON object.")
     tests = payload.get("tests", [])
     if not isinstance(tests, list):
         raise ValueError("Catalog must define 'tests' as a list.")
@@ -148,7 +153,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--catalog",
         type=Path,
-        default=Path("config/testing/test_catalog.yaml"),
+        default=Path("config/testing/test_catalog.json"),
         help="Path to canonical test catalog file.",
     )
     parser.add_argument(

@@ -49,7 +49,10 @@ def _lane_weight(lane: str) -> float:
 def _load_catalog(path: Path | None) -> dict[str, dict[str, object]]:
     if path is None or not path.exists():
         return {}
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
     if not isinstance(payload, dict):
         return {}
     tests = payload.get("tests", [])
@@ -392,7 +395,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--catalog",
         type=Path,
-        default=Path("config/testing/test_catalog.yaml"),
+        default=Path("config/testing/test_catalog.json"),
         help="Optional test catalog for domain and legacy-targeted metadata.",
     )
     parser.add_argument(

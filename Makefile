@@ -43,14 +43,15 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 .PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod start-preprod stop restart status clean-ports \
 		pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap \
+		test-intelligence-report \
 		api api-dev api-preprod api-stop web web-dev web-preprod web-stop \
 		startpre stoppre restartpre statuspre apipre webpre testpre ensurepreenv \
-		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill prebackup prerestore preverify preaudit predrill \
+		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check prebackup prerestore preverify preaudit predrill prereadiness \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
 		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke \
-		modules-status modules-pull modules-branches modules-exec
+		modules-status modules-pull modules-branches modules-exec architecture-drift-check test-lane-contracts-check
 
 lint:
 	pre-commit run --all-files
@@ -142,6 +143,12 @@ NEW_CODE_FALLBACK_COVERAGE ?= 1
 NEW_CODE_MAX_FALLBACK_TESTS ?= 20
 NEW_CODE_MAX_TESTS ?= 0
 NEW_CODE_EXCLUDE_SLOW_FASTLANE ?= 1
+TEST_INTEL_SLOW_THRESHOLD ?= 1.8
+TEST_INTEL_FAST_THRESHOLD ?= 0.1
+TEST_INTEL_MIN_TESTS_PROMOTION ?= 3
+TEST_INTEL_TOP_N ?= 15
+TEST_INTEL_APPEND_HISTORY ?= 1
+TEST_INTEL_HISTORY_FILE ?= test-results/sonar/test-intelligence-history.jsonl
 
 test-light-coverage:
 	@mkdir -p "$$(dirname "$(NEW_CODE_COVERAGE_XML)")"
@@ -247,6 +254,30 @@ audit-ci-lite:
 	@$(PYTHON_BIN) scripts/audit_lite_deps.py --import-smoke
 	@echo "🔍 Lekka walidacja polityki zależności..."
 	@$(PYTHON_BIN) scripts/dev/env_audit.py --ci-check
+
+test-intelligence-report:
+	@$(PYTHON_BIN) scripts/test_intelligence_report.py \
+		--junit-xml test-results/sonar/python-junit.xml \
+		--ci-lite-group config/pytest-groups/ci-lite.txt \
+		--new-code-group config/pytest-groups/sonar-new-code.txt \
+		--slow-threshold "$(TEST_INTEL_SLOW_THRESHOLD)" \
+		--fast-threshold "$(TEST_INTEL_FAST_THRESHOLD)" \
+		--min-tests-for-promotion "$(TEST_INTEL_MIN_TESTS_PROMOTION)" \
+		--top-n "$(TEST_INTEL_TOP_N)" \
+		--history-file "$(TEST_INTEL_HISTORY_FILE)" \
+		--append-history "$(TEST_INTEL_APPEND_HISTORY)" \
+		--output text
+
+architecture-drift-check:
+	@$(PYTHON_BIN) scripts/check_architecture_contracts.py \
+		--contracts config/architecture/contracts.yaml \
+		--source-root venom_core
+
+test-lane-contracts-check:
+	@$(PYTHON_BIN) scripts/check_test_lane_contracts.py \
+		--contracts config/testing/lane_contracts.yaml \
+		--assignments config/testing/lane_assignments.yaml \
+		--repo-root .
 
 ci-lite-preflight:
 	@if ! command -v "$(PYTHON_BIN)" >/dev/null 2>&1; then \
@@ -387,12 +418,21 @@ preprod-drill:
 	$(MAKE) --no-print-directory preprod-verify TS="$$ts"; \
 	echo "✅ Preprod drill zakończony (TS=$$ts)."
 
+preprod-readiness-check:
+	@$(PYTHON_BIN) scripts/preprod/readiness_check.py \
+		--env-file "$${ENV_FILE_PATH:-.env.preprod}" \
+		--actor "$${ACTOR:-unknown}" \
+		--ticket "$${TICKET:-N/A}" \
+		--run-audit "$${RUN_AUDIT:-1}" \
+		--dry-run "$${DRY_RUN:-0}"
+
 # Preprod operation aliases
 prebackup: preprod-backup
 prerestore: preprod-restore
 preverify: preprod-verify
 preaudit: preprod-audit
 predrill: preprod-drill
+prereadiness: preprod-readiness-check
 
 _start:
 	@if [ ! -x "$(UVICORN)" ]; then \

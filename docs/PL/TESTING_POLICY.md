@@ -36,6 +36,18 @@ Uruchom jedną komendę:
 make pr-fast
 ```
 
+Niezależny check kontraktów architektury (również uruchamiany w `pr-fast`):
+
+```bash
+make architecture-drift-check
+```
+
+Niezależny check kontraktów lane'ów testowych (również uruchamiany w `pr-fast`):
+
+```bash
+make test-lane-contracts-check
+```
+
 Upewnij się, że hooki są zainstalowane dla `pre-commit` i `pre-push`:
 
 ```bash
@@ -45,7 +57,7 @@ make install-hooks
 Zakres:
 
 - wykrywanie zmienionych plików względem `origin/main` (lub `PR_BASE_REF`)
-- backend fast lane: compile check + audit CI-lite + bramka pokrycia zmienionych linii
+- backend fast lane: compile check + architecture drift guard + guard kontraktów lane'ów + audit CI-lite + bramka pokrycia zmienionych linii
 - frontend fast lane (tylko gdy zmieniono `web-next/**`): lint + unit CI-lite
 
 ### Poziom 3: Jakość pod PR (obowiązkowo przed merge)
@@ -69,6 +81,24 @@ Przydatne opcje:
 NEW_CODE_CHANGED_LINES_MIN=80 make check-new-code-coverage
 NEW_CODE_DIFF_BASE=origin/main make check-new-code-coverage
 NEW_CODE_AUTO_INCLUDE_CHANGED=1 make check-new-code-coverage
+```
+
+Opcjonalny lekki raport intelligence (wpływ czasu testów + kandydaci flaky):
+
+```bash
+make test-intelligence-report
+```
+
+Raport dopisuje punkt trendu do `test-results/sonar/test-intelligence-history.jsonl`.
+Skalibrowane domyślne progi (zadanie 179):
+- `TEST_INTEL_SLOW_THRESHOLD=1.8` (próg kandydata do demotion z ci-lite)
+- `TEST_INTEL_FAST_THRESHOLD=0.1` (próg kandydata do promotion z new-code)
+- `TEST_INTEL_MIN_TESTS_PROMOTION=3` (ogranicza szum dla bardzo małych plików)
+
+Przykład ręcznego override:
+
+```bash
+TEST_INTEL_SLOW_THRESHOLD=2.0 TEST_INTEL_FAST_THRESHOLD=0.08 make test-intelligence-report
 ```
 
 Zachowanie runu new-code coverage:
@@ -122,6 +152,7 @@ Scenariusze performance/latency:
 
 Wymagane bramki na PR:
 
+- Architecture drift guard (job CI `architecture-drift-guard`)
 - CI Lite (szybki lint + wybrane testy unit)
 - Smoke readonly dla preprod (`make test-preprod-readonly-smoke`) w jobie `backend-lite`
 - SonarCloud (bugi, podatności, utrzymywalność, duplikacje)
@@ -182,6 +213,7 @@ Wskaźniki:
 - minimalny próg wymuszony: `NEW_CODE_CHANGED_LINES_MIN=80` (domyślnie)
 - rekomendowany bufor przed push: `>= 80%`
 - referencyjna gałąź Sonar dla new-code: `main` (`sonar.newCode.referenceBranch=main`)
+- polityka triage anomalii: `docs/PL/QUALITY_FALSE_GREEN_TRIAGE.md`
 
 ### 5) Rozjazd optional dependencies w CI-lite
 

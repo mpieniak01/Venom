@@ -107,6 +107,7 @@ make preprod-backup
 make preprod-restore TS=<timestamp>
 make preprod-verify TS=<timestamp>
 make preprod-drill
+make preprod-readiness-check ACTOR=<id> TICKET=<id>
 make preprod-audit ACTOR=<id> ACTION=<operacja> TICKET=<id> RESULT=<OK|FAIL>
 ```
 
@@ -123,5 +124,7 @@ Użyj `make preprod-drill` (komenda jest na liście powyżej), aby wykonać sekw
   - `docs/PL/runbooks/preprod-uat-procedure.md`
 - Dostępy i audyt:
   - `docs/PL/runbooks/preprod-access-audit.md`
+- Automatyzacja readiness:
+  - `docs/PL/runbooks/preprod-readiness-automation.md`
 - Checklista release:
   - `docs/PL/runbooks/preprod-release-checklist.md`

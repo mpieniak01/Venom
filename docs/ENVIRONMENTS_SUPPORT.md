@@ -107,6 +107,7 @@ make preprod-backup
 make preprod-restore TS=<timestamp>
 make preprod-verify TS=<timestamp>
 make preprod-drill
+make preprod-readiness-check ACTOR=<id> TICKET=<id>
 make preprod-audit ACTOR=<id> ACTION=<operation> TICKET=<id> RESULT=<OK|FAIL>
 ```
 
@@ -123,5 +124,7 @@ Use `make preprod-drill` (listed above) to execute backup + verify + readonly sm
   - `docs/runbooks/preprod-uat-procedure.md`
 - Access and audit:
   - `docs/runbooks/preprod-access-audit.md`
+- Readiness automation:
+  - `docs/runbooks/preprod-readiness-automation.md`
 - Release checklist:
   - `docs/runbooks/preprod-release-checklist.md`

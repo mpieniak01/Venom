@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "description": "Architecture dependency contracts (JSON-compatible YAML).",
+  "rules": [
+    {
+      "id": "no_api_routes_outside_api",
+      "description": "Only API modules may import venom_core.api.routes.*",
+      "from_prefixes": ["venom_core"],
+      "except_from_prefixes": ["venom_core.api", "venom_core.main"],
+      "forbidden_import_prefixes": ["venom_core.api.routes"]
+    },
+    {
+      "id": "no_main_imports_in_runtime_layers",
+      "description": "Runtime layers must not import venom_core.main directly.",
+      "from_prefixes": [
+        "venom_core.core",
+        "venom_core.services",
+        "venom_core.execution",
+        "venom_core.memory",
+        "venom_core.infrastructure",
+        "venom_core.agents",
+        "venom_core.skills"
+      ],
+      "except_from_prefixes": [],
+      "forbidden_import_prefixes": ["venom_core.main"]
+    }
+  ]
+}

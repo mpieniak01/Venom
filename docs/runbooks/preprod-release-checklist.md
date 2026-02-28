@@ -24,6 +24,10 @@ make test-preprod-readonly-smoke
 
 ## Phase 3: Gate before prod
 - [ ] Current `preprod` backup exists.
+- [ ] Automated readiness report PASS:
+```bash
+make preprod-readiness-check ACTOR=<id> TICKET=<release-id>
+```
 - [ ] Rollback plan approved.
 - [ ] Release window approved.
 - [ ] Release owner confirms GO.

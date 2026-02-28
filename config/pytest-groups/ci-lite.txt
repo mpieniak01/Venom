@@ -46,6 +46,8 @@ tests/test_url_policy.py
 tests/test_env_cleanup.py
 tests/test_env_report_diff.py
 tests/test_docker_cleanup_script.py
+tests/test_environment_policy.py
+tests/test_preprod_ops_scripts.py
 
 # Academy lightweight regression coverage
 tests/test_academy_api_new_code_edges.py

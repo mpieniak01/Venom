@@ -106,8 +106,12 @@ Komendy operacyjne preprod:
 make preprod-backup
 make preprod-restore TS=<timestamp>
 make preprod-verify TS=<timestamp>
+make preprod-drill
 make preprod-audit ACTOR=<id> ACTION=<operacja> TICKET=<id> RESULT=<OK|FAIL>
 ```
+
+Rekomendowany kolejny etap operacyjny:
+Użyj `make preprod-drill` (komenda jest na liście powyżej), aby wykonać sekwencję backup + verify + smoke readonly.
 
 ## Powiązana dokumentacja
 

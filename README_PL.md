@@ -439,7 +439,6 @@ make check-new-code-coverage
 - [x] Aktualizacja strategii profili runtime i instalacji (minimum API-first + opcjonalne stosy lokalne).
 
 ### ✅ v1.7 (obecna)
-- [x] Ustabilizowano runtime jako praktyczny model 3 silników (Ollama + vLLM + ONNX) wraz z profilami operacyjnymi i diagnostyką.
 - [x] Dowieziono obsługę modeli zdalnych (`/models` remote tab + status providerów, katalog, mapa spięć, walidacja dla ścieżek GPT/Gemini).
 - [x] Utwardzono globalną kontrolę ruchu inbound/outbound (limity, retry/circuit-breaker, bezpieczniejsze zachowanie pod obciążeniem).
 - [x] Rozszerzono obserwowalność konfiguracji i audytu (kanoniczny audit stream i lepsza widoczność zmian config/runtime).

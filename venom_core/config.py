@@ -4,6 +4,60 @@ from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _normalize_environment_role(raw: str | None) -> str:
+    role = (raw or "").strip().lower()
+    if role in {"pre-prod", "pre_prod", "staging", "stage", "preprod"}:
+        return "preprod"
+    return "dev"
+
+
+def _default_environment_role() -> str:
+    return _normalize_environment_role(os.getenv("ENVIRONMENT_ROLE", "dev"))
+
+
+def _settings_env_file() -> str:
+    configured = (os.getenv("ENV_FILE", "") or "").strip()
+    if configured:
+        return configured
+    return ".env.dev"
+
+
+def _default_storage_prefix() -> str:
+    explicit = (os.getenv("STORAGE_PREFIX", "") or "").strip().strip("/")
+    if explicit:
+        return explicit
+    return "preprod" if _default_environment_role() == "preprod" else ""
+
+
+def _storage_path(base: str) -> str:
+    prefix = _default_storage_prefix()
+    if not prefix:
+        return base
+    return f"{base.rstrip('/')}/{prefix}"
+
+
+def _default_cache_namespace() -> str:
+    explicit = (os.getenv("CACHE_NAMESPACE", "") or "").strip()
+    if explicit:
+        return explicit
+    return "preprod" if _default_environment_role() == "preprod" else "venom"
+
+
+def _default_queue_namespace() -> str:
+    explicit = (os.getenv("QUEUE_NAMESPACE", "") or "").strip()
+    if explicit:
+        return explicit
+    return "preprod" if _default_environment_role() == "preprod" else "venom"
+
+
+def _namespace_key(namespace: str, key: str) -> str:
+    ns = namespace.strip()
+    clean_key = key.strip(":")
+    if not ns:
+        return clean_key
+    return f"{ns}:{clean_key}"
+
+
 def _default_url_scheme() -> str:
     policy = os.getenv("URL_SCHEME_POLICY", "auto").strip().lower()
     if policy == "force_https":
@@ -32,19 +86,27 @@ EXT_DOCX = ".docx"
 
 
 class Settings(BaseSettings):
-    # Ignore unknown env vars in local .env without failing startup/tests.
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # Ignore unknown env vars in local env files without failing startup/tests.
+    model_config = SettingsConfigDict(env_file=_settings_env_file(), extra="ignore")
 
     APP_NAME: str = "Venom Meta-Intelligence"
     ENV: str = "development"
+    ENVIRONMENT_ROLE: str = _default_environment_role()  # dev|preprod
+    DB_SCHEMA: str = (
+        "preprod" if _default_environment_role() == "preprod" else "dev"
+    )  # logical schema selector for shared stack
+    ALLOW_DATA_MUTATION: bool = False
+    STORAGE_PREFIX: str = _default_storage_prefix()
+    CACHE_NAMESPACE: str = _default_cache_namespace()
+    QUEUE_NAMESPACE: str = _default_queue_namespace()
     URL_SCHEME_POLICY: str = (
         "auto"  # auto|force_http|force_https (single source of truth for http/https)
     )
 
-    WORKSPACE_ROOT: str = "./workspace"
+    WORKSPACE_ROOT: str = _storage_path("./workspace")
     REPO_ROOT: str = "."
-    MEMORY_ROOT: str = "./data/memory"
-    STATE_FILE_PATH: str = "./data/memory/state_dump.json"
+    MEMORY_ROOT: str = _storage_path("./data/memory")
+    STATE_FILE_PATH: str = f"{_storage_path('./data/memory')}/state_dump.json"
     # Endpoint używany do lokalnego wykrywania adresu IP hosta (bez wysyłania payloadu)
     # Używamy nazwy DNS zamiast hardcoded IP (łatwiejsza konfiguracja i mniej false-positive w skanerach).
     NETWORK_PROBE_HOST: str = "dns.google"
@@ -178,7 +240,9 @@ class Settings(BaseSettings):
     SUMMARY_STRATEGY: str = "llm_with_fallback"  # lub "heuristic_only"
 
     # Konfiguracja Prompt Manager
-    PROMPTS_DIR: str = "./data/prompts"  # Katalog z plikami YAML promptów
+    PROMPTS_DIR: str = _storage_path(
+        "./data/prompts"
+    )  # Katalog z plikami YAML promptów
 
     # Konfiguracja Token Economist
     ENABLE_CONTEXT_COMPRESSION: bool = True  # Włącz kompresję kontekstu
@@ -212,11 +276,11 @@ class Settings(BaseSettings):
     )
     RUNTIME_RETENTION_TARGETS: list[str] = [
         "./logs",
-        "./data/timelines",
-        "./data/memory",
-        "./data/training",
-        "./data/synthetic_training",
-        "./data/learning",
+        _storage_path("./data/timelines"),
+        _storage_path("./data/memory"),
+        _storage_path("./data/training"),
+        _storage_path("./data/synthetic_training"),
+        _storage_path("./data/learning"),
     ]  # Katalogi objęte retencją runtime
 
     # Konfiguracja External Integrations (THE_TEAMMATE)
@@ -272,8 +336,8 @@ class Settings(BaseSettings):
 
     # Konfiguracja THE_ACADEMY (Knowledge Distillation & Fine-tuning)
     ENABLE_ACADEMY: bool = True  # Włącz system uczenia maszynowego
-    ACADEMY_TRAINING_DIR: str = "./data/training"  # Katalog z datasetami
-    ACADEMY_MODELS_DIR: str = "./data/models"  # Katalog z modelami
+    ACADEMY_TRAINING_DIR: str = _storage_path("./data/training")  # Katalog z datasetami
+    ACADEMY_MODELS_DIR: str = _storage_path("./data/models")  # Katalog z modelami
     ACADEMY_MIN_LESSONS: int = 100  # Minimum lekcji do rozpoczęcia treningu
     ACADEMY_TRAINING_INTERVAL_HOURS: int = 24  # Minimum godzin między treningami
     ACADEMY_DEFAULT_BASE_MODEL: str = (
@@ -291,10 +355,8 @@ class Settings(BaseSettings):
     ACADEMY_TRAINING_IMAGE: str = "unsloth/unsloth:latest"  # Obraz Docker dla treningu
     ACADEMY_MAX_UPLOAD_SIZE_MB: int = 25  # Maksymalny rozmiar pliku do uploadu (MB)
     ACADEMY_MAX_UPLOADS_PER_REQUEST: int = 10  # Maksymalna liczba plików na upload
-    ACADEMY_USER_DATA_DIR: str = (
-        "./data/training/user_data"  # Trwały katalog danych użytkownika (konwersja)
-    )
-    ACADEMY_CONVERSION_OUTPUT_DIR: str = "./data/training/user_data/_converted_pool"  # Globalny katalog wyników konwersji (bez ścieżek per user)
+    ACADEMY_USER_DATA_DIR: str = f"{_storage_path('./data/training')}/user_data"  # Trwały katalog danych użytkownika (konwersja)
+    ACADEMY_CONVERSION_OUTPUT_DIR: str = f"{_storage_path('./data/training')}/user_data/_converted_pool"  # Globalny katalog wyników konwersji (bez ścieżek per user)
     ACADEMY_ALLOWED_EXTENSIONS: list[str] = [
         EXT_JSONL,
         EXT_JSON,
@@ -345,9 +407,15 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379  # Port Redis
     REDIS_DB: int = 0  # Numer bazy danych Redis
     REDIS_PASSWORD: SecretStr = SecretStr("")  # Hasło Redis (opcjonalne)
-    HIVE_HIGH_PRIORITY_QUEUE: str = "venom:tasks:high"  # Kolejka high priority
-    HIVE_BACKGROUND_QUEUE: str = "venom:tasks:background"  # Kolejka background
-    HIVE_BROADCAST_CHANNEL: str = "venom:broadcast"  # Kanał broadcast
+    HIVE_HIGH_PRIORITY_QUEUE: str = _namespace_key(
+        _default_queue_namespace(), "tasks:high"
+    )  # Kolejka high priority
+    HIVE_BACKGROUND_QUEUE: str = _namespace_key(
+        _default_queue_namespace(), "tasks:background"
+    )  # Kolejka background
+    HIVE_BROADCAST_CHANNEL: str = _namespace_key(
+        _default_queue_namespace(), "broadcast"
+    )  # Kanał broadcast
     HIVE_TASK_TIMEOUT: int = 300  # Timeout zadania w sekundach (5 minut)
     HIVE_MAX_RETRIES: int = 3  # Maksymalna liczba prób wykonania zadania
     HIVE_ZOMBIE_TASK_TIMEOUT: int = 600  # Timeout dla zombie tasks (10 minut)
@@ -362,7 +430,7 @@ class Settings(BaseSettings):
     SIMULATION_ANALYST_MODEL: str = "openai"  # Model dla UX Analyst (openai/local)
     SIMULATION_DEFAULT_USERS: int = 5  # Domyślna liczba użytkowników w symulacji
     SIMULATION_LOGS_DIR: str = (
-        "./workspace/simulation_logs"  # Katalog z logami symulacji
+        f"{_storage_path('./workspace')}/simulation_logs"  # Katalog z logami symulacji
     )
 
     # Konfiguracja THE_LAUNCHPAD (Cloud Deployment & Creative Media)
@@ -370,7 +438,9 @@ class Settings(BaseSettings):
     DEPLOYMENT_SSH_KEY_PATH: str = ""  # Ścieżka do klucza SSH dla deploymentu
     DEPLOYMENT_DEFAULT_USER: str = "root"  # Domyślny użytkownik SSH
     DEPLOYMENT_TIMEOUT: int = 300  # Timeout dla operacji SSH (sekundy)
-    ASSETS_DIR: str = "./workspace/assets"  # Katalog dla wygenerowanych assetów
+    ASSETS_DIR: str = (
+        f"{_storage_path('./workspace')}/assets"  # Katalog dla wygenerowanych assetów
+    )
     ENABLE_IMAGE_GENERATION: bool = True  # Włącz generowanie obrazów
     IMAGE_GENERATION_SERVICE: str = (
         "placeholder"  # Serwis: 'placeholder', 'openai', 'local-sd'
@@ -417,14 +487,16 @@ class Settings(BaseSettings):
         True  # Ultra-surowa walidacja snów przez Guardian
     )
     DREAMING_OUTPUT_DIR: str = (
-        "./data/synthetic_training"  # Katalog dla syntetycznych danych
+        _storage_path("./data/synthetic_training")  # Katalog dla syntetycznych danych
     )
     DREAMING_DOCKER_NAMESPACE: str = "venom-dream-worker"  # Namespace Docker dla snów
     DREAMING_PROCESS_PRIORITY: int = 19  # Priorytet procesu (0-19, 19=najniższy)
 
     # Konfiguracja THE_CHRONOMANCER (State Management & Timeline Branching)
     ENABLE_CHRONOS: bool = True  # Włącz system zarządzania stanem
-    CHRONOS_TIMELINES_DIR: str = "./data/timelines"  # Katalog dla snapshotów
+    CHRONOS_TIMELINES_DIR: str = _storage_path(
+        "./data/timelines"
+    )  # Katalog dla snapshotów
     CHRONOS_AUTO_CHECKPOINT: bool = (
         True  # Automatyczne checkpointy przed ryzykownymi operacjami
     )

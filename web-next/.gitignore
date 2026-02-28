@@ -1,7 +1,6 @@
 .next/
 node_modules/
 .generated/
-public/meta.json
 .env
 .env.*local
 .vercel/

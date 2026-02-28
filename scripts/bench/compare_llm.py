@@ -105,8 +105,13 @@ def call_chat(endpoint: str, model: str, prompt: str, use_chat: bool = True) -> 
 
 
 def _read_env_var_from_dotenv(key: str) -> str | None:
-    """Proste odczytanie wartości z lokalnego .env (bez eksportu)."""
-    dotenv_path = os.path.join(os.getcwd(), ".env")
+    """Proste odczytanie wartości z aktywnego pliku env (bez eksportu)."""
+    dotenv_name = (os.getenv("ENV_FILE") or ".env.dev").strip() or ".env.dev"
+    dotenv_path = (
+        dotenv_name
+        if os.path.isabs(dotenv_name)
+        else os.path.join(os.getcwd(), dotenv_name)
+    )
     if not os.path.exists(dotenv_path):
         return None
     try:

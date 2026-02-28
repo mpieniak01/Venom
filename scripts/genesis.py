@@ -5,7 +5,7 @@ INIT_PY_FILE = "__init__.py"
 # --- STRUKTURA VENOMA v2 ---
 # Definicja katalogów i plików
 STRUCTURE = {
-    ".": [".env", "requirements.txt", "README.md"],
+    ".": [".env.dev", "requirements.txt", "README.md"],
     "docs": ["VENOM_DIAGRAM.md", "VENOM_MASTER_VISION_V2.md"],
     "data/memory": ["lessons_learned.json"],
     "tests": ["test_healthz.py", INIT_PY_FILE],
@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"
 
     class Config:
-        env_file = ".env"
+        env_file = ".env.dev"
 
 
 SETTINGS = Settings()
@@ -156,7 +156,7 @@ def create_structure():
             _create_file_if_missing(base_path, folder, file)
 
     print("\n✅ GENESIS ZAKOŃCZONE. Organizm Venom posiada strukturę.")
-    print("👉 Następny krok: uzupełnij .env i uruchom:")
+    print("👉 Następny krok: uzupełnij .env.dev i uruchom:")
     print("   uvicorn venom_core.main:app --reload")
 
 

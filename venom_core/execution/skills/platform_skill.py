@@ -23,7 +23,7 @@ class PlatformSkill:
     Skill do integracji z platformami zewnętrznymi.
     Obsługuje GitHub (Issues, PR), Discord, Slack.
 
-    UWAGA: Wymaga konfiguracji tokenów w .env:
+    UWAGA: Wymaga konfiguracji tokenów w aktywnym pliku env:
     - GITHUB_TOKEN
     - GITHUB_REPO_NAME
     - DISCORD_WEBHOOK_URL (opcjonalne)

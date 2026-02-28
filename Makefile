@@ -25,6 +25,11 @@ BACKEND_LOG ?= logs/backend.log
 WEB_LOG ?= logs/web-next.log
 VLLM_ENDPOINT ?= http://127.0.0.1:8001
 VLLM_START_TIMEOUT_SEC ?= 240
+ENV_FILE ?= .env.dev
+ENV_EXAMPLE_FILE ?= .env.dev.example
+WEB_APP_VERSION ?= $(shell node -p "require('./web-next/package.json').version" 2>/dev/null || echo unknown)
+export ENV_FILE
+export ENV_EXAMPLE_FILE
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -32,13 +37,16 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod stop restart status clean-ports \
+.PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod start-preprod stop restart status clean-ports \
 		pytest e2e test-optimal test-ci-light test-light-coverage check-new-code-coverage check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap \
-		api api-dev api-stop web web-dev web-stop \
+		api api-dev api-preprod api-stop web web-dev web-preprod web-stop \
+		startpre stoppre restartpre statuspre apipre webpre testpre ensurepreenv \
+		preprod-backup preprod-restore preprod-verify preprod-audit prebackup prerestore preverify preaudit \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
-		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff \
+		ensure-preprod-env-file \
+		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke \
 		modules-status modules-pull modules-branches modules-exec
 
 lint:
@@ -94,6 +102,11 @@ test-unit:
 
 test-smoke:
 	pytest -m smoke
+
+test-preprod-readonly-smoke:
+	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+		$(PYTEST_BIN) -q tests/test_preprod_readonly_smoke.py -m smoke
 
 test-perf:
 	pytest -m performance
@@ -301,19 +314,75 @@ start-dev:
 
 start-prod: START_MODE=prod
 start-prod:
+	@echo "⚠️  OSTRZEŻENIE: tryb 'prod' nie jest jeszcze oficjalnie zwalidowany/rekomendowany operacyjnie."
+	@echo "⚠️  Zalecane środowiska: 'dev' (testy/prace) oraz 'preprod' (UAT + smoke read-only)."
 	$(MAKE) --no-print-directory ensure-env-file
 	$(MAKE) --no-print-directory _start
 
+start-preprod: START_MODE=prod
+start-preprod:
+	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+		$(MAKE) --no-print-directory ensure-env-file
+	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+		$(MAKE) --no-print-directory _start
+
+# Preprod aliases (short commands)
+startpre: start-preprod
+stoppre: stop
+restartpre:
+	$(MAKE) --no-print-directory stoppre
+	$(MAKE) --no-print-directory startpre
+statuspre: status
+apipre: api-preprod
+webpre: web-preprod
+testpre: test-preprod-readonly-smoke
+ensurepreenv: ensure-preprod-env-file
+
 ensure-env-file:
-	@if [ ! -f .env ]; then \
-		if [ -f .env.example ]; then \
-			cp .env.example .env; \
-			echo "ℹ️  Utworzono .env na podstawie .env.example."; \
-			echo "ℹ️  Uzupełnij klucze/secrets w .env (jeśli wymagane) i uruchom ponownie start."; \
+	@if [ ! -f "$(ENV_FILE)" ]; then \
+		if [ -f "$(ENV_EXAMPLE_FILE)" ]; then \
+			cp "$(ENV_EXAMPLE_FILE)" "$(ENV_FILE)"; \
+			echo "ℹ️  Utworzono $(ENV_FILE) na podstawie $(ENV_EXAMPLE_FILE)."; \
+			echo "ℹ️  Uzupełnij klucze/secrets w $(ENV_FILE) (jeśli wymagane) i uruchom ponownie start."; \
 		else \
-			echo "⚠️  Brak .env i .env.example. Start użyje wartości domyślnych tam, gdzie to możliwe."; \
+			echo "⚠️  Brak $(ENV_FILE) i $(ENV_EXAMPLE_FILE). Start użyje wartości domyślnych tam, gdzie to możliwe."; \
 		fi; \
 	fi
+
+ensure-preprod-env-file:
+	@ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+		$(MAKE) --no-print-directory ensure-env-file
+
+preprod-backup:
+	@ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+	ENVIRONMENT_ROLE=preprod ALLOW_DATA_MUTATION=0 \
+		bash scripts/preprod/backup_restore.sh backup
+
+preprod-restore:
+	@ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+	ENVIRONMENT_ROLE=preprod ALLOW_DATA_MUTATION=1 \
+		bash scripts/preprod/backup_restore.sh restore "$${TS:-}"
+
+preprod-verify:
+	@ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+	ENVIRONMENT_ROLE=preprod ALLOW_DATA_MUTATION=0 \
+		bash scripts/preprod/backup_restore.sh verify "$${TS:-}"
+	@$(MAKE) --no-print-directory test-preprod-readonly-smoke
+
+preprod-audit:
+	@bash scripts/preprod/audit_log.sh \
+		"$${ACTOR:-unknown}" \
+		"$${ACTION:-manual-operation}" \
+		"$${TICKET:-N/A}" \
+		"$${RESULT:-OK}"
+
+# Preprod operation aliases
+prebackup: preprod-backup
+prerestore: preprod-restore
+preverify: preprod-verify
+preaudit: preprod-audit
 
 _start:
 	@if [ ! -x "$(UVICORN)" ]; then \
@@ -323,10 +392,10 @@ _start:
 	@mkdir -p logs
 	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
 	@active_server=""; \
-	if [ -f .env ]; then \
-		active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' .env 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true); \
-	elif [ -f .env.example ]; then \
-		active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' .env.example 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true); \
+	if [ -f "$(ENV_FILE)" ]; then \
+		active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' "$(ENV_FILE)" 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true); \
+	elif [ -f "$(ENV_EXAMPLE_FILE)" ]; then \
+		active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' "$(ENV_EXAMPLE_FILE)" 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true); \
 	fi; \
 	if [ -z "$$active_server" ]; then active_server="ollama"; fi; \
 	start_ollama() { \
@@ -491,13 +560,13 @@ _start:
 		: > $(WEB_LOG); \
 		if [ "$(START_MODE)" = "prod" ]; then \
 			echo "🛠  Buduję Next.js (npm run build)"; \
-			$(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1; \
+			NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1; \
 			echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"; \
-			$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+			NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 			echo $$! > $(WEB_PID_FILE); \
 		else \
 			echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
-			$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+			NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 			echo $$! > $(WEB_PID_FILE); \
 		fi; \
 		WPID=$$(cat $(WEB_PID_FILE)); \
@@ -613,6 +682,11 @@ api-dev:
 	@echo "📡 Backend: http://$(HOST):$(PORT)"
 	@echo "🔄 Autoreload: aktywny (zmiana plików → restart)"
 
+api-preprod:
+	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+		$(MAKE) --no-print-directory api
+
 # Zatrzymaj tylko backend
 api-stop:
 	@trap '' TERM INT
@@ -644,9 +718,9 @@ web:
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
 	@echo "🛠  Buduję Next.js (npm run build)..."
-	$(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1
+	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1
 	@echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"
-	$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
@@ -657,11 +731,16 @@ web-dev:
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
 	@echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"
-	$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
 	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
+
+web-preprod:
+	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+		$(MAKE) --no-print-directory web
 
 # Zatrzymaj tylko frontend
 web-stop:

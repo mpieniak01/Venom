@@ -56,3 +56,23 @@ def test_env_cleanup_safe_and_deep(tmp_path: Path):
     assert deep.returncode == 0, deep.stderr
     assert not (tmp_path / "web-next/node_modules").exists()
     assert (tmp_path / "models").exists()
+
+
+def test_env_cleanup_blocked_in_preprod(tmp_path: Path):
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "dev" / "env_cleanup.sh"
+
+    env = os.environ.copy()
+    env["ROOT_DIR"] = str(tmp_path)
+    env["ENVIRONMENT_ROLE"] = "preprod"
+    env["ALLOW_DATA_MUTATION"] = "0"
+
+    blocked = subprocess.run(
+        ["bash", str(script), "safe"],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert blocked.returncode == 3
+    assert "blocked for pre-prod" in blocked.stdout

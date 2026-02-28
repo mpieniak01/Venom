@@ -30,6 +30,7 @@ from venom_core.api.schemas.memory import (
     SessionMemoryClearResponse,
     SessionMemoryResponse,
 )
+from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.core.knowledge_contract import KnowledgeKind
 from venom_core.core.knowledge_ttl import compute_expires_at, resolve_ttl_days
 from venom_core.memory.lessons_store import LessonsStore
@@ -561,6 +562,10 @@ def clear_session_memory(
     """
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id jest wymagane")
+    try:
+        ensure_data_mutation_allowed("memory.clear_session")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
 
     deleted_vectors = 0
     try:
@@ -624,6 +629,10 @@ def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_store)])
     """
     Czyści pamięć globalną (preferencje/fakty globalne użytkownika).
     """
+    try:
+        ensure_data_mutation_allowed("memory.clear_global")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     try:
         deleted = vector_store.delete_by_metadata({"user_id": DEFAULT_USER_ID})
         # Jeśli nie znaleziono nic do usunięcia (np. stare wpisy bez metadanych user_id),
@@ -811,6 +820,10 @@ def delete_memory_entry(
     Usuwa wpis pamięci (oraz wszystkie jego fragmenty).
     """
     try:
+        ensure_data_mutation_allowed("memory.delete_entry")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    try:
         deleted = vector_store.delete_entry(entry_id)
         if deleted == 0:
             raise HTTPException(
@@ -843,6 +856,10 @@ def flush_semantic_cache():
     Czyści Semantic Cache (kolekcja hidden_prompts).
     Usuwa wszystkie zapamiętane pary prompt-odpowiedź używane do semantycznego cache'owania.
     """
+    try:
+        ensure_data_mutation_allowed("memory.flush_semantic_cache")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     try:
         from venom_core.core.orchestrator.constants import (
             SEMANTIC_CACHE_COLLECTION_NAME,

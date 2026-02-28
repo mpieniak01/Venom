@@ -124,7 +124,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
         if not SETTINGS.ENABLE_GHOST_AGENT:
             logger.warning(
                 "Ghost Agent jest wyłączony w konfiguracji (ENABLE_GHOST_AGENT=False). "
-                "Aby go włączyć, ustaw ENABLE_GHOST_AGENT=True w .env lub config.py"
+                "Aby go włączyć, ustaw ENABLE_GHOST_AGENT=True w aktywnym pliku env lub config.py"
             )
 
         # Użyj wartości z SETTINGS jako domyślnych
@@ -174,7 +174,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
         if not SETTINGS.ENABLE_GHOST_AGENT:
             return (
                 "❌ Ghost Agent jest wyłączony w konfiguracji. "
-                "Ustaw ENABLE_GHOST_AGENT=True w .env aby go włączyć."
+                "Ustaw ENABLE_GHOST_AGENT=True w aktywnym pliku env aby go włączyć."
             )
 
         if self.is_running:

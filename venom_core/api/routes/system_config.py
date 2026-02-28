@@ -37,7 +37,7 @@ def require_localhost_request(req: Request) -> None:
 )
 def get_runtime_config() -> RuntimeConfigResponse:
     """
-    Zwraca aktualną konfigurację runtime (whitelist parametrów z .env).
+    Zwraca aktualną konfigurację runtime (whitelist parametrów z aktywnego pliku env).
     Sekrety są ZAWSZE maskowane w odpowiedzi API.
     """
     try:
@@ -67,7 +67,7 @@ def update_runtime_config(
     request: ConfigUpdateRequest, req: Request
 ) -> ConfigUpdateResponse:
     """
-    Aktualizuje konfigurację runtime (zapis do .env z backupem).
+    Aktualizuje konfigurację runtime (zapis do aktywnego pliku env z backupem).
     Dostępne tylko z localhost.
     Lokalny administrator ma pełną kontrolę nad parametrami.
     """
@@ -109,7 +109,7 @@ def update_runtime_config(
 )
 def get_config_backups(req: Request, limit: int = 20) -> ConfigBackupsResponse:
     """
-    Zwraca listę backupów .env.
+    Zwraca listę backupów aktywnego pliku env.
     """
     require_localhost_request(req)
 
@@ -137,7 +137,7 @@ def restore_config_backup(
     request: RestoreBackupRequest, req: Request
 ) -> RestoreBackupResponse:
     """
-    Przywraca .env z backupu.
+    Przywraca aktywny plik env z backupu.
     """
     require_localhost_request(req)
 

@@ -17,6 +17,7 @@ from venom_core.api.dependencies import (
 from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.schemas.knowledge import LearningToggleRequest
 from venom_core.config import SETTINGS
+from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.core.knowledge_adapters import (
     from_lesson,
     from_session_store_entry,
@@ -64,6 +65,13 @@ NODE_TYPE_FUNCTION = "function"
 NODE_TYPE_METHOD = "method"
 _graph_view_counters: Counter[str] = Counter()
 _graph_view_counters_lock = Lock()
+
+
+def _enforce_mutation_allowed(operation_name: str) -> None:
+    try:
+        ensure_data_mutation_allowed(operation_name)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -650,6 +658,8 @@ def get_graph_summary(
             "edges": edges,
             "lastUpdated": last_updated,
         }
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas pobierania podsumowania grafu")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -682,6 +692,8 @@ def get_file_graph_info(
         return {"status": "success", "file_info": info}
     except HTTPException:
         raise
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas pobierania informacji o pliku z grafu")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -714,6 +726,8 @@ def get_impact_analysis(
         return {"status": "success", "impact": impact}
     except HTTPException:
         raise
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas analizy wpływu pliku w grafie")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -743,6 +757,8 @@ def trigger_graph_scan(
             "message": "Skanowanie grafu zostało uruchomione",
             "stats": stats,
         }
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas uruchamiania skanowania grafu")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -782,6 +798,8 @@ def get_lessons(
             "count": len(lessons_data),
             "lessons": lessons_data,
         }
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas pobierania lekcji")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
@@ -803,6 +821,8 @@ def get_lessons_stats(
     try:
         stats = lessons_store.get_statistics()
         return {"status": "success", "stats": stats}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas pobierania statystyk lekcji")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
@@ -822,6 +842,7 @@ def prune_latest_lessons(
     """
     Usuwa n najnowszych lekcji z magazynu.
     """
+    _enforce_mutation_allowed("knowledge.lessons.prune_latest")
     try:
         deleted = lessons_store.delete_last_n(count)
         logger.info(f"Pruning: Usunięto {deleted} najnowszych lekcji")
@@ -858,6 +879,7 @@ def prune_lessons_by_range(
     """
     Usuwa lekcje z podanego zakresu czasu.
     """
+    _enforce_mutation_allowed("knowledge.lessons.prune_range")
     try:
         # Parsuj daty ISO 8601 (obsługa 'Z' suffix)
         # Workaround for Python < 3.11 which doesn't handle 'Z' suffix in fromisoformat
@@ -894,6 +916,7 @@ def prune_lessons_by_tag(
     """
     Usuwa lekcje zawierające dany tag.
     """
+    _enforce_mutation_allowed("knowledge.lessons.prune_tag")
     try:
         deleted = lessons_store.delete_by_tag(tag)
         logger.info(f"Pruning: Usunięto {deleted} lekcji z tagiem '{tag}'")
@@ -926,6 +949,7 @@ def purge_all_lessons(
             detail="Operacja wymaga potwierdzenia. Ustaw parametr force=true",
         )
 
+    _enforce_mutation_allowed("knowledge.lessons.purge")
     try:
         lesson_count = len(lessons_store.lessons)
         success = lessons_store.clear_all()
@@ -954,6 +978,7 @@ def prune_lessons_by_ttl(
     days: Annotated[int, Query(..., ge=1, description="Liczba dni retencji (TTL)")],
 ):
     """Usuwa lekcje starsze niż TTL w dniach."""
+    _enforce_mutation_allowed("knowledge.lessons.prune_ttl")
     try:
         deleted = lessons_store.prune_by_ttl(days)
         return {
@@ -974,6 +999,7 @@ def dedupe_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
 ):
     """Deduplikuje lekcje na podstawie podpisu treści."""
+    _enforce_mutation_allowed("knowledge.lessons.dedupe")
     try:
         removed = lessons_store.dedupe_lessons()
         return {

@@ -4,6 +4,8 @@ set -euo pipefail
 MODE="${1:-safe}"
 DRY_RUN="${DRY_RUN:-0}"
 CONFIRM_DEEP_CLEAN="${CONFIRM_DEEP_CLEAN:-0}"
+ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}"
+ALLOW_DATA_MUTATION="${ALLOW_DATA_MUTATION:-0}"
 
 run_cmd() {
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -23,6 +25,15 @@ ensure_docker() {
     return 1
   fi
   return 0
+}
+
+check_preprod_guard() {
+  local role
+  role="$(echo "$ENVIRONMENT_ROLE" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$role" =~ ^(preprod|pre-prod|pre_prod|staging|stage)$ ]] && [[ "$ALLOW_DATA_MUTATION" != "1" ]]; then
+    echo "❌ Docker cleanup blocked for pre-prod (ALLOW_DATA_MUTATION=0)."
+    exit 3
+  fi
 }
 
 cleanup_safe() {
@@ -65,12 +76,14 @@ cleanup_deep() {
 
 case "$MODE" in
   safe)
+    check_preprod_guard
     if ! ensure_docker; then
       exit 0
     fi
     cleanup_safe
     ;;
   deep)
+    check_preprod_guard
     if ! ensure_docker; then
       exit 0
     fi

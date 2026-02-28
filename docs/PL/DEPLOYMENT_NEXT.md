@@ -72,18 +72,68 @@ Zasady interpretacji:
 
 ## Tryby uruchomień
 
+Kontrakt wyboru środowiska:
+- `Makefile` jest jedynym źródłem prawdy dla aktywnego pliku env.
+- `ENV_FILE` i `ENV_EXAMPLE_FILE` są eksportowane przez `make` do procesów backend/api/web.
+
 ### Development (`make start` / `make start-dev`)
+Plik konfiguracji:
+- plik runtime: `.env.dev` (lokalny, niecommitowany)
+- bezpieczny szablon: `.env.dev.example` (commitowany, bez sekretów)
+
 1. `uvicorn` startuje backend z `--reload`.
 2. `npm --prefix web-next run dev` rusza Next-a z parametrami `--hostname 0.0.0.0 --port 3000`.
 3. Makefile pilnuje PID-ów (`.venom.pid`, `.web-next.pid`) i blokuje wielokrotne starty.
 4. `make stop` zabija oba procesy i czyści porty (8000/3000).
 
 ### Production (`make start-prod`)
+Plik konfiguracji:
+- plik runtime: `.env.dev` (lokalny, niecommitowany)
+- bezpieczny szablon: `.env.dev.example` (commitowany, bez sekretów)
+
+Ostrzeżenie:
+- `make start-prod` jest dostępne, ale `prod` nie jest obecnie w pełni zwalidowane/rekomendowane do działania live.
+- Do codziennej pracy i akceptacji używaj przepływów `dev` oraz `preprod`.
+
 1. Uruchamia `pip install`/`npm install` wcześniej.
 2. Buduje UI: `npm --prefix web-next run build` (standalone, telemetry wyłączone).
 3. Startuje backend bez `--reload` (`uvicorn venom_core.main:app --host 0.0.0.0 --port 8000 --no-server-header`).
 4. Startuje `next start` na porcie 3000.
 5. `make stop` działa tak samo (zatrzymuje `next start` też przez `pkill -f`).
+
+### Pre-production (`make start-preprod`)
+1. Używa trybu produkcyjnego na wspólnym stacku (`START_MODE=prod`).
+2. Używa dedykowanego pliku konfiguracji preprod:
+   - plik runtime: `.env.preprod` (lokalny, niecommitowany)
+   - bezpieczny szablon: `.env.preprod.example` (commitowany, bez sekretów)
+   - komenda pomocnicza: `make ensure-preprod-env-file`
+3. Ustawia przed startem zmienne izolacji preprod:
+   - `ENVIRONMENT_ROLE=preprod`
+   - `DB_SCHEMA=preprod`
+   - `CACHE_NAMESPACE=preprod`
+   - `QUEUE_NAMESPACE=preprod`
+   - `STORAGE_PREFIX=preprod`
+   - `ALLOW_DATA_MUTATION=0`
+4. Uruchamia ten sam pipeline co `start-prod`, ale z izolacją danych preprod.
+
+Przydatne warianty:
+```bash
+make ensure-preprod-env-file # tworzy .env.preprod na podstawie .env.preprod.example
+make start-preprod          # backend + frontend w trybie preprod
+make api-preprod            # tylko backend w trybie preprod
+make web-preprod            # tylko frontend w trybie preprod
+make test-preprod-readonly-smoke
+
+# krótkie aliasy
+make ensurepreenv
+make startpre
+make stoppre
+make restartpre
+make statuspre
+make apipre
+make webpre
+make testpre
+```
 
 ## Monitorowanie i logi
 
@@ -164,7 +214,7 @@ git push origin v1.6.0
 
 ## Checklist wdrożeniowy
 
-- [ ] `make start-prod` działa i zwraca linki do backendu i UI.
+- [ ] `make start-prod` działa i zwraca linki do backendu i UI (zgodność techniczna; to nie jest jeszcze rekomendowana ścieżka aktywnego rolloutu prod).
 - [ ] Proxy (nginx/docker-compose) przekierowuje `/api` i `/ws` na FastAPI oraz resztę na Next.
 - [ ] `npm --prefix web-next run test:e2e` przechodzi na buildzie prod.
 - [ ] `npm --prefix web-next run test:perf` wykazuje latency < budżet (domyślnie 15s).

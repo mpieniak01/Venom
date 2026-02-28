@@ -14,6 +14,8 @@
 
 **Venom** to open-source'owy, local-first stack AI do realnej automatyzacji pracy inżynierskiej. Łączy orkiestrację agentów, wykonywanie narzędzi i pamięć długoterminową w jednym środowisku, które możesz uruchomić i rozwijać lokalnie.
 
+Aktualna rekomendacja środowiskowa: używaj `dev` i `preprod`. `prod` jest nadal etapem planowanym i nie jest jeszcze zwalidowane/rekomendowane do działania live.
+
 To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (Workflow Control Plane), przejrzyste decyzje runtime i pełny ślad audytowy requestów. Do tego 3 stosy modeli do wyboru: `ONNX`, `vLLM`, `Ollama` - zależnie od sprzętu, kosztu i celu.
 
 ## Dlaczego Venom
@@ -47,6 +49,7 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 ## Dokumentacja
 ### Start i operacje
 - [Deployment + uruchamianie](docs/PL/DEPLOYMENT_NEXT.md) - Kroki startu środowiska dev/prod oraz wymagania runtime.
+- [Macierz wsparcia środowisk](docs/PL/ENVIRONMENTS_SUPPORT.md) - Aktualny status wsparcia `dev`/`preprod`/`prod` oraz wymagany model konfiguracji.
 - [Przewodnik Dashboard](docs/PL/DASHBOARD_GUIDE.md) - Uruchamianie panelu web, skrypty i przegląd cockpitu operacyjnego.
 - [Przewodnik użycia tooli](docs/PL/TOOLS_USAGE_GUIDE.md) - Routing slash tooli, zachowanie `forced_tool` i wymagania web-search w `.venv`.
 - [Panel konfiguracji](docs/PL/CONFIG_PANEL.md) - Zakres ustawień dostępnych w UI i zasady bezpiecznej edycji.
@@ -177,7 +180,7 @@ venom/
 git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.dev.example .env.dev
 make start
 ```
 
@@ -229,6 +232,10 @@ make stop        # zatrzymanie usług
 make status      # status procesów
 make start-prod  # tryb produkcyjny
 ```
+
+Ostrzeżenie:
+- `make start-prod` istnieje dla zgodności technicznej, ale `prod` nie jest jeszcze zwalidowane/rekomendowane do działania live.
+- Rekomendowane środowiska: `dev` i `preprod`.
 
 ## Frontend (Next.js - `web-next`)
 Warstwa prezentacji działa na Next.js 16 (App Router, React 19).
@@ -302,6 +309,9 @@ make start-prod
 make stop
 ```
 
+Ostrzeżenie:
+- Na obecnym etapie ten tryb traktujemy jako nierekomendowany (brak pełnej walidacji produkcyjnej).
+
 
 ### Konfiguracje o najniższym zużyciu pamięci
 | Konfiguracja | Komendy | Szacunkowy RAM | Zastosowanie |
@@ -314,7 +324,8 @@ make stop
 
 
 ## Kluczowe zmienne środowiskowe
-Pełna lista: [.env.example](.env.example)
+Szablon dev: [.env.dev.example](.env.dev.example)
+Szablon preprod: [.env.preprod.example](.env.preprod.example)
 
 
 ## Panel konfiguracji (UI)
@@ -327,7 +338,7 @@ Panel pod adresem `http://localhost:3000/config` umożliwia:
 ### Edycja parametrów
 - walidacja zakresów i typów,
 - maskowanie sekretów,
-- backup `.env` do `config/env-history/`,
+- backup aktywnego pliku env (`.env.dev` lub `.env.preprod`) do `config/env-history/`,
 - informacja o usługach wymagających restartu.
 
 ### Bezpieczeństwo panelu

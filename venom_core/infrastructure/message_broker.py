@@ -284,7 +284,7 @@ class MessageBroker:
         if not self.redis_client:
             return
 
-        key = f"venom:task:{task.task_id}"
+        key = f"{SETTINGS.CACHE_NAMESPACE}:task:{task.task_id}"
         payload = task.to_dict()
         data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         # TTL: 24 godziny
@@ -308,7 +308,7 @@ class MessageBroker:
             return self._task_registry[task_id]
 
         # Sprawdź w Redis
-        key = f"venom:task:{task_id}"
+        key = f"{SETTINGS.CACHE_NAMESPACE}:task:{task_id}"
         data = await self.redis_client.get(key)
         if data:
             try:

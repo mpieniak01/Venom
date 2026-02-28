@@ -1,0 +1,15 @@
+# file_path,min_percent
+venom_core/services/module_registry.py,40
+venom_core/core/service_monitor.py,40
+venom_core/core/model_registry_providers.py,40
+venom_core/services/translation_service.py,40
+venom_core/skills/mcp/skill_adapter.py,40
+venom_core/agents/toolmaker.py,40
+venom_core/agents/coder.py,40
+venom_core/core/orchestrator/task_pipeline/context_builder.py,40
+venom_core/bootstrap/model_services.py,40
+venom_core/main.py,40
+venom_core/bootstrap/runtime_stack.py,40
+venom_core/api/routes/academy_conversion.py,40
+venom_core/agents/release_manager.py,40
+venom_core/core/model_registry_runtime.py,40

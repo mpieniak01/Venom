@@ -51,7 +51,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
 		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke \
-		modules-status modules-pull modules-branches modules-exec architecture-drift-check test-lane-contracts-check
+		modules-status modules-pull modules-branches modules-exec architecture-drift-check test-lane-contracts-check check-file-coverage-floor
 
 lint:
 	pre-commit run --all-files
@@ -182,6 +182,14 @@ check-new-code-coverage: test-light-coverage
 		--diff-base "$(NEW_CODE_DIFF_BASE)" \
 		--scope "$(NEW_CODE_COV_TARGET)" \
 		--min-coverage "$(NEW_CODE_CHANGED_LINES_MIN)"
+	@$(MAKE) --no-print-directory check-file-coverage-floor \
+		COVERAGE_XML="$(NEW_CODE_COVERAGE_XML)" \
+		COVERAGE_FLOOR_FILE="config/coverage-file-floor.txt"
+
+check-file-coverage-floor:
+	@$(PYTHON_BIN) scripts/check_file_coverage_floor.py \
+		--coverage-xml "$(COVERAGE_XML)" \
+		--thresholds "$(COVERAGE_FLOOR_FILE)"
 
 # Szybki tryb lokalny: krótsza pętla developerska bez zmiany gate'ów CI.
 check-new-code-coverage-local:

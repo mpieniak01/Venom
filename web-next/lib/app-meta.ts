@@ -13,9 +13,9 @@ export type AppMeta = {
 };
 
 let cachedMeta: AppMeta | null = null;
-let metaLoadAttempted = false;
+let metaLoadPromise: Promise<AppMeta> | null = null;
 
-function normalizeEnvironmentRole(raw: string | undefined): string | undefined {
+export function normalizeEnvironmentRole(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   const normalized = raw.trim().toLowerCase();
   if (["preprod", "pre-prod", "pre_prod", "staging", "stage"].includes(normalized)) {
@@ -35,35 +35,49 @@ function fallbackMeta(): AppMeta {
   };
 }
 
+async function loadMeta(): Promise<AppMeta> {
+  try {
+    const response = await fetch("/meta.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("meta fetch failed");
+    const data: AppMeta = await response.json();
+    const merged = { ...fallbackMeta(), ...data };
+    cachedMeta = merged;
+    return merged;
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Nie udało się pobrać meta.json", err);
+    }
+    const fallback = fallbackMeta();
+    cachedMeta = fallback;
+    return fallback;
+  }
+}
+
 export function useAppMeta() {
   const [meta, setMeta] = useState<AppMeta | null>(cachedMeta ?? fallbackMeta());
 
   useEffect(() => {
-    if (metaLoadAttempted) return;
-    metaLoadAttempted = true;
     let active = true;
-    const load = async () => {
-      try {
-        const response = await fetch("/meta.json", { cache: "no-store" });
-        if (!response.ok) throw new Error("meta fetch failed");
-        const data: AppMeta = await response.json();
-        const merged = { ...fallbackMeta(), ...data };
-        cachedMeta = merged;
-        if (active) {
-          setMeta(merged);
+
+    if (cachedMeta) {
+      Promise.resolve().then(() => {
+        if (active && cachedMeta) {
+          setMeta(cachedMeta);
         }
-      } catch (err) {
-        if (process.env.NODE_ENV !== "production") {
-          console.warn("Nie udało się pobrać meta.json", err);
-        }
-        const fallback = fallbackMeta();
-        cachedMeta = fallback;
-        if (active) {
-          setMeta(fallback);
-        }
+      });
+      return () => {
+        active = false;
+      };
+    }
+    if (!metaLoadPromise) {
+      metaLoadPromise = loadMeta();
+    }
+    metaLoadPromise.then((loadedMeta) => {
+      if (active) {
+        setMeta(loadedMeta);
       }
-    };
-    load();
+    });
+
     return () => {
       active = false;
     };

@@ -79,6 +79,10 @@ backup_redis_namespace() {
       ttl="${raw_ttl}"
     fi
     dump_b64="$(redis-cli --raw DUMP "${key}" | base64 -w0)"
+    if [ -z "${dump_b64}" ]; then
+      echo "⚠️ Pomijam klucz bez payload DUMP: ${key}" >&2
+      continue
+    fi
     printf '%s\t%s\t%s\n' "${key}" "${ttl}" "${dump_b64}" >> "${outfile}"
   done < <(redis-cli --scan --pattern "${REDIS_PATTERN}" || true)
 

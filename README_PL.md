@@ -433,12 +433,20 @@ make check-new-code-coverage
 - [x] Provider Governance.
 - [x] Academy Hardening.
 
-### ✅ v1.6 (obecna)
+### ✅ v1.6
 - [x] Utwardzenie kontraktu API (Wave-1 + Wave-2 MVP) wraz z synchronizacją OpenAPI/FE.
 - [x] Integracja ONNX Runtime jako trzeciego lokalnego silnika LLM (3-stack: Ollama + vLLM + ONNX).
 - [x] Aktualizacja strategii profili runtime i instalacji (minimum API-first + opcjonalne stosy lokalne).
 
-### 🚧 v1.7 (planowane detale)
+### ✅ v1.7 (obecna)
+- [x] Ustabilizowano runtime jako praktyczny model 3 silników (Ollama + vLLM + ONNX) wraz z profilami operacyjnymi i diagnostyką.
+- [x] Dowieziono obsługę modeli zdalnych (`/models` remote tab + status providerów, katalog, mapa spięć, walidacja dla ścieżek GPT/Gemini).
+- [x] Utwardzono globalną kontrolę ruchu inbound/outbound (limity, retry/circuit-breaker, bezpieczniejsze zachowanie pod obciążeniem).
+- [x] Rozszerzono obserwowalność konfiguracji i audytu (kanoniczny audit stream i lepsza widoczność zmian config/runtime).
+- [x] Domknięto falę hardeningu Academy/API (dekompozycja modułów, spójność kontraktów, bezpieczniejsze ścieżki upload/trening/historia).
+- [x] Sfinalizowano model pracy pre-prod na wspólnym stacku (separacja danych, podział `.env.dev`/`.env.preprod`, sterowanie Makefile, guard rails, backup/restore/smoke).
+
+### 🚧 v1.8 (planowane detale)
 - [ ] Odpytywanie w tle dla GitHub Issues.
 - [ ] Panel dashboardu dla integracji zewnętrznych.
 - [ ] Rekurencyjne streszczanie długich dokumentów.

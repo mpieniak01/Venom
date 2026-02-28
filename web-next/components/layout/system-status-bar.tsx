@@ -10,7 +10,7 @@ import {
   formatVramMetric,
 } from "@/lib/formatters";
 import { useTranslation } from "@/lib/i18n";
-import { useAppMeta } from "@/lib/app-meta";
+import { normalizeEnvironmentRole, useAppMeta } from "@/lib/app-meta";
 import { cn } from "@/lib/utils";
 import type { GitStatus, ModelsUsageResponse, TokenMetrics } from "@/lib/types";
 
@@ -265,8 +265,8 @@ function formatEnvironmentDisplay(
   role: string | undefined,
   t: ReturnType<typeof useTranslation>,
 ): string {
-  const normalized = (role || "").trim().toLowerCase();
-  if (normalized === "preprod" || normalized === "pre-prod" || normalized === "staging") {
+  const normalized = normalizeEnvironmentRole(role);
+  if (normalized === "preprod") {
     return t("statusBar.environmentPreprod");
   }
   return t("statusBar.environmentDev");

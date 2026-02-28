@@ -194,6 +194,16 @@ def _parse_sse_event(frame: str) -> tuple[str, dict]:
     return event_name, payload
 
 
+def test_incompatible_tracer_is_ignored_by_safe_call(monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_routes.system_deps,
+        "get_request_tracer",
+        lambda: object(),
+    )
+
+    assert not llm_simple_routes._call_tracer(object(), "add_step", "rid", "s", "a")
+
+
 @pytest.mark.asyncio
 async def test_stream_simple_chunks_retries_on_503_then_succeeds(monkeypatch):
     runtime = DummyRuntime()

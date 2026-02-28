@@ -11,12 +11,34 @@ from fastapi import APIRouter, HTTPException, Request
 
 from venom_core.api.schemas.providers import (
     ProviderActivateRequest,
-    ProviderCapability,
     ProviderInfo,
     ProviderStatus,
 )
 from venom_core.config import SETTINGS
-from venom_core.services.config_manager import config_manager
+from venom_core.services.config_manager import (  # Backward-compatible test shim
+    config_manager,
+)
+from venom_core.services.providers_service import (
+    check_google_status as _check_google_status,
+)
+from venom_core.services.providers_service import (
+    check_openai_status as _check_openai_status,
+)
+from venom_core.services.providers_service import (
+    extract_user_from_request as _extract_user_from_request,
+)
+from venom_core.services.providers_service import (
+    get_provider_capabilities as _get_provider_capabilities,
+)
+from venom_core.services.providers_service import (
+    get_provider_endpoint as _get_provider_endpoint,
+)
+from venom_core.services.providers_service import (
+    get_provider_type as _get_provider_type,
+)
+from venom_core.services.providers_service import (
+    resolve_cloud_model as _resolve_cloud_model,
+)
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
@@ -34,79 +56,6 @@ RESP_500_PROVIDER_OPERATION_FAILED = {"description": "Provider operation failed.
 RESP_503_PROVIDER_OFFLINE = {"description": "Provider is offline."}
 
 
-def _extract_user_from_request(request: Request) -> str:
-    """
-    Extract user identifier from request for audit logging.
-
-    Attempts to identify the user from:
-    1. Authenticated user in request.state (set by auth middleware)
-    2. Common identity headers (X-Authenticated-User, X-User, X-Admin-User)
-    3. Falls back to "unknown" if no user can be determined
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        User identifier string
-    """
-    try:
-        # Try user set by authentication middleware on request.state
-        if hasattr(request, "state") and hasattr(request.state, "user"):
-            user = request.state.user
-            if user:
-                return str(user)
-
-        # Fallback to common identity headers
-        if hasattr(request, "headers"):
-            for header_name in (
-                "X-Authenticated-User",
-                "X-User",
-                "X-Admin-User",
-            ):
-                header_value = request.headers.get(header_name)
-                if header_value:
-                    return header_value
-
-    except Exception as exc:
-        # Never let user extraction errors break the endpoint
-        logger.warning(f"Failed to extract user from request: {exc}")
-
-    return "unknown"
-
-
-def _get_provider_type(provider: str) -> str:
-    """Determine provider type."""
-    if provider in ("openai", "google"):
-        return "cloud_provider"
-    if provider in ("huggingface", "ollama"):
-        return "catalog_integrator"
-    if provider in ("vllm", "local"):
-        return "local_runtime"
-    return "unknown"
-
-
-def _get_provider_capabilities(provider: str) -> ProviderCapability:
-    """Get provider capabilities."""
-    if provider == "huggingface":
-        return ProviderCapability(
-            install=True, search=True, activate=False, inference=False, trainable=True
-        )
-    elif provider == "ollama":
-        return ProviderCapability(
-            install=True, search=True, activate=True, inference=True, trainable=False
-        )
-    elif provider == "vllm":
-        return ProviderCapability(
-            install=True, search=False, activate=True, inference=True, trainable=False
-        )
-    elif provider in {"openai", "google", "local"}:
-        return ProviderCapability(
-            install=False, search=False, activate=True, inference=True, trainable=False
-        )
-    else:
-        return ProviderCapability()
-
-
 def _validate_provider_or_404(provider_name: str) -> str:
     normalized = provider_name.lower()
     if normalized not in VALID_PROVIDERS:
@@ -117,21 +66,10 @@ def _validate_provider_or_404(provider_name: str) -> str:
     return normalized
 
 
-def _resolve_cloud_model(
-    provider_name: str, request: Optional[ProviderActivateRequest]
-) -> str:
-    if provider_name == "openai":
-        return (
-            request.model if request and request.model else SETTINGS.OPENAI_GPT4O_MODEL
-        )
-    return (
-        request.model if request and request.model else SETTINGS.GOOGLE_GEMINI_PRO_MODEL
-    )
-
-
 def _activate_cloud_provider(
     provider_name: str, request: Optional[ProviderActivateRequest]
 ) -> dict[str, Any]:
+    """Compatibility wrapper preserving route-level patch points in tests."""
     model = _resolve_cloud_model(provider_name, request)
     provider_config = {
         "LLM_SERVICE_TYPE": provider_name,
@@ -270,45 +208,6 @@ async def _check_vllm_status() -> ProviderStatus:
             reason_code="connection_failed",
             message="Unable to connect to vLLM server",
         )
-
-
-def _check_openai_status() -> ProviderStatus:
-    """Check OpenAI configuration."""
-    if SETTINGS.OPENAI_API_KEY:
-        return ProviderStatus(
-            status="connected",
-            message="OpenAI API key configured",
-        )
-    else:
-        return ProviderStatus(
-            status="offline",
-            reason_code="missing_api_key",
-            message="OPENAI_API_KEY not configured",
-        )
-
-
-def _check_google_status() -> ProviderStatus:
-    """Check Google Gemini configuration."""
-    if SETTINGS.GOOGLE_API_KEY:
-        return ProviderStatus(
-            status="connected",
-            message="Google API key configured",
-        )
-    else:
-        return ProviderStatus(
-            status="offline",
-            reason_code="missing_api_key",
-            message="GOOGLE_API_KEY not configured",
-        )
-
-
-def _get_provider_endpoint(provider: str) -> Optional[str]:
-    """Get provider endpoint if applicable."""
-    if provider == "ollama":
-        return build_http_url("localhost", 11434)
-    elif provider == "vllm":
-        return SETTINGS.VLLM_ENDPOINT
-    return None
 
 
 @router.get("/providers")
@@ -690,7 +589,7 @@ async def test_provider_connection(
 
     # Audit the test
     audit_trail = get_audit_trail()
-    user = _extract_user_from_request(request)
+    user = _extract_user_from_request(request, logger=logger)
 
     try:
         # Perform connection test
@@ -778,7 +677,7 @@ async def provider_preflight_check(
     provider_name = _validate_provider_or_404(provider_name)
 
     audit_trail = get_audit_trail()
-    user = _extract_user_from_request(request)
+    user = _extract_user_from_request(request, logger=logger)
 
     try:
         # Gather all preflight checks

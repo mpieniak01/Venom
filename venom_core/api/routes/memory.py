@@ -1,8 +1,5 @@
 """Moduł: routes/memory - Endpointy API dla pamięci wektorowej."""
 
-import inspect
-from collections import Counter
-from threading import Lock
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -31,11 +28,50 @@ from venom_core.api.schemas.memory import (
     SessionMemoryResponse,
 )
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
-from venom_core.core.knowledge_contract import KnowledgeKind
-from venom_core.core.knowledge_ttl import compute_expires_at, resolve_ttl_days
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager as _config_manager
-from venom_core.utils.helpers import get_utc_now_iso
+from venom_core.services.memory_graph_service import (
+    append_flow_edges as _append_flow_edges_svc,
+)
+from venom_core.services.memory_graph_service import (
+    build_ingest_metadata as _build_ingest_metadata_svc,
+)
+from venom_core.services.memory_graph_service import (
+    build_memory_graph_filters as _build_memory_graph_filters_svc,
+)
+from venom_core.services.memory_graph_service import (
+    build_memory_graph_payload as _build_memory_graph_payload_svc,
+)
+from venom_core.services.memory_graph_service import (
+    build_memory_node as _build_memory_node_svc,
+)
+from venom_core.services.memory_graph_service import (
+    build_relation_edges as _build_relation_edges_svc,
+)
+from venom_core.services.memory_graph_service import (
+    collect_lesson_graph as _collect_lesson_graph_svc,
+)
+from venom_core.services.memory_graph_service import (
+    ensure_session_node as _ensure_session_node_svc,
+)
+from venom_core.services.memory_graph_service import (
+    ensure_user_node as _ensure_user_node_svc,
+)
+from venom_core.services.memory_graph_service import (
+    increment_memory_view_counter as _increment_memory_view_counter_svc,
+)
+from venom_core.services.memory_graph_service import (
+    memory_view_counter_snapshot as _memory_view_counter_snapshot_svc,
+)
+from venom_core.services.memory_graph_service import (
+    raise_memory_http_error as _raise_memory_http_error_svc,
+)
+from venom_core.services.memory_graph_service import (
+    require_nonempty as _require_nonempty_svc,
+)
+from venom_core.services.memory_graph_service import (
+    resolve_maybe_await as _resolve_maybe_await_svc,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -61,8 +97,6 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
 _vector_store = None
 _state_manager = None
 _lessons_store = None
-_memory_graph_view_counters: Counter[str] = Counter()
-_memory_graph_view_counters_lock = Lock()
 
 
 def set_dependencies(
@@ -101,347 +135,73 @@ def _ensure_vector_store():
 
 
 def _require_nonempty(value: str, detail: str) -> None:
-    if not value or not value.strip():
-        raise HTTPException(status_code=400, detail=detail)
+    _require_nonempty_svc(value, detail)
 
 
 def _build_ingest_metadata(request: "MemoryIngestRequest") -> dict[str, object]:
-    metadata: dict[str, object] = {"category": request.category}
-    optional_fields: list[tuple[str, object | None]] = [
-        ("session_id", request.session_id),
-        ("user_id", request.user_id),
-        ("type", request.memory_type),
-        ("scope", request.scope),
-        ("topic", request.topic),
-        ("timestamp", request.timestamp),
-    ]
-    for key, value in optional_fields:
-        if value:
-            metadata[key] = value
-    if request.pinned is not None:
-        metadata["pinned"] = bool(request.pinned)
-
-    scope = str(request.scope or ("session" if request.session_id else "global"))
-    created_at = str(request.timestamp or get_utc_now_iso())
-    ttl_days = resolve_ttl_days(KnowledgeKind.MEMORY_ENTRY, scope)
-    metadata.update(
-        {
-            "knowledge_contract_version": "v1",
-            "provenance_source": "vector_store",
-            "provenance_request_id": None,
-            "provenance_intent": None,
-            "retention_scope": scope,
-            "timestamp": created_at,
-            "retention_expires_at": compute_expires_at(created_at, ttl_days),
-        }
-    )
-    return metadata
+    return _build_ingest_metadata_svc(request)
 
 
 def _raise_memory_http_error(exc: Exception, *, context: str) -> None:
-    if isinstance(exc, HTTPException):
-        raise exc
-    if isinstance(exc, ValueError):
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    logger.exception("Błąd podczas %s", context)
-    raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(exc)}") from exc
-
-
-def _normalize_lessons_for_graph(
-    raw_lessons: object,
-    allow_fallback: bool,
-    limit: int,
-) -> list[dict[str, object]]:
-    if not raw_lessons:
-        return []
-    if isinstance(raw_lessons, dict):
-        return _normalize_lessons_mapping(raw_lessons, limit=limit)
-    if isinstance(raw_lessons, list):
-        return _normalize_lessons_list(
-            raw_lessons, allow_fallback=allow_fallback, limit=limit
-        )
-    return []
-
-
-def _extract_lesson_id(default_id: object, lesson_data: object) -> object:
-    if hasattr(lesson_data, "id"):
-        return lesson_data.id
-    if isinstance(lesson_data, dict) and "id" in lesson_data:
-        return lesson_data["id"]
-    if hasattr(lesson_data, "lesson_id"):
-        return lesson_data.lesson_id
-    if isinstance(lesson_data, dict) and "lesson_id" in lesson_data:
-        return lesson_data["lesson_id"]
-    return default_id
-
-
-def _to_lesson_dict(lesson_data: object) -> dict[str, object] | None:
-    if isinstance(lesson_data, dict):
-        return dict(lesson_data)
-    if hasattr(lesson_data, "to_dict"):
-        raw = lesson_data.to_dict()
-        if isinstance(raw, dict):
-            return dict(raw)
-        return None
-    if hasattr(lesson_data, "__dict__"):
-        return dict(vars(lesson_data))
-    return None
-
-
-def _normalize_lessons_mapping(
-    raw_lessons: dict[object, object], limit: int
-) -> list[dict[str, object]]:
-    lessons: list[dict[str, object]] = []
-    for default_id, lesson_data in list(raw_lessons.items())[:limit]:
-        normalized = _to_lesson_dict(lesson_data)
-        if normalized is None:
-            continue
-        normalized["id"] = _extract_lesson_id(default_id, lesson_data)
-        lessons.append(normalized)
-    return lessons
-
-
-def _normalize_lessons_list(
-    raw_lessons: list[object], allow_fallback: bool, limit: int
-) -> list[dict[str, object]]:
-    lessons: list[dict[str, object]] = []
-    for entry in raw_lessons[:limit]:
-        if isinstance(entry, dict):
-            lessons.append(dict(entry))
-            continue
-        if not allow_fallback:
-            continue
-        normalized = _to_lesson_dict(entry)
-        if normalized is not None:
-            lessons.append(normalized)
-    return lessons
+    _raise_memory_http_error_svc(exc, context=context, logger=logger)
 
 
 def _build_memory_graph_filters(
     session_id: str, only_pinned: bool
 ) -> dict[str, object]:
-    filters: dict[str, object] = {}
-    if session_id:
-        filters["session_id"] = session_id
-    if only_pinned:
-        filters["pinned"] = True
-    return filters
+    return _build_memory_graph_filters_svc(session_id, only_pinned)
 
 
 def _increment_memory_view_counter(view: str) -> None:
-    with _memory_graph_view_counters_lock:
-        _memory_graph_view_counters[view] += 1
+    _increment_memory_view_counter_svc(view)
 
 
 def _memory_view_counter_snapshot() -> dict[str, int]:
-    with _memory_graph_view_counters_lock:
-        return dict(_memory_graph_view_counters)
-
-
-def _entry_id(entry: dict[str, Any], meta: dict[str, Any]) -> str:
-    raw_id = entry.get("id") or meta.get("id") or meta.get("uuid") or meta.get("pk")
-    if raw_id:
-        return str(raw_id)
-    return f"mem-{abs(hash(entry.get('text', '')))}"
+    return _memory_view_counter_snapshot_svc()
 
 
 def _build_memory_node(entry: dict[str, Any]) -> dict[str, Any]:
-    meta = entry.get("metadata") or {}
-    eid = _entry_id(entry, meta)
-    label = meta.get("title") or (entry.get("text") or "")[:80] or eid
-    sess = meta.get("session_id")
-    user = meta.get("user_id") or DEFAULT_USER_ID
-    node_payload: dict[str, Any] = {
-        "data": {
-            "id": eid,
-            "label": label,
-            "type": "memory",
-            "memory_kind": meta.get("type") or "fact",
-            "session_id": sess,
-            "user_id": user,
-            "scope": meta.get("scope") or ("session" if sess else "global"),
-            "pinned": bool(meta.get("pinned")),
-            "topic": meta.get("topic"),
-            "meta": meta,
-        }
-    }
-    if "x" in meta and "y" in meta:
-        node_payload["position"] = {"x": meta.get("x"), "y": meta.get("y")}
-    return node_payload
+    return _build_memory_node_svc(entry, default_user_id=DEFAULT_USER_ID)
 
 
 async def _resolve_maybe_await(value: Any) -> Any:
-    if inspect.isawaitable(value):
-        return await value
-    return value
+    return await _resolve_maybe_await_svc(value)
 
 
 def _ensure_session_node(
     session_nodes: dict[str, dict[str, Any]], session_id: str | None
 ) -> None:
-    if not session_id or session_id in session_nodes:
-        return
-    session_nodes[session_id] = {
-        "data": {
-            "id": f"session:{session_id}",
-            "label": session_id,
-            "type": "memory",
-            "memory_kind": "session",
-            "session_id": session_id,
-        }
-    }
+    _ensure_session_node_svc(session_nodes, session_id)
 
 
 def _ensure_user_node(
     user_nodes: dict[str, dict[str, Any]], user_id: str | None
 ) -> None:
-    if not user_id or user_id in user_nodes:
-        return
-    user_nodes[user_id] = {
-        "data": {
-            "id": f"user:{user_id}",
-            "label": user_id,
-            "type": "memory",
-            "memory_kind": "user",
-            "user_id": user_id,
-        }
-    }
+    _ensure_user_node_svc(user_nodes, user_id)
 
 
 def _build_relation_edges(
     node_id: str, session_id: str | None, user_id: str | None
 ) -> list[dict[str, Any]]:
-    relation_edges: list[dict[str, Any]] = []
-    if session_id:
-        relation_edges.append(
-            {
-                "data": {
-                    "id": f"edge:{session_id}->{node_id}",
-                    "source": f"session:{session_id}",
-                    "target": node_id,
-                    "label": "session",
-                    "type": "memory",
-                }
-            }
-        )
-    if user_id:
-        relation_edges.append(
-            {
-                "data": {
-                    "id": f"edge:{user_id}->{node_id}",
-                    "source": f"user:{user_id}",
-                    "target": node_id,
-                    "label": "user",
-                    "type": "memory",
-                }
-            }
-        )
-    return relation_edges
+    return _build_relation_edges_svc(node_id, session_id, user_id)
 
 
 def _collect_lesson_graph(
     lessons_store: LessonsStore | None, limit: int
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    lesson_nodes: list[dict[str, Any]] = []
-    lesson_edges: list[dict[str, Any]] = []
-    if not lessons_store:
-        return lesson_nodes, lesson_edges
-    try:
-        raw_lessons = _get_raw_lessons_for_graph(lessons_store, limit)
-        lessons = _normalize_lessons_for_graph(
-            raw_lessons, allow_fallback=is_testing_mode(), limit=limit
-        )
-
-        for raw_lesson in lessons:
-            lesson_data = _coerce_lesson_to_dict(raw_lesson)
-            raw_id = lesson_data.get("id") or lesson_data.get("lesson_id")
-            lesson_id = str(raw_id) if raw_id is not None else ""
-            if not lesson_id:
-                continue
-            label = lesson_data.get("title") or lesson_id
-            lesson_nodes.append(
-                {
-                    "data": {
-                        "id": f"lesson:{lesson_id}",
-                        "label": label,
-                        "type": "memory",
-                        "memory_kind": "lesson",
-                        "lesson_id": lesson_id,
-                        "meta": {
-                            "tags": lesson_data.get("tags"),
-                            "timestamp": lesson_data.get("timestamp"),
-                        },
-                    }
-                }
-            )
-            lesson_edges.append(
-                {
-                    "data": {
-                        "id": f"edge:lesson:{lesson_id}->user:{DEFAULT_USER_ID}",
-                        "source": f"lesson:{lesson_id}",
-                        "target": f"user:{DEFAULT_USER_ID}",
-                        "label": "lesson",
-                        "type": "lesson",
-                    }
-                }
-            )
-    except Exception as e:  # pragma: no cover
-        logger.warning(f"Nie udało się pobrać lekcji do grafu: {e}")
-    return lesson_nodes, lesson_edges
-
-
-def _get_raw_lessons_for_graph(
-    lessons_store: LessonsStore, limit: int
-) -> list[Any] | dict[str, Any]:
-    if hasattr(lessons_store, "get_all_lessons"):
-        return lessons_store.get_all_lessons(limit=limit)
-    if hasattr(lessons_store, "lessons"):
-        return lessons_store.lessons
-    return []
-
-
-def _coerce_lesson_to_dict(raw_lesson: Any) -> dict[str, Any]:
-    if isinstance(raw_lesson, dict):
-        return raw_lesson
-    if hasattr(raw_lesson, "to_dict"):
-        return raw_lesson.to_dict()
-    if hasattr(raw_lesson, "__dict__"):
-        return vars(raw_lesson)
-    return {}
+    return _collect_lesson_graph_svc(
+        lessons_store,
+        limit,
+        allow_fallback=is_testing_mode(),
+        logger=logger,
+        default_user_id=DEFAULT_USER_ID,
+    )
 
 
 def _append_flow_edges(
     nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
 ) -> None:
-    try:
-
-        def _flow_timestamp(node: dict[str, Any]) -> str:
-            meta_value = node.get("data", {}).get("meta")
-            meta = meta_value if isinstance(meta_value, dict) else {}
-            return str(meta.get("timestamp", ""))
-
-        entries_for_flow = sorted(nodes, key=_flow_timestamp)
-    except Exception:
-        entries_for_flow = nodes
-
-    for idx in range(len(entries_for_flow) - 1):
-        src = entries_for_flow[idx]["data"]["id"]
-        tgt = entries_for_flow[idx + 1]["data"]["id"]
-        edges.append(
-            {
-                "data": {
-                    "id": f"flow:{src}->{tgt}",
-                    "source": src,
-                    "target": tgt,
-                    "label": "next",
-                    "type": "flow",
-                }
-            }
-        )
-
-
-# Modele i Stałe
-DEFAULT_USER_ID = "user_default"
+    _append_flow_edges_svc(nodes, edges)
 
 
 @router.post(
@@ -706,74 +466,24 @@ def memory_graph(
     """
     Zwraca uproszczony graf pamięci (węzły/krawędzie) do wizualizacji w /brain.
     """
-    _ = vector_store  # Ensure it is used
-    filters = _build_memory_graph_filters(session_id, only_pinned)
-    entries = vector_store.list_entries(limit=limit, metadata_filters=filters)
-
-    nodes: list[dict[str, Any]] = []
-    edges: list[dict[str, Any]] = []
-    session_nodes: dict[str, dict[str, Any]] = {}
-    user_nodes: dict[str, dict[str, Any]] = {}
-
-    for entry in entries:
-        node_payload = _build_memory_node(entry)
-        nodes.append(node_payload)
-        node_data = node_payload["data"]
-        node_id = str(node_data["id"])
-        sess = node_data.get("session_id")
-        user = node_data.get("user_id")
-        _ensure_session_node(session_nodes, sess if isinstance(sess, str) else None)
-        _ensure_user_node(user_nodes, user if isinstance(user, str) else None)
-        edges.extend(
-            _build_relation_edges(
-                node_id,
-                sess if isinstance(sess, str) else None,
-                user if isinstance(user, str) else None,
-            )
-        )
-
-    lesson_nodes: list[dict[str, Any]] = []
-    lesson_edges: list[dict[str, Any]] = []
-    if include_lessons:
-        lesson_nodes, lesson_edges = _collect_lesson_graph(lessons_store, limit)
-
-    all_nodes = (
-        list(session_nodes.values()) + list(user_nodes.values()) + nodes + lesson_nodes
-    )
-    all_edges = edges + lesson_edges
-
-    if mode == "flow":
-        # Dodaj krawędzie sekwencyjne (prosty tok) wg metadanej timestamp, fallback: kolejność entries
-        _append_flow_edges(nodes, all_edges)
-
-    source_nodes = len(all_nodes)
-    source_edges = len(all_edges)
-    view_nodes, view_edges = apply_graph_view(
-        nodes=all_nodes,
-        edges=all_edges,
+    return _build_memory_graph_payload_svc(
+        vector_store=vector_store,
+        lessons_store=lessons_store,
+        limit=limit,
+        session_id=session_id,
+        only_pinned=only_pinned,
+        include_lessons=include_lessons,
+        mode=mode,
         view=view,
         seed_id=seed_id,
         max_hops=max_hops,
         include_isolates=include_isolates,
         limit_nodes=limit_nodes,
+        apply_graph_view_fn=apply_graph_view,
+        allow_lessons_fallback=is_testing_mode(),
+        logger=logger,
+        default_user_id=DEFAULT_USER_ID,
     )
-    _increment_memory_view_counter(view)
-
-    return {
-        "status": "success",
-        "view": view,
-        "elements": {"nodes": view_nodes, "edges": view_edges},
-        "stats": {
-            "nodes": len(view_nodes),
-            "edges": len(view_edges),
-            "source_nodes": source_nodes,
-            "source_edges": source_edges,
-            "view": view,
-            "max_hops": max_hops,
-            "seed_id": seed_id,
-            "view_requests": _memory_view_counter_snapshot(),
-        },
-    }
 
 
 @router.post(

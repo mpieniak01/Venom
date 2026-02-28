@@ -1,9 +1,6 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
-from collections import Counter
 from datetime import datetime, timezone
-from pathlib import PurePosixPath
-from threading import Lock
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,19 +15,28 @@ from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.schemas.knowledge import LearningToggleRequest
 from venom_core.config import SETTINGS
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
-from venom_core.core.knowledge_adapters import (
-    from_lesson,
-    from_session_store_entry,
-    from_vector_entry,
-)
-from venom_core.core.knowledge_contract import (
-    KnowledgeContextMapV1,
-    KnowledgeLinkV1,
-    KnowledgeRecordV1,
-)
+from venom_core.core.knowledge_contract import KnowledgeContextMapV1
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager
+from venom_core.services.knowledge_context_service import (
+    build_knowledge_context_map as _build_knowledge_context_map,
+)
+from venom_core.services.knowledge_graph_service import (
+    build_graph_edges as _build_graph_edges,
+)
+from venom_core.services.knowledge_graph_service import (
+    build_graph_nodes as _build_graph_nodes,
+)
+from venom_core.services.knowledge_graph_service import (
+    graph_view_counter_snapshot as _graph_view_counter_snapshot,
+)
+from venom_core.services.knowledge_graph_service import (
+    increment_graph_view_counter as _increment_graph_view_counter,
+)
+from venom_core.services.knowledge_graph_service import (
+    normalize_graph_file_path as _normalize_graph_file_path_service,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -59,13 +65,6 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
     **INTERNAL_ERROR_RESPONSES,
 }
 
-NODE_TYPE_FILE = "file"
-NODE_TYPE_CLASS = "class"
-NODE_TYPE_FUNCTION = "function"
-NODE_TYPE_METHOD = "method"
-_graph_view_counters: Counter[str] = Counter()
-_graph_view_counters_lock = Lock()
-
 
 def _enforce_mutation_allowed(operation_name: str) -> None:
     try:
@@ -75,90 +74,10 @@ def _enforce_mutation_allowed(operation_name: str) -> None:
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
-    """
-    Normalizuje ścieżkę pliku z URL i odrzuca niebezpieczne formaty.
-    """
-    normalized = file_path.strip().replace("\\", "/")
-    if not normalized:
+    try:
+        return _normalize_graph_file_path_service(file_path)
+    except ValueError:
         raise HTTPException(status_code=400, detail=INVALID_FILE_PATH_DETAIL)
-    path = PurePosixPath(normalized)
-    if path.is_absolute() or ".." in path.parts:
-        raise HTTPException(status_code=400, detail=INVALID_FILE_PATH_DETAIL)
-    return str(path)
-
-
-def _resolve_node_presentation(
-    node_id: str, node_data: dict[str, Any]
-) -> tuple[str, str]:
-    node_type = node_data.get("type", "unknown")
-    node_name = node_data.get("name", node_id)
-    if node_type == NODE_TYPE_FILE:
-        return "file", node_data.get("path", node_name)
-    if node_type == NODE_TYPE_CLASS:
-        file_path = node_data.get("file", "")
-        category = (
-            "agent"
-            if "agents" in file_path or node_data.get("is_agent", False)
-            else "class"
-        )
-        return category, node_name
-    if node_type in (NODE_TYPE_FUNCTION, NODE_TYPE_METHOD):
-        return "function", node_name
-    return "file", node_name
-
-
-def _build_graph_nodes(graph_store: CodeGraphStore, limit: int) -> list[dict[str, Any]]:
-    nodes: list[dict[str, Any]] = []
-    for node_id, node_data in graph_store.graph.nodes(data=True):
-        category, label = _resolve_node_presentation(node_id, node_data)
-        nodes.append(
-            {
-                "data": {
-                    "id": node_id,
-                    "label": label,
-                    "type": category,
-                    "original_type": node_data.get("type", "unknown"),
-                    "properties": node_data,
-                }
-            }
-        )
-        if len(nodes) >= limit:
-            break
-    return nodes
-
-
-def _build_graph_edges(
-    graph_store: CodeGraphStore, allowed_ids: set[str]
-) -> list[dict[str, Any]]:
-    edges: list[dict[str, Any]] = []
-    edge_id = 0
-    for source, target, edge_data in graph_store.graph.edges(data=True):
-        if allowed_ids and (source not in allowed_ids or target not in allowed_ids):
-            continue
-        edge_type = edge_data.get("type", "RELATED")
-        edges.append(
-            {
-                "data": {
-                    "id": f"e{edge_id}",
-                    "source": source,
-                    "target": target,
-                    "type": edge_type,
-                    "label": edge_type,
-                }
-            }
-        )
-        edge_id += 1
-    return edges
-
-
-def _increment_graph_view_counter(view: str) -> None:
-    with _graph_view_counters_lock:
-        _graph_view_counters[view] += 1
-
-
-def _graph_view_counter_snapshot() -> dict[str, int]:
-    with _graph_view_counters_lock:
-        return dict(_graph_view_counters)
 
 
 def set_dependencies(graph_store=None, lessons_store=None):
@@ -468,100 +387,6 @@ def _get_mock_knowledge_graph(
     }
 
 
-def _read_session_records(
-    session_id: str, session_store: Any
-) -> list[KnowledgeRecordV1]:
-    records: list[KnowledgeRecordV1] = []
-    history = session_store.get_history(session_id) if session_store else []
-    for entry in history or []:
-        if isinstance(entry, dict):
-            records.append(from_session_store_entry(session_id, entry))
-
-    if session_store and hasattr(session_store, "get_summary_entry"):
-        summary_entry = session_store.get_summary_entry(session_id)
-        if isinstance(summary_entry, dict):
-            summary_record = {
-                "role": "summary",
-                "content": summary_entry.get("content"),
-                "session_id": session_id,
-                "request_id": summary_entry.get("request_id"),
-                "timestamp": summary_entry.get("timestamp")
-                or datetime.now(timezone.utc).isoformat(),
-                "knowledge_metadata": summary_entry.get("knowledge_metadata") or {},
-            }
-            records.append(from_session_store_entry(session_id, summary_record))
-    return records
-
-
-def _read_lesson_records(
-    lessons_store: LessonsStore,
-    session_id: str,
-    related_task_ids: set[str],
-    limit: int,
-) -> list[KnowledgeRecordV1]:
-    records: list[KnowledgeRecordV1] = []
-    all_lessons = lessons_store.get_all_lessons(limit=limit)
-    for lesson in all_lessons:
-        lesson_record = from_lesson(lesson)
-        lesson_session_id = lesson_record.session_id
-        lesson_task_id = lesson_record.task_id
-        if lesson_session_id == session_id or (
-            lesson_task_id and lesson_task_id in related_task_ids
-        ):
-            records.append(lesson_record)
-    return records
-
-
-def _read_memory_records(
-    vector_store: Any, session_id: str, limit: int
-) -> list[KnowledgeRecordV1]:
-    entries = vector_store.list_entries(
-        limit=limit,
-        metadata_filters={"session_id": session_id},
-    )
-    records: list[KnowledgeRecordV1] = []
-    for entry in entries:
-        if isinstance(entry, dict):
-            records.append(from_vector_entry(entry))
-    return records
-
-
-def _build_context_links(
-    session_id: str,
-    records: list[KnowledgeRecordV1],
-    related_task_ids: set[str],
-) -> list[KnowledgeLinkV1]:
-    links: list[KnowledgeLinkV1] = []
-    session_node = f"session:{session_id}"
-    for record in records:
-        if record.kind.value == "lesson":
-            if record.session_id == session_id:
-                links.append(
-                    KnowledgeLinkV1(
-                        relation="session->lesson",
-                        source_id=session_node,
-                        target_id=record.record_id,
-                    )
-                )
-            if record.task_id and record.task_id in related_task_ids:
-                links.append(
-                    KnowledgeLinkV1(
-                        relation="task->lesson",
-                        source_id=f"task:{record.task_id}",
-                        target_id=record.record_id,
-                    )
-                )
-        if record.kind.value == "memory_entry" and record.session_id == session_id:
-            links.append(
-                KnowledgeLinkV1(
-                    relation="session->memory_entry",
-                    source_id=session_node,
-                    target_id=record.record_id,
-                )
-            )
-    return links
-
-
 @router.get(
     "/knowledge/context-map/{session_id}",
     response_model=KnowledgeContextMapV1,
@@ -584,25 +409,12 @@ def get_knowledge_context_map(
         raise HTTPException(status_code=400, detail="session_id jest wymagane")
 
     try:
-        session_records = _read_session_records(session_id, session_store)
-        related_task_ids = {
-            rec.task_id
-            for rec in session_records
-            if rec.task_id and rec.task_id.strip()
-        }
-        lesson_records = _read_lesson_records(
-            lessons_store=lessons_store,
+        return _build_knowledge_context_map(
             session_id=session_id,
-            related_task_ids=related_task_ids,
+            session_store=session_store,
+            lessons_store=lessons_store,
+            vector_store=vector_store,
             limit=limit,
-        )
-        memory_records = _read_memory_records(vector_store, session_id, limit)
-
-        records = session_records + lesson_records + memory_records
-        links = _build_context_links(session_id, records, related_task_ids)
-
-        return KnowledgeContextMapV1(
-            session_id=session_id, records=records, links=links
         )
     except HTTPException:
         raise

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,9 @@ class Violation:
     scope: str
     item: str
     message: str
+
+
+TEST_PATH_RE = re.compile(r"^tests(?:/[^/]+)*/test_.*\.py$")
 
 
 def _load_json_like(path: Path) -> dict[str, Any]:
@@ -68,6 +72,9 @@ def evaluate(
     catalog_path: Path,
     ci_lite_group: Path,
     sonar_new_code_group: Path,
+    fast_group: Path,
+    long_group: Path,
+    heavy_group: Path,
 ) -> tuple[list[Violation], dict[str, Any]]:
     payload = _load_json_like(catalog_path)
     entries, violations = _catalog_entries(payload)
@@ -182,6 +189,11 @@ def evaluate(
     sonar_new_code = _read_group(sonar_new_code_group)
     fast_lane_union = ci_lite | sonar_new_code
 
+    release_fast = _read_group(fast_group)
+    release_long = _read_group(long_group)
+    release_heavy = _read_group(heavy_group)
+    release_lane_union = release_fast | release_long | release_heavy
+
     missing_lane_catalog_entries = sorted(
         [path for path in fast_lane_union if path not in by_path]
     )
@@ -189,6 +201,56 @@ def evaluate(
         violations.append(
             Violation("lane", path, "Fast-lane test path is missing in catalog.")
         )
+
+    release_expected = sorted(
+        [
+            path
+            for path, entry in by_path.items()
+            if "release" in entry.get("allowed_lanes", [])
+        ]
+    )
+    missing_release_group_entries = sorted(
+        [path for path in release_expected if path not in release_lane_union]
+    )
+    for path in missing_release_group_entries:
+        violations.append(
+            Violation(
+                "release_lane",
+                path,
+                "Catalog allows 'release' lane but test is missing from fast/long/heavy groups.",
+            )
+        )
+
+    for path in sorted(release_lane_union):
+        if not TEST_PATH_RE.match(path):
+            violations.append(
+                Violation(
+                    "release_lane",
+                    path,
+                    "Release lane group contains path outside tests/**/test_*.py pattern.",
+                )
+            )
+
+        entry = by_path.get(path)
+        if entry is None:
+            violations.append(
+                Violation(
+                    "release_lane",
+                    path,
+                    "Release lane test path is missing in catalog.",
+                )
+            )
+            continue
+
+        allowed_lanes = {str(x) for x in entry.get("allowed_lanes", [])}
+        if "release" not in allowed_lanes:
+            violations.append(
+                Violation(
+                    "release_lane",
+                    path,
+                    "Listed in fast/long/heavy groups but catalog disallows 'release' lane.",
+                )
+            )
 
     legacy_fast_count = 0
     for path in sorted(fast_lane_union):
@@ -243,6 +305,8 @@ def evaluate(
         "tests_catalog": len(catalog_tests),
         "tests_ci_lite": len(ci_lite),
         "tests_sonar_new_code": len(sonar_new_code),
+        "tests_release_groups": len(release_lane_union),
+        "tests_release_catalog": len(release_expected),
         "legacy_targeted_fast_lane": legacy_fast_count,
         "legacy_targeted_fast_lane_max": legacy_targeted_fastlane_max,
     }
@@ -291,6 +355,24 @@ def parse_args() -> argparse.Namespace:
         help="Path to sonar-new-code group file.",
     )
     parser.add_argument(
+        "--fast-group",
+        type=Path,
+        default=Path("config/pytest-groups/fast.txt"),
+        help="Path to release fast group file.",
+    )
+    parser.add_argument(
+        "--long-group",
+        type=Path,
+        default=Path("config/pytest-groups/long.txt"),
+        help="Path to release long group file.",
+    )
+    parser.add_argument(
+        "--heavy-group",
+        type=Path,
+        default=Path("config/pytest-groups/heavy.txt"),
+        help="Path to release heavy group file.",
+    )
+    parser.add_argument(
         "--output",
         choices=("text", "json"),
         default="text",
@@ -301,11 +383,44 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    repo_root = args.repo_root
+    ci_lite_group = (
+        args.ci_lite_group
+        if args.ci_lite_group.is_absolute()
+        else repo_root / args.ci_lite_group
+    )
+    new_code_group = (
+        args.new_code_group
+        if args.new_code_group.is_absolute()
+        else repo_root / args.new_code_group
+    )
+    fast_group = (
+        args.fast_group
+        if args.fast_group.is_absolute()
+        else repo_root / args.fast_group
+    )
+    long_group = (
+        args.long_group
+        if args.long_group.is_absolute()
+        else repo_root / args.long_group
+    )
+    heavy_group = (
+        args.heavy_group
+        if args.heavy_group.is_absolute()
+        else repo_root / args.heavy_group
+    )
+    catalog_path = (
+        args.catalog if args.catalog.is_absolute() else repo_root / args.catalog
+    )
+
     violations, summary = evaluate(
-        repo_root=args.repo_root,
-        catalog_path=args.catalog,
-        ci_lite_group=args.ci_lite_group,
-        sonar_new_code_group=args.new_code_group,
+        repo_root=repo_root,
+        catalog_path=catalog_path,
+        ci_lite_group=ci_lite_group,
+        sonar_new_code_group=new_code_group,
+        fast_group=fast_group,
+        long_group=long_group,
+        heavy_group=heavy_group,
     )
 
     if args.output == "json":

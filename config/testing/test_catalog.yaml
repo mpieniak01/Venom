@@ -112,6 +112,18 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/integration/test_verify_backend.py",
+      "domain": "api",
+      "test_type": "integration",
+      "intent": "integration",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Integration-heavy behavior delegated to release lane."
+    },
+    {
       "path": "tests/perf/test_chat_pipeline.py",
       "domain": "performance",
       "test_type": "perf",
@@ -238,7 +250,8 @@
       "intent": "security",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -251,7 +264,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -264,7 +278,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -277,7 +292,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -290,7 +306,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -303,7 +320,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -316,7 +334,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -365,7 +384,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -378,7 +398,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -391,7 +412,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -428,7 +450,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -453,7 +476,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -466,7 +490,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -479,7 +504,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -504,7 +530,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -516,7 +543,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -541,7 +569,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -578,7 +607,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -591,7 +621,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -616,7 +647,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -641,7 +673,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -666,7 +699,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -679,7 +713,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -692,7 +727,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -753,7 +789,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -766,7 +803,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -791,7 +829,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -804,7 +843,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -829,7 +869,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -878,7 +919,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -891,7 +933,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -904,7 +947,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -929,7 +973,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -954,7 +999,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -979,7 +1025,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1027,7 +1074,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1052,7 +1100,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1076,7 +1125,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1113,7 +1163,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1126,7 +1177,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1139,7 +1191,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1152,7 +1205,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1177,7 +1231,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1226,7 +1281,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1239,7 +1295,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1276,7 +1333,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1289,7 +1347,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1326,7 +1385,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1338,7 +1398,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1351,7 +1412,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1363,7 +1425,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1388,7 +1451,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1401,7 +1465,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1426,7 +1491,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1486,7 +1552,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1498,7 +1565,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1510,7 +1578,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1523,7 +1592,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1536,7 +1606,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1549,7 +1620,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1574,7 +1646,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1587,7 +1660,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1636,7 +1710,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1649,7 +1724,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1710,7 +1786,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1735,7 +1812,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1759,7 +1837,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1783,7 +1862,8 @@
       "intent": "contract",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1808,7 +1888,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1833,7 +1914,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1846,7 +1928,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1883,7 +1966,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1896,7 +1980,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1909,7 +1994,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1922,7 +2008,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1935,7 +2022,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1948,7 +2036,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1961,7 +2050,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -1986,7 +2076,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -1999,7 +2090,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2023,7 +2115,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2048,7 +2141,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2109,7 +2203,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2146,7 +2241,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2159,7 +2255,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2183,7 +2280,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2196,7 +2294,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2221,7 +2320,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2258,7 +2358,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2271,7 +2372,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2295,7 +2397,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2320,7 +2423,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2332,7 +2436,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2357,7 +2462,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2405,7 +2511,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2466,7 +2573,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2503,7 +2611,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2552,7 +2661,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2577,7 +2687,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2590,7 +2701,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2603,7 +2715,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2616,7 +2729,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2629,7 +2743,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2642,7 +2757,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2667,7 +2783,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2680,7 +2797,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2729,7 +2847,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2742,7 +2861,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2755,7 +2875,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2768,7 +2889,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2781,7 +2903,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2806,7 +2929,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2855,7 +2979,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2868,7 +2993,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2881,7 +3007,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2906,7 +3033,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2919,7 +3047,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2944,7 +3073,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -2957,7 +3087,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2981,7 +3112,8 @@
       "intent": "security",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -2994,7 +3126,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3031,7 +3164,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3044,7 +3178,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3057,7 +3192,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3070,7 +3206,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3083,7 +3220,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3096,7 +3234,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3109,7 +3248,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3134,7 +3274,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3147,7 +3288,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3160,7 +3302,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3173,7 +3316,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3186,7 +3330,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3199,7 +3344,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3212,7 +3358,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3261,7 +3408,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3310,7 +3458,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3322,7 +3471,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3347,7 +3497,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3372,7 +3523,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3396,7 +3548,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3409,7 +3562,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3422,7 +3576,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3447,7 +3602,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3460,7 +3616,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3485,7 +3642,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3510,7 +3668,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3523,7 +3682,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3536,7 +3696,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3549,7 +3710,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3562,7 +3724,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3575,7 +3738,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3588,7 +3752,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3601,7 +3766,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3614,7 +3780,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3687,7 +3854,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3712,7 +3880,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3725,7 +3894,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3762,7 +3932,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3775,7 +3946,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3788,7 +3960,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3825,7 +3998,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3850,7 +4024,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3863,7 +4038,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3876,7 +4052,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3901,7 +4078,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3914,7 +4092,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3927,7 +4106,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3940,7 +4120,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -3953,7 +4134,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -3990,7 +4172,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4015,7 +4198,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4028,7 +4212,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4053,7 +4238,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4066,7 +4252,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4079,7 +4266,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4092,7 +4280,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4117,7 +4306,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4142,7 +4332,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4154,7 +4345,8 @@
       "intent": "integration",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4167,7 +4359,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4191,7 +4384,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4228,7 +4422,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4241,7 +4436,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4266,10 +4462,23 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_sync_pytest_groups_from_catalog.py",
+      "domain": "misc",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
     },
     {
       "path": "tests/test_system_engineer_agent_mcp.py",
@@ -4303,7 +4512,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4340,7 +4550,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4365,7 +4576,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4402,7 +4614,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4415,7 +4628,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4428,7 +4642,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4441,7 +4656,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4454,7 +4670,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4467,7 +4684,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4479,7 +4697,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4515,7 +4734,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4527,7 +4747,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4539,7 +4760,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4600,7 +4822,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4613,7 +4836,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4637,7 +4861,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4650,10 +4875,23 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
+    },
+    {
+      "path": "tests/test_verify_acceptance_criteria.py",
+      "domain": "skills",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
     },
     {
       "path": "tests/test_vision_grounding.py",
@@ -4723,7 +4961,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4736,7 +4975,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4749,7 +4989,8 @@
       "primary_lane": "ci-lite",
       "allowed_lanes": [
         "ci-lite",
-        "new-code"
+        "new-code",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
@@ -4762,7 +5003,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
@@ -4775,7 +5017,8 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
-        "ci-lite"
+        "ci-lite",
+        "release"
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."

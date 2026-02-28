@@ -51,7 +51,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
 		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke \
-		modules-status modules-pull modules-branches modules-exec architecture-drift-check test-lane-contracts-check test-catalog-sync test-catalog-check test-dynamic-preview check-file-coverage-floor
+		modules-status modules-pull modules-branches modules-exec architecture-drift-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
 
 lint:
 	pre-commit run --all-files
@@ -305,7 +305,22 @@ test-catalog-check:
 		--catalog config/testing/test_catalog.yaml \
 		--repo-root . \
 		--ci-lite-group config/pytest-groups/ci-lite.txt \
-		--new-code-group config/pytest-groups/sonar-new-code.txt
+		--new-code-group config/pytest-groups/sonar-new-code.txt \
+		--fast-group config/pytest-groups/fast.txt \
+		--long-group config/pytest-groups/long.txt \
+		--heavy-group config/pytest-groups/heavy.txt
+
+test-groups-sync:
+	@$(PYTHON_BIN) scripts/sync_pytest_groups_from_catalog.py \
+		--repo-root . \
+		--catalog config/testing/test_catalog.yaml \
+		--write 1
+
+test-groups-check:
+	@$(PYTHON_BIN) scripts/sync_pytest_groups_from_catalog.py \
+		--repo-root . \
+		--catalog config/testing/test_catalog.yaml \
+		--check
 
 test-dynamic-preview:
 	@mkdir -p test-results/sonar

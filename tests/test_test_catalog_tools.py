@@ -164,3 +164,141 @@ def test_check_test_catalog_fails_for_legacy_misc_fastlane(tmp_path: Path) -> No
     )
     assert result.returncode == 1
     assert "split by domain" in result.stdout
+
+
+def test_check_test_catalog_fails_when_release_catalog_entry_is_missing_in_release_groups(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path / "tests/test_release_only.py", "def test_ok():\n    assert True\n")
+    _write(tmp_path / "config/pytest-groups/ci-lite.txt", "")
+    _write(tmp_path / "config/pytest-groups/sonar-new-code.txt", "")
+    _write(tmp_path / "config/pytest-groups/fast.txt", "")
+    _write(tmp_path / "config/pytest-groups/long.txt", "")
+    _write(tmp_path / "config/pytest-groups/heavy.txt", "")
+
+    catalog = {
+        "version": 1,
+        "meta": {"legacy_targeted_fastlane_max": 17},
+        "allowed_domains": ["api", "misc"],
+        "allowed_test_types": ["unit", "route_contract", "integration", "perf", "gate"],
+        "allowed_intents": [
+            "regression",
+            "contract",
+            "gate",
+            "integration",
+            "performance",
+            "security",
+            "legacy_coverage",
+        ],
+        "tests": [
+            {
+                "path": "tests/test_release_only.py",
+                "domain": "api",
+                "test_type": "unit",
+                "intent": "regression",
+                "primary_lane": "release",
+                "allowed_lanes": ["release"],
+                "legacy_targeted": False,
+                "rationale": "release regression",
+            }
+        ],
+    }
+    _write(
+        tmp_path / "config/testing/test_catalog.yaml",
+        json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CHECK_SCRIPT),
+            "--catalog",
+            str(tmp_path / "config/testing/test_catalog.yaml"),
+            "--repo-root",
+            str(tmp_path),
+            "--ci-lite-group",
+            str(tmp_path / "config/pytest-groups/ci-lite.txt"),
+            "--new-code-group",
+            str(tmp_path / "config/pytest-groups/sonar-new-code.txt"),
+            "--fast-group",
+            str(tmp_path / "config/pytest-groups/fast.txt"),
+            "--long-group",
+            str(tmp_path / "config/pytest-groups/long.txt"),
+            "--heavy-group",
+            str(tmp_path / "config/pytest-groups/heavy.txt"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "missing from fast/long/heavy groups" in result.stdout
+
+
+def test_check_test_catalog_fails_when_release_group_contains_non_test_pattern(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path / "tests/test_release_ok.py", "def test_ok():\n    assert True\n")
+    _write(tmp_path / "config/pytest-groups/ci-lite.txt", "")
+    _write(tmp_path / "config/pytest-groups/sonar-new-code.txt", "")
+    _write(tmp_path / "config/pytest-groups/fast.txt", "tests/verify_backend.py\n")
+    _write(tmp_path / "config/pytest-groups/long.txt", "")
+    _write(tmp_path / "config/pytest-groups/heavy.txt", "")
+
+    catalog = {
+        "version": 1,
+        "meta": {"legacy_targeted_fastlane_max": 17},
+        "allowed_domains": ["api", "misc"],
+        "allowed_test_types": ["unit", "route_contract", "integration", "perf", "gate"],
+        "allowed_intents": [
+            "regression",
+            "contract",
+            "gate",
+            "integration",
+            "performance",
+            "security",
+            "legacy_coverage",
+        ],
+        "tests": [
+            {
+                "path": "tests/test_release_ok.py",
+                "domain": "api",
+                "test_type": "unit",
+                "intent": "regression",
+                "primary_lane": "release",
+                "allowed_lanes": ["release"],
+                "legacy_targeted": False,
+                "rationale": "release regression",
+            }
+        ],
+    }
+    _write(
+        tmp_path / "config/testing/test_catalog.yaml",
+        json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CHECK_SCRIPT),
+            "--catalog",
+            str(tmp_path / "config/testing/test_catalog.yaml"),
+            "--repo-root",
+            str(tmp_path),
+            "--ci-lite-group",
+            str(tmp_path / "config/pytest-groups/ci-lite.txt"),
+            "--new-code-group",
+            str(tmp_path / "config/pytest-groups/sonar-new-code.txt"),
+            "--fast-group",
+            str(tmp_path / "config/pytest-groups/fast.txt"),
+            "--long-group",
+            str(tmp_path / "config/pytest-groups/long.txt"),
+            "--heavy-group",
+            str(tmp_path / "config/pytest-groups/heavy.txt"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "outside tests/**/test_*.py pattern" in result.stdout

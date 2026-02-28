@@ -95,6 +95,7 @@ if [[ "$backend_changed" -eq 1 ]]; then
   make architecture-drift-check
   make test-lane-contracts-check
   make test-catalog-check
+  make test-groups-check
   make audit-ci-lite
   make check-new-code-coverage \
     NEW_CODE_INCLUDE_BASELINE=1 \

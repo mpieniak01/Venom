@@ -9,7 +9,8 @@
 ## Quality Gates (Hard Gate)
 
 - [ ] `make pr-fast` passed
-- [ ] CI required checks passed (`Backend lite (pytest)`, `Frontend lite (lint)`, `SonarCloud Scan`, `Quick validator (syntax + CI-lite deps)`)
+- [ ] CI required checks passed (`Forbidden Paths Guard`, `Architecture drift guard`, `Backend lite (pytest)`, `Frontend lite (lint)`, `OpenAPI Contract (export + TS codegen)`, `SonarCloud Scan`, `Quick validator (syntax + CI-lite deps)`)
+- [ ] For new/renamed tests: `make test-catalog-sync` + `make test-groups-sync` executed
 
 ## Validation Report
 

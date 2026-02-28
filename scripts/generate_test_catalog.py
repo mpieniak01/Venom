@@ -260,11 +260,11 @@ def _lane_assignment(
     in_release = path in long_lane or path in heavy_lane
 
     if in_ci and in_new:
-        return "ci-lite", ["ci-lite", "new-code"]
+        return "ci-lite", ["ci-lite", "new-code", "release"]
     if in_ci:
-        return "ci-lite", ["ci-lite"]
+        return "ci-lite", ["ci-lite", "release"]
     if in_new:
-        return "new-code", ["new-code", "ci-lite"]
+        return "new-code", ["new-code", "ci-lite", "release"]
     if in_release:
         return "release", ["release"]
     return "release", ["release"]

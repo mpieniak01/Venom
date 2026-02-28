@@ -60,6 +60,18 @@ Regenerate canonical catalog after larger test refactors/renames:
 make test-catalog-sync
 ```
 
+Sync pytest group files from catalog:
+
+```bash
+make test-groups-sync
+```
+
+Verify group files are synchronized (no manual drift):
+
+```bash
+make test-groups-check
+```
+
 Ensure hooks are installed for both `pre-commit` and `pre-push`:
 
 ```bash
@@ -83,6 +95,21 @@ Test taxonomy model (canonical source: `config/testing/test_catalog.yaml`):
 - `test_type`: `unit`, `route_contract`, `service_contract`, `integration`, `perf`, `gate`
 - `intent`: regression/contract/gate/security/performance
 - `legacy_targeted`: historical PR-gate/coverage-wave style tests; must be domain-assigned
+
+Single source of truth contract:
+
+- `config/testing/test_catalog.yaml` is canonical for test metadata and lane eligibility.
+- Pytest group files are generated/synchronized from catalog (`make test-groups-sync`).
+- Manual edits in generated group files are not supported; use sync command instead.
+
+When adding a new test (`tests/**/test_*.py`), run:
+
+```bash
+make test-catalog-sync
+make test-groups-sync
+make test-catalog-check
+make pr-fast
+```
 
 ### Level 3: PR quality gates (mandatory before merge)
 
@@ -138,7 +165,8 @@ New-code coverage run behavior:
 - baseline test groups: `config/pytest-groups/ci-lite.txt` + `config/pytest-groups/sonar-new-code.txt`
 - automatic include of changed tests/modules is enabled by default (`NEW_CODE_AUTO_INCLUDE_CHANGED=1`)
 - changed test auto-include pattern: `tests/**/test_*.py`
-- resolver script: `scripts/resolve_sonar_new_code_tests.py`
+- resolver script: `scripts/resolve_sonar_new_code_tests.py` (catalog-aware selection with metadata: `selection_reason`, `domain`, `legacy_targeted`)
+- group sync source: `scripts/sync_pytest_groups_from_catalog.py` (`test_catalog.yaml` -> `ci-lite/new-code/fast/long/heavy`)
 - if `ripgrep` (`rg`) is unavailable locally, resolver falls back to pure Python scanning
 - CI backend-lite installs `ripgrep` for faster selection and deterministic logs
 
@@ -147,6 +175,7 @@ Determinism contract (why this does not flake):
 - `NEW_CODE_TIME_BUDGET_SEC=0` in CI: no time-based test list trimming.
 - `config/coverage-file-floor.txt`: floor anchor tests are always included.
 - `ripgrep` (`rg`) in CI: stable, fast resolver with readable logs.
+- `scripts/check_test_catalog.py` also validates release groups (`fast/long/heavy`) against catalog lane eligibility.
 
 How to verify coverage locally before push:
 
@@ -214,10 +243,13 @@ Performance/latency scenarios:
 
 Required PR gates:
 
+- Forbidden Paths Guard (`forbidden-paths` job in CI)
 - Architecture drift guard (`architecture-drift-guard` job in CI)
-- CI Lite (fast lint + selected unit tests)
-- Preprod readonly smoke lane (`make test-preprod-readonly-smoke`) in `backend-lite`
-- SonarCloud (bugs, vulnerabilities, maintainability, duplication)
+- Backend lite (pytest): lane contracts + catalog/groups guard + preprod readonly smoke + changed-lines coverage gate
+- Frontend lite (lint): lint + unit CI-lite
+- OpenAPI Contract (export + TS codegen)
+- Quick validator (syntax + CI-lite deps)
+- SonarCloud Scan (bugs, vulnerabilities, maintainability, duplication)
 - Temporary exception: frontend `web-next/**` is excluded from Sonar coverage gate until UI stabilizes.
 
 ## Quality Criteria and Typical Failure Areas

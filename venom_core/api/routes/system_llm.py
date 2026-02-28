@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
-import shutil
 import time
 from typing import Any, Optional
 from uuid import UUID
@@ -19,6 +18,7 @@ from venom_core.api.schemas.system_llm import (
 )
 from venom_core.config import SETTINGS
 from venom_core.execution.onnx_llm_client import OnnxLlmClient
+from venom_core.services import system_llm_service
 from venom_core.services.config_manager import config_manager
 from venom_core.utils.llm_runtime import (
     compute_llm_config_hash,
@@ -58,49 +58,36 @@ LLM_SERVER_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 def _runtime_profile_name() -> str:
-    profile = (
+    return system_llm_service.runtime_profile_name(
         str(getattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "full") or "").strip().lower()
     )
-    if profile in {"light", "llm_off", "full"}:
-        return profile
-    return "full"
 
 
 def _allowed_local_servers() -> set[str]:
-    profile = _runtime_profile_name()
-    if profile == "light":
-        return {"ollama"}
-    if profile == "llm_off":
-        return set()
-    allowed = {"ollama", "vllm"}
-    if bool(getattr(SETTINGS, "ONNX_LLM_ENABLED", False)):
-        allowed.add("onnx")
-    return allowed
+    return system_llm_service.allowed_local_servers(
+        profile=_runtime_profile_name(),
+        onnx_enabled=bool(getattr(SETTINGS, "ONNX_LLM_ENABLED", False)),
+    )
 
 
 def _is_ollama_installed() -> bool:
-    return shutil.which("ollama") is not None
+    return system_llm_service.is_ollama_installed()
 
 
 def _is_vllm_installed() -> bool:
-    if shutil.which("vllm") is not None:
-        return True
-    return importlib.util.find_spec("vllm") is not None
+    return system_llm_service.is_vllm_installed()
 
 
 def _is_onnx_runtime_installed() -> bool:
-    return importlib.util.find_spec("onnxruntime_genai") is not None
+    return system_llm_service.is_onnx_runtime_installed()
 
 
 def _installed_local_servers() -> set[str]:
-    installed: set[str] = set()
-    if _is_ollama_installed():
-        installed.add("ollama")
-    if _is_vllm_installed():
-        installed.add("vllm")
-    if _is_onnx_runtime_installed():
-        installed.add("onnx")
-    return installed
+    return system_llm_service.installed_local_servers(
+        ollama_installed=_is_ollama_installed(),
+        vllm_installed=_is_vllm_installed(),
+        onnx_installed=_is_onnx_runtime_installed(),
+    )
 
 
 def _ensure_server_allowed(server_name: str) -> None:
@@ -407,11 +394,7 @@ def _build_model_updates(
 
 
 def _previous_model_key_for_server(server_name: str) -> str:
-    if server_name == "ollama":
-        return "PREVIOUS_MODEL_OLLAMA"
-    if server_name == "vllm":
-        return "PREVIOUS_MODEL_VLLM"
-    return "PREVIOUS_MODEL_ONNX"
+    return system_llm_service.previous_model_key_for_server(server_name)
 
 
 def _persist_selected_model_settings(
@@ -455,10 +438,7 @@ def _build_onnx_server_payload() -> dict[str, Any]:
 
 
 def _normalize_runtime_provider(provider_raw: str | None) -> str:
-    normalized = str(provider_raw or "").lower()
-    if normalized in ("google-gemini", "gem"):
-        return "google"
-    return normalized
+    return system_llm_service.normalize_runtime_provider(provider_raw)
 
 
 def _assert_runtime_provider_supported(provider_raw: str) -> None:
@@ -578,15 +558,7 @@ def _activate_cloud_runtime(provider_raw: str, model: str | None) -> dict[str, A
 def _dedupe_servers_by_name(
     servers: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    deduped: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for server in servers:
-        name = str(server.get("name") or "").strip().lower()
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        deduped.append(server)
-    return deduped
+    return system_llm_service.dedupe_servers_by_name(servers)
 
 
 @router.get("/system/llm-servers", responses=LLM_SERVERS_RESPONSES)

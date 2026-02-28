@@ -5,7 +5,6 @@ import json
 import multiprocessing as mp
 import os
 from concurrent.futures import ProcessPoolExecutor
-from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncGenerator, Optional
 from uuid import UUID
 
@@ -30,6 +29,36 @@ from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.onnx_llm_client import OnnxLlmClient
+from venom_core.services.tasks_stream_service import (
+    build_missing_task_payload as _build_missing_task_payload,
+)
+from venom_core.services.tasks_stream_service import (
+    build_onnx_task_messages as _build_onnx_task_messages,
+)
+from venom_core.services.tasks_stream_service import (
+    build_stream_payload as _build_stream_payload,
+)
+from venom_core.services.tasks_stream_service import (
+    build_task_finished_payload as _build_task_finished_payload,
+)
+from venom_core.services.tasks_stream_service import (
+    extract_task_context as _extract_task_context,
+)
+from venom_core.services.tasks_stream_service import (
+    is_terminal_status as _is_terminal_status,
+)
+from venom_core.services.tasks_stream_service import (
+    resolve_poll_interval as _resolve_poll_interval,
+)
+from venom_core.services.tasks_stream_service import (
+    resolve_stream_event_name as _resolve_stream_event_name,
+)
+from venom_core.services.tasks_stream_service import (
+    serialize_context_used as _serialize_context_used,
+)
+from venom_core.services.tasks_stream_service import (
+    should_emit_stream_event as _should_emit_stream_event,
+)
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
@@ -137,13 +166,6 @@ def _generate_onnx_response_sync(
     ).strip()
 
 
-def _get_llm_runtime(task: VenomTask) -> dict:
-    """Wyciąga informacje o runtime LLM zapisane w zadaniu."""
-    context = getattr(task, "context_history", {}) or {}
-    runtime = context.get("llm_runtime", {}) or {}
-    return runtime
-
-
 def _extract_context_preview(steps: list) -> Optional[dict]:
     """
     Wyszukuje krok `context_preview` w TraceStep i zwraca zdekodowane detale (json).
@@ -214,123 +236,11 @@ def _serialize_trace_steps(trace) -> list[dict[str, Any]]:
     ]
 
 
-def _extract_task_context(task: Optional[VenomTask]) -> dict[str, Any]:
-    if task is None:
-        return {}
-    return getattr(task, "context_history", {}) or {}
-
-
-def _serialize_context_used(task: Optional[VenomTask]) -> Optional[dict]:
-    if task is None or not hasattr(task, "context_used") or not task.context_used:
-        return None
-    context_used = task.context_used
-    if isinstance(context_used, dict):
-        return context_used
-    if hasattr(context_used, "model_dump"):
-        return context_used.model_dump()
-    if hasattr(context_used, "dict"):
-        return context_used.dict()
-    if hasattr(context_used, "__dict__"):
-        return dict(context_used.__dict__)
-    return None
-
-
-def _should_emit_stream_event(
-    *,
-    status_changed: bool,
-    logs_delta: list[str],
-    result_changed: bool,
-    ticks_since_emit: int,
-    heartbeat_every_ticks: int,
-) -> bool:
-    return (
-        status_changed
-        or bool(logs_delta)
-        or result_changed
-        or ticks_since_emit >= heartbeat_every_ticks
-    )
-
-
-def _build_stream_payload(task: VenomTask, logs_delta: list[str]) -> dict[str, Any]:
-    runtime_info = _get_llm_runtime(task)
-    return {
-        "task_id": str(task.id),
-        "status": task.status,
-        "logs": logs_delta,
-        "result": task.result,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "llm_provider": runtime_info.get("provider"),
-        "llm_model": runtime_info.get("model"),
-        "llm_endpoint": runtime_info.get("endpoint"),
-        "llm_status": runtime_info.get("status"),
-        "context_history": task.context_history,
-    }
-
-
-def _build_task_finished_payload(task: VenomTask) -> dict[str, Any]:
-    runtime_info = _get_llm_runtime(task)
-    return {
-        "task_id": str(task.id),
-        "status": task.status,
-        "result": task.result,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "llm_provider": runtime_info.get("provider"),
-        "llm_model": runtime_info.get("model"),
-        "llm_endpoint": runtime_info.get("endpoint"),
-        "llm_status": runtime_info.get("status"),
-        "context_history": task.context_history,
-    }
-
-
-def _resolve_stream_event_name(
-    *, status_changed: bool, logs_delta: list[str], result_changed: bool
-) -> str:
-    if status_changed or logs_delta or result_changed:
-        return "task_update"
-    return "heartbeat"
-
-
-def _resolve_poll_interval(
-    *,
-    previous_result: Optional[str],
-    status: TaskStatus,
-    fast_poll_interval_seconds: float,
-    poll_interval_seconds: float,
-) -> float:
-    if previous_result is None and status == TaskStatus.PROCESSING:
-        return fast_poll_interval_seconds
-    return poll_interval_seconds
-
-
 def _assert_task_available_for_stream(
     task_id: UUID, state_manager: StateManager
 ) -> None:
     if state_manager.get_task(task_id) is None:
         raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
-
-
-def _build_missing_task_payload(task_id: UUID) -> dict[str, Any]:
-    return {
-        "task_id": str(task_id),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event": "gone",
-        "detail": "Task no longer available in StateManager",
-    }
-
-
-def _is_terminal_status(status: TaskStatus) -> bool:
-    return status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
-
-
-def _build_onnx_task_messages(request: TaskRequest) -> list[dict[str, str]]:
-    system_prompt = "Jesteś operacyjnym asystentem Venom."
-    if request.forced_intent == "COMPLEX_PLANNING":
-        system_prompt += (
-            " Odpowiadaj planem krok po kroku: analiza, plan, ryzyka, wykonanie."
-        )
-    messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
-    messages.append({"role": "user", "content": request.content})
-    return messages
 
 
 def _trace_onnx_task_start(task_id: UUID, request: TaskRequest, runtime) -> None:
@@ -408,7 +318,7 @@ async def _run_onnx_task(
     try:
         await state_manager.update_status(task_id, TaskStatus.PROCESSING)
         state_manager.add_log(task_id, "ONNX: rozpoczęto przetwarzanie zadania.")
-        messages = _build_onnx_task_messages(request)
+        messages = _build_onnx_task_messages(request.content, request.forced_intent)
         max_tokens = None
         temperature = None
         if isinstance(request.generation_params, dict):

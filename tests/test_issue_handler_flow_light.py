@@ -1,8 +1,7 @@
 """Unit tests for IssueHandlerFlow."""
 
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, Mock
-from uuid import uuid4
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -96,6 +95,21 @@ async def test_execute_with_integrator_error(issue_handler_flow, mock_task_dispa
 
 
 @pytest.mark.asyncio
+async def test_execute_missing_complex_planning_agent(
+    issue_handler_flow, mock_task_dispatcher
+):
+    """Flow should fail when COMPLEX_PLANNING agent is unavailable."""
+    mock_integrator = MagicMock()
+    mock_integrator.handle_issue = AsyncMock(return_value="Issue details")
+    mock_task_dispatcher.agent_map["GIT_OPERATIONS"] = mock_integrator
+
+    result = await issue_handler_flow.execute(issue_number=101)
+
+    assert result["success"] is False
+    assert "ArchitectAgent" in result["message"]
+
+
+@pytest.mark.asyncio
 async def test_execute_success_path(issue_handler_flow, mock_task_dispatcher):
     """Test successful flow execution."""
     # Mock integrator agent
@@ -117,7 +131,7 @@ async def test_execute_success_path(issue_handler_flow, mock_task_dispatcher):
     mock_coder.process = AsyncMock(return_value="Code implemented")
     mock_task_dispatcher.agent_map["CODER"] = mock_coder
 
-    result = await issue_handler_flow.execute(issue_number=123)
+    await issue_handler_flow.execute(issue_number=123)
 
     # Check that integrator was called
     mock_integrator.handle_issue.assert_called_once_with(123)
@@ -126,7 +140,7 @@ async def test_execute_success_path(issue_handler_flow, mock_task_dispatcher):
 @pytest.mark.asyncio
 async def test_broadcast_event_called(issue_handler_flow, mock_event_broadcaster):
     """Test that events are broadcast."""
-    result = await issue_handler_flow.execute(issue_number=123)
+    await issue_handler_flow.execute(issue_number=123)
 
     # Verify event broadcasting was called
     mock_event_broadcaster.broadcast_event.assert_called()

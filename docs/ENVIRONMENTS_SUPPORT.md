@@ -106,8 +106,12 @@ Preprod operation commands:
 make preprod-backup
 make preprod-restore TS=<timestamp>
 make preprod-verify TS=<timestamp>
+make preprod-drill
 make preprod-audit ACTOR=<id> ACTION=<operation> TICKET=<id> RESULT=<OK|FAIL>
 ```
+
+Recommended next-stage operational drill:
+Use `make preprod-drill` (listed above) to execute backup + verify + readonly smoke in one flow.
 
 ## Related Documentation
 

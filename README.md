@@ -435,7 +435,6 @@ make check-new-code-coverage
 - [x] Runtime control-plane improvements and provider/runtime governance stabilization.
 
 ### ✅ v1.7 (current)
-- [x] Runtime stack stabilized as a practical 3-engine model (Ollama + vLLM + ONNX) with operational profiles and diagnostics.
 - [x] Remote models capabilities delivered (`/models` remote tab + provider status/catalog/connectivity/validation for GPT/Gemini paths).
 - [x] Global traffic-control hardening for inbound/outbound requests (limits, retry/circuit-breaker policies, safer runtime behavior under load).
 - [x] Configuration/audit observability expanded (canonical audit stream and stronger operational visibility for config/runtime changes).

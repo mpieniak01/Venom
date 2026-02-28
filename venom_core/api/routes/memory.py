@@ -549,6 +549,7 @@ def search_memory(
     response_model=SessionMemoryClearResponse,
     responses={
         400: {"description": "Brak wymaganego session_id"},
+        403: {"description": "Brak uprawnień do mutacji danych"},
     },
 )
 def clear_session_memory(
@@ -622,6 +623,7 @@ def get_session_memory(
     "/global",
     response_model=GlobalMemoryClearResponse,
     responses={
+        403: {"description": "Brak uprawnień do mutacji danych"},
         500: {"description": "Błąd podczas czyszczenia pamięci globalnej"},
     },
 )
@@ -808,6 +810,7 @@ def pin_memory_entry(
     "/entry/{entry_id}",
     response_model=MemoryEntryMutationResponse,
     responses={
+        403: {"description": "Brak uprawnień do mutacji danych"},
         404: {"description": "Nie znaleziono wpisu do usunięcia"},
         500: {"description": "Błąd usuwania wpisu pamięci"},
     },
@@ -848,6 +851,7 @@ def delete_memory_entry(
     "/cache/semantic",
     response_model=CacheFlushResponse,
     responses={
+        403: {"description": "Brak uprawnień do mutacji danych"},
         500: {"description": "Błąd podczas czyszczenia Semantic Cache"},
     },
 )

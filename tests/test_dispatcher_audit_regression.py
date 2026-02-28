@@ -13,10 +13,17 @@ def mock_kernel():
     return MagicMock()
 
 
+@pytest.fixture
+def dispatcher(mock_kernel):
+    """Lightweight dispatcher instance for unit-level helper tests."""
+    instance = object.__new__(TaskDispatcher)
+    instance.kernel = mock_kernel
+    return instance
+
+
 @pytest.mark.asyncio
-async def test_parse_with_llm_valid_lowercase(mock_kernel):
+async def test_parse_with_llm_valid_lowercase(dispatcher, mock_kernel):
     """Test parsing with valid lowercase action."""
-    dispatcher = TaskDispatcher(mock_kernel)
     mock_service = AsyncMock()
     mock_kernel.get_service.return_value = mock_service
 
@@ -31,9 +38,8 @@ async def test_parse_with_llm_valid_lowercase(mock_kernel):
 
 
 @pytest.mark.asyncio
-async def test_parse_with_llm_case_insensitive(mock_kernel):
+async def test_parse_with_llm_case_insensitive(dispatcher, mock_kernel):
     """Test that LLM actions are normalized to lowercase (PR Feedback)."""
-    dispatcher = TaskDispatcher(mock_kernel)
     mock_service = AsyncMock()
     mock_kernel.get_service.return_value = mock_service
 
@@ -57,9 +63,8 @@ async def test_parse_with_llm_case_insensitive(mock_kernel):
 
 
 @pytest.mark.asyncio
-async def test_parse_with_llm_invalid_fallback(mock_kernel):
+async def test_parse_with_llm_invalid_fallback(dispatcher, mock_kernel):
     """Test fallback to 'unknown' for invalid actions (Audit requirement)."""
-    dispatcher = TaskDispatcher(mock_kernel)
     mock_service = AsyncMock()
     mock_kernel.get_service.return_value = mock_service
 
@@ -73,9 +78,8 @@ async def test_parse_with_llm_invalid_fallback(mock_kernel):
 
 
 @pytest.mark.asyncio
-async def test_parse_with_llm_json_error(mock_kernel):
+async def test_parse_with_llm_json_error(dispatcher, mock_kernel):
     """Test robustness against malformed JSON from LLM."""
-    dispatcher = TaskDispatcher(mock_kernel)
     mock_service = AsyncMock()
     mock_kernel.get_service.return_value = mock_service
 
@@ -89,10 +93,8 @@ async def test_parse_with_llm_json_error(mock_kernel):
     assert intent.targets == []
 
 
-def test_prepare_skill_parameters_file_skill(mock_kernel):
+def test_prepare_skill_parameters_file_skill(dispatcher):
     """Test parameter extraction for FileSkill (Audit requirement)."""
-    dispatcher = TaskDispatcher(mock_kernel)
-
     # Standard path
     params = dispatcher._prepare_skill_parameters(
         "FileSkill", "Read venom_core/main.py"
@@ -116,8 +118,7 @@ def test_prepare_skill_parameters_file_skill(mock_kernel):
     assert params == {"path": "a.py"}
 
 
-def test_prepare_skill_parameters_shell_skill(mock_kernel):
+def test_prepare_skill_parameters_shell_skill(dispatcher):
     """Test parameter extraction for ShellSkill."""
-    dispatcher = TaskDispatcher(mock_kernel)
     params = dispatcher._prepare_skill_parameters("ShellSkill", "ls -la")
     assert params == {"command": "ls -la"}

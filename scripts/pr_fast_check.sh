@@ -70,7 +70,7 @@ while IFS= read -r file; do
   esac
 
   case "$file" in
-    venom_core/*|tests/*|scripts/*|config/pytest-groups/*|Makefile|pytest.ini|sonar-project.properties|requirements*.txt)
+    venom_core/*|tests/*|scripts/*|config/pytest-groups/*|config/testing/*|Makefile|pytest.ini|sonar-project.properties|requirements*.txt)
       backend_changed=1
       ;;
     *)
@@ -92,9 +92,10 @@ if [[ "$backend_changed" -eq 1 ]]; then
     PYTHON_BIN="${VENV}/bin/python"
   fi
   "${PYTHON_BIN}" -m compileall -q venom_core scripts tests
-  make ci-lite-preflight
   make architecture-drift-check
   make test-lane-contracts-check
+  make test-catalog-check
+  make test-groups-check
   make audit-ci-lite
   make check-new-code-coverage \
     NEW_CODE_INCLUDE_BASELINE=1 \

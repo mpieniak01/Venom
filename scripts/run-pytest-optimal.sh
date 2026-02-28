@@ -10,10 +10,6 @@ fi
 source .venv/bin/activate
 
 FAST_GROUP_FILE="config/pytest-groups/fast.txt"
-if [[ ! -f "${FAST_GROUP_FILE}" ]]; then
-  # Backward compatibility for branches that still use light.txt naming.
-  FAST_GROUP_FILE="config/pytest-groups/light.txt"
-fi
 
 # Full pytest suite using environment-optimized worker counts (sequential).
 echo "▶️  Pytest group: heavy"

@@ -26,8 +26,11 @@ gh api \
   -H "Accept: application/vnd.github+json" \
   "/repos/${repo}/branches/main/protection" \
   -f required_status_checks.strict=true \
+  -f required_status_checks.contexts[]="Forbidden Paths Guard" \
+  -f required_status_checks.contexts[]="Architecture drift guard" \
   -f required_status_checks.contexts[]="Backend lite (pytest)" \
   -f required_status_checks.contexts[]="Frontend lite (lint)" \
+  -f required_status_checks.contexts[]="OpenAPI Contract (export + TS codegen)" \
   -f required_status_checks.contexts[]="SonarCloud Scan" \
   -f required_status_checks.contexts[]="Quick validator (syntax + CI-lite deps)" \
   -f enforce_admins=true \

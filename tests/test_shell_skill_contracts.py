@@ -203,7 +203,10 @@ def test_run_shell_sandbox_habitat_none_raises(monkeypatch):
 
 def test_get_exit_code_success_message():
     skill = ShellSkill(use_sandbox=False)
-    assert skill.get_exit_code_from_output("Komenda wykonana pomyślnie.\n\nOutput:\nok") == 0
+    assert (
+        skill.get_exit_code_from_output("Komenda wykonana pomyślnie.\n\nOutput:\nok")
+        == 0
+    )
 
 
 def test_get_exit_code_explicit_zero():

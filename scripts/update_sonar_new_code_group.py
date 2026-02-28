@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import re
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from pathlib import Path
 GROUP_PATH = Path("config/pytest-groups/sonar-new-code.txt")
 AUTO_SECTION_HEADER = "# AUTO-ADDED by pre-commit (staged backend/test changes)"
 SLEEP_RE = re.compile(r"(?:time|asyncio)\.sleep\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)")
+CATALOG_PATH_DEFAULT = Path("config/testing/test_catalog.json")
 
 
 def _load_resolver_module():
@@ -169,6 +171,63 @@ def _apply_auto_cleanup(
     return existing_files
 
 
+def _load_catalog_legacy_map(path: Path) -> dict[str, bool]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    tests = payload.get("tests", [])
+    if not isinstance(tests, list):
+        return {}
+    out: dict[str, bool] = {}
+    for item in tests:
+        if not isinstance(item, dict):
+            continue
+        test_path = str(item.get("path", "")).strip()
+        if not test_path:
+            continue
+        out[test_path] = bool(item.get("legacy_targeted", False))
+    return out
+
+
+def _filter_out_legacy(items: list[str], legacy_map: dict[str, bool]) -> list[str]:
+    if not legacy_map:
+        return items
+    return [item for item in items if not legacy_map.get(item, False)]
+
+
+def _resolve_candidates_compat(
+    resolver, relevant_changes: list[str], args
+) -> list[str]:
+    attempts = (
+        lambda: resolver.resolve_candidates_from_changed_files(
+            relevant_changes,
+            exclude_slow_fastlane=(args.mode == "fast-safe"),
+            catalog_path=args.catalog,
+            required_lane="new-code",
+        ),
+        lambda: resolver.resolve_candidates_from_changed_files(
+            relevant_changes,
+            exclude_slow_fastlane=(args.mode == "fast-safe"),
+        ),
+        lambda: resolver.resolve_candidates_from_changed_files(relevant_changes),
+    )
+    last_error: Exception | None = None
+    for call in attempts:
+        try:
+            return call()
+        except TypeError as err:
+            last_error = err
+            continue
+    if last_error is not None:
+        raise last_error
+    return []
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Update Sonar new-code test group with staged related tests."
@@ -190,6 +249,17 @@ def main(argv: list[str] | None = None) -> int:
         default=120,
         help="Maximum AUTO section size after cleanup (0 disables cap).",
     )
+    parser.add_argument(
+        "--catalog",
+        type=Path,
+        default=CATALOG_PATH_DEFAULT,
+        help="Path to test catalog for lane/domain-aware candidate filtering.",
+    )
+    parser.add_argument(
+        "--drop-legacy-targeted",
+        action="store_true",
+        help="Drop legacy-targeted tests from AUTO section and candidate additions.",
+    )
     args = parser.parse_args(argv)
 
     staged = _git_staged_files()
@@ -208,14 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     resolver = _load_resolver_module()
-    try:
-        candidates = resolver.resolve_candidates_from_changed_files(
-            relevant_changes,
-            exclude_slow_fastlane=(args.mode == "fast-safe"),
-        )
-    except TypeError:
-        # Backward-compat for resolver stubs/signatures used in tests/tools.
-        candidates = resolver.resolve_candidates_from_changed_files(relevant_changes)
+    candidates = _resolve_candidates_compat(resolver, relevant_changes, args)
     candidates = _dedupe_keep_order(candidates)
 
     if args.mode == "fast-safe":
@@ -229,6 +292,11 @@ def main(argv: list[str] | None = None) -> int:
         else []
     )
     manual_lines, auto_entries = _split_auto_section(file_lines)
+
+    legacy_map = _load_catalog_legacy_map(args.catalog)
+    if args.drop_legacy_targeted:
+        auto_entries = _filter_out_legacy(auto_entries, legacy_map)
+        candidates = _filter_out_legacy(candidates, legacy_map)
 
     if args.prune_auto:
         auto_entries = _apply_auto_cleanup(
@@ -261,6 +329,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.prune_auto:
         print(f"AUTO section size after cleanup: {len(merged_auto)}")
+    if args.drop_legacy_targeted:
+        print("AUTO section and candidates filtered with drop-legacy-targeted.")
 
     return 0
 

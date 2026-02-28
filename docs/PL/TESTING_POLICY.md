@@ -48,6 +48,30 @@ Niezależny check kontraktów lane'ów testowych (również uruchamiany w `pr-fa
 make test-lane-contracts-check
 ```
 
+Kanoniczny check taksonomii testów (również uruchamiany w `pr-fast`):
+
+```bash
+make test-catalog-check
+```
+
+Regeneracja kanonicznego katalogu po większych refaktorach/rename testów:
+
+```bash
+make test-catalog-sync
+```
+
+Synchronizacja plików grup pytest z katalogu:
+
+```bash
+make test-groups-sync
+```
+
+Weryfikacja, że grupy są zsynchronizowane (brak ręcznego dryfu):
+
+```bash
+make test-groups-check
+```
+
 Upewnij się, że hooki są zainstalowane dla `pre-commit` i `pre-push`:
 
 ```bash
@@ -57,8 +81,36 @@ make install-hooks
 Zakres:
 
 - wykrywanie zmienionych plików względem `origin/main` (lub `PR_BASE_REF`)
-- backend fast lane: compile check + architecture drift guard + guard kontraktów lane'ów + audit CI-lite + bramka pokrycia zmienionych linii
+- backend fast lane: compile check + architecture drift guard + guard kontraktów lane'ów + guard katalogu testów + audit CI-lite + bramka pokrycia zmienionych linii
 - frontend fast lane (tylko gdy zmieniono `web-next/**`): lint + unit CI-lite
+
+Kontrakt nazewnictwa lane/group:
+
+- `config/pytest-groups/fast.txt` jest kanoniczną listą szybkiego zakresu backendu.
+- `config/pytest-groups/light.txt` jest aliasem kompatybilności do `fast.txt` i nie powinien być edytowany niezależnie.
+
+Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.json`):
+
+- `domain`: zakres domenowy/systemowy (np. `academy`, `workflow`, `providers`, `runtime`)
+- `test_type`: `unit`, `route_contract`, `service_contract`, `integration`, `perf`, `gate`
+- `intent`: regression/contract/gate/security/performance
+- `legacy_targeted`: historyczne testy typu PR-gate/coverage-wave; muszą mieć przypisaną domenę
+
+Kontrakt jednego źródła prawdy:
+
+- `config/testing/test_catalog.json` jest kanonicznym źródłem metadanych testów i uprawnień lane.
+- `config/testing/test_catalog.yaml` pozostaje symlinkiem kompatybilności do `test_catalog.json` dla starszych narzędzi.
+- Pliki grup pytest są generowane/synchronizowane z katalogu (`make test-groups-sync`).
+- Ręczna edycja wygenerowanych grup nie jest wspierana; używaj komendy sync.
+
+Przy dodawaniu nowego testu (`tests/**/test_*.py`) uruchom:
+
+```bash
+make test-catalog-sync
+make test-groups-sync
+make test-catalog-check
+make pr-fast
+```
 
 ### Poziom 3: Jakość pod PR (obowiązkowo przed merge)
 
@@ -76,6 +128,7 @@ Kontrakt bramek vs telemetrii:
 
 - `make check-new-code-coverage` to gate blokujący merge.
 - `make test-intelligence-report` to telemetria/trend i nie blokuje merge.
+- `make check-new-code-coverage-diagnostics` to opcjonalna diagnostyka manualna (pomocniczy output, bez roli gate).
 
 Domyślna bramka pokrycia:
 
@@ -113,7 +166,8 @@ Zachowanie runu new-code coverage:
 - bazowe grupy testów: `config/pytest-groups/ci-lite.txt` + `config/pytest-groups/sonar-new-code.txt`
 - automatyczne dołączanie testów zmienionych/powiązanych jest domyślnie aktywne (`NEW_CODE_AUTO_INCLUDE_CHANGED=1`)
 - wzorzec auto-include dla zmienionych testów: `tests/**/test_*.py`
-- resolver listy: `scripts/resolve_sonar_new_code_tests.py`
+- resolver listy: `scripts/resolve_sonar_new_code_tests.py` (selekcja katalogowa + metadane: `selection_reason`, `domain`, `legacy_targeted`)
+- źródło sync grup: `scripts/sync_pytest_groups_from_catalog.py` (`test_catalog.json` -> `ci-lite/new-code/fast/long/heavy`)
 - gdy lokalnie nie ma `ripgrep` (`rg`), resolver używa fallbacku Python (bez blokowania runu)
 - w CI backend-lite doinstalowuje `ripgrep` dla szybszego wyboru i czytelnych logów
 
@@ -122,6 +176,7 @@ Kontrakt deterministyczności (dlaczego to nie flakuje):
 - `NEW_CODE_TIME_BUDGET_SEC=0` w CI: brak cięcia listy testów przez czas.
 - `config/coverage-file-floor.txt`: testy-kotwice dla floor są zawsze dołączane.
 - `ripgrep` (`rg`) w CI: stabilny i szybki resolver + czytelne logi.
+- `scripts/check_test_catalog.py` dodatkowo waliduje grupy release (`fast/long/heavy`) względem uprawnień lane w katalogu.
 
 Jak sprawdzić pokrycie lokalnie przed push:
 
@@ -189,10 +244,13 @@ Scenariusze performance/latency:
 
 Wymagane bramki na PR:
 
+- Forbidden Paths Guard (job CI `forbidden-paths`)
 - Architecture drift guard (job CI `architecture-drift-guard`)
-- CI Lite (szybki lint + wybrane testy unit)
-- Smoke readonly dla preprod (`make test-preprod-readonly-smoke`) w jobie `backend-lite`
-- SonarCloud (bugi, podatności, utrzymywalność, duplikacje)
+- Backend lite (pytest): kontrakty lane + guard katalogu/grup + smoke readonly preprod + gate changed-lines coverage
+- Frontend lite (lint): lint + unit CI-lite
+- OpenAPI Contract (export + TS codegen)
+- Quick validator (syntax + CI-lite deps)
+- SonarCloud Scan (bugi, podatności, utrzymywalność, duplikacje)
 - Wyjątek tymczasowy: frontend `web-next/**` jest wyłączony z bramki Sonar coverage do czasu stabilizacji UI.
 
 ## Kryteria jakości i typowe obszary wpadek

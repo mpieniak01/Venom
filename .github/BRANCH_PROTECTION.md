@@ -13,10 +13,13 @@ Ten plik dokumentuje wymagane ustawienia repozytorium dla trybu Hard Gate.
 
 ## Required status checks (dokładne nazwy jobów)
 
-1. `Backend lite (pytest)`
-2. `Frontend lite (lint)`
-3. `SonarCloud Scan`
-4. `Quick validator (syntax + CI-lite deps)`
+1. `Forbidden Paths Guard`
+2. `Architecture drift guard`
+3. `Backend lite (pytest)`
+4. `Frontend lite (lint)`
+5. `OpenAPI Contract (export + TS codegen)`
+6. `SonarCloud Scan`
+7. `Quick validator (syntax + CI-lite deps)`
 
 ## Why
 

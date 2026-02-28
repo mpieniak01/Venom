@@ -99,6 +99,14 @@ jobs:
         run: |
           make test-lane-contracts-check
 
+      - name: Test catalog guard
+        run: |
+          make test-catalog-check
+
+      - name: Test groups sync guard
+        run: |
+          make test-groups-check
+
       - name: Preprod readonly smoke
         run: |
           make test-preprod-readonly-smoke

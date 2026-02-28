@@ -28,6 +28,11 @@ async def test_service_status_broadcast():
     # Mock event broadcaster
     mock_broadcaster = AsyncMock()
 
+    async def _capture_event(**kwargs):
+        _ = kwargs
+
+    mock_broadcaster.broadcast_event.side_effect = _capture_event
+
     # Initialize monitor
     monitor = ServiceHealthMonitor(registry, event_broadcaster=mock_broadcaster)
 
@@ -49,8 +54,9 @@ async def test_service_status_broadcast():
         # Run health check
         await monitor.check_health()
 
-        # Give a moment for the background tasks (asyncio.create_task in monitor)
-        await asyncio.sleep(0.5)
+        # Flush spawned fire-and-forget tasks deterministically.
+        if monitor._background_tasks:
+            await asyncio.gather(*list(monitor._background_tasks))
 
         # Verify broadcast_event was called
         assert mock_broadcaster.broadcast_event.called, (

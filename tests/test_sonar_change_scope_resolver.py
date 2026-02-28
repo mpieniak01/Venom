@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 
@@ -294,3 +295,98 @@ def test_resolve_tests_prioritizes_floor_anchors_under_budget(monkeypatch, tmp_p
         timings_junit_xml="irrelevant.xml",
     )
     assert resolved == ["tests/test_anchor.py"]
+
+
+def test_resolve_candidates_from_changed_files_respects_catalog(monkeypatch, tmp_path):
+    module = _load_module()
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "tests": [
+                    {
+                        "path": "tests/test_memory_a.py",
+                        "domain": "memory",
+                        "allowed_lanes": ["new-code"],
+                        "legacy_targeted": False,
+                    },
+                    {
+                        "path": "tests/test_governance_b.py",
+                        "domain": "governance",
+                        "allowed_lanes": ["new-code"],
+                        "legacy_targeted": False,
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        module,
+        "all_test_files",
+        lambda: ["tests/test_memory_a.py", "tests/test_governance_b.py"],
+    )
+    monkeypatch.setattr(
+        module,
+        "collect_changed_tests",
+        lambda _changed: {"tests/test_memory_a.py", "tests/test_governance_b.py"},
+    )
+    monkeypatch.setattr(module, "related_tests_for_modules", lambda *_args: set())
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+
+    resolved = module.resolve_candidates_from_changed_files(
+        ["venom_core/memory/service.py"],
+        catalog_path=catalog,
+        required_lane="new-code",
+    )
+    assert resolved == ["tests/test_memory_a.py"]
+
+
+def test_resolve_tests_with_metadata_includes_domain_reason(monkeypatch, tmp_path):
+    module = _load_module()
+    baseline = tmp_path / "ci-lite.txt"
+    new_code = tmp_path / "sonar-new-code.txt"
+    catalog = tmp_path / "catalog.json"
+    baseline.write_text("tests/test_base.py\n", encoding="utf-8")
+    new_code.write_text("tests/test_new.py\n", encoding="utf-8")
+    catalog.write_text(
+        json.dumps(
+            {
+                "tests": [
+                    {
+                        "path": "tests/test_base.py",
+                        "domain": "workflow",
+                        "allowed_lanes": ["ci-lite", "new-code"],
+                        "legacy_targeted": False,
+                    },
+                    {
+                        "path": "tests/test_new.py",
+                        "domain": "workflow",
+                        "allowed_lanes": ["new-code"],
+                        "legacy_targeted": True,
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "git_changed_files", lambda _base: [])
+    monkeypatch.setattr(
+        module, "all_test_files", lambda: ["tests/test_base.py", "tests/test_new.py"]
+    )
+    monkeypatch.setattr(module, "related_tests_for_modules", lambda *_args: set())
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: True)
+
+    selected, metadata = module.resolve_tests_with_metadata(
+        baseline_group=baseline,
+        new_code_group=new_code,
+        include_baseline=True,
+        diff_base="origin/main",
+        catalog_path=catalog,
+    )
+    assert selected == ["tests/test_base.py", "tests/test_new.py"]
+    by_path = {row["path"]: row for row in metadata}
+    assert by_path["tests/test_base.py"]["domain"] == "workflow"
+    assert by_path["tests/test_new.py"]["legacy_targeted"] is True
+    assert "new_code_group" in by_path["tests/test_new.py"]["selection_reason"]

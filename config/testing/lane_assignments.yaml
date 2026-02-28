@@ -16,7 +16,7 @@
     },
     {
       "group": "sonar-new-code",
-      "test": "tests/test_preprod_ops_scripts.py",
+      "test": "tests/test_preprod_ops_regression.py",
       "lane": "ci-lite",
       "rationale": "Preprod operational script guards are safety-critical for fast feedback."
     },

@@ -14,6 +14,8 @@ from typing import Any
 class FileRuntime:
     file_path: str
     lane: str
+    domain: str
+    legacy_targeted: bool
     tests: int
     total_seconds: float
     failures: int
@@ -44,8 +46,34 @@ def _lane_weight(lane: str) -> float:
     return {"ci-lite": 3.0, "new-code": 2.0}.get(lane, 1.0)
 
 
+def _load_catalog(path: Path | None) -> dict[str, dict[str, object]]:
+    if path is None or not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    tests = payload.get("tests", [])
+    if not isinstance(tests, list):
+        return {}
+    out: dict[str, dict[str, object]] = {}
+    for item in tests:
+        if not isinstance(item, dict):
+            continue
+        test_path = str(item.get("path", "")).strip()
+        if not test_path:
+            continue
+        out[test_path] = item
+    return out
+
+
 def _load_junit_file_runtimes(
-    junit_xml: Path, ci_lite_tests: set[str], new_code_tests: set[str]
+    junit_xml: Path,
+    ci_lite_tests: set[str],
+    new_code_tests: set[str],
+    catalog: dict[str, dict[str, object]],
 ) -> tuple[list[FileRuntime], set[str]]:
     root = ET.parse(junit_xml).getroot()
     aggregates: dict[str, dict[str, Any]] = {}
@@ -80,10 +108,13 @@ def _load_junit_file_runtimes(
     results: list[FileRuntime] = []
     for file_path, payload in aggregates.items():
         score = payload["seconds"] * _lane_weight(payload["lane"])
+        catalog_entry = catalog.get(file_path, {})
         results.append(
             FileRuntime(
                 file_path=file_path,
                 lane=payload["lane"],
+                domain=str(catalog_entry.get("domain", "misc")),
+                legacy_targeted=bool(catalog_entry.get("legacy_targeted", False)),
                 tests=int(payload["tests"]),
                 total_seconds=round(float(payload["seconds"]), 3),
                 failures=int(payload["failures"]),
@@ -132,6 +163,7 @@ def _recommendations(
         for item in runtimes
         if item.lane == "new-code"
         and item.failures == 0
+        and item.legacy_targeted is False
         and item.tests >= min_tests_for_promotion
         and item.total_seconds <= fast_threshold
     ]
@@ -159,11 +191,13 @@ def build_report(
     min_tests_for_promotion: int,
     lastfailed_path: Path | None,
     top_n: int,
+    catalog_path: Path | None,
 ) -> dict[str, Any]:
     ci_lite_tests = _load_group(ci_lite_group)
     new_code_tests = _load_group(new_code_group)
+    catalog = _load_catalog(catalog_path)
     runtimes, failing_files = _load_junit_file_runtimes(
-        junit_xml, ci_lite_tests, new_code_tests
+        junit_xml, ci_lite_tests, new_code_tests, catalog
     )
     recent_lastfailed = _load_recent_lastfailed(lastfailed_path)
     recommendations = _recommendations(
@@ -175,6 +209,12 @@ def build_report(
         failing_files=failing_files,
     )
 
+    domain_breakdown: dict[str, float] = {}
+    for item in runtimes:
+        domain_breakdown[item.domain] = round(
+            domain_breakdown.get(item.domain, 0.0) + item.total_seconds, 3
+        )
+
     return {
         "summary": {
             "files_count": len(runtimes),
@@ -184,7 +224,13 @@ def build_report(
             "total_runtime_seconds": round(
                 sum(item.total_seconds for item in runtimes), 3
             ),
+            "legacy_targeted_files": sum(
+                1 for item in runtimes if item.legacy_targeted
+            ),
         },
+        "domain_runtime_seconds": dict(
+            sorted(domain_breakdown.items(), key=lambda item: (-item[1], item[0]))
+        ),
         "top_impact_files": [asdict(item) for item in runtimes[:top_n]],
         "recommendations": recommendations,
     }
@@ -255,6 +301,7 @@ def _print_text(report: dict[str, Any]) -> None:
         f"(ci-lite={summary['ci_lite_files']}, new-code={summary['new_code_files']}, other={summary['other_files']})"
     )
     print(f"- total runtime: {summary['total_runtime_seconds']}s")
+    print(f"- legacy-targeted files: {summary['legacy_targeted_files']}")
     trend = report.get("trend")
     if isinstance(trend, dict):
         delta = trend.get("runtime_delta_vs_previous_seconds")
@@ -265,9 +312,12 @@ def _print_text(report: dict[str, Any]) -> None:
     print("- top impact files:")
     for item in report["top_impact_files"]:
         print(
-            f"  * {item['file_path']} | lane={item['lane']} | "
+            f"  * {item['file_path']} | lane={item['lane']} | domain={item['domain']} | "
             f"tests={item['tests']} | sec={item['total_seconds']} | score={item['impact_score']}"
         )
+    print("- top domains by runtime:")
+    for domain, sec in list(report.get("domain_runtime_seconds", {}).items())[:10]:
+        print(f"  * {domain}: {sec}s")
 
     rec = report["recommendations"]
     print("- recommendations:")
@@ -343,6 +393,12 @@ def parse_args() -> argparse.Namespace:
         help="Optional JSONL history file for trend tracking.",
     )
     parser.add_argument(
+        "--catalog",
+        type=Path,
+        default=Path("config/testing/test_catalog.json"),
+        help="Optional test catalog for domain and legacy-targeted metadata.",
+    )
+    parser.add_argument(
         "--append-history",
         type=int,
         default=1,
@@ -362,6 +418,7 @@ def main() -> int:
         min_tests_for_promotion=args.min_tests_for_promotion,
         lastfailed_path=args.lastfailed,
         top_n=args.top_n,
+        catalog_path=args.catalog,
     )
     _attach_trend_and_history(
         report,

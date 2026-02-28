@@ -84,6 +84,7 @@ def _resolve_tests_with_metadata(
     timings_junit_xml: str,
     exclude_slow_fastlane: bool,
     max_tests: int,
+    catalog: str | None,
 ) -> tuple[list[str], list[dict[str, object]]]:
     return resolver_mod.resolve_tests_with_metadata(
         baseline_group=baseline_group,
@@ -94,6 +95,7 @@ def _resolve_tests_with_metadata(
         timings_junit_xml=timings_junit_xml,
         exclude_slow_fastlane=exclude_slow_fastlane,
         max_tests=max_tests,
+        catalog_path=catalog,
     )
 
 
@@ -231,6 +233,7 @@ def main() -> int:
     )
     parser.add_argument("--exclude-slow-fastlane", type=int, default=1)
     parser.add_argument("--max-tests", type=int, default=0)
+    parser.add_argument("--catalog", default="")
     parser.add_argument("--fallback-coverage", type=int, default=1)
     parser.add_argument("--max-fallback-tests", type=int, default=20)
     parser.add_argument("--mark-expr", required=True)
@@ -262,6 +265,7 @@ def main() -> int:
         timings_junit_xml=args.timings_junit_xml,
         exclude_slow_fastlane=bool(args.exclude_slow_fastlane),
         max_tests=args.max_tests,
+        catalog=args.catalog,
     )
 
     if not fast_tests:
@@ -358,6 +362,15 @@ def main() -> int:
             )
 
     total_duration = time.monotonic() - started
+    selected_meta = [row for row in metadata if bool(row.get("selected"))]
+    domain_breakdown: dict[str, int] = {}
+    legacy_count = 0
+    for row in selected_meta:
+        domain = str(row.get("domain", "misc"))
+        domain_breakdown[domain] = domain_breakdown.get(domain, 0) + 1
+        if bool(row.get("legacy_targeted", False)):
+            legacy_count += 1
+
     telemetry = {
         "fast_count": len(fast_tests),
         "fast_estimated_seconds": round(est_fast, 2),
@@ -368,6 +381,8 @@ def main() -> int:
         "rate_percent": summary.get("rate_percent"),
         "required_percent": summary.get("required_percent"),
         "pass": bool(summary.get("pass")),
+        "selected_domains": dict(sorted(domain_breakdown.items())),
+        "selected_legacy_targeted_count": legacy_count,
     }
 
     print("ℹ️ Telemetry:")

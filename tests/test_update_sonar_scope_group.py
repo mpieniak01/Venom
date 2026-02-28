@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 
@@ -187,3 +188,57 @@ def test_main_prune_auto_caps_size(monkeypatch, tmp_path):
         auto_1.unlink(missing_ok=True)
         auto_2.unlink(missing_ok=True)
         auto_3.unlink(missing_ok=True)
+
+
+def test_main_drop_legacy_targeted_filters_auto_and_candidates(monkeypatch, tmp_path):
+    module = _load_module()
+    group_path = tmp_path / "sonar-new-code.txt"
+    group_path.write_text(
+        "\n".join(
+            [
+                "# baseline",
+                "tests/test_manual.py",
+                "",
+                module.AUTO_SECTION_HEADER,
+                "tests/test_legacy.py",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "tests": [
+                    {"path": "tests/test_legacy.py", "legacy_targeted": True},
+                    {"path": "tests/test_new.py", "legacy_targeted": False},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "GROUP_PATH", group_path)
+    monkeypatch.setattr(module, "_git_staged_files", lambda: ["venom_core/core/x.py"])
+
+    class Resolver:
+        def resolve_candidates_from_changed_files(self, staged, **_kwargs):
+            return ["tests/test_legacy.py", "tests/test_new.py"]
+
+        def is_fast_safe_test(self, path):
+            return True
+
+    monkeypatch.setattr(module, "_load_resolver_module", lambda: Resolver())
+    assert (
+        module.main(
+            [
+                "--catalog",
+                str(catalog_path),
+                "--drop-legacy-targeted",
+            ]
+        )
+        == 0
+    )
+    output = group_path.read_text(encoding="utf-8")
+    assert "tests/test_legacy.py" not in output
+    assert "tests/test_new.py" in output

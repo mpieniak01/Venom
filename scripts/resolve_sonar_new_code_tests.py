@@ -53,7 +53,12 @@ def load_coverage_floor_targets(path: Path = DEFAULT_COVERAGE_FLOOR_FILE) -> lis
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        target = line.split(":", 1)[0].strip()
+        if "," in line:
+            target = line.split(",", 1)[0].strip()
+        elif ":" in line:
+            target = line.split(":", 1)[0].strip()
+        else:
+            target = line
         if target:
             targets.append(target)
     return targets

@@ -191,12 +191,13 @@ def test_load_coverage_floor_targets_parses_file(tmp_path):
     module = _load_module()
     floor = tmp_path / "coverage-floor.txt"
     floor.write_text(
-        "# comment\nvenom_core/a.py:40\n\nvenom_core/b.py:55\n",
+        "# comment\nvenom_core/a.py,40\nvenom_core/b.py:55\nvenom_core/c.py\n",
         encoding="utf-8",
     )
     assert module.load_coverage_floor_targets(floor) == [
         "venom_core/a.py",
         "venom_core/b.py",
+        "venom_core/c.py",
     ]
 
 

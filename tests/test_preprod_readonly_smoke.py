@@ -9,7 +9,11 @@ from venom_core.main import app
 
 @pytest.mark.smoke
 def test_preprod_readonly_smoke_health_and_status() -> None:
-    assert SETTINGS.ENVIRONMENT_ROLE == "preprod"
+    if SETTINGS.ENVIRONMENT_ROLE != "preprod":
+        pytest.skip(
+            "Preprod readonly smoke is only applicable for ENVIRONMENT_ROLE=preprod."
+        )
+
     assert SETTINGS.ALLOW_DATA_MUTATION is False
 
     client = TestClient(app)

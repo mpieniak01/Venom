@@ -3,7 +3,7 @@
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Callable, Dict, List, Optional, cast
+from typing import Annotated, Any, Dict, List, Optional, cast
 from unittest.mock import Mock
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -37,6 +37,7 @@ from venom_core.api.schemas.academy import (
     TrainingResponse,
     UploadFileInfo,
 )
+from venom_core.services.academy import file_resolution as academy_file_resolution
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -1111,11 +1112,12 @@ def _resolve_workspace_file_path(
     category: str,
 ) -> Path:
     try:
-        return academy_conversion.resolve_workspace_file_path(
+        return academy_file_resolution.resolve_workspace_file_path(
             workspace,
             file_id=file_id,
             category=category,
             get_conversion_output_dir_fn=_get_conversion_output_dir,
+            resolve_workspace_file_path_impl=academy_conversion.resolve_workspace_file_path,
         )
     except ValueError as exc:
         detail = str(exc)
@@ -1130,12 +1132,13 @@ def _load_conversion_item_from_workspace(
     file_id: str,
 ) -> Dict[str, Any]:
     try:
-        return academy_conversion.load_conversion_item_from_workspace(
+        return academy_file_resolution.load_conversion_item_from_workspace(
             workspace,
             file_id=file_id,
             user_conversion_metadata_lock_fn=_user_conversion_metadata_lock,
             load_user_conversion_metadata_fn=_load_user_conversion_metadata,
             find_conversion_item_fn=_find_conversion_item,
+            load_conversion_item_impl=academy_conversion.load_conversion_item_from_workspace,
         )
     except FileNotFoundError as exc:
         raise AcademyRouteError(status_code=404, detail="File not found") from exc
@@ -1147,19 +1150,22 @@ def _resolve_existing_user_file(
     file_id: str,
 ) -> tuple[Dict[str, Any], Path]:
     user_id = _resolve_user_id(req)
-    workspace = _get_user_conversion_workspace(user_id)
     try:
-        item = _load_conversion_item_from_workspace(workspace, file_id=file_id)
-        file_path = _resolve_workspace_file_path(
-            workspace,
+        return academy_file_resolution.resolve_existing_user_file(
+            user_id=user_id,
             file_id=file_id,
-            category=str(item.get("category") or "source"),
+            get_user_conversion_workspace_fn=_get_user_conversion_workspace,
+            load_conversion_item_fn=lambda workspace, fid: (
+                _load_conversion_item_from_workspace(workspace, file_id=fid)
+            ),
+            resolve_workspace_file_path_fn=lambda workspace, fid, category: (
+                _resolve_workspace_file_path(
+                    workspace,
+                    file_id=fid,
+                    category=category,
+                )
+            ),
         )
-        if not file_path.exists():
-            raise AcademyRouteError(status_code=404, detail="File not found on disk")
-        return item, file_path
-    except AcademyRouteError:
-        raise
     except FileNotFoundError as exc:
         raise AcademyRouteError(
             status_code=404, detail="File not found on disk"
@@ -1203,57 +1209,47 @@ _markdown_from_csv = academy_conversion.markdown_from_csv
 
 
 def _markdown_from_binary_document(source_path: Path, ext: str) -> str:
-    temp_md_path = source_path.with_suffix(source_path.suffix + ".pandoc.md")
-    if _convert_with_pandoc(source_path, temp_md_path):
-        content = temp_md_path.read_text(encoding="utf-8", errors="ignore")
-        temp_md_path.unlink(missing_ok=True)
-        return content
-    temp_md_path.unlink(missing_ok=True)
-    if ext == academy_conversion.EXT_PDF:
-        return _extract_text_from_pdf(source_path)
-    if ext == academy_conversion.EXT_DOCX:
-        return _extract_text_from_docx(source_path)
-    raise ValueError(
-        "DOC conversion requires Pandoc with system support for legacy .doc files"
+    return academy_file_resolution.markdown_from_binary_document_with_impls(
+        source_path=source_path,
+        ext=ext,
+        ext_pdf=academy_conversion.EXT_PDF,
+        ext_docx=academy_conversion.EXT_DOCX,
+        convert_with_pandoc_fn=_convert_with_pandoc,
+        extract_text_from_pdf_fn=_extract_text_from_pdf,
+        extract_text_from_docx_fn=_extract_text_from_docx,
     )
 
 
 def _source_to_markdown(source_path: Path) -> str:
-    ext = source_path.suffix.lower()
-    if ext in {academy_conversion.EXT_MD, academy_conversion.EXT_TXT}:
-        return source_path.read_text(encoding="utf-8", errors="ignore")
-
-    markdown_builders: dict[str, Callable[[Path], str]] = {
-        academy_conversion.EXT_JSON: _markdown_from_json,
-        academy_conversion.EXT_JSONL: _markdown_from_jsonl,
-        academy_conversion.EXT_CSV: _markdown_from_csv,
-    }
-    builder = markdown_builders.get(ext)
-    if builder:
-        return builder(source_path)
-
-    if ext in {
-        academy_conversion.EXT_DOC,
-        academy_conversion.EXT_DOCX,
-        academy_conversion.EXT_PDF,
-    }:
-        return _markdown_from_binary_document(source_path, ext)
-
-    raise ValueError(f"Unsupported source extension: {ext}")
+    return academy_file_resolution.source_to_markdown_with_impls(
+        source_path,
+        ext_md=academy_conversion.EXT_MD,
+        ext_txt=academy_conversion.EXT_TXT,
+        ext_json=academy_conversion.EXT_JSON,
+        ext_jsonl=academy_conversion.EXT_JSONL,
+        ext_csv=academy_conversion.EXT_CSV,
+        ext_doc=academy_conversion.EXT_DOC,
+        ext_docx=academy_conversion.EXT_DOCX,
+        ext_pdf=academy_conversion.EXT_PDF,
+        markdown_from_json_fn=_markdown_from_json,
+        markdown_from_jsonl_fn=_markdown_from_jsonl,
+        markdown_from_csv_fn=_markdown_from_csv,
+        markdown_from_binary_document_fn=_markdown_from_binary_document,
+    )
 
 
 def _source_to_records(source_path: Path) -> List[Dict[str, str]]:
-    ext = source_path.suffix.lower()
-    record_builders: dict[str, Callable[[Path], List[Dict[str, str]]]] = {
-        academy_conversion.EXT_JSON: _records_from_json_file,
-        academy_conversion.EXT_JSONL: _records_from_jsonl_file,
-        academy_conversion.EXT_CSV: _records_from_csv_file,
-    }
-    builder = record_builders.get(ext)
-    if builder:
-        return builder(source_path)
-    text = _source_to_markdown(source_path)
-    return _records_from_text(text)
+    return academy_file_resolution.source_to_records_with_impls(
+        source_path,
+        ext_json=academy_conversion.EXT_JSON,
+        ext_jsonl=academy_conversion.EXT_JSONL,
+        ext_csv=academy_conversion.EXT_CSV,
+        records_from_json_file_fn=_records_from_json_file,
+        records_from_jsonl_file_fn=_records_from_jsonl_file,
+        records_from_csv_file_fn=_records_from_csv_file,
+        source_to_markdown_fn=_source_to_markdown,
+        records_from_text_fn=_records_from_text,
+    )
 
 
 _write_target_markdown = academy_conversion.write_target_markdown

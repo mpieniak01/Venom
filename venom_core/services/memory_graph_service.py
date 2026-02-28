@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from collections import Counter
+from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Callable
 
@@ -15,13 +17,28 @@ from venom_core.memory.lessons_store import LessonsStore
 from venom_core.utils.helpers import get_utc_now_iso
 
 DEFAULT_USER_ID = "user_default"
+_logger = logging.getLogger(__name__)
 _memory_graph_view_counters: Counter[str] = Counter()
 _memory_graph_view_counters_lock = Lock()
 
 
+@dataclass(frozen=True)
+class MemoryGraphPayloadOptions:
+    limit: int
+    session_id: str
+    only_pinned: bool
+    include_lessons: bool
+    mode: str
+    view: str
+    seed_id: str | None
+    max_hops: int
+    include_isolates: bool
+    limit_nodes: int | None
+
+
 def require_nonempty(value: str, detail: str) -> None:
     if not value or not value.strip():
-        raise HTTPException(status_code=400, detail=detail)
+        raise ValueError(detail)
 
 
 def build_ingest_metadata(request: Any) -> dict[str, object]:
@@ -330,7 +347,7 @@ def collect_lesson_graph(
                 }
             )
     except Exception as exc:  # pragma: no cover
-        logger.warning(f"Nie udało się pobrać lekcji do grafu: {exc}")
+        logger.warning("Nie udało się pobrać lekcji do grafu: %s", exc, exc_info=True)
     return lesson_nodes, lesson_edges
 
 
@@ -343,7 +360,12 @@ def append_flow_edges(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) 
             return str(meta.get("timestamp", ""))
 
         entries_for_flow = sorted(nodes, key=_flow_timestamp)
-    except Exception:
+    except Exception as exc:
+        _logger.warning(
+            "Sortowanie flow edges po timestamp nieudane, używam kolejności wejściowej: %s",
+            exc,
+            exc_info=True,
+        )
         entries_for_flow = nodes
 
     for idx in range(len(entries_for_flow) - 1):
@@ -366,16 +388,7 @@ def build_memory_graph_payload(
     *,
     vector_store: Any,
     lessons_store: LessonsStore | None,
-    limit: int,
-    session_id: str,
-    only_pinned: bool,
-    include_lessons: bool,
-    mode: str,
-    view: str,
-    seed_id: str | None,
-    max_hops: int,
-    include_isolates: bool,
-    limit_nodes: int | None,
+    options: MemoryGraphPayloadOptions,
     apply_graph_view_fn: Callable[
         ..., tuple[list[dict[str, Any]], list[dict[str, Any]]]
     ],
@@ -383,8 +396,8 @@ def build_memory_graph_payload(
     logger: Any,
     default_user_id: str = DEFAULT_USER_ID,
 ) -> dict[str, Any]:
-    filters = build_memory_graph_filters(session_id, only_pinned)
-    entries = vector_store.list_entries(limit=limit, metadata_filters=filters)
+    filters = build_memory_graph_filters(options.session_id, options.only_pinned)
+    entries = vector_store.list_entries(limit=options.limit, metadata_filters=filters)
 
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
@@ -406,10 +419,10 @@ def build_memory_graph_payload(
 
     lesson_nodes: list[dict[str, Any]] = []
     lesson_edges: list[dict[str, Any]] = []
-    if include_lessons:
+    if options.include_lessons:
         lesson_nodes, lesson_edges = collect_lesson_graph(
             lessons_store,
-            limit,
+            options.limit,
             allow_fallback=allow_lessons_fallback,
             logger=logger,
             default_user_id=default_user_id,
@@ -420,7 +433,7 @@ def build_memory_graph_payload(
     )
     all_edges = edges + lesson_edges
 
-    if mode == "flow":
+    if options.mode == "flow":
         append_flow_edges(nodes, all_edges)
 
     source_nodes = len(all_nodes)
@@ -428,26 +441,26 @@ def build_memory_graph_payload(
     view_nodes, view_edges = apply_graph_view_fn(
         nodes=all_nodes,
         edges=all_edges,
-        view=view,
-        seed_id=seed_id,
-        max_hops=max_hops,
-        include_isolates=include_isolates,
-        limit_nodes=limit_nodes,
+        view=options.view,
+        seed_id=options.seed_id,
+        max_hops=options.max_hops,
+        include_isolates=options.include_isolates,
+        limit_nodes=options.limit_nodes,
     )
-    increment_memory_view_counter(view)
+    increment_memory_view_counter(options.view)
 
     return {
         "status": "success",
-        "view": view,
+        "view": options.view,
         "elements": {"nodes": view_nodes, "edges": view_edges},
         "stats": {
             "nodes": len(view_nodes),
             "edges": len(view_edges),
             "source_nodes": source_nodes,
             "source_edges": source_edges,
-            "view": view,
-            "max_hops": max_hops,
-            "seed_id": seed_id,
+            "view": options.view,
+            "max_hops": options.max_hops,
+            "seed_id": options.seed_id,
             "view_requests": memory_view_counter_snapshot(),
         },
     }

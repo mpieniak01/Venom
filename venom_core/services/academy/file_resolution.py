@@ -82,12 +82,12 @@ def markdown_from_binary_document_with_impls(
 ) -> str:
     """Convert binary docs with injected conversion/extraction callables."""
     temp_md_path = source_path.with_suffix(source_path.suffix + ".pandoc.md")
-    if convert_with_pandoc_fn(source_path, temp_md_path):
-        content = temp_md_path.read_text(encoding="utf-8", errors="ignore")
+    try:
+        if convert_with_pandoc_fn(source_path, temp_md_path):
+            return temp_md_path.read_text(encoding="utf-8", errors="ignore")
+    finally:
         temp_md_path.unlink(missing_ok=True)
-        return content
 
-    temp_md_path.unlink(missing_ok=True)
     if ext == ext_pdf:
         return extract_text_from_pdf_fn(source_path)
     if ext == ext_docx:

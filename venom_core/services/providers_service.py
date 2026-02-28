@@ -9,6 +9,7 @@ from fastapi import Request
 from venom_core.api.schemas.providers import ProviderCapability, ProviderStatus
 from venom_core.config import SETTINGS
 from venom_core.services.config_manager import config_manager
+from venom_core.utils.url_policy import build_http_url
 
 
 def extract_user_from_request(request: Request, *, logger: Any = None) -> str:
@@ -117,7 +118,7 @@ def check_google_status() -> ProviderStatus:
 
 def get_provider_endpoint(provider: str) -> Optional[str]:
     if provider == "ollama":
-        return "http://localhost:11434"
+        return build_http_url("localhost", 11434)
     if provider == "vllm":
         return SETTINGS.VLLM_ENDPOINT
     return None

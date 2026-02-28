@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from venom_core.services import memory_graph_service as svc
 
 
-def test_ingest_helpers_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ingest_helpers_and_errors() -> None:
     req = SimpleNamespace(
         category="fact",
         session_id="s1",
@@ -23,7 +23,7 @@ def test_ingest_helpers_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     assert meta["category"] == "fact"
     assert meta["retention_scope"] == "session"
 
-    with pytest.raises(HTTPException):
+    with pytest.raises(ValueError):
         svc.require_nonempty("", "bad")
 
     logger = SimpleNamespace(exception=lambda *_args, **_kwargs: None)
@@ -98,16 +98,18 @@ def test_build_memory_graph_payload() -> None:
     payload = svc.build_memory_graph_payload(
         vector_store=_Vector(),
         lessons_store=None,
-        limit=10,
-        session_id="s1",
-        only_pinned=False,
-        include_lessons=False,
-        mode="flow",
-        view="full",
-        seed_id=None,
-        max_hops=2,
-        include_isolates=True,
-        limit_nodes=None,
+        options=svc.MemoryGraphPayloadOptions(
+            limit=10,
+            session_id="s1",
+            only_pinned=False,
+            include_lessons=False,
+            mode="flow",
+            view="full",
+            seed_id=None,
+            max_hops=2,
+            include_isolates=True,
+            limit_nodes=None,
+        ),
         apply_graph_view_fn=lambda **kwargs: (kwargs["nodes"], kwargs["edges"]),
         allow_lessons_fallback=False,
         logger=logger,

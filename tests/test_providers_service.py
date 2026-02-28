@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from venom_core.services import providers_service as svc
+from venom_core.utils.url_policy import build_http_url
 
 
 class _DummyRequest:
@@ -84,6 +85,6 @@ def test_provider_status_and_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         svc.SETTINGS, "VLLM_ENDPOINT", "http://vllm:8000", raising=False
     )
-    assert svc.get_provider_endpoint("ollama") == "http://localhost:11434"
+    assert svc.get_provider_endpoint("ollama") == build_http_url("localhost", 11434)
     assert svc.get_provider_endpoint("vllm") == "http://vllm:8000"
     assert svc.get_provider_endpoint("unknown") is None

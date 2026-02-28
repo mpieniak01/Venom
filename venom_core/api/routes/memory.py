@@ -30,6 +30,7 @@ from venom_core.api.schemas.memory import (
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager as _config_manager
+from venom_core.services.memory_graph_service import MemoryGraphPayloadOptions
 from venom_core.services.memory_graph_service import (
     append_flow_edges as _append_flow_edges_svc,
 )
@@ -469,16 +470,18 @@ def memory_graph(
     return _build_memory_graph_payload_svc(
         vector_store=vector_store,
         lessons_store=lessons_store,
-        limit=limit,
-        session_id=session_id,
-        only_pinned=only_pinned,
-        include_lessons=include_lessons,
-        mode=mode,
-        view=view,
-        seed_id=seed_id,
-        max_hops=max_hops,
-        include_isolates=include_isolates,
-        limit_nodes=limit_nodes,
+        options=MemoryGraphPayloadOptions(
+            limit=limit,
+            session_id=session_id,
+            only_pinned=only_pinned,
+            include_lessons=include_lessons,
+            mode=mode,
+            view=view,
+            seed_id=seed_id,
+            max_hops=max_hops,
+            include_isolates=include_isolates,
+            limit_nodes=limit_nodes,
+        ),
         apply_graph_view_fn=apply_graph_view,
         allow_lessons_fallback=is_testing_mode(),
         logger=logger,

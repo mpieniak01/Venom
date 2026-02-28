@@ -17,7 +17,7 @@ export interface ConnectHandlerDeps {
   readOnly: boolean;
   nodes: Node[];
   t: TranslateFn;
-  pushToast: (message: string, variant?: "default" | "error" | "success") => void;
+  pushToast: (message: string, tone?: "success" | "error" | "warning" | "info") => void;
   setEdges: (updater: (edges: Edge[]) => Edge[]) => void;
   validateConnectionFn?: ValidateConnectionFn;
 }

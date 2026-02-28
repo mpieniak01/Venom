@@ -28,6 +28,9 @@ VLLM_START_TIMEOUT_SEC ?= 240
 ENV_FILE ?= .env.dev
 ENV_EXAMPLE_FILE ?= .env.dev.example
 WEB_APP_VERSION ?= $(shell node -p "require('./web-next/package.json').version" 2>/dev/null || echo unknown)
+PREPROD_ENV_BASE := ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example
+PREPROD_ENV_READONLY := $(PREPROD_ENV_BASE) ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0
+PREPROD_ENV_MUTATION := $(PREPROD_ENV_BASE) ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=1
 export ENV_FILE
 export ENV_EXAMPLE_FILE
 
@@ -104,8 +107,7 @@ test-smoke:
 	pytest -m smoke
 
 test-preprod-readonly-smoke:
-	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
-	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+	$(PREPROD_ENV_READONLY) \
 		$(PYTEST_BIN) -q tests/test_preprod_readonly_smoke.py -m smoke
 
 test-perf:
@@ -321,11 +323,9 @@ start-prod:
 
 start-preprod: START_MODE=prod
 start-preprod:
-	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
-	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+	$(PREPROD_ENV_READONLY) \
 		$(MAKE) --no-print-directory ensure-env-file
-	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
-	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+	$(PREPROD_ENV_READONLY) \
 		$(MAKE) --no-print-directory _start
 
 # Preprod aliases (short commands)
@@ -352,22 +352,19 @@ ensure-env-file:
 	fi
 
 ensure-preprod-env-file:
-	@ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
+	@$(PREPROD_ENV_BASE) \
 		$(MAKE) --no-print-directory ensure-env-file
 
 preprod-backup:
-	@ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
-	ENVIRONMENT_ROLE=preprod ALLOW_DATA_MUTATION=0 \
+	@$(PREPROD_ENV_READONLY) \
 		bash scripts/preprod/backup_restore.sh backup
 
 preprod-restore:
-	@ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
-	ENVIRONMENT_ROLE=preprod ALLOW_DATA_MUTATION=1 \
+	@$(PREPROD_ENV_MUTATION) \
 		bash scripts/preprod/backup_restore.sh restore "$${TS:-}"
 
 preprod-verify:
-	@ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
-	ENVIRONMENT_ROLE=preprod ALLOW_DATA_MUTATION=0 \
+	@$(PREPROD_ENV_READONLY) \
 		bash scripts/preprod/backup_restore.sh verify "$${TS:-}"
 	@$(MAKE) --no-print-directory test-preprod-readonly-smoke
 
@@ -683,8 +680,7 @@ api-dev:
 	@echo "🔄 Autoreload: aktywny (zmiana plików → restart)"
 
 api-preprod:
-	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
-	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+	$(PREPROD_ENV_READONLY) \
 		$(MAKE) --no-print-directory api
 
 # Zatrzymaj tylko backend
@@ -738,8 +734,7 @@ web-dev:
 	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
 
 web-preprod:
-	ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example \
-	ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0 \
+	$(PREPROD_ENV_READONLY) \
 		$(MAKE) --no-print-directory web
 
 # Zatrzymaj tylko frontend

@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { Handle, NodeToolbar, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeToolbar, Position, type Node, type NodeProps, type NodeTypes } from "@xyflow/react";
 import { Info, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,14 @@ type IntentNodeData = { intentMode?: string };
 type KernelNodeData = { kernel?: string };
 type RuntimeNodeData = { runtime?: { services?: string[] } };
 type SourceNodeData = { sourceTag?: string };
+type SwimlaneNodeData = { label: string; index: number };
+
+type DecisionFlowNode = Node<DecisionNodeData, "decision">;
+type IntentFlowNode = Node<IntentNodeData, "intent">;
+type KernelFlowNode = Node<KernelNodeData, "kernel">;
+type RuntimeFlowNode = Node<RuntimeNodeData, "runtime">;
+type SourceFlowNode = Node<SourceNodeData, "provider" | "embedding">;
+type SwimlaneFlowNode = Node<SwimlaneNodeData, "swimlane">;
 
 function NodeActions() {
   const t = useTranslation();
@@ -135,7 +143,7 @@ function NodeHandles({
 
 export function SwimlaneNode({
   data,
-}: NodeProps<{ label: string; index: number }>) {
+}: NodeProps<SwimlaneFlowNode>) {
   const t = useTranslation();
   const style = SWIMLANE_STYLES[data.label] || {
     bg: "bg-slate-900/20",
@@ -163,7 +171,7 @@ export function SwimlaneNode({
   );
 }
 
-export function DecisionNode({ selected = false, data }: NodeProps<DecisionNodeData>) {
+export function DecisionNode({ selected = false, data }: NodeProps<DecisionFlowNode>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.decision;
   const badgeValue = resolveDisplayValue(data?.strategy, t, "workflowControl.strategies");
@@ -181,7 +189,7 @@ export function DecisionNode({ selected = false, data }: NodeProps<DecisionNodeD
   );
 }
 
-export function IntentNode({ selected = false, data }: NodeProps<IntentNodeData>) {
+export function IntentNode({ selected = false, data }: NodeProps<IntentFlowNode>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.intent;
   const badgeValue = resolveDisplayValue(data?.intentMode, t, "workflowControl.intentModes");
@@ -199,7 +207,7 @@ export function IntentNode({ selected = false, data }: NodeProps<IntentNodeData>
   );
 }
 
-export function KernelNode({ selected = false, data }: NodeProps<KernelNodeData>) {
+export function KernelNode({ selected = false, data }: NodeProps<KernelFlowNode>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.kernel;
   const badgeValue = resolveDisplayValue(data?.kernel, t, "workflowControl.kernelTypes");
@@ -217,7 +225,7 @@ export function KernelNode({ selected = false, data }: NodeProps<KernelNodeData>
   );
 }
 
-export function RuntimeNode({ selected = false, data }: NodeProps<RuntimeNodeData>) {
+export function RuntimeNode({ selected = false, data }: NodeProps<RuntimeFlowNode>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.runtime;
   const badgeValue = runtimeBadgeValue(data, t);
@@ -235,7 +243,7 @@ export function RuntimeNode({ selected = false, data }: NodeProps<RuntimeNodeDat
   );
 }
 
-export function EmbeddingNode({ selected = false, data }: NodeProps<SourceNodeData>) {
+export function EmbeddingNode({ selected = false, data }: NodeProps<SourceFlowNode>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.embedding;
   const sourceTag = readSourceTag(data);
@@ -253,7 +261,7 @@ export function EmbeddingNode({ selected = false, data }: NodeProps<SourceNodeDa
   );
 }
 
-export function ProviderNode({ selected = false, data }: NodeProps<SourceNodeData>) {
+export function ProviderNode({ selected = false, data }: NodeProps<SourceFlowNode>) {
   const t = useTranslation();
   const theme = WORKFLOW_NODE_THEME.provider;
   const sourceTag = readSourceTag(data);
@@ -271,7 +279,7 @@ export function ProviderNode({ selected = false, data }: NodeProps<SourceNodeDat
   );
 }
 
-export const workflowCanvasNodeTypes = {
+export const workflowCanvasNodeTypes: NodeTypes = {
   decision: DecisionNode,
   intent: IntentNode,
   kernel: KernelNode,

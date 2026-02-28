@@ -29,11 +29,11 @@ if (!("ResizeObserver" in globalThis)) {
 
 if (!("requestAnimationFrame" in globalThis)) {
   globalThis.requestAnimationFrame = (callback: FrameRequestCallback) =>
-    globalThis.setTimeout(() => callback(Date.now()), 16);
+    window.setTimeout(() => callback(Date.now()), 16);
 }
 
 if (!("cancelAnimationFrame" in globalThis)) {
-  globalThis.cancelAnimationFrame = (id: number) => globalThis.clearTimeout(id);
+  globalThis.cancelAnimationFrame = (id: number) => window.clearTimeout(id);
 }
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

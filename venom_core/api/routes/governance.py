@@ -10,6 +10,7 @@ from venom_core.api.schemas.governance import (
     ProviderCredentialStatusResponse,
     UpdateLimitRequest,
 )
+from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.core.provider_governance import (
     CostLimit,
     CredentialStatus,
@@ -321,7 +322,10 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
     "/governance/reset-usage",
     summary="Resetuj liczniki zużycia",
     description="Resetuje liczniki zużycia dla wszystkich lub wybranego scope",
-    responses={500: RESP_500_INTERNAL},
+    responses={
+        403: {"description": "Brak uprawnień do mutacji danych"},
+        500: RESP_500_INTERNAL,
+    },
 )
 def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -334,6 +338,7 @@ def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
         Potwierdzenie resetu
     """
     try:
+        ensure_data_mutation_allowed("governance.reset_usage")
         governance = get_provider_governance()
 
         if scope is None:
@@ -366,6 +371,8 @@ def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
                 "message": "governance.messages.usageReset",
             }
 
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas resetowania liczników")
         raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL) from e

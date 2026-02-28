@@ -157,6 +157,19 @@ class MessageBroker:
 
         logger.info("MessageBroker zainicjalizowany")
 
+    @staticmethod
+    def _normalize_namespace(namespace: str) -> str:
+        """Normalizuje namespace Redis, aby unikac pustych segmentow klucza."""
+        return (namespace or "").strip().strip(":")
+
+    def _task_key(self, task_id: str) -> str:
+        """Buduje klucz Redis dla metadanych zadania w sposob odporny na bledny namespace."""
+        namespace = self._normalize_namespace(SETTINGS.CACHE_NAMESPACE)
+        key_suffix = f"task:{task_id}"
+        if not namespace:
+            return key_suffix
+        return f"{namespace}:{key_suffix}"
+
     async def connect(self) -> bool:
         """
         Nawiązuje połączenie z Redis.
@@ -284,7 +297,7 @@ class MessageBroker:
         if not self.redis_client:
             return
 
-        key = f"venom:task:{task.task_id}"
+        key = self._task_key(task.task_id)
         payload = task.to_dict()
         data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         # TTL: 24 godziny
@@ -308,7 +321,7 @@ class MessageBroker:
             return self._task_registry[task_id]
 
         # Sprawdź w Redis
-        key = f"venom:task:{task_id}"
+        key = self._task_key(task_id)
         data = await self.redis_client.get(key)
         if data:
             try:

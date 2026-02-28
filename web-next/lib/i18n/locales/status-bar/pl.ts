@@ -1,8 +1,11 @@
 export const statusBarLocale = {
     resourcesLabel: "Zasoby",
     versionLabel: "Wersja",
+    environmentLabel: "Środowisko",
     versionLoading: "Ładowanie",
     versionUnknown: "Nieznana wersja",
+    environmentDev: "dev",
+    environmentPreprod: "pre-prod",
     commitCopy: "Kliknij, aby skopiować hash",
     commitCopied: "Skopiowano",
     repoLabel: "Repozytorium",

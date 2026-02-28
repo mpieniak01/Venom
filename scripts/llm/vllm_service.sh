@@ -8,7 +8,12 @@ VLLM_BIN="$VENV_BIN/vllm"
 LOG_DIR="$ROOT_DIR/logs"
 PID_FILE="$LOG_DIR/vllm.pid"
 LOG_FILE="$LOG_DIR/vllm.log"
-ENV_FILE="$ROOT_DIR/.env"
+ENV_FILE_RAW="${ENV_FILE:-.env.dev}"
+if [[ "$ENV_FILE_RAW" = /* ]]; then
+  ENV_FILE="$ENV_FILE_RAW"
+else
+  ENV_FILE="$ROOT_DIR/$ENV_FILE_RAW"
+fi
 env_get() {
   local key="$1"
   local value="${!key-}"

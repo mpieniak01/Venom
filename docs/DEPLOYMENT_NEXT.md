@@ -72,18 +72,68 @@ Interpretation rules:
 
 ## Launch Modes
 
+Environment selection contract:
+- `Makefile` is the single source of truth for active env file.
+- `ENV_FILE` and `ENV_EXAMPLE_FILE` are exported by `make` to backend/api/web processes.
+
 ### Development (`make start` / `make start-dev`)
+Config file:
+- runtime file: `.env.dev` (local, not committed)
+- safe template: `.env.dev.example` (committed, no secrets)
+
 1. `uvicorn` starts backend with `--reload`.
 2. `npm --prefix web-next run dev` starts Next with parameters `--hostname 0.0.0.0 --port 3000`.
 3. Makefile manages PIDs (`.venom.pid`, `.web-next.pid`) and blocks multiple starts.
 4. `make stop` kills both processes and cleans ports (8000/3000).
 
 ### Production (`make start-prod`)
+Config file:
+- runtime file: `.env.dev` (local, not committed)
+- safe template: `.env.dev.example` (committed, no secrets)
+
+Warning:
+- `make start-prod` is available, but `prod` is currently not fully validated/recommended for live operation.
+- Prefer `dev` and `preprod` flows for daily work and acceptance.
+
 1. Runs `pip install`/`npm install` beforehand.
 2. Builds UI: `npm --prefix web-next run build` (standalone, telemetry disabled).
 3. Starts backend without `--reload` (`uvicorn venom_core.main:app --host 0.0.0.0 --port 8000 --no-server-header`).
 4. Starts `next start` on port 3000.
 5. `make stop` works the same way (stops `next start` also via `pkill -f`).
+
+### Pre-production (`make start-preprod`)
+1. Uses production runtime mode on shared stack (`START_MODE=prod`).
+2. Uses dedicated preprod config file:
+   - runtime file: `.env.preprod` (local, not committed)
+   - safe template: `.env.preprod.example` (committed, no secrets)
+   - helper command: `make ensure-preprod-env-file`
+3. Exports preprod isolation variables before startup:
+   - `ENVIRONMENT_ROLE=preprod`
+   - `DB_SCHEMA=preprod`
+   - `CACHE_NAMESPACE=preprod`
+   - `QUEUE_NAMESPACE=preprod`
+   - `STORAGE_PREFIX=preprod`
+   - `ALLOW_DATA_MUTATION=0`
+4. Runs same startup pipeline as `start-prod` with preprod data isolation.
+
+Useful variants:
+```bash
+make ensure-preprod-env-file # creates .env.preprod from .env.preprod.example
+make start-preprod          # backend + frontend in preprod mode
+make api-preprod            # backend only in preprod mode
+make web-preprod            # frontend only in preprod mode
+make test-preprod-readonly-smoke
+
+# short aliases
+make ensurepreenv
+make startpre
+make stoppre
+make restartpre
+make statuspre
+make apipre
+make webpre
+make testpre
+```
 
 ## Monitoring and Logs
 
@@ -164,7 +214,7 @@ git push origin v1.6.0
 
 ## Deployment Checklist
 
-- [ ] `make start-prod` works and returns links to backend and UI.
+- [ ] `make start-prod` works and returns links to backend and UI (technical compatibility only; not recommended as active prod rollout path yet).
 - [ ] Proxy (nginx/docker-compose) redirects `/api` and `/ws` to FastAPI and rest to Next.
 - [ ] `npm --prefix web-next run test:e2e` passes on prod build.
 - [ ] `npm --prefix web-next run test:perf` shows latency < budget (default 15s).

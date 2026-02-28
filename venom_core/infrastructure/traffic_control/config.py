@@ -111,7 +111,8 @@ class TrafficControlConfig(BaseModel):
     # Telemetry & logging
     enable_telemetry: bool = Field(default=True, description="Włącz zbieranie metryk")
     enable_logging: bool = Field(
-        default=False, description="Włącz szczegółowe logowanie (opt-in via .env)"
+        default=False,
+        description="Włącz szczegółowe logowanie (opt-in via active env file)",
     )
     log_dir: str = Field(
         default="./workspace/logs/traffic-control",

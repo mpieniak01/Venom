@@ -245,10 +245,13 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     const pollTask = async (taskId: string) => {
       try {
         const task = await fetchTaskDetail(taskId);
+        const taskRecord = task as unknown as Record<string, unknown>;
         const status = normalizeStatus(task.status);
         const logs = Array.isArray(task.logs) ? task.logs.map(String) : undefined;
         const result = typeof task.result === "string" || task.result === null ? task.result : undefined;
-        const updatedAt = typeof task.updated_at === "string" ? task.updated_at : new Date().toISOString();
+        const updatedAt = typeof taskRecord.updated_at === "string"
+          ? taskRecord.updated_at
+          : new Date().toISOString();
 
         updateStateById(taskId, {
           status: status ?? null,
@@ -259,7 +262,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           error: "SSE connection lost, using polling.",
         });
 
-        const runtime = extractRuntime(task);
+        const runtime = extractRuntime(taskRecord);
         emitEvent({
           taskId,
           event: status === "COMPLETED" ? "task_finished" : "task_update",

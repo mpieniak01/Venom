@@ -74,6 +74,30 @@ async def test_queue_abort_and_action_errors() -> None:
     assert exc.value.status_code == 500
 
 
+@pytest.mark.asyncio
+async def test_queue_mutation_blocked_in_preprod(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    orchestrator = MagicMock()
+    orchestrator.purge_queue = AsyncMock(return_value={"removed": 1})
+    orchestrator.emergency_stop = AsyncMock(return_value={"success": True})
+    queue_routes.set_dependencies(orchestrator)
+
+    monkeypatch.setattr(
+        queue_routes,
+        "ensure_data_mutation_allowed",
+        lambda _name: (_ for _ in ()).throw(PermissionError("blocked")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await queue_routes.purge_queue()
+    assert exc.value.status_code == 403
+
+    with pytest.raises(HTTPException) as exc:
+        await queue_routes.emergency_stop()
+    assert exc.value.status_code == 403
+
+
 def test_strategy_routes_success_and_errors() -> None:
     client = _client(strategy_routes.router)
     strategy_routes.set_dependencies(None)

@@ -77,6 +77,16 @@ def _get_request_tracer():
     return system_deps.get_request_tracer()
 
 
+def _call_tracer(request_tracer: Any, method_name: str, *args, **kwargs) -> bool:
+    if not request_tracer:
+        return False
+    method = getattr(request_tracer, method_name, None)
+    if not callable(method):
+        return False
+    method(*args, **kwargs)
+    return True
+
+
 def _build_preview(text: str, *, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
@@ -87,14 +97,17 @@ def _trace_simple_request(
     request_id: UUID, request: "SimpleChatRequest", runtime, model_name: str
 ) -> None:
     request_tracer = _get_request_tracer()
-    if not request_tracer:
-        return
-    request_tracer.create_trace(
+    if not _call_tracer(
+        request_tracer,
+        "create_trace",
         request_id,
         request.content,
         session_id=request.session_id,
-    )
-    request_tracer.set_llm_metadata(
+    ):
+        return
+    _call_tracer(
+        request_tracer,
+        "set_llm_metadata",
         request_id,
         provider=runtime.provider,
         model=model_name,
@@ -104,8 +117,10 @@ def _trace_simple_request(
             "runtime_id": runtime.runtime_id,
         },
     )
-    request_tracer.update_status(request_id, TraceStatus.PROCESSING)
-    request_tracer.add_step(
+    _call_tracer(request_tracer, "update_status", request_id, TraceStatus.PROCESSING)
+    _call_tracer(
+        request_tracer,
+        "add_step",
         request_id,
         _SIMPLE_MODE_STEP,
         "request",
@@ -132,7 +147,9 @@ def _trace_context_preview(request_id: UUID, messages: list[dict[str, str]]) -> 
         if truncated
         else full_context
     )
-    request_tracer.add_step(
+    _call_tracer(
+        request_tracer,
+        "add_step",
         request_id,
         _SIMPLE_MODE_STEP,
         "context_preview",
@@ -158,16 +175,18 @@ def _record_simple_error(
     retryable: bool = True,
 ) -> None:
     request_tracer = _get_request_tracer()
-    if not request_tracer:
-        return
-    request_tracer.add_step(
+    _call_tracer(
+        request_tracer,
+        "add_step",
         request_id,
         _SIMPLE_MODE_STEP,
         "error",
         status="error",
         details=error_message,
     )
-    request_tracer.set_error_metadata(
+    _call_tracer(
+        request_tracer,
+        "set_error_metadata",
         request_id,
         {
             "error_code": error_code,
@@ -178,7 +197,7 @@ def _record_simple_error(
             "retryable": retryable,
         },
     )
-    request_tracer.update_status(request_id, TraceStatus.FAILED)
+    _call_tracer(request_tracer, "update_status", request_id, TraceStatus.FAILED)
 
 
 def _build_messages(system_prompt: str, user_content: str) -> list[dict[str, str]]:
@@ -296,7 +315,9 @@ def _trim_user_content_for_runtime(
     trimmed_content, was_trimmed = trim_to_char_limit(user_content, available)
     request_tracer = _get_request_tracer()
     if was_trimmed and request_tracer:
-        request_tracer.add_step(
+        _call_tracer(
+            request_tracer,
+            "add_step",
             request_id,
             _SIMPLE_MODE_STEP,
             "prompt_trim",
@@ -389,7 +410,9 @@ def _trace_first_chunk(
     if not request_tracer:
         return
     elapsed_ms = int((time.perf_counter() - stream_start) * 1000)
-    request_tracer.add_step(
+    _call_tracer(
+        request_tracer,
+        "add_step",
         request_id,
         _SIMPLE_MODE_STEP,
         "first_chunk",
@@ -413,7 +436,9 @@ def _trace_stream_completion(
         if truncated
         else full_text
     )
-    request_tracer.add_step(
+    _call_tracer(
+        request_tracer,
+        "add_step",
         request_id,
         _SIMPLE_MODE_STEP,
         "response",
@@ -427,7 +452,7 @@ def _trace_stream_completion(
             }
         ),
     )
-    request_tracer.update_status(request_id, TraceStatus.COMPLETED)
+    _call_tracer(request_tracer, "update_status", request_id, TraceStatus.COMPLETED)
 
 
 def _build_llm_http_error(
@@ -587,7 +612,9 @@ def _emit_internal_error_and_mark_failed(
 ) -> str:
     request_tracer = _get_request_tracer()
     if request_tracer:
-        request_tracer.add_step(
+        _call_tracer(
+            request_tracer,
+            "add_step",
             request_id,
             _SIMPLE_MODE_STEP,
             "error",

@@ -22,10 +22,19 @@ const packageJsonPath = path.join(projectRoot, "package.json");
 const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 const commit = safeExecFile("git", ["rev-parse", "--short", "HEAD"]);
 const timestamp = new Date().toISOString();
+const environmentRoleRaw = (process.env.ENVIRONMENT_ROLE || "dev").trim().toLowerCase();
+const environmentRole =
+  ["preprod", "pre-prod", "pre_prod", "staging", "stage"].includes(environmentRoleRaw)
+    ? "preprod"
+    : "dev";
 const meta = {
+  appName: pkg.name ?? "web-next",
   version: pkg.version ?? "0.0.0",
   commit,
   timestamp,
+  environmentRole,
+  generatedBy: "scripts/generate-meta.mjs",
+  nodeVersion: process.version,
 };
 
 const publicDir = path.join(projectRoot, "public");

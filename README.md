@@ -14,6 +14,8 @@
 
 **Venom** is an open-source, local-first AI stack for practical engineering automation. It combines agent orchestration, tool execution, and long-term memory in one environment you can run and evolve locally.
 
+Current environment recommendation: use `dev` and `preprod`. `prod` is still planned and not yet validated/recommended for live operation.
+
 It is not a black box. You get explicit process control (Workflow Control Plane), transparent runtime decisions, and full request-level audit trails. You can also choose between three model stacks: `ONNX`, `vLLM`, `Ollama`, depending on hardware, cost, and latency goals.
 
 ## Why Venom
@@ -47,6 +49,7 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 ## Documentation
 ### Start and operations
 - [Deployment + startup](docs/DEPLOYMENT_NEXT.md) - Development/production startup flow and runtime requirements.
+- [Environment support matrix](docs/ENVIRONMENTS_SUPPORT.md) - Current support status for `dev`/`preprod`/`prod` and required configuration model.
 - [Dashboard Guide](docs/DASHBOARD_GUIDE.md) - Web dashboard startup, scripts, and operational cockpit overview.
 - [Tools Usage Guide](docs/TOOLS_USAGE_GUIDE.md) - Slash-tool routing, tool behavior, and web-search runtime requirements.
 - [Configuration panel](docs/CONFIG_PANEL.md) - What can be edited from UI and safe editing rules.
@@ -176,7 +179,7 @@ venom/
 git clone https://github.com/mpieniak01/Venom.git
 cd Venom
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.dev.example .env.dev
 make start
 ```
 
@@ -228,6 +231,10 @@ make stop        # stop services
 make status      # process status
 make start-prod  # production mode
 ```
+
+Warning:
+- `make start-prod` exists for technical compatibility, but `prod` is not yet validated/recommended for live operation.
+- Recommended environments: `dev` and `preprod`.
 
 ## Frontend (Next.js - `web-next`)
 The presentation layer runs on Next.js 16 (App Router, React 19).
@@ -301,6 +308,9 @@ make start-prod
 make stop
 ```
 
+Warning:
+- Treat this mode as non-recommended at current stage (no full production validation yet).
+
 ### Lowest-memory configurations
 | Configuration | Commands | Estimated RAM | Use case |
 |--------------|----------|---------------|----------|
@@ -311,7 +321,8 @@ make stop
 | Heaviest (dev) | `make api-dev` + `make web-dev` + `make vllm-start` | ~2.8 GB | Full development and local model testing |
 
 ## Key environment variables
-Full list: [.env.example](.env.example)
+Dev template: [.env.dev.example](.env.dev.example)
+Preprod template: [.env.preprod.example](.env.preprod.example)
 
 ## Configuration panel (UI)
 The panel at `http://localhost:3000/config` supports:
@@ -323,7 +334,7 @@ The panel at `http://localhost:3000/config` supports:
 ### Parameter editing
 - type/range validation,
 - secret masking,
-- `.env` backup to `config/env-history/`,
+- active env file backup (`.env.dev` or `.env.preprod`) to `config/env-history/`,
 - restart hints after changes.
 
 ### Panel security
@@ -417,13 +428,20 @@ make check-new-code-coverage
 - [x] Provider Governance.
 - [x] Academy Hardening.
 
-### ✅ v1.6 (current)
+### ✅ v1.6
 - [x] API contract hardening (Wave-1 + Wave-2 MVP) with OpenAPI/FE synchronization.
 - [x] ONNX Runtime integrated as the third local LLM engine (3-stack: Ollama + vLLM + ONNX).
 - [x] Runtime profiles and installation strategy update (minimal/API-first + optional local stacks).
 - [x] Runtime control-plane improvements and provider/runtime governance stabilization.
 
-### 🚧 v1.7 (planned details)
+### ✅ v1.7 (current)
+- [x] Remote models capabilities delivered (`/models` remote tab + provider status/catalog/connectivity/validation for GPT/Gemini paths).
+- [x] Global traffic-control hardening for inbound/outbound requests (limits, retry/circuit-breaker policies, safer runtime behavior under load).
+- [x] Configuration/audit observability expanded (canonical audit stream and stronger operational visibility for config/runtime changes).
+- [x] Academy/API hardening wave completed (module decomposition, contract consistency, safer upload/training/history paths).
+- [x] Pre-prod operating model finalized on shared stack (data isolation, env split `.env.dev`/`.env.preprod`, Makefile control, guard rails, backup/restore/smoke).
+
+### 🚧 v1.8 (planned details)
 - [ ] Background polling for GitHub Issues.
 - [ ] Dashboard panel for external integrations.
 - [ ] Recursive long-document summarization.

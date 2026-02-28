@@ -52,7 +52,7 @@ ZASADY BEZPIECZEŃSTWA:
 3. Używaj tylko ścieżek do kluczy, nie samych kluczy
 4. Zawsze weryfikuj certyfikaty SSL
 5. Używaj silnych haseł i tokenów
-6. Sekrety przechowuj w .env lub vault
+6. Sekrety przechowuj w aktywnym pliku env lub vault
 
 WORKFLOW DEPLOYMENTU:
 1. Sprawdź czy serwer jest dostępny (ping/ssh)

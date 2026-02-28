@@ -90,6 +90,7 @@ from venom_core.bootstrap.runtime_stack import (
     initialize_shadow_stack as rt_initialize_shadow_stack,
 )
 from venom_core.config import SETTINGS
+from venom_core.core.environment_policy import validate_environment_policy
 from venom_core.core.llm_server_controller import LlmServerController
 from venom_core.core.metrics import init_metrics_collector
 from venom_core.core.orchestrator import Orchestrator
@@ -736,6 +737,7 @@ async def _shutdown_runtime_components() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
+    validate_environment_policy()
     await _initialize_observability()
     _initialize_model_services()
     _initialize_calendar_skill()

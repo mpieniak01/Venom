@@ -339,7 +339,8 @@ async def test_tasks_streaming_and_errors(mock_app):
     assert resp.status_code == 404
 
     # Test Trace Validation Helpers
-    from venom_core.api.routes.tasks import _get_llm_runtime, _validate_trace_status
+    from venom_core.api.routes.tasks import _validate_trace_status
+    from venom_core.services.tasks_stream_service import get_llm_runtime
 
     # Valid status
     _validate_trace_status("COMPLETED")
@@ -351,7 +352,7 @@ async def test_tasks_streaming_and_errors(mock_app):
     mock_task_for_runtime = VenomTask(
         id=uuid4(), content="test", status=TaskStatus.COMPLETED
     )
-    runtime_info = _get_llm_runtime(mock_task_for_runtime)
+    runtime_info = get_llm_runtime(mock_task_for_runtime)
     assert isinstance(runtime_info, dict)
 
 

@@ -36,6 +36,18 @@ Run one command:
 make pr-fast
 ```
 
+Standalone architecture contract check (also executed inside `pr-fast`):
+
+```bash
+make architecture-drift-check
+```
+
+Standalone test-lane contract check (also executed inside `pr-fast`):
+
+```bash
+make test-lane-contracts-check
+```
+
 Ensure hooks are installed for both `pre-commit` and `pre-push`:
 
 ```bash
@@ -45,7 +57,7 @@ make install-hooks
 What it includes:
 
 - changed-file scope detection against `origin/main` (or `PR_BASE_REF`)
-- backend fast lane: compile check + CI-lite audit + changed-lines coverage gate
+- backend fast lane: compile check + architecture drift guard + test-lane contracts guard + CI-lite audit + changed-lines coverage gate
 - frontend fast lane (only when `web-next/**` changed): lint + unit CI-lite
 
 ### Level 3: PR quality gates (mandatory before merge)
@@ -69,6 +81,24 @@ Useful overrides:
 NEW_CODE_CHANGED_LINES_MIN=80 make check-new-code-coverage
 NEW_CODE_DIFF_BASE=origin/main make check-new-code-coverage
 NEW_CODE_AUTO_INCLUDE_CHANGED=1 make check-new-code-coverage
+```
+
+Optional lightweight intelligence report (runtime impact + flaky candidates):
+
+```bash
+make test-intelligence-report
+```
+
+The report appends a trend snapshot to `test-results/sonar/test-intelligence-history.jsonl`.
+Calibrated defaults (task 179 threshold calibration):
+- `TEST_INTEL_SLOW_THRESHOLD=1.8` (ci-lite demotion candidate threshold)
+- `TEST_INTEL_FAST_THRESHOLD=0.1` (new-code promotion candidate threshold)
+- `TEST_INTEL_MIN_TESTS_PROMOTION=3` (avoid promotion noise for tiny files)
+
+Manual override example:
+
+```bash
+TEST_INTEL_SLOW_THRESHOLD=2.0 TEST_INTEL_FAST_THRESHOLD=0.08 make test-intelligence-report
 ```
 
 New-code coverage run behavior:
@@ -122,6 +152,7 @@ Performance/latency scenarios:
 
 Required PR gates:
 
+- Architecture drift guard (`architecture-drift-guard` job in CI)
 - CI Lite (fast lint + selected unit tests)
 - Preprod readonly smoke lane (`make test-preprod-readonly-smoke`) in `backend-lite`
 - SonarCloud (bugs, vulnerabilities, maintainability, duplication)
@@ -182,6 +213,7 @@ Indicators:
 - enforced minimum: `NEW_CODE_CHANGED_LINES_MIN=80` (default)
 - recommended safety target before push: `>= 80%`
 - Sonar new-code reference branch: `main` (`sonar.newCode.referenceBranch=main`)
+- anomaly triage policy: `docs/QUALITY_FALSE_GREEN_TRIAGE.md`
 
 ### 5) Optional dependency drift in CI-lite
 

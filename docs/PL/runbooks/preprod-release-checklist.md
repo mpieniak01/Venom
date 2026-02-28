@@ -17,6 +17,10 @@ make test-preprod-readonly-smoke
 
 ## Faza 3: Bramka przed prod
 - [ ] Aktualny backup `preprod` istnieje.
+- [ ] Automatyczny raport readiness ma status PASS:
+```bash
+make preprod-readiness-check ACTOR=<id> TICKET=<release-id>
+```
 - [ ] Plan rollback zatwierdzony.
 - [ ] Okno release zatwierdzone.
 - [ ] Decyzja ownera: GO.

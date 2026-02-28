@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "description": "Test lane contracts for fast quality gates (JSON-compatible YAML).",
+  "lanes": [
+    {
+      "id": "pr-fast",
+      "owner": "platform",
+      "goal": "Mandatory local PR gate with minimal feedback loop.",
+      "max_runtime_minutes": 10,
+      "dependency_policy": "No heavy dependencies; must remain deterministic."
+    },
+    {
+      "id": "ci-lite",
+      "owner": "platform",
+      "goal": "Mandatory CI lane with lightweight unit/regression scope.",
+      "max_runtime_minutes": 15,
+      "dependency_policy": "Light dependencies only; optional deps via pytest.importorskip."
+    },
+    {
+      "id": "new-code",
+      "owner": "quality",
+      "goal": "Coverage-focused lane for changed backend scope.",
+      "max_runtime_minutes": 15,
+      "dependency_policy": "Fast-safe tests only; no docker/performance markers."
+    },
+    {
+      "id": "release",
+      "owner": "release",
+      "goal": "Extended pre-release validation lane.",
+      "max_runtime_minutes": 60,
+      "dependency_policy": "May include heavier dependencies and integration scenarios."
+    }
+  ],
+  "groups": [
+    {
+      "id": "ci-lite",
+      "group_file": "config/pytest-groups/ci-lite.txt",
+      "default_lane": "ci-lite",
+      "allowed_lanes": ["ci-lite"],
+      "owner": "platform",
+      "goal": "Fast baseline regression set for each backend PR.",
+      "dependency_policy": "No heavy optional deps without explicit importorskip fallback.",
+      "default_rationale": "Baseline fast lane for deterministic backend regressions."
+    },
+    {
+      "id": "sonar-new-code",
+      "group_file": "config/pytest-groups/sonar-new-code.txt",
+      "default_lane": "new-code",
+      "allowed_lanes": ["new-code", "ci-lite"],
+      "owner": "quality",
+      "goal": "Changed-lines quality reinforcement for Sonar new-code coverage.",
+      "dependency_policy": "Fast-safe tests only; optional dependencies must be guarded.",
+      "default_rationale": "Coverage lane for changed backend code and branch-risk areas."
+    }
+  ]
+}

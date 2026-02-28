@@ -86,13 +86,15 @@ echo "  - diff_base=${DIFF_BASE}"
 echo "  - diff_base_reason=${DIFF_BASE_REASON}"
 
 if [[ "$backend_changed" -eq 1 ]]; then
-  echo "▶ Backend fast lane: compile + ci-lite audit + changed-lines coverage gate"
+  echo "▶ Backend fast lane: compile + architecture/lane guards + ci-lite audit + changed-lines coverage gate"
   PYTHON_BIN="python3"
   if [[ -x "${VENV}/bin/python" ]]; then
     PYTHON_BIN="${VENV}/bin/python"
   fi
   "${PYTHON_BIN}" -m compileall -q venom_core scripts tests
   make ci-lite-preflight
+  make architecture-drift-check
+  make test-lane-contracts-check
   make audit-ci-lite
   make check-new-code-coverage \
     NEW_CODE_INCLUDE_BASELINE=1 \

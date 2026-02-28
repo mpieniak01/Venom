@@ -35,6 +35,14 @@ require_mutation_override() {
   fi
 }
 
+b64_encode() {
+  python3 -c 'import base64,sys; sys.stdout.write(base64.b64encode(sys.stdin.buffer.read()).decode("ascii"))'
+}
+
+b64_decode() {
+  python3 -c 'import base64,sys; sys.stdout.buffer.write(base64.b64decode(sys.stdin.read()))'
+}
+
 create_files_backup() {
   local ts="$1"
   local archive="${BACKUP_DIR}/${FILES_ARCHIVE_PREFIX}-${ts}.tar.gz"
@@ -78,7 +86,7 @@ backup_redis_namespace() {
     else
       ttl="${raw_ttl}"
     fi
-    dump_b64="$(redis-cli --raw DUMP "${key}" | base64 -w0)"
+    dump_b64="$(redis-cli --raw DUMP "${key}" | b64_encode)"
     if [ -z "${dump_b64}" ]; then
       echo "⚠️ Pomijam klucz bez payload DUMP: ${key}" >&2
       continue
@@ -114,7 +122,7 @@ restore_redis_namespace() {
 
   while IFS=$'\t' read -r key ttl dump_b64; do
     [ -n "${key}" ] || continue
-    printf '%s' "${dump_b64}" | base64 -d | redis-cli -x RESTORE "${key}" "${ttl}" REPLACE >/dev/null
+    printf '%s' "${dump_b64}" | b64_decode | redis-cli -x RESTORE "${key}" "${ttl}" REPLACE >/dev/null
   done < "${infile}"
 
   echo "✅ Redis namespace restore: ${infile}"

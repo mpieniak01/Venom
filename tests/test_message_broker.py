@@ -264,6 +264,17 @@ async def test_store_task_info_uses_json_serialization():
     assert payload["payload"] == {"k": "v"}
 
 
+def test_task_key_normalizes_cache_namespace(monkeypatch):
+    """Klucz taska powinien byc odporny na trailing ':' i pusty namespace."""
+    broker = MessageBroker()
+
+    monkeypatch.setattr(message_broker_mod.SETTINGS, "CACHE_NAMESPACE", "preprod:")
+    assert broker._task_key("abc") == "preprod:task:abc"
+
+    monkeypatch.setattr(message_broker_mod.SETTINGS, "CACHE_NAMESPACE", ":")
+    assert broker._task_key("abc") == "task:abc"
+
+
 @pytest.mark.asyncio
 async def test_get_task_status_from_redis_json_payload():
     """Broker powinien poprawnie odczytywac TaskMessage z JSON z Redis."""

@@ -69,9 +69,7 @@ export function useAppMeta() {
         active = false;
       };
     }
-    if (!metaLoadPromise) {
-      metaLoadPromise = loadMeta();
-    }
+    metaLoadPromise ??= loadMeta();
     metaLoadPromise.then((loadedMeta) => {
       if (active) {
         setMeta(loadedMeta);

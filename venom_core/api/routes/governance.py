@@ -322,7 +322,10 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
     "/governance/reset-usage",
     summary="Resetuj liczniki zużycia",
     description="Resetuje liczniki zużycia dla wszystkich lub wybranego scope",
-    responses={500: RESP_500_INTERNAL},
+    responses={
+        403: {"description": "Brak uprawnień do mutacji danych"},
+        500: RESP_500_INTERNAL,
+    },
 )
 def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
     """

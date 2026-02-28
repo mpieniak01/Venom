@@ -64,15 +64,22 @@ Zakres:
 
 Cel: zgodność z wymaganiami CI i Sonar.
 
-Wymagane checki:
+Minimalny zestaw przed `PR-ready` (kopiuj 1:1):
 
-1. `pre-commit run --all-files`
-2. `mypy venom_core`
-3. `make check-new-code-coverage`
+```bash
+pre-commit run --all-files
+mypy venom_core
+make check-new-code-coverage
+```
+
+Kontrakt bramek vs telemetrii:
+
+- `make check-new-code-coverage` to gate blokujący merge.
+- `make test-intelligence-report` to telemetria/trend i nie blokuje merge.
 
 Domyślna bramka pokrycia:
 
-- baza diff: `origin/main`
+- diff base: `origin/main`
 - minimalne pokrycie zmienionych linii: `80%`
 
 Przydatne opcje:
@@ -110,12 +117,11 @@ Zachowanie runu new-code coverage:
 - gdy lokalnie nie ma `ripgrep` (`rg`), resolver używa fallbacku Python (bez blokowania runu)
 - w CI backend-lite doinstalowuje `ripgrep` dla szybszego wyboru i czytelnych logów
 
-Deterministyczna bramka new-code (model stabilności):
+Kontrakt deterministyczności (dlaczego to nie flakuje):
 
-- cele minimalnego pokrycia per plik są trzymane w `config/coverage-file-floor.txt`
-- resolver (`scripts/resolve_sonar_new_code_tests.py`) najpierw wymusza testy-kotwice dla floor (testy modułowe typu `tests/test_<module>.py` oraz wybrane warianty nazewnictwa)
-- job `backend-lite` w CI działa z `NEW_CODE_TIME_BUDGET_SEC=0`, więc nie ucina dynamicznie listy testów przez budżet czasu
-- eliminuje to drift pass/fail wynikający z wahań czasu i wyrównuje zachowanie lokalne z CI
+- `NEW_CODE_TIME_BUDGET_SEC=0` w CI: brak cięcia listy testów przez czas.
+- `config/coverage-file-floor.txt`: testy-kotwice dla floor są zawsze dołączane.
+- `ripgrep` (`rg`) w CI: stabilny i szybki resolver + czytelne logi.
 
 Jak sprawdzić pokrycie lokalnie przed push:
 
@@ -128,6 +134,12 @@ Na wyjściu sprawdzaj:
 - werdykt changed-lines (`changed-lines coverage`)
 - werdykt floor per plik (`OK: coverage floors passed for ... files`)
 - artefakty: `test-results/sonar/python-coverage.xml`, `test-results/sonar/python-junit.xml`
+
+Szybki triage (gdy gate failuje):
+
+- fail changed-lines coverage: dołącz brakujące testy lub włącz `NEW_CODE_AUTO_INCLUDE_CHANGED=1`.
+- fail coverage floors: brakuje testów-kotwic dla modułu z `config/coverage-file-floor.txt`.
+- lokalnie brak `rg`: log pokaże fallback; przy rozjeździe z CI doinstaluj `ripgrep`.
 
 Snapshot jakości (referencja, 2026-02-28):
 

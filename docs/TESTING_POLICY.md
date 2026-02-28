@@ -64,11 +64,18 @@ What it includes:
 
 Goal: align with CI and Sonar expectations.
 
-Required checks:
+Minimum PR-ready set (copy 1:1):
 
-1. `pre-commit run --all-files`
-2. `mypy venom_core`
-3. `make check-new-code-coverage`
+```bash
+pre-commit run --all-files
+mypy venom_core
+make check-new-code-coverage
+```
+
+Gate vs telemetry contract:
+
+- `make check-new-code-coverage` is a merge-blocking gate.
+- `make test-intelligence-report` is telemetry/trend and does not block merge.
 
 Coverage gate defaults:
 
@@ -110,12 +117,11 @@ New-code coverage run behavior:
 - if `ripgrep` (`rg`) is unavailable locally, resolver falls back to pure Python scanning
 - CI backend-lite installs `ripgrep` for faster selection and deterministic logs
 
-Deterministic new-code gate (stability model):
+Determinism contract (why this does not flake):
 
-- per-file floor targets are defined in `config/coverage-file-floor.txt`
-- the resolver (`scripts/resolve_sonar_new_code_tests.py`) force-includes floor anchor tests first (module-oriented tests like `tests/test_<module>.py`, plus selected naming variants)
-- CI backend-lite runs with `NEW_CODE_TIME_BUDGET_SEC=0` to avoid budget-based random drops in the fast lane
-- this removes "pass/fail drift" caused by timing variance and keeps local/CI behavior aligned
+- `NEW_CODE_TIME_BUDGET_SEC=0` in CI: no time-based test list trimming.
+- `config/coverage-file-floor.txt`: floor anchor tests are always included.
+- `ripgrep` (`rg`) in CI: stable, fast resolver with readable logs.
 
 How to verify coverage locally before push:
 
@@ -128,6 +134,12 @@ Read these outputs:
 - changed-lines verdict (`changed-lines coverage`)
 - per-file floor verdict (`OK: coverage floors passed for ... files`)
 - artifacts: `test-results/sonar/python-coverage.xml`, `test-results/sonar/python-junit.xml`
+
+Quick triage hints (when gate fails):
+
+- changed-lines coverage fail: add missing tests or enable `NEW_CODE_AUTO_INCLUDE_CHANGED=1`.
+- coverage floors fail: missing anchor tests for a module listed in `config/coverage-file-floor.txt`.
+- missing local `rg`: logs show Python fallback; install `ripgrep` when local/CI diverges.
 
 Quality snapshot (reference, 2026-02-28):
 

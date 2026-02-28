@@ -110,11 +110,8 @@ make preprod-drill
 make preprod-audit ACTOR=<id> ACTION=<operation> TICKET=<id> RESULT=<OK|FAIL>
 ```
 
-Recommended next-stage operational drill (single command):
-```bash
-make preprod-drill
-```
-This command executes backup + verify + readonly smoke in one flow.
+Recommended next-stage operational drill:
+Use `make preprod-drill` (listed above) to execute backup + verify + readonly smoke in one flow.
 
 ## Related Documentation
 

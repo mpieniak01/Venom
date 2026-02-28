@@ -110,11 +110,8 @@ make preprod-drill
 make preprod-audit ACTOR=<id> ACTION=<operacja> TICKET=<id> RESULT=<OK|FAIL>
 ```
 
-Rekomendowany kolejny etap operacyjny (jedna komenda):
-```bash
-make preprod-drill
-```
-Komenda wykonuje sekwencję backup + verify + smoke readonly.
+Rekomendowany kolejny etap operacyjny:
+Użyj `make preprod-drill` (komenda jest na liście powyżej), aby wykonać sekwencję backup + verify + smoke readonly.
 
 ## Powiązana dokumentacja
 

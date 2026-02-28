@@ -379,7 +379,7 @@ preprod-drill:
 	@set -e; \
 	backup_out="$$( $(MAKE) --no-print-directory preprod-backup )"; \
 	echo "$$backup_out"; \
-	ts="$$(printf '%s\n' "$$backup_out" | awk -F': ' '/^Backup timestamp:/{print $$2}' | tail -n 1)"; \
+	ts="$$(printf '%s\n' "$$backup_out" | sed -n 's/^Backup timestamp:[[:space:]]*//p' | tail -n 1)"; \
 	if [ -z "$$ts" ]; then \
 		echo "❌ Nie udało się odczytać timestamp z backupu preprod."; \
 		exit 1; \

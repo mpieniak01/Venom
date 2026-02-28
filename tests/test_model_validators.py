@@ -202,14 +202,18 @@ class TestValidateRuntime:
     """Tests for validate_runtime."""
 
     def test_valid_runtime_ollama(self):
+        """Test with valid Ollama runtime."""
         assert validate_runtime("ollama") == "ollama"
 
     def test_valid_runtime_vllm(self):
+        """Test with valid vLLM runtime."""
         assert validate_runtime("vllm") == "vllm"
 
     def test_valid_runtime_onnx(self):
+        """Test with valid ONNX runtime."""
         assert validate_runtime("onnx") == "onnx"
 
     def test_invalid_runtime(self):
+        """Test with an invalid runtime value."""
         with pytest.raises(ValueError, match="Runtime musi być"):
             validate_runtime("openai")

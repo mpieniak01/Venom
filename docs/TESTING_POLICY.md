@@ -48,6 +48,18 @@ Standalone test-lane contract check (also executed inside `pr-fast`):
 make test-lane-contracts-check
 ```
 
+Canonical test taxonomy check (also executed inside `pr-fast`):
+
+```bash
+make test-catalog-check
+```
+
+Regenerate canonical catalog after larger test refactors/renames:
+
+```bash
+make test-catalog-sync
+```
+
 Ensure hooks are installed for both `pre-commit` and `pre-push`:
 
 ```bash
@@ -57,8 +69,20 @@ make install-hooks
 What it includes:
 
 - changed-file scope detection against `origin/main` (or `PR_BASE_REF`)
-- backend fast lane: compile check + architecture drift guard + test-lane contracts guard + CI-lite audit + changed-lines coverage gate
+- backend fast lane: compile check + architecture drift guard + test-lane contracts guard + test-catalog guard + CI-lite audit + changed-lines coverage gate
 - frontend fast lane (only when `web-next/**` changed): lint + unit CI-lite
+
+Lane/group naming contract:
+
+- `config/pytest-groups/fast.txt` is the canonical fast-scope backend list.
+- `config/pytest-groups/light.txt` is a compatibility alias of `fast.txt` and should not be edited independently.
+
+Test taxonomy model (canonical source: `config/testing/test_catalog.yaml`):
+
+- `domain`: business/system scope (for example `academy`, `workflow`, `providers`, `runtime`)
+- `test_type`: `unit`, `route_contract`, `service_contract`, `integration`, `perf`, `gate`
+- `intent`: regression/contract/gate/security/performance
+- `legacy_targeted`: historical PR-gate/coverage-wave style tests; must be domain-assigned
 
 ### Level 3: PR quality gates (mandatory before merge)
 
@@ -76,6 +100,7 @@ Gate vs telemetry contract:
 
 - `make check-new-code-coverage` is a merge-blocking gate.
 - `make test-intelligence-report` is telemetry/trend and does not block merge.
+- `make check-new-code-coverage-diagnostics` is optional manual diagnostics (non-gate helper output).
 
 Coverage gate defaults:
 

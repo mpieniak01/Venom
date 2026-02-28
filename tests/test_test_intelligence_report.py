@@ -125,3 +125,61 @@ def test_test_intelligence_report_text_output(tmp_path: Path) -> None:
     assert "Test intelligence report" in result.stdout
     assert "top impact files" in result.stdout
     assert "runtime trend" in result.stdout
+
+
+def test_test_intelligence_report_catalog_blocks_legacy_promotion(
+    tmp_path: Path,
+) -> None:
+    ci_lite = tmp_path / "ci-lite.txt"
+    new_code = tmp_path / "sonar-new-code.txt"
+    junit = tmp_path / "python-junit.xml"
+    catalog = tmp_path / "catalog.json"
+
+    _write_group(ci_lite, [])
+    _write_group(new_code, ["tests/test_alpha.py"])
+    _write_junit(junit)
+    catalog.write_text(
+        json.dumps(
+            {
+                "tests": [
+                    {
+                        "path": "tests/test_alpha.py",
+                        "domain": "workflow",
+                        "legacy_targeted": True,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--junit-xml",
+            str(junit),
+            "--ci-lite-group",
+            str(ci_lite),
+            "--new-code-group",
+            str(new_code),
+            "--catalog",
+            str(catalog),
+            "--history-file",
+            str(tmp_path / "history.jsonl"),
+            "--append-history",
+            "0",
+            "--output",
+            "json",
+            "--min-tests-for-promotion",
+            "1",
+            "--fast-threshold",
+            "1.0",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["recommendations"]["promote_to_ci_lite"] == []

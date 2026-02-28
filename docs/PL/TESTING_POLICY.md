@@ -48,6 +48,18 @@ Niezależny check kontraktów lane'ów testowych (również uruchamiany w `pr-fa
 make test-lane-contracts-check
 ```
 
+Kanoniczny check taksonomii testów (również uruchamiany w `pr-fast`):
+
+```bash
+make test-catalog-check
+```
+
+Regeneracja kanonicznego katalogu po większych refaktorach/rename testów:
+
+```bash
+make test-catalog-sync
+```
+
 Upewnij się, że hooki są zainstalowane dla `pre-commit` i `pre-push`:
 
 ```bash
@@ -57,8 +69,20 @@ make install-hooks
 Zakres:
 
 - wykrywanie zmienionych plików względem `origin/main` (lub `PR_BASE_REF`)
-- backend fast lane: compile check + architecture drift guard + guard kontraktów lane'ów + audit CI-lite + bramka pokrycia zmienionych linii
+- backend fast lane: compile check + architecture drift guard + guard kontraktów lane'ów + guard katalogu testów + audit CI-lite + bramka pokrycia zmienionych linii
 - frontend fast lane (tylko gdy zmieniono `web-next/**`): lint + unit CI-lite
+
+Kontrakt nazewnictwa lane/group:
+
+- `config/pytest-groups/fast.txt` jest kanoniczną listą szybkiego zakresu backendu.
+- `config/pytest-groups/light.txt` jest aliasem kompatybilności do `fast.txt` i nie powinien być edytowany niezależnie.
+
+Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.yaml`):
+
+- `domain`: zakres domenowy/systemowy (np. `academy`, `workflow`, `providers`, `runtime`)
+- `test_type`: `unit`, `route_contract`, `service_contract`, `integration`, `perf`, `gate`
+- `intent`: regression/contract/gate/security/performance
+- `legacy_targeted`: historyczne testy typu PR-gate/coverage-wave; muszą mieć przypisaną domenę
 
 ### Poziom 3: Jakość pod PR (obowiązkowo przed merge)
 
@@ -76,6 +100,7 @@ Kontrakt bramek vs telemetrii:
 
 - `make check-new-code-coverage` to gate blokujący merge.
 - `make test-intelligence-report` to telemetria/trend i nie blokuje merge.
+- `make check-new-code-coverage-diagnostics` to opcjonalna diagnostyka manualna (pomocniczy output, bez roli gate).
 
 Domyślna bramka pokrycia:
 

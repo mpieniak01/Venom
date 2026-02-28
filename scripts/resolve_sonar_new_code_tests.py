@@ -43,6 +43,97 @@ class CandidateInfo(NamedTuple):
     path: str
     source_rank: int
     estimated_seconds: float
+    domain: str
+    legacy_targeted: bool
+    selection_reason: tuple[str, ...]
+
+
+def load_test_catalog(path: str | Path | None) -> dict[str, dict[str, object]]:
+    if not path:
+        return {}
+    catalog_path = Path(path)
+    if not catalog_path.exists():
+        return {}
+    try:
+        payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    tests = payload.get("tests", [])
+    if not isinstance(tests, list):
+        return {}
+    out: dict[str, dict[str, object]] = {}
+    for item in tests:
+        if not isinstance(item, dict):
+            continue
+        path_value = str(item.get("path", "")).strip()
+        if not path_value:
+            continue
+        out[path_value] = item
+    return out
+
+
+def _module_path_to_domain(path: str) -> str | None:
+    if not (path.startswith("venom_core/") and path.endswith(".py")):
+        return None
+    lowered = path.lower()
+    token_map = {
+        "academy": "academy",
+        "agent": "agents",
+        "api/routes": "api",
+        "audit": "audit",
+        "bootstrap": "bootstrap",
+        "control_plane": "control_plane",
+        "docker": "docker",
+        "environment": "environment",
+        "governance": "governance",
+        "knowledge": "knowledge",
+        "memory": "memory",
+        "model": "models",
+        "node": "nodes",
+        "onnx": "runtime",
+        "orchestrator": "orchestrator",
+        "provider": "providers",
+        "queue": "tasks",
+        "runtime": "runtime",
+        "scheduler": "tasks",
+        "security": "security",
+        "skill": "skills",
+        "system": "system",
+        "task": "tasks",
+        "translation": "translation",
+        "workflow": "workflow",
+    }
+    for token, domain in token_map.items():
+        if token in lowered:
+            return domain
+    return None
+
+
+def _changed_domains(changed_files: list[str]) -> set[str]:
+    domains: set[str] = set()
+    for path in changed_files:
+        domain = _module_path_to_domain(path)
+        if domain:
+            domains.add(domain)
+    return domains
+
+
+def _allowed_lanes_from_catalog(entry: dict[str, object] | None) -> set[str]:
+    if not entry:
+        return set()
+    lanes = entry.get("allowed_lanes", [])
+    if not isinstance(lanes, list):
+        return set()
+    return {str(x).strip() for x in lanes if str(x).strip()}
+
+
+def _catalog_value(
+    entry: dict[str, object] | None, key: str, default: object
+) -> object:
+    if not entry:
+        return default
+    value = entry.get(key, default)
+    return value if value is not None else default
 
 
 def load_coverage_floor_targets(path: Path = DEFAULT_COVERAGE_FLOOR_FILE) -> list[str]:
@@ -344,6 +435,9 @@ def _build_candidate_infos(
     floor_anchors: set[str],
     timings: dict[str, float],
     exclude_slow_fastlane: bool,
+    changed_domains: set[str],
+    catalog: dict[str, dict[str, object]] | None,
+    include_baseline: bool,
 ) -> list[CandidateInfo]:
     selected = (
         set(baseline_items)
@@ -371,11 +465,48 @@ def _build_candidate_infos(
             continue
         if exclude_slow_fastlane and not is_fast_safe_test(path):
             continue
+        entry = catalog.get(path) if catalog else None
+
+        allowed_lanes = _allowed_lanes_from_catalog(entry)
+        required_lanes = {"new-code"}
+        if include_baseline:
+            required_lanes.add("ci-lite")
+        if allowed_lanes and not (allowed_lanes & required_lanes):
+            continue
+
+        reasons: list[str] = []
+        if path in floor_anchors:
+            reasons.append("coverage_floor_anchor")
+        if path in baseline_items:
+            reasons.append("baseline_group")
+        if path in new_code_items:
+            reasons.append("new_code_group")
+        if path in changed_tests:
+            reasons.append("changed_test")
+        if path in related_tests:
+            reasons.append("related_module")
+        if not reasons:
+            reasons.append("fallback")
+
+        domain = str(_catalog_value(entry, "domain", "misc"))
+        legacy_targeted = bool(_catalog_value(entry, "legacy_targeted", False))
+        dynamic_only = "changed_test" in reasons or "related_module" in reasons
+        if dynamic_only and changed_domains:
+            if domain not in changed_domains and domain not in {
+                "testing_tooling",
+                "core",
+                "misc",
+            }:
+                continue
+
         infos.append(
             CandidateInfo(
                 path=path,
                 source_rank=source_rank.get(path, 4),
                 estimated_seconds=estimate_test_cost(path, timings),
+                domain=domain,
+                legacy_targeted=legacy_targeted,
+                selection_reason=tuple(sorted(set(reasons))),
             )
         )
 
@@ -424,15 +555,18 @@ def resolve_tests(
     timings_junit_xml: str | None = None,
     exclude_slow_fastlane: bool = False,
     max_tests: int = 0,
+    catalog_path: str | Path | None = None,
 ) -> list[str]:
     baseline_items = read_group(baseline_group) if include_baseline else []
     new_code_items = read_group(new_code_group)
 
     changed_files = git_changed_files(diff_base)
+    changed_domains = _changed_domains(changed_files)
     tests = all_test_files()
     changed_tests = collect_changed_tests(changed_files)
     related_tests = related_tests_for_modules(changed_files, tests)
     timings = load_junit_timings(timings_junit_xml)
+    catalog = load_test_catalog(catalog_path)
     floor_anchors = coverage_floor_anchor_tests(
         tests,
         timings,
@@ -447,6 +581,9 @@ def resolve_tests(
         floor_anchors,
         timings,
         exclude_slow_fastlane,
+        changed_domains,
+        catalog,
+        include_baseline,
     )
     infos = _apply_budget(infos, time_budget_sec, max_tests)
     return [row.path for row in infos]
@@ -462,15 +599,18 @@ def resolve_tests_with_metadata(
     timings_junit_xml: str | None = None,
     exclude_slow_fastlane: bool = False,
     max_tests: int = 0,
+    catalog_path: str | Path | None = None,
 ) -> tuple[list[str], list[dict[str, object]]]:
     baseline_items = read_group(baseline_group) if include_baseline else []
     new_code_items = read_group(new_code_group)
 
     changed_files = git_changed_files(diff_base)
+    changed_domains = _changed_domains(changed_files)
     tests = all_test_files()
     changed_tests = collect_changed_tests(changed_files)
     related_tests = related_tests_for_modules(changed_files, tests)
     timings = load_junit_timings(timings_junit_xml)
+    catalog = load_test_catalog(catalog_path)
     floor_anchors = coverage_floor_anchor_tests(
         tests,
         timings,
@@ -485,6 +625,9 @@ def resolve_tests_with_metadata(
         floor_anchors,
         timings,
         exclude_slow_fastlane,
+        changed_domains,
+        catalog,
+        include_baseline,
     )
     selected = _apply_budget(infos, time_budget_sec, max_tests)
     selected_set = {row.path for row in selected}
@@ -494,6 +637,9 @@ def resolve_tests_with_metadata(
             "path": row.path,
             "source_rank": row.source_rank,
             "estimated_seconds": round(row.estimated_seconds, 3),
+            "domain": row.domain,
+            "legacy_targeted": row.legacy_targeted,
+            "selection_reason": list(row.selection_reason),
             "selected": row.path in selected_set,
         }
         for row in infos
@@ -503,9 +649,15 @@ def resolve_tests_with_metadata(
 
 
 def resolve_candidates_from_changed_files(
-    changed_files: list[str], *, exclude_slow_fastlane: bool = False
+    changed_files: list[str],
+    *,
+    exclude_slow_fastlane: bool = False,
+    catalog_path: str | Path | None = None,
+    required_lane: str | None = None,
 ) -> list[str]:
     tests = all_test_files()
+    changed_domains = _changed_domains(changed_files)
+    catalog = load_test_catalog(catalog_path)
     selected = collect_changed_tests(changed_files) | related_tests_for_modules(
         changed_files, tests
     )
@@ -516,6 +668,19 @@ def resolve_candidates_from_changed_files(
             continue
         if exclude_slow_fastlane and not is_fast_safe_test(path):
             continue
+        entry = catalog.get(path) if catalog else None
+        if required_lane:
+            allowed = _allowed_lanes_from_catalog(entry)
+            if allowed and required_lane not in allowed:
+                continue
+        if entry and changed_domains:
+            domain = str(_catalog_value(entry, "domain", "misc"))
+            if domain not in changed_domains and domain not in {
+                "testing_tooling",
+                "core",
+                "misc",
+            }:
+                continue
         out.append(path)
     return out
 
@@ -580,6 +745,11 @@ def main() -> int:
         help="Optional hard cap for number of selected tests (0 = unlimited).",
     )
     parser.add_argument(
+        "--catalog",
+        default="",
+        help="Optional test catalog path for domain/lane-aware selection.",
+    )
+    parser.add_argument(
         "--debug-json",
         default="",
         help="Optional path to write metadata JSON.",
@@ -595,6 +765,7 @@ def main() -> int:
         timings_junit_xml=args.timings_junit_xml,
         exclude_slow_fastlane=bool(args.exclude_slow_fastlane),
         max_tests=args.max_tests,
+        catalog_path=args.catalog,
     )
     if not tests:
         print("Brak lekkich testów po resolve.", file=sys.stderr)

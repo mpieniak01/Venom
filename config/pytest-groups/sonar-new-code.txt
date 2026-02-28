@@ -5,7 +5,7 @@ tests/test_hardware_bridge.py
 tests/test_operator_agent.py
 tests/test_ingestion_engine_roi.py
 tests/test_node_manager.py
-tests/test_sonar_new_code_routes.py
+tests/test_sonar_route_selection.py
 tests/test_sonar_agents_init.py
 tests/test_main_setup_router_dependencies.py
 tests/test_main_internal_helpers.py
@@ -22,15 +22,15 @@ tests/test_assistant_skill.py
 tests/test_file_skill.py
 tests/test_git_skill_roi.py
 tests/test_test_skill_local.py
-tests/test_academy_api_coverage.py
-tests/test_academy_api_new_code_edges.py
+tests/test_academy_api_contracts.py
+tests/test_academy_api_edges_contract.py
 tests/test_academy_api_dataset_routes.py
 tests/test_academy_api_dataset_edge_cases.py
 tests/test_academy_models_module.py
 tests/test_academy_route_helpers_modules.py
 tests/test_autonomy_enforcement.py
-tests/test_gpu_habitat_coverage.py
-tests/test_gpu_habitat_new_code_edges.py
+tests/test_gpu_habitat_contracts.py
+tests/test_gpu_habitat_edges_contract.py
 tests/test_persona_factory.py
 tests/test_github_skill_optional_dep.py
 tests/test_intent_embedding_router_edges.py
@@ -40,7 +40,7 @@ tests/test_module_registry.py
 tests/test_workflow_store.py
 tests/test_config_manager.py
 tests/test_complexity_skill.py
-tests/test_intent_manager_new_code_coverage.py
+tests/test_intent_manager_contracts.py
 tests/test_code_review_optimization.py
 tests/test_skills_init.py
 tests/test_release_manager.py
@@ -55,7 +55,7 @@ tests/test_generation_params_adapter.py
 tests/test_mcp_manager.py
 tests/test_orchestrator_components.py
 tests/test_orchestrator_bootstrap.py
-tests/test_task_pipeline_coverage.py
+tests/test_task_pipeline_contracts.py
 tests/test_scheduler_swarm_flow_streaming.py
 tests/test_markdown_blocks.py
 tests/test_parallel_skill.py
@@ -71,13 +71,13 @@ tests/test_prompt_manager.py
 tests/test_service_monitor.py
 tests/test_service_monitor_streaming.py
 tests/test_docker_habitat_unit.py
-tests/test_docker_habitat_coverage.py
+tests/test_docker_habitat_contracts.py
 tests/test_lessons_manager.py
 tests/test_retrieval_policy.py
 tests/test_browser_skill.py
 tests/test_healing_flow.py
 tests/test_orchestrator_core_scenarios.py
-tests/test_dispatcher_audit_fixes.py
+tests/test_dispatcher_audit_regression.py
 tests/test_metrics.py
 tests/test_academy_api.py
 tests/test_gpu_habitat.py
@@ -105,11 +105,11 @@ tests/test_routing_contract.py
 tests/test_routing_integration.py
 tests/test_policy_gate_integration.py
 tests/test_environment_policy.py
-tests/test_preprod_ops_scripts.py
+tests/test_preprod_ops_regression.py
 tests/test_profile_config.py
 tests/test_ollama_tuning.py
 tests/test_contracts_init.py
-tests/test_coverage_fixes_wave4.py
+tests/test_system_governance_runtime_contracts.py
 tests/test_llm_runtime_utils.py
 tests/test_port_authority.py
 tests/test_logger_utils.py
@@ -150,45 +150,46 @@ tests/test_ux_analyst.py
 tests/test_mcp_manager_skill.py
 
 # Skills coverage: browser/github/shell
-tests/test_shell_skill_coverage.py
-tests/test_github_skill_coverage.py
+tests/test_shell_skill_contracts.py
+tests/test_github_skill_contracts.py
 
 # Agent coverage wave
-tests/test_agents_strategy_ux_coverage.py
-tests/test_agents_release_integration_coverage.py
+tests/test_agents_strategy_ux_contracts.py
+tests/test_agents_release_integration_contracts.py
 
 # Session/workflow/memory coverage wave
-tests/test_session_workflow_memory_coverage.py
+tests/test_session_workflow_memory_contracts.py
 
 # Contract/unit tests for 8 API route modules
-tests/test_api_routes_contract_coverage.py
+tests/test_api_routes_contract_matrix.py
 
 # Coverage wave: normalized test filenames (no PR numeric tags)
-tests/test_skills_browser_github_shell_coverage.py
-tests/test_nodes_utility_coverage.py
-tests/test_medium_gap_modules_coverage.py
+tests/test_skills_browser_github_shell_contracts.py
+tests/test_nodes_utility_contracts.py
+tests/test_medium_gap_modules_contracts.py
 tests/test_model_router.py
 tests/test_orchestrator_compat_module.py
-tests/test_strategy_and_routes_hotfix.py
-tests/test_orchestrator_flows_hotfix.py
+tests/test_strategy_and_routes_regression.py
+tests/test_orchestrator_flows_regression.py
 tests/test_flow_coordinator.py
-tests/test_browser_skill_unit_coverage.py
+tests/test_browser_skill_unit_contracts.py
 
 # Sonar coverage fix wave
-tests/test_sonar_coverage_new_code_wave.py
+tests/test_runtime_registry_translation_contracts.py
 tests/test_architecture_contracts_guard.py
 tests/test_test_lane_contracts_guard.py
+tests/test_test_catalog_tools.py
 tests/test_test_intelligence_report.py
 tests/test_preprod_readiness_check.py
-tests/test_new_code_coverage_blocker_179.py
-tests/test_models_remote_light_coverage.py
-tests/test_service_monitor_light_coverage.py
+tests/test_runtime_policy_regression_contracts.py
+tests/test_models_remote_contracts.py
+tests/test_service_monitor_contracts.py
 tests/test_agents_skill_manager_paths.py
-tests/test_runtime_registry_light_coverage.py
-tests/test_governance_light_coverage.py
-tests/test_academy_conversion_light_coverage.py
-tests/test_sonar_additional_bootstrap_routes_coverage.py
-tests/test_sonar_additional_runtime_conversion_coverage.py
+tests/test_runtime_registry_contracts.py
+tests/test_governance_contracts.py
+tests/test_academy_conversion_contracts.py
+tests/test_bootstrap_routes_contracts.py
+tests/test_runtime_conversion_contracts.py
 tests/test_tasks_stream_service.py
 tests/test_llm_simple_payload_service.py
 tests/test_providers_service.py

@@ -185,3 +185,98 @@ def test_resolve_tests_excludes_slow_fastlane(monkeypatch, tmp_path):
         exclude_slow_fastlane=True,
     )
     assert resolved == ["tests/test_ok.py"]
+
+
+def test_load_coverage_floor_targets_parses_file(tmp_path):
+    module = _load_module()
+    floor = tmp_path / "coverage-floor.txt"
+    floor.write_text(
+        "# comment\nvenom_core/a.py:40\n\nvenom_core/b.py:55\n",
+        encoding="utf-8",
+    )
+    assert module.load_coverage_floor_targets(floor) == [
+        "venom_core/a.py",
+        "venom_core/b.py",
+    ]
+
+
+def test_coverage_floor_anchor_tests_selects_cheapest_related(monkeypatch):
+    module = _load_module()
+    tests = [
+        "tests/test_alpha.py",
+        "tests/test_beta.py",
+        "tests/test_module_registry.py",
+    ]
+    monkeypatch.setattr(
+        module,
+        "load_coverage_floor_targets",
+        lambda _path=module.DEFAULT_COVERAGE_FLOOR_FILE: [
+            "venom_core/services/module_registry.py"
+        ],
+    )
+    monkeypatch.setattr(
+        module,
+        "related_tests_for_modules",
+        lambda _changed, _tests: {"tests/test_alpha.py", "tests/test_beta.py"},
+    )
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(
+        module,
+        "estimate_test_cost",
+        lambda path, _timings: (
+            5.0
+            if path.endswith("beta.py")
+            else 3.0
+            if path.endswith("module_registry.py")
+            else 1.0
+        ),
+    )
+
+    anchors = module.coverage_floor_anchor_tests(tests, {})
+    assert anchors == {"tests/test_alpha.py"}
+
+
+def test_resolve_tests_prioritizes_floor_anchors_under_budget(monkeypatch, tmp_path):
+    module = _load_module()
+    baseline = tmp_path / "ci-lite.txt"
+    new_code = tmp_path / "sonar-new-code.txt"
+    baseline.write_text("tests/test_baseline.py\n", encoding="utf-8")
+    new_code.write_text("tests/test_regular.py\n", encoding="utf-8")
+
+    monkeypatch.setattr(module, "git_changed_files", lambda _base: [])
+    monkeypatch.setattr(
+        module,
+        "all_test_files",
+        lambda: [
+            "tests/test_anchor.py",
+            "tests/test_baseline.py",
+            "tests/test_regular.py",
+        ],
+    )
+    monkeypatch.setattr(module, "related_tests_for_modules", lambda *_args: set())
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: True)
+    monkeypatch.setattr(
+        module,
+        "coverage_floor_anchor_tests",
+        lambda _tests, _timings, **_kwargs: {"tests/test_anchor.py"},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_junit_timings",
+        lambda _xml: {
+            "tests/test_anchor.py": 1.0,
+            "tests/test_baseline.py": 120.0,
+            "tests/test_regular.py": 120.0,
+        },
+    )
+
+    resolved = module.resolve_tests(
+        baseline_group=baseline,
+        new_code_group=new_code,
+        include_baseline=True,
+        diff_base="origin/main",
+        time_budget_sec=10.0,
+        timings_junit_xml="irrelevant.xml",
+    )
+    assert resolved == ["tests/test_anchor.py"]

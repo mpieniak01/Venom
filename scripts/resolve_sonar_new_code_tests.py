@@ -31,6 +31,7 @@ SLOW_FASTLANE_PATH_PATTERNS = (
     "benchmark",
     "test_core_nervous_system.py",
 )
+DEFAULT_COVERAGE_FLOOR_FILE = Path("config/coverage-file-floor.txt")
 
 SLEEP_RE = re.compile(r"(?:time|asyncio)\.sleep\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)")
 MARKER_RE = re.compile(
@@ -42,6 +43,20 @@ class CandidateInfo(NamedTuple):
     path: str
     source_rank: int
     estimated_seconds: float
+
+
+def load_coverage_floor_targets(path: Path = DEFAULT_COVERAGE_FLOOR_FILE) -> list[str]:
+    if not path.exists():
+        return []
+    targets: list[str] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        target = line.split(":", 1)[0].strip()
+        if target:
+            targets.append(target)
+    return targets
 
 
 def read_group(path: Path) -> list[str]:
@@ -258,17 +273,64 @@ def estimate_test_cost(path: str, timings: dict[str, float]) -> float:
     return cost
 
 
+def coverage_floor_anchor_tests(
+    tests: list[str],
+    timings: dict[str, float],
+    *,
+    floor_targets: list[str] | None = None,
+    exclude_slow_fastlane: bool = False,
+) -> set[str]:
+    targets = (
+        floor_targets if floor_targets is not None else load_coverage_floor_targets()
+    )
+    if not targets:
+        return set()
+
+    test_set = set(tests)
+    anchors: set[str] = set()
+    for module_path in targets:
+        if not module_path.startswith("venom_core/") or not module_path.endswith(".py"):
+            continue
+        stem = Path(module_path).stem
+        direct = f"tests/test_{stem}.py"
+        candidates = related_tests_for_modules([module_path], tests)
+        if direct in test_set:
+            candidates.add(direct)
+
+        filtered: list[str] = []
+        for candidate in candidates:
+            if not is_light_test(candidate):
+                continue
+            if exclude_slow_fastlane and not is_fast_safe_test(candidate):
+                continue
+            filtered.append(candidate)
+        if not filtered:
+            continue
+        best = min(filtered, key=lambda item: estimate_test_cost(item, timings))
+        anchors.add(best)
+    return anchors
+
+
 def _build_candidate_infos(
     baseline_items: list[str],
     new_code_items: list[str],
     changed_tests: set[str],
     related_tests: set[str],
+    floor_anchors: set[str],
     timings: dict[str, float],
     exclude_slow_fastlane: bool,
 ) -> list[CandidateInfo]:
-    selected = set(baseline_items) | set(new_code_items) | changed_tests | related_tests
+    selected = (
+        set(baseline_items)
+        | set(new_code_items)
+        | changed_tests
+        | related_tests
+        | floor_anchors
+    )
 
     source_rank: dict[str, int] = {path: 4 for path in selected}
+    for path in floor_anchors:
+        source_rank[path] = min(source_rank.get(path, 4), -1)
     for path in baseline_items:
         source_rank[path] = min(source_rank.get(path, 4), 2)
     for path in new_code_items:
@@ -346,12 +408,18 @@ def resolve_tests(
     changed_tests = collect_changed_tests(changed_files)
     related_tests = related_tests_for_modules(changed_files, tests)
     timings = load_junit_timings(timings_junit_xml)
+    floor_anchors = coverage_floor_anchor_tests(
+        tests,
+        timings,
+        exclude_slow_fastlane=exclude_slow_fastlane,
+    )
 
     infos = _build_candidate_infos(
         baseline_items,
         new_code_items,
         changed_tests,
         related_tests,
+        floor_anchors,
         timings,
         exclude_slow_fastlane,
     )
@@ -378,12 +446,18 @@ def resolve_tests_with_metadata(
     changed_tests = collect_changed_tests(changed_files)
     related_tests = related_tests_for_modules(changed_files, tests)
     timings = load_junit_timings(timings_junit_xml)
+    floor_anchors = coverage_floor_anchor_tests(
+        tests,
+        timings,
+        exclude_slow_fastlane=exclude_slow_fastlane,
+    )
 
     infos = _build_candidate_infos(
         baseline_items,
         new_code_items,
         changed_tests,
         related_tests,
+        floor_anchors,
         timings,
         exclude_slow_fastlane,
     )

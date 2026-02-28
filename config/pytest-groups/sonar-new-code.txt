@@ -181,3 +181,4 @@ tests/test_test_lane_contracts_guard.py
 tests/test_test_intelligence_report.py
 tests/test_preprod_readiness_check.py
 tests/test_new_code_coverage_blocker_179.py
+tests/test_sonar_coverage_wave_180.py

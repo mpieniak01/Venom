@@ -45,7 +45,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		ci-lite-preflight ci-lite-bootstrap \
 		api api-dev api-preprod api-stop web web-dev web-preprod web-stop \
 		startpre stoppre restartpre statuspre apipre webpre testpre ensurepreenv \
-		preprod-backup preprod-restore preprod-verify preprod-audit prebackup prerestore preverify preaudit \
+		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill prebackup prerestore preverify preaudit predrill \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
@@ -375,11 +375,24 @@ preprod-audit:
 		"$${TICKET:-N/A}" \
 		"$${RESULT:-OK}"
 
+preprod-drill:
+	@set -e; \
+	backup_out="$$( $(MAKE) --no-print-directory preprod-backup )"; \
+	echo "$$backup_out"; \
+	ts="$$(printf '%s\n' "$$backup_out" | awk -F': ' '/^Backup timestamp:/{print $$2}' | tail -n 1)"; \
+	if [ -z "$$ts" ]; then \
+		echo "❌ Nie udało się odczytać timestamp z backupu preprod."; \
+		exit 1; \
+	fi; \
+	$(MAKE) --no-print-directory preprod-verify TS="$$ts"; \
+	echo "✅ Preprod drill zakończony (TS=$$ts)."
+
 # Preprod operation aliases
 prebackup: preprod-backup
 prerestore: preprod-restore
 preverify: preprod-verify
 preaudit: preprod-audit
+predrill: preprod-drill
 
 _start:
 	@if [ ! -x "$(UVICORN)" ]; then \

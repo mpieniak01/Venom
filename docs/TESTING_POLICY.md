@@ -123,6 +123,7 @@ Performance/latency scenarios:
 Required PR gates:
 
 - CI Lite (fast lint + selected unit tests)
+- Preprod readonly smoke lane (`make test-preprod-readonly-smoke`) in `backend-lite`
 - SonarCloud (bugs, vulnerabilities, maintainability, duplication)
 - Temporary exception: frontend `web-next/**` is excluded from Sonar coverage gate until UI stabilizes.
 

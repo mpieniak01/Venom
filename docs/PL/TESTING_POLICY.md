@@ -123,6 +123,7 @@ Scenariusze performance/latency:
 Wymagane bramki na PR:
 
 - CI Lite (szybki lint + wybrane testy unit)
+- Smoke readonly dla preprod (`make test-preprod-readonly-smoke`) w jobie `backend-lite`
 - SonarCloud (bugi, podatności, utrzymywalność, duplikacje)
 - Wyjątek tymczasowy: frontend `web-next/**` jest wyłączony z bramki Sonar coverage do czasu stabilizacji UI.
 

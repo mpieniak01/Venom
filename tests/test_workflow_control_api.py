@@ -62,9 +62,26 @@ class InMemoryConfigManager:
 def isolated_control_plane(monkeypatch):
     """Reset singleton and inject in-memory config manager for each test."""
     import venom_core.services.control_plane as control_plane_module
+    from venom_core.services.runtime_controller import (
+        ServiceInfo,
+        ServiceStatus,
+        ServiceType,
+    )
 
     fake_config = InMemoryConfigManager()
     monkeypatch.setattr(control_plane_module, "config_manager", fake_config)
+    monkeypatch.setattr(
+        control_plane_module.runtime_controller,
+        "get_all_services_status",
+        lambda: [
+            ServiceInfo(
+                name="backend",
+                service_type=ServiceType.BACKEND,
+                status=ServiceStatus.RUNNING,
+                uptime_seconds=1,
+            )
+        ],
+    )
     control_plane_module._control_plane_service = None
     yield fake_config
     control_plane_module._control_plane_service = None

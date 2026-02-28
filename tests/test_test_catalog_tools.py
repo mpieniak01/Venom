@@ -27,7 +27,7 @@ def test_generate_test_catalog_creates_expected_fields(tmp_path: Path) -> None:
     _write(tmp_path / "config/pytest-groups/long.txt", "")
     _write(tmp_path / "config/pytest-groups/heavy.txt", "")
 
-    out = tmp_path / "config/testing/test_catalog.yaml"
+    out = tmp_path / "config/testing/test_catalog.json"
     result = subprocess.run(
         [
             sys.executable,
@@ -81,7 +81,7 @@ def test_check_test_catalog_fails_when_test_is_missing_in_catalog(
         "tests": [],
     }
     _write(
-        tmp_path / "config/testing/test_catalog.yaml",
+        tmp_path / "config/testing/test_catalog.json",
         json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
     )
 
@@ -90,7 +90,7 @@ def test_check_test_catalog_fails_when_test_is_missing_in_catalog(
             sys.executable,
             str(CHECK_SCRIPT),
             "--catalog",
-            str(tmp_path / "config/testing/test_catalog.yaml"),
+            str(tmp_path / "config/testing/test_catalog.json"),
             "--repo-root",
             str(tmp_path),
             "--ci-lite-group",
@@ -141,7 +141,7 @@ def test_check_test_catalog_fails_for_legacy_misc_fastlane(tmp_path: Path) -> No
         ],
     }
     _write(
-        tmp_path / "config/testing/test_catalog.yaml",
+        tmp_path / "config/testing/test_catalog.json",
         json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
     )
 
@@ -150,7 +150,7 @@ def test_check_test_catalog_fails_for_legacy_misc_fastlane(tmp_path: Path) -> No
             sys.executable,
             str(CHECK_SCRIPT),
             "--catalog",
-            str(tmp_path / "config/testing/test_catalog.yaml"),
+            str(tmp_path / "config/testing/test_catalog.json"),
             "--repo-root",
             str(tmp_path),
             "--ci-lite-group",
@@ -204,7 +204,7 @@ def test_check_test_catalog_fails_when_release_catalog_entry_is_missing_in_relea
         ],
     }
     _write(
-        tmp_path / "config/testing/test_catalog.yaml",
+        tmp_path / "config/testing/test_catalog.json",
         json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
     )
 
@@ -213,7 +213,7 @@ def test_check_test_catalog_fails_when_release_catalog_entry_is_missing_in_relea
             sys.executable,
             str(CHECK_SCRIPT),
             "--catalog",
-            str(tmp_path / "config/testing/test_catalog.yaml"),
+            str(tmp_path / "config/testing/test_catalog.json"),
             "--repo-root",
             str(tmp_path),
             "--ci-lite-group",
@@ -273,7 +273,7 @@ def test_check_test_catalog_fails_when_release_group_contains_non_test_pattern(
         ],
     }
     _write(
-        tmp_path / "config/testing/test_catalog.yaml",
+        tmp_path / "config/testing/test_catalog.json",
         json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
     )
 
@@ -282,7 +282,7 @@ def test_check_test_catalog_fails_when_release_group_contains_non_test_pattern(
             sys.executable,
             str(CHECK_SCRIPT),
             "--catalog",
-            str(tmp_path / "config/testing/test_catalog.yaml"),
+            str(tmp_path / "config/testing/test_catalog.json"),
             "--repo-root",
             str(tmp_path),
             "--ci-lite-group",

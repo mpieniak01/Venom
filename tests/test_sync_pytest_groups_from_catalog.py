@@ -71,7 +71,7 @@ def test_sync_pytest_groups_from_catalog_writes_expected_groups(tmp_path: Path) 
     )
     _write(tmp_path / "tests/perf/test_c_perf.py", "def test_ok():\n    assert True\n")
     _write(
-        tmp_path / "config/testing/test_catalog.yaml",
+        tmp_path / "config/testing/test_catalog.json",
         json.dumps(_minimal_catalog(), ensure_ascii=False, indent=2) + "\n",
     )
 
@@ -82,7 +82,7 @@ def test_sync_pytest_groups_from_catalog_writes_expected_groups(tmp_path: Path) 
             "--repo-root",
             str(tmp_path),
             "--catalog",
-            str(tmp_path / "config/testing/test_catalog.yaml"),
+            str(tmp_path / "config/testing/test_catalog.json"),
             "--write",
             "1",
         ],
@@ -120,7 +120,7 @@ def test_sync_pytest_groups_from_catalog_check_detects_drift(tmp_path: Path) -> 
     )
     _write(tmp_path / "tests/perf/test_c_perf.py", "def test_ok():\n    assert True\n")
     _write(
-        tmp_path / "config/testing/test_catalog.yaml",
+        tmp_path / "config/testing/test_catalog.json",
         json.dumps(_minimal_catalog(), ensure_ascii=False, indent=2) + "\n",
     )
     _write(
@@ -140,7 +140,7 @@ def test_sync_pytest_groups_from_catalog_check_detects_drift(tmp_path: Path) -> 
             "--repo-root",
             str(tmp_path),
             "--catalog",
-            str(tmp_path / "config/testing/test_catalog.yaml"),
+            str(tmp_path / "config/testing/test_catalog.json"),
             "--check",
         ],
         capture_output=True,

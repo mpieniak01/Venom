@@ -89,7 +89,7 @@ Kontrakt nazewnictwa lane/group:
 - `config/pytest-groups/fast.txt` jest kanoniczną listą szybkiego zakresu backendu.
 - `config/pytest-groups/light.txt` jest aliasem kompatybilności do `fast.txt` i nie powinien być edytowany niezależnie.
 
-Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.yaml`):
+Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.json`):
 
 - `domain`: zakres domenowy/systemowy (np. `academy`, `workflow`, `providers`, `runtime`)
 - `test_type`: `unit`, `route_contract`, `service_contract`, `integration`, `perf`, `gate`
@@ -98,7 +98,8 @@ Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.yam
 
 Kontrakt jednego źródła prawdy:
 
-- `config/testing/test_catalog.yaml` jest kanonicznym źródłem metadanych testów i uprawnień lane.
+- `config/testing/test_catalog.json` jest kanonicznym źródłem metadanych testów i uprawnień lane.
+- `config/testing/test_catalog.yaml` pozostaje symlinkiem kompatybilności do `test_catalog.json` dla starszych narzędzi.
 - Pliki grup pytest są generowane/synchronizowane z katalogu (`make test-groups-sync`).
 - Ręczna edycja wygenerowanych grup nie jest wspierana; używaj komendy sync.
 
@@ -166,7 +167,7 @@ Zachowanie runu new-code coverage:
 - automatyczne dołączanie testów zmienionych/powiązanych jest domyślnie aktywne (`NEW_CODE_AUTO_INCLUDE_CHANGED=1`)
 - wzorzec auto-include dla zmienionych testów: `tests/**/test_*.py`
 - resolver listy: `scripts/resolve_sonar_new_code_tests.py` (selekcja katalogowa + metadane: `selection_reason`, `domain`, `legacy_targeted`)
-- źródło sync grup: `scripts/sync_pytest_groups_from_catalog.py` (`test_catalog.yaml` -> `ci-lite/new-code/fast/long/heavy`)
+- źródło sync grup: `scripts/sync_pytest_groups_from_catalog.py` (`test_catalog.json` -> `ci-lite/new-code/fast/long/heavy`)
 - gdy lokalnie nie ma `ripgrep` (`rg`), resolver używa fallbacku Python (bez blokowania runu)
 - w CI backend-lite doinstalowuje `ripgrep` dla szybszego wyboru i czytelnych logów
 

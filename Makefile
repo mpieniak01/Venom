@@ -143,7 +143,7 @@ NEW_CODE_FALLBACK_COVERAGE ?= 1
 NEW_CODE_MAX_FALLBACK_TESTS ?= 20
 NEW_CODE_MAX_TESTS ?= 0
 NEW_CODE_EXCLUDE_SLOW_FASTLANE ?= 1
-NEW_CODE_TEST_CATALOG ?= config/testing/test_catalog.yaml
+NEW_CODE_TEST_CATALOG ?= config/testing/test_catalog.json
 TEST_INTEL_SLOW_THRESHOLD ?= 1.8
 TEST_INTEL_FAST_THRESHOLD ?= 0.1
 TEST_INTEL_MIN_TESTS_PROMOTION ?= 3
@@ -274,7 +274,7 @@ test-intelligence-report:
 		--junit-xml test-results/sonar/python-junit.xml \
 		--ci-lite-group config/pytest-groups/ci-lite.txt \
 		--new-code-group config/pytest-groups/sonar-new-code.txt \
-		--catalog config/testing/test_catalog.yaml \
+		--catalog config/testing/test_catalog.json \
 		--slow-threshold "$(TEST_INTEL_SLOW_THRESHOLD)" \
 		--fast-threshold "$(TEST_INTEL_FAST_THRESHOLD)" \
 		--min-tests-for-promotion "$(TEST_INTEL_MIN_TESTS_PROMOTION)" \
@@ -297,12 +297,12 @@ test-lane-contracts-check:
 test-catalog-sync:
 	@$(PYTHON_BIN) scripts/generate_test_catalog.py \
 		--repo-root . \
-		--output config/testing/test_catalog.yaml \
+		--output config/testing/test_catalog.json \
 		--write 1
 
 test-catalog-check:
 	@$(PYTHON_BIN) scripts/check_test_catalog.py \
-		--catalog config/testing/test_catalog.yaml \
+		--catalog config/testing/test_catalog.json \
 		--repo-root . \
 		--ci-lite-group config/pytest-groups/ci-lite.txt \
 		--new-code-group config/pytest-groups/sonar-new-code.txt \
@@ -313,13 +313,13 @@ test-catalog-check:
 test-groups-sync:
 	@$(PYTHON_BIN) scripts/sync_pytest_groups_from_catalog.py \
 		--repo-root . \
-		--catalog config/testing/test_catalog.yaml \
+		--catalog config/testing/test_catalog.json \
 		--write 1
 
 test-groups-check:
 	@$(PYTHON_BIN) scripts/sync_pytest_groups_from_catalog.py \
 		--repo-root . \
-		--catalog config/testing/test_catalog.yaml \
+		--catalog config/testing/test_catalog.json \
 		--check
 
 test-dynamic-preview:
@@ -330,7 +330,7 @@ test-dynamic-preview:
 		--include-baseline 1 \
 		--diff-base "$(NEW_CODE_DIFF_BASE)" \
 		--exclude-slow-fastlane 1 \
-		--catalog config/testing/test_catalog.yaml \
+		--catalog config/testing/test_catalog.json \
 		--debug-json test-results/sonar/dynamic-selection-preview.json >/dev/null
 	@echo "✅ Dynamic preview saved: test-results/sonar/dynamic-selection-preview.json"
 

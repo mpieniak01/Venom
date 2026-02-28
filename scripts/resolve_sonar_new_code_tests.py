@@ -58,6 +58,8 @@ def load_test_catalog(path: str | Path | None) -> dict[str, dict[str, object]]:
         payload = json.loads(catalog_path.read_text(encoding="utf-8"))
     except Exception:
         return {}
+    if not isinstance(payload, dict):
+        return {}
     tests = payload.get("tests", [])
     if not isinstance(tests, list):
         return {}

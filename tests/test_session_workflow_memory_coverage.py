@@ -1,5 +1,5 @@
 """
-PR-172C-08: Coverage wave tests for:
+Coverage tests for:
   - venom_core/services/session_store.py
   - venom_core/services/workflow_operations.py
   - venom_core/memory/workflow_store.py
@@ -10,11 +10,12 @@ Goals: cover CRUD, TTL/error handling, status transitions, storage errors.
 All external calls (LLM, model, DB) are mocked.
 """
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import json
 import sys
-import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -36,9 +37,7 @@ class TestSessionStoreEdgeCases:
     # ------------------------------------------------------------------
     def test_resolve_default_path_when_store_path_is_none(self, tmp_path):
         """When store_path=None, the default path inside MEMORY_ROOT is used."""
-        with patch(
-            "venom_core.services.session_store.SETTINGS"
-        ) as mock_settings:
+        with patch("venom_core.services.session_store.SETTINGS") as mock_settings:
             mock_settings.MEMORY_ROOT = str(tmp_path)
             store = SessionStore(store_path=None)
         expected = (tmp_path / "session_store.json").resolve()
@@ -49,9 +48,7 @@ class TestSessionStoreEdgeCases:
     # ------------------------------------------------------------------
     def test_resolve_relative_store_path(self, tmp_path):
         """A relative store_path should be resolved under MEMORY_ROOT."""
-        with patch(
-            "venom_core.services.session_store.SETTINGS"
-        ) as mock_settings:
+        with patch("venom_core.services.session_store.SETTINGS") as mock_settings:
             mock_settings.MEMORY_ROOT = str(tmp_path)
             store = SessionStore(store_path="sub/session.json")
         expected = (tmp_path / "sub" / "session.json").resolve()
@@ -226,7 +223,6 @@ from venom_core.api.schemas.workflow_control import (
 )
 from venom_core.services.workflow_operations import (
     WorkflowOperationService,
-    WorkflowStateMachine,
     get_workflow_service,
 )
 
@@ -339,6 +335,7 @@ class TestWorkflowOperationsEdgeCases:
         from venom_core.services.workflow_operations import (
             get_workflow_operation_service,
         )
+
         svc2 = get_workflow_operation_service()
         assert svc1 is svc2
 
@@ -380,7 +377,10 @@ class TestWorkflowStoreCoverage:
                     step_id=1,
                     action_type="click",
                     description="Click submit",
-                    params={"element_description": "Submit button", "fallback_coords": {"x": 10, "y": 20}},
+                    params={
+                        "element_description": "Submit button",
+                        "fallback_coords": {"x": 10, "y": 20},
+                    },
                 ),
                 WorkflowStep(
                     step_id=2,
@@ -451,7 +451,9 @@ class TestWorkflowStoreCoverage:
     def test_add_step_to_empty_workflow_sets_step_id_1(self, ws):
         wf = Workflow(workflow_id="wf_empty", name="Empty", description="no steps")
         ws.save_workflow(wf)
-        new_step = WorkflowStep(step_id=0, action_type="wait", description="wait", params={"duration": 1.0})
+        new_step = WorkflowStep(
+            step_id=0, action_type="wait", description="wait", params={"duration": 1.0}
+        )
         result = ws.add_step("wf_empty", new_step)
         assert result is True
         loaded = ws.load_workflow("wf_empty")
@@ -464,7 +466,12 @@ class TestWorkflowStoreCoverage:
         ws.save_workflow(basic_workflow)
         # Clear cache so fresh load from file
         ws.workflows_cache.clear()
-        new_step = WorkflowStep(step_id=0, action_type="wait", description="Inserted step", params={"duration": 0.5})
+        new_step = WorkflowStep(
+            step_id=0,
+            action_type="wait",
+            description="Inserted step",
+            params={"duration": 0.5},
+        )
         result = ws.add_step("wf_001", new_step, position=0)
         assert result is True
         loaded = ws.load_workflow("wf_001")
@@ -541,7 +548,9 @@ class TestWorkflowStoreCoverage:
     # ------------------------------------------------------------------
     # export_to_python: with explicit output_path (lines 408->413)
     # ------------------------------------------------------------------
-    def test_export_to_python_with_explicit_output_path(self, ws, tmp_path, basic_workflow):
+    def test_export_to_python_with_explicit_output_path(
+        self, ws, tmp_path, basic_workflow
+    ):
         ws.save_workflow(basic_workflow)
         out_file = tmp_path / "my_output.py"
         result = ws.export_to_python("wf_001", output_path=out_file)
@@ -596,7 +605,11 @@ class TestMemorySkillCoverage:
     # ------------------------------------------------------------------
     def test_recall_returns_formatted_results(self, skill, mock_vector_store):
         mock_vector_store.search.return_value = [
-            {"text": "Python is great", "score": 0.95, "metadata": {"category": "docs"}},
+            {
+                "text": "Python is great",
+                "score": 0.95,
+                "metadata": {"category": "docs"},
+            },
             {"text": "Venom agent", "score": 0.80, "metadata": {}},
         ]
         result = skill.recall("Python")
@@ -618,7 +631,11 @@ class TestMemorySkillCoverage:
     def test_recall_exception_returns_error_message(self, skill, mock_vector_store):
         mock_vector_store.search.side_effect = RuntimeError("DB error")
         result = skill.recall("query")
-        assert "błąd" in result.lower() or "error" in result.lower() or "Wystąpił" in result
+        assert (
+            "błąd" in result.lower()
+            or "error" in result.lower()
+            or "Wystąpił" in result
+        )
 
     # ------------------------------------------------------------------
     # memorize: success path
@@ -638,7 +655,7 @@ class TestMemorySkillCoverage:
     # ------------------------------------------------------------------
     def test_memorize_default_category(self, skill, mock_vector_store):
         mock_vector_store.upsert.return_value = {"message": "saved"}
-        result = skill.memorize("Some content")
+        skill.memorize("Some content")
         call_kwargs = mock_vector_store.upsert.call_args[1]
         assert call_kwargs["metadata"]["category"] == "general"
 

@@ -1,9 +1,7 @@
-"""Coverage wave tests for PR-172C-06 agents: strategist, ux_analyst, simulated_user, researcher."""
+"""Coverage tests for strategist, ux_analyst, simulated_user, and researcher agents."""
 
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -96,7 +94,6 @@ class TestStrategistBranches:
     @pytest.mark.asyncio
     async def test_generate_report_with_tasks(self, agent):
         """generate_report with tasks shows full breakdown."""
-        from venom_core.ops.work_ledger import TaskComplexity
 
         await agent.analyze_task("Build a simple Python script", task_id="rep_01")
         result = agent.generate_report()
@@ -193,7 +190,9 @@ class TestStrategistBranches:
     # -- _extract_time edge cases --
     def test_extract_time_json_estimated_minutes(self, agent):
         """_extract_time parses JSON with 'estimated_minutes'."""
-        result = agent._extract_time('{"estimated_minutes": 45, "complexity": "medium"}')
+        result = agent._extract_time(
+            '{"estimated_minutes": 45, "complexity": "medium"}'
+        )
         assert result == 45.0
 
     def test_extract_time_json_minutes_key(self, agent):
@@ -344,12 +343,15 @@ class TestStrategistBranches:
 
         # Add a task with metadata but no api_usage for the queried provider
         agent.work_ledger.log_task(
-            "no_openai", "No OpenAI", "Desc", 30, TaskComplexity.LOW,
-            metadata={"api_usage": {"anthropic": {"calls": 5, "tokens": 1000}}}
+            "no_openai",
+            "No OpenAI",
+            "Desc",
+            30,
+            TaskComplexity.LOW,
+            metadata={"api_usage": {"anthropic": {"calls": 5, "tokens": 1000}}},
         )
         agent.work_ledger.log_task(
-            "no_meta", "No Meta", "Desc", 30, TaskComplexity.LOW,
-            metadata={}
+            "no_meta", "No Meta", "Desc", 30, TaskComplexity.LOW, metadata={}
         )
         calls, tokens = agent._calculate_provider_usage("openai")
         assert calls == 0
@@ -415,8 +417,12 @@ class TestStrategistBranches:
         from venom_core.ops.work_ledger import TaskComplexity
 
         agent.work_ledger.log_task(
-            "with_openai", "With OpenAI", "Desc", 30, TaskComplexity.LOW,
-            metadata={"api_usage": {"openai": {"calls": 15, "tokens": 3000}}}
+            "with_openai",
+            "With OpenAI",
+            "Desc",
+            30,
+            TaskComplexity.LOW,
+            metadata={"api_usage": {"openai": {"calls": 15, "tokens": 3000}}},
         )
         calls, tokens = agent._calculate_provider_usage("openai")
         assert calls == 15
@@ -575,7 +581,12 @@ class TestUXAnalystBranches:
             },
             "top_problems": [{"problem": "menu", "occurrences": 3}],
             "frustration_heatmap": [
-                {"persona": "Senior", "sessions": 3, "success_rate": 33.0, "failure_rate": 67.0}
+                {
+                    "persona": "Senior",
+                    "sessions": 3,
+                    "success_rate": 33.0,
+                    "failure_rate": 67.0,
+                }
             ],
         }
         with patch.object(
@@ -691,7 +702,9 @@ class TestUXAnalystBranches:
         assert agent._failure_rate({"failure_rate": [1, 2, 3]}) == 0.0
 
     # -- _load_session_logs: exception path (invalid JSON → line 94) --
-    def test_load_session_logs_parse_error_covers_exception_handler(self, agent, tmp_path):
+    def test_load_session_logs_parse_error_covers_exception_handler(
+        self, agent, tmp_path
+    ):
         """_load_session_logs exception handler (line 94) runs on invalid JSON."""
         log_file = tmp_path / "bad_json.jsonl"
         log_file.write_text("not valid json at all\n")
@@ -796,7 +809,10 @@ class TestSimulatedUserBranches:
 
         agent.frustration_level = 0
         agent._increase_frustration("minor issue")
-        assert agent.emotional_state in (EmotionalState.CONFUSED, EmotionalState.FRUSTRATED)
+        assert agent.emotional_state in (
+            EmotionalState.CONFUSED,
+            EmotionalState.FRUSTRATED,
+        )
 
     def test_increase_frustration_frustrated(self, agent):
         """Frustration at FRUSTRATED_THRESHOLD_RATIO sets FRUSTRATED state."""
@@ -805,7 +821,10 @@ class TestSimulatedUserBranches:
         # threshold = 5, ratio = 0.7 → 3.5, so at 4 we should be FRUSTRATED
         agent.frustration_level = 2
         agent._increase_frustration("confusing UI")
-        assert agent.emotional_state in (EmotionalState.FRUSTRATED, EmotionalState.CONFUSED)
+        assert agent.emotional_state in (
+            EmotionalState.FRUSTRATED,
+            EmotionalState.CONFUSED,
+        )
 
     def test_increase_frustration_angry_and_rage_quit(self, agent):
         """Reaching frustration_threshold sets ANGRY and rage_quit=True."""
@@ -821,9 +840,7 @@ class TestSimulatedUserBranches:
     async def test_run_behavioral_loop_goal_achieved(self, agent):
         """run_behavioral_loop stops when agent reports goal achieved."""
         with patch.object(agent, "start_session", new_callable=AsyncMock):
-            with patch.object(
-                agent, "process", new_callable=AsyncMock
-            ) as mock_process:
+            with patch.object(agent, "process", new_callable=AsyncMock) as mock_process:
                 mock_process.return_value = "CEL OSIĄGNIĘTY po kropieniu"
                 session_report = await agent.run_behavioral_loop(max_steps=5)
         assert session_report["goal_achieved"] is True
@@ -834,9 +851,7 @@ class TestSimulatedUserBranches:
     async def test_run_behavioral_loop_rage_quit(self, agent):
         """run_behavioral_loop stops on REZYGNUJĘ response."""
         with patch.object(agent, "start_session", new_callable=AsyncMock):
-            with patch.object(
-                agent, "process", new_callable=AsyncMock
-            ) as mock_process:
+            with patch.object(agent, "process", new_callable=AsyncMock) as mock_process:
                 mock_process.return_value = "REZYGNUJĘ - za trudne"
                 report = await agent.run_behavioral_loop(max_steps=5)
         assert report["rage_quit"] is True
@@ -846,9 +861,7 @@ class TestSimulatedUserBranches:
     async def test_run_behavioral_loop_max_steps(self, agent):
         """run_behavioral_loop stops after max_steps with no resolution."""
         with patch.object(agent, "start_session", new_callable=AsyncMock):
-            with patch.object(
-                agent, "process", new_callable=AsyncMock
-            ) as mock_process:
+            with patch.object(agent, "process", new_callable=AsyncMock) as mock_process:
                 mock_process.return_value = "Still working on it..."
                 report = await agent.run_behavioral_loop(max_steps=2)
         assert report["steps_taken"] == 2
@@ -1178,7 +1191,6 @@ class TestResearcherBranches:
     @pytest.mark.asyncio
     async def test_search_scrape_and_summarize_success(self, agent):
         """_search_scrape_and_summarize returns summary when scraping succeeds."""
-        import asyncio as asyncio_mod
 
         agent._testing_mode = False
         agent.web_skill = MagicMock()
@@ -1230,6 +1242,7 @@ class TestResearcherBranches:
     def test_researcher_init_non_testing_mode(self, mock_kernel):
         """ResearcherAgent __init__ covers optional plugin registration outside tests."""
         import sys
+
         from venom_core.agents.researcher import ResearcherAgent
 
         mock_gh_module = MagicMock()
@@ -1261,9 +1274,7 @@ class TestResearcherBranches:
         with patch.object(
             agent, "_invoke_chat_with_fallbacks", new_callable=AsyncMock
         ) as mock_chat:
-            mock_chat.return_value = MagicMock(
-                __str__=lambda s: "Truncated summary"
-            )
+            mock_chat.return_value = MagicMock(__str__=lambda s: "Truncated summary")
             result = await agent._summarize_sources("Python", sources)
         assert isinstance(result, str)
         assert len(result) > 0

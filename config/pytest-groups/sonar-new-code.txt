@@ -24,8 +24,8 @@ tests/test_git_skill_roi.py
 tests/test_test_skill_local.py
 tests/test_academy_api_coverage.py
 tests/test_academy_api_new_code_edges.py
-tests/test_academy_api_v2.py
-tests/test_academy_api_v2_edge_cases.py
+tests/test_academy_api_dataset_routes.py
+tests/test_academy_api_dataset_edge_cases.py
 tests/test_academy_models_module.py
 tests/test_academy_route_helpers_modules.py
 tests/test_autonomy_enforcement.py
@@ -149,19 +149,19 @@ tests/test_scheduler.py
 tests/test_ux_analyst.py
 tests/test_mcp_manager_skill.py
 
-# PR-172C-05: Skills - browser/github/shell coverage
+# Skills coverage: browser/github/shell
 tests/test_shell_skill_coverage.py
 tests/test_github_skill_coverage.py
 
-# PR-172C-06/07: Agent coverage wave
-tests/test_agents_pr172c06_coverage.py
-tests/test_agents_pr172c07_coverage.py
+# Agent coverage wave
+tests/test_agents_strategy_ux_coverage.py
+tests/test_agents_release_integration_coverage.py
 
-# PR-172C-08: session_store / workflow_operations / workflow_store / memory_skill / embedding_service
-tests/test_pr172c08_session_workflow_memory.py
+# Session/workflow/memory coverage wave
+tests/test_session_workflow_memory_coverage.py
 
-# PR-172C-09: Contract/unit tests for 8 API route modules
-tests/test_pr172c09_api_routes_coverage.py
+# Contract/unit tests for 8 API route modules
+tests/test_api_routes_contract_coverage.py
 
 # Coverage wave: normalized test filenames (no PR numeric tags)
 tests/test_skills_browser_github_shell_coverage.py
@@ -176,3 +176,8 @@ tests/test_browser_skill_unit_coverage.py
 
 # Sonar coverage fix wave
 tests/test_sonar_coverage_new_code_wave.py
+tests/test_architecture_contracts_guard.py
+tests/test_test_lane_contracts_guard.py
+tests/test_test_intelligence_report.py
+tests/test_preprod_readiness_check.py
+tests/test_new_code_coverage_blocker_179.py

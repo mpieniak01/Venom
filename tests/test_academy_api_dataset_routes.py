@@ -1,4 +1,4 @@
-"""Testy jednostkowe dla Academy API v2 (upload, scope, preview)."""
+"""Testy jednostkowe tras Academy API (upload, scope, preview)."""
 
 from __future__ import annotations
 

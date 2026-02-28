@@ -187,7 +187,7 @@ def main() -> int:
                 verify_result.stdout,
             )
 
-    if bool(args.run_audit):
+    if bool(args.run_audit) and not args.dry_run:
         audit_result = _run_make(
             [
                 f"ACTOR={args.actor}",
@@ -224,7 +224,7 @@ def main() -> int:
         "checks": checks,
     }
     output_path.write_text(
-        json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8"
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
     print(f"Preprod readiness: {report['status'].upper()}")

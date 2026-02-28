@@ -228,7 +228,7 @@ def _attach_trend_and_history(
     if append_history:
         history_file.parent.mkdir(parents=True, exist_ok=True)
         with history_file.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(current, ensure_ascii=True) + "\n")
+            fh.write(json.dumps(current, ensure_ascii=False) + "\n")
 
     delta = None
     if previous is not None:
@@ -369,7 +369,7 @@ def main() -> int:
         append_history=bool(args.append_history),
     )
     if args.output == "json":
-        print(json.dumps(report, ensure_ascii=True, indent=2))
+        print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         _print_text(report)
     return 0

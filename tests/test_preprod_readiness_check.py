@@ -113,3 +113,32 @@ def test_readiness_dry_run_fails_on_invalid_env(tmp_path: Path) -> None:
         item for item in payload["checks"] if item["name"] == "preprod_env_contract"
     )
     assert "ALLOW_DATA_MUTATION" in contract["details"]
+
+
+def test_readiness_dry_run_skips_audit_even_when_enabled(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.preprod"
+    report = tmp_path / "report.json"
+    _write_env(env_file, mutation="0")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--env-file",
+            str(env_file),
+            "--dry-run",
+            "1",
+            "--run-audit",
+            "1",
+            "--output-json",
+            str(report),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert payload["status"] == "pass"
+    assert not any(item["name"] == "preprod_audit" for item in payload["checks"])

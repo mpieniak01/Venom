@@ -183,7 +183,7 @@ def main() -> int:
                     }
                     for v in violations
                 ],
-                ensure_ascii=True,
+                ensure_ascii=False,
                 indent=2,
             )
         )

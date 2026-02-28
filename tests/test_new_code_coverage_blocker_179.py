@@ -107,9 +107,7 @@ async def test_observability_initialization_branches(tmp_path: Path) -> None:
     assert result == (None, None, None, None)
 
 
-def test_model_services_branches(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_model_services_branches(tmp_path: Path) -> None:
     logger = _Logger()
     settings = SimpleNamespace(ACADEMY_MODELS_DIR=str(tmp_path / "models"))
 
@@ -305,40 +303,46 @@ async def test_translation_service_error_and_cache_paths(
 
 
 def test_queue_routes_error_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    queue_routes.set_dependencies(None)
-    client = _make_client_for_queue()
+    original_orchestrator = queue_routes._orchestrator
+    try:
+        queue_routes.set_dependencies(None)
+        client = _make_client_for_queue()
 
-    response = client.get("/api/v1/queue/status")
-    assert response.status_code == 503
+        response = client.get("/api/v1/queue/status")
+        assert response.status_code == 503
 
-    orchestrator = SimpleNamespace(
-        get_queue_status=lambda: {
-            "paused": False,
-            "pending": 0,
-            "active": 0,
-            "limit": 1,
-        },
-        purge_queue=AsyncMock(
-            return_value={"removed": 1, "success": True, "message": "ok"}
-        ),
-        abort_task=AsyncMock(return_value={"success": False, "message": "missing"}),
-    )
-    queue_routes.set_dependencies(orchestrator)
+        orchestrator = SimpleNamespace(
+            get_queue_status=lambda: {
+                "paused": False,
+                "pending": 0,
+                "active": 0,
+                "limit": 1,
+            },
+            purge_queue=AsyncMock(
+                return_value={"removed": 1, "success": True, "message": "ok"}
+            ),
+            abort_task=AsyncMock(return_value={"success": False, "message": "missing"}),
+        )
+        queue_routes.set_dependencies(orchestrator)
 
-    monkeypatch.setattr(queue_routes, "ensure_data_mutation_allowed", lambda _op: None)
-    ok = client.post("/api/v1/queue/purge")
-    assert ok.status_code == 200
+        monkeypatch.setattr(
+            queue_routes, "ensure_data_mutation_allowed", lambda _op: None
+        )
+        ok = client.post("/api/v1/queue/purge")
+        assert ok.status_code == 200
 
-    monkeypatch.setattr(
-        queue_routes,
-        "ensure_data_mutation_allowed",
-        lambda _op: (_ for _ in ()).throw(PermissionError("forbidden")),
-    )
-    forbidden = client.post("/api/v1/queue/purge")
-    assert forbidden.status_code == 403
+        monkeypatch.setattr(
+            queue_routes,
+            "ensure_data_mutation_allowed",
+            lambda _op: (_ for _ in ()).throw(PermissionError("forbidden")),
+        )
+        forbidden = client.post("/api/v1/queue/purge")
+        assert forbidden.status_code == 403
 
-    missing = client.post(f"/api/v1/queue/task/{uuid4()}/abort")
-    assert missing.status_code == 404
+        missing = client.post(f"/api/v1/queue/task/{uuid4()}/abort")
+        assert missing.status_code == 404
+    finally:
+        queue_routes.set_dependencies(original_orchestrator)
 
 
 @pytest.mark.asyncio

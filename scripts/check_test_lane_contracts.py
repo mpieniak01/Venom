@@ -394,7 +394,7 @@ def main() -> int:
                         for v in all_violations
                     ],
                 },
-                ensure_ascii=True,
+                ensure_ascii=False,
                 indent=2,
             )
         )

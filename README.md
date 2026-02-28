@@ -1,4 +1,4 @@
-# Venom v1.6.0 🐍
+# Venom v1.7.0 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -37,7 +37,7 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - 🔌 **Extensibility** - local tools and MCP import from Git repositories.
 
 ## Recent updates (2026-02)
-- Release 1.6.0 milestone: local 3-stack runtime is production-ready, giving teams better continuity and lower provider risk.
+- Release 1.7.0 milestone: local 3-stack runtime is production-ready, giving teams better continuity and lower provider risk.
 - Security/governance baseline was hardened (`Policy Gate`, cost limits, fallback policy) to improve operational safety.
 - Workflow Control Plane and runtime governance were unified into one operating model (monitoring + configuration + activation flow).
 - API traffic control and anti-ban guardrails were integrated as a shared core layer for inbound/outbound communication.

@@ -20,7 +20,7 @@ class TaskRuntimeLike(Protocol):
 
 class TaskRequestLike(Protocol):
     content: str
-    session_id: str
+    session_id: str | None
     forced_intent: str | None
     generation_params: dict[str, Any] | None
 
@@ -78,7 +78,7 @@ def trace_onnx_task_start(
 ) -> None:
     if tracer is None:
         return
-    tracer.create_trace(task_id, request.content, session_id=request.session_id)
+    tracer.create_trace(task_id, request.content, session_id=request.session_id or "")
     tracer.set_llm_metadata(
         task_id,
         provider=runtime.provider,
@@ -146,7 +146,7 @@ def create_and_submit_onnx_task(
     request: TaskRequestLike,
     runtime: TaskRuntimeLike,
     trace_start_fn: Callable[[Any], None],
-    schedule_runner_fn: Callable[[Any], None],
+    schedule_runner_fn: Callable[[Any], Any],
 ) -> TaskLike:
     task = state_manager.create_task(request.content)
     state_manager.update_context(

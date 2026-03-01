@@ -3,7 +3,7 @@
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import psutil
 
@@ -219,14 +219,17 @@ class ModelManager(ModelManagerDiscoveryMixin):
         Returns:
             Zarejestrowana wersja
         """
-        return register_version_impl(
-            manager=self,
-            version_id=version_id,
-            base_model=base_model,
-            adapter_path=adapter_path,
-            performance_metrics=performance_metrics,
-            model_version_cls=ModelVersion,
-            logger=logger,
+        return cast(
+            ModelVersion,
+            register_version_impl(
+                manager=self,
+                version_id=version_id,
+                base_model=base_model,
+                adapter_path=adapter_path,
+                performance_metrics=performance_metrics,
+                model_version_cls=ModelVersion,
+                logger=logger,
+            ),
         )
 
     def activate_version(self, version_id: str) -> bool:
@@ -256,7 +259,7 @@ class ModelManager(ModelManagerDiscoveryMixin):
         Returns:
             Aktywna wersja lub None
         """
-        return get_active_version_impl(manager=self)
+        return cast(Optional[ModelVersion], get_active_version_impl(manager=self))
 
     def get_version(self, version_id: str) -> Optional[ModelVersion]:
         """
@@ -268,7 +271,10 @@ class ModelManager(ModelManagerDiscoveryMixin):
         Returns:
             Wersja modelu lub None
         """
-        return get_version_impl(manager=self, version_id=version_id)
+        return cast(
+            Optional[ModelVersion],
+            get_version_impl(manager=self, version_id=version_id),
+        )
 
     def get_all_versions(self) -> List[ModelVersion]:
         """
@@ -277,7 +283,7 @@ class ModelManager(ModelManagerDiscoveryMixin):
         Returns:
             Lista wersji
         """
-        return get_all_versions_impl(manager=self)
+        return cast(List[ModelVersion], get_all_versions_impl(manager=self))
 
     def create_ollama_modelfile(
         self, version_id: str, output_name: Optional[str] = None

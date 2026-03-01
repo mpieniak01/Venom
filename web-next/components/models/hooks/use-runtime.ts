@@ -1,19 +1,21 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useToast } from "@/components/ui/toast";
-import type { ModelInfo, ModelsResponse } from "@/lib/types";
+import { useLanguage } from "@/lib/i18n";
+import type { LlmRuntimeModelOption, ModelInfo, ModelsResponse } from "@/lib/types";
 import {
     removeRegistryModel,
+    setActiveLlmRuntime,
     setActiveLlmServer,
     switchModel,
+    useActiveLlmServer,
+    useLlmRuntimeOptions,
     useModelOperations,
     useModels,
-    useActiveLlmServer,
-    useLlmServers
 } from "@/hooks/use-api";
-import {
-    normalizeProvider,
-    getRuntimeForProvider
-} from "../models-helpers";
+import { getRuntimeForProvider, normalizeProvider } from "../models-helpers";
+
+const isCloudRuntime = (runtime: string): runtime is "openai" | "google" =>
+    runtime === "openai" || runtime === "google";
 
 export function buildInstalledBuckets(
     data: ModelsResponse | null,
@@ -51,27 +53,34 @@ export function buildInstalledBuckets(
 
 export function resolveModelsForServer(input: {
     selectedServer: string | null;
-    llmServers: Array<{ name: string; provider?: string | null }> | null;
+    runtimeModels: LlmRuntimeModelOption[];
     installedBuckets: Record<string, ModelInfo[]>;
     installedModels: ModelInfo[];
 }) {
-    const { selectedServer, llmServers, installedBuckets, installedModels } = input;
+    const { selectedServer, runtimeModels, installedBuckets, installedModels } = input;
     if (!selectedServer) return installedModels;
-    const server = (llmServers ?? []).find((item) => item.name === selectedServer);
-    const targetProvider = normalizeProvider(server?.provider ?? selectedServer);
+    if (runtimeModels.length > 0) {
+        return runtimeModels.map((model) => ({
+            name: model.name,
+            provider: model.provider,
+            source: model.source_type,
+        }));
+    }
+    const targetProvider = normalizeProvider(selectedServer);
     if (!targetProvider) return installedModels;
     return installedBuckets[targetProvider] ?? [];
 }
 
 export function useRuntime() {
     const { pushToast } = useToast();
+    const { t } = useLanguage();
     const [installedCollapsed, setInstalledCollapsed] = useState(false);
     const [operationsCollapsed, setOperationsCollapsed] = useState(false);
     const [pendingActions, setPendingActions] = useState<Record<string, boolean>>({});
 
     const installed = useModels(0);
     const operations = useModelOperations(10, 0);
-    const llmServers = useLlmServers(0);
+    const runtimeOptions = useLlmRuntimeOptions(0);
     const activeServer = useActiveLlmServer(0);
 
     const activeRuntime = installed.data?.active;
@@ -82,49 +91,68 @@ export function useRuntime() {
         setPendingActions((prev) => ({ ...prev, [key]: value }));
     }, []);
 
-    // Memoized lists and options
-    const installedBuckets = useMemo(() => {
-        return buildInstalledBuckets(installed.data);
-    }, [installed.data]);
-
-    const installedModels = useMemo(
-        () => Object.values(installedBuckets).flat(),
-        [installedBuckets],
+    const llmServers = useMemo(
+        () =>
+            (runtimeOptions.data?.runtimes ?? []).map((runtime) => ({
+                name: runtime.runtime_id,
+                provider: runtime.runtime_id,
+                status: runtime.status,
+            })),
+        [runtimeOptions.data?.runtimes],
     );
 
-    const availableModelsForServer = useMemo(() => {
-        return resolveModelsForServer({
-            selectedServer,
-            llmServers: (llmServers.data ?? []).map((server) => ({
-                name: server.name,
-                provider: server.provider,
-            })),
-            installedBuckets,
-            installedModels,
-        });
-    }, [selectedServer, installedBuckets, installedModels, llmServers.data]);
+    const installedBuckets = useMemo(() => buildInstalledBuckets(installed.data), [installed.data]);
+    const installedModels = useMemo(() => Object.values(installedBuckets).flat(), [installedBuckets]);
 
-    const serverOptions = useMemo(() => (llmServers.data ?? []).map((s) => ({ value: s.name, label: s.name })), [llmServers.data]);
-    const modelOptions = useMemo(() => availableModelsForServer.map((m) => ({ value: m.name, label: m.name })), [availableModelsForServer]);
+    const runtimeModelsForServer = useMemo(() => {
+        if (!selectedServer) return [];
+        const runtime = (runtimeOptions.data?.runtimes ?? []).find(
+            (item) => item.runtime_id === selectedServer,
+        );
+        return (runtime?.models ?? []).filter((model) => model.chat_compatible !== false);
+    }, [runtimeOptions.data?.runtimes, selectedServer]);
 
-    // Effects
+    const availableModelsForServer = useMemo(
+        () =>
+            resolveModelsForServer({
+                selectedServer,
+                runtimeModels: runtimeModelsForServer,
+                installedBuckets,
+                installedModels,
+            }),
+        [installedBuckets, installedModels, runtimeModelsForServer, selectedServer],
+    );
+
+    const serverOptions = useMemo(
+        () => llmServers.map((server) => ({ value: server.name, label: server.name })),
+        [llmServers],
+    );
+    const modelOptions = useMemo(
+        () => availableModelsForServer.map((model) => ({ value: model.name, label: model.name })),
+        [availableModelsForServer],
+    );
+
     useEffect(() => {
         if (selectedServer) return;
         const active = activeServer.data?.active_server;
-        if (active) setSelectedServer(active);
-    }, [activeServer.data?.active_server, selectedServer]);
-
-    useEffect(() => {
-        if (!selectedServer) return;
-        const exists = (llmServers.data ?? []).some((server) => server.name === selectedServer);
-        if (exists) return;
-        const active = activeServer.data?.active_server;
-        if (active && (llmServers.data ?? []).some((server) => server.name === active)) {
+        if (active) {
             setSelectedServer(active);
             return;
         }
-        setSelectedServer((llmServers.data ?? [])[0]?.name ?? null);
-    }, [activeServer.data?.active_server, llmServers.data, selectedServer]);
+        setSelectedServer(llmServers[0]?.name ?? null);
+    }, [activeServer.data?.active_server, llmServers, selectedServer]);
+
+    useEffect(() => {
+        if (!selectedServer) return;
+        const exists = llmServers.some((server) => server.name === selectedServer);
+        if (exists) return;
+        const active = activeServer.data?.active_server;
+        if (active && llmServers.some((server) => server.name === active)) {
+            setSelectedServer(active);
+            return;
+        }
+        setSelectedServer(llmServers[0]?.name ?? null);
+    }, [activeServer.data?.active_server, llmServers, selectedServer]);
 
     useEffect(() => {
         if (availableModelsForServer.length === 0) {
@@ -133,39 +161,60 @@ export function useRuntime() {
             }
             return;
         }
-        if (
-            selectedModel &&
-            availableModelsForServer.some((model) => model.name === selectedModel)
-        ) {
+        if (selectedModel && availableModelsForServer.some((model) => model.name === selectedModel)) {
             return;
         }
-        const activeModel = activeRuntime?.model;
-        if (
-            activeModel &&
-            availableModelsForServer.some((model) => model.name === activeModel)
-        ) {
+        const activeModel = activeServer.data?.active_model || activeRuntime?.model;
+        if (activeModel && availableModelsForServer.some((model) => model.name === activeModel)) {
             setSelectedModel(activeModel);
             return;
         }
         setSelectedModel(availableModelsForServer[0].name);
-    }, [activeRuntime?.model, selectedModel, availableModelsForServer]);
+    }, [activeRuntime?.model, activeServer.data?.active_model, availableModelsForServer, selectedModel]);
 
-    const handleActivate = async (model: ModelInfo) => {
-        const key = `activate:${model.name}`;
+    const activateRuntimeSelection = useCallback(
+        async (server: string, model: string | null) => {
+            if (!server) return;
+            if (isCloudRuntime(server)) {
+                await setActiveLlmRuntime(server, model ?? undefined);
+            } else {
+                if (server !== activeServer.data?.active_server) {
+                    await setActiveLlmServer(server);
+                }
+                if (model) {
+                    await switchModel(model);
+                }
+            }
+            await Promise.all([
+                activeServer.refresh(),
+                installed.refresh(),
+                runtimeOptions.refresh(),
+            ]);
+        },
+        [activeServer, installed, runtimeOptions],
+    );
+
+    const handleActivateRuntimeModel = useCallback(async (server: string, model: string) => {
+        const key = `activate:${server}:${model}`;
         try {
             setPending(key, true);
-            const runtime = getRuntimeForProvider(model.provider ?? model.source ?? undefined);
-            if (runtime !== activeServer.data?.active_server) {
-                await setActiveLlmServer(runtime);
-            }
-            await switchModel(model.name);
-            pushToast(`Aktywowano: ${model.name}`, "success");
-            await installed.refresh();
+            await activateRuntimeSelection(server, model);
+            pushToast(t("models.toasts.activateSuccess", { name: model }), "success");
         } catch {
-            pushToast("Nie udało się aktywować modelu.", "error");
+            pushToast(t("models.toasts.activateError"), "error");
         } finally {
             setPending(key, false);
         }
+    }, [activateRuntimeSelection, pushToast, setPending, t]);
+
+    const handleActivateRuntimeSelection = useCallback(async () => {
+        if (!selectedServer || !selectedModel) return;
+        await handleActivateRuntimeModel(selectedServer, selectedModel);
+    }, [handleActivateRuntimeModel, selectedModel, selectedServer]);
+
+    const handleActivate = async (model: ModelInfo) => {
+        const runtime = getRuntimeForProvider(model.provider ?? model.source ?? undefined);
+        await handleActivateRuntimeModel(runtime, model.name);
     };
 
     const handleRemove = async (model: ModelInfo) => {
@@ -173,27 +222,39 @@ export function useRuntime() {
         try {
             setPending(key, true);
             await removeRegistryModel(model.name);
-            pushToast(`Usuwanie rozpoczęte: ${model.name}`, "warning");
+            pushToast(t("models.toasts.removeStart", { name: model.name }), "warning");
             await Promise.all([installed.refresh(), operations.refresh()]);
         } catch {
-            pushToast("Nie udało się usunąć modelu.", "error");
+            pushToast(t("models.toasts.removeError"), "error");
         } finally {
             setPending(key, false);
         }
     };
 
     return {
-        installedCollapsed, setInstalledCollapsed,
-        operationsCollapsed, setOperationsCollapsed,
-        installed, operations, llmServers, activeServer,
+        installedCollapsed,
+        setInstalledCollapsed,
+        operationsCollapsed,
+        setOperationsCollapsed,
+        installed,
+        operations,
+        llmServers: { ...runtimeOptions, data: llmServers },
+        activeServer,
         activeRuntime,
-        selectedServer, setSelectedServer,
-        selectedModel, setSelectedModel,
-        serverOptions, modelOptions,
-        installedBuckets, installedModels,
-        handleActivate, handleRemove,
+        selectedServer,
+        setSelectedServer,
+        selectedModel,
+        setSelectedModel,
+        serverOptions,
+        modelOptions,
+        installedBuckets,
+        installedModels,
+        availableModelsForServer,
+        handleActivate,
+        handleActivateRuntimeSelection,
+        handleActivateRuntimeModel,
+        activateRuntimeSelection,
+        handleRemove,
         pendingActions,
-        setActiveLlmServer, switchModel,
-        pushToast
     };
 }

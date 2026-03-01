@@ -27,6 +27,10 @@ function getServerSwitchErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
+function isCloudRuntimeServer(server: string): server is "openai" | "google" {
+  return server === "openai" || server === "google";
+}
+
 function shouldUseSimpleMode(
   chatMode: ChatSendParams["chatMode"],
   parsed: ReturnType<typeof parseSlashCommand>,
@@ -111,7 +115,11 @@ export function useChatSend(params: ChatSendParams) {
     const activeServer = (activeServerInfo?.active_server || "").toLowerCase().trim();
     if (targetServer && activeServer && targetServer !== activeServer) {
       try {
-        await setActiveLlmServer(targetServer);
+        if (isCloudRuntimeServer(targetServer)) {
+          await setActiveLlmRuntime(targetServer, selectedLlmModel);
+        } else {
+          await setActiveLlmServer(targetServer);
+        }
         refreshActiveServer();
       } catch (err) {
         setMessage(getServerSwitchErrorMessage(err, t("cockpit.chatMessages.serverSwitchError")));

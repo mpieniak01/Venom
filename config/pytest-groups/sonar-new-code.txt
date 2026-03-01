@@ -34,6 +34,7 @@ tests/test_chrono_skill.py
 tests/test_chronos.py
 tests/test_cloud_provisioner.py
 tests/test_code_review_optimization.py
+tests/test_coder.py
 tests/test_coder_critic_loop.py
 tests/test_complexity_skill.py
 tests/test_config_manager.py
@@ -84,6 +85,8 @@ tests/test_jobs_scheduler_cleanup.py
 tests/test_knowledge_context_service.py
 tests/test_knowledge_graph_service.py
 tests/test_lessons_manager.py
+tests/test_llm_runtime_activation_api.py
+tests/test_llm_runtime_options_api.py
 tests/test_llm_runtime_utils.py
 tests/test_llm_simple_payload_service.py
 tests/test_logger_utils.py
@@ -106,8 +109,10 @@ tests/test_model_manager_onnx.py
 tests/test_model_manager_versions.py
 tests/test_model_registry_clients.py
 tests/test_model_registry_clients_additional.py
+tests/test_model_registry_providers.py
 tests/test_model_registry_split_modules.py
 tests/test_model_router.py
+tests/test_model_services.py
 tests/test_model_validators.py
 tests/test_models_remote_api.py
 tests/test_models_remote_contracts.py

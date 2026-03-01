@@ -32,11 +32,8 @@ interface RuntimeSectionProps {
     readonly setSelectedModel: ModelsViewerLogic["setSelectedModel"];
     readonly modelOptions: ModelsViewerLogic["modelOptions"];
     readonly activeRuntime: ModelsViewerLogic["activeRuntime"];
-    readonly activeServer: ModelsViewerLogic["activeServer"];
     readonly installed: ModelsViewerLogic["installed"];
-    readonly setActiveLlmServer: ModelsViewerLogic["setActiveLlmServer"];
-    readonly switchModel: ModelsViewerLogic["switchModel"];
-    readonly pushToast: ModelsViewerLogic["pushToast"];
+    readonly handleActivateRuntimeSelection: ModelsViewerLogic["handleActivateRuntimeSelection"];
     readonly t: ModelsViewerLogic["t"];
 }
 
@@ -48,11 +45,8 @@ export function RuntimeSection({
     setSelectedModel,
     modelOptions,
     activeRuntime,
-    activeServer,
     installed,
-    setActiveLlmServer,
-    switchModel,
-    pushToast,
+    handleActivateRuntimeSelection,
     t
 }: RuntimeSectionProps) {
     return (
@@ -97,20 +91,9 @@ export function RuntimeSection({
                         className="shrink-0 rounded-full px-5"
                         variant="secondary"
                         disabled={!selectedServer || !selectedModel}
-                        onClick={async () => {
-                            if (!selectedServer || !selectedModel) return;
-                            try {
-                                const isActive = activeServer.data?.active_server === selectedServer;
-                                if (!isActive) await setActiveLlmServer(selectedServer);
-                                if (selectedModel !== activeRuntime?.model || !isActive) await switchModel(selectedModel);
-                                pushToast(t("models.runtime.activated", { model: selectedModel, server: selectedServer }), "success");
-                                await Promise.all([activeServer.refresh(), installed.refresh()]);
-                            } catch {
-                                pushToast("Nie udało się aktywować modelu", "error");
-                            }
-                        }}
+                        onClick={() => void handleActivateRuntimeSelection()}
                     >
-                        Aktywuj
+                        {t("models.actions.activate")}
                     </Button>
                     <Link className="shrink-0 inline-flex items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]" href="/docs/llm-models">
                         <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/15 text-[11px]">?</span>
@@ -580,6 +563,8 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
         remoteCatalogRefreshedAt,
         remoteCatalogSource,
         fetchRemoteCatalog,
+        handleActivateRuntimeModel,
+        pendingActions,
         remoteBindings,
         remoteBindingsLoading,
         remoteBindingsError,
@@ -690,6 +675,18 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                                     ))}
                                 </div>
                             </div>
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                className="ml-4 shrink-0 rounded-full px-4"
+                                disabled={!selectedProvider || pendingActions[`activate:${selectedProvider}:${model.id}`]}
+                                onClick={async () => {
+                                    if (!selectedProvider) return;
+                                    await handleActivateRuntimeModel(selectedProvider, model.id);
+                                }}
+                            >
+                                {t("models.actions.activate")}
+                            </Button>
                         </div>
                     ))}
                     {remoteCatalogRefreshedAt && remoteCatalogSource && (

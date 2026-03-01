@@ -523,7 +523,7 @@ def _build_candidate_infos(
 
         domain = str(_catalog_value(entry, "domain", "misc"))
         legacy_targeted = bool(_catalog_value(entry, "legacy_targeted", False))
-        dynamic_only = (
+        dynamic_only = "coverage_floor_anchor" not in reasons and (
             "changed_test" in reasons
             or "direct_module_test" in reasons
             or "related_module" in reasons

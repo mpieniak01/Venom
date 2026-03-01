@@ -5,11 +5,6 @@ import { Layers, Newspaper, Server, Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
-import {
-  setActiveLlmServer,
-  switchModel
-} from "@/hooks/use-api";
-import { useToast } from "@/components/ui/toast";
 import { useModelsViewerLogic } from "./use-models-viewer-logic";
 import {
   RuntimeSection,
@@ -21,7 +16,6 @@ import {
 } from "./models-viewer-sections";
 
 export const ModelsViewer = () => {
-  const { pushToast } = useToast();
   const logic = useModelsViewerLogic();
   const { t } = logic;
   const [activeTab, setActiveTab] = useState<"news" | "models" | "remote">("news");
@@ -96,12 +90,7 @@ export const ModelsViewer = () => {
         {activeTab === "models" && (
           <>
             <div className="grid gap-10 items-start" style={{ gridTemplateColumns: "minmax(0,1fr)" }}>
-              <RuntimeSection
-                {...logic}
-                setActiveLlmServer={setActiveLlmServer}
-                switchModel={switchModel}
-                pushToast={pushToast}
-              />
+              <RuntimeSection {...logic} />
             </div>
 
             <div className="flex flex-col gap-10 mt-10">

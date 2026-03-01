@@ -347,6 +347,12 @@ export function useCockpitLogic({
 
     }, [localSessionHistory, sessionHistory, taskStreams, sessionEntryKey, data.history, data.tasks, sessionId]);
 
+    const refreshActiveServerSafe = useCallback(() => {
+        Promise.resolve(data.refresh.activeServer()).catch((error) => {
+            console.error("Failed to refresh active server:", error);
+        });
+    }, [data.refresh]);
+
     const chatUi = useCockpitChatUi({
         chatMessages: historyMessages, // Use computed
         chatScrollRef,
@@ -438,12 +444,6 @@ export function useCockpitLogic({
             console.error("Failed to set active hidden prompt:", e);
         }
     }, [refreshActiveHiddenPrompts]);
-
-    const refreshActiveServerSafe = useCallback(() => {
-        Promise.resolve(data.refresh.activeServer()).catch((error) => {
-            console.error("Failed to refresh active server:", error);
-        });
-    }, [data.refresh]);
 
     const { handleActivateModel } = useCockpitModelActivation({
         selectedLlmServer: interactive.state.selectedLlmServer,

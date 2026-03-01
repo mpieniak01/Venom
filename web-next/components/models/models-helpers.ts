@@ -7,6 +7,7 @@ export const formatNumber = (value?: number | null) => {
 
 export const getRuntimeForProvider = (provider?: string | null) => {
     if (!provider) return "vllm";
+    if (provider === "openai" || provider === "google") return provider;
     if (provider === "ollama") return "ollama";
     if (provider === "onnx") return "onnx";
     return "vllm";

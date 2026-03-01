@@ -17,6 +17,7 @@ import {
   HistoryRequest,
   HistoryRequestDetail,
   LlmActionResponse,
+  LlmRuntimeOptionsResponse,
   LlmServerInfo,
   KnowledgeGraph,
   LearningLogsResponse,
@@ -464,6 +465,20 @@ export function useLlmServers(intervalMs = 0) {
         return dedupeServers(data.servers);
       }
       return [];
+    },
+    intervalMs,
+  );
+}
+
+export function useLlmRuntimeOptions(intervalMs = 0) {
+  return usePolling<LlmRuntimeOptionsResponse>(
+    "llm-runtime-options",
+    async () => {
+      const data = await apiFetch<LlmRuntimeOptionsResponse>("/api/v1/system/llm-runtime/options");
+      return {
+        ...data,
+        runtimes: Array.isArray(data?.runtimes) ? data.runtimes : [],
+      };
     },
     intervalMs,
   );

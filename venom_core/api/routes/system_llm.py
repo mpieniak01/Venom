@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import time
+from datetime import datetime
+from threading import Lock
 from typing import Any, Optional
 from uuid import UUID
 
@@ -12,13 +14,14 @@ import httpx
 from fastapi import APIRouter, HTTPException
 
 from venom_core.api.routes import system_deps
+from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.api.schemas.system_llm import (
     ActiveLlmServerRequest,
     LlmRuntimeActivateRequest,
 )
 from venom_core.config import SETTINGS
 from venom_core.execution.onnx_llm_client import OnnxLlmClient
-from venom_core.services import system_llm_service
+from venom_core.services import remote_models_service, system_llm_service
 from venom_core.services.config_manager import config_manager
 from venom_core.utils.llm_runtime import (
     compute_llm_config_hash,
@@ -47,6 +50,9 @@ LLM_RUNTIME_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
         "description": "Nieprawidłowy provider/model lub brak wymaganej konfiguracji"
     },
 }
+LLM_RUNTIME_OPTIONS_RESPONSES: dict[int | str, dict[str, Any]] = {
+    503: {"description": "LLMController lub ModelManager nie jest dostępny"},
+}
 LLM_SERVER_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: {"description": "Nieznany serwer LLM lub brak konfiguracji"},
     403: {
@@ -55,6 +61,11 @@ LLM_SERVER_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "LLMController lub ModelManager nie jest dostępny"},
     500: {"description": "Błąd wewnętrzny podczas przełączania aktywnego serwera"},
 }
+
+_runtime_options_catalog_cache_lock = Lock()
+_runtime_options_catalog_cache: dict[str, dict[str, Any]] = {}
+_runtime_options_probe_cache_lock = Lock()
+_runtime_options_probe_cache: dict[str, dict[str, Any]] = {}
 
 
 def _runtime_profile_name() -> str:
@@ -472,6 +483,7 @@ def _runtime_activate_payload(runtime) -> dict[str, Any]:
         "active_model": runtime.model_name,
         "config_hash": runtime.config_hash,
         "runtime_id": runtime.runtime_id,
+        "source_type": _runtime_source_type(runtime.provider),
     }
 
 
@@ -527,6 +539,385 @@ def _default_cloud_model(provider_raw: str) -> str:
     if provider_raw == "openai":
         return SETTINGS.OPENAI_GPT4O_MODEL
     return SETTINGS.GOOGLE_GEMINI_PRO_MODEL
+
+
+def _runtime_source_type(provider: str) -> str:
+    if provider in {"openai", "google"}:
+        return "cloud-api"
+    return "local-runtime"
+
+
+def _remote_timeout_seconds() -> float:
+    return remote_models_service.remote_timeout_seconds(
+        openai_api_timeout=getattr(SETTINGS, "OPENAI_API_TIMEOUT", 6.0)
+    )
+
+
+def _check_openai_configured() -> bool:
+    return remote_models_service.is_api_key_configured(SETTINGS.OPENAI_API_KEY)
+
+
+def _check_google_configured() -> bool:
+    return remote_models_service.is_api_key_configured(SETTINGS.GOOGLE_API_KEY)
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat()
+
+
+async def _fetch_openai_models_catalog_live_payload() -> list[dict[str, Any]]:
+    return await remote_models_service.fetch_openai_models_catalog_live(
+        api_key=(SETTINGS.OPENAI_API_KEY or "").strip(),
+        timeout_seconds=_remote_timeout_seconds(),
+        models_url=remote_models_service.openai_models_url(
+            chat_completions_endpoint=(
+                getattr(SETTINGS, "OPENAI_CHAT_COMPLETIONS_ENDPOINT", "") or ""
+            )
+        ),
+        traffic_client_factory=remote_models_service.traffic_controlled_http_client_cls(),
+        map_openai_capabilities_fn=remote_models_service.map_openai_capabilities,
+    )
+
+
+async def _fetch_google_models_catalog_live_payload() -> list[dict[str, Any]]:
+    return await remote_models_service.fetch_google_models_catalog_live(
+        api_key=(SETTINGS.GOOGLE_API_KEY or "").strip(),
+        timeout_seconds=_remote_timeout_seconds(),
+        models_url=remote_models_service.google_models_url(),
+        traffic_client_factory=remote_models_service.traffic_controlled_http_client_cls(),
+        map_google_capabilities_fn=remote_models_service.map_google_capabilities,
+    )
+
+
+async def _catalog_for_cloud_provider(
+    provider: str,
+) -> tuple[list[dict[str, Any]], str, str | None]:
+    return await remote_models_service.catalog_for_provider(
+        provider=provider,
+        cache=_runtime_options_catalog_cache,
+        lock=_runtime_options_catalog_cache_lock,
+        catalog_ttl_seconds=remote_models_service.catalog_ttl_seconds(),
+        deps=remote_models_service.CatalogProviderDeps(
+            cache_get_fn=remote_models_service.cache_get,
+            cache_put_fn=remote_models_service.cache_put,
+            fetch_openai_models_catalog_live_fn=(
+                _fetch_openai_models_catalog_live_payload
+            ),
+            fetch_google_models_catalog_live_fn=(
+                _fetch_google_models_catalog_live_payload
+            ),
+            openai_static_catalog_payload_fn=(
+                remote_models_service.openai_static_catalog_payload
+            ),
+            google_static_catalog_payload_fn=(
+                remote_models_service.google_static_catalog_payload
+            ),
+            check_openai_configured_fn=_check_openai_configured,
+            check_google_configured_fn=_check_google_configured,
+            now_iso_fn=_now_iso,
+            logger=logger,
+        ),
+    )
+
+
+async def _validate_openai_connection() -> tuple[bool, str, float | None]:
+    return await remote_models_service.validate_openai_connection(
+        api_key=(SETTINGS.OPENAI_API_KEY or "").strip(),
+        model=None,
+        timeout_seconds=_remote_timeout_seconds(),
+        openai_models_url=remote_models_service.openai_models_url(
+            chat_completions_endpoint=(
+                getattr(SETTINGS, "OPENAI_CHAT_COMPLETIONS_ENDPOINT", "") or ""
+            )
+        ),
+        openai_model_url_fn=lambda model_id: remote_models_service.openai_model_url(
+            models_url=remote_models_service.openai_models_url(
+                chat_completions_endpoint=(
+                    getattr(SETTINGS, "OPENAI_CHAT_COMPLETIONS_ENDPOINT", "") or ""
+                )
+            ),
+            model_id=model_id,
+        ),
+        traffic_client_factory=remote_models_service.traffic_controlled_http_client_cls(),
+        http_error_type=httpx.HTTPError,
+    )
+
+
+async def _validate_google_connection() -> tuple[bool, str, float | None]:
+    return await remote_models_service.validate_google_connection(
+        api_key=(SETTINGS.GOOGLE_API_KEY or "").strip(),
+        model=None,
+        timeout_seconds=_remote_timeout_seconds(),
+        google_models_url=remote_models_service.google_models_url(),
+        google_model_url_fn=remote_models_service.google_model_url,
+        traffic_client_factory=remote_models_service.traffic_controlled_http_client_cls(),
+        http_error_type=httpx.HTTPError,
+    )
+
+
+async def _probe_cloud_provider(provider: str) -> tuple[str, str | None, float | None]:
+    return await remote_models_service.probe_provider_cached(
+        provider=provider,
+        cache=_runtime_options_probe_cache,
+        lock=_runtime_options_probe_cache_lock,
+        provider_probe_ttl_seconds=remote_models_service.provider_probe_ttl_seconds(),
+        cache_get_fn=remote_models_service.cache_get,
+        cache_put_fn=remote_models_service.cache_put,
+        validate_openai_connection_fn=_validate_openai_connection,
+        validate_google_connection_fn=_validate_google_connection,
+    )
+
+
+def _runtime_model_payload(
+    *,
+    runtime_id: str,
+    model_id: str,
+    name: str,
+    provider: str,
+    active: bool,
+    source_type: str,
+    capabilities: list[str] | None = None,
+    chat_compatible: bool = True,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": model_id,
+        "name": name,
+        "provider": provider,
+        "runtime_id": runtime_id,
+        "source_type": source_type,
+        "active": active,
+        "chat_compatible": chat_compatible,
+    }
+    if capabilities:
+        payload["capabilities"] = capabilities
+    return payload
+
+
+async def _local_models_by_runtime(
+    model_manager: Any,
+) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {"ollama": [], "vllm": [], "onnx": []}
+    try:
+        local_models = await model_manager.list_local_models()
+    except Exception:
+        logger.warning("Nie udało się pobrać listy modeli lokalnych.")
+        return grouped
+
+    active_runtime = get_active_llm_runtime()
+    active_provider = (active_runtime.provider or "").lower()
+    active_model = (active_runtime.model_name or "").strip()
+    for model in local_models:
+        inferred = infer_model_provider(model) or "vllm"
+        runtime_id = inferred if inferred in grouped else "vllm"
+        name = str(model.get("name") or "").strip()
+        if not name:
+            continue
+        grouped[runtime_id].append(
+            _runtime_model_payload(
+                runtime_id=runtime_id,
+                model_id=name,
+                name=name,
+                provider=runtime_id,
+                source_type="local-runtime",
+                active=(runtime_id == active_provider and name == active_model),
+                chat_compatible=bool(model.get("chat_compatible", True)),
+            )
+        )
+    return grouped
+
+
+def _runtime_target_payload(
+    *,
+    runtime_id: str,
+    source_type: str,
+    configured: bool,
+    available: bool,
+    status: str,
+    reason: str | None,
+    models: list[dict[str, Any]],
+    active_runtime: Any,
+) -> dict[str, Any]:
+    return {
+        "runtime_id": runtime_id,
+        "source_type": source_type,
+        "configured": configured,
+        "available": available,
+        "status": status,
+        "reason": reason,
+        "active": (active_runtime.provider or "").lower() == runtime_id,
+        "models": models,
+    }
+
+
+def _local_runtime_targets(
+    *,
+    local_models: dict[str, list[dict[str, Any]]],
+    server_status: dict[str, dict[str, Any]],
+    active_runtime: Any,
+) -> list[dict[str, Any]]:
+    targets: list[dict[str, Any]] = []
+    allowed = _allowed_local_servers()
+    installed = _installed_local_servers()
+    for runtime_id in ("ollama", "vllm", "onnx"):
+        info = server_status.get(runtime_id, {})
+        status = str(info.get("status") or "unknown")
+        reason = None
+        if runtime_id not in allowed:
+            status = "disabled"
+            reason = "runtime_disabled_by_profile"
+        elif runtime_id not in installed:
+            status = "offline"
+            reason = "runtime_not_installed"
+        targets.append(
+            _runtime_target_payload(
+                runtime_id=runtime_id,
+                source_type="local-runtime",
+                configured=runtime_id in allowed,
+                available=runtime_id in installed and runtime_id in allowed,
+                status=status,
+                reason=reason,
+                models=local_models.get(runtime_id, []),
+                active_runtime=active_runtime,
+            )
+        )
+    return targets
+
+
+async def _cloud_runtime_target(
+    *,
+    provider: str,
+    active_runtime: Any,
+) -> dict[str, Any]:
+    configured = (
+        _check_openai_configured()
+        if provider == "openai"
+        else _check_google_configured()
+    )
+    status = "disabled"
+    reason: str | None = None
+    latency: float | None = None
+    if not configured:
+        reason = f"{provider.upper()}_API_KEY not configured"
+    else:
+        probe_status, probe_error, probe_latency = await _probe_cloud_provider(provider)
+        status = probe_status
+        reason = probe_error
+        latency = probe_latency
+
+    models_payload, _source, _live_error = await _catalog_for_cloud_provider(provider)
+    active_provider = (active_runtime.provider or "").lower()
+    active_model = (active_runtime.model_name or "").strip()
+    models = [
+        _runtime_model_payload(
+            runtime_id=provider,
+            model_id=str(item.get("id") or item.get("name") or "").strip(),
+            name=str(item.get("id") or item.get("name") or "").strip(),
+            provider=provider,
+            source_type="cloud-api",
+            active=(
+                active_provider == provider
+                and _normalize_cloud_model_key(active_model)
+                in _catalog_model_variants(item)
+            ),
+            capabilities=list(item.get("capabilities") or []),
+        )
+        for item in models_payload
+        if str(item.get("id") or item.get("name") or "").strip()
+    ]
+    target = _runtime_target_payload(
+        runtime_id=provider,
+        source_type="cloud-api",
+        configured=configured,
+        available=configured and status in {"configured", "reachable", "online"},
+        status=status,
+        reason=reason,
+        models=models,
+        active_runtime=active_runtime,
+    )
+    if latency is not None:
+        target["latency_ms"] = latency
+    return target
+
+
+async def _resolve_runtime_options_payload() -> dict[str, Any]:
+    active_runtime = get_active_llm_runtime()
+    llm_controller = _get_llm_controller_or_503()
+    model_manager = system_deps.get_model_manager()
+    if model_manager is None:
+        raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
+    server_status: dict[str, dict[str, Any]] = {}
+    for server in llm_controller.list_servers():
+        name = str(server.get("name") or "").strip().lower()
+        if not name:
+            continue
+        server_status[name] = {
+            "status": server.get("status"),
+            "endpoint": server.get("endpoint"),
+        }
+    if "onnx" in _installed_local_servers():
+        server_status.setdefault("onnx", _build_onnx_server_payload())
+
+    local_models = await _local_models_by_runtime(model_manager)
+    local_targets = _local_runtime_targets(
+        local_models=local_models,
+        server_status=server_status,
+        active_runtime=active_runtime,
+    )
+    cloud_targets = await asyncio.gather(
+        _cloud_runtime_target(provider="openai", active_runtime=active_runtime),
+        _cloud_runtime_target(provider="google", active_runtime=active_runtime),
+    )
+
+    return {
+        "status": "success",
+        "active": {
+            "runtime_id": active_runtime.provider,
+            "active_server": active_runtime.provider,
+            "active_model": active_runtime.model_name,
+            "active_endpoint": active_runtime.endpoint,
+            "config_hash": active_runtime.config_hash,
+            "source_type": _runtime_source_type(active_runtime.provider),
+        },
+        "runtimes": [*local_targets, *cloud_targets],
+    }
+
+
+def _normalize_cloud_model_key(value: str | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def _catalog_model_variants(item: dict[str, Any]) -> set[str]:
+    variants = {
+        _normalize_cloud_model_key(item.get("id")),
+        _normalize_cloud_model_key(item.get("name")),
+        _normalize_cloud_model_key(item.get("model_alias")),
+    }
+    return {variant for variant in variants if variant}
+
+
+async def _resolve_validated_cloud_model(
+    *,
+    provider_raw: str,
+    requested_model: str | None,
+) -> str:
+    desired_model = (
+        requested_model or _default_cloud_model(provider_raw) or ""
+    ).strip()
+    models_payload, _source, _error = await _catalog_for_cloud_provider(provider_raw)
+    desired_key = _normalize_cloud_model_key(desired_model)
+    if not desired_key:
+        raise HTTPException(status_code=400, detail="Brak modelu dla runtime cloud")
+    for item in models_payload:
+        variants = _catalog_model_variants(item)
+        if desired_key in variants:
+            model_id = str(item.get("id") or "").strip()
+            return model_id or desired_model
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"Model '{desired_model}' nie należy do katalogu providera '{provider_raw}'."
+        ),
+    )
 
 
 def _activate_cloud_runtime(provider_raw: str, model: str | None) -> dict[str, Any]:
@@ -662,11 +1053,20 @@ def get_active_llm_runtime_info():
     return {"status": "success", "runtime": runtime.to_payload()}
 
 
+@router.get(
+    "/system/llm-runtime/options",
+    responses=LLM_RUNTIME_OPTIONS_RESPONSES,
+)
+async def get_llm_runtime_options():
+    """Spójny kontrakt opcji runtime/model dla paneli Chat i Models."""
+    return await _resolve_runtime_options_payload()
+
+
 @router.post(
     "/system/llm-runtime/active",
     responses=LLM_RUNTIME_ACTIVATE_RESPONSES,
 )
-def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
+async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     """
     Przelacza runtime LLM na provider (openai/google/onnx).
     """
@@ -677,7 +1077,11 @@ def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
 
     _release_onnx_runtime_caches()
     _assert_cloud_provider_requirements(provider_raw)
-    return _activate_cloud_runtime(provider_raw, request.model)
+    validated_model = await _resolve_validated_cloud_model(
+        provider_raw=provider_raw,
+        requested_model=request.model,
+    )
+    return _activate_cloud_runtime(provider_raw, validated_model)
 
 
 @router.post(

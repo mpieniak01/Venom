@@ -6,7 +6,7 @@ import {
     useTasks,
     useQueueStatus,
     useServiceStatus,
-    useLlmServers,
+    useLlmRuntimeOptions,
     useActiveLlmServer,
     useGraphSummary,
     useModels,
@@ -47,11 +47,22 @@ export function useCockpitData(initialData: CockpitInitialData) {
 
     // LLM Servers
     const {
-        data: liveLlmServers,
+        data: liveRuntimeOptions,
         loading: llmServersLoading,
         refresh: refreshLlmServers,
-    } = useLlmServers();
-    const llmServers = liveLlmServers ?? [];
+    } = useLlmRuntimeOptions();
+    const llmServers =
+        liveRuntimeOptions?.runtimes.map((runtime) => ({
+            name: runtime.runtime_id,
+            display_name: runtime.runtime_id.toUpperCase(),
+            provider: runtime.runtime_id,
+            status: runtime.status,
+            error_message: runtime.reason ?? null,
+            supports:
+                runtime.source_type === "local-runtime"
+                    ? { start: true, stop: true, restart: true }
+                    : { start: false, stop: false, restart: false },
+        })) ?? [];
 
     const { data: liveActiveServer, refresh: refreshActiveServer } =
         useActiveLlmServer(30000);
@@ -124,6 +135,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
         queue,
         services,
         llmServers,
+        llmRuntimeOptions: liveRuntimeOptions ?? null,
         activeServerInfo,
         graph,
         models,

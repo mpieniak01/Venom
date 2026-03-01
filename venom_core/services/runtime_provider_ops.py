@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 from typing import Any, Callable
 
@@ -107,9 +108,11 @@ def _start_command_service(
         return {"success": False, "message": missing_command_message}
 
     try:
+        command_args = shlex.split(command)
+        if not command_args:
+            return {"success": False, "message": missing_command_message}
         subprocess_module.Popen(
-            command,
-            shell=True,
+            command_args,
             stdout=subprocess_module.DEVNULL,
             stderr=subprocess_module.DEVNULL,
             start_new_session=True,
@@ -143,9 +146,11 @@ def _stop_command_service(
         return {"success": False, "message": missing_command_message}
 
     try:
+        command_args = shlex.split(command)
+        if not command_args:
+            return {"success": False, "message": missing_command_message}
         result = subprocess_module.run(
-            command,
-            shell=True,
+            command_args,
             capture_output=True,
             text=True,
             timeout=30,

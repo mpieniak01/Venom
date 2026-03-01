@@ -91,7 +91,8 @@ export function getStatusBadge(status: string) {
 }
 
 export function formatUptime(seconds: number | null) {
-  if (!seconds) return "N/A";
+  if (seconds === null || seconds === undefined) return "—";
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${minutes}m`;

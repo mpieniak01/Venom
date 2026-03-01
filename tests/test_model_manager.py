@@ -7,6 +7,44 @@ import pytest
 from venom_core.core.model_manager import ModelManager, ModelVersion
 
 
+def _install_discovery_http_client_stub(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    status_code: int = 200,
+    payload: dict | None = None,
+    json_error: Exception | None = None,
+    request_error: Exception | None = None,
+) -> None:
+    from venom_core.core import model_manager_discovery as discovery_module
+
+    class _Response:
+        def __init__(self) -> None:
+            self.status_code = status_code
+
+        def json(self):
+            if json_error is not None:
+                raise json_error
+            return payload if payload is not None else {"models": []}
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+        async def aget(self, *_args, **_kwargs):
+            if request_error is not None:
+                raise request_error
+            return _Response()
+
+    monkeypatch.setattr(
+        discovery_module,
+        "TrafficControlledHttpClient",
+        lambda **_kwargs: _Client(),
+    )
+
+
 def test_model_version_creation():
     """Test tworzenia wersji modelu."""
     version = ModelVersion(
@@ -347,31 +385,20 @@ def test_model_manager_check_storage_quota_exceeds_limit(tmp_path):
 @pytest.mark.asyncio
 async def test_model_manager_list_local_models_empty(tmp_path, monkeypatch):
     """Test listowania modeli przy pustym katalogu."""
-    from unittest.mock import AsyncMock, MagicMock, patch
-
     # Isolate CWD so fallback scan of ./models does not leak repository-local models.
     monkeypatch.chdir(tmp_path)
     manager = ModelManager(models_dir=str(tmp_path))
+    _install_discovery_http_client_stub(monkeypatch, payload={"models": []})
 
-    with patch("httpx.AsyncClient") as mock_client:
-        # Mock Ollama API response (empty)
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"models": []}
-
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-            return_value=mock_response
-        )
-
-        models = await manager.list_local_models()
-        assert isinstance(models, list)
-        assert len(models) == 0
+    models = await manager.list_local_models()
+    assert isinstance(models, list)
+    assert len(models) == 0
 
 
 @pytest.mark.asyncio
-async def test_model_manager_list_local_models_with_local_file(tmp_path):
+async def test_model_manager_list_local_models_with_local_file(tmp_path, monkeypatch):
     """Test listowania modeli z lokalnym plikiem."""
-    from unittest.mock import AsyncMock, patch
+    import httpx
 
     manager = ModelManager(models_dir=str(tmp_path))
 
@@ -379,24 +406,23 @@ async def test_model_manager_list_local_models_with_local_file(tmp_path):
     test_file = tmp_path / "test_model.gguf"
     test_file.write_bytes(b"x" * 1000)
 
-    with patch("httpx.AsyncClient") as mock_client:
-        # Mock Ollama API response (error)
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-            side_effect=Exception("Connection error")
-        )
+    _install_discovery_http_client_stub(
+        monkeypatch,
+        request_error=httpx.ConnectError("Connection error"),
+    )
 
-        models = await manager.list_local_models()
-        assert len(models) >= 1
+    models = await manager.list_local_models()
+    assert len(models) >= 1
 
-        # Sprawdź czy nasz model jest na liście
-        model_names = [m["name"] for m in models]
-        assert "test_model.gguf" in model_names
+    # Sprawdź czy nasz model jest na liście
+    model_names = [m["name"] for m in models]
+    assert "test_model.gguf" in model_names
 
 
 @pytest.mark.asyncio
 async def test_model_manager_list_local_models_workspace_folder(tmp_path, monkeypatch):
     """ModelManager powinien również skanować ./models w bieżącym katalogu roboczym."""
-    from unittest.mock import AsyncMock, patch
+    import httpx
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -407,14 +433,26 @@ async def test_model_manager_list_local_models_workspace_folder(tmp_path, monkey
     hf_dir.mkdir()
     (hf_dir / "gemma-3").mkdir()
 
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-            side_effect=Exception("Ollama offline")
-        )
-        models = await manager.list_local_models()
+    _install_discovery_http_client_stub(
+        monkeypatch,
+        request_error=httpx.ConnectError("Ollama offline"),
+    )
+    models = await manager.list_local_models()
 
     assert any(model["name"] == "gemma-3" for model in models)
     assert any(model.get("source") == "models" for model in models)
+
+
+@pytest.mark.asyncio
+async def test_model_manager_list_local_models_invalid_ollama_json(
+    tmp_path, monkeypatch
+):
+    manager = ModelManager(models_dir=str(tmp_path))
+    (tmp_path / "local.gguf").write_text("x", encoding="utf-8")
+    _install_discovery_http_client_stub(monkeypatch, json_error=ValueError("bad-json"))
+
+    models = await manager.list_local_models()
+    assert any(model["name"] == "local.gguf" for model in models)
 
 
 def test_model_manager_build_onnx_llm_model_success(tmp_path):
@@ -509,9 +547,9 @@ async def test_model_manager_unload_all(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_model_manager_get_usage_metrics(tmp_path):
+async def test_model_manager_get_usage_metrics(tmp_path, monkeypatch):
     """Test pobierania metryk użycia."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import MagicMock, patch
 
     manager = ModelManager(models_dir=str(tmp_path))
 
@@ -519,8 +557,8 @@ async def test_model_manager_get_usage_metrics(tmp_path):
     test_file = tmp_path / "test_model.gguf"
     test_file.write_bytes(b"x" * (1024 * 1024))  # 1MB
 
+    _install_discovery_http_client_stub(monkeypatch, payload={"models": []})
     with (
-        patch("httpx.AsyncClient") as mock_client,
         patch("venom_core.core.model_manager.psutil.cpu_percent", return_value=25.0),
         patch("venom_core.core.model_manager.psutil.virtual_memory") as mock_vm,
         patch("subprocess.run") as mock_run,
@@ -530,14 +568,6 @@ async def test_model_manager_get_usage_metrics(tmp_path):
         )
 
         mock_run.return_value = MagicMock(returncode=0, stdout="10, 5120, 10240\n")
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"models": []}
-
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-            return_value=mock_response
-        )
 
         metrics = await manager.get_usage_metrics()
 
@@ -561,8 +591,10 @@ async def test_model_manager_get_usage_metrics(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_model_manager_list_local_models_onnx_metadata_provider(tmp_path):
-    from unittest.mock import AsyncMock, patch
+async def test_model_manager_list_local_models_onnx_metadata_provider(
+    tmp_path, monkeypatch
+):
+    import httpx
 
     manager = ModelManager(models_dir=str(tmp_path))
     model_dir = tmp_path / "phi35-local"
@@ -573,11 +605,11 @@ async def test_model_manager_list_local_models_onnx_metadata_provider(tmp_path):
         encoding="utf-8",
     )
 
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-            side_effect=Exception("Ollama offline")
-        )
-        models = await manager.list_local_models()
+    _install_discovery_http_client_stub(
+        monkeypatch,
+        request_error=httpx.ConnectError("Ollama offline"),
+    )
+    models = await manager.list_local_models()
 
     entry = next((m for m in models if m["name"] == "phi35-local"), None)
     assert entry is not None

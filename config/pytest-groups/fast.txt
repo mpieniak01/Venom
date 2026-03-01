@@ -280,8 +280,10 @@ tests/test_runtime_controller_roi.py
 tests/test_runtime_conversion_contracts.py
 tests/test_runtime_environment_regressions.py
 tests/test_runtime_policy_regression_contracts.py
+tests/test_runtime_provider_ops.py
 tests/test_runtime_registry_contracts.py
 tests/test_runtime_registry_translation_contracts.py
+tests/test_runtime_service_helpers.py
 tests/test_scenario_weaver.py
 tests/test_scheduler.py
 tests/test_scheduler_swarm_flow_streaming.py

@@ -77,6 +77,7 @@ export function useCockpitLogic({
 }) {
     const { sessionId, resetSession } = useSession();
     const { pushToast } = useToast();
+    const { language, t } = useLanguage();
     const { connected: telemetryConnected, entries: telemetryEntries } =
         useTelemetryFeed();
     const queueActions = useCockpitQueueActions({
@@ -86,6 +87,7 @@ export function useCockpitLogic({
         purgeQueueFn: purgeQueue,
         emergencyStopFn: emergencyStop,
         toggleQueueFn: toggleQueue,
+        t,
     });
 
     // Session Actions
@@ -310,9 +312,6 @@ export function useCockpitLogic({
         interactive.setters
     ]);
 
-    // Chat UI Interface
-    const { language } = useLanguage();
-
     const historyMessages = useMemo(() => {
         if (pendingResetSessionRef.current) {
             if (sessionId && pendingResetSessionRef.current === sessionId) {
@@ -446,6 +445,7 @@ export function useCockpitLogic({
         switchModelFn: switchModel,
         refreshActiveServer: data.refresh.activeServer,
         pushToast,
+        t,
     });
 
     return {

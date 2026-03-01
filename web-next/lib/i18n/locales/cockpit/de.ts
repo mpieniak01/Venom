@@ -167,6 +167,20 @@ export const cockpitLocale = {
       submitting: "Senden...",
       placeholder: "Beschreiben Sie kurz das Problem und Ihre Erwartung.",
     },
+    queueActions: {
+      queuePurged: "Warteschlange wurde geleert.",
+      emergencyStopped: "Aufgaben gestoppt: cancelled {{cancelled}}, purged {{purged}}.",
+      operationError: "Fehler bei der Warteschlangen-Operation.",
+      queueResumed: "Warteschlange fortgesetzt.",
+      queuePaused: "Warteschlange pausiert.",
+      toggleError: "Fehler beim Umschalten der Warteschlange.",
+    },
+    modelActivation: {
+      providerMissing: "Server für das ausgewählte Modell konnte nicht ermittelt werden.",
+      activated: "Modell aktiviert: {{model}}",
+      failed: "Fehler bei der Modellaktivierung: {{message}}",
+      unknownError: "unbekannter Fehler",
+    },
     inputPlaceholder: "Nachricht eingeben...",
     response: {
       avg: "Durchschnitt der letzten {{count}} Antworten: {{avg}}s",

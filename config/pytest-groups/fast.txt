@@ -29,6 +29,7 @@ tests/test_api_contracts_stability.py
 tests/test_api_dependencies.py
 tests/test_api_queue_runtime_contracts.py
 tests/test_api_routes_contract_matrix.py
+tests/test_api_routes_import_guard.py
 tests/test_api_routes_runtime_contracts.py
 tests/test_apprentice_agent.py
 tests/test_architect_agent.py
@@ -270,6 +271,7 @@ tests/test_research_skill.py
 tests/test_researcher_agent.py
 tests/test_retention_optimization.py
 tests/test_retrieval_policy.py
+tests/test_route_service_extractions.py
 tests/test_routing_contract.py
 tests/test_runtime_controller_api.py
 tests/test_runtime_controller_roi.py

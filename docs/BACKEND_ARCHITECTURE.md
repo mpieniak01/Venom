@@ -32,6 +32,25 @@ Routers are composed in `venom_core/api/routes/models.py` (aggregator). Submodul
 - `models_remote.py` - /models/remote/providers, /models/remote/catalog, /models/remote/connectivity, /models/remote/validate
 - `models_translation.py` - /translate
 
+## Router Layering Contract (PR 183)
+To keep API adapters thin and testable, routers in `venom_core/api/routes/*` should follow this contract:
+
+- Router = HTTP adapter only (request parsing, status codes, response mapping).
+- Operational/use-case logic lives in `venom_core/services/*`.
+- New direct imports from `venom_core.core.*` and `venom_core.infrastructure.*` in routers are disallowed by default.
+- Side-effect libraries in routers (`subprocess`, `httpx`, `threading`) are restricted and guarded.
+
+Reference implementations introduced during PR 183:
+- `venom_core/services/knowledge_route_service.py`
+- `venom_core/services/knowledge_lessons_service.py`
+- `venom_core/services/tasks_service.py`
+- `venom_core/services/tasks_onnx_service.py`
+- `venom_core/services/llm_simple_transport.py`
+- `venom_core/services/llm_simple_stream_service.py`
+
+Architecture guard tests:
+- `tests/test_api_routes_import_guard.py`
+
 ## Runtime and model routing
 - `venom_core/execution/model_router.py` and `venom_core/core/model_router.py` – routing between local LLM and cloud (LOCAL/HYBRID/CLOUD).
 - `venom_core/core/llm_server_controller.py` – LLM server control (Ollama/vLLM/ONNX) and health checks.

@@ -23,12 +23,8 @@ from venom_core.api.schemas.tasks import (
     TaskRequest,
     TaskResponse,
 )
-from venom_core.core import metrics as metrics_module
-from venom_core.core.models import TaskStatus, VenomTask
-from venom_core.core.orchestrator import Orchestrator
-from venom_core.core.state_manager import StateManager
-from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.onnx_llm_client import OnnxLlmClient
+from venom_core.services import tasks_onnx_service, tasks_service
 from venom_core.services.tasks_stream_service import (
     build_missing_task_payload as _build_missing_task_payload,
 )
@@ -63,6 +59,13 @@ from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+TaskStatus = tasks_service.TaskStatus
+VenomTask = tasks_service.VenomTask
+Orchestrator = tasks_service.Orchestrator
+StateManager = tasks_service.StateManager
+RequestTracer = tasks_service.RequestTracer
+TraceStatus = tasks_service.TraceStatus
 
 router = APIRouter(prefix="/api/v1", tags=["tasks"])
 _ONNX_EXECUTOR: ProcessPoolExecutor | None = None
@@ -214,7 +217,7 @@ def _build_history_summary(trace) -> HistoryRequestSummary:
 def _validate_trace_status(status: Optional[str]) -> None:
     if status is None:
         return
-    valid_statuses = [s.value for s in TraceStatus]
+    valid_statuses = tasks_service.trace_status_values()
     if status in valid_statuses:
         return
     raise HTTPException(
@@ -245,66 +248,30 @@ def _assert_task_available_for_stream(
 
 def _trace_onnx_task_start(task_id: UUID, request: TaskRequest, runtime) -> None:
     tracer = system_deps.get_request_tracer()
-    if tracer is None:
-        return
-    tracer.create_trace(task_id, request.content, session_id=request.session_id)
-    tracer.set_llm_metadata(
-        task_id,
-        provider=runtime.provider,
-        model=runtime.model_name,
-        endpoint=runtime.endpoint,
-        metadata={
-            "config_hash": runtime.config_hash,
-            "runtime_id": runtime.runtime_id,
-        },
-    )
-    tracer.update_status(task_id, TraceStatus.PROCESSING)
-    tracer.add_step(
-        task_id,
-        "OnnxTask",
-        "start_processing",
-        status="ok",
-        details=f"forced_intent={request.forced_intent or '-'}",
+    tasks_onnx_service.trace_onnx_task_start(
+        tracer=tracer,
+        task_id=task_id,
+        request=request,
+        runtime=runtime,
     )
 
 
 def _trace_onnx_task_success(task_id: UUID, result: str) -> None:
     tracer = system_deps.get_request_tracer()
-    if tracer is None:
-        return
-    tracer.add_step(
-        task_id,
-        "OnnxTask",
-        "complete",
-        status="ok",
-        details=f"result_chars={len(result)}",
+    tasks_onnx_service.trace_onnx_task_success(
+        tracer=tracer,
+        task_id=task_id,
+        result=result,
     )
-    tracer.update_status(task_id, TraceStatus.COMPLETED)
 
 
 def _trace_onnx_task_failure(task_id: UUID, exc: Exception) -> None:
     tracer = system_deps.get_request_tracer()
-    if tracer is None:
-        return
-    tracer.add_step(
-        task_id,
-        "OnnxTask",
-        "error",
-        status="error",
-        details=str(exc),
+    tasks_onnx_service.trace_onnx_task_failure(
+        tracer=tracer,
+        task_id=task_id,
+        exc=exc,
     )
-    tracer.set_error_metadata(
-        task_id,
-        {
-            "error_code": "onnx_task_error",
-            "error_class": exc.__class__.__name__,
-            "error_message": str(exc),
-            "error_details": {"provider": "onnx"},
-            "stage": "onnx_task_execution",
-            "retryable": False,
-        },
-    )
-    tracer.update_status(task_id, TraceStatus.FAILED)
 
 
 async def _run_onnx_task(
@@ -315,85 +282,64 @@ async def _run_onnx_task(
     runtime,
 ) -> None:
     state_manager = orchestrator.state_manager
-    try:
-        await state_manager.update_status(task_id, TaskStatus.PROCESSING)
-        state_manager.add_log(task_id, "ONNX: rozpoczęto przetwarzanie zadania.")
-        messages = _build_onnx_task_messages(request.content, request.forced_intent)
-        max_tokens = None
-        temperature = None
-        if isinstance(request.generation_params, dict):
-            mt = request.generation_params.get("max_tokens")
-            temp = request.generation_params.get("temperature")
-            if isinstance(mt, (int, float)):
-                max_tokens = int(mt)
-            if isinstance(temp, (int, float)):
-                temperature = float(temp)
 
+    async def _run_generation(
+        messages: list[dict[str, str]],
+        max_tokens: int | None,
+        temperature: float | None,
+    ) -> str:
         # In tests keep thread path (monkeypatch-friendly). In runtime use process
         # executor to avoid potential GIL/event-loop starvation on heavy ONNX calls.
         if os.getenv("PYTEST_CURRENT_TEST"):
-            result = (
-                await asyncio.to_thread(
-                    _generate_onnx_response_sync,
-                    messages,
-                    max_tokens,
-                    temperature,
-                )
-            ).strip()
-        else:
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                _get_onnx_executor(),
+            return await asyncio.to_thread(
                 _generate_onnx_response_sync,
                 messages,
                 max_tokens,
                 temperature,
             )
-        if not result:
-            result = "Brak odpowiedzi z runtime ONNX."
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            _get_onnx_executor(),
+            _generate_onnx_response_sync,
+            messages,
+            max_tokens,
+            temperature,
+        )
 
-        state_manager.update_context(
-            task_id,
-            {
-                "llm_runtime": runtime.to_payload() | {"status": "ready"},
-                "session": {"session_id": request.session_id},
-                "generation_params": request.generation_params or {},
-            },
-        )
-        state_manager.add_log(task_id, "ONNX: zakończono generację.")
-        await state_manager.update_status(task_id, TaskStatus.COMPLETED, result=result)
-        _trace_onnx_task_success(task_id, result)
-    except Exception as exc:
-        logger.exception("Błąd ONNX task execution: %s", exc)
-        state_manager.add_log(task_id, f"ONNX: błąd: {exc}")
-        await state_manager.update_status(
-            task_id, TaskStatus.FAILED, result=f"Błąd: {exc}"
-        )
-        _trace_onnx_task_failure(task_id, exc)
+    await tasks_onnx_service.run_onnx_task(
+        state_manager=state_manager,
+        task_id=task_id,
+        request=request,
+        runtime=runtime,
+        build_messages_fn=_build_onnx_task_messages,
+        run_generation_fn=_run_generation,
+        trace_success_fn=_trace_onnx_task_success,
+        trace_failure_fn=_trace_onnx_task_failure,
+        logger=logger,
+    )
 
 
 def _submit_onnx_task(
     request: TaskRequest, orchestrator: Orchestrator, runtime
 ) -> TaskResponse:
     state_manager = orchestrator.state_manager
-    task = state_manager.create_task(request.content)
-    state_manager.update_context(
-        task.id,
-        {
-            "session": {"session_id": request.session_id},
-            "llm_runtime": runtime.to_payload() | {"status": "ready"},
-        },
-    )
-    _trace_onnx_task_start(task.id, request, runtime)
-    _track_background_task(
-        asyncio.create_task(
-            _run_onnx_task(
-                orchestrator=orchestrator,
-                task_id=task.id,
-                request=request,
-                runtime=runtime,
+    task = tasks_onnx_service.create_and_submit_onnx_task(
+        state_manager=state_manager,
+        request=request,
+        runtime=runtime,
+        trace_start_fn=lambda task_id: _trace_onnx_task_start(
+            task_id, request, runtime
+        ),
+        schedule_runner_fn=lambda task_id: _track_background_task(
+            asyncio.create_task(
+                _run_onnx_task(
+                    orchestrator=orchestrator,
+                    task_id=task_id,
+                    request=request,
+                    runtime=runtime,
+                )
             )
-        )
+        ),
     )
     return TaskResponse(
         task_id=task.id,
@@ -496,7 +442,7 @@ async def create_task(
     """
     try:
         # Inkrementuj licznik zadań
-        collector = metrics_module.metrics_collector
+        collector = tasks_service.get_metrics_collector()
         if collector:
             collector.increment_task_created()
 

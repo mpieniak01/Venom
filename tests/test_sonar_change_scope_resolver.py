@@ -342,6 +342,35 @@ def test_resolve_candidates_from_changed_files_respects_catalog(monkeypatch, tmp
     assert resolved == ["tests/test_memory_a.py"]
 
 
+def test_build_candidate_infos_keeps_floor_anchor_even_if_dynamic(monkeypatch):
+    module = _load_module()
+    monkeypatch.setattr(module, "is_light_test", lambda _path: True)
+    monkeypatch.setattr(module, "is_fast_safe_test", lambda _path: True)
+
+    path = "tests/test_coder.py"
+    infos = module._build_candidate_infos(
+        baseline_items=[],
+        new_code_items=[],
+        changed_tests={path},
+        direct_module_tests=set(),
+        related_tests=set(),
+        floor_anchors={path},
+        timings={},
+        exclude_slow_fastlane=False,
+        changed_domains={"runtime"},
+        catalog={
+            path: {
+                "path": path,
+                "domain": "agents",
+                "allowed_lanes": ["new-code"],
+                "legacy_targeted": False,
+            }
+        },
+        include_baseline=False,
+    )
+    assert [row.path for row in infos] == [path]
+
+
 def test_resolve_tests_with_metadata_includes_domain_reason(monkeypatch, tmp_path):
     module = _load_module()
     baseline = tmp_path / "ci-lite.txt"

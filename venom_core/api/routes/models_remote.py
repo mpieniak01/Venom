@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import time
 from datetime import datetime
 from threading import Lock
 from typing import Annotated, Any
 
-import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from venom_core.config import SETTINGS
-from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
 from venom_core.services import remote_models_service
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.logger import get_logger
@@ -102,6 +99,11 @@ _catalog_cache: dict[str, dict[str, Any]] = {}
 _provider_probe_cache_lock = Lock()
 _provider_probe_cache: dict[str, dict[str, Any]] = {}
 
+# Compatibility aliases for tests/monkeypatching while keeping router free from
+# direct infrastructure/http-client imports.
+TrafficControlledHttpClient = remote_models_service.traffic_controlled_http_client_cls()
+httpx = remote_models_service.httpx_module()
+
 
 def _env_int(name: str, default: int) -> int:
     return remote_models_service.env_int(name, default)
@@ -127,12 +129,12 @@ def _remote_timeout_seconds() -> float:
 
 def _check_openai_configured() -> bool:
     """Check if OpenAI API key is configured."""
-    return bool(SETTINGS.OPENAI_API_KEY and SETTINGS.OPENAI_API_KEY.strip())
+    return remote_models_service.is_api_key_configured(SETTINGS.OPENAI_API_KEY)
 
 
 def _check_google_configured() -> bool:
     """Check if Google API key is configured."""
-    return bool(SETTINGS.GOOGLE_API_KEY and SETTINGS.GOOGLE_API_KEY.strip())
+    return remote_models_service.is_api_key_configured(SETTINGS.GOOGLE_API_KEY)
 
 
 def _now_iso() -> str:
@@ -189,350 +191,131 @@ def _cache_put(
 def _get_openai_models_catalog_static() -> list[RemoteModelInfo]:
     """Get static OpenAI models catalog."""
     return [
-        RemoteModelInfo(
-            id="gpt-4o",
-            name="GPT-4o",
-            provider="openai",
-            capabilities=["chat", "text-generation", "function-calling", "vision"],
-            model_alias="gpt-4o-2024-08-06",
-        ),
-        RemoteModelInfo(
-            id="gpt-4o-mini",
-            name="GPT-4o Mini",
-            provider="openai",
-            capabilities=["chat", "text-generation", "function-calling"],
-            model_alias="gpt-4o-mini-2024-07-18",
-        ),
-        RemoteModelInfo(
-            id="gpt-4-turbo",
-            name="GPT-4 Turbo",
-            provider="openai",
-            capabilities=["chat", "text-generation", "function-calling", "vision"],
-            model_alias="gpt-4-turbo-2024-04-09",
-        ),
-        RemoteModelInfo(
-            id="gpt-3.5-turbo",
-            name="GPT-3.5 Turbo",
-            provider="openai",
-            capabilities=["chat", "text-generation", "function-calling"],
-            model_alias="gpt-3.5-turbo-0125",
-        ),
+        RemoteModelInfo(**item)
+        for item in remote_models_service.openai_static_catalog_payload()
     ]
 
 
 def _get_google_models_catalog_static() -> list[RemoteModelInfo]:
     """Get static Google models catalog."""
     return [
-        RemoteModelInfo(
-            id="gemini-1.5-pro",
-            name="Gemini 1.5 Pro",
-            provider="google",
-            capabilities=[
-                "chat",
-                "text-generation",
-                "function-calling",
-                "vision",
-                "multimodal",
-            ],
-            model_alias="gemini-1.5-pro-latest",
-        ),
-        RemoteModelInfo(
-            id="gemini-1.5-flash",
-            name="Gemini 1.5 Flash",
-            provider="google",
-            capabilities=["chat", "text-generation", "function-calling"],
-            model_alias="gemini-1.5-flash-latest",
-        ),
-        RemoteModelInfo(
-            id="gemini-pro",
-            name="Gemini Pro",
-            provider="google",
-            capabilities=["chat", "text-generation"],
-            model_alias="gemini-pro",
-        ),
+        RemoteModelInfo(**item)
+        for item in remote_models_service.google_static_catalog_payload()
     ]
 
 
 async def _fetch_openai_models_catalog_live() -> list[RemoteModelInfo]:
-    api_key = (SETTINGS.OPENAI_API_KEY or "").strip()
-    if not api_key:
-        return []
-    headers = {"Authorization": f"Bearer {api_key}"}
-    timeout = _remote_timeout_seconds()
-    async with TrafficControlledHttpClient(
-        provider="openai",
-        timeout=timeout,
-    ) as client:
-        response = await client.aget(_openai_models_url(), headers=headers)
-        payload = response.json()
-    raw_items = payload.get("data") if isinstance(payload, dict) else []
-    items = raw_items if isinstance(raw_items, list) else []
-    models: list[RemoteModelInfo] = []
-    for item in items:
-        model_id = str(item.get("id") or "").strip()
-        if not model_id:
-            continue
-        models.append(
-            RemoteModelInfo(
-                id=model_id,
-                name=model_id,
-                provider="openai",
-                capabilities=_map_openai_capabilities(model_id),
-                model_alias=None,
-            )
-        )
-    models.sort(key=lambda m: m.id.lower())
-    return models
+    models_payload = await remote_models_service.fetch_openai_models_catalog_live(
+        api_key=(SETTINGS.OPENAI_API_KEY or "").strip(),
+        timeout_seconds=_remote_timeout_seconds(),
+        models_url=_openai_models_url(),
+        traffic_client_factory=TrafficControlledHttpClient,
+        map_openai_capabilities_fn=_map_openai_capabilities,
+    )
+    return [RemoteModelInfo(**item) for item in models_payload]
+
+
+async def _fetch_openai_models_catalog_live_payload() -> list[dict[str, Any]]:
+    models = await _fetch_openai_models_catalog_live()
+    return [model.model_dump() for model in models]
 
 
 async def _fetch_google_models_catalog_live() -> list[RemoteModelInfo]:
-    api_key = (SETTINGS.GOOGLE_API_KEY or "").strip()
-    if not api_key:
-        return []
-    timeout = _remote_timeout_seconds()
-    async with TrafficControlledHttpClient(
-        provider="google",
-        timeout=timeout,
-    ) as client:
-        response = await client.aget(_google_models_url(), params={"key": api_key})
-        payload = response.json()
-    raw_items = payload.get("models") if isinstance(payload, dict) else []
-    items = raw_items if isinstance(raw_items, list) else []
-    models: list[RemoteModelInfo] = []
-    for item in items:
-        raw_name = str(item.get("name") or "").strip()
-        model_id = raw_name.removeprefix("models/")
-        if not model_id:
-            continue
-        models.append(
-            RemoteModelInfo(
-                id=model_id,
-                name=model_id,
-                provider="google",
-                capabilities=_map_google_capabilities(item),
-                model_alias=raw_name if raw_name != model_id else None,
-            )
-        )
-    models.sort(key=lambda m: m.id.lower())
-    return models
+    models_payload = await remote_models_service.fetch_google_models_catalog_live(
+        api_key=(SETTINGS.GOOGLE_API_KEY or "").strip(),
+        timeout_seconds=_remote_timeout_seconds(),
+        models_url=_google_models_url(),
+        traffic_client_factory=TrafficControlledHttpClient,
+        map_google_capabilities_fn=_map_google_capabilities,
+    )
+    return [RemoteModelInfo(**item) for item in models_payload]
+
+
+async def _fetch_google_models_catalog_live_payload() -> list[dict[str, Any]]:
+    models = await _fetch_google_models_catalog_live()
+    return [model.model_dump() for model in models]
 
 
 async def _validate_openai_connection(
     *, model: str | None = None
 ) -> tuple[bool, str, float | None]:
-    api_key = (SETTINGS.OPENAI_API_KEY or "").strip()
-    if not api_key:
-        return False, "OPENAI_API_KEY not configured", None
-    url = _openai_model_url(model) if model else _openai_models_url()
-    headers = {"Authorization": f"Bearer {api_key}"}
-    timeout = _remote_timeout_seconds()
-    start = time.perf_counter()
-    try:
-        async with TrafficControlledHttpClient(
-            provider="openai",
-            timeout=timeout,
-        ) as client:
-            response = await client.aget(
-                url,
-                headers=headers,
-                raise_for_status=False,
-            )
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
-        if response.status_code == 200:
-            return True, "OpenAI API reachable", elapsed_ms
-        if response.status_code == 401:
-            return False, "OpenAI API key unauthorized", elapsed_ms
-        if response.status_code == 404 and model:
-            return False, f"Model not found: {model}", elapsed_ms
-        return (
-            False,
-            f"OpenAI validation failed (HTTP {response.status_code})",
-            elapsed_ms,
-        )
-    except httpx.HTTPError as exc:
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
-        return False, f"OpenAI validation error: {exc}", elapsed_ms
-    except Exception as exc:
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
-        return False, f"OpenAI validation error: {exc}", elapsed_ms
+    return await remote_models_service.validate_openai_connection(
+        api_key=(SETTINGS.OPENAI_API_KEY or "").strip(),
+        model=model,
+        timeout_seconds=_remote_timeout_seconds(),
+        openai_models_url=_openai_models_url(),
+        openai_model_url_fn=_openai_model_url,
+        traffic_client_factory=TrafficControlledHttpClient,
+        http_error_type=httpx.HTTPError,
+    )
 
 
 async def _validate_google_connection(
     *, model: str | None = None
 ) -> tuple[bool, str, float | None]:
-    api_key = (SETTINGS.GOOGLE_API_KEY or "").strip()
-    if not api_key:
-        return False, "GOOGLE_API_KEY not configured", None
-    url = _google_model_url(model) if model else _google_models_url()
-    timeout = _remote_timeout_seconds()
-    start = time.perf_counter()
-    try:
-        async with TrafficControlledHttpClient(
-            provider="google",
-            timeout=timeout,
-        ) as client:
-            response = await client.aget(
-                url,
-                params={"key": api_key},
-                raise_for_status=False,
-            )
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
-        if response.status_code == 200:
-            return True, "Google API reachable", elapsed_ms
-        if response.status_code in (401, 403):
-            return False, "Google API key unauthorized", elapsed_ms
-        if response.status_code == 404 and model:
-            return False, f"Model not found: {model}", elapsed_ms
-        return (
-            False,
-            f"Google validation failed (HTTP {response.status_code})",
-            elapsed_ms,
-        )
-    except httpx.HTTPError as exc:
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
-        return False, f"Google validation error: {exc}", elapsed_ms
-    except Exception as exc:
-        elapsed_ms = (time.perf_counter() - start) * 1000.0
-        return False, f"Google validation error: {exc}", elapsed_ms
+    return await remote_models_service.validate_google_connection(
+        api_key=(SETTINGS.GOOGLE_API_KEY or "").strip(),
+        model=model,
+        timeout_seconds=_remote_timeout_seconds(),
+        google_models_url=_google_models_url(),
+        google_model_url_fn=_google_model_url,
+        traffic_client_factory=TrafficControlledHttpClient,
+        http_error_type=httpx.HTTPError,
+    )
 
 
 async def _probe_provider_cached(provider: str) -> tuple[str, str | None, float | None]:
-    cached = _cache_get(
-        _provider_probe_cache,
-        _provider_probe_cache_lock,
-        provider,
-        _provider_probe_ttl_seconds(),
+    return await remote_models_service.probe_provider_cached(
+        provider=provider,
+        cache=_provider_probe_cache,
+        lock=_provider_probe_cache_lock,
+        provider_probe_ttl_seconds=_provider_probe_ttl_seconds(),
+        cache_get_fn=_cache_get,
+        cache_put_fn=_cache_put,
+        validate_openai_connection_fn=_validate_openai_connection,
+        validate_google_connection_fn=_validate_google_connection,
     )
-    if cached:
-        return (
-            str(cached.get("status") or "degraded"),
-            cached.get("error"),
-            cached.get("latency_ms"),
-        )
-
-    if provider == "openai":
-        valid, message, latency = await _validate_openai_connection()
-    else:
-        valid, message, latency = await _validate_google_connection()
-
-    status = "reachable" if valid else "degraded"
-    error = None if valid else message
-    _cache_put(
-        _provider_probe_cache,
-        _provider_probe_cache_lock,
-        provider,
-        payload={"status": status, "error": error, "latency_ms": latency},
-    )
-    return status, error, latency
 
 
 async def _catalog_for_provider(
     provider: str,
 ) -> tuple[list[RemoteModelInfo], str, str | None]:
-    cached = _cache_get(
-        _catalog_cache,
-        _catalog_cache_lock,
-        provider,
-        _catalog_ttl_seconds(),
+    (
+        models_payload,
+        source,
+        live_error,
+    ) = await remote_models_service.catalog_for_provider(
+        provider=provider,
+        cache=_catalog_cache,
+        lock=_catalog_cache_lock,
+        catalog_ttl_seconds=_catalog_ttl_seconds(),
+        cache_get_fn=_cache_get,
+        cache_put_fn=_cache_put,
+        fetch_openai_models_catalog_live_fn=(
+            lambda: _fetch_openai_models_catalog_live_payload()
+        ),
+        fetch_google_models_catalog_live_fn=(
+            lambda: _fetch_google_models_catalog_live_payload()
+        ),
+        openai_static_catalog_payload_fn=remote_models_service.openai_static_catalog_payload,
+        google_static_catalog_payload_fn=remote_models_service.google_static_catalog_payload,
+        check_openai_configured_fn=_check_openai_configured,
+        check_google_configured_fn=_check_google_configured,
+        now_iso_fn=_now_iso,
+        logger=logger,
     )
-    if cached:
-        cached_models = [RemoteModelInfo(**item) for item in cached.get("models", [])]
-        return cached_models, str(cached.get("source") or "cache"), cached.get("error")
-
-    fetch_live = (
-        _fetch_openai_models_catalog_live
-        if provider == "openai"
-        else _fetch_google_models_catalog_live
-    )
-    static_models = (
-        _get_openai_models_catalog_static()
-        if provider == "openai"
-        else _get_google_models_catalog_static()
-    )
-    live_error: str | None = None
-    models: list[RemoteModelInfo]
-    source: str
-    if (provider == "openai" and _check_openai_configured()) or (
-        provider == "google" and _check_google_configured()
-    ):
-        try:
-            models = await fetch_live()
-            source = f"{provider}_api"
-            if not models:
-                models = static_models
-                source = "static_fallback_empty_live"
-                live_error = "live catalog empty"
-        except Exception as exc:
-            logger.warning("Remote catalog live fetch failed for %s: %s", provider, exc)
-            models = static_models
-            source = "static_fallback_error"
-            live_error = str(exc)
-    else:
-        models = static_models
-        source = "static_fallback_unconfigured"
-        live_error = f"{provider.upper()}_API_KEY not configured"
-
-    _cache_put(
-        _catalog_cache,
-        _catalog_cache_lock,
-        provider,
-        payload={
-            "models": [m.model_dump() for m in models],
-            "source": source,
-            "error": live_error,
-            "refreshed_at": _now_iso(),
-        },
-    )
+    models = [RemoteModelInfo(**item) for item in models_payload]
     return models, source, live_error
 
 
 def _get_service_model_bindings() -> list[ServiceModelBinding]:
     """Get service-to-model bindings from config manager."""
-    bindings = []
-
-    # Get current LLM configuration
-    llm_service_type = getattr(SETTINGS, "LLM_SERVICE_TYPE", "local")
-    llm_model_name = getattr(SETTINGS, "LLM_MODEL_NAME", "phi3:latest")
-
-    # Main LLM service binding
-    if llm_service_type in ("openai", "google"):
-        bindings.append(
-            ServiceModelBinding(
-                service_id="venom_llm_service",
-                endpoint="/api/v1/llm/chat",
-                http_method="POST",
-                provider=llm_service_type,
-                model=llm_model_name,
-                routing_mode="direct",
-                fallback_order=None,
-                status="active",
-            )
+    return [
+        ServiceModelBinding(**item)
+        for item in remote_models_service.service_model_bindings_payload(
+            settings=SETTINGS
         )
-
-    # Check if hybrid mode is enabled
-    ai_mode = getattr(SETTINGS, "AI_MODE", "LOCAL")
-    if ai_mode in ("HYBRID", "CLOUD"):
-        hybrid_provider = getattr(SETTINGS, "HYBRID_CLOUD_PROVIDER", "google")
-        hybrid_model = getattr(SETTINGS, "HYBRID_CLOUD_MODEL", "gemini-1.5-pro")
-
-        bindings.append(
-            ServiceModelBinding(
-                service_id="venom_hybrid_service",
-                endpoint="/api/v1/llm/chat",
-                http_method="POST",
-                provider=hybrid_provider,
-                model=hybrid_model,
-                routing_mode="hybrid" if ai_mode == "HYBRID" else "direct",
-                fallback_order=(
-                    [getattr(SETTINGS, "HYBRID_LOCAL_MODEL", "llama3"), hybrid_model]
-                    if ai_mode == "HYBRID"
-                    else None
-                ),
-                status="active",
-            )
-        )
-
-    return bindings
+    ]
 
 
 # ============================================================================

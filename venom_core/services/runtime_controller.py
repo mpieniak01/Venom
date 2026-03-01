@@ -21,11 +21,42 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import httpx
-import psutil
 
 from venom_core.config import SETTINGS
 from venom_core.services.process_monitor import ProcessMonitor
 from venom_core.services.profile_config import RuntimeProfile, get_profile_capabilities
+from venom_core.services.runtime_health_checks import (
+    apply_process_metrics as apply_process_metrics_impl,
+)
+from venom_core.services.runtime_health_checks import (
+    check_port_listening as check_port_listening_impl,
+)
+from venom_core.services.runtime_health_checks import (
+    read_pid_file as read_pid_file_impl,
+)
+from venom_core.services.runtime_health_checks import (
+    update_llm_status as update_llm_status_impl,
+)
+from venom_core.services.runtime_health_checks import (
+    update_pid_file_service_status as update_pid_file_service_status_impl,
+)
+from venom_core.services.runtime_provider_ops import start_backend as start_backend_impl
+from venom_core.services.runtime_provider_ops import start_ollama as start_ollama_impl
+from venom_core.services.runtime_provider_ops import start_ui as start_ui_impl
+from venom_core.services.runtime_provider_ops import start_vllm as start_vllm_impl
+from venom_core.services.runtime_provider_ops import stop_backend as stop_backend_impl
+from venom_core.services.runtime_provider_ops import stop_ollama as stop_ollama_impl
+from venom_core.services.runtime_provider_ops import stop_ui as stop_ui_impl
+from venom_core.services.runtime_provider_ops import stop_vllm as stop_vllm_impl
+from venom_core.services.runtime_state_machine import (
+    check_service_dependencies as check_service_dependencies_impl,
+)
+from venom_core.services.runtime_state_machine import (
+    config_controlled_result as config_controlled_result_impl,
+)
+from venom_core.services.runtime_state_machine import (
+    update_config_managed_status as update_config_managed_status_impl,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -152,46 +183,30 @@ class RuntimeController:
         )
 
     def _apply_process_metrics(self, info: ServiceInfo, pid: int) -> None:
-        process_info = self._get_process_info(pid)
-        if not process_info:
-            return
-        info.pid = pid
-        info.cpu_percent = process_info["cpu_percent"]
-        info.memory_mb = process_info["memory_mb"]
-        uptime_seconds = process_info.get("uptime_seconds")
-        if uptime_seconds is not None:
-            info.uptime_seconds = int(uptime_seconds)
+        apply_process_metrics_impl(
+            info=info,
+            pid=pid,
+            get_process_info_fn=self._get_process_info,
+        )
 
     def _read_pid_file(self, service_type: ServiceType) -> Optional[int]:
-        pid_file = self.pid_files.get(service_type)
-        if not pid_file or not pid_file.exists():
-            return None
-        with open(pid_file, "r") as pid_handle:
-            return int(pid_handle.read().strip())
+        return read_pid_file_impl(
+            pid_files=self.pid_files,
+            service_type=service_type,
+        )
 
     def _update_pid_file_service_status(
         self, info: ServiceInfo, service_type: ServiceType
     ) -> None:
-        try:
-            pid = self._read_pid_file(service_type)
-            if pid is None:
-                info.status = ServiceStatus.STOPPED
-                return
-
-            process_info = self._get_process_info(pid)
-            if not process_info:
-                info.status = ServiceStatus.STOPPED
-                return
-
-            info.status = ServiceStatus.RUNNING
-            self._apply_process_metrics(info, pid)
-            if service_type == ServiceType.BACKEND:
-                info.port = 8000
-            elif service_type == ServiceType.UI:
-                info.port = 3000
-        except Exception as exc:
-            info.status = ServiceStatus.ERROR
-            info.error_message = str(exc)
+        update_pid_file_service_status_impl(
+            info=info,
+            service_type=service_type,
+            read_pid_file_fn=self._read_pid_file,
+            get_process_info_fn=self._get_process_info,
+            apply_process_metrics_fn=self._apply_process_metrics,
+            service_type_enum=ServiceType,
+            service_status_enum=ServiceStatus,
+        )
 
     def _update_llm_status(
         self,
@@ -201,25 +216,18 @@ class RuntimeController:
         process_match: str,
         service_type: ServiceType,
     ) -> None:
-        info.port = port
-        info.runtime_version = self._get_service_runtime_version(service_type)
-        if not self._check_port_listening(port):
-            info.status = ServiceStatus.STOPPED
-            return
-
-        info.status = ServiceStatus.RUNNING
-        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-            try:
-                proc_name = (proc.info.get("name") or "").lower()
-                cmdline = " ".join(proc.info.get("cmdline") or []).lower()
-                if process_match in proc_name or process_match in cmdline:
-                    pid = proc.info["pid"]
-                    self._apply_process_metrics(info, pid)
-                    break
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        if service_type == ServiceType.LLM_OLLAMA:
-            info.runtime_version = self._refresh_ollama_runtime_version(force=False)
+        update_llm_status_impl(
+            info=info,
+            port=port,
+            process_match=process_match,
+            service_type=service_type,
+            check_port_listening_fn=self._check_port_listening,
+            apply_process_metrics_fn=self._apply_process_metrics,
+            get_service_runtime_version_fn=self._get_service_runtime_version,
+            refresh_ollama_runtime_version_fn=self._refresh_ollama_runtime_version,
+            service_type_enum=ServiceType,
+            service_status_enum=ServiceStatus,
+        )
 
     def _cache_key_for_service(self, service_type: ServiceType) -> str:
         return f"service::{service_type.value}"
@@ -439,37 +447,13 @@ class RuntimeController:
     def _update_config_managed_status(
         self, info: ServiceInfo, service_type: ServiceType
     ) -> None:
-        if service_type == ServiceType.HIVE:
-            info.status = (
-                ServiceStatus.RUNNING if SETTINGS.ENABLE_HIVE else ServiceStatus.STOPPED
-            )
-            return
-        if service_type == ServiceType.NEXUS:
-            info.status = (
-                ServiceStatus.RUNNING
-                if SETTINGS.ENABLE_NEXUS
-                else ServiceStatus.STOPPED
-            )
-            if SETTINGS.ENABLE_NEXUS:
-                info.port = getattr(SETTINGS, "NEXUS_PORT", None)
-            return
-        if service_type == ServiceType.BACKGROUND_TASKS:
-            info.status = (
-                ServiceStatus.STOPPED
-                if SETTINGS.VENOM_PAUSE_BACKGROUND_TASKS
-                else ServiceStatus.RUNNING
-            )
-            return
-        if service_type in {
-            ServiceType.ACADEMY,
-            ServiceType.INTENT_EMBEDDING_ROUTER,
-        }:
-            setting_name = f"ENABLE_{service_type.name}"
-            info.status = (
-                ServiceStatus.RUNNING
-                if getattr(SETTINGS, setting_name, False)
-                else ServiceStatus.STOPPED
-            )
+        update_config_managed_status_impl(
+            info=info,
+            service_type=service_type,
+            settings=SETTINGS,
+            service_type_enum=ServiceType,
+            service_status_enum=ServiceStatus,
+        )
 
     def _update_last_log(self, info: ServiceInfo, service_type: ServiceType) -> None:
         log_file = self.log_files.get(service_type)
@@ -504,15 +488,10 @@ class RuntimeController:
         return info
 
     def _config_controlled_result(self, service_type: ServiceType) -> Dict[str, Any]:
-        messages = {
-            ServiceType.HIVE: "Hive kontrolowany przez konfigurację",
-            ServiceType.NEXUS: "Nexus kontrolowany przez konfigurację",
-            ServiceType.BACKGROUND_TASKS: "Background tasks kontrolowane przez konfigurację",
-            ServiceType.ACADEMY: "Academy kontrolowane przez konfigurację",
-            ServiceType.INTENT_EMBEDDING_ROUTER: "Intent embedding router kontrolowany przez konfigurację",
-        }
-        message = messages.get(service_type, "Nieznany typ usługi")
-        return {"success": False, "message": message}
+        return config_controlled_result_impl(
+            service_type=service_type,
+            service_type_enum=ServiceType,
+        )
 
     def _start_service_handler(self, service_type: ServiceType):
         handlers = {
@@ -546,7 +525,9 @@ class RuntimeController:
 
     def _check_port_listening(self, port: int) -> bool:
         """Sprawdza czy port jest nasłuchiwany. Deleguje do ProcessMonitor."""
-        return self.process_monitor.check_port_listening(port)
+        return check_port_listening_impl(
+            process_monitor=self.process_monitor, port=port
+        )
 
     def get_all_services_status(self) -> List[ServiceInfo]:
         """Pobiera status wszystkich usług."""
@@ -562,34 +543,14 @@ class RuntimeController:
         Returns:
             None jeśli wszystko OK, komunikat błędu jeśli brak zależności
         """
-        # Hive wymaga Redis (sprawdzane przez konfigurację)
-        if service_type == ServiceType.HIVE:
-            if not SETTINGS.ENABLE_HIVE:
-                return "Hive jest wyłączone w konfiguracji (ENABLE_HIVE=false)"
-
-        # Nexus wymaga backendu
-        if service_type == ServiceType.NEXUS:
-            if not SETTINGS.ENABLE_NEXUS:
-                return "Nexus jest wyłączone w konfiguracji (ENABLE_NEXUS=false)"
-            backend_status = self.get_service_status(ServiceType.BACKEND)
-            if backend_status.status != ServiceStatus.RUNNING:
-                return "Nexus wymaga działającego backendu. Uruchom najpierw backend."
-
-        # Background tasks wymagają backendu
-        if service_type == ServiceType.BACKGROUND_TASKS:
-            backend_status = self.get_service_status(ServiceType.BACKEND)
-            if backend_status.status != ServiceStatus.RUNNING:
-                return "Background tasks wymagają działającego backendu. Uruchom najpierw backend."
-
-        # UI wymaga backendu w większości przypadków
-        if service_type == ServiceType.UI:
-            backend_status = self.get_service_status(ServiceType.BACKEND)
-            if backend_status.status != ServiceStatus.RUNNING:
-                logger.warning(
-                    "UI uruchamiany bez backendu - ograniczona funkcjonalność"
-                )
-
-        return None
+        return check_service_dependencies_impl(
+            service_type=service_type,
+            get_service_status_fn=self.get_service_status,
+            settings=SETTINGS,
+            service_type_enum=ServiceType,
+            service_status_enum=ServiceStatus,
+            logger=logger,
+        )
 
     def start_service(self, service_type: ServiceType) -> Dict[str, Any]:
         """Uruchamia usługę."""
@@ -676,215 +637,84 @@ class RuntimeController:
 
     def _start_backend(self) -> Dict[str, Any]:
         """Uruchamia backend (uvicorn)."""
-        try:
-            # Uruchom przez Makefile
-            subprocess.Popen(
-                ["make", "start-dev"],
-                cwd=str(self.project_root),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-
-            # Poczekaj chwilę na start
-            time.sleep(3)
-
-            # Sprawdź czy się uruchomił
-            status = self.get_service_status(ServiceType.BACKEND)
-            if status.status == ServiceStatus.RUNNING:
-                return {
-                    "success": True,
-                    "message": f"Backend uruchomiony (PID {status.pid})",
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": "Backend nie uruchomił się w oczekiwanym czasie",
-                }
-
-        except Exception as e:
-            return {"success": False, "message": f"Błąd uruchamiania backend: {str(e)}"}
+        return start_backend_impl(
+            project_root=self.project_root,
+            get_service_status_fn=self.get_service_status,
+            backend_service_type=ServiceType.BACKEND,
+            service_status_running=ServiceStatus.RUNNING,
+            subprocess_module=subprocess,
+            time_module=time,
+        )
 
     def _stop_backend(self) -> Dict[str, Any]:
         """Zatrzymuje backend."""
-        try:
-            # Użyj make stop
-            result = subprocess.run(
-                ["make", "stop"],
-                cwd=str(self.project_root),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-
-            if result.returncode == 0:
-                return {"success": True, "message": "Backend zatrzymany"}
-            else:
-                return {
-                    "success": False,
-                    "message": f"Błąd zatrzymywania backend: {result.stderr}",
-                }
-
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Błąd zatrzymywania backend: {str(e)}",
-            }
+        return stop_backend_impl(
+            project_root=self.project_root,
+            subprocess_module=subprocess,
+        )
 
     def _start_ui(self) -> Dict[str, Any]:
         """Uruchamia UI (Next.js) - już uruchomiony przez make start-dev."""
-        # UI jest uruchamiany razem z backendem przez make start-dev
-        status = self.get_service_status(ServiceType.UI)
-        if status.status == ServiceStatus.RUNNING:
-            return {
-                "success": True,
-                "message": f"UI uruchomiony (PID {status.pid})",
-            }
-        else:
-            return {
-                "success": False,
-                "message": "UI nie jest uruchomiony. Użyj 'make start-dev' aby uruchomić cały stos.",
-            }
+        return start_ui_impl(
+            get_service_status_fn=self.get_service_status,
+            ui_service_type=ServiceType.UI,
+            service_status_running=ServiceStatus.RUNNING,
+        )
 
     def _stop_ui(self) -> Dict[str, Any]:
         """Zatrzymuje UI - zatrzymane przez make stop."""
-        return {
-            "success": True,
-            "message": "UI zatrzymywany przez 'make stop'",
-        }
+        return stop_ui_impl()
 
     def _start_ollama(self) -> Dict[str, Any]:
         """Uruchamia Ollama."""
-        if SETTINGS.OLLAMA_START_COMMAND:
-            try:
-                # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
-                # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
-                # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
-                subprocess.Popen(
-                    SETTINGS.OLLAMA_START_COMMAND,
-                    shell=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
-                time.sleep(3)
-                status = self.get_service_status(ServiceType.LLM_OLLAMA)
-                if status.status == ServiceStatus.RUNNING:
-                    self._refresh_ollama_runtime_version(force=True)
-                    return {"success": True, "message": "Ollama uruchomiony"}
-                else:
-                    return {
-                        "success": False,
-                        "message": "Ollama nie uruchomił się w oczekiwanym czasie",
-                    }
-            except Exception as e:
-                return {
-                    "success": False,
-                    "message": f"Błąd uruchamiania Ollama: {str(e)}",
-                }
-        else:
-            return {
-                "success": False,
-                "message": "Brak skonfigurowanego OLLAMA_START_COMMAND w aktywnym pliku env",
-            }
+        # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
+        # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
+        # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
+        return start_ollama_impl(
+            command=SETTINGS.OLLAMA_START_COMMAND,
+            get_service_status_fn=self.get_service_status,
+            ollama_service_type=ServiceType.LLM_OLLAMA,
+            service_status_running=ServiceStatus.RUNNING,
+            subprocess_module=subprocess,
+            time_module=time,
+            refresh_runtime_version_fn=lambda: self._refresh_ollama_runtime_version(
+                force=True
+            ),
+        )
 
     def _stop_ollama(self) -> Dict[str, Any]:
         """Zatrzymuje Ollama."""
-        if SETTINGS.OLLAMA_STOP_COMMAND:
-            try:
-                # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
-                # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
-                # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
-                result = subprocess.run(
-                    SETTINGS.OLLAMA_STOP_COMMAND,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-                if result.returncode == 0:
-                    return {"success": True, "message": "Ollama zatrzymany"}
-                else:
-                    return {
-                        "success": False,
-                        "message": f"Błąd zatrzymywania Ollama: {result.stderr}",
-                    }
-            except Exception as e:
-                return {
-                    "success": False,
-                    "message": f"Błąd zatrzymywania Ollama: {str(e)}",
-                }
-        else:
-            return {
-                "success": False,
-                "message": "Brak skonfigurowanego OLLAMA_STOP_COMMAND w aktywnym pliku env",
-            }
+        # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
+        # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
+        # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
+        return stop_ollama_impl(
+            command=SETTINGS.OLLAMA_STOP_COMMAND,
+            subprocess_module=subprocess,
+        )
 
     def _start_vllm(self) -> Dict[str, Any]:
         """Uruchamia vLLM."""
-        if SETTINGS.VLLM_START_COMMAND:
-            try:
-                # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
-                # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
-                # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
-                subprocess.Popen(
-                    SETTINGS.VLLM_START_COMMAND,
-                    shell=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
-                time.sleep(5)
-                status = self.get_service_status(ServiceType.LLM_VLLM)
-                if status.status == ServiceStatus.RUNNING:
-                    return {"success": True, "message": "vLLM uruchomiony"}
-                else:
-                    return {
-                        "success": False,
-                        "message": "vLLM nie uruchomił się w oczekiwanym czasie",
-                    }
-            except Exception as e:
-                return {
-                    "success": False,
-                    "message": f"Błąd uruchamiania vLLM: {str(e)}",
-                }
-        else:
-            return {
-                "success": False,
-                "message": "Brak skonfigurowanego VLLM_START_COMMAND w aktywnym pliku env",
-            }
+        # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
+        # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
+        # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
+        return start_vllm_impl(
+            command=SETTINGS.VLLM_START_COMMAND,
+            get_service_status_fn=self.get_service_status,
+            vllm_service_type=ServiceType.LLM_VLLM,
+            service_status_running=ServiceStatus.RUNNING,
+            subprocess_module=subprocess,
+            time_module=time,
+        )
 
     def _stop_vllm(self) -> Dict[str, Any]:
         """Zatrzymuje vLLM."""
-        if SETTINGS.VLLM_STOP_COMMAND:
-            try:
-                # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
-                # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
-                # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
-                result = subprocess.run(
-                    SETTINGS.VLLM_STOP_COMMAND,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-                if result.returncode == 0:
-                    return {"success": True, "message": "vLLM zatrzymany"}
-                else:
-                    return {
-                        "success": False,
-                        "message": f"Błąd zatrzymywania vLLM: {result.stderr}",
-                    }
-            except Exception as e:
-                return {
-                    "success": False,
-                    "message": f"Błąd zatrzymywania vLLM: {str(e)}",
-                }
-        else:
-            return {
-                "success": False,
-                "message": "Brak skonfigurowanego VLLM_STOP_COMMAND w aktywnym pliku env",
-            }
+        # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
+        # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
+        # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
+        return stop_vllm_impl(
+            command=SETTINGS.VLLM_STOP_COMMAND,
+            subprocess_module=subprocess,
+        )
 
     def get_history(self, limit: int = 50) -> List[Dict]:
         """Pobiera historię akcji."""

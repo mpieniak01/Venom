@@ -2960,7 +2960,31 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_model_manager_adapter_ops.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/test_model_manager_roi.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_model_manager_versions.py",
       "domain": "models",
       "test_type": "unit",
       "intent": "regression",

@@ -179,7 +179,9 @@ def set_autonomy_level(
                 status="failure",
                 details={
                     "old_level": old_level,
-                    "old_level_name": old_level_info.name if old_level_info else "UNKNOWN",
+                    "old_level_name": old_level_info.name
+                    if old_level_info
+                    else "UNKNOWN",
                     "new_level": payload.level,
                     "new_level_name": "UNKNOWN",
                     "actor": actor,

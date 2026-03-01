@@ -353,6 +353,8 @@ export const pl = {
       refreshing: "Odświeżam…",
       tryAgain: "Spróbuj ponownie",
       copyJson: "Kopiuj JSON",
+      copySuccess: "Skopiowano kroki.",
+      copyFailed: "Nie udało się skopiować.",
       fullscreen: "Pełny ekran",
       exitFullscreen: "Wyłącz pełny ekran",
       zoomIn: "Przybliż",

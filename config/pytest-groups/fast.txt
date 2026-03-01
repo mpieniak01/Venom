@@ -203,7 +203,9 @@ tests/test_metrics_routes.py
 tests/test_model_config_api.py
 tests/test_model_discovery.py
 tests/test_model_manager.py
+tests/test_model_manager_adapter_ops.py
 tests/test_model_manager_roi.py
+tests/test_model_manager_versions.py
 tests/test_model_registry.py
 tests/test_model_registry_clients.py
 tests/test_model_registry_clients_additional.py

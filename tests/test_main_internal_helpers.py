@@ -443,6 +443,17 @@ def test_initialize_calendar_skill_disabled(monkeypatch):
     assert main_module.google_calendar_skill == "placeholder"
 
 
+def test_initialize_calendar_skill_sets_global_on_success(monkeypatch):
+    monkeypatch.setattr(main_module, "google_calendar_skill", None)
+    monkeypatch.setattr(
+        main_module,
+        "initialize_calendar_skill",
+        lambda **_kwargs: {"ready": True},
+    )
+    main_module._initialize_calendar_skill()
+    assert main_module.google_calendar_skill == {"ready": True}
+
+
 def test_parse_node_message(monkeypatch):
     payload = '{"message_type":"HANDSHAKE","payload":{"node_name":"n1","token":"t","capabilities":{}}}'
     parsed = main_module._parse_node_message(payload)

@@ -179,3 +179,31 @@ def test_adapter_ops_error_and_info_paths(tmp_path, monkeypatch):
         state_path=manager.active_adapter_state_path,
         logger=logger,
     )
+
+
+def test_deactivate_adapter_without_active_version_returns_false(tmp_path):
+    logger = _DummyLogger()
+    manager = ModelManager(models_dir=str(tmp_path / "models"))
+    assert adapter_ops.deactivate_adapter(manager=manager, logger=logger) is False
+
+
+def test_activate_adapter_existing_version_failed_activation(tmp_path):
+    logger = _DummyLogger()
+    manager = ModelManager(models_dir=str(tmp_path / "models"))
+    adapter_path = manager.models_dir / "training_fail" / "adapter"
+    adapter_path.mkdir(parents=True, exist_ok=True)
+    manager.register_version(
+        version_id="training_fail",
+        base_model="academy-base",
+        adapter_path=str(adapter_path),
+    )
+    manager.activate_version = lambda _version_id: False
+
+    ok = adapter_ops.activate_adapter(
+        manager=manager,
+        adapter_id="training_fail",
+        adapter_path=str(adapter_path),
+        base_model="academy-base",
+        logger=logger,
+    )
+    assert ok is False

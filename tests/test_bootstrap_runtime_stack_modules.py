@@ -430,3 +430,149 @@ async def test_initialize_shadow_stack_returns_none_on_exception():
         )
 
     assert result == (None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_runtime_stack_guard_branches_for_disabled_or_invalid_config(
+    tmp_path: Path,
+):
+    logger = _logger()
+
+    settings_disabled = SimpleNamespace(ENABLE_NEXUS=False)
+    assert (
+        await stack.initialize_node_manager(
+            settings=settings_disabled,
+            logger=logger,
+        )
+        is None
+    )
+
+    settings_empty_token = SimpleNamespace(
+        ENABLE_NEXUS=True,
+        NEXUS_SHARED_TOKEN=SimpleNamespace(get_secret_value=lambda: ""),
+        NEXUS_HEARTBEAT_TIMEOUT=10,
+        APP_PORT=8000,
+    )
+    assert (
+        await stack.initialize_node_manager(
+            settings=settings_empty_token,
+            logger=logger,
+        )
+        is None
+    )
+
+    settings_iot = SimpleNamespace(
+        ENABLE_IOT_BRIDGE=True,
+        RIDER_PI_PASSWORD=SimpleNamespace(get_secret_value=lambda: "pw"),
+        RIDER_PI_HOST="127.0.0.1",
+        RIDER_PI_PORT=22,
+        RIDER_PI_USERNAME="u",
+        RIDER_PI_PROTOCOL="ssh",
+    )
+
+    class _Bridge:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def connect(self):
+            return False
+
+    bridge = await stack.initialize_hardware_bridge_if_enabled(
+        settings=settings_iot,
+        logger=logger,
+        extract_secret_value_fn=lambda secret: secret.get_secret_value(),
+        hardware_bridge_cls=_Bridge,
+    )
+    assert bridge is not None
+
+    settings_audio = SimpleNamespace(
+        ENABLE_AUDIO_INTERFACE=False,
+        VAD_THRESHOLD=0.5,
+        SILENCE_DURATION=1.0,
+    )
+    assert (
+        stack.initialize_operator_agent_if_possible(
+            settings=settings_audio,
+            logger=logger,
+            current_audio_engine=None,
+            current_hardware_bridge=None,
+            operator_agent_cls=lambda **_kwargs: object(),
+        )
+        is None
+    )
+    assert (
+        stack.initialize_audio_stream_handler_if_possible(
+            settings=settings_audio,
+            logger=logger,
+            current_audio_engine=None,
+            current_operator_agent=None,
+            audio_stream_handler_cls=lambda **_kwargs: object(),
+        )
+        is None
+    )
+
+
+def test_bootstrap_agents_import_and_exception_fallbacks(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    logger = _logger()
+
+    calendar_mod = ModuleType("venom_core.execution.skills.google_calendar_skill")
+
+    class _BrokenCalendarSkill:
+        def __init__(self):
+            raise RuntimeError("init-boom")
+
+    calendar_mod.GoogleCalendarSkill = _BrokenCalendarSkill
+    with patch.dict("sys.modules", {calendar_mod.__name__: calendar_mod}):
+        assert (
+            bootstrap_agents.initialize_calendar_skill(
+                settings=SimpleNamespace(ENABLE_GOOGLE_CALENDAR=True),
+                logger=logger,
+            )
+            is None
+        )
+
+    class _FailingModelManager:
+        def restore_active_adapter(self):
+            raise RuntimeError("restore-boom")
+
+    prof_mod = ModuleType("venom_core.agents.professor")
+    gpu_mod = ModuleType("venom_core.infrastructure.gpu_habitat")
+    cur_mod = ModuleType("venom_core.learning.dataset_curator")
+
+    class _Professor:
+        def __init__(self, **_kwargs):
+            pass
+
+    class _GPU:
+        def __init__(self, **_kwargs):
+            pass
+
+    class _Curator:
+        def __init__(self, **_kwargs):
+            pass
+
+    prof_mod.Professor = _Professor
+    gpu_mod.GPUHabitat = _GPU
+    cur_mod.DatasetCurator = _Curator
+
+    with patch.dict(
+        "sys.modules",
+        {
+            prof_mod.__name__: prof_mod,
+            gpu_mod.__name__: gpu_mod,
+            cur_mod.__name__: cur_mod,
+        },
+    ):
+        professor, curator, habitat = bootstrap_agents.initialize_academy(
+            settings=SimpleNamespace(ENABLE_ACADEMY=True, ACADEMY_ENABLE_GPU=True),
+            logger=logger,
+            lessons_store=object(),
+            model_manager=_FailingModelManager(),
+            get_orchestrator_kernel=lambda: None,
+        )
+
+    assert professor is None
+    assert curator is not None
+    assert habitat is not None

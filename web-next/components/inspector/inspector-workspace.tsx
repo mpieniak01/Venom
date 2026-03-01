@@ -86,6 +86,13 @@ export function InspectorWorkspace({
   inspectorFailed,
   focusedStep,
 }: Props) {
+  let selectedStatusHint = t("inspector.panels.diagram.selectHint");
+  if (streamConnected) {
+    selectedStatusHint = t("inspector.panels.details.liveHint");
+  } else if (selectedRequest) {
+    selectedStatusHint = `${t("inspector.panels.details.completedLabel")}: ${formatRelativeTime(selectedRequest.finished_at)}`;
+  }
+
   return (
     <section className="space-y-6">
       <Panel
@@ -201,7 +208,13 @@ export function InspectorWorkspace({
                 />
                 {t("inspector.panels.steps.contractsOnly")}
               </label>
-              <Button variant="outline" size="sm" onClick={onCopy}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onCopy().catch(() => undefined);
+                }}
+              >
                 {t("inspector.actions.copyJson")}
               </Button>
             </div>
@@ -252,13 +265,7 @@ export function InspectorWorkspace({
             <StatCard
               label={t("inspector.panels.details.status")}
               value={liveSelectedStatus}
-              hint={
-                streamConnected
-                  ? t("inspector.panels.details.liveHint")
-                  : selectedRequest
-                    ? `${t("inspector.panels.details.completedLabel")}: ${formatRelativeTime(selectedRequest.finished_at)}`
-                    : t("inspector.panels.diagram.selectHint")
-              }
+              hint={selectedStatusHint}
               accent="purple"
             />
             <StatCard

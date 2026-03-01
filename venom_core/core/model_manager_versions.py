@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, Protocol, TypeVar
+from typing import Any, Callable, Dict, Optional, Protocol, cast
 
 
 class LoggerLike(Protocol):
@@ -20,24 +20,21 @@ class VersionLike(Protocol):
     def to_dict(self) -> Dict[str, Any]: ...
 
 
-VersionT = TypeVar("VersionT", bound=VersionLike)
-
-
-class ModelManagerLike(Protocol[VersionT]):
-    versions: dict[str, VersionT]
+class ModelManagerLike(Protocol):
+    versions: dict[str, Any]
     active_version: Optional[str]
 
 
 def register_version(
     *,
-    manager: ModelManagerLike[VersionT],
+    manager: ModelManagerLike,
     version_id: str,
     base_model: str,
     adapter_path: Optional[str],
     performance_metrics: Optional[Dict[str, Any]],
-    model_version_cls: Callable[..., VersionT],
+    model_version_cls: Callable[..., VersionLike],
     logger: LoggerLike,
-) -> VersionT:
+) -> VersionLike:
     version = model_version_cls(
         version_id=version_id,
         base_model=base_model,
@@ -53,7 +50,7 @@ def register_version(
 
 def activate_version(
     *,
-    manager: ModelManagerLike[VersionT],
+    manager: ModelManagerLike,
     version_id: str,
     logger: LoggerLike,
 ) -> bool:
@@ -70,27 +67,35 @@ def activate_version(
     return True
 
 
-def get_active_version(*, manager: ModelManagerLike[VersionT]) -> Optional[VersionT]:
+def get_active_version(*, manager: ModelManagerLike) -> Optional[VersionLike]:
     if not manager.active_version:
         return None
-    return manager.versions.get(manager.active_version)
+    version = manager.versions.get(manager.active_version)
+    if version is None:
+        return None
+    return cast(VersionLike, version)
 
 
 def get_version(
-    *, manager: ModelManagerLike[VersionT], version_id: str
-) -> Optional[VersionT]:
-    return manager.versions.get(version_id)
+    *,
+    manager: ModelManagerLike,
+    version_id: str,
+) -> Optional[VersionLike]:
+    version = manager.versions.get(version_id)
+    if version is None:
+        return None
+    return cast(VersionLike, version)
 
 
-def get_all_versions(*, manager: ModelManagerLike[VersionT]) -> list[VersionT]:
+def get_all_versions(*, manager: ModelManagerLike) -> list[VersionLike]:
     return sorted(
-        manager.versions.values(),
+        [cast(VersionLike, version) for version in manager.versions.values()],
         key=lambda version: version.created_at or "",
         reverse=True,
     )
 
 
-def get_genealogy(*, manager: ModelManagerLike[VersionT]) -> Dict[str, Any]:
+def get_genealogy(*, manager: ModelManagerLike) -> Dict[str, Any]:
     versions_data = [version.to_dict() for version in get_all_versions(manager=manager)]
     return {
         "total_versions": len(manager.versions),
@@ -101,7 +106,7 @@ def get_genealogy(*, manager: ModelManagerLike[VersionT]) -> Dict[str, Any]:
 
 def compare_versions(
     *,
-    manager: ModelManagerLike[VersionT],
+    manager: ModelManagerLike,
     version_id_1: str,
     version_id_2: str,
     compute_metric_diff_fn: Callable[[Any, Any], Optional[Dict[str, Any]]],

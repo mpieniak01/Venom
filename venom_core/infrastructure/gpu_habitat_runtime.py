@@ -5,46 +5,57 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, Optional
+
+
+@dataclass(frozen=True)
+class TrainingJobRequest:
+    dataset_path: str
+    base_model: str
+    output_dir: str
+    lora_rank: int
+    learning_rate: float
+    num_epochs: int
+    max_seq_length: int
+    batch_size: int
+    job_name: Optional[str]
+
+
+@dataclass(frozen=True)
+class TrainingJobDeps:
+    settings: Any
+    logger: Any
+    docker_module: Any
+    image_not_found_error: type[BaseException]
 
 
 def run_training_job(
     *,
     manager: Any,
-    dataset_path: str,
-    base_model: str,
-    output_dir: str,
-    lora_rank: int,
-    learning_rate: float,
-    num_epochs: int,
-    max_seq_length: int,
-    batch_size: int,
-    job_name: Optional[str],
-    settings: Any,
-    logger: Any,
-    docker_module: Any,
-    image_not_found_error: type[BaseException],
+    request: TrainingJobRequest,
+    deps: TrainingJobDeps,
 ) -> Dict[str, str]:
-    training_base_dir = Path(settings.ACADEMY_TRAINING_DIR).resolve()
-    dataset_path_obj = (training_base_dir / Path(dataset_path).name).resolve()
+    training_base_dir = Path(deps.settings.ACADEMY_TRAINING_DIR).resolve()
+    dataset_path_obj = (training_base_dir / Path(request.dataset_path).name).resolve()
     if not dataset_path_obj.exists():
         raise ValueError("Dataset nie istnieje")
 
     if not manager._is_path_within_base(dataset_path_obj, training_base_dir):
         raise ValueError("Dataset path jest poza katalogiem Academy training")
 
-    models_base_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
-    output_dir_obj = (models_base_dir / Path(output_dir).name).resolve()
+    models_base_dir = Path(deps.settings.ACADEMY_MODELS_DIR).resolve()
+    output_dir_obj = (models_base_dir / Path(request.output_dir).name).resolve()
     if not manager._is_path_within_base(output_dir_obj, models_base_dir):
         raise ValueError("Output path jest poza katalogiem Academy models")
     output_dir_obj.mkdir(parents=True, exist_ok=True)
 
-    resolved_job_name = job_name or f"training_{dataset_path_obj.stem}"
+    resolved_job_name = request.job_name or f"training_{dataset_path_obj.stem}"
 
-    logger.info(
+    deps.logger.info(
         f"Uruchamianie treningu ({'LOCAL' if manager.use_local_runtime else 'DOCKER'}): "
-        f"job={resolved_job_name}, model={base_model}, dataset={dataset_path_obj.name}"
+        f"job={resolved_job_name}, model={request.base_model}, dataset={dataset_path_obj.name}"
     )
 
     try:
@@ -54,15 +65,15 @@ def run_training_job(
             dataset_path=str(dataset_path_obj)
             if manager.use_local_runtime
             else "/workspace/dataset.jsonl",
-            base_model=base_model,
+            base_model=request.base_model,
             output_dir=str(output_dir_obj)
             if manager.use_local_runtime
             else "/workspace/output",
-            lora_rank=lora_rank,
-            learning_rate=learning_rate,
-            num_epochs=num_epochs,
-            max_seq_length=max_seq_length,
-            batch_size=batch_size,
+            lora_rank=request.lora_rank,
+            learning_rate=request.learning_rate,
+            num_epochs=request.num_epochs,
+            max_seq_length=request.max_seq_length,
+            batch_size=request.batch_size,
             use_unsloth=use_unsloth,
         )
 
@@ -80,9 +91,9 @@ def run_training_job(
 
         try:
             manager.client.images.get(manager.training_image)
-            logger.info(f"Obraz {manager.training_image} już istnieje")
-        except image_not_found_error:
-            logger.info(f"Pobieranie obrazu {manager.training_image}...")
+            deps.logger.info(f"Obraz {manager.training_image} już istnieje")
+        except deps.image_not_found_error:
+            deps.logger.info(f"Pobieranie obrazu {manager.training_image}...")
             manager.client.images.pull(manager.training_image)
 
         volumes = {
@@ -99,7 +110,7 @@ def run_training_job(
         device_requests = None
         if manager.enable_gpu:
             device_requests = [
-                docker_module.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
+                deps.docker_module.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
             ]
 
         safe_job_name = "".join(
@@ -126,7 +137,7 @@ def run_training_job(
             "status": "running",
         }
 
-        logger.info(
+        deps.logger.info(
             f"Kontener treningowy uruchomiony: {container.id[:12]} (job={resolved_job_name})"
         )
 
@@ -138,7 +149,7 @@ def run_training_job(
         }
     except Exception as exc:
         error_msg = f"Błąd podczas uruchamiania treningu: {exc}"
-        logger.error(error_msg)
+        deps.logger.error(error_msg)
         raise RuntimeError(error_msg) from exc
 
 

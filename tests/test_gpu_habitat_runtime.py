@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from venom_core.infrastructure import gpu_habitat_runtime as runtime
 
 
@@ -168,3 +170,148 @@ def test_cleanup_local_job_signals_pid_when_no_process() -> None:
         logger=_Logger(),
     )
     assert called == [signal.SIGTERM]
+
+
+def test_run_training_job_local_runtime_and_validation(tmp_path: Path) -> None:
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    dataset = training_dir / "dataset.jsonl"
+    dataset.write_text("{}", encoding="utf-8")
+    settings = SimpleNamespace(
+        ACADEMY_TRAINING_DIR=str(training_dir),
+        ACADEMY_MODELS_DIR=str(models_dir),
+    )
+    logger = _Logger()
+
+    manager = SimpleNamespace(
+        use_local_runtime=True,
+        enable_gpu=False,
+        _has_unsloth=True,
+        _is_path_within_base=lambda path, base: path.is_relative_to(base),
+        _generate_training_script=lambda **_kwargs: "print('ok')",
+        _run_local_training_job=lambda *_args: {
+            "container_id": "local-1",
+            "job_name": "job-1",
+            "status": "running",
+            "adapter_path": "x/adapter",
+        },
+    )
+
+    result = runtime.run_training_job(
+        manager=manager,
+        request=runtime.TrainingJobRequest(
+            dataset_path=str(dataset),
+            base_model="phi",
+            output_dir="out",
+            lora_rank=8,
+            learning_rate=0.0002,
+            num_epochs=1,
+            max_seq_length=512,
+            batch_size=1,
+            job_name="job-1",
+        ),
+        deps=runtime.TrainingJobDeps(
+            settings=settings,
+            logger=logger,
+            docker_module=SimpleNamespace(types=SimpleNamespace(DeviceRequest=object)),
+            image_not_found_error=RuntimeError,
+        ),
+    )
+    assert result["job_name"] == "job-1"
+    assert (models_dir / "out" / "train_script.py").exists()
+
+    with pytest.raises(ValueError, match="Dataset nie istnieje"):
+        runtime.run_training_job(
+            manager=manager,
+            request=runtime.TrainingJobRequest(
+                dataset_path=str(training_dir / "missing.jsonl"),
+                base_model="phi",
+                output_dir="out",
+                lora_rank=8,
+                learning_rate=0.0002,
+                num_epochs=1,
+                max_seq_length=512,
+                batch_size=1,
+                job_name="job-1",
+            ),
+            deps=runtime.TrainingJobDeps(
+                settings=settings,
+                logger=logger,
+                docker_module=SimpleNamespace(
+                    types=SimpleNamespace(DeviceRequest=object)
+                ),
+                image_not_found_error=RuntimeError,
+            ),
+        )
+
+
+def test_run_training_job_docker_runtime_paths(tmp_path: Path) -> None:
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    dataset = training_dir / "dataset.jsonl"
+    dataset.write_text("{}", encoding="utf-8")
+    settings = SimpleNamespace(
+        ACADEMY_TRAINING_DIR=str(training_dir),
+        ACADEMY_MODELS_DIR=str(models_dir),
+    )
+    logger = _Logger()
+
+    class _ImageNotFound(Exception):
+        pass
+
+    class _Images:
+        def get(self, _name: str) -> None:
+            raise _ImageNotFound("missing")
+
+        def pull(self, _name: str) -> None:
+            return None
+
+    container = SimpleNamespace(id="abc123456789")
+    manager = SimpleNamespace(
+        use_local_runtime=False,
+        enable_gpu=True,
+        _has_unsloth=True,
+        training_image="venom/train",
+        client=SimpleNamespace(
+            images=_Images(),
+            containers=SimpleNamespace(run=lambda **_kwargs: container),
+        ),
+        training_containers={},
+        _is_path_within_base=lambda path, base: path.is_relative_to(base),
+        _generate_training_script=lambda **_kwargs: "print('ok')",
+    )
+    device_calls: list[dict[str, object]] = []
+    docker_module = SimpleNamespace(
+        types=SimpleNamespace(
+            DeviceRequest=lambda **kwargs: device_calls.append(kwargs) or kwargs
+        )
+    )
+
+    result = runtime.run_training_job(
+        manager=manager,
+        request=runtime.TrainingJobRequest(
+            dataset_path=str(dataset),
+            base_model="phi",
+            output_dir="out2",
+            lora_rank=8,
+            learning_rate=0.0002,
+            num_epochs=1,
+            max_seq_length=512,
+            batch_size=1,
+            job_name="job-2",
+        ),
+        deps=runtime.TrainingJobDeps(
+            settings=settings,
+            logger=logger,
+            docker_module=docker_module,
+            image_not_found_error=_ImageNotFound,
+        ),
+    )
+    assert result["status"] == "running"
+    assert result["container_id"] == "abc123456789"
+    assert "job-2" in manager.training_containers
+    assert device_calls and device_calls[0]["count"] == -1

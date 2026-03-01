@@ -133,3 +133,49 @@ def test_deactivate_adapter_clears_active_version_and_state(tmp_path):
     assert success is True
     assert manager.active_version is None
     assert not manager.active_adapter_state_path.exists()
+
+
+def test_adapter_ops_error_and_info_paths(tmp_path, monkeypatch):
+    logger = _DummyLogger()
+    manager = ModelManager(models_dir=str(tmp_path / "models"))
+
+    # Invalid JSON should be handled gracefully.
+    manager.active_adapter_state_path.parent.mkdir(parents=True, exist_ok=True)
+    manager.active_adapter_state_path.write_text("{bad", encoding="utf-8")
+    assert (
+        adapter_ops.load_active_adapter_state(
+            state_path=manager.active_adapter_state_path,
+            logger=logger,
+        )
+        is None
+    )
+
+    # Existing version info path.
+    adapter_path = manager.models_dir / "training_info" / "adapter"
+    adapter_path.mkdir(parents=True, exist_ok=True)
+    manager.register_version(
+        version_id="training_info",
+        base_model="academy-base",
+        adapter_path=str(adapter_path),
+    )
+    manager.activate_version("training_info")
+    info = adapter_ops.get_active_adapter_info(manager=manager)
+    assert info is not None
+    assert info["adapter_id"] == "training_info"
+    assert info["is_active"] is True
+
+    # clear_active_adapter_state should swallow unlink exceptions.
+    from pathlib import Path
+
+    original_unlink = Path.unlink
+    monkeypatch.setattr(
+        Path,
+        "unlink",
+        lambda self, **_kwargs: (_ for _ in ()).throw(RuntimeError("unlink-error"))
+        if self == manager.active_adapter_state_path
+        else original_unlink(self, **_kwargs),
+    )
+    adapter_ops.clear_active_adapter_state(
+        state_path=manager.active_adapter_state_path,
+        logger=logger,
+    )

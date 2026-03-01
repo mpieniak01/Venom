@@ -183,6 +183,8 @@ Kontrakt deterministyczności (dlaczego to nie flakuje):
 - `config/coverage-file-floor.txt`: testy-kotwice dla floor są zawsze dołączane.
 - `ripgrep` (`rg`) w CI: stabilny i szybki resolver + czytelne logi.
 - `scripts/check_test_catalog.py` dodatkowo waliduje grupy release (`fast/long/heavy`) względem uprawnień lane w katalogu.
+- Lokalny guard (`make test-catalog-check`, uruchamiany w `make pr-fast`) blokuje nowe/zmienione testy zostawione wyłącznie w `release` lane.
+- Ten guard jest celowo lokalny (na GitHub CI jest wyłączony), żeby łapać błąd wcześniej i nie generować szumu na pipeline po push.
 
 Jak sprawdzić pokrycie lokalnie przed push:
 

@@ -420,6 +420,34 @@ async def test_stream_single_attempt_retry_and_failure() -> None:
     assert state3.failed
     assert emitted_fail and emitted_fail[0].startswith("event: error")
 
+    state4 = ssvc.SimpleStreamState(chunks=[])
+    emitted_non_retryable = [
+        event
+        async for event in ssvc.stream_single_attempt(
+            transport=ssvc.StreamTransportConfig(
+                open_stream_response_fn=_OpenErr(),
+                iter_stream_packets_fn=_iter_packets,
+                completions_url="u",
+                payload={},
+                provider_name="p",
+            ),
+            retry=ssvc.StreamRetryConfig(
+                http_status_error_type=_HttpStatusError,
+                max_attempts=3,
+                is_retryable_status_fn=lambda code: code == 500,
+                runtime_provider="openai",
+                retry_backoff=0.0,
+                sleep_fn=lambda _s: _noop_sleep(),
+            ),
+            state=state4,
+            attempt=1,
+            handle_packet_fn=lambda _p: ["x"],
+            emit_http_error_fn=lambda _exc: _emit_error(),
+        )
+    ]
+    assert state4.failed
+    assert emitted_non_retryable and emitted_non_retryable[0].startswith("event: error")
+
 
 def test_tasks_service_metrics_and_status_values(monkeypatch) -> None:
     sentinel = object()

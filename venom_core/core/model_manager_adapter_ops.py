@@ -6,7 +6,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Protocol, TypeVar
+from typing import Any, Dict, Optional, Protocol, cast
 
 
 class LoggerLike(Protocol):
@@ -26,13 +26,10 @@ class VersionLike(Protocol):
     is_active: bool
 
 
-VersionT = TypeVar("VersionT", bound=VersionLike)
-
-
-class ModelManagerLike(Protocol[VersionT]):
+class ModelManagerLike(Protocol):
     models_dir: Path
     active_adapter_state_path: Path
-    versions: dict[str, VersionT]
+    versions: dict[str, Any]
     active_version: Optional[str]
 
     def activate_version(self, version_id: str) -> bool: ...
@@ -43,9 +40,9 @@ class ModelManagerLike(Protocol[VersionT]):
         base_model: str,
         adapter_path: Optional[str] = None,
         performance_metrics: Optional[Dict[str, Any]] = None,
-    ) -> VersionT: ...
+    ) -> VersionLike: ...
 
-    def get_active_version(self) -> Optional[VersionT]: ...
+    def get_active_version(self) -> Optional[VersionLike]: ...
 
 
 def save_active_adapter_state(
@@ -96,7 +93,9 @@ def clear_active_adapter_state(*, state_path: Path, logger: LoggerLike) -> None:
 
 
 def restore_active_adapter(
-    *, manager: ModelManagerLike[VersionT], logger: LoggerLike
+    *,
+    manager: ModelManagerLike,
+    logger: LoggerLike,
 ) -> bool:
     """
     Try to restore active adapter from persisted state.
@@ -146,7 +145,7 @@ def restore_active_adapter(
 
 def activate_adapter(
     *,
-    manager: ModelManagerLike[VersionT],
+    manager: ModelManagerLike,
     adapter_id: str,
     adapter_path: str,
     base_model: Optional[str],
@@ -175,7 +174,7 @@ def activate_adapter(
     if adapter_id in manager.versions:
         success = manager.activate_version(adapter_id)
         if success:
-            version = manager.versions[adapter_id]
+            version = cast(VersionLike, manager.versions[adapter_id])
             save_active_adapter_state(
                 state_path=manager.active_adapter_state_path,
                 adapter_id=adapter_id,
@@ -212,7 +211,9 @@ def activate_adapter(
 
 
 def deactivate_adapter(
-    *, manager: ModelManagerLike[VersionT], logger: LoggerLike
+    *,
+    manager: ModelManagerLike,
+    logger: LoggerLike,
 ) -> bool:
     """
     Deactivate current adapter (rollback to base model).
@@ -227,7 +228,7 @@ def deactivate_adapter(
     logger.info("Dezaktywacja adaptera: %s", manager.active_version)
 
     if manager.active_version in manager.versions:
-        manager.versions[manager.active_version].is_active = False
+        cast(VersionLike, manager.versions[manager.active_version]).is_active = False
 
     manager.active_version = None
     clear_active_adapter_state(
@@ -239,7 +240,8 @@ def deactivate_adapter(
 
 
 def get_active_adapter_info(
-    *, manager: ModelManagerLike[VersionT]
+    *,
+    manager: ModelManagerLike,
 ) -> Optional[Dict[str, Any]]:
     """
     Return active adapter metadata.

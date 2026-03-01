@@ -40,6 +40,17 @@ class _Client:
         return self._response
 
 
+class _RaisingClient:
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    async def __aenter__(self):
+        raise self._exc
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
 def test_detect_model_type_and_provider_variants(tmp_path: Path) -> None:
     gguf = tmp_path / "m.gguf"
     gguf.write_text("x", encoding="utf-8")
@@ -115,6 +126,65 @@ def test_collect_ollama_entries_prefers_latest(tmp_path: Path) -> None:
     assert names == ["bar:no-digest", "foo:latest"]
 
 
+def test_resolve_ollama_tags_url_and_metadata_fallbacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mgr = _Discovery(tmp_path)
+    monkeypatch.setenv(
+        "LLM_LOCAL_ENDPOINT", "http://127.0.0.1:11434/v1/chat/completions"
+    )
+    assert mgr._resolve_ollama_tags_url() == "http://127.0.0.1:11434/api/tags"
+
+    monkeypatch.setenv("LLM_LOCAL_ENDPOINT", "")
+    fallback_url = mgr._resolve_ollama_tags_url()
+    assert fallback_url.endswith("/api/tags")
+
+    broken_dir = tmp_path / "broken"
+    broken_dir.mkdir()
+    (broken_dir / discovery.ONNX_METADATA_FILENAME).write_text("{bad", encoding="utf-8")
+    assert discovery.ModelManagerDiscoveryMixin._load_onnx_metadata(broken_dir) == {}
+
+    json_file = tmp_path / "model.onnx.json"
+    json_file.write_text(json.dumps(["not-a-dict"]), encoding="utf-8")
+    assert (
+        discovery.ModelManagerDiscoveryMixin._load_onnx_metadata(
+            tmp_path / "model.onnx"
+        )
+        == {}
+    )
+
+
+def test_manifest_helpers_and_cache_failures(tmp_path: Path) -> None:
+    mgr = _Discovery(tmp_path)
+
+    outside = tmp_path / "outside.manifest"
+    outside.write_text("{}", encoding="utf-8")
+    assert (
+        discovery.ModelManagerDiscoveryMixin._resolve_manifest_relative_parts(
+            mgr.models_dir / "manifests",
+            outside,
+        )
+        is None
+    )
+    assert (
+        discovery.ModelManagerDiscoveryMixin._build_ollama_manifest_entry_name(
+            ("registry", "namespace", "model", "latest")
+        )
+        == "namespace/model:latest"
+    )
+
+    unreadable = tmp_path / "bad-manifest"
+    unreadable.write_text("{bad", encoding="utf-8")
+    assert (
+        discovery.ModelManagerDiscoveryMixin._read_manifest_size_bytes(unreadable) == 0
+    )
+
+    mgr.ollama_cache_path.write_text("{bad", encoding="utf-8")
+    models: dict[str, dict[str, Any]] = {}
+    mgr._load_ollama_cache(models)
+    assert models == {}
+
+
 @pytest.mark.asyncio
 async def test_list_local_models_registers_local_and_ollama(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -146,3 +216,28 @@ async def test_list_local_models_registers_local_and_ollama(
     names = {m["name"] for m in models}
     assert "tiny.gguf" in names
     assert "llama3:latest" in names
+
+
+@pytest.mark.asyncio
+async def test_list_local_models_network_error_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mgr = _Discovery(tmp_path)
+    (mgr.models_dir / "tiny.gguf").write_text("x", encoding="utf-8")
+    req = discovery.httpx.Request("GET", "http://localhost/api/tags")
+    monkeypatch.setattr(
+        discovery,
+        "TrafficControlledHttpClient",
+        lambda **_: _RaisingClient(discovery.httpx.ConnectError("down", request=req)),
+    )
+    models = await mgr.list_local_models()
+    assert any(model["name"] == "tiny.gguf" for model in models)
+    assert mgr._last_ollama_warning > 0.0
+
+    monkeypatch.setattr(
+        discovery,
+        "TrafficControlledHttpClient",
+        lambda **_: _Client(_Response(500, {"models": []})),
+    )
+    models = await mgr.list_local_models()
+    assert any(model["name"] == "tiny.gguf" for model in models)

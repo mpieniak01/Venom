@@ -301,14 +301,20 @@ test-catalog-sync:
 		--write 1
 
 test-catalog-check:
-	@$(PYTHON_BIN) scripts/check_test_catalog.py \
+	@ENFORCE_CHANGED_TEST_NEW_CODE=1; \
+	if [ "$${CI:-}" = "true" ] || [ "$${CI:-}" = "1" ]; then \
+		ENFORCE_CHANGED_TEST_NEW_CODE=0; \
+	fi; \
+	$(PYTHON_BIN) scripts/check_test_catalog.py \
 		--catalog config/testing/test_catalog.json \
 		--repo-root . \
 		--ci-lite-group config/pytest-groups/ci-lite.txt \
 		--new-code-group config/pytest-groups/sonar-new-code.txt \
 		--fast-group config/pytest-groups/fast.txt \
 		--long-group config/pytest-groups/long.txt \
-		--heavy-group config/pytest-groups/heavy.txt
+		--heavy-group config/pytest-groups/heavy.txt \
+		--enforce-changed-test-new-code "$$ENFORCE_CHANGED_TEST_NEW_CODE" \
+		--diff-base "$(NEW_CODE_DIFF_BASE)"
 
 test-groups-sync:
 	@$(PYTHON_BIN) scripts/sync_pytest_groups_from_catalog.py \

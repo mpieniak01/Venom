@@ -92,6 +92,16 @@ def test_runtime_state_machine_helpers_cover_all_branches() -> None:
     )
     assert info.status == ss.STOPPED
 
+    previous_status = info.status
+    rsm.update_config_managed_status(
+        info=info,
+        service_type="unknown",
+        settings=settings,
+        service_type_enum=st,
+        service_status_enum=ss,
+    )
+    assert info.status == previous_status
+
     assert (
         rsm.config_controlled_result(service_type=st.HIVE, service_type_enum=st)[
             "success"
@@ -161,6 +171,17 @@ def test_runtime_state_machine_helpers_cover_all_branches() -> None:
         is None
     )
     assert warn_calls
+    assert (
+        rsm.check_service_dependencies(
+            service_type=st.BACKEND,
+            get_service_status_fn=lambda _svc: SimpleNamespace(status=ss.RUNNING),
+            settings=settings,
+            service_type_enum=st,
+            service_status_enum=ss,
+            logger=logger,
+        )
+        is None
+    )
 
 
 def test_runtime_health_checks_helpers_cover_paths(tmp_path, monkeypatch) -> None:
@@ -481,3 +502,45 @@ def test_runtime_provider_ops_cover_success_and_failure_branches(tmp_path) -> No
         service_status_running="running",
     )["success"]
     assert rpo.stop_ui()["success"]
+
+    assert not rpo.start_ollama(
+        command=None,
+        get_service_status_fn=ok_status,
+        ollama_service_type="ollama",
+        service_status_running="running",
+        subprocess_module=process,
+        time_module=SimpleNamespace(sleep=lambda _s: None),
+        refresh_runtime_version_fn=lambda: None,
+    )["success"]
+    assert not rpo.stop_ollama(command=None, subprocess_module=process)["success"]
+
+    refreshed: list[bool] = []
+    process.popen_fail = False
+    assert rpo.start_ollama(
+        command="ollama serve",
+        get_service_status_fn=ok_status,
+        ollama_service_type="ollama",
+        service_status_running="running",
+        subprocess_module=process,
+        time_module=SimpleNamespace(sleep=lambda _s: None),
+        refresh_runtime_version_fn=lambda: refreshed.append(True),
+    )["success"]
+    assert refreshed == [True]
+
+    process.run_code = 0
+    assert rpo.stop_ollama(command="ollama stop", subprocess_module=process)["success"]
+    process.run_code = 1
+    assert not rpo.stop_ollama(command="ollama stop", subprocess_module=process)[
+        "success"
+    ]
+
+    process.popen_fail = False
+    assert rpo.start_vllm(
+        command="vllm serve",
+        get_service_status_fn=ok_status,
+        vllm_service_type="vllm",
+        service_status_running="running",
+        subprocess_module=process,
+        time_module=SimpleNamespace(sleep=lambda _s: None),
+    )["success"]
+    assert not rpo.stop_vllm(command=None, subprocess_module=process)["success"]

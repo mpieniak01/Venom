@@ -57,3 +57,38 @@ def test_versions_compare_and_genealogy(tmp_path):
     genealogy = mm_versions.get_genealogy(manager=manager)
     assert genealogy["total_versions"] == 2
     assert len(genealogy["versions"]) == 2
+
+
+def test_versions_helpers_error_and_access_paths(tmp_path):
+    logger = _DummyLogger()
+    manager = ModelManager(models_dir=str(tmp_path / "models"))
+
+    assert not mm_versions.activate_version(
+        manager=manager,
+        version_id="missing",
+        logger=logger,
+    )
+    assert mm_versions.get_active_version(manager=manager) is None
+    assert mm_versions.get_version(manager=manager, version_id="missing") is None
+    assert mm_versions.get_all_versions(manager=manager) == []
+
+    manager.register_version("v1", "base", performance_metrics={"score": 1.0})
+    manager.register_version("v2", "base", performance_metrics={"score": 2.0})
+    assert mm_versions.get_version(manager=manager, version_id="v1") is not None
+    assert mm_versions.get_active_version(manager=manager) is None
+
+    missing_cmp = mm_versions.compare_versions(
+        manager=manager,
+        version_id_1="v1",
+        version_id_2="missing",
+        compute_metric_diff_fn=mm_versions.compute_metric_diff,
+        logger=logger,
+    )
+    assert missing_cmp is None
+
+
+def test_compute_metric_diff_edge_cases() -> None:
+    assert mm_versions.compute_metric_diff(None, 1) is None
+    assert mm_versions.compute_metric_diff(0, 3)["diff_pct"] == float("inf")
+    non_numeric = mm_versions.compute_metric_diff("a", "b")
+    assert non_numeric == {"v1": "a", "v2": "b", "diff": "N/A"}

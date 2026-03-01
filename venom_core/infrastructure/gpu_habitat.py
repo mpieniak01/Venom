@@ -37,6 +37,10 @@ from venom_core.infrastructure.gpu_habitat_probe import (
     check_local_gpu_availability as check_local_gpu_availability_impl,
 )
 from venom_core.infrastructure.gpu_habitat_runtime import (
+    TrainingJobDeps,
+    TrainingJobRequest,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
     cleanup_docker_job as cleanup_docker_job_impl,
 )
 from venom_core.infrastructure.gpu_habitat_runtime import (
@@ -270,19 +274,23 @@ class GPUHabitat(DockerHabitat):
         """
         return run_training_job_impl(
             manager=self,
-            dataset_path=dataset_path,
-            base_model=base_model,
-            output_dir=output_dir,
-            lora_rank=lora_rank,
-            learning_rate=learning_rate,
-            num_epochs=num_epochs,
-            max_seq_length=max_seq_length,
-            batch_size=batch_size,
-            job_name=job_name,
-            settings=SETTINGS,
-            logger=logger,
-            docker_module=docker,
-            image_not_found_error=ImageNotFound,
+            request=TrainingJobRequest(
+                dataset_path=dataset_path,
+                base_model=base_model,
+                output_dir=output_dir,
+                lora_rank=lora_rank,
+                learning_rate=learning_rate,
+                num_epochs=num_epochs,
+                max_seq_length=max_seq_length,
+                batch_size=batch_size,
+                job_name=job_name,
+            ),
+            deps=TrainingJobDeps(
+                settings=SETTINGS,
+                logger=logger,
+                docker_module=docker,
+                image_not_found_error=ImageNotFound,
+            ),
         )
 
     def _run_local_training_job(

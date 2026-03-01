@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,53 @@ def _repo_tests(repo_root: Path) -> set[str]:
     }
 
 
+def _resolve_diff_base(repo_root: Path, preferred: str) -> str | None:
+    candidates = [preferred, "origin/main", "main", "HEAD~1"]
+    seen: set[str] = set()
+    for ref in candidates:
+        ref = ref.strip()
+        if not ref or ref in seen:
+            continue
+        seen.add(ref)
+        proc = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--verify", ref],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return ref
+    return None
+
+
+def _changed_tests(repo_root: Path, diff_base: str) -> set[str]:
+    proc = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMR",
+            f"{diff_base}...HEAD",
+            "--",
+            "tests/**/test_*.py",
+            "tests/test_*.py",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return set()
+    out: set[str] = set()
+    for raw in proc.stdout.splitlines():
+        path = raw.strip().replace("\\", "/")
+        if path and TEST_PATH_RE.match(path):
+            out.add(path)
+    return out
+
+
 def _catalog_entries(
     payload: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[Violation]]:
@@ -75,6 +123,8 @@ def evaluate(
     fast_group: Path,
     long_group: Path,
     heavy_group: Path,
+    enforce_changed_test_new_code: bool = False,
+    diff_base: str = "origin/main",
 ) -> tuple[list[Violation], dict[str, Any]]:
     payload = _load_json_like(catalog_path)
     entries, violations = _catalog_entries(payload)
@@ -310,6 +360,38 @@ def evaluate(
         "legacy_targeted_fast_lane": legacy_fast_count,
         "legacy_targeted_fast_lane_max": legacy_targeted_fastlane_max,
     }
+
+    if enforce_changed_test_new_code:
+        resolved_base = _resolve_diff_base(repo_root, diff_base)
+        if not resolved_base:
+            violations.append(
+                Violation(
+                    "local_new_code_gate",
+                    diff_base,
+                    "Cannot resolve diff base for changed-test new-code gate.",
+                )
+            )
+        else:
+            changed_tests = _changed_tests(repo_root, resolved_base)
+            summary["changed_tests"] = len(changed_tests)
+            summary["changed_tests_diff_base"] = resolved_base
+            for path in sorted(changed_tests):
+                entry = by_path.get(path)
+                if not entry:
+                    continue
+                test_type = str(entry.get("test_type", "")).strip()
+                if test_type in {"integration", "perf"}:
+                    continue
+                allowed_lanes = {str(x).strip() for x in entry.get("allowed_lanes", [])}
+                if "new-code" not in allowed_lanes and "ci-lite" not in allowed_lanes:
+                    violations.append(
+                        Violation(
+                            "local_new_code_gate",
+                            path,
+                            "Changed test must allow 'new-code' (or 'ci-lite') lane; "
+                            "release-only is blocked in local gate.",
+                        )
+                    )
     return violations, summary
 
 
@@ -378,6 +460,17 @@ def parse_args() -> argparse.Namespace:
         default="text",
         help="Output format.",
     )
+    parser.add_argument(
+        "--enforce-changed-test-new-code",
+        type=int,
+        default=0,
+        help="Enable local gate enforcing new-code lane on changed tests.",
+    )
+    parser.add_argument(
+        "--diff-base",
+        default="origin/main",
+        help="Git base ref for changed-tests detection.",
+    )
     return parser.parse_args()
 
 
@@ -421,6 +514,8 @@ def main() -> int:
         fast_group=fast_group,
         long_group=long_group,
         heavy_group=heavy_group,
+        enforce_changed_test_new_code=bool(args.enforce_changed_test_new_code),
+        diff_base=args.diff_base,
     )
 
     if args.output == "json":

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Awaitable, Callable, Protocol
 
@@ -255,6 +256,22 @@ class LoggerLike(Protocol):
     def warning(self, msg: str, *args: Any, **kwargs: Any) -> Any: ...
 
 
+@dataclass(frozen=True)
+class CatalogProviderDeps:
+    cache_get_fn: Callable[
+        [dict[str, dict[str, Any]], Lock, str, int], dict[str, Any] | None
+    ]
+    cache_put_fn: Callable[..., None]
+    fetch_openai_models_catalog_live_fn: Callable[[], Awaitable[list[dict[str, Any]]]]
+    fetch_google_models_catalog_live_fn: Callable[[], Awaitable[list[dict[str, Any]]]]
+    openai_static_catalog_payload_fn: Callable[[], list[dict[str, Any]]]
+    google_static_catalog_payload_fn: Callable[[], list[dict[str, Any]]]
+    check_openai_configured_fn: Callable[[], bool]
+    check_google_configured_fn: Callable[[], bool]
+    now_iso_fn: Callable[[], str]
+    logger: LoggerLike
+
+
 class ResponseLike(Protocol):
     status_code: int
 
@@ -492,20 +509,9 @@ async def catalog_for_provider(
     cache: dict[str, dict[str, Any]],
     lock: Lock,
     catalog_ttl_seconds: int,
-    cache_get_fn: Callable[
-        [dict[str, dict[str, Any]], Lock, str, int], dict[str, Any] | None
-    ],
-    cache_put_fn: Callable[..., None],
-    fetch_openai_models_catalog_live_fn: Callable[[], Awaitable[list[dict[str, Any]]]],
-    fetch_google_models_catalog_live_fn: Callable[[], Awaitable[list[dict[str, Any]]]],
-    openai_static_catalog_payload_fn: Callable[[], list[dict[str, Any]]],
-    google_static_catalog_payload_fn: Callable[[], list[dict[str, Any]]],
-    check_openai_configured_fn: Callable[[], bool],
-    check_google_configured_fn: Callable[[], bool],
-    now_iso_fn: Callable[[], str],
-    logger: LoggerLike,
+    deps: CatalogProviderDeps,
 ) -> tuple[list[dict[str, Any]], str, str | None]:
-    cached = cache_get_fn(cache, lock, provider, catalog_ttl_seconds)
+    cached = deps.cache_get_fn(cache, lock, provider, catalog_ttl_seconds)
     if cached:
         models = cached.get("models", [])
         return (
@@ -515,13 +521,13 @@ async def catalog_for_provider(
         )
 
     if provider == "openai":
-        fetch_live = fetch_openai_models_catalog_live_fn
-        static_models = openai_static_catalog_payload_fn()
-        configured = check_openai_configured_fn()
+        fetch_live = deps.fetch_openai_models_catalog_live_fn
+        static_models = deps.openai_static_catalog_payload_fn()
+        configured = deps.check_openai_configured_fn()
     else:
-        fetch_live = fetch_google_models_catalog_live_fn
-        static_models = google_static_catalog_payload_fn()
-        configured = check_google_configured_fn()
+        fetch_live = deps.fetch_google_models_catalog_live_fn
+        static_models = deps.google_static_catalog_payload_fn()
+        configured = deps.check_google_configured_fn()
 
     live_error: str | None = None
     if configured:
@@ -533,7 +539,9 @@ async def catalog_for_provider(
                 source = "static_fallback_empty_live"
                 live_error = "live catalog empty"
         except Exception as exc:
-            logger.warning("Remote catalog live fetch failed for %s: %s", provider, exc)
+            deps.logger.warning(
+                "Remote catalog live fetch failed for %s: %s", provider, exc
+            )
             models = static_models
             source = "static_fallback_error"
             live_error = str(exc)
@@ -542,7 +550,7 @@ async def catalog_for_provider(
         source = "static_fallback_unconfigured"
         live_error = f"{provider.upper()}_API_KEY not configured"
 
-    cache_put_fn(
+    deps.cache_put_fn(
         cache,
         lock,
         provider,
@@ -550,7 +558,7 @@ async def catalog_for_provider(
             "models": models,
             "source": source,
             "error": live_error,
-            "refreshed_at": now_iso_fn(),
+            "refreshed_at": deps.now_iso_fn(),
         },
     )
     return models, source, live_error

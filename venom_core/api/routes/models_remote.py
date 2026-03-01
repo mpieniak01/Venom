@@ -289,20 +289,22 @@ async def _catalog_for_provider(
         cache=_catalog_cache,
         lock=_catalog_cache_lock,
         catalog_ttl_seconds=_catalog_ttl_seconds(),
-        cache_get_fn=_cache_get,
-        cache_put_fn=_cache_put,
-        fetch_openai_models_catalog_live_fn=(
-            lambda: _fetch_openai_models_catalog_live_payload()
+        deps=remote_models_service.CatalogProviderDeps(
+            cache_get_fn=_cache_get,
+            cache_put_fn=_cache_put,
+            fetch_openai_models_catalog_live_fn=(
+                lambda: _fetch_openai_models_catalog_live_payload()
+            ),
+            fetch_google_models_catalog_live_fn=(
+                lambda: _fetch_google_models_catalog_live_payload()
+            ),
+            openai_static_catalog_payload_fn=remote_models_service.openai_static_catalog_payload,
+            google_static_catalog_payload_fn=remote_models_service.google_static_catalog_payload,
+            check_openai_configured_fn=_check_openai_configured,
+            check_google_configured_fn=_check_google_configured,
+            now_iso_fn=_now_iso,
+            logger=logger,
         ),
-        fetch_google_models_catalog_live_fn=(
-            lambda: _fetch_google_models_catalog_live_payload()
-        ),
-        openai_static_catalog_payload_fn=remote_models_service.openai_static_catalog_payload,
-        google_static_catalog_payload_fn=remote_models_service.google_static_catalog_payload,
-        check_openai_configured_fn=_check_openai_configured,
-        check_google_configured_fn=_check_google_configured,
-        now_iso_fn=_now_iso,
-        logger=logger,
     )
     models = [RemoteModelInfo(**item) for item in models_payload]
     return models, source, live_error

@@ -14,6 +14,32 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def _git(cmd: list[str], cwd: Path) -> None:
+    result = subprocess.run(
+        cmd,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def _basic_catalog_entry(
+    *, path: str, allowed_lanes: list[str], primary_lane: str
+) -> dict:
+    return {
+        "path": path,
+        "domain": "api",
+        "test_type": "unit",
+        "intent": "regression",
+        "primary_lane": primary_lane,
+        "allowed_lanes": allowed_lanes,
+        "legacy_targeted": False,
+        "rationale": "test",
+    }
+
+
 def test_generate_test_catalog_creates_expected_fields(tmp_path: Path) -> None:
     _write(
         tmp_path / "tests" / "test_sample.py",
@@ -302,3 +328,163 @@ def test_check_test_catalog_fails_when_release_group_contains_non_test_pattern(
     )
     assert result.returncode == 1
     assert "outside tests/**/test_*.py pattern" in result.stdout
+
+
+def test_check_test_catalog_local_gate_blocks_changed_release_only_tests(
+    tmp_path: Path,
+) -> None:
+    _git(["git", "init", "-b", "main"], tmp_path)
+    _git(["git", "config", "user.email", "test@example.com"], tmp_path)
+    _git(["git", "config", "user.name", "Test User"], tmp_path)
+    _write(tmp_path / "README.md", "base\n")
+    _git(["git", "add", "."], tmp_path)
+    _git(["git", "commit", "-m", "base"], tmp_path)
+    _git(["git", "checkout", "-b", "feature/local-gate"], tmp_path)
+
+    _write(
+        tmp_path / "tests/test_new_release_only.py", "def test_ok():\n    assert True\n"
+    )
+    _write(tmp_path / "config/pytest-groups/ci-lite.txt", "")
+    _write(tmp_path / "config/pytest-groups/sonar-new-code.txt", "")
+    _write(
+        tmp_path / "config/pytest-groups/fast.txt", "tests/test_new_release_only.py\n"
+    )
+    _write(tmp_path / "config/pytest-groups/long.txt", "")
+    _write(tmp_path / "config/pytest-groups/heavy.txt", "")
+    catalog = {
+        "version": 1,
+        "meta": {"legacy_targeted_fastlane_max": 17},
+        "allowed_domains": ["api", "misc"],
+        "allowed_test_types": ["unit", "route_contract", "integration", "perf", "gate"],
+        "allowed_intents": [
+            "regression",
+            "contract",
+            "gate",
+            "integration",
+            "performance",
+            "security",
+            "legacy_coverage",
+        ],
+        "tests": [
+            _basic_catalog_entry(
+                path="tests/test_new_release_only.py",
+                allowed_lanes=["release"],
+                primary_lane="release",
+            )
+        ],
+    }
+    _write(
+        tmp_path / "config/testing/test_catalog.json",
+        json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
+    )
+    _git(["git", "add", "."], tmp_path)
+    _git(["git", "commit", "-m", "add release-only test"], tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CHECK_SCRIPT),
+            "--catalog",
+            str(tmp_path / "config/testing/test_catalog.json"),
+            "--repo-root",
+            str(tmp_path),
+            "--ci-lite-group",
+            str(tmp_path / "config/pytest-groups/ci-lite.txt"),
+            "--new-code-group",
+            str(tmp_path / "config/pytest-groups/sonar-new-code.txt"),
+            "--fast-group",
+            str(tmp_path / "config/pytest-groups/fast.txt"),
+            "--long-group",
+            str(tmp_path / "config/pytest-groups/long.txt"),
+            "--heavy-group",
+            str(tmp_path / "config/pytest-groups/heavy.txt"),
+            "--enforce-changed-test-new-code",
+            "1",
+            "--diff-base",
+            "main",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "release-only is blocked in local gate" in result.stdout
+
+
+def test_check_test_catalog_local_gate_allows_changed_new_code_tests(
+    tmp_path: Path,
+) -> None:
+    _git(["git", "init", "-b", "main"], tmp_path)
+    _git(["git", "config", "user.email", "test@example.com"], tmp_path)
+    _git(["git", "config", "user.name", "Test User"], tmp_path)
+    _write(tmp_path / "README.md", "base\n")
+    _git(["git", "add", "."], tmp_path)
+    _git(["git", "commit", "-m", "base"], tmp_path)
+    _git(["git", "checkout", "-b", "feature/local-gate"], tmp_path)
+
+    _write(tmp_path / "tests/test_new_newcode.py", "def test_ok():\n    assert True\n")
+    _write(tmp_path / "config/pytest-groups/ci-lite.txt", "")
+    _write(
+        tmp_path / "config/pytest-groups/sonar-new-code.txt",
+        "tests/test_new_newcode.py\n",
+    )
+    _write(tmp_path / "config/pytest-groups/fast.txt", "tests/test_new_newcode.py\n")
+    _write(tmp_path / "config/pytest-groups/long.txt", "")
+    _write(tmp_path / "config/pytest-groups/heavy.txt", "")
+    catalog = {
+        "version": 1,
+        "meta": {"legacy_targeted_fastlane_max": 17},
+        "allowed_domains": ["api", "misc"],
+        "allowed_test_types": ["unit", "route_contract", "integration", "perf", "gate"],
+        "allowed_intents": [
+            "regression",
+            "contract",
+            "gate",
+            "integration",
+            "performance",
+            "security",
+            "legacy_coverage",
+        ],
+        "tests": [
+            _basic_catalog_entry(
+                path="tests/test_new_newcode.py",
+                allowed_lanes=["new-code", "release"],
+                primary_lane="new-code",
+            )
+        ],
+    }
+    _write(
+        tmp_path / "config/testing/test_catalog.json",
+        json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
+    )
+    _git(["git", "add", "."], tmp_path)
+    _git(["git", "commit", "-m", "add new-code test"], tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CHECK_SCRIPT),
+            "--catalog",
+            str(tmp_path / "config/testing/test_catalog.json"),
+            "--repo-root",
+            str(tmp_path),
+            "--ci-lite-group",
+            str(tmp_path / "config/pytest-groups/ci-lite.txt"),
+            "--new-code-group",
+            str(tmp_path / "config/pytest-groups/sonar-new-code.txt"),
+            "--fast-group",
+            str(tmp_path / "config/pytest-groups/fast.txt"),
+            "--long-group",
+            str(tmp_path / "config/pytest-groups/long.txt"),
+            "--heavy-group",
+            str(tmp_path / "config/pytest-groups/heavy.txt"),
+            "--enforce-changed-test-new-code",
+            "1",
+            "--diff-base",
+            "main",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

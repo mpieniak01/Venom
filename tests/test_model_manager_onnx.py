@@ -141,3 +141,32 @@ def test_build_onnx_llm_model_success_writes_metadata(tmp_path: Path) -> None:
     assert result["success"] is True
     metadata_path = output_dir / onnx_mod.ONNX_METADATA_FILENAME
     assert metadata_path.exists()
+
+
+def test_build_onnx_llm_model_uses_env_builder_and_default_output(
+    tmp_path: Path, monkeypatch
+) -> None:
+    logger = _Logger()
+    builder = tmp_path / "builder-env.py"
+    builder.write_text("print('ok')", encoding="utf-8")
+    monkeypatch.setenv("ONNX_GENAI_BUILDER_SCRIPT", str(builder))
+
+    with patch("venom_core.core.model_manager_onnx.subprocess.run") as mocked_run:
+        mocked_run.return_value = subprocess.CompletedProcess(
+            args=["python"],
+            returncode=0,
+            stdout="ok",
+            stderr="",
+        )
+        result = onnx_mod.build_onnx_llm_model(
+            model_name="good/model",
+            output_dir=None,
+            execution_provider="cpu",
+            precision="fp16",
+            builder_script=None,
+            normalize_slug_fn=lambda s: s.replace("/", "--"),
+            logger=logger,
+        )
+
+    assert result["success"] is True
+    assert "good--model-onnx" in result["output_dir"]

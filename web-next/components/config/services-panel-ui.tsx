@@ -215,39 +215,50 @@ export function ServicesStorageCard(input: {
 }) {
   const { t, language, storageSnapshot, storageLoading, storageError, onRefreshStorage } =
     input;
+  let storageSummary = <span>{t("config.services.storage.noData")}</span>;
+  if (storageSnapshot?.disk_root) {
+    storageSummary = (
+      <div className="flex flex-col gap-1">
+        <span>
+          {t("config.services.storage.wslUsage")}:{" "}
+          <span className="font-semibold text-white">
+            {formatBytes(
+              storageSnapshot.disk_root.used_bytes ??
+                Math.max(
+                  (storageSnapshot.disk_root.total_bytes ?? 0) -
+                    (storageSnapshot.disk_root.free_bytes ?? 0),
+                  0
+                )
+            )}
+          </span>
+        </span>
+      </div>
+    );
+  } else if (storageSnapshot?.disk) {
+    storageSummary = (
+      <span className="text-sm">
+        {t("config.services.storage.physical")}:{" "}
+        <span className="font-semibold text-white">
+          {formatBytes(storageSnapshot.disk.total_bytes)}
+        </span>
+      </span>
+    );
+  }
+
   return (
     <div className="glass-panel rounded-2xl box-subtle p-6">
       <h2 className="mb-4 heading-h2">{t("config.services.storage.title")}</h2>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-zinc-200">
-          {storageSnapshot?.disk_root ? (
-            <div className="flex flex-col gap-1">
-              <span>
-                {t("config.services.storage.wslUsage")}:{" "}
-                <span className="font-semibold text-white">
-                  {formatBytes(
-                    storageSnapshot.disk_root.used_bytes ??
-                      Math.max(
-                        (storageSnapshot.disk_root.total_bytes ?? 0) -
-                          (storageSnapshot.disk_root.free_bytes ?? 0),
-                        0
-                      )
-                  )}
-                </span>
-              </span>
-            </div>
-          ) : storageSnapshot?.disk ? (
-            <span className="text-sm">
-              {t("config.services.storage.physical")}:{" "}
-              <span className="font-semibold text-white">
-                {formatBytes(storageSnapshot.disk.total_bytes)}
-              </span>
-            </span>
-          ) : (
-            <span>{t("config.services.storage.noData")}</span>
-          )}
-        </div>
-        <Button size="xs" variant="outline" className="rounded-full" onClick={() => void onRefreshStorage()} disabled={storageLoading}>
+        <div className="text-sm text-zinc-200">{storageSummary}</div>
+        <Button
+          size="xs"
+          variant="outline"
+          className="rounded-full"
+          onClick={() => {
+            onRefreshStorage().catch(() => undefined);
+          }}
+          disabled={storageLoading}
+        >
           {storageLoading
             ? t("config.services.storage.refreshing")
             : t("config.services.storage.refresh")}

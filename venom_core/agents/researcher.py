@@ -22,6 +22,23 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _first_non_none(payload: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in payload and payload.get(key) is not None:
+            return payload.get(key)
+    return None
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "model_dump"):
+        dumped = value.model_dump(exclude_none=True)
+        if isinstance(dumped, dict):
+            return dumped
+    return {}
+
+
 def format_grounding_sources(response_metadata: dict[str, Any]) -> str:
     """
     Formatuje źródła z Google Grounding do czytelnej formy.
@@ -37,13 +54,25 @@ def format_grounding_sources(response_metadata: dict[str, Any]) -> str:
 
     sources = []
 
-    # Sprawdź grounding_metadata
-    grounding_metadata = response_metadata.get("grounding_metadata", {})
-    if grounding_metadata and grounding_metadata.get("grounding_chunks"):
-        chunks = grounding_metadata.get("grounding_chunks", [])
-        for idx, chunk in enumerate(chunks, 1):
-            title = chunk.get("title", "Brak tytułu")
-            uri = chunk.get("uri", "")
+    # Sprawdź grounding metadata (snake_case i camelCase)
+    grounding_metadata = _as_dict(
+        _first_non_none(response_metadata, ("grounding_metadata", "groundingMetadata"))
+    )
+    if grounding_metadata:
+        chunks = (
+            _first_non_none(grounding_metadata, ("grounding_chunks", "groundingChunks"))
+            or []
+        )
+        for idx, chunk_raw in enumerate(chunks, 1):
+            chunk = _as_dict(chunk_raw)
+            web = _as_dict(chunk.get("web"))
+            title = (
+                web.get("title")
+                or chunk.get("title")
+                or chunk.get("uri")
+                or "Brak tytułu"
+            )
+            uri = web.get("uri") or chunk.get("uri") or ""
             # Dodaj źródło tylko jeśli ma URI (link)
             if uri:
                 sources.append(f"[{idx}] {title} - {uri}")
@@ -52,7 +81,13 @@ def format_grounding_sources(response_metadata: dict[str, Any]) -> str:
                 sources.append(f"[{idx}] {title}")
 
     # Sprawdź web_search_queries (alternatywne źródło metadanych)
-    web_queries = response_metadata.get("web_search_queries", [])
+    web_queries = (
+        _first_non_none(grounding_metadata, ("web_search_queries", "webSearchQueries"))
+        or _first_non_none(
+            response_metadata, ("web_search_queries", "webSearchQueries")
+        )
+        or []
+    )
     if web_queries and not sources:
         for idx, query in enumerate(web_queries, 1):
             sources.append(f"[{idx}] Zapytanie: {query}")
@@ -183,6 +218,37 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
                 "ResearcherAgent zainicjalizowany z WebSearchSkill, GitHubSkill, HuggingFaceSkill i MemorySkill"
             )
 
+    @staticmethod
+    def _extract_grounding_metadata_from_response(response: Any) -> dict[str, Any]:
+        inner_content = getattr(response, "inner_content", None)
+        if inner_content is None:
+            return {}
+
+        candidates = getattr(inner_content, "candidates", None)
+        if not candidates:
+            return {}
+
+        first_candidate = candidates[0]
+        grounding_raw = getattr(first_candidate, "grounding_metadata", None)
+        if grounding_raw is None and isinstance(first_candidate, dict):
+            grounding_raw = _first_non_none(
+                first_candidate, ("grounding_metadata", "groundingMetadata")
+            )
+
+        grounding_metadata = _as_dict(grounding_raw)
+        if not grounding_metadata:
+            return {}
+        return {"grounding_metadata": grounding_metadata}
+
+    @staticmethod
+    def _configure_google_grounding(settings: Any) -> None:
+        # Aktualna dokumentacja Gemini API: Google Search tool.
+        extension_data = getattr(settings, "extension_data", None)
+        if not isinstance(extension_data, dict):
+            extension_data = {}
+            setattr(settings, "extension_data", extension_data)
+        extension_data["tools"] = [{"google_search": {}}]
+
     async def process(self, input_text: str) -> str:
         """
         Przetwarza pytanie badawcze i syntetyzuje wiedzę.
@@ -219,7 +285,11 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
             from venom_core.utils.llm_runtime import get_active_llm_runtime
 
             runtime = get_active_llm_runtime()
+            use_google_grounding = runtime.provider in {"google", "google-gemini"}
             allow_functions = runtime.provider not in ("vllm", "ollama", "local")
+            if use_google_grounding:
+                # Google Search grounding wymaga własnego toola; wyłączamy kernel tools.
+                allow_functions = False
 
             settings = self._create_execution_settings(
                 default_settings={"max_tokens": 800},
@@ -227,6 +297,8 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
                     FunctionChoiceBehavior.Auto() if allow_functions else None
                 ),
             )
+            if use_google_grounding:
+                self._configure_google_grounding(settings)
 
             # Wywołaj model; function calling tylko gdy provider to wspiera
             response = await self._invoke_chat_with_fallbacks(
@@ -241,7 +313,10 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
             # Sprawdź czy odpowiedź zawiera metadane Google Grounding
             response_metadata: dict[str, Any] = {}
             if hasattr(response, "metadata"):
-                response_metadata = response.metadata or {}
+                response_metadata.update(_as_dict(getattr(response, "metadata") or {}))
+            response_metadata.update(
+                self._extract_grounding_metadata_from_response(response)
+            )
 
             # Dodaj źródła jeśli są dostępne
             sources_section = format_grounding_sources(response_metadata)

@@ -7,6 +7,7 @@ Researcher Agent is a research expert in the Venom system, specializing in findi
 ## Responsibilities
 
 - **Information search** - Finding current data on the Internet (DuckDuckGo)
+- **Grounded cloud research** - Google Search Grounding for Gemini runtime (when enabled by routing/governance policy)
 - **Content extraction** - Downloading and cleaning text from web pages (trafilatura)
 - **Knowledge synthesis** - Aggregating information from multiple sources into coherent response
 - **Repository search** - Finding libraries and tools on GitHub
@@ -124,6 +125,15 @@ GITHUB_TOKEN=ghp_your_token
 - **Pros**: AI-optimized search, higher quality than DDG
 - **Cons**: Paid, API limits
 - **Use**: Professional deployments
+
+### 3. Google Search Grounding (Gemini)
+- **Pros**: Source-grounded cloud responses with structured grounding metadata
+- **Cons**: Requires cloud runtime + API key + paid mode enabled
+- **Use**: RESEARCH requests routed to cloud provider `google`
+
+Operational note:
+- `TaskType.RESEARCH` in HYBRID mode routes to cloud only when paid mode is enabled and cloud access is available.
+- If not, Researcher falls back to local web search (DuckDuckGo path).
 
 ## Metrics and Monitoring
 

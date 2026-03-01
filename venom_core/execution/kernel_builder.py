@@ -1,7 +1,7 @@
 """Moduł: kernel_builder - dynamiczne budowanie Semantic Kernel."""
 
 import importlib.util
-from typing import Optional
+from typing import Any, Optional
 
 from openai import AsyncOpenAI
 from semantic_kernel import Kernel
@@ -15,6 +15,22 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+GoogleAIChatCompletion: Any | None = None
+if (
+    importlib.util.find_spec(
+        "semantic_kernel.connectors.ai.google.google_ai.services.google_ai_chat_completion"
+    )
+    is not None
+):
+    try:
+        from semantic_kernel.connectors.ai.google.google_ai.services.google_ai_chat_completion import (  # noqa: E501
+            GoogleAIChatCompletion as _GoogleAIChatCompletion,
+        )
+
+        GoogleAIChatCompletion = _GoogleAIChatCompletion
+    except Exception:  # pragma: no cover - zależne od optional deps
+        GoogleAIChatCompletion = None
+
 
 def _is_google_gemini_sdk_available() -> bool:
     """Sprawdza dostępność SDK Gemini (nowy i legacy)."""
@@ -24,6 +40,11 @@ def _is_google_gemini_sdk_available() -> bool:
     )
 
 
+def _is_google_semantic_kernel_connector_available() -> bool:
+    """Sprawdza dostępność connectora Google AI dla Semantic Kernel."""
+    return GoogleAIChatCompletion is not None
+
+
 # Import dla Google Gemini (bezpośredni import tylko, jeśli biblioteka istnieje)
 if _is_google_gemini_sdk_available():
     GOOGLE_AVAILABLE = True
@@ -31,6 +52,14 @@ else:
     GOOGLE_AVAILABLE = False
     logger.warning(
         "Brak SDK Gemini (google-genai / google-generativeai) - obsługa Gemini niedostępna"
+    )
+
+if _is_google_semantic_kernel_connector_available():
+    SK_GOOGLE_CONNECTOR_AVAILABLE = True
+else:
+    SK_GOOGLE_CONNECTOR_AVAILABLE = False
+    logger.warning(
+        "Brak connectora GoogleAIChatCompletion w Semantic Kernel - obsługa Gemini niedostępna"
     )
 
 
@@ -222,7 +251,7 @@ class KernelBuilder:
         kernel.add_service(chat_service)
 
     def _register_google_service(
-        self, _kernel: Kernel, _service_id: str, model_name: str, enable_grounding: bool
+        self, kernel: Kernel, service_id: str, model_name: str, enable_grounding: bool
     ) -> None:
         if not GOOGLE_AVAILABLE:
             raise ValueError(
@@ -233,16 +262,24 @@ class KernelBuilder:
             raise ValueError(
                 "GOOGLE_API_KEY jest wymagany dla LLM_SERVICE_TYPE='google'"
             )
+        if not SK_GOOGLE_CONNECTOR_AVAILABLE:
+            raise ValueError(
+                "Connector GoogleAIChatCompletion w Semantic Kernel nie jest dostępny. "
+                "Zaktualizuj semantic-kernel do wersji z connectorami Google AI."
+            )
+        if GoogleAIChatCompletion is None:
+            raise ValueError(
+                "GoogleAIChatCompletion jest niedostępny w bieżącym środowisku."
+            )
         logger.debug(
             f"Konfiguracja Google Gemini: model={model_name}, grounding={enable_grounding}"
         )
-        raise NotImplementedError(
-            "Obsługa Google Gemini w Semantic Kernel nie jest jeszcze dostępna. "
-            "Wymagana jest implementacja dedykowanego connectora/wrappera. "
-            "Infrastruktura (enable_grounding, routing, formatowanie) jest GOTOWA. "
-            "Na razie użyj 'local' lub 'openai'. "
-            "Gemini może być używany poprzez bezpośrednie wywołania SDK Google GenAI."
+        chat_service = GoogleAIChatCompletion(
+            service_id=service_id,
+            gemini_model_id=model_name,
+            api_key=self.settings.GOOGLE_API_KEY,
         )
+        kernel.add_service(chat_service)
 
     def _register_azure_service(
         self,

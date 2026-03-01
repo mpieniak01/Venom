@@ -1,5 +1,7 @@
 """Testy jednostkowe dla KernelBuilder."""
 
+from unittest.mock import MagicMock
+
 import pytest
 from pydantic_settings import BaseSettings
 
@@ -147,7 +149,7 @@ def test_kernel_builder_google_without_api_key():
 
 
 def test_kernel_builder_google_not_implemented():
-    """Test budowania kernela Google Gemini - obecnie nie w pełni zaimplementowane."""
+    """Test budowania kernela Google Gemini (zależne od dostępnych optional deps)."""
 
     class GoogleSettings(MockSettings):
         GOOGLE_API_KEY: str = "test-google-key"
@@ -158,10 +160,16 @@ def test_kernel_builder_google_not_implemented():
     )
     builder = KernelBuilder(settings=settings)
 
-    # Google Gemini wymaga biblioteki i dedykowanego connectora dla Semantic Kernel
-    # Może rzucić ValueError (brak biblioteki) lub NotImplementedError (brak connectora)
-    with pytest.raises((ValueError, NotImplementedError)):
-        builder.build_kernel()
+    # W środowiskach lite, optional deps Google mogą być niedostępne.
+    # W takim przypadku oczekujemy kontrolowanego ValueError.
+    try:
+        kernel = builder.build_kernel()
+    except ValueError:
+        return
+
+    assert kernel is not None
+    services = list(kernel.services.values())
+    assert len(services) > 0
 
 
 def test_kernel_builder_enable_grounding_parameter():
@@ -178,15 +186,51 @@ def test_kernel_builder_enable_grounding_parameter():
     builder = KernelBuilder(settings=settings)
     kernel = Kernel()
 
-    # Test że parametr enable_grounding jest akceptowany
-    # Spodziewamy się NotImplementedError bo Google connector nie jest gotowy
-    with pytest.raises((ValueError, NotImplementedError)):
-        builder._register_service(kernel, "google", enable_grounding=True)
-
-    # Parametr powinien być akceptowany bez błędu składniowego
-    # Sprawdzamy tylko że funkcja przyjmuje parametr
+    # Parametr powinien być akceptowany bez błędu składniowego.
+    # W środowiskach bez optional deps oczekujemy kontrolowanego ValueError.
     try:
-        builder._register_service(kernel, "google", enable_grounding=False)
-    except (ValueError, NotImplementedError):
-        # To jest oczekiwane - Google nie jest jeszcze zaimplementowany
+        builder._register_service(
+            kernel, "google", service_id="google_grounding_on", enable_grounding=True
+        )
+        builder._register_service(
+            kernel, "google", service_id="google_grounding_off", enable_grounding=False
+        )
+    except ValueError:
         pass
+
+
+def test_register_google_service_registers_connector(monkeypatch):
+    """_register_google_service rejestruje GoogleAIChatCompletion gdy deps są dostępne."""
+    import venom_core.execution.kernel_builder as kbmod
+
+    class GoogleSettings(MockSettings):
+        GOOGLE_API_KEY: str = "test-google-key"
+
+    settings = GoogleSettings(
+        LLM_SERVICE_TYPE="google",
+        LLM_MODEL_NAME="gemini-2.5-flash",
+    )
+    builder = KernelBuilder(settings=settings)
+    from semantic_kernel import Kernel
+
+    kernel = MagicMock(spec=Kernel)
+
+    fake_service = object()
+    fake_connector = MagicMock(return_value=fake_service)
+    monkeypatch.setattr(kbmod, "GOOGLE_AVAILABLE", True)
+    monkeypatch.setattr(kbmod, "SK_GOOGLE_CONNECTOR_AVAILABLE", True)
+    monkeypatch.setattr(kbmod, "GoogleAIChatCompletion", fake_connector)
+
+    builder._register_google_service(
+        kernel=kernel,
+        service_id="google",
+        model_name="gemini-2.5-flash",
+        enable_grounding=True,
+    )
+
+    fake_connector.assert_called_once_with(
+        service_id="google",
+        gemini_model_id="gemini-2.5-flash",
+        api_key="test-google-key",
+    )
+    kernel.add_service.assert_called_once_with(fake_service)

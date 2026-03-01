@@ -576,6 +576,18 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_api_routes_import_guard.py",
+      "domain": "api",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/test_api_routes_runtime_contracts.py",
       "domain": "api",
       "test_type": "route_contract",
@@ -3937,6 +3949,18 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_route_service_extractions.py",
+      "domain": "core",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
     },
     {
       "path": "tests/test_routing_contract.py",

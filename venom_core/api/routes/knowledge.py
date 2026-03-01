@@ -14,8 +14,6 @@ from venom_core.api.dependencies import (
 from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.schemas.knowledge import LearningToggleRequest
 from venom_core.config import SETTINGS
-from venom_core.core.environment_policy import ensure_data_mutation_allowed
-from venom_core.core.knowledge_contract import KnowledgeContextMapV1
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager
@@ -36,6 +34,31 @@ from venom_core.services.knowledge_graph_service import (
 )
 from venom_core.services.knowledge_graph_service import (
     normalize_graph_file_path as _normalize_graph_file_path_service,
+)
+from venom_core.services.knowledge_lessons_service import (
+    dedupe_lessons as _dedupe_lessons_service,
+)
+from venom_core.services.knowledge_lessons_service import (
+    parse_iso_range as _parse_iso_range_service,
+)
+from venom_core.services.knowledge_lessons_service import (
+    prune_latest_lessons as _prune_latest_lessons_service,
+)
+from venom_core.services.knowledge_lessons_service import (
+    prune_lessons_by_range as _prune_lessons_by_range_service,
+)
+from venom_core.services.knowledge_lessons_service import (
+    prune_lessons_by_tag as _prune_lessons_by_tag_service,
+)
+from venom_core.services.knowledge_lessons_service import (
+    prune_lessons_by_ttl as _prune_lessons_by_ttl_service,
+)
+from venom_core.services.knowledge_lessons_service import (
+    purge_all_lessons as _purge_all_lessons_service,
+)
+from venom_core.services.knowledge_route_service import (
+    KnowledgeContextMapV1,
+    ensure_data_mutation_allowed,
 )
 from venom_core.utils.logger import get_logger
 
@@ -656,13 +679,11 @@ def prune_latest_lessons(
     """
     _enforce_mutation_allowed("knowledge.lessons.prune_latest")
     try:
-        deleted = lessons_store.delete_last_n(count)
-        logger.info(f"Pruning: Usunięto {deleted} najnowszych lekcji")
-        return {
-            "status": "success",
-            "message": f"Usunięto {deleted} najnowszych lekcji",
-            "deleted": deleted,
-        }
+        return _prune_latest_lessons_service(
+            lessons_store=lessons_store,
+            count=count,
+            logger=logger,
+        )
     except Exception as e:
         logger.exception("Błąd podczas usuwania najnowszych lekcji")
         raise HTTPException(
@@ -693,10 +714,7 @@ def prune_lessons_by_range(
     """
     _enforce_mutation_allowed("knowledge.lessons.prune_range")
     try:
-        # Parsuj daty ISO 8601 (obsługa 'Z' suffix)
-        # Workaround for Python < 3.11 which doesn't handle 'Z' suffix in fromisoformat
-        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+        start_dt, end_dt = _parse_iso_range_service(start=start, end=end)
     except ValueError as e:
         raise HTTPException(
             status_code=400,
@@ -704,15 +722,14 @@ def prune_lessons_by_range(
         ) from e
 
     try:
-        deleted = lessons_store.delete_by_time_range(start_dt, end_dt)
-        logger.info(f"Pruning: Usunięto {deleted} lekcji z zakresu {start} - {end}")
-        return {
-            "status": "success",
-            "message": f"Usunięto {deleted} lekcji z zakresu {start} - {end}",
-            "deleted": deleted,
-            "start": start,
-            "end": end,
-        }
+        return _prune_lessons_by_range_service(
+            lessons_store=lessons_store,
+            start=start,
+            end=end,
+            start_dt=start_dt,
+            end_dt=end_dt,
+            logger=logger,
+        )
     except Exception as e:
         logger.exception("Błąd podczas usuwania lekcji po zakresie czasu")
         raise HTTPException(
@@ -730,14 +747,11 @@ def prune_lessons_by_tag(
     """
     _enforce_mutation_allowed("knowledge.lessons.prune_tag")
     try:
-        deleted = lessons_store.delete_by_tag(tag)
-        logger.info(f"Pruning: Usunięto {deleted} lekcji z tagiem '{tag}'")
-        return {
-            "status": "success",
-            "message": f"Usunięto {deleted} lekcji z tagiem '{tag}'",
-            "deleted": deleted,
-            "tag": tag,
-        }
+        return _prune_lessons_by_tag_service(
+            lessons_store=lessons_store,
+            tag=tag,
+            logger=logger,
+        )
     except Exception as e:
         logger.exception("Błąd podczas usuwania lekcji po tagu")
         raise HTTPException(
@@ -763,20 +777,12 @@ def purge_all_lessons(
 
     _enforce_mutation_allowed("knowledge.lessons.purge")
     try:
-        lesson_count = len(lessons_store.lessons)
-        success = lessons_store.clear_all()
-        if not success:
-            raise HTTPException(
-                status_code=500, detail="Nie udało się wyczyścić bazy lekcji"
-            )
-        logger.warning(
-            f"💣 PURGE: Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)"
+        return _purge_all_lessons_service(
+            lessons_store=lessons_store,
+            logger=logger,
         )
-        return {
-            "status": "success",
-            "message": f"💣 Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)",
-            "deleted": lesson_count,
-        }
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas czyszczenia bazy lekcji")
         raise HTTPException(
@@ -792,13 +798,10 @@ def prune_lessons_by_ttl(
     """Usuwa lekcje starsze niż TTL w dniach."""
     _enforce_mutation_allowed("knowledge.lessons.prune_ttl")
     try:
-        deleted = lessons_store.prune_by_ttl(days)
-        return {
-            "status": "success",
-            "message": f"Usunięto {deleted} lekcji starszych niż {days} dni",
-            "deleted": deleted,
-            "days": days,
-        }
+        return _prune_lessons_by_ttl_service(
+            lessons_store=lessons_store,
+            days=days,
+        )
     except Exception as e:
         logger.exception("Błąd podczas usuwania lekcji po TTL")
         raise HTTPException(
@@ -813,12 +816,7 @@ def dedupe_lessons(
     """Deduplikuje lekcje na podstawie podpisu treści."""
     _enforce_mutation_allowed("knowledge.lessons.dedupe")
     try:
-        removed = lessons_store.dedupe_lessons()
-        return {
-            "status": "success",
-            "message": f"Usunięto {removed} zduplikowanych lekcji",
-            "removed": removed,
-        }
+        return _dedupe_lessons_service(lessons_store=lessons_store)
     except Exception as e:
         logger.exception("Błąd podczas deduplikacji lekcji")
         raise HTTPException(

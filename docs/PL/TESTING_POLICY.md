@@ -89,6 +89,12 @@ Kontrakt nazewnictwa lane/group:
 - `config/pytest-groups/fast.txt` jest kanoniczną listą szybkiego zakresu backendu.
 - `config/pytest-groups/light.txt` jest aliasem kompatybilności do `fast.txt` i nie powinien być edytowany niezależnie.
 
+Kontrakt architektoniczny routerów (backend):
+
+- Routery `venom_core/api/routes/*` powinny być cienką warstwą HTTP i delegować logikę operacyjną do `venom_core/services/*`.
+- Test `tests/test_api_routes_import_guard.py` blokuje nowy dryf warstwowy (`routes -> core/infrastructure`) oraz niekontrolowane importy efektów ubocznych.
+- Przy dekompozycji routera dopisz testy dla nowego modułu service (gałęzie success/error/retry), aby utrzymać pokrycie zmian po ekstrakcji.
+
 Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.json`):
 
 - `domain`: zakres domenowy/systemowy (np. `academy`, `workflow`, `providers`, `runtime`)

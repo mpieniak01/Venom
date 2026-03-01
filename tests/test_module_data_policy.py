@@ -41,6 +41,15 @@ def test_resolve_module_data_root_uses_storage_prefix_when_present() -> None:
     assert root == Path("/tmp/venom-data/preprod/brand_studio")
 
 
+@pytest.mark.parametrize(
+    "module_id",
+    ["", "../brand_studio", "brand/studio", "brand\\studio", "brand:studio"],
+)
+def test_resolve_module_data_root_rejects_invalid_module_id(module_id: str) -> None:
+    with pytest.raises(ValueError):
+        module_data_policy.resolve_module_data_root(module_id=module_id)
+
+
 def test_resolve_module_state_path_rejects_parent_traversal() -> None:
     with pytest.raises(ValueError):
         module_data_policy.resolve_module_state_path(

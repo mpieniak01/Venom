@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 SCRIPT_PATH = Path("scripts/check_optional_modules_contracts.py")
@@ -42,6 +43,15 @@ def _run_check(manifest: Path) -> subprocess.CompletedProcess[str]:
         cwd=str(REPO_ROOT),
         env=env,
     )
+
+
+def _load_script_module():
+    spec = spec_from_file_location("check_optional_modules_contracts", SCRIPT_PATH)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_optional_modules_contracts_guard_passes_for_valid_router(
@@ -127,3 +137,25 @@ def test_optional_modules_contracts_guard_fails_when_mutation_guard_missing(
     result = _run_check(manifest)
     assert result.returncode == 1
     assert "does not call ensure_module_mutation_allowed" in result.stdout
+
+
+def test_discover_manifests_falls_back_when_git_is_missing(tmp_path: Path) -> None:
+    check_script = _load_script_module()
+    module_dir = tmp_path / "modules" / "x-module"
+    module_dir.mkdir(parents=True)
+    manifest_path = module_dir / "module.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+
+    class _Subprocess:
+        @staticmethod
+        def run(*_args, **_kwargs):  # noqa: ANN002, ANN003
+            raise FileNotFoundError
+
+    original_subprocess = check_script.subprocess
+    check_script.subprocess = _Subprocess()  # type: ignore[assignment]
+    try:
+        manifests = check_script._discover_manifests(tmp_path)
+    finally:
+        check_script.subprocess = original_subprocess  # type: ignore[assignment]
+
+    assert manifests == [manifest_path]

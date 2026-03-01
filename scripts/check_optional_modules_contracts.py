@@ -65,19 +65,23 @@ def _parse_data_policy_payload(
 
 
 def _discover_manifests(repo_root: Path) -> list[Path]:
-    proc = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repo_root),
-            "ls-files",
-            "modules/*/module.json",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode == 0:
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "ls-files",
+                "modules/*/module.json",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        proc = None
+
+    if proc is not None and proc.returncode == 0:
         files = [
             repo_root / line.strip()
             for line in proc.stdout.splitlines()

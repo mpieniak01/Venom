@@ -169,6 +169,13 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
         )
         return None
 
+    if not isinstance(payload, dict):
+        logger.warning(
+            "Invalid optional module manifest %s: manifest must be a JSON object",
+            manifest_path,
+        )
+        return None
+
     module_id = str(payload.get("module_id", "")).strip()
     backend = payload.get("backend") if isinstance(payload.get("backend"), dict) else {}
     router_import = str(backend.get("router_import", "")).strip()
@@ -234,6 +241,13 @@ def _validate_manifest_item(item: str, errors: list[str]) -> None:
             + str(manifest_path)
             + ": "
             + str(exc)
+        )
+        return
+
+    if not isinstance(payload, dict):
+        errors.append(
+            "invalid optional module manifest (must be JSON object): "
+            + str(manifest_path)
         )
         return
 

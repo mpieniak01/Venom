@@ -205,6 +205,19 @@ def test_validate_optional_modules_config_requires_data_policy(tmp_path: Path) -
     assert any("backend.data_policy" in err for err in errors)
 
 
+def test_validate_optional_modules_config_requires_manifest_json_object(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "broken.json"
+    manifest_path.write_text("[]", encoding="utf-8")
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = f"manifest:{manifest_path}"
+
+    errors = module_registry.validate_optional_modules_config(settings)
+    assert errors
+    assert any("must be JSON object" in err for err in errors)
+
+
 def test_load_router_returns_none_for_invalid_router_import() -> None:
     assert module_registry._load_router("not-a-router-import") is None
 

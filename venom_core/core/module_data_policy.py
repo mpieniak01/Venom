@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -11,6 +12,7 @@ from venom_core.core.environment_policy import ensure_data_mutation_allowed
 
 ALLOWED_STORAGE_MODES = {"core_prefixed"}
 ALLOWED_MUTATION_GUARDS = {"core_environment_policy"}
+MODULE_ID_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 
 
 @dataclass(frozen=True)
@@ -18,6 +20,15 @@ class ModuleDataPolicy:
     storage_mode: str
     mutation_guard: str
     state_files: tuple[str, ...]
+
+
+def _normalize_module_id(module_id: str) -> str:
+    safe_module_id = module_id.strip().lower().replace(" ", "_")
+    if not safe_module_id:
+        raise ValueError("module_id must be non-empty")
+    if not MODULE_ID_PATTERN.fullmatch(safe_module_id):
+        raise ValueError("module_id contains invalid characters")
+    return safe_module_id
 
 
 def _storage_scope(settings: object) -> str:
@@ -87,9 +98,7 @@ def parse_module_data_policy_payload(
 def resolve_module_data_root(
     *, module_id: str, settings: object = SETTINGS, base_dir: Path | None = None
 ) -> Path:
-    safe_module_id = module_id.strip().lower().replace(" ", "_")
-    if not safe_module_id:
-        raise ValueError("module_id must be non-empty")
+    safe_module_id = _normalize_module_id(module_id)
     root = (base_dir or Path("./data/modules")).resolve()
     return root / _storage_scope(settings) / safe_module_id
 
@@ -122,4 +131,5 @@ def ensure_module_mutation_allowed(
     module_id: str,
     operation_name: str,
 ) -> None:
-    ensure_data_mutation_allowed(f"module.{module_id}.{operation_name}")
+    safe_module_id = _normalize_module_id(module_id)
+    ensure_data_mutation_allowed(f"module.{safe_module_id}.{operation_name}")

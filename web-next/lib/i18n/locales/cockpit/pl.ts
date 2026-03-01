@@ -11,6 +11,20 @@ export const cockpitLocale = {
       switchCancelled: "Anulowano przełączenie runtime.",
       switchError: "Nie udało się przełączyć runtime.",
     },
+    queueActions: {
+      queuePurged: "Kolejka została wyczyszczona.",
+      emergencyStopped: "Zatrzymano zadania: cancelled {{cancelled}}, purged {{purged}}.",
+      operationError: "Błąd podczas operacji na kolejce.",
+      queueResumed: "Wznowiono kolejkę.",
+      queuePaused: "Wstrzymano kolejkę.",
+      toggleError: "Błąd sterowania kolejką.",
+    },
+    modelActivation: {
+      providerMissing: "Nie można ustalić serwera dla wybranego modelu.",
+      activated: "Aktywowano model: {{model}}",
+      failed: "Błąd aktywacji modelu: {{message}}",
+      unknownError: "nieznany błąd",
+    },
     inputPlaceholder: "Wpisz wiadomość...",
     newChat: "Nowy czat",
     status: {

@@ -16,7 +16,7 @@ ALLOWED_FORBIDDEN_IMPORTS: dict[str, set[str]] = {
     "venom_core/api/routes/system_storage.py": {"subprocess"},
     "venom_core/api/routes/providers.py": {"httpx"},
     "venom_core/api/routes/system_llm.py": {"httpx"},
-    "venom_core/api/routes/models_remote.py": {"httpx", "threading"},
+    "venom_core/api/routes/models_remote.py": {"threading"},
     "venom_core/api/routes/llm_simple.py": {"threading"},
 }
 
@@ -45,9 +45,6 @@ ALLOWED_LAYER_IMPORTS: dict[str, set[str]] = {
     "venom_core/api/routes/models_install.py": {"venom_core.core.model_manager"},
     "venom_core/api/routes/models_registry.py": {"venom_core.core.model_registry"},
     "venom_core/api/routes/models_registry_ops.py": {"venom_core.core.model_registry"},
-    "venom_core/api/routes/models_remote.py": {
-        "venom_core.infrastructure.traffic_control"
-    },
     "venom_core/api/routes/providers.py": {
         "venom_core.core.admin_audit",
         "venom_core.core.error_mappings",
@@ -57,10 +54,6 @@ ALLOWED_LAYER_IMPORTS: dict[str, set[str]] = {
     "venom_core/api/routes/queue.py": {"venom_core.core.environment_policy"},
     "venom_core/api/routes/system_governance.py": {"venom_core.core.permission_guard"},
     "venom_core/api/routes/system_metrics.py": {"venom_core.core"},
-    "venom_core/api/routes/governance.py": {
-        "venom_core.core.environment_policy",
-        "venom_core.core.provider_governance",
-    },
     "venom_core/api/routes/traffic_control.py": {
         "venom_core.infrastructure.traffic_control"
     },

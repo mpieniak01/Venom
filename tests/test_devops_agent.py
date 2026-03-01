@@ -46,12 +46,14 @@ async def test_devops_agent_process_success(mock_kernel):
 
     # Mock response
     mock_response = MagicMock()
-    mock_response.__str__ = lambda self: """
+    mock_response.__str__ = (
+        lambda self: """
     Plan deploymentu:
     1. Provision serwera
     2. Instalacja Docker
     3. Deploy aplikacji
     """
+    )
     agent.kernel.get_service().get_chat_message_content.return_value = mock_response
 
     result = await agent.process("Deploy aplikację na serwer")
@@ -163,7 +165,10 @@ async def test_devops_agent_security_focus(mock_kernel):
 
     # Check if the system prompt contains security information
     assert "SSH" in agent.SYSTEM_PROMPT or "ssl" in agent.SYSTEM_PROMPT.lower()
-    assert "secret" in agent.SYSTEM_PROMPT.lower() or "token" in agent.SYSTEM_PROMPT.lower()
+    assert (
+        "secret" in agent.SYSTEM_PROMPT.lower()
+        or "token" in agent.SYSTEM_PROMPT.lower()
+    )
 
 
 @pytest.mark.asyncio

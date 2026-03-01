@@ -8,9 +8,9 @@ from uuid import UUID
 
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
-from venom_core.core.permission_guard import permission_guard
 from venom_core.core import routing_integration
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
+from venom_core.core.permission_guard import permission_guard
 from venom_core.core.policy_gate import (
     PolicyDecision,
     PolicyEvaluationContext,

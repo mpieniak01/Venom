@@ -56,6 +56,12 @@ from venom_core.services.llm_simple_stream_service import (
     SimpleStreamState as _SimpleStreamState,
 )
 from venom_core.services.llm_simple_stream_service import (
+    StreamRetryConfig as _StreamRetryConfig,
+)
+from venom_core.services.llm_simple_stream_service import (
+    StreamTransportConfig as _StreamTransportConfig,
+)
+from venom_core.services.llm_simple_stream_service import (
     apply_post_attempt_action as _apply_post_attempt_action_impl,
 )
 from venom_core.services.llm_simple_stream_service import (
@@ -553,20 +559,26 @@ async def _stream_single_attempt(
     ollama_telemetry: dict[str, int],
 ) -> AsyncIterator[str]:
     provider_name = str(getattr(runtime, "provider", "") or "llm_runtime")
-    async for event in _stream_single_attempt_impl(
+    transport = _StreamTransportConfig(
         open_stream_response_fn=llm_simple_transport.open_stream_response,
         iter_stream_packets_fn=_iter_stream_packets,
         completions_url=completions_url,
         payload=payload,
         provider_name=provider_name,
-        state=state,
+    )
+    retry = _StreamRetryConfig(
         http_status_error_type=httpx.HTTPStatusError,
-        attempt=attempt,
         max_attempts=max_attempts,
         is_retryable_status_fn=_is_retryable_ollama_status,
         runtime_provider=runtime.provider,
         retry_backoff=retry_backoff,
         sleep_fn=asyncio.sleep,
+    )
+    async for event in _stream_single_attempt_impl(
+        transport=transport,
+        retry=retry,
+        state=state,
+        attempt=attempt,
         handle_packet_fn=lambda packet: _update_stream_state_from_packet(
             packet=packet,
             runtime=runtime,

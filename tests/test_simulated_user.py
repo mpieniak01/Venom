@@ -1,14 +1,12 @@
 """Unit tests for SimulatedUserAgent."""
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from venom_core.agents.simulated_user import EmotionalState, SimulatedUserAgent
 from venom_core.simulation.persona_factory import Persona, TechLiteracy
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

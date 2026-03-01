@@ -6,6 +6,11 @@ import importlib.util
 import shutil
 from typing import Any
 
+_RUNTIME_PROVIDER_ALIASES = {
+    "google-gemini": "google",
+    "gem": "google",
+}
+
 
 def runtime_profile_name(profile_raw: str | None) -> str:
     profile = str(profile_raw or "full").strip().lower()
@@ -54,9 +59,7 @@ def installed_local_servers(
 
 def normalize_runtime_provider(provider_raw: str | None) -> str:
     normalized = str(provider_raw or "").lower()
-    if normalized in ("google-gemini", "gem"):
-        return "google"
-    return normalized
+    return _RUNTIME_PROVIDER_ALIASES.get(normalized, normalized)
 
 
 def previous_model_key_for_server(server_name: str) -> str:

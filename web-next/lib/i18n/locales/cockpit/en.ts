@@ -4,6 +4,20 @@ export const cockpitLocale = {
       switchCancelled: "Runtime switch cancelled.",
       switchError: "Failed to switch runtime.",
     },
+    queueActions: {
+      queuePurged: "Queue has been purged.",
+      emergencyStopped: "Stopped tasks: cancelled {{cancelled}}, purged {{purged}}.",
+      operationError: "Queue operation failed.",
+      queueResumed: "Queue resumed.",
+      queuePaused: "Queue paused.",
+      toggleError: "Queue toggle failed.",
+    },
+    modelActivation: {
+      providerMissing: "Cannot resolve server for selected model.",
+      activated: "Model activated: {{model}}",
+      failed: "Model activation error: {{message}}",
+      unknownError: "unknown error",
+    },
     inputPlaceholder: "Describe a task for Venom...",
     newChat: "New chat",
     status: {

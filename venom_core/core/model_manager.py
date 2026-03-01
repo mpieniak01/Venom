@@ -1,23 +1,65 @@
 """Moduł: model_manager - Zarządca Modeli i Hot Swap dla Adapterów LoRA."""
 
 import asyncio
-import json
-import os
-import re
-import shutil
 import subprocess
-import sys
-import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from urllib.parse import urlparse, urlunparse
 
-import httpx
 import psutil
 
-from venom_core.infrastructure.traffic_control import TrafficControlledHttpClient
+from venom_core.core.model_manager_adapter_ops import (
+    activate_adapter as activate_adapter_impl,
+)
+from venom_core.core.model_manager_adapter_ops import (
+    clear_active_adapter_state as clear_active_adapter_state_impl,
+)
+from venom_core.core.model_manager_adapter_ops import (
+    deactivate_adapter as deactivate_adapter_impl,
+)
+from venom_core.core.model_manager_adapter_ops import (
+    get_active_adapter_info as get_active_adapter_info_impl,
+)
+from venom_core.core.model_manager_adapter_ops import (
+    load_active_adapter_state as load_active_adapter_state_impl,
+)
+from venom_core.core.model_manager_adapter_ops import (
+    restore_active_adapter as restore_active_adapter_impl,
+)
+from venom_core.core.model_manager_adapter_ops import (
+    save_active_adapter_state as save_active_adapter_state_impl,
+)
+from venom_core.core.model_manager_discovery import ModelManagerDiscoveryMixin
+from venom_core.core.model_manager_onnx import (
+    build_onnx_llm_model as build_onnx_llm_model_impl,
+)
+from venom_core.core.model_manager_storage import (
+    delete_local_model_file as delete_local_model_file_impl,
+)
+from venom_core.core.model_manager_storage import (
+    is_valid_model_name,
+    resolve_models_mount,
+)
+from venom_core.core.model_manager_versions import (
+    activate_version as activate_version_impl,
+)
+from venom_core.core.model_manager_versions import (
+    compare_versions as compare_versions_impl,
+)
+from venom_core.core.model_manager_versions import (
+    compute_metric_diff as compute_metric_diff_impl,
+)
+from venom_core.core.model_manager_versions import (
+    get_active_version as get_active_version_impl,
+)
+from venom_core.core.model_manager_versions import (
+    get_all_versions as get_all_versions_impl,
+)
+from venom_core.core.model_manager_versions import get_genealogy as get_genealogy_impl
+from venom_core.core.model_manager_versions import get_version as get_version_impl
+from venom_core.core.model_manager_versions import (
+    register_version as register_version_impl,
+)
 from venom_core.utils.logger import get_logger
-from venom_core.utils.url_policy import apply_http_policy_to_url, build_http_url
 
 logger = get_logger(__name__)
 
@@ -25,7 +67,6 @@ logger = get_logger(__name__)
 MAX_STORAGE_GB = 50  # Limit na modele w GB
 DEFAULT_MODEL_SIZE_GB = 4.0  # Szacowany domyślny rozmiar modelu dla Resource Guard
 BYTES_IN_GB = 1024**3
-ONNX_METADATA_FILENAME = "venom_onnx_metadata.json"
 
 
 class ModelVersion:
@@ -72,7 +113,7 @@ class ModelVersion:
         }
 
 
-class ModelManager:
+class ModelManager(ModelManagerDiscoveryMixin):
     """
     Zarządca Modeli - Hot Swap i Genealogia Inteligencji.
 
@@ -105,61 +146,6 @@ class ModelManager:
 
         logger.info(f"ModelManager zainicjalizowany (models_dir={self.models_dir})")
 
-    @staticmethod
-    def _normalize_onnx_model_slug(model_name: str) -> str:
-        """Normalize model id into a filesystem-safe slug."""
-        return model_name.strip().replace("/", "--").replace(":", "-").replace(" ", "-")
-
-    @staticmethod
-    def _load_onnx_metadata(model_path: Path) -> Dict[str, Any]:
-        """Load optional ONNX metadata from model directory/file sibling."""
-        candidates: List[Path] = []
-        if model_path.is_dir():
-            candidates.append(model_path / ONNX_METADATA_FILENAME)
-        else:
-            candidates.append(model_path.with_suffix(".json"))
-            candidates.append(model_path.parent / ONNX_METADATA_FILENAME)
-
-        for metadata_path in candidates:
-            if not metadata_path.exists():
-                continue
-            try:
-                payload = json.loads(metadata_path.read_text("utf-8"))
-                if isinstance(payload, dict):
-                    return payload
-            except Exception as e:
-                logger.warning(
-                    "Nie udało się wczytać metadanych ONNX (%s): %s",
-                    metadata_path,
-                    e,
-                )
-        return {}
-
-    @staticmethod
-    def _default_onnx_metadata_for_path(model_path: Path) -> Dict[str, Any]:
-        """Infer best-effort ONNX metadata when explicit metadata is missing."""
-        path_name = model_path.name.lower()
-        precision = "unknown"
-        if "int4" in path_name:
-            precision = "int4"
-        elif "fp16" in path_name:
-            precision = "fp16"
-
-        execution_provider = "unknown"
-        if "cuda" in path_name:
-            execution_provider = "cuda"
-        elif "cpu" in path_name:
-            execution_provider = "cpu"
-        elif "directml" in path_name:
-            execution_provider = "directml"
-
-        return {
-            "provider": "onnx",
-            "runtime": "onnx",
-            "precision": precision,
-            "execution_provider": execution_provider,
-        }
-
     def build_onnx_llm_model(
         self,
         *,
@@ -169,145 +155,41 @@ class ModelManager:
         precision: str = "int4",
         builder_script: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Build ONNX LLM model via onnxruntime-genai builder and persist metadata.
-
-        Returns:
-            Dict with success flag and build details/error.
-        """
-        if not model_name or not re.match(r"^[\w\-.:/]+$", model_name):
-            return {
-                "success": False,
-                "message": "Nieprawidłowa nazwa modelu ONNX.",
-            }
-
-        exec_provider = (execution_provider or "cuda").strip().lower()
-        prec = (precision or "int4").strip().lower()
-        if exec_provider not in {"cuda", "cpu", "directml"}:
-            return {
-                "success": False,
-                "message": "execution_provider musi być jednym z: cuda, cpu, directml",
-            }
-        if prec not in {"int4", "fp16"}:
-            return {"success": False, "message": "precision musi być: int4 lub fp16"}
-
-        default_script = os.getenv(
-            "ONNX_GENAI_BUILDER_SCRIPT",
-            "third_party/onnxruntime-genai/src/python/py/models/builder.py",
+        """Build ONNX LLM model via delegated helper module."""
+        return build_onnx_llm_model_impl(
+            model_name=model_name,
+            output_dir=output_dir,
+            execution_provider=execution_provider,
+            precision=precision,
+            builder_script=builder_script,
+            normalize_slug_fn=self._normalize_onnx_model_slug,
+            logger=logger,
         )
-        script_path = Path(builder_script or default_script).expanduser().resolve()
-        if not script_path.exists():
-            return {
-                "success": False,
-                "message": (
-                    "Nie znaleziono skryptu builder.py. "
-                    "Ustaw ONNX_GENAI_BUILDER_SCRIPT lub parametr builder_script."
-                ),
-                "builder_script": str(script_path),
-            }
-
-        if output_dir:
-            output_path = Path(output_dir).expanduser().resolve()
-        else:
-            slug = self._normalize_onnx_model_slug(model_name)
-            output_path = (Path("./models") / f"{slug}-onnx").resolve()
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        command = [
-            sys.executable or "python",
-            str(script_path),
-            "-m",
-            model_name,
-            "-e",
-            exec_provider,
-            "-p",
-            prec,
-            "-o",
-            str(output_path),
-        ]
-
-        try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=3600,
-            )
-        except subprocess.TimeoutExpired:
-            return {"success": False, "message": "Timeout podczas build ONNX modelu."}
-        except Exception as e:
-            return {"success": False, "message": f"Błąd build ONNX: {e}"}
-
-        if result.returncode != 0:
-            return {
-                "success": False,
-                "message": "Builder ONNX zakończył się błędem.",
-                "exit_code": result.returncode,
-                "stderr": result.stderr.strip(),
-                "stdout": result.stdout.strip(),
-            }
-
-        metadata = {
-            "provider": "onnx",
-            "runtime": "onnx",
-            "model_name": model_name,
-            "output_dir": str(output_path),
-            "precision": prec,
-            "execution_provider": exec_provider,
-            "builder_script": str(script_path),
-            "built_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        }
-        metadata_path = output_path / ONNX_METADATA_FILENAME
-        metadata_path.write_text(
-            json.dumps(metadata, ensure_ascii=True, indent=2),
-            encoding="utf-8",
-        )
-
-        logger.info("Zbudowano ONNX model: %s -> %s", model_name, output_path)
-        return {
-            "success": True,
-            "message": "Model ONNX zbudowany pomyślnie.",
-            "model_name": model_name,
-            "output_dir": str(output_path),
-            "metadata_path": str(metadata_path),
-            "stdout": result.stdout.strip(),
-        }
 
     def _save_active_adapter_state(
         self, adapter_id: str, adapter_path: str, base_model: str
     ) -> None:
         """Persistuje aktualnie aktywny adapter dla restore po restarcie."""
-        self.active_adapter_state_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "adapter_id": adapter_id,
-            "adapter_path": adapter_path,
-            "base_model": base_model,
-            "activated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "source": "academy",
-        }
-        with open(self.active_adapter_state_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+        save_active_adapter_state_impl(
+            state_path=self.active_adapter_state_path,
+            adapter_id=adapter_id,
+            adapter_path=adapter_path,
+            base_model=base_model,
+        )
 
     def _load_active_adapter_state(self) -> Optional[Dict[str, Any]]:
         """Wczytuje persistowany stan aktywnego adaptera."""
-        if not self.active_adapter_state_path.exists():
-            return None
-        try:
-            with open(self.active_adapter_state_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if not isinstance(data, dict):
-                    return None
-                return data
-        except Exception as e:
-            logger.warning(f"Nie udało się odczytać stanu aktywnego adaptera: {e}")
-            return None
+        return load_active_adapter_state_impl(
+            state_path=self.active_adapter_state_path,
+            logger=logger,
+        )
 
     def _clear_active_adapter_state(self) -> None:
         """Czyści persistowany stan aktywnego adaptera."""
-        try:
-            self.active_adapter_state_path.unlink(missing_ok=True)
-        except Exception as e:
-            logger.warning(f"Nie udało się usunąć stanu aktywnego adaptera: {e}")
+        clear_active_adapter_state_impl(
+            state_path=self.active_adapter_state_path,
+            logger=logger,
+        )
 
     def restore_active_adapter(self) -> bool:
         """
@@ -316,47 +198,7 @@ class ModelManager:
         Returns:
             True jeśli adapter został odtworzony i aktywowany, False w przeciwnym razie.
         """
-        state = self._load_active_adapter_state()
-        if not state:
-            return False
-
-        adapter_id = str(state.get("adapter_id") or "").strip()
-        adapter_path = str(state.get("adapter_path") or "").strip()
-        base_model = str(state.get("base_model") or "academy-base").strip()
-        if not adapter_id or not adapter_path:
-            self._clear_active_adapter_state()
-            return False
-
-        if not Path(adapter_path).exists():
-            logger.warning("Persistowany adapter nie istnieje: %s", adapter_path)
-            self._clear_active_adapter_state()
-            return False
-
-        restored = self.activate_adapter(
-            adapter_id=adapter_id,
-            adapter_path=adapter_path,
-            base_model=base_model,
-        )
-        if not restored:
-            self._clear_active_adapter_state()
-        return restored
-
-    def _resolve_ollama_tags_url(self) -> str:
-        """
-        Zwraca URL /api/tags dla Ollama zgodny z aktualnym runtime.
-
-        W Dockerze endpoint bywa ustawiony jako ollama:11434/v1,
-        a lokalnie często localhost:11434/v1.
-        """
-        endpoint = os.getenv(
-            "LLM_LOCAL_ENDPOINT", build_http_url("localhost", 11434, "/v1")
-        )
-        endpoint = apply_http_policy_to_url(endpoint)
-        parsed = urlparse(endpoint)
-        if parsed.scheme and parsed.netloc:
-            base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
-            return f"{base}/api/tags"
-        return build_http_url("localhost", 11434, "/api/tags")
+        return restore_active_adapter_impl(manager=self, logger=logger)
 
     def register_version(
         self,
@@ -377,21 +219,15 @@ class ModelManager:
         Returns:
             Zarejestrowana wersja
         """
-        from datetime import datetime
-
-        version = ModelVersion(
+        return register_version_impl(
+            manager=self,
             version_id=version_id,
             base_model=base_model,
             adapter_path=adapter_path,
-            created_at=datetime.now().isoformat(),
             performance_metrics=performance_metrics,
-            is_active=False,
+            model_version_cls=ModelVersion,
+            logger=logger,
         )
-
-        self.versions[version_id] = version
-        logger.info(f"Zarejestrowano wersję modelu: {version_id}")
-
-        return version
 
     def activate_version(self, version_id: str) -> bool:
         """
@@ -403,20 +239,7 @@ class ModelManager:
         Returns:
             True jeśli sukces, False w przeciwnym razie
         """
-        if version_id not in self.versions:
-            logger.error("Wersja modelu nie istnieje")
-            return False
-
-        # Dezaktywuj poprzednią wersję
-        if self.active_version:
-            self.versions[self.active_version].is_active = False
-
-        # Aktywuj nową wersję
-        self.versions[version_id].is_active = True
-        self.active_version = version_id
-
-        logger.info("Aktywowano wersję modelu")
-        return True
+        return activate_version_impl(manager=self, version_id=version_id, logger=logger)
 
     def _is_path_within_models_dir(self, path: Path) -> bool:
         """Sprawdza czy ścieżka mieści się w katalogu modeli Academy."""
@@ -433,10 +256,7 @@ class ModelManager:
         Returns:
             Aktywna wersja lub None
         """
-        if not self.active_version:
-            return None
-
-        return self.versions.get(self.active_version)
+        return get_active_version_impl(manager=self)
 
     def get_version(self, version_id: str) -> Optional[ModelVersion]:
         """
@@ -448,7 +268,7 @@ class ModelManager:
         Returns:
             Wersja modelu lub None
         """
-        return self.versions.get(version_id)
+        return get_version_impl(manager=self, version_id=version_id)
 
     def get_all_versions(self) -> List[ModelVersion]:
         """
@@ -457,11 +277,7 @@ class ModelManager:
         Returns:
             Lista wersji
         """
-        return sorted(
-            self.versions.values(),
-            key=lambda v: v.created_at or "",
-            reverse=True,
-        )
+        return get_all_versions_impl(manager=self)
 
     def create_ollama_modelfile(
         self, version_id: str, output_name: Optional[str] = None
@@ -647,13 +463,7 @@ PARAMETER top_k 40
         Returns:
             Słownik z informacjami o genealogii
         """
-        versions_data = [v.to_dict() for v in self.get_all_versions()]
-
-        return {
-            "total_versions": len(self.versions),
-            "active_version": self.active_version,
-            "versions": versions_data,
-        }
+        return get_genealogy_impl(manager=self)
 
     def compare_versions(
         self, version_id_1: str, version_id_2: str
@@ -668,58 +478,18 @@ PARAMETER top_k 40
         Returns:
             Słownik z porównaniem lub None
         """
-        v1 = self.get_version(version_id_1)
-        v2 = self.get_version(version_id_2)
-
-        if not v1 or not v2:
-            logger.error("Jedna lub obie wersje nie istnieją")
-            return None
-
-        comparison = {
-            "version_1": v1.to_dict(),
-            "version_2": v2.to_dict(),
-            "metrics_diff": {},
-        }
-
-        # Porównaj metryki
-        metric_keys = set(v1.performance_metrics.keys()) | set(
-            v2.performance_metrics.keys()
+        return compare_versions_impl(
+            manager=self,
+            version_id_1=version_id_1,
+            version_id_2=version_id_2,
+            compute_metric_diff_fn=self._compute_metric_diff,
+            logger=logger,
         )
-        for key in metric_keys:
-            metric_diff = self._compute_metric_diff(
-                v1.performance_metrics.get(key),
-                v2.performance_metrics.get(key),
-            )
-            if metric_diff is not None:
-                comparison["metrics_diff"][key] = metric_diff
-
-        return comparison
 
     @staticmethod
     def _compute_metric_diff(val1: Any, val2: Any) -> Optional[Dict[str, Any]]:
         """Wylicza różnicę metryk między dwiema wersjami."""
-        if val1 is None or val2 is None:
-            return None
-
-        try:
-            diff = val2 - val1
-            if val1 != 0:
-                diff_pct = (diff / val1) * 100
-            else:
-                # Gdy baza jest zerowa, zmiana procentowa jest nieskończona (o ile val2 != 0).
-                diff_pct = float("inf") if val2 != 0 else 0
-            return {
-                "v1": val1,
-                "v2": val2,
-                "diff": diff,
-                "diff_pct": diff_pct,
-            }
-        except (TypeError, ValueError):
-            return {
-                "v1": val1,
-                "v2": val2,
-                "diff": "N/A",
-            }
+        return compute_metric_diff_impl(val1, val2)
 
     def get_models_size_gb(self) -> float:
         """
@@ -767,262 +537,9 @@ PARAMETER top_k 40
         )
         return True
 
-    def _register_local_entry(
-        self,
-        models: Dict[str, Dict[str, Any]],
-        model_path: Path,
-        source: str,
-        provider: str = "vllm",
-    ) -> None:
-        size_bytes = self._calculate_model_size_bytes(model_path)
-        onnx_metadata = self._load_onnx_metadata(model_path)
-        metadata_provider = str(onnx_metadata.get("provider", "")).lower()
-        model_type, provider = self._detect_model_type_and_provider(
-            model_path=model_path,
-            provider=provider,
-        )
-        if metadata_provider == "onnx":
-            provider = "onnx"
-
-        onnx_payload: Dict[str, Any] = {}
-        if provider == "onnx":
-            inferred = self._default_onnx_metadata_for_path(model_path)
-            onnx_payload = {
-                **inferred,
-                **onnx_metadata,
-            }
-
-        models[model_path.name] = {
-            "name": model_path.name,
-            "size_gb": size_bytes / (1024**3) if size_bytes else None,
-            "type": model_type,
-            "quantization": "unknown",
-            "path": str(model_path),
-            "source": source,
-            "provider": provider,
-            "active": False,
-            **onnx_payload,
-        }
-
-    @staticmethod
-    def _calculate_model_size_bytes(model_path: Path) -> int:
-        if model_path.is_file():
-            return model_path.stat().st_size
-        size_bytes = 0
-        for file_path in model_path.rglob("*"):
-            if file_path.is_file():
-                size_bytes += file_path.stat().st_size
-        return size_bytes
-
-    @staticmethod
-    def _detect_model_type_and_provider(
-        *,
-        model_path: Path,
-        provider: str,
-    ) -> tuple[str, str]:
-        lower_path = str(model_path).lower()
-        if ".gguf" in lower_path:
-            return "gguf", provider
-        if model_path.suffix in {".onnx", ".bin"}:
-            return "onnx", "onnx"
-        if model_path.is_dir():
-            resolved_provider = (
-                "onnx" if "onnx" in model_path.name.lower() else provider
-            )
-            return "folder", resolved_provider
-        return "folder", provider
-
-    def _build_search_dirs(self) -> List[Path]:
-        search_dirs = [self.models_dir]
-        default_models_dir = Path("./models")
-        if default_models_dir.exists() and default_models_dir not in search_dirs:
-            search_dirs.append(default_models_dir)
-        return search_dirs
-
-    def _scan_local_dirs(
-        self,
-        search_dirs: List[Path],
-        models: Dict[str, Dict[str, Any]],
-    ) -> None:
-        skip_dirs = {"hf_cache", "__pycache__", ".cache", "manifests", "blobs"}
-        for base_dir in search_dirs:
-            if not base_dir.exists():
-                continue
-            for model_path in base_dir.iterdir():
-                if not self._is_local_model_candidate(model_path, skip_dirs):
-                    continue
-                self._try_register_local_entry(models, model_path, base_dir.name)
-
-    @staticmethod
-    def _is_local_model_candidate(model_path: Path, skip_dirs: set[str]) -> bool:
-        if model_path.name in skip_dirs:
-            return False
-        return model_path.is_dir() or model_path.suffix in {".onnx", ".gguf", ".bin"}
-
-    def _try_register_local_entry(
-        self, models: Dict[str, Dict[str, Any]], model_path: Path, source_name: str
-    ) -> None:
-        try:
-            self._register_local_entry(
-                models,
-                model_path,
-                source=source_name,
-                provider="vllm",
-            )
-        except Exception as e:
-            logger.warning(f"Nie udało się odczytać modelu {model_path}: {e}")
-
-    def _load_ollama_manifest_entries(
-        self, manifests_dir: Path
-    ) -> List[Dict[str, Any]]:
-        entries: List[Dict[str, Any]] = []
-        if not manifests_dir.exists():
-            return entries
-        for manifest_path in manifests_dir.rglob("*"):
-            if not manifest_path.is_file():
-                continue
-            relative_parts = self._resolve_manifest_relative_parts(
-                manifests_dir, manifest_path
-            )
-            if relative_parts is None or len(relative_parts) < 2:
-                continue
-            registry = relative_parts[0]
-            entry_name = self._build_ollama_manifest_entry_name(relative_parts)
-            size_bytes = self._read_manifest_size_bytes(manifest_path)
-            entries.append(
-                {
-                    "name": entry_name,
-                    "size_gb": size_bytes / (1024**3) if size_bytes else None,
-                    "type": "ollama",
-                    "quantization": "unknown",
-                    "path": f"ollama://{registry}",
-                    "source": "ollama",
-                    "provider": "ollama",
-                    "active": False,
-                }
-            )
-        return entries
-
-    @staticmethod
-    def _resolve_manifest_relative_parts(
-        manifests_dir: Path, manifest_path: Path
-    ) -> Optional[tuple[str, ...]]:
-        try:
-            return manifest_path.relative_to(manifests_dir).parts
-        except ValueError:
-            return None
-
-    @staticmethod
-    def _build_ollama_manifest_entry_name(relative_parts: tuple[str, ...]) -> str:
-        tag = relative_parts[-1]
-        model = relative_parts[-2]
-        namespace = relative_parts[-3] if len(relative_parts) >= 3 else ""
-        if namespace and namespace != "library":
-            return f"{namespace}/{model}:{tag}"
-        return f"{model}:{tag}"
-
-    @staticmethod
-    def _read_manifest_size_bytes(manifest_path: Path) -> int:
-        size_bytes = 0
-        try:
-            manifest_payload = json.loads(manifest_path.read_text("utf-8"))
-            layers = manifest_payload.get("layers") or []
-            size_bytes = sum(
-                layer.get("size", 0) for layer in layers if isinstance(layer, dict)
-            )
-            config = manifest_payload.get("config") or {}
-            if isinstance(config, dict):
-                size_bytes += config.get("size", 0) or 0
-        except Exception as e:
-            logger.warning(f"Nie udało się odczytać manifestu {manifest_path}: {e}")
-        return size_bytes
-
-    def _collect_ollama_entries(
-        self, ollama_models: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        ollama_models_by_digest: Dict[str, Dict[str, Any]] = {}
-        entries: List[Dict[str, Any]] = []
-        for model in ollama_models:
-            size_bytes = model.get("size", 0)
-            entry_name = model.get("name", "unknown")
-            digest = model.get("digest", "")
-            entry = {
-                "name": entry_name,
-                "size_gb": size_bytes / (1024**3),
-                "type": "ollama",
-                "quantization": model.get("details", {}).get(
-                    "quantization_level", "unknown"
-                ),
-                "path": "ollama://",
-                "source": "ollama",
-                "provider": "ollama",
-                "active": False,
-                "digest": digest,
-            }
-            if not digest:
-                entries.append(entry)
-                continue
-            existing = ollama_models_by_digest.get(digest)
-            if existing and (
-                not entry_name.endswith(":latest")
-                or existing["name"].endswith(":latest")
-            ):
-                continue
-            ollama_models_by_digest[digest] = entry
-        entries.extend(ollama_models_by_digest.values())
-        return entries
-
-    def _register_ollama_entries(
-        self,
-        models: Dict[str, Dict[str, Any]],
-        entries: List[Dict[str, Any]],
-    ) -> None:
-        for entry in entries:
-            entry_name = entry.get("name")
-            if entry_name:
-                models[f"ollama::{entry_name}"] = entry
-
-    def _save_ollama_cache(self, entries: List[Dict[str, Any]]) -> None:
-        if not entries:
-            return
-        try:
-            self.ollama_cache_path.write_text(
-                json.dumps(entries, indent=2),
-                encoding="utf-8",
-            )
-        except Exception as e:
-            logger.warning(f"Nie udało się zapisać cache modeli Ollama: {e}")
-
-    def _load_ollama_cache(
-        self,
-        models: Dict[str, Dict[str, Any]],
-    ) -> None:
-        try:
-            if not self.ollama_cache_path.exists():
-                return
-            cached_entries = json.loads(self.ollama_cache_path.read_text("utf-8"))
-            for entry in cached_entries:
-                entry_name = entry.get("name")
-                if entry_name:
-                    models.setdefault(f"ollama::{entry_name}", entry)
-        except Exception as cache_error:
-            logger.warning(f"Nie udało się wczytać cache modeli Ollama: {cache_error}")
-
-    def _register_manifest_fallbacks(
-        self,
-        search_dirs: List[Path],
-        models: Dict[str, Dict[str, Any]],
-    ) -> None:
-        for base_dir in search_dirs:
-            manifest_root = base_dir / "manifests"
-            for entry in self._load_ollama_manifest_entries(manifest_root):
-                entry_name = entry.get("name")
-                if entry_name:
-                    models.setdefault(f"ollama::{entry_name}", entry)
-
     @staticmethod
     def _is_valid_model_name(model_name: str) -> bool:
-        return bool(model_name and re.match(r"^[\w\-.:]+$", model_name))
+        return is_valid_model_name(model_name)
 
     async def _stream_pull_output(
         self,
@@ -1047,10 +564,7 @@ PARAMETER top_k 40
 
     @staticmethod
     def _resolve_models_mount() -> Path:
-        disk_mount = Path("/usr/lib/wsl/drivers")
-        if disk_mount.exists():
-            return disk_mount
-        return Path("/")
+        return resolve_models_mount()
 
     async def _collect_gpu_metrics(self) -> Dict[str, Any]:
         gpu_metrics: Dict[str, Any] = {
@@ -1131,66 +645,11 @@ PARAMETER top_k 40
         return False
 
     def _delete_local_model_file(self, model_info: Dict[str, Any]) -> bool:
-        model_path = Path(model_info["path"]).resolve()
-        # Sprawdź czy ścieżka jest wewnątrz models_dir (ochrona przed path traversal)
-        if not model_path.is_relative_to(self.models_dir):
-            logger.error(f"Nieprawidłowa ścieżka modelu: {model_path}")
-            return False
-
-        if not model_path.exists():
-            logger.error(f"Ścieżka modelu nie istnieje: {model_path}")
-            return False
-
-        if model_path.is_dir():
-            shutil.rmtree(model_path)
-        else:
-            model_path.unlink()
-        return True
-
-    async def list_local_models(self) -> List[Dict[str, Any]]:
-        """
-        Skanuje katalog models/ i pobiera listę modeli z Ollama.
-
-        Returns:
-            Lista słowników z informacjami o modelach:
-            {name, size_gb, type, quantization, path, active}
-        """
-        models: Dict[str, Dict[str, Any]] = {}
-
-        # 1. Skanowanie lokalnych katalogów modeli (data/models oraz ./models)
-        search_dirs = self._build_search_dirs()
-        self._scan_local_dirs(search_dirs, models)
-
-        # 2. Pobieranie modeli z Ollama API
-        try:
-            async with TrafficControlledHttpClient(
-                provider="ollama",
-                timeout=10.0,
-            ) as client:
-                response = await client.aget(
-                    self._resolve_ollama_tags_url(),
-                    raise_for_status=False,
-                )
-                if response.status_code == 200:
-                    ollama_data = response.json()
-                    entries = self._collect_ollama_entries(
-                        ollama_data.get("models", [])
-                    )
-                    self._register_ollama_entries(models, entries)
-                    self._save_ollama_cache(entries)
-                else:
-                    logger.warning(
-                        f"Nie udało się pobrać listy modeli z Ollama: {response.status_code}"
-                    )
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
-            now = time.time()
-            if now - self._last_ollama_warning > 60:
-                logger.warning(f"Ollama nie jest dostępne: {e}")
-                self._last_ollama_warning = now
-        except Exception as e:
-            logger.error(f"Błąd podczas pobierania modeli z Ollama: {e}")
-
-        return list(models.values())
+        return delete_local_model_file_impl(
+            model_info=model_info,
+            models_dir=self.models_dir,
+            logger=logger,
+        )
 
     async def pull_model(
         self, model_name: str, progress_callback: Optional[Callable[[str], None]] = None
@@ -1386,61 +845,13 @@ PARAMETER top_k 40
         Returns:
             True jeśli sukces, False w przeciwnym razie
         """
-        from datetime import datetime
-
-        logger.info("Aktywacja adaptera Academy")
-
-        expected_adapter_path = (
-            self.models_dir.resolve() / adapter_id / "adapter"
-        ).resolve()
-
-        if adapter_path and Path(adapter_path).resolve() != expected_adapter_path:
-            logger.error("Adapter path niezgodny z katalogiem Academy")
-            return False
-
-        # Sprawdź czy adapter istnieje
-        if not expected_adapter_path.exists():
-            logger.error("Adapter nie istnieje")
-            return False
-
-        # Jeśli adapter już jest zarejestrowany, aktywuj go
-        if adapter_id in self.versions:
-            success = self.activate_version(adapter_id)
-            if success:
-                version = self.versions[adapter_id]
-                self._save_active_adapter_state(
-                    adapter_id=adapter_id,
-                    adapter_path=version.adapter_path or str(expected_adapter_path),
-                    base_model=version.base_model,
-                )
-            return success
-
-        # Zarejestruj nowy adapter jako wersję
-        base = base_model or "academy-base"
-        self.register_version(
-            version_id=adapter_id,
-            base_model=base,
-            adapter_path=str(expected_adapter_path),
-            performance_metrics={
-                "source": "academy",
-                "created_at": datetime.now().isoformat(),
-            },
+        return activate_adapter_impl(
+            manager=self,
+            adapter_id=adapter_id,
+            adapter_path=adapter_path,
+            base_model=base_model,
+            logger=logger,
         )
-
-        # Aktywuj nową wersję
-        success = self.activate_version(adapter_id)
-
-        if success:
-            logger.info(f"✅ Adapter {adapter_id} aktywowany pomyślnie")
-            self._save_active_adapter_state(
-                adapter_id=adapter_id,
-                adapter_path=str(expected_adapter_path),
-                base_model=base,
-            )
-        else:
-            logger.error("❌ Nie udało się aktywować adaptera")
-
-        return success
 
     def deactivate_adapter(self) -> bool:
         """
@@ -1449,21 +860,7 @@ PARAMETER top_k 40
         Returns:
             True jeśli sukces, False w przeciwnym razie
         """
-        if not self.active_version:
-            logger.warning("Brak aktywnego adaptera do dezaktywacji")
-            return False
-
-        logger.info(f"Dezaktywacja adaptera: {self.active_version}")
-
-        # Oznacz jako nieaktywny
-        if self.active_version in self.versions:
-            self.versions[self.active_version].is_active = False
-
-        self.active_version = None
-        self._clear_active_adapter_state()
-        logger.info("✅ Adapter zdezaktywowany - powrót do modelu bazowego")
-
-        return True
+        return deactivate_adapter_impl(manager=self, logger=logger)
 
     def get_active_adapter_info(self) -> Optional[Dict[str, Any]]:
         """
@@ -1472,18 +869,4 @@ PARAMETER top_k 40
         Returns:
             Słownik z informacjami lub None jeśli brak aktywnego
         """
-        if not self.active_version:
-            return None
-
-        version = self.get_active_version()
-        if not version:
-            return None
-
-        return {
-            "adapter_id": version.version_id,
-            "adapter_path": version.adapter_path,
-            "base_model": version.base_model,
-            "created_at": version.created_at,
-            "performance_metrics": version.performance_metrics,
-            "is_active": version.is_active,
-        }
+        return get_active_adapter_info_impl(manager=self)

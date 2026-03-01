@@ -9,6 +9,60 @@ from typing import Any, Dict, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.docker_habitat import DockerHabitat
+from venom_core.infrastructure.gpu_habitat_policy import (
+    is_allowed_local_job_signal as is_allowed_local_job_signal_impl,
+)
+from venom_core.infrastructure.gpu_habitat_policy import (
+    is_pid_owned_by_current_user as is_pid_owned_by_current_user_impl,
+)
+from venom_core.infrastructure.gpu_habitat_policy import (
+    resolve_positive_pid as resolve_positive_pid_impl,
+)
+from venom_core.infrastructure.gpu_habitat_policy import (
+    send_signal_to_validated_pid as send_signal_to_validated_pid_impl,
+)
+from venom_core.infrastructure.gpu_habitat_policy import (
+    signal_validated_local_job as signal_validated_local_job_impl,
+)
+from venom_core.infrastructure.gpu_habitat_policy import (
+    validate_local_job_pid as validate_local_job_pid_impl,
+)
+from venom_core.infrastructure.gpu_habitat_probe import (
+    check_gpu_availability as check_gpu_availability_impl,
+)
+from venom_core.infrastructure.gpu_habitat_probe import (
+    check_local_dependencies as check_local_dependencies_impl,
+)
+from venom_core.infrastructure.gpu_habitat_probe import (
+    check_local_gpu_availability as check_local_gpu_availability_impl,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
+    cleanup_docker_job as cleanup_docker_job_impl,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
+    cleanup_job as cleanup_job_impl,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
+    cleanup_local_job as cleanup_local_job_impl,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
+    get_local_job_status as get_local_job_status_impl,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
+    get_training_status as get_training_status_impl,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
+    run_local_training_job as run_local_training_job_impl,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
+    run_training_job as run_training_job_impl,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
+    stream_job_logs as stream_job_logs_impl,
+)
+from venom_core.infrastructure.gpu_habitat_runtime import (
+    terminate_local_process as terminate_local_process_impl,
+)
 from venom_core.utils.logger import get_logger
 
 docker: Any = None
@@ -115,42 +169,15 @@ class GPUHabitat(DockerHabitat):
 
     def _check_local_gpu_availability(self) -> bool:
         """Sprawdza dostępność GPU w trybie lokalnym (nvidia-smi)."""
-        try:
-            subprocess.run(["nvidia-smi"], check=True, capture_output=True)
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
+        return check_local_gpu_availability_impl(run_cmd_fn=subprocess.run)
 
     def _check_local_dependencies(self) -> None:
         """Sprawdza czy wymagane biblioteki są zainstalowane lokalnie."""
-        # Podstawowe biblioteki (wymagane zawsze)
-        core_packages = ["transformers", "peft", "trl", "datasets", "accelerate"]
-        missing = []
-
-        for package in core_packages:
-            try:
-                importlib.import_module(package)
-            except ImportError:
-                missing.append(package)
-
-        if missing:
-            raise RuntimeError(
-                f"Brak wymaganych bibliotek do treningu: {', '.join(missing)}. "
-                f"Zainstaluj je komendą: pip install {' '.join(missing)}"
-            )
-
-        # Sprawdź Unsloth (opcjonalne, tylko dla GPU)
-        try:
-            importlib.import_module("unsloth")
-            self._has_unsloth = True
-        except ImportError:
-            self._has_unsloth = False
-
-        if self.enable_gpu and not self._has_unsloth:
-            logger.warning(
-                "Biblioteka 'unsloth' nie jest zainstalowana. Trening zostanie uruchomiony "
-                "bez optymalizacji Unsloth (wolniej/CPU fallback możliwy)."
-            )
+        self._has_unsloth = check_local_dependencies_impl(
+            enable_gpu=self.enable_gpu,
+            import_module_fn=importlib.import_module,
+            logger=logger,
+        )
 
     def _check_gpu_availability(self) -> bool:
         """
@@ -159,42 +186,15 @@ class GPUHabitat(DockerHabitat):
         Returns:
             True jeśli GPU jest dostępne, False w przeciwnym razie
         """
-        try:
-            # Uruchom prosty kontener testowy z GPU
-            self.client.containers.run(
-                image=SETTINGS.DOCKER_CUDA_IMAGE,
-                command="nvidia-smi",
-                device_requests=[
-                    docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
-                ],
-                remove=True,
-                detach=False,
-            )
-
-            logger.info("✅ GPU i nvidia-container-toolkit są dostępne")
-            return True
-
-        except ImageNotFound:
-            logger.warning(
-                f"Obraz {SETTINGS.DOCKER_CUDA_IMAGE} nie jest dostępny, pobieram..."
-            )
-            try:
-                self.client.images.pull(SETTINGS.DOCKER_CUDA_IMAGE)
-                return self._check_gpu_availability()  # Retry
-            except Exception as e:
-                logger.error(
-                    f"Nie można pobrać obrazu {SETTINGS.DOCKER_CUDA_IMAGE}: {e}"
-                )
-                return False
-
-        except APIError as e:
-            logger.warning(f"GPU lub nvidia-container-toolkit nie są dostępne: {e}")
-            logger.warning("Trening będzie dostępny tylko na CPU")
-            return False
-
-        except Exception as e:
-            logger.error(f"Nieoczekiwany błąd podczas sprawdzania GPU: {e}")
-            return False
+        return check_gpu_availability_impl(
+            client=self.client,
+            docker_cuda_image=SETTINGS.DOCKER_CUDA_IMAGE,
+            device_request_factory=docker.types.DeviceRequest,
+            image_not_found_error=ImageNotFound,
+            api_error=APIError,
+            logger=logger,
+            retry_check_fn=self._check_gpu_availability,
+        )
 
     def is_gpu_available(self) -> bool:
         """Zwraca czy GPU jest dostępne do użycia."""
@@ -268,233 +268,43 @@ class GPUHabitat(DockerHabitat):
             ValueError: Jeśli parametry są nieprawidłowe
             RuntimeError: Jeśli nie można uruchomić kontenera
         """
-        # Walidacja parametrów
-        training_base_dir = Path(SETTINGS.ACADEMY_TRAINING_DIR).resolve()
-        dataset_path_obj = (training_base_dir / Path(dataset_path).name).resolve()
-        if not dataset_path_obj.exists():
-            raise ValueError("Dataset nie istnieje")
-
-        if not self._is_path_within_base(dataset_path_obj, training_base_dir):
-            raise ValueError("Dataset path jest poza katalogiem Academy training")
-
-        models_base_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
-        output_dir_obj = (models_base_dir / Path(output_dir).name).resolve()
-        if not self._is_path_within_base(output_dir_obj, models_base_dir):
-            raise ValueError("Output path jest poza katalogiem Academy models")
-        output_dir_obj.mkdir(parents=True, exist_ok=True)
-
-        job_name = job_name or f"training_{dataset_path_obj.stem}"
-
-        logger.info(
-            f"Uruchamianie treningu ({'LOCAL' if self.use_local_runtime else 'DOCKER'}): "
-            f"job={job_name}, model={base_model}, dataset={dataset_path_obj.name}"
+        return run_training_job_impl(
+            manager=self,
+            dataset_path=dataset_path,
+            base_model=base_model,
+            output_dir=output_dir,
+            lora_rank=lora_rank,
+            learning_rate=learning_rate,
+            num_epochs=num_epochs,
+            max_seq_length=max_seq_length,
+            batch_size=batch_size,
+            job_name=job_name,
+            settings=SETTINGS,
+            logger=logger,
+            docker_module=docker,
+            image_not_found_error=ImageNotFound,
         )
-
-        try:
-            # Generuj skrypt
-            use_unsloth = self.enable_gpu and getattr(
-                self, "_has_unsloth", True
-            )  # Default True for Docker
-
-            training_script = self._generate_training_script(
-                dataset_path=str(dataset_path_obj)
-                if self.use_local_runtime
-                else "/workspace/dataset.jsonl",
-                base_model=base_model,
-                output_dir=str(output_dir_obj)
-                if self.use_local_runtime
-                else "/workspace/output",
-                lora_rank=lora_rank,
-                learning_rate=learning_rate,
-                num_epochs=num_epochs,
-                max_seq_length=max_seq_length,
-                batch_size=batch_size,
-                use_unsloth=use_unsloth,
-            )
-
-            # Zapisz skrypt
-            script_path = output_dir_obj / "train_script.py"
-            with open(script_path, "w", encoding="utf-8") as f:
-                f.write(training_script)
-
-            if self.use_local_runtime:
-                return self._run_local_training_job(
-                    job_name, script_path, output_dir_obj, dataset_path_obj
-                )
-
-            # --- DOCKER MODE ---
-            # Przygotuj obraz treningowy
-            try:
-                self.client.images.get(self.training_image)
-                logger.info(f"Obraz {self.training_image} już istnieje")
-            except ImageNotFound:
-                logger.info(f"Pobieranie obrazu {self.training_image}...")
-                self.client.images.pull(self.training_image)
-
-            # Przygotuj skrypt treningowy
-            # (Generowanie przeniesione wyżej aby obsłużyć oba tryby)
-
-            # --- KONIEC modification ---
-            # Oryginalny kod generował skrypt tutaj, ale teraz robimy to wcześniej.
-            # Dla Dockera ścieżki w skrypcie muszą być kontenerowe (/workspace/...),
-            # co obsłużyliśmy w warunku wyżej.
-
-            # Przygotuj volumes
-            volumes = {
-                str(dataset_path_obj): {
-                    "bind": "/workspace/dataset.jsonl",
-                    "mode": "ro",
-                },
-                str(output_dir_obj): {
-                    "bind": "/workspace/output",
-                    "mode": "rw",
-                },
-            }
-
-            # Przygotuj device requests (GPU)
-            device_requests = None
-            if self.enable_gpu:
-                device_requests = [
-                    docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
-                ]
-
-            # Sanitize job_name dla użycia w nazwie kontenera
-            safe_job_name = "".join(
-                c if c.isalnum() or c in ("-", "_") else "_" for c in job_name
-            )
-
-            # Uruchom kontener treningowy
-            container = self.client.containers.run(
-                image=self.training_image,
-                command="python /workspace/output/train_script.py",
-                volumes=volumes,
-                device_requests=device_requests,
-                detach=True,
-                remove=False,
-                name=f"venom-training-{safe_job_name}",
-                environment={
-                    "CUDA_VISIBLE_DEVICES": "0" if self.enable_gpu else "",
-                },
-            )
-
-            # Zarejestruj kontener
-            self.training_containers[job_name] = {
-                "container_id": container.id,
-                "container": container,
-                "dataset_path": str(dataset_path_obj),
-                "output_dir": str(output_dir_obj),
-                "status": "running",
-            }
-
-            logger.info(
-                f"Kontener treningowy uruchomiony: {container.id[:12]} (job={job_name})"
-            )
-
-            return {
-                "container_id": container.id,
-                "job_name": job_name,
-                "status": "running",
-                "adapter_path": str(output_dir_obj / "adapter"),
-            }
-
-        except Exception as e:
-            error_msg = f"Błąd podczas uruchamiania treningu: {e}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg) from e
 
     def _run_local_training_job(
         self, job_name: str, script_path: Path, output_dir: Path, dataset_path: Path
     ) -> Dict[str, str]:
         """Uruchamia proces treningowy lokalnie (subprocess)."""
-        # Sprawdź zależności
-        self._check_local_dependencies()
-
-        # Log file
-        log_file = output_dir / "training.log"
-
-        # Environment vars
-        env = os.environ.copy()
-        if self.enable_gpu:
-            env["CUDA_VISIBLE_DEVICES"] = "0"
-
-        # Uruchom proces
-        with open(log_file, "w") as f_out:
-            process = subprocess.Popen(
-                ["python3", str(script_path)],
-                stdout=f_out,
-                stderr=subprocess.STDOUT,
-                env=env,
-                cwd=str(output_dir),
-                start_new_session=True,  # Odłącz od procesu rodzica
-            )
-
-        # Rejestruj job
-        self.training_containers[job_name] = {
-            "pid": process.pid,
-            "process": process,
-            "script_path": str(script_path),
-            "log_file": str(log_file),
-            "dataset_path": str(dataset_path),
-            "output_dir": str(output_dir),
-            "status": "running",
-            "type": "local",
-        }
-
-        logger.info(
-            f"Proces treningowy uruchomiony lokalnie: PID={process.pid} (job={job_name})"
+        return run_local_training_job_impl(
+            job_name=job_name,
+            script_path=script_path,
+            output_dir=output_dir,
+            dataset_path=dataset_path,
+            enable_gpu=self.enable_gpu,
+            training_containers=self.training_containers,
+            check_local_dependencies_fn=self._check_local_dependencies,
+            logger=logger,
         )
-
-        return {
-            "container_id": f"local-{process.pid}",  # Fake ID dla kompatybilności
-            "job_name": job_name,
-            "status": "running",
-            "adapter_path": str(output_dir / "adapter"),
-        }
 
     def _validate_local_job_pid(self, job_info: Dict[str, Any]) -> Optional[int]:
         """
         Zwraca PID tylko jeśli wskazuje na oczekiwany proces lokalnego treningu.
         """
-        raw_pid = job_info.get("pid")
-        if raw_pid is None:
-            return None
-        try:
-            pid = int(raw_pid)
-        except (TypeError, ValueError):
-            return None
-
-        if pid <= 1:
-            return None
-
-        proc_dir = Path(f"/proc/{pid}")
-        if not proc_dir.exists():
-            return None
-
-        output_dir = job_info.get("output_dir")
-        if output_dir:
-            try:
-                expected_cwd = Path(output_dir).resolve()
-                actual_cwd = (proc_dir / "cwd").resolve()
-                if actual_cwd != expected_cwd:
-                    return None
-            except OSError:
-                return None
-
-        expected_script = job_info.get("script_path")
-        if expected_script:
-            try:
-                cmdline_raw = (proc_dir / "cmdline").read_text(encoding="utf-8")
-                args = [part for part in cmdline_raw.split("\x00") if part]
-                expected_script_path = Path(expected_script).resolve()
-                has_expected_script = any(
-                    Path(arg).resolve() == expected_script_path for arg in args
-                )
-                if not has_expected_script:
-                    return None
-            except (OSError, ValueError):
-                return None
-
-        return pid
+        return validate_local_job_pid_impl(job_info=job_info, path_factory=Path)
 
     def _signal_validated_local_job(
         self, job_info: Dict[str, Any], sig: signal.Signals
@@ -502,29 +312,15 @@ class GPUHabitat(DockerHabitat):
         """
         Wysyła sygnał tylko do zweryfikowanego procesu lokalnego joba.
         """
-        pid = self._validate_local_job_pid(job_info)
-        if pid is None:
-            logger.warning(
-                "Pomijam wysłanie sygnału %s: PID niezweryfikowany",
-                sig,
-            )
-            return False
-
-        if not self._is_allowed_local_job_signal(sig):
-            logger.warning(
-                "Pomijam wysłanie sygnału %s: sygnał poza allowlist",
-                sig,
-            )
-            return False
-
-        if not self._is_pid_owned_by_current_user(pid):
-            logger.warning(
-                "Pomijam wysłanie sygnału %s: PID nie należy do aktualnego użytkownika",
-                sig,
-            )
-            return False
-
-        return self._send_signal_to_validated_pid(pid, sig)
+        return signal_validated_local_job_impl(
+            job_info=job_info,
+            sig=sig,
+            validate_local_job_pid_fn=self._validate_local_job_pid,
+            is_allowed_local_job_signal_fn=self._is_allowed_local_job_signal,
+            is_pid_owned_by_current_user_fn=self._is_pid_owned_by_current_user,
+            send_signal_to_validated_pid_fn=self._send_signal_to_validated_pid,
+            logger=logger,
+        )
 
     def _send_signal_to_validated_pid(self, pid: int, sig: signal.Signals) -> bool:
         """
@@ -533,70 +329,31 @@ class GPUHabitat(DockerHabitat):
         Preferuje Linux pidfd API (odporne na PID reuse), a jeśli nie jest
         dostępne używa bezpiecznego wywołania `kill` bez shell=True.
         """
-        try:
-            normalized_signal = signal.Signals(sig)
-        except (TypeError, ValueError):
-            return False
-
-        if hasattr(os, "pidfd_open") and hasattr(signal, "pidfd_send_signal"):
-            pidfd = None
-            try:
-                pidfd = os.pidfd_open(pid, 0)
-                signal.pidfd_send_signal(pidfd, normalized_signal, None, 0)
-                return True
-            except OSError:
-                return False
-            finally:
-                if pidfd is not None:
-                    try:
-                        os.close(pidfd)
-                    except OSError:
-                        pass
-
-        try:
-            subprocess.run(
-                ["kill", "-s", normalized_signal.name, str(pid)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            return True
-        except (OSError, subprocess.SubprocessError):
-            return False
+        return send_signal_to_validated_pid_impl(
+            pid=pid,
+            sig=sig,
+            signal_module=signal,
+            os_module=os,
+            subprocess_module=subprocess,
+        )
 
     def _is_allowed_local_job_signal(self, sig: signal.Signals) -> bool:
         """Zwraca True tylko dla sygnałów dopuszczonych w local runtime."""
-        try:
-            normalized_signal = signal.Signals(sig)
-        except (TypeError, ValueError):
-            return False
-        return normalized_signal in self.ALLOWED_LOCAL_JOB_SIGNALS
+        return is_allowed_local_job_signal_impl(
+            sig=sig,
+            allowed_local_job_signals=self.ALLOWED_LOCAL_JOB_SIGNALS,
+            signal_module=signal,
+        )
 
     def _is_pid_owned_by_current_user(self, pid: int) -> bool:
         """
         Weryfikuje czy PID należy do aktualnego użytkownika systemowego.
         """
-        if pid <= 1:
-            return False
-        try:
-            status_content = Path(f"/proc/{pid}/status").read_text(encoding="utf-8")
-            uid_line = next(
-                (
-                    line
-                    for line in status_content.splitlines()
-                    if line.startswith("Uid:")
-                ),
-                None,
-            )
-            if uid_line is None:
-                return False
-            parts = uid_line.split()
-            if len(parts) < 2:
-                return False
-            process_real_uid = int(parts[1])
-            return process_real_uid == os.getuid()
-        except (OSError, ValueError, StopIteration):
-            return False
+        return is_pid_owned_by_current_user_impl(
+            pid=pid,
+            path_factory=Path,
+            get_uid_fn=os.getuid,
+        )
 
     def get_training_status(self, job_name: str) -> Dict[str, str | None]:
         """
@@ -613,95 +370,21 @@ class GPUHabitat(DockerHabitat):
         Raises:
             KeyError: Jeśli job nie istnieje
         """
-        job_info = self.training_containers[job_name]
-
-        if job_info.get("type") == "local":
-            return self._get_local_job_status(job_name)
-
-        container = self._get_job_container(job_name)
-
-        try:
-            container.reload()
-            status = container.status
-
-            # Mapuj status Dockera na nasz format
-            if status == "running":
-                job_status = "running"
-            elif status in {"created", "restarting"}:
-                job_status = "preparing"
-            elif status == "exited":
-                exit_code = container.attrs["State"]["ExitCode"]
-                job_status = "finished" if exit_code == 0 else "failed"
-            elif status in {"dead", "removing"}:
-                job_status = "failed"
-            else:
-                job_status = "failed"
-
-            # Pobierz ostatnie linie logów
-            logs = container.logs(tail=50).decode("utf-8")
-
-            # Aktualizuj status w rejestrze
-            job_info["status"] = job_status
-
-            return {
-                "status": job_status,
-                "logs": logs,
-                "container_id": container.id,
-            }
-
-        except Exception as e:
-            logger.error(f"Błąd podczas pobierania statusu: {e}")
-            return {
-                "status": "failed",
-                "error": str(e),
-                "container_id": container.id if hasattr(container, "id") else None,
-            }
+        return get_training_status_impl(
+            training_containers=self.training_containers,
+            job_name=job_name,
+            get_job_container_fn=self._get_job_container,
+            get_local_job_status_fn=self._get_local_job_status,
+            logger=logger,
+        )
 
     def _get_local_job_status(self, job_name: str) -> Dict[str, Optional[str]]:
         """Pobiera status lokalnego procesu treningowego."""
-        job_info = self.training_containers[job_name]
-        pid = job_info.get("pid")
-        process = job_info.get("process")  # Popen object
-        log_file = Path(job_info.get("log_file", ""))
-
-        status = "unknown"
-        if process:
-            retcode = process.poll()
-            if retcode is None:
-                status = "running"
-            elif retcode == 0:
-                status = "finished"
-            else:
-                status = "failed"
-        else:
-            # Po restarcie aplikacji nie mamy Popen; uznaj "running" tylko dla
-            # zweryfikowanego PID, aby nie raportować obcego procesu po PID reuse.
-            status = (
-                "running"
-                if self._validate_local_job_pid(job_info) is not None
-                else "finished"
-            )
-
-        job_info["status"] = status
-
-        # Pobierz logi
-        logs = ""
-        if log_file.exists():
-            try:
-                # Ostatnie 2000 znaków
-                file_size = log_file.stat().st_size
-                with open(log_file, "r") as f:
-                    if file_size > 4000:
-                        f.seek(file_size - 4000)
-                    logs = f.read()
-            except Exception as e:
-                logs = f"Error reading logs: {e}"
-
-        return {
-            "status": status,
-            "logs": logs,
-            "container_id": f"local-{pid}",
-        }
+        return get_local_job_status_impl(
+            training_containers=self.training_containers,
+            job_name=job_name,
+            validate_local_job_pid_fn=self._validate_local_job_pid,
+        )
 
     def _generate_training_script(
         self,
@@ -991,13 +674,7 @@ print("=" * 60)
             process: Obiekt subprocess.Popen
             pid: ID procesu
         """
-        if process.poll() is None:  # Running
-            logger.info(f"Terminating local process {pid}")
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
+        terminate_local_process_impl(process=process, pid=pid, logger=logger)
 
     def _cleanup_local_job(self, job_info: Dict[str, Any]) -> None:
         """
@@ -1006,33 +683,17 @@ print("=" * 60)
         Args:
             job_info: Informacje o jobie
         """
-        process = job_info.get("process")
-        pid = job_info.get("pid")
-
-        if process:
-            process_pid = self._resolve_positive_pid(pid)
-            if process_pid is None:
-                process_pid = self._resolve_positive_pid(getattr(process, "pid", None))
-            if process_pid is None:
-                logger.warning(
-                    "Cannot determine valid PID for local process during cleanup",
-                )
-                return
-            self._terminate_local_process(process, process_pid)
-            return
-
-        if pid:
-            self._signal_validated_local_job(job_info, signal.SIGTERM)
+        cleanup_local_job_impl(
+            job_info=job_info,
+            resolve_positive_pid_fn=self._resolve_positive_pid,
+            terminate_local_process_fn=self._terminate_local_process,
+            signal_validated_local_job_fn=self._signal_validated_local_job,
+            logger=logger,
+        )
 
     @staticmethod
     def _resolve_positive_pid(pid_raw: Any) -> Optional[int]:
-        try:
-            pid = int(pid_raw)
-        except (TypeError, ValueError):
-            return None
-        if pid <= 1:
-            return None
-        return pid
+        return resolve_positive_pid_impl(pid_raw)
 
     def _cleanup_docker_job(self, job_name: str) -> None:
         """
@@ -1041,19 +702,10 @@ print("=" * 60)
         Args:
             job_name: Nazwa joba
         """
-        container = self._get_job_container(job_name)
-
-        # Zatrzymaj kontener
-        try:
-            container.stop(timeout=10)
-        except TypeError:
-            container.stop()
-
-        # Usuń kontener
-        try:
-            container.remove(force=True)
-        except TypeError:
-            container.remove()
+        cleanup_docker_job_impl(
+            job_name=job_name,
+            get_job_container_fn=self._get_job_container,
+        )
 
     def cleanup_job(self, job_name: str) -> None:
         """
@@ -1062,28 +714,13 @@ print("=" * 60)
         Args:
             job_name: Nazwa joba
         """
-        if job_name not in self.training_containers:
-            logger.warning("Job cleanup pominięty: wskazany job nie istnieje")
-            return
-
-        try:
-            job_info = self.training_containers[job_name]
-
-            if job_info.get("type") == "local":
-                self._cleanup_local_job(job_info)
-            else:
-                self._cleanup_docker_job(job_name)
-
-            # Usuń z rejestru
-            del self.training_containers[job_name]
-
-            logger.info(f"Usunięto job: {job_name}")
-
-        except Exception as e:
-            logger.error(f"Błąd podczas czyszczenia joba: {e}")
-        finally:
-            # Legacy i obecna ścieżka oczekują usunięcia wpisu nawet przy błędzie.
-            self.training_containers.pop(job_name, None)
+        cleanup_job_impl(
+            job_name=job_name,
+            training_containers=self.training_containers,
+            cleanup_local_job_fn=self._cleanup_local_job,
+            cleanup_docker_job_fn=self._cleanup_docker_job,
+            logger=logger,
+        )
 
     def get_gpu_info(self) -> Dict[str, Any]:
         """
@@ -1160,30 +797,9 @@ print("=" * 60)
         Raises:
             KeyError: Jeśli job nie istnieje
         """
-        container = self._get_job_container(job_name)
-
-        try:
-            # Stream logów z kontenera
-            # since: timestamps od kiedy pobierać logi
-            # follow: czy kontynuować czytanie nowych logów
-            # stream: zwróć generator zamiast całych logów
-            log_stream = container.logs(
-                stream=True,
-                follow=True,
-                timestamps=True,
-                since=since_timestamp,
-            )
-
-            for log_line in log_stream:
-                # Dekoduj i zwróć linię
-                try:
-                    line = log_line.decode("utf-8").strip()
-                    if line:
-                        yield line
-                except UnicodeDecodeError:
-                    # Pomiń linie które nie da się zdekodować
-                    continue
-
-        except Exception as e:
-            logger.error(f"Błąd podczas streamowania logów: {e}")
-            yield f"Error streaming logs: {str(e)}"
+        yield from stream_job_logs_impl(
+            job_name=job_name,
+            since_timestamp=since_timestamp,
+            get_job_container_fn=self._get_job_container,
+            logger=logger,
+        )

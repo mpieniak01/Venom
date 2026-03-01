@@ -17,7 +17,9 @@ tests/test_academy_dataset_conversion.py
 tests/test_academy_file_resolution_service.py
 tests/test_academy_history_module.py
 tests/test_academy_models_module.py
+tests/test_academy_route_handlers_extra.py
 tests/test_academy_route_helpers_modules.py
+tests/test_academy_training_service.py
 tests/test_admin_audit.py
 tests/test_agent_improvements.py
 tests/test_agents.py
@@ -134,6 +136,7 @@ tests/test_governance_contracts.py
 tests/test_gpu_habitat.py
 tests/test_gpu_habitat_contracts.py
 tests/test_gpu_habitat_edges_contract.py
+tests/test_gpu_habitat_runtime.py
 tests/test_graph_rag_service.py
 tests/test_graph_store.py
 tests/test_guardian_agent.py
@@ -203,7 +206,11 @@ tests/test_metrics_routes.py
 tests/test_model_config_api.py
 tests/test_model_discovery.py
 tests/test_model_manager.py
+tests/test_model_manager_adapter_ops.py
+tests/test_model_manager_discovery.py
+tests/test_model_manager_onnx.py
 tests/test_model_manager_roi.py
+tests/test_model_manager_versions.py
 tests/test_model_registry.py
 tests/test_model_registry_clients.py
 tests/test_model_registry_clients_additional.py
@@ -278,8 +285,10 @@ tests/test_runtime_controller_roi.py
 tests/test_runtime_conversion_contracts.py
 tests/test_runtime_environment_regressions.py
 tests/test_runtime_policy_regression_contracts.py
+tests/test_runtime_provider_ops.py
 tests/test_runtime_registry_contracts.py
 tests/test_runtime_registry_translation_contracts.py
+tests/test_runtime_service_helpers.py
 tests/test_scenario_weaver.py
 tests/test_scheduler.py
 tests/test_scheduler_swarm_flow_streaming.py

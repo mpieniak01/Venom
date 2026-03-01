@@ -1,6 +1,6 @@
 """Testy API dla endpointu /api/v1/system/llm-runtime/active."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -28,6 +28,11 @@ class TestLlmRuntimeActivationAPI:
             patch.object(system_llm, "config_manager") as mock_manager,
             patch.object(system_llm, "get_active_llm_runtime") as mock_runtime,
             patch.object(system_llm, "_release_onnx_runtime_caches") as mock_release,
+            patch.object(
+                system_llm,
+                "_resolve_validated_cloud_model",
+                new=AsyncMock(return_value="gpt-4o-mini"),
+            ),
         ):
             settings.OPENAI_API_KEY = "sk-test"
             settings.GOOGLE_API_KEY = ""
@@ -63,6 +68,7 @@ class TestLlmRuntimeActivationAPI:
             assert payload["status"] == "success"
             assert payload["active_server"] == "openai"
             assert payload["active_model"] == "gpt-4o-mini"
+            assert payload["source_type"] == "cloud-api"
             mock_manager.update_config.assert_called_once()
             mock_release.assert_called_once()
 
@@ -120,6 +126,7 @@ class TestLlmRuntimeActivationAPI:
             assert response.status_code == 200
             payload = response.json()
             assert payload["active_server"] == "onnx"
+            assert payload["source_type"] == "local-runtime"
             mock_manager.update_config.assert_called_once()
 
     def test_activate_onnx_runtime_not_ready(self, client):
@@ -141,3 +148,38 @@ def test_previous_model_key_for_server():
     )  # noqa: SLF001
     assert system_llm._previous_model_key_for_server("vllm") == "PREVIOUS_MODEL_VLLM"  # noqa: SLF001
     assert system_llm._previous_model_key_for_server("onnx") == "PREVIOUS_MODEL_ONNX"  # noqa: SLF001
+
+
+def test_rejects_cloud_model_not_in_catalog(client):
+    with (
+        patch.object(system_llm, "SETTINGS") as settings,
+        patch.object(system_llm, "_release_onnx_runtime_caches"),
+        patch.object(
+            system_llm,
+            "_catalog_for_cloud_provider",
+            new=AsyncMock(
+                return_value=(
+                    [
+                        {
+                            "id": "gpt-4o-mini",
+                            "name": "gpt-4o-mini",
+                            "model_alias": "gpt-4o-mini",
+                        }
+                    ],
+                    "static",
+                    None,
+                )
+            ),
+        ),
+    ):
+        settings.OPENAI_API_KEY = "sk-test"
+        settings.GOOGLE_API_KEY = ""
+        settings.OPENAI_GPT4O_MODEL = "gpt-4o-mini"
+        settings.GOOGLE_GEMINI_PRO_MODEL = "gemini-1.5-pro"
+
+        response = client.post(
+            "/api/v1/system/llm-runtime/active",
+            json={"provider": "openai", "model": "non-existent-model"},
+        )
+        assert response.status_code == 400
+        assert "katalogu providera 'openai'" in response.json()["detail"]

@@ -180,6 +180,7 @@ tests/test_lessons_governance.py
 tests/test_lessons_manager.py
 tests/test_lessons_store.py
 tests/test_llm_runtime_activation_api.py
+tests/test_llm_runtime_options_api.py
 tests/test_llm_runtime_utils.py
 tests/test_llm_server_controller.py
 tests/test_llm_server_selection.py

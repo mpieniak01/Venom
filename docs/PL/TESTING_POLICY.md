@@ -95,6 +95,13 @@ Kontrakt architektoniczny routerów (backend):
 - Test `tests/test_api_routes_import_guard.py` blokuje nowy dryf warstwowy (`routes -> core/infrastructure`) oraz niekontrolowane importy efektów ubocznych.
 - Przy dekompozycji routera dopisz testy dla nowego modułu service (gałęzie success/error/retry), aby utrzymać pokrycie zmian po ekstrakcji.
 
+Minimalny kontrakt testów dla runtime selection (Chat + Models):
+
+- backend: `tests/test_llm_runtime_activation_api.py` (aktywacja runtime + walidacja provider/model),
+- backend: `tests/test_llm_runtime_options_api.py` (snapshot kontraktu `/api/v1/system/llm-runtime/options`),
+- frontend: `web-next/tests/use-runtime.test.ts` (mapowanie opcji runtime/model po stronie panelu Models),
+- frontend: `web-next/tests/chat-send-helpers.test.ts` (regresja przepływu wysyłki i przełączenia runtime).
+
 Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.json`):
 
 - `domain`: zakres domenowy/systemowy (np. `academy`, `workflow`, `providers`, `runtime`)

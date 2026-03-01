@@ -85,48 +85,27 @@ export function useCockpitSectionProps() {
   const onSend = useCallback(async (txt: string) => { logic.chatUi.handleSend(txt); return true; }, [logic.chatUi]);
   const onActivateModel = useCallback((model: string) => handleActivateModel(model), [handleActivateModel]);
 
+  const runtimeTargets = useMemo(
+    () => data.llmRuntimeOptions?.runtimes ?? [],
+    [data.llmRuntimeOptions],
+  );
   const llmServerOptions = useMemo(
-    () => {
-      const seen = new Set<string>();
-      return (data.llmServers ?? [])
-        .filter((server) => {
-          const key = (server.name || "").toLowerCase().trim();
-          if (!key || seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .map((s) => ({ label: s.name, value: s.name }));
-    },
-    [data.llmServers],
+    () => runtimeTargets.map((runtime) => ({ label: runtime.runtime_id, value: runtime.runtime_id })),
+    [runtimeTargets],
   );
-  const allowedLlmProviders = useMemo(
-    () => new Set((data.llmServers || []).map((s) => (s.name || "").toLowerCase()).filter(Boolean)),
-    [data.llmServers],
+  const resolvedServerId = selectedLlmServer || data.activeServerInfo?.active_server || "";
+  const selectedRuntimeModels = useMemo(() => {
+    if (!resolvedServerId) return [];
+    const target = runtimeTargets.find((runtime) => runtime.runtime_id === resolvedServerId);
+    return (target?.models ?? []).filter((model) => model.chat_compatible !== false);
+  }, [resolvedServerId, runtimeTargets]);
+  const llmModelOptions = useMemo(
+    () => selectedRuntimeModels.map((model) => ({ label: model.name, value: model.name })),
+    [selectedRuntimeModels],
   );
-  const resolveModelProvider = useCallback((modelName: string, provider?: string | null) => {
-    const normalized = (provider || "").toLowerCase().trim();
-    if (normalized) return normalized;
-    if (modelName.toLowerCase().includes("onnx")) return "onnx";
-    return modelName.includes(":") ? "ollama" : "vllm";
-  }, []);
-  const isModelChatCompatible = useCallback((model: { name?: string; provider?: string | null; chat_compatible?: boolean }) => {
-    if (typeof model.chat_compatible === "boolean") return model.chat_compatible;
-    // Backward-compatible fallback for stale backend payloads.
-    const provider = resolveModelProvider(model.name || "", model.provider);
-    if (provider !== "onnx") return true;
-    return !(model.name || "").toLowerCase().includes("build-test");
-  }, [resolveModelProvider]);
-  const llmModelOptions = useMemo(() => data.models?.models
-    ?.filter((m) => {
-      if (!isModelChatCompatible(m)) return false;
-      const provider = resolveModelProvider(m.name || "", m.provider);
-      if (selectedLlmServer) return provider === selectedLlmServer.toLowerCase();
-      return allowedLlmProviders.size === 0 || allowedLlmProviders.has(provider);
-    })
-    ?.map(m => ({ label: m.name, value: m.name })) || [], [data.models?.models, selectedLlmServer, allowedLlmProviders, resolveModelProvider, isModelChatCompatible]);
   const hasModels = useMemo(
-    () => (data.models?.models?.some((m) => isModelChatCompatible(m)) ?? false),
-    [data.models?.models, isModelChatCompatible],
+    () => llmModelOptions.length > 0,
+    [llmModelOptions],
   );
 
   const onOpenTuning = logic.chatUi.handleOpenTuning;
@@ -140,21 +119,19 @@ export function useCockpitSectionProps() {
   const llmServerOptionsPanel = llmServerOptions;
   const llmModelOptionsPanel = llmModelOptions;
 
-  const availableModelsForServer = useMemo(() => data.models?.models
-    ?.filter((m) => {
-      if (!isModelChatCompatible(m)) return false;
-      const provider = resolveModelProvider(m.name || "", m.provider);
-      if (selectedLlmServer) return provider === selectedLlmServer.toLowerCase();
-      return allowedLlmProviders.size === 0 || allowedLlmProviders.has(provider);
-    })
-    ?.map(m => ({ name: m.name })) || [], [data.models?.models, selectedLlmServer, allowedLlmProviders, resolveModelProvider, isModelChatCompatible]);
+  const availableModelsForServer = useMemo(
+    () => selectedRuntimeModels.map((model) => ({ name: model.name, provider: model.provider })),
+    [selectedRuntimeModels],
+  );
 
   const selectedServerEntry = useMemo(() => data.llmServers?.find(s => s.name === selectedLlmServer) || null, [data.llmServers, selectedLlmServer]);
 
   const resolveServerStatus = useCallback((name?: string, fallback?: string | null) => {
+    const runtimeMatch = runtimeTargets.find((runtime) => runtime.runtime_id === name);
+    if (runtimeMatch?.status) return runtimeMatch.status;
     const s = data.llmServers.find(server => server.name === name);
     return s?.status || fallback || "unknown";
-  }, [data.llmServers]);
+  }, [data.llmServers, runtimeTargets]);
 
   const sessionId = logic.sessionId || "";
   const memoryAction = interactive.state.memoryAction;

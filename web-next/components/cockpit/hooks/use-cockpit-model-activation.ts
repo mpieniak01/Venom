@@ -7,9 +7,9 @@ export function useCockpitModelActivation(input: {
   activeServer: string;
   models: ModelDef[] | undefined;
   setSelectedLlmModel: (model: string) => void;
-  setActiveLlmRuntimeFn: (provider: string, model: string) => Promise<void>;
-  setActiveLlmServerFn: (provider: string) => Promise<void>;
-  switchModelFn: (model: string) => Promise<void>;
+  setActiveLlmRuntimeFn: (provider: string, model: string) => Promise<unknown>;
+  setActiveLlmServerFn: (provider: string) => Promise<unknown>;
+  switchModelFn: (model: string) => Promise<unknown>;
   refreshActiveServer: () => void;
   pushToast: (message: string, type?: "success" | "error" | "warning") => void;
   t: (key: string, replacements?: Record<string, string | number>) => string;

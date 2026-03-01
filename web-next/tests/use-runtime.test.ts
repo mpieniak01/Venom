@@ -30,7 +30,7 @@ describe("use-runtime helpers", () => {
   it("resolves models by selected server using normalized provider", () => {
     const selected = resolveModelsForServer({
       selectedServer: "ollama",
-      llmServers: [{ name: "onnx", provider: "onnx" }],
+      runtimeModels: [{ id: "llama3:8b", name: "llama3:8b", provider: "ollama", runtime_id: "ollama", source_type: "local-runtime", active: false }],
       installedBuckets: {
         ollama: [{ name: "llama3:8b", provider: "ollama" }],
       },

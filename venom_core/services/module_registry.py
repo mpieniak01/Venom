@@ -177,7 +177,12 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
         return None
 
     module_id = str(payload.get("module_id", "")).strip()
-    backend = payload.get("backend") if isinstance(payload.get("backend"), dict) else {}
+    backend_payload = payload.get("backend")
+    backend: dict[str, object]
+    if isinstance(backend_payload, dict):
+        backend = backend_payload
+    else:
+        backend = {}
     router_import = str(backend.get("router_import", "")).strip()
     feature_flag = str(backend.get("feature_flag", "")).strip() or None
     module_api_version = str(backend.get("module_api_version", "")).strip() or None

@@ -57,6 +57,17 @@ Architecture guard tests:
 - `venom_core/core/generation_params_adapter.py` – maps generation params to OpenAI/vLLM/Ollama/ONNX formats.
 - Runtime configuration lives in `venom_core/config.py` and `.env` (e.g. `LLM_LOCAL_ENDPOINT`, `VLLM_ENDPOINT`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
 
+### Unified runtime options contract (PR 185)
+- `GET /api/v1/system/llm-runtime/options` is the canonical UI contract for runtime/model selectors.
+- Response includes:
+  - active runtime snapshot (`active_server`, `active_model`, `config_hash`, `source_type`),
+  - local + cloud runtime targets (`ollama`, `vllm`, `onnx`, `openai`, `google`),
+  - model lists scoped per runtime target.
+- `POST /api/v1/system/llm-runtime/active` enforces provider/model pairing for cloud runtime:
+  - requested model must belong to selected provider catalog,
+  - invalid pair returns `400` with explicit error message.
+- `GET /api/v1/system/llm-servers` remains a local-runtime technical endpoint; operational UI flows (Chat + Models) should use `llm-runtime/options`.
+
 ## Execution Layer (Skills & MCP)
 Integrated with Microsoft Semantic Kernel, enabling agent capabilities expansion:
 - `venom_core/execution/skills/base_skill.py` – Base class for all skills.

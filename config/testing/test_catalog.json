@@ -2658,6 +2658,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_llm_runtime_options_api.py",
+      "domain": "runtime",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Runtime options API contract for cloud/local selection in Chat and Models panels."
+    },
+    {
       "path": "tests/test_llm_runtime_utils.py",
       "domain": "runtime",
       "test_type": "unit",

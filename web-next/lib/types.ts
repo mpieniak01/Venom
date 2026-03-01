@@ -114,6 +114,42 @@ export interface LlmServerInfo {
   };
 }
 
+export interface LlmRuntimeModelOption {
+  id: string;
+  name: string;
+  provider: string;
+  runtime_id: string;
+  source_type: "local-runtime" | "cloud-api";
+  active: boolean;
+  capabilities?: string[];
+  chat_compatible?: boolean;
+}
+
+export interface LlmRuntimeTargetOption {
+  runtime_id: string;
+  source_type: "local-runtime" | "cloud-api";
+  configured: boolean;
+  available: boolean;
+  status: string;
+  reason?: string | null;
+  active: boolean;
+  latency_ms?: number | null;
+  models: LlmRuntimeModelOption[];
+}
+
+export interface LlmRuntimeOptionsResponse {
+  status: string;
+  active: {
+    runtime_id?: string | null;
+    active_server?: string | null;
+    active_model?: string | null;
+    active_endpoint?: string | null;
+    config_hash?: string | null;
+    source_type?: "local-runtime" | "cloud-api";
+  };
+  runtimes: LlmRuntimeTargetOption[];
+}
+
 export interface ActiveLlmServerResponse {
   status: string;
   active_server?: string | null;
@@ -121,6 +157,7 @@ export interface ActiveLlmServerResponse {
   active_model?: string | null;
   config_hash?: string | null;
   runtime_id?: string | null;
+  source_type?: "local-runtime" | "cloud-api";
   last_models?: {
     ollama?: string;
     vllm?: string;

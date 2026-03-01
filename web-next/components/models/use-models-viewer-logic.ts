@@ -75,9 +75,9 @@ export function useModelsViewerLogic() {
         // Unified pending actions
         pendingActions: { ...catalog.pendingActions, ...runtime.pendingActions },
 
-        // API exports for UI
-        setActiveLlmServer: runtime.setActiveLlmServer,
-        switchModel: runtime.switchModel,
-        pushToast: runtime.pushToast
+        // Runtime activation helpers shared across Models + Remote tabs
+        handleActivateRuntimeSelection: runtime.handleActivateRuntimeSelection,
+        handleActivateRuntimeModel: runtime.handleActivateRuntimeModel,
+        activateRuntimeSelection: runtime.activateRuntimeSelection,
     };
 }

@@ -38,6 +38,17 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
 - `venom_core/core/generation_params_adapter.py` – mapowanie parametrow generacji na format OpenAI/vLLM/Ollama/ONNX.
 - Konfiguracja runtime znajduje sie w `venom_core/config.py` oraz `.env` (np. `LLM_LOCAL_ENDPOINT`, `VLLM_ENDPOINT`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
 
+### Ujednolicony kontrakt opcji runtime (PR 185)
+- `GET /api/v1/system/llm-runtime/options` jest kanonicznym kontraktem UI dla selektorow runtime/model.
+- Odpowiedz zawiera:
+  - snapshot aktywnego runtime (`active_server`, `active_model`, `config_hash`, `source_type`),
+  - cele runtime local + cloud (`ollama`, `vllm`, `onnx`, `openai`, `google`),
+  - listy modeli zgrupowane per runtime target.
+- `POST /api/v1/system/llm-runtime/active` waliduje parę provider/model dla cloud runtime:
+  - model musi należeć do katalogu wybranego providera,
+  - niepoprawna para zwraca `400` z czytelnym komunikatem.
+- `GET /api/v1/system/llm-servers` pozostaje endpointem technicznym dla runtime lokalnych; flow operacyjne UI (Chat + Models) używają `llm-runtime/options`.
+
 ## Warstwa Wykonawcza (Skills & MCP)
 Zintegrowana z Microsoft Semantic Kernel, pozwala na rozszerzanie możliwości agentów:
 - `venom_core/execution/skills/base_skill.py` – Klasa bazowa dla wszystkich umiejętności.

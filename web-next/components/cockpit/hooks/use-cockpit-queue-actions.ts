@@ -4,8 +4,8 @@ import { useState } from "react";
 
 export function useCockpitQueueActions(input: {
   queuePaused: boolean;
-  refreshQueue: () => void;
-  refreshTasks: () => void;
+  refreshQueue: () => void | Promise<void>;
+  refreshTasks: () => void | Promise<void>;
   purgeQueueFn: () => Promise<void>;
   emergencyStopFn: () => Promise<{ cancelled: number; purged: number }>;
   toggleQueueFn: (resume: boolean) => Promise<void>;
@@ -20,6 +20,12 @@ export function useCockpitQueueActions(input: {
     toggleQueueFn,
     t,
   } = input;
+
+  const triggerRefresh = (refreshFn: () => void | Promise<void>, context: string) => {
+    Promise.resolve(refreshFn()).catch((error) => {
+      console.error(`${context}:`, error);
+    });
+  };
 
   const [queueAction, setQueueAction] = useState<string | null>(null);
   const [queueActionMessage, setQueueActionMessage] = useState<string | null>(null);
@@ -41,8 +47,8 @@ export function useCockpitQueueActions(input: {
           }),
         );
       }
-      refreshQueue();
-      refreshTasks();
+      triggerRefresh(refreshQueue, "Queue refresh failed");
+      triggerRefresh(refreshTasks, "Tasks refresh failed");
     } catch (err) {
       setQueueActionMessage(
         err instanceof Error ? err.message : t("cockpit.queueActions.operationError"),
@@ -64,7 +70,7 @@ export function useCockpitQueueActions(input: {
           ? t("cockpit.queueActions.queueResumed")
           : t("cockpit.queueActions.queuePaused"),
       );
-      refreshQueue();
+      triggerRefresh(refreshQueue, "Queue refresh failed");
     } catch (err) {
       setQueueActionMessage(
         err instanceof Error ? err.message : t("cockpit.queueActions.toggleError"),

@@ -65,7 +65,9 @@ export function ParametersPanel() {
   }, [t]);
 
   useEffect(() => {
-    void fetchConfig();
+    fetchConfig().catch((error) => {
+      console.error("Failed to fetch runtime config:", error);
+    });
   }, [fetchConfig]);
 
   const handleChange = (key: string, value: string) => {

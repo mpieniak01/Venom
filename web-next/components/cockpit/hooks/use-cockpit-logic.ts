@@ -108,10 +108,14 @@ export function useCockpitLogic({
     } = useSessionHistory(sessionId, 0);
     const refreshHistory = data.refresh.history;
     const refreshSessionHistoryVoid = useCallback(() => {
-        void refreshSessionHistory();
+        Promise.resolve(refreshSessionHistory()).catch((error) => {
+            console.error("Failed to refresh session history:", error);
+        });
     }, [refreshSessionHistory]);
     const refreshHistoryVoid = useCallback(() => {
-        void refreshHistory();
+        Promise.resolve(refreshHistory()).catch((error) => {
+            console.error("Failed to refresh history:", error);
+        });
     }, [refreshHistory]);
 
     const {
@@ -275,11 +279,13 @@ export function useCockpitLogic({
             }
             const requestId = normalized.request_id;
             hydratedRefs.current.add(requestId);
-            void hydrateCompletedTask({
+            hydrateCompletedTask({
                 requestId,
                 sessionId,
                 setLocalSessionHistory,
                 fetchTaskDetailFn: fetchTaskDetail,
+            }).catch((error) => {
+                console.error("Failed to hydrate completed task:", error);
             });
         });
     }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory, sessionId]);
@@ -362,9 +368,7 @@ export function useCockpitLogic({
         sessionId: sessionId,
         language: language ?? "pl",
         resetSession,
-        refreshActiveServer: () => {
-            void data.refresh.activeServer();
-        },
+        refreshActiveServer: refreshActiveServerSafe,
         setActiveLlmRuntime: setActiveLlmRuntime,
         setActiveLlmServer: setActiveLlmServer,
         sendSimpleChatStream,
@@ -435,6 +439,12 @@ export function useCockpitLogic({
         }
     }, [refreshActiveHiddenPrompts]);
 
+    const refreshActiveServerSafe = useCallback(() => {
+        Promise.resolve(data.refresh.activeServer()).catch((error) => {
+            console.error("Failed to refresh active server:", error);
+        });
+    }, [data.refresh]);
+
     const { handleActivateModel } = useCockpitModelActivation({
         selectedLlmServer: interactive.state.selectedLlmServer,
         activeServer: data.activeServerInfo?.active_server || "",
@@ -443,7 +453,7 @@ export function useCockpitLogic({
         setActiveLlmRuntimeFn: setActiveLlmRuntime,
         setActiveLlmServerFn: setActiveLlmServer,
         switchModelFn: switchModel,
-        refreshActiveServer: data.refresh.activeServer,
+        refreshActiveServer: refreshActiveServerSafe,
         pushToast,
         t,
     });

@@ -9,6 +9,11 @@ import { InspectorWorkspace } from "@/components/inspector/inspector-workspace";
 export default function InspectorPage() {
   const t = useTranslation();
   const state = useInspectorState(t);
+  const handleHistorySelect = (requestId: string, force = false) => {
+    state.handleHistorySelect(requestId, force).catch((error) => {
+      console.error("Failed to select inspector history entry:", error);
+    });
+  };
 
   return (
     <div className="space-y-6 pb-10">
@@ -26,7 +31,7 @@ export default function InspectorPage() {
           history={state.history}
           selectedId={state.selectedId}
           onSelect={(requestId) => {
-            void state.handleHistorySelect(requestId);
+            handleHistorySelect(requestId);
           }}
           onRefresh={state.handleHistoryRefresh}
           refreshPending={state.historyRefreshPending}
@@ -47,7 +52,7 @@ export default function InspectorPage() {
           reloadMermaid={() => state.setMermaidReloadKey(state.mermaidReloadKey + 1)}
           retrySelect={() => {
             if (!state.selectedId) return;
-            void state.handleHistorySelect(state.selectedId, true);
+            handleHistorySelect(state.selectedId, true);
           }}
           steps={state.steps}
           stepFilter={state.stepFilter}

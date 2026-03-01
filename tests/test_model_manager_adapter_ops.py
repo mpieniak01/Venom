@@ -74,3 +74,62 @@ def test_get_active_adapter_info_no_active_version(tmp_path):
     manager = ModelManager(models_dir=str(tmp_path / "models"))
     info = adapter_ops.get_active_adapter_info(manager=manager)
     assert info is None
+
+
+def test_restore_active_adapter_invalid_state_payload_clears_file(tmp_path):
+    logger = _DummyLogger()
+    manager = ModelManager(models_dir=str(tmp_path / "models"))
+    manager.active_adapter_state_path.parent.mkdir(parents=True, exist_ok=True)
+    manager.active_adapter_state_path.write_text(
+        '{"adapter_id": "", "adapter_path": ""}', encoding="utf-8"
+    )
+
+    restored = adapter_ops.restore_active_adapter(manager=manager, logger=logger)
+    assert restored is False
+    assert not manager.active_adapter_state_path.exists()
+
+
+def test_activate_adapter_existing_version_saves_state(tmp_path):
+    logger = _DummyLogger()
+    manager = ModelManager(models_dir=str(tmp_path / "models"))
+    adapter_path = manager.models_dir / "training_existing" / "adapter"
+    adapter_path.mkdir(parents=True, exist_ok=True)
+    manager.register_version(
+        version_id="training_existing",
+        base_model="academy-base",
+        adapter_path=str(adapter_path),
+    )
+
+    success = adapter_ops.activate_adapter(
+        manager=manager,
+        adapter_id="training_existing",
+        adapter_path=str(adapter_path),
+        base_model="academy-base",
+        logger=logger,
+    )
+    assert success is True
+    assert manager.active_adapter_state_path.exists()
+
+
+def test_deactivate_adapter_clears_active_version_and_state(tmp_path):
+    logger = _DummyLogger()
+    manager = ModelManager(models_dir=str(tmp_path / "models"))
+    adapter_path = manager.models_dir / "training_deactivate" / "adapter"
+    adapter_path.mkdir(parents=True, exist_ok=True)
+    manager.register_version(
+        version_id="training_deactivate",
+        base_model="academy-base",
+        adapter_path=str(adapter_path),
+    )
+    manager.activate_version("training_deactivate")
+    adapter_ops.save_active_adapter_state(
+        state_path=manager.active_adapter_state_path,
+        adapter_id="training_deactivate",
+        adapter_path=str(adapter_path),
+        base_model="academy-base",
+    )
+
+    success = adapter_ops.deactivate_adapter(manager=manager, logger=logger)
+    assert success is True
+    assert manager.active_version is None
+    assert not manager.active_adapter_state_path.exists()

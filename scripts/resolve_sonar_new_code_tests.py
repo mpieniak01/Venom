@@ -21,7 +21,14 @@ LIGHT_BLOCKED_MARKERS = (
     "smoke",
 )
 
-PRIORITY_TEST_ORDER = ("tests/test_core_nervous_system.py",)
+PRIORITY_TEST_ORDER = (
+    "tests/test_core_nervous_system.py",
+    "tests/test_model_registry_split_modules.py",
+    "tests/test_system_llm_service.py",
+    "tests/test_memory_graph_service.py",
+    "tests/test_academy_training_service.py",
+    "tests/test_academy_file_resolution_service.py",
+)
 
 _PRIORITY_INDEX = {path: idx for idx, path in enumerate(PRIORITY_TEST_ORDER)}
 
@@ -467,6 +474,9 @@ def _build_candidate_infos(
     )
 
     source_rank: dict[str, int] = {path: 4 for path in selected}
+    for path in PRIORITY_TEST_ORDER:
+        if path in source_rank:
+            source_rank[path] = min(source_rank.get(path, 4), -1)
     for path in floor_anchors:
         source_rank[path] = min(source_rank.get(path, 4), -1)
     for path in baseline_items:

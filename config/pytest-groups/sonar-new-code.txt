@@ -7,6 +7,7 @@ tests/test_academy_api_dataset_edge_cases.py
 tests/test_academy_api_dataset_routes.py
 tests/test_academy_api_edges_contract.py
 tests/test_academy_conversion_contracts.py
+tests/test_academy_file_resolution_service.py
 tests/test_academy_models_module.py
 tests/test_academy_route_helpers_modules.py
 tests/test_admin_audit.py
@@ -166,6 +167,7 @@ tests/test_strategist_agent.py
 tests/test_strategy_and_routes_regression.py
 tests/test_swarm_wrapper.py
 tests/test_system_governance_runtime_contracts.py
+tests/test_system_llm_service.py
 tests/test_system_routes_roi.py
 tests/test_task_pipeline_contracts.py
 tests/test_tasks_stream_service.py

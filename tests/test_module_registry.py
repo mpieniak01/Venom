@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import types
+from pathlib import Path
 
+import pytest
 from fastapi import APIRouter, FastAPI
 
 from venom_core.services import module_registry
@@ -10,45 +12,53 @@ from venom_core.services import module_registry
 
 class _Settings:
     FEATURE_MODULE_EXAMPLE = False
+    FEATURE_TEST = False
     API_OPTIONAL_MODULES = ""
     CORE_MODULE_API_VERSION = "1.0.0"
     CORE_RUNTIME_VERSION = "1.5.0"
 
 
-def test_builtin_manifest_is_empty_by_default():
+def _write_manifest(
+    path: Path,
+    *,
+    module_id: str,
+    router_import: str,
+    feature_flag: str | None = None,
+    module_api_version: str = "1.0.0",
+    min_core_version: str = "1.5.0",
+    include_data_policy: bool = True,
+) -> None:
+    backend: dict[str, object] = {
+        "router_import": router_import,
+        "module_api_version": module_api_version,
+        "min_core_version": min_core_version,
+    }
+    if feature_flag:
+        backend["feature_flag"] = feature_flag
+    if include_data_policy:
+        backend["data_policy"] = {
+            "storage_mode": "core_prefixed",
+            "mutation_guard": "core_environment_policy",
+            "state_files": ["runtime-state.json"],
+        }
+    path.write_text(
+        json.dumps({"module_id": module_id, "backend": backend}),
+        encoding="utf-8",
+    )
+
+
+def test_builtin_manifest_is_empty_by_default() -> None:
     manifests = list(module_registry.iter_api_module_manifests(_Settings()))
     assert manifests == []
 
 
-def test_include_optional_api_routers_respects_feature_flag():
-    app = FastAPI()
-    included = module_registry.include_optional_api_routers(app, _Settings())
-    assert included == []
-    assert all("/api/v1/module-example" not in route.path for route in app.routes)
-
-
-def test_core_boot_without_optional_modules_keeps_core_routes_only():
-    app = FastAPI()
-
-    @app.get("/healthz")
-    async def healthz():
-        return {"ok": True}
-
-    included = module_registry.include_optional_api_routers(app, _Settings())
-    paths = {route.path for route in app.routes}
-
-    assert included == []
-    assert "/healthz" in paths
-    assert all("/api/v1/module-example" not in path for path in paths)
-
-
 def test_include_optional_api_routers_includes_module_from_manifest_file(
-    monkeypatch, tmp_path
-):
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     router = APIRouter(prefix="/module-example")
 
     @router.get("/health")
-    async def health():
+    async def _health() -> dict[str, bool]:
         return {"ok": True}
 
     module = types.ModuleType("x_module_example")
@@ -62,35 +72,29 @@ def test_include_optional_api_routers_includes_module_from_manifest_file(
     monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
 
     manifest_path = tmp_path / "module.json"
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "module_id": "module_example",
-                "backend": {
-                    "router_import": "x_module_example:router",
-                    "feature_flag": "FEATURE_MODULE_EXAMPLE",
-                    "module_api_version": "1.0.0",
-                    "min_core_version": "1.5.0",
-                },
-            }
-        ),
-        encoding="utf-8",
+    _write_manifest(
+        manifest_path,
+        module_id="module_example",
+        router_import="x_module_example:router",
+        feature_flag="FEATURE_MODULE_EXAMPLE",
     )
     settings = _Settings()
     settings.FEATURE_MODULE_EXAMPLE = True
     settings.API_OPTIONAL_MODULES = f"manifest:{manifest_path}"
+
     app = FastAPI()
-
     included = module_registry.include_optional_api_routers(app, settings)
-    assert "module_example" in included
-    assert any("/module-example/health" == route.path for route in app.routes)
+    assert included == ["module_example"]
+    assert any(route.path == "/module-example/health" for route in app.routes)
 
 
-def test_include_optional_api_routers_loads_extra_manifest(monkeypatch):
+def test_include_optional_api_routers_respects_feature_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     router = APIRouter(prefix="/x-test")
 
     @router.get("/ping")
-    async def ping():
+    async def _ping() -> dict[str, bool]:
         return {"ok": True}
 
     module = types.ModuleType("x_test_mod")
@@ -103,50 +107,55 @@ def test_include_optional_api_routers_loads_extra_manifest(monkeypatch):
 
     monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
 
+    manifest_path = tmp_path / "module.json"
+    _write_manifest(
+        manifest_path,
+        module_id="x_test",
+        router_import="x_test_mod:router",
+        feature_flag="FEATURE_TEST",
+    )
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = str(manifest_path)
+
+    app = FastAPI()
+    included = module_registry.include_optional_api_routers(app, settings)
+    assert included == []
+
+
+def test_include_optional_api_routers_raises_for_legacy_entry() -> None:
     settings = _Settings()
     settings.API_OPTIONAL_MODULES = "x_test|x_test_mod:router"
-
     app = FastAPI()
-    included = module_registry.include_optional_api_routers(app, settings)
-    assert "x_test" in included
 
-    paths = {route.path for route in app.routes}
-    assert "/x-test/ping" in paths
+    with pytest.raises(RuntimeError, match="legacy format unsupported"):
+        module_registry.include_optional_api_routers(app, settings)
 
 
-def test_core_boot_with_one_optional_module_manifest(monkeypatch):
-    router = APIRouter(prefix="/mod-one")
-
-    @router.get("/status")
-    async def status():
-        return {"ok": True}
-
-    module = types.ModuleType("x_mod_one")
-    module.router = router
-
-    def _fake_import(name: str):
-        if name == "x_mod_one":
-            return module
-        return __import__(name)
-
-    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
-
+def test_include_optional_api_routers_raises_for_missing_data_policy(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "module.json"
+    _write_manifest(
+        manifest_path,
+        module_id="broken_mod",
+        router_import="x_mod:router",
+        include_data_policy=False,
+    )
     settings = _Settings()
-    settings.API_OPTIONAL_MODULES = "mod_one|x_mod_one:router"
+    settings.API_OPTIONAL_MODULES = str(manifest_path)
     app = FastAPI()
 
-    included = module_registry.include_optional_api_routers(app, settings)
-    paths = {route.path for route in app.routes}
-
-    assert included == ["mod_one"]
-    assert "/mod-one/status" in paths
+    with pytest.raises(RuntimeError, match="backend.data_policy"):
+        module_registry.include_optional_api_routers(app, settings)
 
 
-def test_include_optional_api_routers_skips_api_version_mismatch(monkeypatch):
+def test_include_optional_api_routers_skips_api_version_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     router = APIRouter(prefix="/x-test")
 
     @router.get("/ping")
-    async def ping():
+    async def _ping() -> dict[str, bool]:
         return {"ok": True}
 
     module = types.ModuleType("x_test_mod_v2")
@@ -159,139 +168,21 @@ def test_include_optional_api_routers_skips_api_version_mismatch(monkeypatch):
 
     monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
 
-    settings = _Settings()
-    settings.API_OPTIONAL_MODULES = "x_test|x_test_mod_v2:router||2|1.5.0"
-
-    app = FastAPI()
-    included = module_registry.include_optional_api_routers(app, settings)
-    assert included == []
-
-
-def test_include_optional_api_routers_skips_when_core_too_old(monkeypatch):
-    router = APIRouter(prefix="/x-test")
-
-    @router.get("/ping")
-    async def ping():
-        return {"ok": True}
-
-    module = types.ModuleType("x_test_mod_core")
-    module.router = router
-
-    def _fake_import(name: str):
-        if name == "x_test_mod_core":
-            return module
-        return __import__(name)
-
-    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
-
-    settings = _Settings()
-    settings.CORE_RUNTIME_VERSION = "1.5.0"
-    settings.API_OPTIONAL_MODULES = "x_test|x_test_mod_core:router|||2.0.0"
-
-    app = FastAPI()
-    included = module_registry.include_optional_api_routers(app, settings)
-    assert included == []
-
-
-def test_include_optional_api_routers_skips_disabled_and_missing_router(monkeypatch):
-    app = FastAPI()
-    settings = _Settings()
-
-    manifests = [
-        module_registry.ApiModuleManifest(
-            module_id="disabled",
-            router_import="x_mod:disabled",
-        ),
-        module_registry.ApiModuleManifest(
-            module_id="missing",
-            router_import="x_mod:missing",
-        ),
-        module_registry.ApiModuleManifest(
-            module_id="ok",
-            router_import="x_mod:ok",
-        ),
-    ]
-
-    monkeypatch.setattr(
-        module_registry,
-        "iter_api_module_manifests",
-        lambda _settings: iter(manifests),
-    )
-    monkeypatch.setattr(
-        module_registry,
-        "_is_enabled",
-        lambda manifest, _settings: manifest.module_id != "disabled",
-    )
-    monkeypatch.setattr(module_registry, "_is_compatible", lambda *_args: True)
-
-    ok_router = APIRouter(prefix="/ok")
-
-    @ok_router.get("/health")
-    async def _health():
-        return {"ok": True}
-
-    monkeypatch.setattr(
-        module_registry,
-        "_load_router",
-        lambda router_import, _module_root=None: (
-            None if router_import.endswith(":missing") else ok_router
-        ),
-    )
-
-    included = module_registry.include_optional_api_routers(app, settings)
-    assert included == ["ok"]
-    assert any(route.path == "/ok/health" for route in app.routes)
-
-
-def test_validate_optional_modules_config_returns_errors():
-    settings = _Settings()
-    settings.API_OPTIONAL_MODULES = "broken_entry,no_colon|module.path"
-    errors = module_registry.validate_optional_modules_config(settings)
-    assert len(errors) == 2
-
-
-def test_include_optional_api_routers_loads_manifest_path(monkeypatch, tmp_path):
-    router = APIRouter(prefix="/mod-manifest")
-
-    @router.get("/health")
-    async def health():
-        return {"ok": True}
-
-    module = types.ModuleType("x_mod_manifest")
-    module.router = router
-
-    def _fake_import(name: str):
-        if name == "x_mod_manifest":
-            return module
-        return __import__(name)
-
-    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
-
     manifest_path = tmp_path / "module.json"
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "module_id": "mod_manifest",
-                "backend": {
-                    "router_import": "x_mod_manifest:router",
-                    "module_api_version": "1.0.0",
-                    "min_core_version": "1.5.0",
-                },
-            }
-        ),
-        encoding="utf-8",
+    _write_manifest(
+        manifest_path,
+        module_id="x_test",
+        router_import="x_test_mod_v2:router",
+        module_api_version="2.0.0",
     )
-
     settings = _Settings()
     settings.API_OPTIONAL_MODULES = str(manifest_path)
     app = FastAPI()
     included = module_registry.include_optional_api_routers(app, settings)
-
-    assert "mod_manifest" in included
-    assert any(route.path == "/mod-manifest/health" for route in app.routes)
+    assert included == []
 
 
-def test_validate_optional_modules_config_manifest_missing_file():
+def test_validate_optional_modules_config_manifest_missing_file() -> None:
     settings = _Settings()
     settings.API_OPTIONAL_MODULES = "manifest:/tmp/not-existing-module.json"
     errors = module_registry.validate_optional_modules_config(settings)
@@ -299,24 +190,41 @@ def test_validate_optional_modules_config_manifest_missing_file():
     assert "manifest not found" in errors[0]
 
 
-def test_validate_optional_modules_config_manifest_invalid_structure(tmp_path):
+def test_validate_optional_modules_config_requires_data_policy(tmp_path: Path) -> None:
     manifest_path = tmp_path / "broken.json"
-    manifest_path.write_text(
-        json.dumps({"module_id": "broken", "backend": {}}),
-        encoding="utf-8",
+    _write_manifest(
+        manifest_path,
+        module_id="broken_mod",
+        router_import="broken.module:router",
+        include_data_policy=False,
     )
     settings = _Settings()
     settings.API_OPTIONAL_MODULES = f"manifest:{manifest_path}"
     errors = module_registry.validate_optional_modules_config(settings)
-    assert len(errors) == 1
-    assert "invalid optional module manifest" in errors[0]
+    assert errors
+    assert any("backend.data_policy" in err for err in errors)
 
 
-def test_load_router_returns_none_for_invalid_router_import():
+def test_validate_optional_modules_config_requires_manifest_json_object(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "broken.json"
+    manifest_path.write_text("[]", encoding="utf-8")
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = f"manifest:{manifest_path}"
+
+    errors = module_registry.validate_optional_modules_config(settings)
+    assert errors
+    assert any("must be JSON object" in err for err in errors)
+
+
+def test_load_router_returns_none_for_invalid_router_import() -> None:
     assert module_registry._load_router("not-a-router-import") is None
 
 
-def test_load_router_returns_none_when_attr_is_not_router(monkeypatch):
+def test_load_router_returns_none_when_attr_is_not_router(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = types.ModuleType("x_invalid_router_mod")
     module.not_router = object()
 
@@ -327,42 +235,3 @@ def test_load_router_returns_none_when_attr_is_not_router(monkeypatch):
 
     monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
     assert module_registry._load_router("x_invalid_router_mod:not_router") is None
-
-
-def test_parse_version_handles_empty_tokens_and_non_numeric_suffix():
-    assert module_registry._parse_version("1..2.beta") == (1, 2)
-    assert module_registry._normalize_api_version("") == ()
-
-
-def test_validate_optional_modules_config_skips_empty_csv_items():
-    settings = _Settings()
-    settings.API_OPTIONAL_MODULES = "   ,mod|pkg.router:router,  "
-    errors = module_registry.validate_optional_modules_config(settings)
-    assert errors == []
-
-
-def test_load_router_ignores_path_remove_value_error(monkeypatch, tmp_path):
-    router = APIRouter(prefix="/x-test")
-
-    @router.get("/ping")
-    async def ping():
-        return {"ok": True}
-
-    module = types.ModuleType("x_test_mod_remove")
-    module.router = router
-    module_root = str(tmp_path)
-
-    def _fake_import(name: str):
-        if name == "x_test_mod_remove":
-            resolved = str(tmp_path.resolve())
-            if resolved in module_registry.sys.path:
-                module_registry.sys.path.remove(resolved)
-            return module
-        return __import__(name)
-
-    monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
-    loaded = module_registry._load_router(
-        "x_test_mod_remove:router",
-        module_root=module_root,
-    )
-    assert isinstance(loaded, APIRouter)

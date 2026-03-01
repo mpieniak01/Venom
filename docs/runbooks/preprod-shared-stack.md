@@ -20,6 +20,19 @@
 - `QUEUE_NAMESPACE=preprod`
 - `STORAGE_PREFIX=preprod`
 - Any destructive operation is blocked when `ALLOW_DATA_MUTATION=0`.
+- Optional modules:
+- `API_OPTIONAL_MODULES` must use `manifest:/.../module.json` entries only,
+- module manifest must include `backend.data_policy`,
+- mutating module endpoints must honor the global mutation guard.
+
+## Optional Module Write Matrix
+- Module data root: `data/modules/<storage_prefix_or_dev>/<module_id>/`.
+- Example module state files:
+- `runtime-state.json`
+- `candidates-cache.json`
+- `accounts-state.json`
+- `monitoring-state.json`
+- Not allowed: global non-namespaced paths (for example `/tmp/<module>/*`).
 
 ## Writer Matrix (Current)
 - Queue/task metadata in Redis: `${CACHE_NAMESPACE}:task:*`

@@ -49,6 +49,14 @@ Dla `ENVIRONMENT_ROLE=preprod`:
 - `STORAGE_PREFIX=preprod`
 - operacje destrukcyjne są blokowane, gdy `ALLOW_DATA_MUTATION=0`
 
+Kontrakt modułów optional (obowiązkowy):
+- `API_OPTIONAL_MODULES` akceptuje wyłącznie wpisy `manifest:/.../module.json`.
+- każdy manifest modułu musi zawierać `backend.data_policy`:
+  - `storage_mode=core_prefixed`
+  - `mutation_guard=core_environment_policy`
+  - `state_files=[...]`
+- mutacje modułu optional w `preprod` podlegają tej samej globalnej blokadzie (`ALLOW_DATA_MUTATION=0`).
+
 Komenda smoke read-only:
 ```bash
 make test-preprod-readonly-smoke

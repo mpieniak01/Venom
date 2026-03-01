@@ -693,11 +693,10 @@ def _runtime_model_payload(
     return payload
 
 
-async def _local_models_by_runtime() -> dict[str, list[dict[str, Any]]]:
+async def _local_models_by_runtime(
+    model_manager: Any,
+) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {"ollama": [], "vllm": [], "onnx": []}
-    model_manager = system_deps.get_model_manager()
-    if model_manager is None:
-        return grouped
     try:
         local_models = await model_manager.list_local_models()
     except Exception:
@@ -842,21 +841,23 @@ async def _cloud_runtime_target(
 
 async def _resolve_runtime_options_payload() -> dict[str, Any]:
     active_runtime = get_active_llm_runtime()
-    llm_controller = system_deps.get_llm_controller()
+    llm_controller = _get_llm_controller_or_503()
+    model_manager = system_deps.get_model_manager()
+    if model_manager is None:
+        raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
     server_status: dict[str, dict[str, Any]] = {}
-    if llm_controller is not None:
-        for server in llm_controller.list_servers():
-            name = str(server.get("name") or "").strip().lower()
-            if not name:
-                continue
-            server_status[name] = {
-                "status": server.get("status"),
-                "endpoint": server.get("endpoint"),
-            }
+    for server in llm_controller.list_servers():
+        name = str(server.get("name") or "").strip().lower()
+        if not name:
+            continue
+        server_status[name] = {
+            "status": server.get("status"),
+            "endpoint": server.get("endpoint"),
+        }
     if "onnx" in _installed_local_servers():
         server_status.setdefault("onnx", _build_onnx_server_payload())
 
-    local_models = await _local_models_by_runtime()
+    local_models = await _local_models_by_runtime(model_manager)
     local_targets = _local_runtime_targets(
         local_models=local_models,
         server_status=server_status,

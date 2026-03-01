@@ -60,6 +60,7 @@ tests/test_chronos.py
 tests/test_cloud_provisioner.py
 tests/test_code_generation_utils.py
 tests/test_code_review_optimization.py
+tests/test_coder.py
 tests/test_coder_agent_mcp.py
 tests/test_coder_critic_loop.py
 tests/test_coder_with_sandbox.py
@@ -215,9 +216,11 @@ tests/test_model_manager_versions.py
 tests/test_model_registry.py
 tests/test_model_registry_clients.py
 tests/test_model_registry_clients_additional.py
+tests/test_model_registry_providers.py
 tests/test_model_registry_split_modules.py
 tests/test_model_requests.py
 tests/test_model_router.py
+tests/test_model_services.py
 tests/test_model_validators.py
 tests/test_models_registry_ops_onnx.py
 tests/test_models_remote_api.py

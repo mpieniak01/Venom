@@ -218,6 +218,17 @@ def test_validate_optional_modules_config_requires_manifest_json_object(
     assert any("must be JSON object" in err for err in errors)
 
 
+def test_parse_manifest_file_handles_non_dict_backend(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "broken_backend.json"
+    manifest_path.write_text(
+        json.dumps({"module_id": "x_mod", "backend": ["not-a-dict"]}),
+        encoding="utf-8",
+    )
+
+    parsed = module_registry._parse_manifest_file(str(manifest_path))
+    assert parsed is None
+
+
 def test_load_router_returns_none_for_invalid_router_import() -> None:
     assert module_registry._load_router("not-a-router-import") is None
 

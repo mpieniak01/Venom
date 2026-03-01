@@ -1020,6 +1020,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_coder.py",
+      "domain": "agents",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coverage-floor anchor for venom_core/agents/coder.py in fast lane."
+    },
+    {
       "path": "tests/test_coder_agent_mcp.py",
       "domain": "agents",
       "test_type": "unit",
@@ -2650,12 +2664,14 @@
       "domain": "runtime",
       "test_type": "route_contract",
       "intent": "contract",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for cloud runtime activation contract."
     },
     {
       "path": "tests/test_llm_runtime_options_api.py",
@@ -3124,6 +3140,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_model_registry_providers.py",
+      "domain": "models",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coverage-floor anchor for venom_core/core/model_registry_providers.py in fast lane."
+    },
+    {
       "path": "tests/test_model_registry_split_modules.py",
       "domain": "models",
       "test_type": "service_contract",
@@ -3162,6 +3192,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_model_services.py",
+      "domain": "bootstrap",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coverage-floor anchor for venom_core/bootstrap/model_services.py in fast lane."
     },
     {
       "path": "tests/test_model_validators.py",

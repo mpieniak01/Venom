@@ -94,6 +94,9 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
             system_llm.system_deps, "get_llm_controller", return_value=llm_controller
         ),
         patch.object(
+            system_llm.system_deps, "get_model_manager", return_value=object()
+        ),
+        patch.object(
             system_llm,
             "_local_models_by_runtime",
             new=AsyncMock(return_value={"vllm": [], "ollama": [], "onnx": []}),
@@ -137,3 +140,25 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
     assert runtimes["openai"]["configured"] is True
     assert runtimes["google"]["configured"] is False
     assert runtimes["google"]["reason"] == "GOOGLE_API_KEY not configured"
+
+
+def test_runtime_options_returns_503_when_llm_controller_missing() -> None:
+    with patch.object(system_llm.system_deps, "get_llm_controller", return_value=None):
+        response = _client().get("/api/v1/system/llm-runtime/options")
+
+    assert response.status_code == 503
+    assert "LLMController" in response.json().get("detail", "")
+
+
+def test_runtime_options_returns_503_when_model_manager_missing() -> None:
+    llm_controller = SimpleNamespace(list_servers=lambda: [])
+    with (
+        patch.object(
+            system_llm.system_deps, "get_llm_controller", return_value=llm_controller
+        ),
+        patch.object(system_llm.system_deps, "get_model_manager", return_value=None),
+    ):
+        response = _client().get("/api/v1/system/llm-runtime/options")
+
+    assert response.status_code == 503
+    assert "ModelManager" in response.json().get("detail", "")

@@ -32,6 +32,7 @@ interface RuntimeSectionProps {
     readonly setSelectedModel: ModelsViewerLogic["setSelectedModel"];
     readonly modelOptions: ModelsViewerLogic["modelOptions"];
     readonly activeRuntime: ModelsViewerLogic["activeRuntime"];
+    readonly installed: ModelsViewerLogic["installed"];
     readonly handleActivateRuntimeSelection: ModelsViewerLogic["handleActivateRuntimeSelection"];
     readonly t: ModelsViewerLogic["t"];
 }
@@ -44,6 +45,7 @@ export function RuntimeSection({
     setSelectedModel,
     modelOptions,
     activeRuntime,
+    installed,
     handleActivateRuntimeSelection,
     t
 }: RuntimeSectionProps) {
@@ -91,7 +93,7 @@ export function RuntimeSection({
                         disabled={!selectedServer || !selectedModel}
                         onClick={() => void handleActivateRuntimeSelection()}
                     >
-                        Aktywuj
+                        {t("models.actions.activate")}
                     </Button>
                     <Link className="shrink-0 inline-flex items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]" href="/docs/llm-models">
                         <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/15 text-[11px]">?</span>

@@ -9,16 +9,59 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-
-from venom_core.core.module_data_policy import parse_module_data_policy_payload
+from typing import Any
 
 MUTATING_DECORATORS = {"post", "put", "patch", "delete"}
+ALLOWED_STORAGE_MODES = {"core_prefixed"}
+ALLOWED_MUTATION_GUARDS = {"core_environment_policy"}
 
 
 @dataclass(frozen=True)
 class Violation:
     manifest_path: str
     message: str
+
+
+def _parse_data_policy_payload(
+    *, module_id: str, payload: Any
+) -> tuple[dict[str, Any] | None, list[str]]:
+    if not isinstance(payload, dict):
+        return None, [f"{module_id}: backend.data_policy must be an object"]
+
+    storage_mode = str(payload.get("storage_mode", "") or "").strip()
+    mutation_guard = str(payload.get("mutation_guard", "") or "").strip()
+    raw_state_files = payload.get("state_files")
+
+    errors: list[str] = []
+    if storage_mode not in ALLOWED_STORAGE_MODES:
+        errors.append(
+            f"{module_id}: backend.data_policy.storage_mode must be one of "
+            f"{sorted(ALLOWED_STORAGE_MODES)}"
+        )
+    if mutation_guard not in ALLOWED_MUTATION_GUARDS:
+        errors.append(
+            f"{module_id}: backend.data_policy.mutation_guard must be one of "
+            f"{sorted(ALLOWED_MUTATION_GUARDS)}"
+        )
+    if not isinstance(raw_state_files, list):
+        errors.append(f"{module_id}: backend.data_policy.state_files must be a list")
+    else:
+        for idx, item in enumerate(raw_state_files):
+            if not isinstance(item, str) or not item.strip():
+                errors.append(
+                    f"{module_id}: backend.data_policy.state_files[{idx}] "
+                    "must be non-empty string"
+                )
+                continue
+            value = item.strip()
+            if Path(value).is_absolute() or ".." in Path(value).parts:
+                errors.append(
+                    f"{module_id}: backend.data_policy.state_files[{idx}] "
+                    "must be relative filename without parent traversal"
+                )
+    if errors:
+        return None, errors
+    return {"storage_mode": storage_mode, "mutation_guard": mutation_guard}, []
 
 
 def _discover_manifests(repo_root: Path) -> list[Path]:
@@ -125,7 +168,7 @@ def _validate_manifest(manifest_path: Path) -> list[Violation]:
     if not isinstance(backend, dict):
         return [Violation(str(manifest_path), "missing backend object")]
 
-    _, policy_errors = parse_module_data_policy_payload(
+    _, policy_errors = _parse_data_policy_payload(
         module_id=module_id,
         payload=backend.get("data_policy"),
     )

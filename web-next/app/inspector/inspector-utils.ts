@@ -22,7 +22,7 @@ export function sanitizeMermaidDiagram(value: string) {
   const cleaned = value.replaceAll(/\r?\n/g, "\n");
   const safeChars = new Set(
     Array.from(
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:/_-[]()>{}|#;\\=+*\"'",
+      String.raw`abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:/_-[]()>{}|#;\=+*"'"`,
     ),
   );
   let output = "";

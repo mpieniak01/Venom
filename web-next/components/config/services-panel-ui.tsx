@@ -19,11 +19,11 @@ import {
 
 type TranslateFn = (key: string) => string;
 
-export function ServicesProfilesCard(input: {
+export function ServicesProfilesCard(input: Readonly<{
   t: TranslateFn;
   loading: boolean;
   applyProfile: (profileName: string) => Promise<void>;
-}) {
+}>) {
   const { t, loading, applyProfile } = input;
   return (
     <div className="glass-panel rounded-2xl box-subtle p-6">
@@ -67,13 +67,13 @@ function ServiceCardSkeleton() {
   );
 }
 
-function ServiceCard(input: {
+function ServiceCard(input: Readonly<{
   t: TranslateFn;
   service: ServiceInfo;
   actionInProgress: string | null;
   loading: boolean;
   executeAction: (service: string, action: string) => Promise<void>;
-}) {
+}>) {
   const { t, service, actionInProgress, loading, executeAction } = input;
   const isRunning = service.status === "running";
   const actionKey = `${service.service_type}`;
@@ -177,14 +177,14 @@ function ServiceCard(input: {
   );
 }
 
-export function ServicesGrid(input: {
+export function ServicesGrid(input: Readonly<{
   t: TranslateFn;
   servicesLoading: boolean;
   services: ServiceInfo[];
   actionInProgress: string | null;
   loading: boolean;
   executeAction: (service: string, action: string) => Promise<void>;
-}) {
+}>) {
   const { t, servicesLoading, services, actionInProgress, loading, executeAction } =
     input;
   return (
@@ -205,14 +205,14 @@ export function ServicesGrid(input: {
   );
 }
 
-export function ServicesStorageCard(input: {
+export function ServicesStorageCard(input: Readonly<{
   t: TranslateFn;
   language: string;
   storageSnapshot: StorageSnapshot | null;
   storageLoading: boolean;
   storageError: string | null;
   onRefreshStorage: () => Promise<void>;
-}) {
+}>) {
   const { t, language, storageSnapshot, storageLoading, storageError, onRefreshStorage } =
     input;
   let storageSummary = <span>{t("config.services.storage.noData")}</span>;
@@ -275,11 +275,11 @@ export function ServicesStorageCard(input: {
   );
 }
 
-export function ServicesHistoryCard(input: {
+export function ServicesHistoryCard(input: Readonly<{
   t: TranslateFn;
   language: string;
   history: ActionHistory[];
-}) {
+}>) {
   const { t, language, history } = input;
   return (
     <div className="glass-panel rounded-2xl box-subtle p-6">

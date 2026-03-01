@@ -8,7 +8,7 @@ import { Activity, BugPlay, Layers, Radar, TimerReset } from "lucide-react";
 
 type Translator = (key: string, params?: Record<string, string | number>) => string;
 
-type Props = {
+type Props = Readonly<{
   t: Translator;
   inspectorStats: {
     successRate: number;
@@ -20,7 +20,7 @@ type Props = {
   };
   taskBreakdown: Array<{ status: string; count: number }>;
   latencyCards: Array<{ label: string; value: string; hint: string }>;
-};
+}>;
 
 export function InspectorHeaderStats({ t, inspectorStats, taskBreakdown, latencyCards }: Props) {
   return (

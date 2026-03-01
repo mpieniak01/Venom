@@ -4,7 +4,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import { SelectMenu } from "@/components/ui/select-menu";
 
-export function ParameterInputRow(input: {
+export function ParameterInputRow(input: Readonly<{
   t: (key: string) => string;
   keyName: string;
   value: string;
@@ -13,7 +13,7 @@ export function ParameterInputRow(input: {
   showValue: boolean;
   onToggleSecret: () => void;
   onChange: (value: string) => void;
-}) {
+}>) {
   const {
     t,
     keyName,

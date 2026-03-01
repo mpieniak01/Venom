@@ -9,7 +9,7 @@ import { RefreshCw } from "lucide-react";
 
 type Translator = (key: string, params?: Record<string, string | number>) => string;
 
-type Props = {
+type Props = Readonly<{
   t: Translator;
   hidden: boolean;
   history?: HistoryRequest[] | null;
@@ -19,7 +19,7 @@ type Props = {
   refreshPending: boolean;
   activeTasks: number;
   taskBreakdown: Array<{ status: string; count: number }>;
-};
+}>;
 
 export function InspectorSidebar({
   t,

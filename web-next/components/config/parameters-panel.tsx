@@ -155,9 +155,7 @@ export function ParametersPanel() {
       <RuntimeInfoCard t={t} vllmAvailableInProfile={vllmAvailableInProfile} />
 
       {sections.map((section) => {
-        const sectionKeys = section.keys.filter((key) =>
-          Object.prototype.hasOwnProperty.call(config, key)
-        );
+        const sectionKeys = section.keys.filter((key) => Object.hasOwn(config, key));
         if (sectionKeys.length === 0) return null;
         return (
           <ConfigSection key={section.title} title={section.title} description={section.description}>

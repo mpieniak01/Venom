@@ -343,8 +343,8 @@ export function useInspectorState(t: Translator) {
           throw new Error("History detail response is empty");
         }
         const detailSteps = detail.steps || [];
-        setSteps(detailSteps as HistoryStep[]);
-        setDiagram(detailSteps.length > 0 ? buildFlowchartDiagram(detailSteps as HistoryStep[]) : defaultDiagram);
+        setSteps(detailSteps);
+        setDiagram(detailSteps.length > 0 ? buildFlowchartDiagram(detailSteps) : defaultDiagram);
       } catch (historyError) {
         console.error("Fallback detail error:", historyError);
         setSteps([]);

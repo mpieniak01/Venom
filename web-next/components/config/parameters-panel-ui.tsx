@@ -4,9 +4,9 @@ import Link from "next/link";
 import { AlertTriangle, Info, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function ParametersMessage(input: {
+export function ParametersMessage(input: Readonly<{
   message: { type: "success" | "error"; text: string } | null;
-}) {
+}>) {
   const { message } = input;
   if (!message) return null;
   return (
@@ -18,10 +18,10 @@ export function ParametersMessage(input: {
   );
 }
 
-export function RestartRequiredNotice(input: {
+export function RestartRequiredNotice(input: Readonly<{
   t: (key: string, vars?: Record<string, string>) => string;
   restartRequired: string[];
-}) {
+}>) {
   const { t, restartRequired } = input;
   if (restartRequired.length === 0) return null;
   return (
@@ -46,10 +46,10 @@ export function RestartRequiredNotice(input: {
   );
 }
 
-export function RuntimeInfoCard(input: {
+export function RuntimeInfoCard(input: Readonly<{
   t: (key: string) => string;
   vllmAvailableInProfile: boolean;
-}) {
+}>) {
   const { t, vllmAvailableInProfile } = input;
   return (
     <div className="glass-panel rounded-2xl border border-white/10 bg-gradient-to-r from-violet-500/10 to-cyan-500/10 p-6">
@@ -75,14 +75,14 @@ export function RuntimeInfoCard(input: {
   );
 }
 
-export function ParametersActionBar(input: {
+export function ParametersActionBar(input: Readonly<{
   t: (key: string, vars?: Record<string, string>) => string;
   hasChanges: boolean;
   changedCount: number;
   saving: boolean;
   onReset: () => void;
   onSave: () => void;
-}) {
+}>) {
   const { t, hasChanges, changedCount, saving, onReset, onSave } = input;
   return (
     <div className="glass-panel sticky bottom-6 rounded-2xl box-muted p-6 backdrop-blur-xl">

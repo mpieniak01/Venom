@@ -29,7 +29,7 @@ import type { MutableRefObject, RefObject } from "react";
 
 type Translator = (key: string, params?: Record<string, string | number>) => string;
 
-type Props = {
+type Props = Readonly<{
   t: Translator;
   selectedId: string | null;
   detailError: string | null;
@@ -56,7 +56,7 @@ type Props = {
   selectedRequest: HistoryRequest | null;
   inspectorFailed: number;
   focusedStep: HistoryStep | null;
-};
+}>;
 
 export function InspectorWorkspace({
   t,

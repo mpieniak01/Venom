@@ -14,6 +14,67 @@ Jeśli szukasz listy agentów systemu Venom, użyj:
 - Ścieżki błędów mają być jawne i, gdzie sensowne, pokryte testami.
 - Przed uruchamianiem narzędzi Pythona aktywuj środowisko repo: `source .venv/bin/activate`.
 
+## Szybki Bootstrap (instalacja pakietów)
+
+Gdy stan środowiska jest niepewny, użyj tej sekwencji:
+
+```bash
+test -f .venv/bin/activate || python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-ci-lite.txt
+```
+
+Opcjonalnie dla zakresu ONNX/runtime:
+
+```bash
+python -m pip install -r requirements-extras-onnx.txt
+```
+
+Nie opieraj pracy na jednorazowym `pip install ...` bez wskazania właściwego pliku `requirements-*.txt`.
+
+## Zmienne środowiskowe (pewne ładowanie)
+
+Jeśli testy zależą od `.env.dev`, ładuj zmienne jawnie:
+
+```bash
+set -a
+source .env.dev
+set +a
+```
+
+Dla smoke preprod używaj targetu `make`, który ustawia kontrakt środowiskowy:
+
+```bash
+make test-preprod-readonly-smoke
+```
+
+## Bezpieczne uruchamianie gate (obowiązkowe)
+
+Aby uniknąć fałszywie zielonych raportów:
+
+1. nie łącz `cd` i `make` przez `&` (używaj `&&`),
+2. nie oceniaj statusu gate tylko po skróconym logu,
+3. przy pipeline (`| tail`) włącz `pipefail` i sprawdź `PIPESTATUS[0]`.
+
+Wzorzec rekomendowany:
+
+```bash
+set -euo pipefail
+cd /home/runner/work/Venom/Venom
+make pr-fast
+```
+
+Wzorzec z `tail` (nadal poprawny):
+
+```bash
+set -euo pipefail
+cd /home/runner/work/Venom/Venom
+make pr-fast 2>&1 | tail -n 200
+test ${PIPESTATUS[0]} -eq 0
+```
+
 ## Polityka Hard Gate (obowiązkowa)
 
 Agent kodowania nie może kończyć zadania przy czerwonych bramkach jakości.
@@ -71,6 +132,34 @@ Baza formatu: `.github/pull_request_template.md`.
 - Najpierw uruchamiaj szybkie checki (lint + testy celowane).
 - Uruchamiaj odpowiednie grupy `pytest` dla zmienianych modułów.
 - Potwierdź brak nowych podatności critical/high.
+
+## Bramka Coverage: dlaczego "testy zielone" nadal może failować
+
+`make pr-fast` sprawdza changed-lines coverage względem diffa (`origin/main`), a nie tylko sam status testów.
+
+Gdy coverage gate failuje mimo dopisanych testów:
+
+1. uruchom `make check-new-code-coverage-diagnostics`,
+2. sprawdź spójność katalogu i grup:
+   - `make test-catalog-check`
+   - `make test-groups-check`
+3. gdy potrzeba, zsynchronizuj:
+   - `make test-catalog-sync`
+   - `make test-groups-sync`
+
+Fail `check-file-coverage-floor` jest blokujący. Nie klasyfikuj go jako „stary problem” bez jawnej reprodukcji na czystym `origin/main`.
+
+Triage coverage-floor (wymagany, minimalny):
+
+1. uruchom pełny `make pr-fast` (bez ścieżki decyzyjnej opartej tylko o `grep/head`),
+2. potwierdź próg w `config/coverage-file-floor.txt`,
+3. odtwórz wynik na czystym `origin/main`,
+4. jeśli `origin/main` przechodzi, bieżący diff jest regresją i trzeba go naprawić.
+
+Antywzorce:
+
+1. `git stash && make ... | grep ... | head ...` jako dowód,
+2. teza „to stary problem” bez reprodukcji na czystym main.
 
 ## Zasada i18n Komunikatów Użytkownika (obowiązkowa)
 

@@ -14,6 +14,67 @@ If you are looking for the list of Venom system agents, use:
 - Make error paths explicit and covered by tests where practical.
 - Before running Python tooling, activate the repository virtualenv with `source .venv/bin/activate`.
 
+## Quick Bootstrap (Package Install)
+
+Use this exact sequence when environment state is unknown:
+
+```bash
+test -f .venv/bin/activate || python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-ci-lite.txt
+```
+
+Optional stack-specific dependencies:
+
+```bash
+python -m pip install -r requirements-extras-onnx.txt
+```
+
+Do not rely on ad-hoc one-off `pip install ...` without mapping it to the proper repository requirements file.
+
+## Environment Variables (Reliable Loading)
+
+If tests depend on `.env.dev`, load variables explicitly:
+
+```bash
+set -a
+source .env.dev
+set +a
+```
+
+For preprod smoke checks, prefer project make targets (they set required env contract), e.g.:
+
+```bash
+make test-preprod-readonly-smoke
+```
+
+## Shell Safety for Gates (Mandatory)
+
+To avoid false-green reports:
+
+1. never chain `cd` and `make` using `&` (use `&&`),
+2. never infer gate status from truncated log output only,
+3. when using pipelines (`| tail`), enable `pipefail` and validate `PIPESTATUS[0]`.
+
+Recommended pattern:
+
+```bash
+set -euo pipefail
+cd /home/runner/work/Venom/Venom
+make pr-fast
+```
+
+Pattern with log tail (still safe):
+
+```bash
+set -euo pipefail
+cd /home/runner/work/Venom/Venom
+make pr-fast 2>&1 | tail -n 200
+test ${PIPESTATUS[0]} -eq 0
+```
+
 ## Hard Gate Policy (Mandatory)
 
 Coding agents must not finish a task with red quality gates.
@@ -71,6 +132,34 @@ Use `.github/pull_request_template.md` as the report format baseline.
 - Run fast checks first (lint + targeted tests).
 - Run relevant `pytest` groups for touched modules.
 - Confirm no new critical/high security findings.
+
+## Coverage Gate: Why "Tests Passed" Can Still Fail
+
+`make pr-fast` enforces changed-lines coverage against diff (`origin/main` by default), not only raw test pass rate.
+
+If gate fails after adding tests:
+
+1. run `make check-new-code-coverage-diagnostics`,
+2. verify test catalog/groups consistency:
+   - `make test-catalog-check`
+   - `make test-groups-check`
+3. sync when needed:
+   - `make test-catalog-sync`
+   - `make test-groups-sync`
+
+`check-file-coverage-floor` failures are blocking. Do not classify as "pre-existing" without explicit reproduction on clean `origin/main`.
+
+Coverage-floor triage (required, minimal):
+
+1. run full `make pr-fast` (no `grep/head`-only decision path),
+2. confirm threshold in `config/coverage-file-floor.txt`,
+3. reproduce on clean `origin/main`,
+4. if `origin/main` passes, treat current PR diff as regression and fix it.
+
+Anti-patterns:
+
+1. `git stash && make ... | grep ... | head ...` as evidence,
+2. "pre-existing issue" claim without clean-main reproduction.
 
 ## User-Facing Messages i18n Rule (Mandatory)
 

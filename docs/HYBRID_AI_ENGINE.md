@@ -18,7 +18,7 @@ Hybrid AI Engine is a key component of the Venom system that manages intelligent
 2. **KernelBuilder** (`venom_core/execution/kernel_builder.py`)
    - Building Semantic Kernel with appropriate connectors
    - Local LLM support (Ollama/vLLM/ONNX)
-   - Google Gemini support
+   - Google Gemini support (`GoogleAIChatCompletion` connector in Semantic Kernel)
    - OpenAI support
    - Azure OpenAI stub
 
@@ -69,8 +69,33 @@ GOOGLE_API_KEY=your_key_here
 | `SENSITIVE` | Local | Local | Local |
 | `ANALYSIS` | Local | Cloud* | Cloud |
 | `GENERATION` | Local | Cloud* | Cloud |
+| `RESEARCH` | Local | Local/Cloud** | Cloud** |
 
 \* = If API key available, otherwise fallback to Local
+\** = Cloud only when paid mode is enabled and cloud access is configured; otherwise fallback to local research path (DuckDuckGo).
+
+## Google Search Grounding (Scope 149)
+
+For `TaskType.RESEARCH`, Venom supports Google Search Grounding in Gemini runtime:
+
+- Router (`HybridModelRouter`) chooses cloud research only when:
+  - paid mode is enabled (Global Cost Guard),
+  - cloud access is available (e.g. `GOOGLE_API_KEY` for provider `google`).
+- Otherwise RESEARCH falls back to local web path (DuckDuckGo).
+- `KernelBuilder` registers Google runtime via `GoogleAIChatCompletion` (no `NotImplementedError` for Google path).
+- `ResearcherAgent` enables Google Search tool (`tools=[{"google_search": {}}]`) for Google runtime and appends grounding sources from response metadata.
+
+### Required configuration
+
+```env
+AI_MODE=HYBRID
+HYBRID_CLOUD_PROVIDER=google
+GOOGLE_API_KEY=your_google_api_key
+```
+
+Dependencies:
+- `google-genai`
+- `semantic-kernel` with Google AI connector support
 
 ## Privacy Protection
 
@@ -180,9 +205,8 @@ if routing_info['target'] == 'local':
     # Build kernel with local LLM
     kernel = builder.build_kernel()
 elif routing_info['target'] == 'cloud':
-    # Build kernel with cloud provider
-    # (requires further implementation for full integration)
-    pass
+    # Build kernel with configured cloud provider (e.g. google/openai)
+    kernel = builder.build_kernel()
 ```
 
 ### Direct Routing Analysis
@@ -273,6 +297,12 @@ pip install google-genai
 Set in `.env`:
 ```env
 GOOGLE_API_KEY=your_key_here
+```
+
+### "Connector GoogleAIChatCompletion ... is not available"
+Install/upgrade dependencies:
+```bash
+pip install -r requirements-profile-api.txt
 ```
 
 ### Everything goes to cloud despite LOCAL mode

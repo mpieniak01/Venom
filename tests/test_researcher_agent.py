@@ -139,6 +139,32 @@ class TestResearcherAgent:
         assert "Źródła" in section
         assert "https://example.com/doc" in section
 
+    def test_format_grounding_sources_supports_google_search_chunks_with_web(self):
+        meta = {
+            "grounding_metadata": {
+                "grounding_chunks": [
+                    {"web": {"title": "Spec", "uri": "https://ai.google.dev/spec"}},
+                    {"web": {"title": "Guide"}},
+                ]
+            }
+        }
+        section = format_grounding_sources(meta)
+        assert "https://ai.google.dev/spec" in section
+        assert "Spec" in section
+        assert "Guide" in section
+
+    def test_format_grounding_sources_supports_camel_case_payload(self):
+        meta = {
+            "groundingMetadata": {
+                "groundingChunks": [
+                    {"web": {"title": "Docs", "uri": "https://ai.google.dev/docs"}}
+                ],
+                "webSearchQueries": ["gemini grounding docs"],
+            }
+        }
+        section = format_grounding_sources(meta)
+        assert "https://ai.google.dev/docs" in section
+
     def test_format_grounding_sources_from_queries_when_no_chunks(self):
         meta = {"web_search_queries": ["zapytanie 1", "zapytanie 2"]}
         section = format_grounding_sources(meta)
@@ -158,3 +184,46 @@ class TestResearcherAgent:
     def test_get_last_search_source_default_is_duckduckgo(self, mock_kernel):
         agent = ResearcherAgent(mock_kernel)
         assert agent.get_last_search_source() == "duckduckgo"
+
+    @pytest.mark.asyncio
+    async def test_process_google_runtime_enables_grounding_tool(
+        self, researcher_agent, mock_chat_service, monkeypatch
+    ):
+        class Runtime:
+            provider = "google-gemini"
+
+        monkeypatch.setattr(
+            "venom_core.utils.llm_runtime.get_active_llm_runtime",
+            lambda: Runtime(),
+        )
+
+        mock_response = MagicMock()
+        mock_response.__str__ = lambda _self: "Oto odpowiedź"
+        mock_response.metadata = {}
+
+        candidate = MagicMock()
+        candidate.grounding_metadata = {
+            "grounding_chunks": [
+                {
+                    "web": {
+                        "title": "Gemini API",
+                        "uri": "https://ai.google.dev/gemini-api/docs",
+                    }
+                }
+            ]
+        }
+        inner_content = MagicMock()
+        inner_content.candidates = [candidate]
+        mock_response.inner_content = inner_content
+
+        mock_chat_service.get_chat_message_content.return_value = mock_response
+
+        result = await researcher_agent.process("Jaki jest status Gemini API?")
+
+        assert "Źródła (Google Grounding)" in result
+        assert "https://ai.google.dev/gemini-api/docs" in result
+        assert researcher_agent.get_last_search_source() == "google_grounding"
+
+        call_args = mock_chat_service.get_chat_message_content.call_args
+        settings = call_args.kwargs["settings"]
+        assert settings.extension_data.get("tools") == [{"google_search": {}}]

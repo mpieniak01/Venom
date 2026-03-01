@@ -2,14 +2,79 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable, Protocol
 
 from venom_core.core.models import TaskStatus
 from venom_core.core.tracer import TraceStatus
 
 
+class TaskRuntimeLike(Protocol):
+    provider: str
+    model_name: str
+    endpoint: str
+    config_hash: str
+    runtime_id: str
+
+    def to_payload(self) -> dict[str, Any]: ...
+
+
+class TaskRequestLike(Protocol):
+    content: str
+    session_id: str
+    forced_intent: str | None
+    generation_params: dict[str, Any] | None
+
+
+class TaskLike(Protocol):
+    id: Any
+
+
+class StateManagerLike(Protocol):
+    def create_task(self, content: str) -> TaskLike: ...
+
+    def update_context(self, task_id: Any, payload: dict[str, Any]) -> None: ...
+
+    def add_log(self, task_id: Any, message: str) -> None: ...
+
+    async def update_status(
+        self, task_id: Any, status: TaskStatus, result: str | None = None
+    ) -> None: ...
+
+
+class TracerLike(Protocol):
+    def create_trace(self, task_id: Any, content: str, *, session_id: str) -> None: ...
+
+    def set_llm_metadata(
+        self,
+        task_id: Any,
+        *,
+        provider: str,
+        model: str,
+        endpoint: str,
+        metadata: dict[str, Any],
+    ) -> None: ...
+
+    def update_status(self, task_id: Any, status: TraceStatus) -> None: ...
+
+    def add_step(
+        self,
+        task_id: Any,
+        stage: str,
+        action: str,
+        *,
+        status: str,
+        details: str,
+    ) -> None: ...
+
+    def set_error_metadata(self, task_id: Any, payload: dict[str, Any]) -> None: ...
+
+
 def trace_onnx_task_start(
-    *, tracer: Any | None, task_id: Any, request: Any, runtime: Any
+    *,
+    tracer: TracerLike | None,
+    task_id: Any,
+    request: TaskRequestLike,
+    runtime: TaskRuntimeLike,
 ) -> None:
     if tracer is None:
         return
@@ -34,7 +99,9 @@ def trace_onnx_task_start(
     )
 
 
-def trace_onnx_task_success(*, tracer: Any | None, task_id: Any, result: str) -> None:
+def trace_onnx_task_success(
+    *, tracer: TracerLike | None, task_id: Any, result: str
+) -> None:
     if tracer is None:
         return
     tracer.add_step(
@@ -48,7 +115,7 @@ def trace_onnx_task_success(*, tracer: Any | None, task_id: Any, result: str) ->
 
 
 def trace_onnx_task_failure(
-    *, tracer: Any | None, task_id: Any, exc: Exception
+    *, tracer: TracerLike | None, task_id: Any, exc: Exception
 ) -> None:
     if tracer is None:
         return
@@ -75,12 +142,12 @@ def trace_onnx_task_failure(
 
 def create_and_submit_onnx_task(
     *,
-    state_manager: Any,
-    request: Any,
-    runtime: Any,
+    state_manager: StateManagerLike,
+    request: TaskRequestLike,
+    runtime: TaskRuntimeLike,
     trace_start_fn: Callable[[Any], None],
     schedule_runner_fn: Callable[[Any], None],
-) -> Any:
+) -> TaskLike:
     task = state_manager.create_task(request.content)
     state_manager.update_context(
         task.id,
@@ -96,12 +163,14 @@ def create_and_submit_onnx_task(
 
 async def run_onnx_task(
     *,
-    state_manager: Any,
+    state_manager: StateManagerLike,
     task_id: Any,
-    request: Any,
-    runtime: Any,
+    request: TaskRequestLike,
+    runtime: TaskRuntimeLike,
     build_messages_fn: Callable[[str, Any], list[dict[str, str]]],
-    run_generation_fn: Callable[[list[dict[str, str]], int | None, float | None], Any],
+    run_generation_fn: Callable[
+        [list[dict[str, str]], int | None, float | None], Awaitable[str]
+    ],
     trace_success_fn: Callable[[Any, str], None],
     trace_failure_fn: Callable[[Any, Exception], None],
     logger: Any,

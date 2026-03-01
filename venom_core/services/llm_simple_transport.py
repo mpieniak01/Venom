@@ -41,9 +41,9 @@ async def iter_stream_packets(resp: Any) -> AsyncIterator[dict[str, Any]]:
         if not line or not line.startswith("data:"):
             continue
         data = line[5:].strip()
-        if not data or data == "[DONE]":
-            if data == "[DONE]":
-                break
+        if data == "[DONE]":
+            break
+        if not data:
             continue
         try:
             packet = json.loads(data)

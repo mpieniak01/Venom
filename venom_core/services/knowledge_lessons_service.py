@@ -3,11 +3,33 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
+
+
+class LoggerLike(Protocol):
+    def info(self, msg: str, *args: object) -> None: ...
+
+    def warning(self, msg: str, *args: object) -> None: ...
+
+
+class LessonsStoreLike(Protocol):
+    lessons: list[Any]
+
+    def delete_last_n(self, count: int) -> int: ...
+
+    def delete_by_time_range(self, start_dt: datetime, end_dt: datetime) -> int: ...
+
+    def delete_by_tag(self, tag: str) -> int: ...
+
+    def clear_all(self) -> bool: ...
+
+    def prune_by_ttl(self, days: int) -> int: ...
+
+    def dedupe_lessons(self) -> int: ...
 
 
 def prune_latest_lessons(
-    *, lessons_store: Any, count: int, logger: Any
+    *, lessons_store: LessonsStoreLike, count: int, logger: LoggerLike
 ) -> dict[str, Any]:
     deleted = lessons_store.delete_last_n(count)
     logger.info("Pruning: Usunięto %s najnowszych lekcji", deleted)
@@ -28,12 +50,12 @@ def parse_iso_range(*, start: str, end: str) -> tuple[datetime, datetime]:
 
 def prune_lessons_by_range(
     *,
-    lessons_store: Any,
+    lessons_store: LessonsStoreLike,
     start: str,
     end: str,
     start_dt: datetime,
     end_dt: datetime,
-    logger: Any,
+    logger: LoggerLike,
 ) -> dict[str, Any]:
     deleted = lessons_store.delete_by_time_range(start_dt, end_dt)
     logger.info("Pruning: Usunięto %s lekcji z zakresu %s - %s", deleted, start, end)
@@ -47,7 +69,7 @@ def prune_lessons_by_range(
 
 
 def prune_lessons_by_tag(
-    *, lessons_store: Any, tag: str, logger: Any
+    *, lessons_store: LessonsStoreLike, tag: str, logger: LoggerLike
 ) -> dict[str, Any]:
     deleted = lessons_store.delete_by_tag(tag)
     logger.info("Pruning: Usunięto %s lekcji z tagiem '%s'", deleted, tag)
@@ -59,7 +81,9 @@ def prune_lessons_by_tag(
     }
 
 
-def purge_all_lessons(*, lessons_store: Any, logger: Any) -> dict[str, Any]:
+def purge_all_lessons(
+    *, lessons_store: LessonsStoreLike, logger: LoggerLike
+) -> dict[str, Any]:
     lesson_count = len(lessons_store.lessons)
     success = lessons_store.clear_all()
     if not success:
@@ -72,7 +96,9 @@ def purge_all_lessons(*, lessons_store: Any, logger: Any) -> dict[str, Any]:
     }
 
 
-def prune_lessons_by_ttl(*, lessons_store: Any, days: int) -> dict[str, Any]:
+def prune_lessons_by_ttl(
+    *, lessons_store: LessonsStoreLike, days: int
+) -> dict[str, Any]:
     deleted = lessons_store.prune_by_ttl(days)
     return {
         "status": "success",
@@ -82,7 +108,7 @@ def prune_lessons_by_ttl(*, lessons_store: Any, days: int) -> dict[str, Any]:
     }
 
 
-def dedupe_lessons(*, lessons_store: Any) -> dict[str, Any]:
+def dedupe_lessons(*, lessons_store: LessonsStoreLike) -> dict[str, Any]:
     removed = lessons_store.dedupe_lessons()
     return {
         "status": "success",

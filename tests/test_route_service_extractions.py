@@ -8,7 +8,9 @@ import pytest
 
 from venom_core.services import knowledge_lessons_service as ksvc
 from venom_core.services import llm_simple_stream_service as ssvc
+from venom_core.services import llm_simple_transport as transport
 from venom_core.services import tasks_onnx_service as tsvc
+from venom_core.services import tasks_service
 
 
 class _Logger:
@@ -284,6 +286,23 @@ def test_stream_state_helper_decisions_and_packet_update() -> None:
     )
     assert finalized == [True]
 
+    state.retry_requested = True
+    assert (
+        ssvc.resolve_post_attempt_action(
+            state=state, finalize_success_fn=lambda: finalized.append(False)
+        )
+        == "retry"
+    )
+    state.retry_requested = False
+    state.completed = False
+    state.failed = True
+    assert (
+        ssvc.resolve_post_attempt_action(
+            state=state, finalize_success_fn=lambda: finalized.append(False)
+        )
+        == "stop"
+    )
+
     state = ssvc.SimpleStreamState(chunks=[])
     first_chunks: list[str] = []
     events = ssvc.update_stream_state_from_packet(
@@ -312,23 +331,26 @@ async def test_stream_single_attempt_retry_and_failure() -> None:
         def __call__(self, **_kwargs):
             return _OpenResponse([{"ok": True}])
 
-    emitted = await ssvc.stream_single_attempt(
-        open_stream_response_fn=_OpenOK(),
-        iter_stream_packets_fn=_iter_packets,
-        completions_url="u",
-        payload={},
-        provider_name="p",
-        state=state,
-        http_status_error_type=_HttpStatusError,
-        attempt=1,
-        max_attempts=2,
-        is_retryable_status_fn=lambda code: code == 503,
-        runtime_provider="ollama",
-        retry_backoff=0.0,
-        sleep_fn=lambda _s: _noop_sleep(),
-        handle_packet_fn=lambda _p: ["event: content\\ndata: {}\\n\\n"],
-        emit_http_error_fn=lambda _exc: _emit_error(),
-    )
+    emitted = [
+        event
+        async for event in ssvc.stream_single_attempt(
+            open_stream_response_fn=_OpenOK(),
+            iter_stream_packets_fn=_iter_packets,
+            completions_url="u",
+            payload={},
+            provider_name="p",
+            state=state,
+            http_status_error_type=_HttpStatusError,
+            attempt=1,
+            max_attempts=2,
+            is_retryable_status_fn=lambda code: code == 503,
+            runtime_provider="ollama",
+            retry_backoff=0.0,
+            sleep_fn=lambda _s: _noop_sleep(),
+            handle_packet_fn=lambda _p: ["event: content\\ndata: {}\\n\\n"],
+            emit_http_error_fn=lambda _exc: _emit_error(),
+        )
+    ]
     assert emitted
     assert state.completed
 
@@ -338,47 +360,185 @@ async def test_stream_single_attempt_retry_and_failure() -> None:
         def __call__(self, **_kwargs):
             raise _HttpStatusError(503)
 
-    emitted_retry = await ssvc.stream_single_attempt(
-        open_stream_response_fn=_OpenErr(),
-        iter_stream_packets_fn=_iter_packets,
-        completions_url="u",
-        payload={},
-        provider_name="p",
-        state=state2,
-        http_status_error_type=_HttpStatusError,
-        attempt=1,
-        max_attempts=3,
-        is_retryable_status_fn=lambda code: code == 503,
-        runtime_provider="ollama",
-        retry_backoff=0.0,
-        sleep_fn=lambda _s: _noop_sleep(),
-        handle_packet_fn=lambda _p: ["x"],
-        emit_http_error_fn=lambda _exc: _emit_error(),
-    )
+    emitted_retry = [
+        event
+        async for event in ssvc.stream_single_attempt(
+            open_stream_response_fn=_OpenErr(),
+            iter_stream_packets_fn=_iter_packets,
+            completions_url="u",
+            payload={},
+            provider_name="p",
+            state=state2,
+            http_status_error_type=_HttpStatusError,
+            attempt=1,
+            max_attempts=3,
+            is_retryable_status_fn=lambda code: code == 503,
+            runtime_provider="ollama",
+            retry_backoff=0.0,
+            sleep_fn=lambda _s: _noop_sleep(),
+            handle_packet_fn=lambda _p: ["x"],
+            emit_http_error_fn=lambda _exc: _emit_error(),
+        )
+    ]
     assert emitted_retry == []
     assert state2.retry_requested
 
     state3 = ssvc.SimpleStreamState(chunks=[])
 
-    emitted_fail = await ssvc.stream_single_attempt(
-        open_stream_response_fn=_OpenErr(),
-        iter_stream_packets_fn=_iter_packets,
-        completions_url="u",
-        payload={},
-        provider_name="p",
-        state=state3,
-        http_status_error_type=_HttpStatusError,
-        attempt=3,
-        max_attempts=3,
-        is_retryable_status_fn=lambda code: code == 503,
-        runtime_provider="ollama",
-        retry_backoff=0.0,
-        sleep_fn=lambda _s: _noop_sleep(),
-        handle_packet_fn=lambda _p: ["x"],
-        emit_http_error_fn=lambda _exc: _emit_error(),
-    )
+    emitted_fail = [
+        event
+        async for event in ssvc.stream_single_attempt(
+            open_stream_response_fn=_OpenErr(),
+            iter_stream_packets_fn=_iter_packets,
+            completions_url="u",
+            payload={},
+            provider_name="p",
+            state=state3,
+            http_status_error_type=_HttpStatusError,
+            attempt=3,
+            max_attempts=3,
+            is_retryable_status_fn=lambda code: code == 503,
+            runtime_provider="ollama",
+            retry_backoff=0.0,
+            sleep_fn=lambda _s: _noop_sleep(),
+            handle_packet_fn=lambda _p: ["x"],
+            emit_http_error_fn=lambda _exc: _emit_error(),
+        )
+    ]
     assert state3.failed
     assert emitted_fail and emitted_fail[0].startswith("event: error")
+
+
+def test_tasks_service_metrics_and_status_values(monkeypatch) -> None:
+    sentinel = object()
+    monkeypatch.setattr(tasks_service.metrics_module, "metrics_collector", sentinel)
+    assert tasks_service.get_metrics_collector() is sentinel
+    assert tasks_service.trace_status_values()
+
+
+@pytest.mark.asyncio
+async def test_tasks_onnx_empty_generation_and_non_numeric_params() -> None:
+    state = _StateManager()
+    failures: list[str] = []
+    successes: list[str] = []
+
+    async def _run_generation(_messages, max_tokens, temperature):
+        assert max_tokens is None
+        assert temperature is None
+        return "   "
+
+    await tsvc.run_onnx_task(
+        state_manager=state,
+        task_id="task-empty",
+        request=_Request(
+            content="x",
+            session_id="sess",
+            generation_params={"max_tokens": "bad", "temperature": "bad"},
+        ),
+        runtime=_Runtime(),
+        build_messages_fn=lambda content, _intent: [
+            {"role": "user", "content": content}
+        ],
+        run_generation_fn=_run_generation,
+        trace_success_fn=lambda _task_id, result: successes.append(result),
+        trace_failure_fn=lambda _task_id, exc: failures.append(str(exc)),
+        logger=_Logger(),
+    )
+
+    assert not failures
+    assert successes == ["Brak odpowiedzi z runtime ONNX."]
+
+
+@pytest.mark.asyncio
+async def test_llm_simple_transport_iter_and_error_reader_paths(monkeypatch) -> None:
+    class _Resp:
+        def __init__(self, lines):
+            self._lines = lines
+            self.encoding = "utf-8"
+
+        async def aiter_lines(self):
+            for line in self._lines:
+                yield line
+
+        async def aread(self):
+            return b"error-body"
+
+    packets = []
+    async for packet in transport.iter_stream_packets(
+        _Resp(
+            [
+                "",
+                "event: keepalive",
+                "data:   ",
+                "data: not-json",
+                "data: [1,2,3]",
+                'data: {"ok": true}',
+                "data: [DONE]",
+                'data: {"late": true}',
+            ]
+        )
+    ):
+        packets.append(packet)
+    assert packets == [{"ok": True}]
+    assert await transport.read_http_error_response_text(None) == ""
+    assert await transport.read_http_error_response_text(_Resp([])) == "error-body"
+
+    class _ErrResp:
+        async def aread(self):
+            raise RuntimeError("read-fail")
+
+    assert await transport.read_http_error_response_text(_ErrResp()) == ""
+
+
+@pytest.mark.asyncio
+async def test_llm_simple_transport_open_stream_response_adapter(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _StreamResp:
+        async def __aenter__(self):
+            captured["entered_response"] = True
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    class _Client:
+        async def __aenter__(self):
+            captured["entered_client"] = True
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+        def astream(self, method, url, json, disable_retry):
+            captured["request"] = {
+                "method": method,
+                "url": url,
+                "json": json,
+                "disable_retry": disable_retry,
+            }
+            return _StreamResp()
+
+    def _factory(*, provider, timeout):
+        captured["factory"] = {"provider": provider, "timeout": timeout}
+        return _Client()
+
+    monkeypatch.setattr(transport, "TrafficControlledHttpClient", _factory)
+
+    async with transport.open_stream_response(
+        provider_name="ollama",
+        completions_url="http://x",
+        payload={"a": 1},
+    ):
+        pass
+
+    assert captured["factory"] == {"provider": "ollama", "timeout": None}
+    assert captured["request"] == {
+        "method": "POST",
+        "url": "http://x",
+        "json": {"a": 1},
+        "disable_retry": True,
+    }
 
 
 async def _noop_sleep() -> None:

@@ -16,8 +16,18 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 GoogleAIChatCompletion: Any | None = None
+
+
+def _safe_find_spec(module_name: str) -> Any | None:
+    """Bezpieczny wrapper na find_spec dla optional zależności."""
+    try:
+        return importlib.util.find_spec(module_name)
+    except Exception:  # pragma: no cover - zależne od stanu optional deps
+        return None
+
+
 if (
-    importlib.util.find_spec(
+    _safe_find_spec(
         "semantic_kernel.connectors.ai.google.google_ai.services.google_ai_chat_completion"
     )
     is not None
@@ -35,8 +45,8 @@ if (
 def _is_google_gemini_sdk_available() -> bool:
     """Sprawdza dostępność SDK Gemini (nowy i legacy)."""
     return (
-        importlib.util.find_spec("google.genai") is not None
-        or importlib.util.find_spec("google.generativeai") is not None
+        _safe_find_spec("google.genai") is not None
+        or _safe_find_spec("google.generativeai") is not None
     )
 
 

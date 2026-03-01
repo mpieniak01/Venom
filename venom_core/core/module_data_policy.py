@@ -39,16 +39,12 @@ def _storage_scope(settings: object) -> str:
     return "preprod" if role == "preprod" else "dev"
 
 
-def parse_module_data_policy_payload(
-    *, module_id: str, payload: Any
-) -> tuple[ModuleDataPolicy | None, list[str]]:
-    if not isinstance(payload, Mapping):
-        return None, [f"{module_id}: backend.data_policy must be an object"]
-
-    storage_mode = str(payload.get("storage_mode", "") or "").strip()
-    mutation_guard = str(payload.get("mutation_guard", "") or "").strip()
-    raw_state_files = payload.get("state_files")
-
+def _validate_data_policy_flags(
+    *,
+    module_id: str,
+    storage_mode: str,
+    mutation_guard: str,
+) -> list[str]:
     errors: list[str] = []
     if storage_mode not in ALLOWED_STORAGE_MODES:
         errors.append(
@@ -60,27 +56,57 @@ def parse_module_data_policy_payload(
             f"{module_id}: backend.data_policy.mutation_guard must be one of "
             f"{sorted(ALLOWED_MUTATION_GUARDS)}"
         )
+    return errors
 
-    state_files: list[str] = []
+
+def _parse_state_files(
+    *, module_id: str, raw_state_files: Any
+) -> tuple[list[str], list[str]]:
     if not isinstance(raw_state_files, list):
-        errors.append(f"{module_id}: backend.data_policy.state_files must be a list")
-    else:
-        for idx, item in enumerate(raw_state_files):
-            if not isinstance(item, str) or not item.strip():
-                errors.append(
-                    f"{module_id}: backend.data_policy.state_files[{idx}] "
-                    "must be non-empty string"
-                )
-                continue
-            file_name = item.strip()
-            file_path = Path(file_name)
-            if file_path.is_absolute() or ".." in file_path.parts:
-                errors.append(
-                    f"{module_id}: backend.data_policy.state_files[{idx}] "
-                    "must be relative filename without parent traversal"
-                )
-                continue
-            state_files.append(file_name)
+        return [], [f"{module_id}: backend.data_policy.state_files must be a list"]
+
+    errors: list[str] = []
+    state_files: list[str] = []
+    for idx, item in enumerate(raw_state_files):
+        if not isinstance(item, str) or not item.strip():
+            errors.append(
+                f"{module_id}: backend.data_policy.state_files[{idx}] "
+                "must be non-empty string"
+            )
+            continue
+
+        file_name = item.strip()
+        file_path = Path(file_name)
+        if file_path.is_absolute() or ".." in file_path.parts:
+            errors.append(
+                f"{module_id}: backend.data_policy.state_files[{idx}] "
+                "must be relative filename without parent traversal"
+            )
+            continue
+        state_files.append(file_name)
+    return state_files, errors
+
+
+def parse_module_data_policy_payload(
+    *, module_id: str, payload: Any
+) -> tuple[ModuleDataPolicy | None, list[str]]:
+    if not isinstance(payload, Mapping):
+        return None, [f"{module_id}: backend.data_policy must be an object"]
+
+    storage_mode = str(payload.get("storage_mode", "") or "").strip()
+    mutation_guard = str(payload.get("mutation_guard", "") or "").strip()
+    raw_state_files = payload.get("state_files")
+
+    errors = _validate_data_policy_flags(
+        module_id=module_id,
+        storage_mode=storage_mode,
+        mutation_guard=mutation_guard,
+    )
+    state_files, state_file_errors = _parse_state_files(
+        module_id=module_id,
+        raw_state_files=raw_state_files,
+    )
+    errors.extend(state_file_errors)
 
     if errors:
         return None, errors

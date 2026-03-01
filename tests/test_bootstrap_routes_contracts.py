@@ -154,6 +154,6 @@ async def test_queue_permission_and_error_paths(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_module_registry_validate_legacy_item_branch():
-    errors: list[str] = []
-    module_registry._validate_legacy_item("broken-item", errors)
+    settings = SimpleNamespace(API_OPTIONAL_MODULES="broken-item")
+    errors = module_registry.validate_optional_modules_config(settings)
     assert errors and "invalid optional module entry" in errors[0]

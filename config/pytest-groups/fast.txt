@@ -223,6 +223,8 @@ tests/test_models_remote_api.py
 tests/test_models_remote_contracts.py
 tests/test_models_translation_api.py
 tests/test_models_utils_security.py
+tests/test_module_data_policy.py
+tests/test_module_example_data_policy_routes.py
 tests/test_module_registry.py
 tests/test_new_chat_session_api.py
 tests/test_node_manager.py
@@ -234,6 +236,7 @@ tests/test_ollama_tuning.py
 tests/test_onnx_llm_client.py
 tests/test_onnx_runtime_cleanup.py
 tests/test_operator_agent.py
+tests/test_optional_modules_contracts_guard.py
 tests/test_oracle_agent.py
 tests/test_orchestrator_bootstrap.py
 tests/test_orchestrator_compat_exports.py
@@ -255,6 +258,7 @@ tests/test_policy_gate.py
 tests/test_port_authority.py
 tests/test_preprod_mutation_guards.py
 tests/test_preprod_ops_regression.py
+tests/test_preprod_optional_modules_smoke.py
 tests/test_preprod_readiness_check.py
 tests/test_preprod_readonly_smoke.py
 tests/test_process_monitor.py

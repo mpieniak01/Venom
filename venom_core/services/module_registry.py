@@ -13,6 +13,10 @@ from fastapi import FastAPI
 from fastapi.routing import APIRouter
 
 from venom_core.config import SETTINGS
+from venom_core.core.module_data_policy import (
+    ModuleDataPolicy,
+    parse_module_data_policy_payload,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -23,6 +27,7 @@ MANIFEST_PREFIX = "manifest:"
 class ApiModuleManifest:
     module_id: str
     router_import: str
+    data_policy: ModuleDataPolicy
     module_root: str | None = None
     feature_flag: str | None = None
     module_api_version: str | None = None
@@ -135,34 +140,11 @@ def _builtin_manifests() -> list[ApiModuleManifest]:
     return []
 
 
-def _parse_extra_manifest(raw_item: str) -> ApiModuleManifest | None:
-    item = raw_item.strip()
-    if not item:
-        return None
-    parts = [part.strip() for part in item.split("|")]
-    if len(parts) < 2:
-        logger.warning("Invalid API_OPTIONAL_MODULES item: %s", item)
-        return None
-    module_id = parts[0]
-    router_import = parts[1]
-    feature_flag = parts[2] if len(parts) > 2 and parts[2] else None
-    module_api_version = parts[3] if len(parts) > 3 and parts[3] else None
-    min_core_version = parts[4] if len(parts) > 4 and parts[4] else None
-    return ApiModuleManifest(
-        module_id=module_id,
-        router_import=router_import,
-        module_root=None,
-        feature_flag=feature_flag,
-        module_api_version=module_api_version,
-        min_core_version=min_core_version,
-    )
-
-
 def _looks_like_manifest_path(item: str) -> bool:
     normalized = item.strip()
     if normalized.startswith(MANIFEST_PREFIX):
         return True
-    return "|" not in normalized and normalized.endswith(".json")
+    return normalized.endswith(".json")
 
 
 def _resolve_manifest_path(raw_item: str) -> Path:
@@ -193,17 +175,26 @@ def _parse_manifest_file(raw_item: str) -> ApiModuleManifest | None:
     feature_flag = str(backend.get("feature_flag", "")).strip() or None
     module_api_version = str(backend.get("module_api_version", "")).strip() or None
     min_core_version = str(backend.get("min_core_version", "")).strip() or None
+    data_policy, data_policy_errors = parse_module_data_policy_payload(
+        module_id=module_id or "<missing_module_id>",
+        payload=backend.get("data_policy"),
+    )
 
-    if not module_id or not router_import:
+    if not module_id or not router_import or data_policy is None:
+        details = (
+            "; ".join(data_policy_errors) if data_policy_errors else "missing fields"
+        )
         logger.warning(
-            "Invalid optional module manifest %s: required module_id/backend.router_import missing",
+            "Invalid optional module manifest %s: required fields missing or invalid (%s)",
             manifest_path,
+            details,
         )
         return None
 
     return ApiModuleManifest(
         module_id=module_id,
         router_import=router_import,
+        data_policy=data_policy,
         module_root=str(manifest_path.parent),
         feature_flag=feature_flag,
         module_api_version=module_api_version,
@@ -217,11 +208,13 @@ def _extra_manifests(settings: object) -> list[ApiModuleManifest]:
         return []
     manifests: list[ApiModuleManifest] = []
     for item in raw.split(","):
-        manifest = (
-            _parse_manifest_file(item)
-            if _looks_like_manifest_path(item)
-            else _parse_extra_manifest(item)
-        )
+        if not _looks_like_manifest_path(item):
+            logger.warning(
+                "Invalid API_OPTIONAL_MODULES item (legacy format unsupported): %s",
+                item.strip(),
+            )
+            continue
+        manifest = _parse_manifest_file(item)
         if manifest is not None:
             manifests.append(manifest)
     return manifests
@@ -233,26 +226,35 @@ def _validate_manifest_item(item: str, errors: list[str]) -> None:
         errors.append("optional module manifest not found: " + str(manifest_path))
         return
 
-    parsed = _parse_manifest_file(item)
-    if parsed is None:
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(
+            "failed to read optional module manifest "
+            + str(manifest_path)
+            + ": "
+            + str(exc)
+        )
+        return
+
+    module_id = str(payload.get("module_id", "")).strip()
+    backend = payload.get("backend")
+    if not isinstance(backend, dict):
+        errors.append(
+            "invalid optional module manifest backend object: " + str(manifest_path)
+        )
+        return
+    router_import = str(backend.get("router_import", "")).strip()
+    if not module_id or not router_import:
         errors.append(
             "invalid optional module manifest (required module_id/backend.router_import): "
             + str(manifest_path)
         )
-
-
-def _validate_legacy_item(item: str, errors: list[str]) -> None:
-    parts = [part.strip() for part in item.split("|")]
-    if len(parts) < 2:
-        errors.append(
-            "invalid optional module entry (expected: manifest:/path/module.json or module_id|module.path:router[|FEATURE|API|CORE]): "
-            + item
-        )
-        return
-    if ":" not in parts[1]:
-        errors.append(
-            "invalid router import (expected module.path:router): " + parts[1]
-        )
+    _, policy_errors = parse_module_data_policy_payload(
+        module_id=module_id or "<missing_module_id>",
+        payload=backend.get("data_policy"),
+    )
+    errors.extend(policy_errors)
 
 
 def validate_optional_modules_config(settings: object = SETTINGS) -> list[str]:
@@ -267,7 +269,10 @@ def validate_optional_modules_config(settings: object = SETTINGS) -> list[str]:
         if _looks_like_manifest_path(item):
             _validate_manifest_item(item, errors)
             continue
-        _validate_legacy_item(item, errors)
+        errors.append(
+            "invalid optional module entry (legacy format unsupported; use manifest:/path/module.json): "
+            + item
+        )
     return errors
 
 
@@ -281,8 +286,11 @@ def iter_api_module_manifests(
 def include_optional_api_routers(
     app: FastAPI, settings: object = SETTINGS
 ) -> list[str]:
-    for error in validate_optional_modules_config(settings):
-        logger.warning("Optional module config warning: %s", error)
+    config_errors = validate_optional_modules_config(settings)
+    if config_errors:
+        raise RuntimeError(
+            "Invalid optional modules configuration: " + " | ".join(config_errors)
+        )
 
     included: list[str] = []
     for manifest in iter_api_module_manifests(settings):

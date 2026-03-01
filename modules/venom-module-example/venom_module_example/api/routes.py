@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from venom_module_example.api.schemas import (
     AuditResponse,
     CandidatesResponse,
@@ -22,8 +22,25 @@ from venom_module_example.services.provider import (
 )
 
 from venom_core.config import SETTINGS
+from venom_core.core.module_data_policy import ensure_module_mutation_allowed
 
-router = APIRouter(prefix="/api/v1/module-example", tags=["module-example"])
+
+def _module_data_guard(request: Request) -> None:
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        try:
+            ensure_module_mutation_allowed(
+                module_id="module_example",
+                operation_name=f"{request.method.lower()}:{request.url.path}",
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+router = APIRouter(
+    prefix="/api/v1/module-example",
+    tags=["module-example"],
+    dependencies=[Depends(_module_data_guard)],
+)
 
 
 def _extract_actor(

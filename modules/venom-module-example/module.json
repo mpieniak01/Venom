@@ -7,7 +7,12 @@
     "router_import": "venom_module_example.api.routes:router",
     "feature_flag": "FEATURE_MODULE_EXAMPLE",
     "module_api_version": "1.0.0",
-    "min_core_version": "1.5.0"
+    "min_core_version": "1.5.0",
+    "data_policy": {
+      "storage_mode": "core_prefixed",
+      "mutation_guard": "core_environment_policy",
+      "state_files": []
+    }
   },
   "frontend": {
     "feature_flag": "NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE",

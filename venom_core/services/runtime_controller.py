@@ -667,6 +667,10 @@ class RuntimeController:
 
     def _start_ollama(self) -> Dict[str, Any]:
         """Uruchamia Ollama."""
+
+        def _refresh_runtime_version() -> None:
+            self._refresh_ollama_runtime_version(force=True)
+
         return start_ollama_impl(
             command=SETTINGS.OLLAMA_START_COMMAND,
             get_service_status_fn=self.get_service_status,
@@ -674,9 +678,7 @@ class RuntimeController:
             service_status_running=ServiceStatus.RUNNING,
             subprocess_module=subprocess,
             time_module=time,
-            refresh_runtime_version_fn=lambda: self._refresh_ollama_runtime_version(
-                force=True
-            ),
+            refresh_runtime_version_fn=_refresh_runtime_version,
         )
 
     def _stop_ollama(self) -> Dict[str, Any]:

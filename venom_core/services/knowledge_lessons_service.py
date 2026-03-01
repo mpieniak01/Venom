@@ -13,7 +13,7 @@ class LoggerLike(Protocol):
 
 
 class LessonsStoreLike(Protocol):
-    lessons: list[Any]
+    lessons: Any
 
     def delete_last_n(self, count: int) -> int: ...
 

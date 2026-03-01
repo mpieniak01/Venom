@@ -330,12 +330,12 @@ def _trim_user_content_for_runtime(
     return trimmed_content
 
 
-async def _iter_stream_packets(resp: httpx.Response) -> AsyncIterator[dict]:
+async def _iter_stream_packets(resp: Any) -> AsyncIterator[dict]:
     async for packet in llm_simple_transport.iter_stream_packets(resp):
         yield packet
 
 
-async def _iter_stream_contents(resp: httpx.Response) -> AsyncIterator[str]:
+async def _iter_stream_contents(resp: Any) -> AsyncIterator[str]:
     async for packet in _iter_stream_packets(resp):
         for content in _extract_sse_contents(packet):
             yield content
@@ -396,7 +396,7 @@ def _trace_stream_completion(
 
 
 def _build_llm_http_error(
-    exc: httpx.HTTPStatusError,
+    exc: Any,
     runtime,
     model_name: str,
     *,
@@ -424,13 +424,13 @@ def _build_llm_http_error(
     return error_message, error_details, error_payload
 
 
-async def _read_http_error_response_text(response: Optional[httpx.Response]) -> str:
+async def _read_http_error_response_text(response: Optional[Any]) -> str:
     return await llm_simple_transport.read_http_error_response_text(response)
 
 
 async def _emit_http_status_error_and_mark_failed(
     *,
-    exc: httpx.HTTPStatusError,
+    exc: Any,
     runtime,
     request_id: UUID,
     model_name: str,
@@ -461,7 +461,7 @@ async def _emit_http_status_error_and_mark_failed(
 
 def _emit_connection_error_and_mark_failed(
     *,
-    exc: httpx.HTTPError,
+    exc: Any,
     runtime,
     request_id: UUID,
     model_name: str,
@@ -665,7 +665,7 @@ def _apply_post_attempt_action(action: str) -> tuple[bool, bool]:
 
 async def _handle_stream_http_error(
     *,
-    exc: httpx.HTTPError,
+    exc: Any,
     runtime,
     request_id: UUID,
     model_name: str,

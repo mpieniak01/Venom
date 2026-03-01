@@ -19,37 +19,27 @@ Preferred format (no config duplication from manifest):
 
 `API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/<module-repo>/module.json`
 
-Legacy format (backward compatibility):
-
-`module_id|module.path:router|FEATURE_FLAG|MODULE_API_VERSION|MIN_CORE_VERSION`
-
-Fields for legacy format:
-- `module_id` (required): unique module key.
-- `module.path:router` (required): import path to FastAPI router.
-- `FEATURE_FLAG` (optional): backend flag, for example `FEATURE_ACME`.
-- `MODULE_API_VERSION` (optional): module contract version.
-- `MIN_CORE_VERSION` (optional): minimal compatible core version.
-
 Examples:
 - `API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/venom-module-example/module.json`
 - `API_OPTIONAL_MODULES=manifest:/home/ubuntu/venom/modules/mod-a/module.json,manifest:/home/ubuntu/venom/modules/mod-b/module.json`
-- legacy: `API_OPTIONAL_MODULES=my_mod|acme_mod.api:router|FEATURE_ACME|1.0.0|1.6.0`
+
+Notes:
+- legacy `module_id|module.path:router|...` format is no longer supported.
+- missing manifest file or invalid manifest blocks optional-modules startup.
 
 ## 3. Compatibility contract
 
 Core compares module manifest values with:
 - `CORE_MODULE_API_VERSION` (default `1.0.0`)
 - `CORE_RUNTIME_VERSION` (default `1.6.0`)
+- `backend.data_policy` (required):
+  - `storage_mode=core_prefixed`
+  - `mutation_guard=core_environment_policy`
+  - `state_files=[...]` (list of module state files)
 
-If incompatible:
-- module is skipped,
-- startup continues,
-- a warning is logged.
-
-Invalid manifest entries:
-- do not crash startup,
-- are ignored,
-- produce warnings.
+If manifest is invalid or contract requirements are not met:
+- optional-modules startup is blocked with a configuration error,
+- the entry must be fixed before startup.
 
 ## 4. Module structure (target model only)
 
@@ -178,7 +168,7 @@ Safe disable:
 - frontend: `NEXT_PUBLIC_FEATURE_*`
 2. Check manifest:
 - `API_OPTIONAL_MODULES` points to existing `module.json`.
-- prefer `manifest:/.../module.json` over legacy `module_id|...`.
+- only `manifest:/.../module.json` format is accepted.
 3. Check import path:
 - `module.path:router` is importable in runtime.
 4. Check compatibility:
@@ -200,3 +190,23 @@ Required hard gates for code changes:
 
 This mechanism provides modular infrastructure only.
 It does not move private/business logic into OSS core.
+
+## 10. Module Release Readiness (mandatory)
+
+Before releasing an optional module to a shared environment:
+
+1. Manifest:
+- `module.json` contains `backend.data_policy`:
+  - `storage_mode=core_prefixed`
+  - `mutation_guard=core_environment_policy`
+  - `state_files=[...]` (complete list of module state files).
+
+2. Mutation guard:
+- mutating module endpoints (`POST/PUT/PATCH/DELETE`) call a core-based guard (`ensure_module_mutation_allowed` or equivalent module-layer adapter).
+
+3. Storage namespace:
+- module writes state only through environment-policy namespaced paths (`STORAGE_PREFIX`/`ENVIRONMENT_ROLE`), without default global paths like `/tmp/<module>`.
+
+4. Validation:
+- module and core contract tests pass,
+- `make pr-fast` passes in the core repository.

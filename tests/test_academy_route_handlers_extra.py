@@ -80,7 +80,7 @@ async def test_activate_adapter_handler_returns_503_when_manager_missing() -> No
     academy._get_model_manager = lambda: None
     academy.academy_models = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
-        await route_handlers.activate_adapter_handler(
+        route_handlers.activate_adapter_handler(
             request=SimpleNamespace(adapter_id="a1"),
             req=SimpleNamespace(),
             academy=academy,
@@ -107,7 +107,7 @@ async def test_academy_status_handler_gpu_info_fallback_on_error() -> None:
     academy._get_dataset_curator = lambda: object()
     academy._get_model_manager = lambda: object()
 
-    payload = await route_handlers.academy_status_handler(academy=academy)
+    payload = route_handlers.academy_status_handler(academy=academy)
     assert payload["gpu"]["available"] is True
     assert payload["jobs"]["running"] == 1
     assert payload["jobs"]["failed"] == 1

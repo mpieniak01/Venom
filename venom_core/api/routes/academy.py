@@ -294,7 +294,7 @@ async def curate_dataset(
     request: DatasetScopeRequest,
     req: Request,
 ) -> DatasetResponse:
-    return await academy_route_handlers.curate_dataset_handler(
+    return academy_route_handlers.curate_dataset_handler(
         request=request,
         req=req,
         academy=_academy_module(),
@@ -310,7 +310,7 @@ async def curate_dataset(
     },
 )
 async def start_training(request: TrainingRequest, req: Request) -> TrainingResponse:
-    return await academy_route_handlers.start_training_handler(
+    return academy_route_handlers.start_training_handler(
         request=request,
         req=req,
         academy=_academy_module(),
@@ -354,7 +354,7 @@ def _cleanup_terminal_job_container(
     },
 )
 async def get_training_status(job_id: str) -> JobStatusResponse:
-    return await academy_route_handlers.get_training_status_handler(
+    return academy_route_handlers.get_training_status_handler(
         job_id=job_id,
         academy=_academy_module(),
     )
@@ -368,7 +368,7 @@ async def get_training_status(job_id: str) -> JobStatusResponse:
     },
 )
 async def stream_training_logs(job_id: str):
-    return await academy_route_handlers.stream_training_logs_handler(
+    return academy_route_handlers.stream_training_logs_handler(
         job_id=job_id,
         academy=_academy_module(),
     )
@@ -394,7 +394,7 @@ async def list_jobs(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     status: Annotated[Optional[str], Query()] = None,
 ) -> AcademyJobsListResponse:
-    return await academy_route_handlers.list_jobs_handler(
+    return academy_route_handlers.list_jobs_handler(
         limit=limit,
         status=status,
         academy=_academy_module(),
@@ -424,7 +424,7 @@ async def list_adapters() -> List[AdapterInfo]:
 async def activate_adapter(
     request: ActivateAdapterRequest, req: Request
 ) -> Dict[str, Any]:
-    return await academy_route_handlers.activate_adapter_handler(
+    return academy_route_handlers.activate_adapter_handler(
         request=request,
         req=req,
         academy=_academy_module(),
@@ -440,7 +440,7 @@ async def activate_adapter(
     },
 )
 async def deactivate_adapter(req: Request) -> Dict[str, Any]:
-    return await academy_route_handlers.deactivate_adapter_handler(
+    return academy_route_handlers.deactivate_adapter_handler(
         req=req,
         academy=_academy_module(),
     )
@@ -456,7 +456,7 @@ async def deactivate_adapter(req: Request) -> Dict[str, Any]:
     },
 )
 async def cancel_training(job_id: str, req: Request) -> Dict[str, Any]:
-    return await academy_route_handlers.cancel_training_handler(
+    return academy_route_handlers.cancel_training_handler(
         job_id=job_id,
         req=req,
         academy=_academy_module(),
@@ -470,9 +470,7 @@ async def cancel_training(job_id: str, req: Request) -> Dict[str, Any]:
     },
 )
 async def academy_status() -> Dict[str, Any]:
-    return await academy_route_handlers.academy_status_handler(
-        academy=_academy_module()
-    )
+    return academy_route_handlers.academy_status_handler(academy=_academy_module())
 
 
 # ==================== Upload Endpoints ====================
@@ -520,7 +518,7 @@ async def upload_dataset_files(req: Request) -> Dict[str, Any]:
 
 @router.get("/dataset/uploads")
 async def list_dataset_uploads() -> List[UploadFileInfo]:
-    return await academy_route_handlers.list_dataset_uploads_handler(
+    return academy_route_handlers.list_dataset_uploads_handler(
         academy=_academy_module()
     )
 
@@ -536,7 +534,7 @@ async def list_dataset_uploads() -> List[UploadFileInfo]:
     },
 )
 async def delete_dataset_upload(file_id: str, req: Request) -> Dict[str, Any]:
-    return await academy_route_handlers.delete_dataset_upload_handler(
+    return academy_route_handlers.delete_dataset_upload_handler(
         file_id=file_id,
         req=req,
         academy=_academy_module(),
@@ -717,7 +715,7 @@ def _resolve_conversion_file_ids_for_dataset(
 
 @router.get("/dataset/conversion/files")
 async def list_dataset_conversion_files(req: Request) -> DatasetConversionListResponse:
-    return await academy_route_handlers.list_dataset_conversion_files_handler(
+    return academy_route_handlers.list_dataset_conversion_files_handler(
         req=req,
         academy=_academy_module(),
     )
@@ -749,7 +747,7 @@ async def convert_dataset_file(
     payload: DatasetConversionRequest,
     req: Request,
 ) -> DatasetConversionResult:
-    return await academy_route_handlers.convert_dataset_file_handler(
+    return academy_route_handlers.convert_dataset_file_handler(
         file_id=file_id,
         payload=payload,
         req=req,
@@ -769,13 +767,11 @@ async def set_dataset_conversion_training_selection(
     payload: DatasetConversionTrainingSelectionRequest,
     req: Request,
 ) -> DatasetConversionFileInfo:
-    return (
-        await academy_route_handlers.set_dataset_conversion_training_selection_handler(
-            file_id=file_id,
-            payload=payload,
-            req=req,
-            academy=_academy_module(),
-        )
+    return academy_route_handlers.set_dataset_conversion_training_selection_handler(
+        file_id=file_id,
+        payload=payload,
+        req=req,
+        academy=_academy_module(),
     )
 
 
@@ -808,7 +804,7 @@ async def download_dataset_conversion_file(
     file_id: str,
     req: Request,
 ) -> FileResponse:
-    return await academy_route_handlers.download_dataset_conversion_file_handler(
+    return academy_route_handlers.download_dataset_conversion_file_handler(
         file_id=file_id,
         req=req,
         academy=_academy_module(),
@@ -826,7 +822,7 @@ async def preview_dataset(
     request: DatasetScopeRequest,
     req: Request,
 ) -> DatasetPreviewResponse:
-    return await academy_route_handlers.preview_dataset_handler(
+    return academy_route_handlers.preview_dataset_handler(
         request=request,
         req=req,
         academy=_academy_module(),

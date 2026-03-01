@@ -46,7 +46,7 @@ def _collect_scope_counts(
     return counts
 
 
-async def curate_dataset_handler(
+def curate_dataset_handler(
     *,
     request: DatasetScopeRequest,
     req: Request,
@@ -131,7 +131,7 @@ async def curate_dataset_handler(
         )
 
 
-async def start_training_handler(
+def start_training_handler(
     *,
     request: TrainingRequest,
     req: Request,
@@ -229,7 +229,7 @@ async def start_training_handler(
         )
 
 
-async def get_training_status_handler(
+def get_training_status_handler(
     *,
     job_id: str,
     academy: Any,
@@ -287,9 +287,7 @@ async def get_training_status_handler(
         raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
 
-async def stream_training_logs_handler(
-    *, job_id: str, academy: Any
-) -> StreamingResponse:
+def stream_training_logs_handler(*, job_id: str, academy: Any) -> StreamingResponse:
     try:
         academy._ensure_academy_enabled()
         try:
@@ -334,7 +332,7 @@ async def stream_training_logs_events_handler(
         yield event
 
 
-async def list_jobs_handler(
+def list_jobs_handler(
     *,
     limit: int,
     status: Optional[str],
@@ -373,7 +371,7 @@ async def list_adapters_handler(*, academy: Any) -> List[AdapterInfo]:
         )
 
 
-async def activate_adapter_handler(
+def activate_adapter_handler(
     *,
     request: Any,
     req: Request,
@@ -409,7 +407,7 @@ async def activate_adapter_handler(
         )
 
 
-async def deactivate_adapter_handler(*, req: Request, academy: Any) -> Dict[str, Any]:
+def deactivate_adapter_handler(*, req: Request, academy: Any) -> Dict[str, Any]:
     try:
         academy._ensure_academy_enabled()
         academy.require_localhost_request(req)
@@ -433,7 +431,7 @@ async def deactivate_adapter_handler(*, req: Request, academy: Any) -> Dict[str,
         )
 
 
-async def cancel_training_handler(
+def cancel_training_handler(
     *,
     job_id: str,
     req: Request,
@@ -462,7 +460,7 @@ async def cancel_training_handler(
         )
 
 
-async def academy_status_handler(*, academy: Any) -> Dict[str, Any]:
+def academy_status_handler(*, academy: Any) -> Dict[str, Any]:
     try:
         from venom_core.config import SETTINGS
 
@@ -565,7 +563,7 @@ async def upload_dataset_files_handler(*, req: Request, academy: Any) -> Dict[st
     return academy.academy_uploads.build_upload_response(uploaded_files, failed_files)
 
 
-async def list_dataset_uploads_handler(*, academy: Any) -> List[UploadFileInfo]:
+def list_dataset_uploads_handler(*, academy: Any) -> List[UploadFileInfo]:
     try:
         academy._ensure_academy_enabled()
     except academy.AcademyRouteError as e:
@@ -575,7 +573,7 @@ async def list_dataset_uploads_handler(*, academy: Any) -> List[UploadFileInfo]:
     return [UploadFileInfo(**u) for u in uploads]
 
 
-async def delete_dataset_upload_handler(
+def delete_dataset_upload_handler(
     *,
     file_id: str,
     req: Request,
@@ -609,7 +607,7 @@ async def delete_dataset_upload_handler(
         )
 
 
-async def list_dataset_conversion_files_handler(
+def list_dataset_conversion_files_handler(
     *,
     req: Request,
     academy: Any,
@@ -692,7 +690,7 @@ async def upload_dataset_conversion_files_handler(
     )
 
 
-async def convert_dataset_file_handler(
+def convert_dataset_file_handler(
     *,
     file_id: str,
     payload: DatasetConversionRequest,
@@ -759,7 +757,7 @@ async def convert_dataset_file_handler(
     )
 
 
-async def set_dataset_conversion_training_selection_handler(
+def set_dataset_conversion_training_selection_handler(
     *,
     file_id: str,
     payload: DatasetConversionTrainingSelectionRequest,
@@ -832,7 +830,7 @@ async def preview_dataset_conversion_file_handler(
     )
 
 
-async def download_dataset_conversion_file_handler(
+def download_dataset_conversion_file_handler(
     *,
     file_id: str,
     req: Request,
@@ -860,7 +858,7 @@ async def download_dataset_conversion_file_handler(
     )
 
 
-async def preview_dataset_handler(
+def preview_dataset_handler(
     *,
     request: DatasetScopeRequest,
     req: Request,

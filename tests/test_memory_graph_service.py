@@ -117,3 +117,61 @@ def test_build_memory_graph_payload() -> None:
     assert payload["status"] == "success"
     assert payload["stats"]["source_nodes"] >= 3
     assert payload["stats"]["source_edges"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_memory_graph_low_level_helpers_and_branches() -> None:
+    assert svc.normalize_lessons_for_graph(None, allow_fallback=False, limit=5) == []
+    assert svc.normalize_lessons_for_graph("bad", allow_fallback=True, limit=5) == []
+
+    lesson_obj = SimpleNamespace(id="a1", lesson_id="b1")
+    assert svc.extract_lesson_id("x", lesson_obj) == "a1"
+    assert svc.extract_lesson_id("x", {"lesson_id": "b2"}) == "b2"
+    assert svc.extract_lesson_id("fallback", object()) == "fallback"
+
+    class _ToDict:
+        def to_dict(self):
+            return {"id": "k1"}
+
+    assert svc.to_lesson_dict({"id": "1"}) == {"id": "1"}
+    assert svc.to_lesson_dict(_ToDict()) == {"id": "k1"}
+    assert svc.to_lesson_dict(42) is None
+
+    mapping = svc.normalize_lessons_mapping({"d1": {"title": "t"}}, limit=2)
+    assert mapping[0]["id"] == "d1"
+    lst = svc.normalize_lessons_list(
+        [SimpleNamespace(x=1)], allow_fallback=False, limit=1
+    )
+    assert lst == []
+    lst2 = svc.normalize_lessons_list(
+        [SimpleNamespace(x=1)], allow_fallback=True, limit=1
+    )
+    assert lst2[0]["x"] == 1
+
+    assert svc.entry_id({"text": "abc"}, {})[:4] == "mem-"
+    assert svc.coerce_lesson_to_dict(SimpleNamespace(a=1))["a"] == 1
+
+    async def _ret():
+        return "ok"
+
+    assert await svc.resolve_maybe_await(_ret()) == "ok"
+    assert await svc.resolve_maybe_await("raw") == "raw"
+
+
+def test_memory_graph_lessons_store_and_error_paths() -> None:
+    store_with_attr = SimpleNamespace(lessons={"x": {"id": "x"}})
+    assert svc.get_raw_lessons_for_graph(store_with_attr, 10) == {"x": {"id": "x"}}
+    assert svc.get_raw_lessons_for_graph(SimpleNamespace(), 10) == []
+
+    warns: list[str] = []
+    nodes, edges = svc.collect_lesson_graph(
+        SimpleNamespace(
+            get_all_lessons=lambda limit: (_ for _ in ()).throw(RuntimeError("boom"))
+        ),
+        10,
+        allow_fallback=True,
+        logger=SimpleNamespace(warning=lambda msg, *_a, **_kw: warns.append(msg)),
+    )
+    assert nodes == []
+    assert edges == []
+    assert warns

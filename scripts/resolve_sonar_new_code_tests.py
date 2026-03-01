@@ -21,7 +21,14 @@ LIGHT_BLOCKED_MARKERS = (
     "smoke",
 )
 
-PRIORITY_TEST_ORDER = ("tests/test_core_nervous_system.py",)
+PRIORITY_TEST_ORDER = (
+    "tests/test_core_nervous_system.py",
+    "tests/test_model_registry_split_modules.py",
+    "tests/test_system_llm_service.py",
+    "tests/test_memory_graph_service.py",
+    "tests/test_academy_training_service.py",
+    "tests/test_academy_file_resolution_service.py",
+)
 
 _PRIORITY_INDEX = {path: idx for idx, path in enumerate(PRIORITY_TEST_ORDER)}
 
@@ -261,6 +268,21 @@ def related_tests_for_modules(
     return related
 
 
+def direct_tests_for_modules(
+    changed_files: list[str], test_files: list[str]
+) -> set[str]:
+    direct: set[str] = set()
+    test_set = set(test_files)
+    for path in changed_files:
+        if not (path.startswith("venom_core/") and path.endswith(".py")):
+            continue
+        module_stem = Path(path).stem
+        candidate = f"tests/test_{module_stem}.py"
+        if candidate in test_set:
+            direct.add(candidate)
+    return direct
+
+
 def is_light_test(path: str) -> bool:
     file_path = Path(path)
     if not file_path.exists():
@@ -433,6 +455,7 @@ def _build_candidate_infos(
     baseline_items: list[str],
     new_code_items: list[str],
     changed_tests: set[str],
+    direct_module_tests: set[str],
     related_tests: set[str],
     floor_anchors: set[str],
     timings: dict[str, float],
@@ -445,11 +468,15 @@ def _build_candidate_infos(
         set(baseline_items)
         | set(new_code_items)
         | changed_tests
+        | direct_module_tests
         | related_tests
         | floor_anchors
     )
 
     source_rank: dict[str, int] = {path: 4 for path in selected}
+    for path in PRIORITY_TEST_ORDER:
+        if path in source_rank:
+            source_rank[path] = min(source_rank.get(path, 4), -1)
     for path in floor_anchors:
         source_rank[path] = min(source_rank.get(path, 4), -1)
     for path in baseline_items:
@@ -459,6 +486,8 @@ def _build_candidate_infos(
     for path in related_tests:
         source_rank[path] = min(source_rank.get(path, 4), 1)
     for path in changed_tests:
+        source_rank[path] = min(source_rank.get(path, 4), 0)
+    for path in direct_module_tests:
         source_rank[path] = min(source_rank.get(path, 4), 0)
 
     infos: list[CandidateInfo] = []
@@ -485,6 +514,8 @@ def _build_candidate_infos(
             reasons.append("new_code_group")
         if path in changed_tests:
             reasons.append("changed_test")
+        if path in direct_module_tests:
+            reasons.append("direct_module_test")
         if path in related_tests:
             reasons.append("related_module")
         if not reasons:
@@ -492,7 +523,11 @@ def _build_candidate_infos(
 
         domain = str(_catalog_value(entry, "domain", "misc"))
         legacy_targeted = bool(_catalog_value(entry, "legacy_targeted", False))
-        dynamic_only = "changed_test" in reasons or "related_module" in reasons
+        dynamic_only = (
+            "changed_test" in reasons
+            or "direct_module_test" in reasons
+            or "related_module" in reasons
+        )
         if dynamic_only and changed_domains:
             if domain not in changed_domains and domain not in {
                 "testing_tooling",
@@ -535,6 +570,13 @@ def _apply_budget(
     total = 0.0
     selected: list[CandidateInfo] = []
     for info in infos:
+        # Always keep top-priority dynamic coverage anchors for changed code
+        # (floor anchors, changed tests, related module tests), even if we
+        # exceed the soft fast-lane time budget.
+        if info.source_rank <= 1:
+            selected.append(info)
+            total += info.estimated_seconds
+            continue
         next_total = total + info.estimated_seconds
         if selected and next_total > time_budget_sec:
             continue
@@ -566,6 +608,7 @@ def resolve_tests(
     changed_domains = _changed_domains(changed_files)
     tests = all_test_files()
     changed_tests = collect_changed_tests(changed_files)
+    direct_module_tests = direct_tests_for_modules(changed_files, tests)
     related_tests = related_tests_for_modules(changed_files, tests)
     timings = load_junit_timings(timings_junit_xml)
     catalog = load_test_catalog(catalog_path)
@@ -579,6 +622,7 @@ def resolve_tests(
         baseline_items,
         new_code_items,
         changed_tests,
+        direct_module_tests,
         related_tests,
         floor_anchors,
         timings,
@@ -610,6 +654,7 @@ def resolve_tests_with_metadata(
     changed_domains = _changed_domains(changed_files)
     tests = all_test_files()
     changed_tests = collect_changed_tests(changed_files)
+    direct_module_tests = direct_tests_for_modules(changed_files, tests)
     related_tests = related_tests_for_modules(changed_files, tests)
     timings = load_junit_timings(timings_junit_xml)
     catalog = load_test_catalog(catalog_path)
@@ -623,6 +668,7 @@ def resolve_tests_with_metadata(
         baseline_items,
         new_code_items,
         changed_tests,
+        direct_module_tests,
         related_tests,
         floor_anchors,
         timings,

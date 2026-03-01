@@ -45,14 +45,16 @@ async def test_creative_director_process_success(mock_kernel):
 
     # Mock response
     mock_response = MagicMock()
-    mock_response.__str__ = lambda self: """
+    mock_response.__str__ = (
+        lambda self: """
     **Identyfikacja Wizualna:**
     Styl: Minimalistyczny
     Logo prompt: 'Modern app logo, blue gradient'
-    
+
     **Copywriting:**
     Tagline: 'Build better apps'
     """
+    )
     agent.kernel.get_service().get_chat_message_content.return_value = mock_response
 
     result = await agent.process("Stwórz branding dla aplikacji")
@@ -163,7 +165,9 @@ async def test_creative_director_conversation_context(mock_kernel):
 
     # History should grow
     assert second_history_len > first_history_len
-    assert second_history_len >= 5  # System + Request1 + Response1 + Request2 + Response2
+    assert (
+        second_history_len >= 5
+    )  # System + Request1 + Response1 + Request2 + Response2
 
 
 @pytest.mark.asyncio

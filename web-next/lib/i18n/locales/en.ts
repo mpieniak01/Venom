@@ -356,6 +356,8 @@ export const en = {
       refreshing: "Refreshing...",
       tryAgain: "Try Again",
       copyJson: "Copy JSON",
+      copySuccess: "Steps copied.",
+      copyFailed: "Could not copy steps.",
       fullscreen: "Fullscreen",
       exitFullscreen: "Exit Fullscreen",
       zoomIn: "Zoom In",

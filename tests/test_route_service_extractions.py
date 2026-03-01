@@ -334,19 +334,23 @@ async def test_stream_single_attempt_retry_and_failure() -> None:
     emitted = [
         event
         async for event in ssvc.stream_single_attempt(
-            open_stream_response_fn=_OpenOK(),
-            iter_stream_packets_fn=_iter_packets,
-            completions_url="u",
-            payload={},
-            provider_name="p",
+            transport=ssvc.StreamTransportConfig(
+                open_stream_response_fn=_OpenOK(),
+                iter_stream_packets_fn=_iter_packets,
+                completions_url="u",
+                payload={},
+                provider_name="p",
+            ),
+            retry=ssvc.StreamRetryConfig(
+                http_status_error_type=_HttpStatusError,
+                max_attempts=2,
+                is_retryable_status_fn=lambda code: code == 503,
+                runtime_provider="ollama",
+                retry_backoff=0.0,
+                sleep_fn=lambda _s: _noop_sleep(),
+            ),
             state=state,
-            http_status_error_type=_HttpStatusError,
             attempt=1,
-            max_attempts=2,
-            is_retryable_status_fn=lambda code: code == 503,
-            runtime_provider="ollama",
-            retry_backoff=0.0,
-            sleep_fn=lambda _s: _noop_sleep(),
             handle_packet_fn=lambda _p: ["event: content\\ndata: {}\\n\\n"],
             emit_http_error_fn=lambda _exc: _emit_error(),
         )
@@ -363,19 +367,23 @@ async def test_stream_single_attempt_retry_and_failure() -> None:
     emitted_retry = [
         event
         async for event in ssvc.stream_single_attempt(
-            open_stream_response_fn=_OpenErr(),
-            iter_stream_packets_fn=_iter_packets,
-            completions_url="u",
-            payload={},
-            provider_name="p",
+            transport=ssvc.StreamTransportConfig(
+                open_stream_response_fn=_OpenErr(),
+                iter_stream_packets_fn=_iter_packets,
+                completions_url="u",
+                payload={},
+                provider_name="p",
+            ),
+            retry=ssvc.StreamRetryConfig(
+                http_status_error_type=_HttpStatusError,
+                max_attempts=3,
+                is_retryable_status_fn=lambda code: code == 503,
+                runtime_provider="ollama",
+                retry_backoff=0.0,
+                sleep_fn=lambda _s: _noop_sleep(),
+            ),
             state=state2,
-            http_status_error_type=_HttpStatusError,
             attempt=1,
-            max_attempts=3,
-            is_retryable_status_fn=lambda code: code == 503,
-            runtime_provider="ollama",
-            retry_backoff=0.0,
-            sleep_fn=lambda _s: _noop_sleep(),
             handle_packet_fn=lambda _p: ["x"],
             emit_http_error_fn=lambda _exc: _emit_error(),
         )
@@ -388,19 +396,23 @@ async def test_stream_single_attempt_retry_and_failure() -> None:
     emitted_fail = [
         event
         async for event in ssvc.stream_single_attempt(
-            open_stream_response_fn=_OpenErr(),
-            iter_stream_packets_fn=_iter_packets,
-            completions_url="u",
-            payload={},
-            provider_name="p",
+            transport=ssvc.StreamTransportConfig(
+                open_stream_response_fn=_OpenErr(),
+                iter_stream_packets_fn=_iter_packets,
+                completions_url="u",
+                payload={},
+                provider_name="p",
+            ),
+            retry=ssvc.StreamRetryConfig(
+                http_status_error_type=_HttpStatusError,
+                max_attempts=3,
+                is_retryable_status_fn=lambda code: code == 503,
+                runtime_provider="ollama",
+                retry_backoff=0.0,
+                sleep_fn=lambda _s: _noop_sleep(),
+            ),
             state=state3,
-            http_status_error_type=_HttpStatusError,
             attempt=3,
-            max_attempts=3,
-            is_retryable_status_fn=lambda code: code == 503,
-            runtime_provider="ollama",
-            retry_backoff=0.0,
-            sleep_fn=lambda _s: _noop_sleep(),
             handle_packet_fn=lambda _p: ["x"],
             emit_http_error_fn=lambda _exc: _emit_error(),
         )
@@ -414,6 +426,8 @@ def test_tasks_service_metrics_and_status_values(monkeypatch) -> None:
     monkeypatch.setattr(tasks_service.metrics_module, "metrics_collector", sentinel)
     assert tasks_service.get_metrics_collector() is sentinel
     assert tasks_service.trace_status_values()
+    monkeypatch.setattr(tasks_service.metrics_module, "metrics_collector", None)
+    assert tasks_service.get_metrics_collector() is None
 
 
 @pytest.mark.asyncio
@@ -539,6 +553,50 @@ async def test_llm_simple_transport_open_stream_response_adapter(monkeypatch) ->
         "json": {"a": 1},
         "disable_retry": True,
     }
+
+
+def test_llm_simple_transport_httpx_module_exposes_httpx() -> None:
+    module = transport.httpx_module()
+    assert module is transport.httpx
+    assert hasattr(module, "HTTPStatusError")
+
+
+def test_stream_state_helper_resolve_retry_when_not_completed() -> None:
+    state = ssvc.SimpleStreamState(chunks=[])
+    assert (
+        ssvc.resolve_post_attempt_action(state=state, finalize_success_fn=lambda: None)
+        == "retry"
+    )
+
+
+def test_update_stream_state_from_packet_non_ollama_and_no_events() -> None:
+    state = ssvc.SimpleStreamState(chunks=[])
+    events = ssvc.update_stream_state_from_packet(
+        packet={},
+        runtime=SimpleNamespace(provider="openai"),
+        state=state,
+        ollama_telemetry={"eval_count": 1},
+        extract_ollama_telemetry_fn=lambda _p: {"eval_count": 9},
+        extract_sse_tool_calls_fn=lambda _p: [],
+        extract_sse_contents_fn=lambda _p: [],
+        on_first_chunk_fn=lambda _c: None,
+    )
+    assert events == []
+    assert state.chunk_count == 0
+    assert state.chunks == []
+
+
+def test_tasks_onnx_trace_helpers_accept_none_tracer() -> None:
+    request = _Request(content="hello", session_id="sess")
+    runtime = _Runtime()
+    tsvc.trace_onnx_task_start(
+        tracer=None,
+        task_id="t1",
+        request=request,
+        runtime=runtime,
+    )
+    tsvc.trace_onnx_task_success(tracer=None, task_id="t1", result="ok")
+    tsvc.trace_onnx_task_failure(tracer=None, task_id="t1", exc=RuntimeError("x"))
 
 
 async def _noop_sleep() -> None:

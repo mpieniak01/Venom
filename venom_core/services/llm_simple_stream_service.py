@@ -21,6 +21,25 @@ class RuntimeLike(Protocol):
     provider: str
 
 
+@dataclass(frozen=True)
+class StreamTransportConfig:
+    open_stream_response_fn: Callable[..., Any]
+    iter_stream_packets_fn: Callable[[Any], Any]
+    provider_name: str
+    completions_url: str
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class StreamRetryConfig:
+    http_status_error_type: type[Exception]
+    max_attempts: int
+    is_retryable_status_fn: Callable[[int | None], bool]
+    runtime_provider: str
+    retry_backoff: float
+    sleep_fn: Callable[[float], Awaitable[None]]
+
+
 def reset_stream_attempt_state(state: SimpleStreamState) -> None:
     state.retry_requested = False
     state.failed = False
@@ -90,41 +109,32 @@ def update_stream_state_from_packet(
 
 async def stream_single_attempt(
     *,
-    open_stream_response_fn: Callable[..., Any],
-    iter_stream_packets_fn: Callable[[Any], Any],
-    completions_url: str,
-    payload: dict[str, Any],
-    provider_name: str,
+    transport: StreamTransportConfig,
+    retry: StreamRetryConfig,
     state: SimpleStreamState,
-    http_status_error_type: type[Exception],
     attempt: int,
-    max_attempts: int,
-    is_retryable_status_fn: Callable[[int | None], bool],
-    runtime_provider: str,
-    retry_backoff: float,
-    sleep_fn: Callable[[float], Awaitable[None]],
     handle_packet_fn: Callable[[dict[str, Any]], list[str]],
     emit_http_error_fn: Callable[[Exception], Awaitable[str]],
 ) -> AsyncIterator[str]:
     try:
-        async with open_stream_response_fn(
-            provider_name=provider_name,
-            completions_url=completions_url,
-            payload=payload,
+        async with transport.open_stream_response_fn(
+            provider_name=transport.provider_name,
+            completions_url=transport.completions_url,
+            payload=transport.payload,
         ) as resp:
-            async for packet in iter_stream_packets_fn(resp):
+            async for packet in transport.iter_stream_packets_fn(resp):
                 for event in handle_packet_fn(packet):
                     yield event
-    except http_status_error_type as exc:
+    except retry.http_status_error_type as exc:
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
         if (
             state.chunk_count == 0
-            and attempt < max_attempts
-            and is_retryable_status_fn(status_code)
-            and runtime_provider == "ollama"
+            and attempt < retry.max_attempts
+            and retry.is_retryable_status_fn(status_code)
+            and retry.runtime_provider == "ollama"
         ):
             state.retry_requested = True
-            await sleep_fn(retry_backoff * attempt)
+            await retry.sleep_fn(retry.retry_backoff * attempt)
             return
         state.failed = True
         yield await emit_http_error_fn(exc)

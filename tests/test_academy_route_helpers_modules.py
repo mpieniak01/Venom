@@ -9,7 +9,15 @@ from unittest.mock import patch
 
 import pytest
 
-from venom_core.api.routes import academy_conversion, academy_storage
+from venom_core.api.routes import (
+    academy_conversion,
+    academy_route_handlers,
+    academy_storage,
+)
+
+
+def test_academy_route_handlers_compatibility_shim_exports_handlers() -> None:
+    assert hasattr(academy_route_handlers, "curate_dataset_handler")
 
 
 @patch("venom_core.config.SETTINGS")

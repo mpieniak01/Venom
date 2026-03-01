@@ -460,3 +460,110 @@ async def test_operations_paths(monkeypatch):
     assert operations.get_operation_status(registry, "x") is op_remove
     assert operations.list_operations(registry, limit=1)[0] is op_remove
     assert operations.get_model_capabilities(registry, "missing") is None
+
+
+@pytest.mark.asyncio
+async def test_catalog_cache_stale_and_ollama_variants():
+    registry = SimpleNamespace(
+        _external_cache={
+            "ollama:catalog:2": {
+                "timestamp": 0.0,
+                "data": [{"model_name": "cached"}],
+            }
+        },
+        _external_cache_ttl_seconds=1,
+        hf_client=SimpleNamespace(list_models=AsyncMock(return_value=[])),
+        ollama_catalog_client=SimpleNamespace(
+            list_tags=AsyncMock(side_effect=RuntimeError("down")),
+            search_models=AsyncMock(return_value=[]),
+        ),
+    )
+    with patch("venom_core.core.model_registry_catalog.time.time", return_value=10.0):
+        stale = await catalog.list_catalog_models(registry, ModelProvider.OLLAMA, 2)
+    assert stale["stale"] is True
+    assert stale["models"][0]["model_name"] == "cached"
+
+    registry.ollama_catalog_client.list_tags = AsyncMock(
+        return_value={
+            "models": [
+                {"name": "", "details": {}, "size": None},
+                {"name": "ok", "details": {"family": "fam"}, "size": "unknown"},
+            ]
+        }
+    )
+    fresh = await catalog._fetch_ollama_models(registry, limit=5)
+    assert len(fresh) == 1 and fresh[0]["size_gb"] is None
+
+
+def test_manifest_load_error_and_defaults(tmp_path: Path):
+    registry = SimpleNamespace(manifest_path=tmp_path / "manifest.json", manifest={})
+    registry.manifest_path.write_text(
+        json.dumps(
+            {
+                "models": [
+                    {
+                        "name": "m2",
+                        "provider": "huggingface",
+                        "capabilities": {},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest.load_manifest(registry)
+    assert registry.manifest["m2"].capabilities.max_context_length == 4096
+    assert registry.manifest["m2"].runtime == "vllm"
+
+    with patch("builtins.open", side_effect=OSError("broken")):
+        manifest.load_manifest(registry)
+
+
+@pytest.mark.asyncio
+async def test_operations_error_paths_extra():
+    lock = AsyncMock()
+    lock.__aenter__.return_value = None
+    lock.__aexit__.return_value = None
+
+    registry = SimpleNamespace(
+        providers={
+            ModelProvider.OLLAMA: SimpleNamespace(
+                install_model=AsyncMock(side_effect=RuntimeError("x")),
+                remove_model=AsyncMock(side_effect=RuntimeError("y")),
+            )
+        },
+        operations={},
+        manifest={},
+        _runtime_locks={"ollama": lock},
+        _background_tasks=set(),
+        _save_manifest=Mock(),
+    )
+    op = ModelOperation(
+        operation_id="1",
+        model_name="m",
+        operation_type="install",
+        status=OperationStatus.PENDING,
+    )
+    await operations._install_model_task(registry, op, ModelProvider.OLLAMA, "ollama")
+    assert op.status == OperationStatus.FAILED
+    assert "x" in (op.error or "")
+
+    with pytest.raises(ValueError):
+        await operations._install_model_task(
+            registry, op, ModelProvider.OLLAMA, "unknown"
+        )
+
+    registry.manifest["m"] = ModelMetadata(
+        name="m",
+        provider=ModelProvider.OLLAMA,
+        display_name="m",
+        runtime="ollama",
+    )
+    op2 = ModelOperation(
+        operation_id="2",
+        model_name="m",
+        operation_type="remove",
+        status=OperationStatus.PENDING,
+    )
+    await operations._remove_model_task(registry, op2, ModelProvider.OLLAMA)
+    assert op2.status == OperationStatus.FAILED

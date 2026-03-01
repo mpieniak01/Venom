@@ -20,6 +20,19 @@
   - `QUEUE_NAMESPACE=preprod`
   - `STORAGE_PREFIX=preprod`
 - Operacje destrukcyjne są blokowane, gdy `ALLOW_DATA_MUTATION=0`.
+- Moduły optional:
+  - `API_OPTIONAL_MODULES` tylko w formacie `manifest:/.../module.json`,
+  - manifest musi zawierać `backend.data_policy`,
+  - endpointy mutujące modułu muszą respektować globalny guard mutacji.
+
+## Matrix zapisów modułów optional
+- Root danych modułu: `data/modules/<storage_prefix_or_dev>/<module_id>/`.
+- Przykładowe pliki stanu modułu:
+  - `runtime-state.json`
+  - `candidates-cache.json`
+  - `accounts-state.json`
+  - `monitoring-state.json`
+- Niedozwolone: globalne ścieżki bez namespace (np. `/tmp/<module>/*`).
 
 ## Smoke read-only
 - Komenda:

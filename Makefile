@@ -51,7 +51,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
 		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke \
-		modules-status modules-pull modules-branches modules-exec architecture-drift-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
+		modules-status modules-pull modules-branches modules-exec architecture-drift-check optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
 
 lint:
 	pre-commit run --all-files
@@ -109,7 +109,7 @@ test-smoke:
 
 test-preprod-readonly-smoke:
 	$(PREPROD_ENV_READONLY) \
-		$(PYTEST_BIN) -q tests/test_preprod_readonly_smoke.py -m smoke
+		$(PYTEST_BIN) -q tests/test_preprod_readonly_smoke.py tests/test_preprod_optional_modules_smoke.py -m smoke
 
 test-perf:
 	pytest -m performance
@@ -287,6 +287,9 @@ architecture-drift-check:
 	@$(PYTHON_BIN) scripts/check_architecture_contracts.py \
 		--contracts config/architecture/contracts.yaml \
 		--source-root venom_core
+
+optional-modules-contracts-check:
+	@$(PYTHON_BIN) scripts/check_optional_modules_contracts.py --repo-root .
 
 test-lane-contracts-check:
 	@$(PYTHON_BIN) scripts/check_test_lane_contracts.py \

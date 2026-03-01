@@ -127,10 +127,16 @@ export function ServicesPanel() {
     }
   }, [t]);
 
+  const runAsyncSafely = useCallback((task: () => Promise<unknown>, label: string) => {
+    task().catch((error) => {
+      console.error(`${label}:`, error);
+    });
+  }, []);
+
   useEffect(() => {
-    void fetchStatus();
-    void fetchHistory();
-    void fetchStorageSnapshot();
+    runAsyncSafely(fetchStatus, "Failed to fetch service status");
+    runAsyncSafely(fetchHistory, "Failed to fetch service history");
+    runAsyncSafely(fetchStorageSnapshot, "Failed to fetch storage snapshot");
 
     const ws = new VenomWebSocket("/ws/events", (payload: unknown) => {
       const event = payload as ServiceEvent;
@@ -145,12 +151,14 @@ export function ServicesPanel() {
     });
 
     ws.connect();
-    const interval = setInterval(() => void fetchStatus(), 10000);
+    const interval = setInterval(() => {
+      runAsyncSafely(fetchStatus, "Failed to refresh service status");
+    }, 10000);
     return () => {
       clearInterval(interval);
       ws.disconnect();
     };
-  }, [fetchStatus, fetchHistory, fetchStorageSnapshot]);
+  }, [fetchStatus, fetchHistory, fetchStorageSnapshot, runAsyncSafely]);
 
   const executeAction = async (service: string, action: string) => {
     const actionKey = `${service}-${action}`;

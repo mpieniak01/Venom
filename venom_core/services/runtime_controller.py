@@ -667,9 +667,6 @@ class RuntimeController:
 
     def _start_ollama(self) -> Dict[str, Any]:
         """Uruchamia Ollama."""
-        # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
-        # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
-        # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
         return start_ollama_impl(
             command=SETTINGS.OLLAMA_START_COMMAND,
             get_service_status_fn=self.get_service_status,
@@ -684,9 +681,6 @@ class RuntimeController:
 
     def _stop_ollama(self) -> Dict[str, Any]:
         """Zatrzymuje Ollama."""
-        # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
-        # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
-        # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
         return stop_ollama_impl(
             command=SETTINGS.OLLAMA_STOP_COMMAND,
             subprocess_module=subprocess,
@@ -694,9 +688,6 @@ class RuntimeController:
 
     def _start_vllm(self) -> Dict[str, Any]:
         """Uruchamia vLLM."""
-        # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
-        # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
-        # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
         return start_vllm_impl(
             command=SETTINGS.VLLM_START_COMMAND,
             get_service_status_fn=self.get_service_status,
@@ -708,9 +699,6 @@ class RuntimeController:
 
     def _stop_vllm(self) -> Dict[str, Any]:
         """Zatrzymuje vLLM."""
-        # SECURITY NOTE: shell=True używany z environment variables z aktywnego pliku env
-        # Tylko administrator może edytować aktywny plik env bezpośrednio (nie przez UI)
-        # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
         return stop_vllm_impl(
             command=SETTINGS.VLLM_STOP_COMMAND,
             subprocess_module=subprocess,

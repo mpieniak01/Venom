@@ -12,6 +12,7 @@ export function useCockpitModelActivation(input: {
   switchModelFn: (model: string) => Promise<void>;
   refreshActiveServer: () => void;
   pushToast: (message: string, type?: "success" | "error" | "warning") => void;
+  t: (key: string, replacements?: Record<string, string | number>) => string;
 }) {
   const {
     selectedLlmServer,
@@ -23,6 +24,7 @@ export function useCockpitModelActivation(input: {
     switchModelFn,
     refreshActiveServer,
     pushToast,
+    t,
   } = input;
 
   const handleActivateModel = async (model: string) => {
@@ -35,7 +37,7 @@ export function useCockpitModelActivation(input: {
     }
 
     if (!provider) {
-      pushToast("Nie można ustalić serwera dla wybranego modelu.", "warning");
+      pushToast(t("cockpit.modelActivation.providerMissing"), "warning");
       return;
     }
 
@@ -49,10 +51,12 @@ export function useCockpitModelActivation(input: {
         await switchModelFn(model);
       }
 
-      pushToast(`Aktywowano model: ${model}`, "success");
+      pushToast(t("cockpit.modelActivation.activated", { model }), "success");
       refreshActiveServer();
     } catch (err) {
-      pushToast(`Błąd aktywacji modelu: ${(err as Error).message}`, "error");
+      const message =
+        err instanceof Error ? err.message : t("cockpit.modelActivation.unknownError");
+      pushToast(t("cockpit.modelActivation.failed", { message }), "error");
     }
   };
 

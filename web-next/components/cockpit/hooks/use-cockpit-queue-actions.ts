@@ -9,6 +9,7 @@ export function useCockpitQueueActions(input: {
   purgeQueueFn: () => Promise<void>;
   emergencyStopFn: () => Promise<{ cancelled: number; purged: number }>;
   toggleQueueFn: (resume: boolean) => Promise<void>;
+  t: (key: string, replacements?: Record<string, string | number>) => string;
 }) {
   const {
     queuePaused,
@@ -17,6 +18,7 @@ export function useCockpitQueueActions(input: {
     purgeQueueFn,
     emergencyStopFn,
     toggleQueueFn,
+    t,
   } = input;
 
   const [queueAction, setQueueAction] = useState<string | null>(null);
@@ -29,18 +31,21 @@ export function useCockpitQueueActions(input: {
     try {
       if (action === "purge") {
         await purgeQueueFn();
-        setQueueActionMessage("Kolejka została wyczyszczona.");
+        setQueueActionMessage(t("cockpit.queueActions.queuePurged"));
       } else {
         const res = await emergencyStopFn();
         setQueueActionMessage(
-          `Zatrzymano zadania: cancelled ${res.cancelled}, purged ${res.purged}.`
+          t("cockpit.queueActions.emergencyStopped", {
+            cancelled: res.cancelled,
+            purged: res.purged,
+          }),
         );
       }
       refreshQueue();
       refreshTasks();
     } catch (err) {
       setQueueActionMessage(
-        err instanceof Error ? err.message : "Błąd podczas operacji na kolejce."
+        err instanceof Error ? err.message : t("cockpit.queueActions.operationError"),
       );
     } finally {
       setQueueAction(null);
@@ -54,11 +59,15 @@ export function useCockpitQueueActions(input: {
     setQueueActionMessage(null);
     try {
       await toggleQueueFn(queuePaused);
-      setQueueActionMessage(queuePaused ? "Wznowiono kolejkę." : "Wstrzymano kolejkę.");
+      setQueueActionMessage(
+        queuePaused
+          ? t("cockpit.queueActions.queueResumed")
+          : t("cockpit.queueActions.queuePaused"),
+      );
       refreshQueue();
     } catch (err) {
       setQueueActionMessage(
-        err instanceof Error ? err.message : "Błąd sterowania kolejką."
+        err instanceof Error ? err.message : t("cockpit.queueActions.toggleError"),
       );
     } finally {
       setQueueAction(null);

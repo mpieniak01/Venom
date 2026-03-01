@@ -380,7 +380,11 @@ class ModelManagerDiscoveryMixin:
             if now - self._last_ollama_warning > 60:
                 logger.warning("Ollama nie jest dostępne: %s", exc)
                 self._last_ollama_warning = now
-        except Exception as exc:
-            logger.error("Błąd podczas pobierania modeli z Ollama: %s", exc)
+        except httpx.HTTPError as exc:
+            logger.error("Błąd HTTP podczas pobierania modeli z Ollama: %s", exc)
+        except ValueError as exc:
+            logger.error(
+                "Błędna odpowiedź JSON podczas pobierania modeli z Ollama: %s", exc
+            )
 
         return list(models.values())

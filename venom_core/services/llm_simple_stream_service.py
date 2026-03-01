@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
 
 
 @dataclass
@@ -15,6 +15,10 @@ class SimpleStreamState:
     retry_requested: bool = False
     failed: bool = False
     completed: bool = False
+
+
+class RuntimeLike(Protocol):
+    provider: str
 
 
 def reset_stream_attempt_state(state: SimpleStreamState) -> None:
@@ -49,7 +53,7 @@ def resolve_post_attempt_action(
 def update_stream_state_from_packet(
     *,
     packet: dict[str, Any],
-    runtime: Any,
+    runtime: RuntimeLike,
     state: SimpleStreamState,
     ollama_telemetry: dict[str, int],
     extract_ollama_telemetry_fn: Callable[[dict[str, Any]], dict[str, int]],
@@ -101,8 +105,7 @@ async def stream_single_attempt(
     sleep_fn: Callable[[float], Awaitable[None]],
     handle_packet_fn: Callable[[dict[str, Any]], list[str]],
     emit_http_error_fn: Callable[[Exception], Awaitable[str]],
-) -> list[str]:
-    emitted: list[str] = []
+) -> AsyncIterator[str]:
     try:
         async with open_stream_response_fn(
             provider_name=provider_name,
@@ -110,7 +113,8 @@ async def stream_single_attempt(
             payload=payload,
         ) as resp:
             async for packet in iter_stream_packets_fn(resp):
-                emitted.extend(handle_packet_fn(packet))
+                for event in handle_packet_fn(packet):
+                    yield event
     except http_status_error_type as exc:
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
         if (
@@ -121,10 +125,9 @@ async def stream_single_attempt(
         ):
             state.retry_requested = True
             await sleep_fn(retry_backoff * attempt)
-            return emitted
+            return
         state.failed = True
-        emitted.append(await emit_http_error_fn(exc))
-        return emitted
+        yield await emit_http_error_fn(exc)
+        return
 
     state.completed = True
-    return emitted

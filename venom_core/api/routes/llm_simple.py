@@ -553,7 +553,7 @@ async def _stream_single_attempt(
     ollama_telemetry: dict[str, int],
 ) -> AsyncIterator[str]:
     provider_name = str(getattr(runtime, "provider", "") or "llm_runtime")
-    emitted = await _stream_single_attempt_impl(
+    async for event in _stream_single_attempt_impl(
         open_stream_response_fn=llm_simple_transport.open_stream_response,
         iter_stream_packets_fn=_iter_stream_packets,
         completions_url=completions_url,
@@ -582,11 +582,10 @@ async def _stream_single_attempt(
             model_name=model_name,
             stream_start=stream_start,
         ),
-    )
+    ):
+        yield event
     if state.retry_requested:
         ollama_telemetry.clear()
-    for event in emitted:
-        yield event
 
 
 def _reset_stream_attempt_state(state: _SimpleStreamState) -> None:

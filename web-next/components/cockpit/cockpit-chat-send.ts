@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { parseSlashCommand } from "@/lib/slash-commands";
+import { parseInputCommand } from "@/lib/slash-commands";
 
 import {
   ChatSendParams,
@@ -13,7 +13,7 @@ import {
 } from "./chat-send-helpers";
 
 function resolveSession(
-  parsed: ReturnType<typeof parseSlashCommand>,
+  parsed: ReturnType<typeof parseInputCommand>,
   sessionId: string | null,
   resetSession: () => string | null,
 ): string | null {
@@ -33,7 +33,7 @@ function isCloudRuntimeServer(server: string): server is "openai" | "google" {
 
 function shouldUseSimpleMode(
   chatMode: ChatSendParams["chatMode"],
-  parsed: ReturnType<typeof parseSlashCommand>,
+  parsed: ReturnType<typeof parseInputCommand>,
 ): boolean {
   return (
     chatMode === "direct" &&
@@ -84,7 +84,7 @@ export function useChatSend(params: ChatSendParams) {
   const t = useTranslation();
 
   return useCallback(async (payload: string) => {
-    const parsed = parseSlashCommand(payload);
+    const parsed = parseInputCommand(payload);
     const trimmed = parsed.cleaned.trim();
     if (!trimmed) {
       setMessage(t("cockpit.chatMessages.emptyPrompt"));

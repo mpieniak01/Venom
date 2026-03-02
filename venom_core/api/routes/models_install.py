@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
 
@@ -42,6 +43,14 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["models"])
 MODEL_MANAGER_UNAVAILABLE_DETAIL = "ModelManager nie jest dostępny"
 GENAI_CONFIG_FILENAME = "genai_config.json"
+
+
+@dataclass(frozen=True)
+class InstallPlan:
+    requested_alias: str | None
+    resolution_reason: str
+    resolved_model_id: str
+    install_candidates: list[str]
 
 
 def _parse_duration_to_seconds(raw: str | None, default_seconds: float) -> float:
@@ -362,6 +371,131 @@ def _resolve_provider_bucket(models: List[dict]) -> Dict[str, List[dict]]:
     return provider_buckets
 
 
+def _feedback_loop_already_installed_response(resolved) -> dict:
+    resolved_model_id = str(resolved.resolved_model_id or "").strip()
+    return {
+        "success": True,
+        "already_installed": True,
+        "model_name": resolved_model_id,
+        "requested_model_alias": resolved.requested_model_alias,
+        "resolved_model_id": resolved_model_id,
+        "resolution_reason": resolved.resolution_reason,
+        "feedback_loop_ready": True,
+        "feedback_loop_tier": classify_feedback_loop_tier(resolved_model_id),
+        "message": f"Model feedback-loop jest już zainstalowany: {resolved_model_id}",
+    }
+
+
+def _standard_already_installed_response(requested_name: str) -> dict:
+    tier = classify_feedback_loop_tier(requested_name)
+    return {
+        "success": True,
+        "already_installed": True,
+        "model_name": requested_name,
+        "requested_model_alias": None,
+        "resolved_model_id": requested_name,
+        "resolution_reason": "exact",
+        "feedback_loop_ready": tier in {"primary", "fallback"},
+        "feedback_loop_tier": tier,
+        "message": f"Model {requested_name} jest już zainstalowany",
+    }
+
+
+def _feedback_loop_fallback_candidates(policy) -> list[str]:
+    candidates = list(policy.fallbacks)
+    if candidates:
+        return candidates
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Brak dostępnych modeli fallback dla feedback-loop przy "
+            "aktywnym ograniczeniu zasobów."
+        ),
+    )
+
+
+async def _resolve_install_plan(
+    *,
+    requested_name: str,
+    installed_names: set[str],
+    model_manager,
+) -> tuple[dict | None, InstallPlan]:
+    if is_feedback_loop_alias(requested_name):
+        policy = feedback_loop_policy()
+        primary_allowed = await _feedback_loop_primary_allowed(model_manager)
+        resolved = resolve_feedback_loop_model(
+            requested_model=requested_name,
+            available_models=installed_names,
+            prefer_feedback_loop_default=False,
+            exact_only=False,
+            primary_allowed=primary_allowed,
+        )
+        if resolved.resolved_model_id and resolved.resolved_model_id in installed_names:
+            logger.info(
+                "Feedback-loop install skipped (already installed): alias=%s resolved=%s reason=%s",
+                resolved.requested_model_alias,
+                resolved.resolved_model_id,
+                resolved.resolution_reason,
+            )
+            return _feedback_loop_already_installed_response(resolved), InstallPlan(
+                requested_alias=resolved.requested_model_alias,
+                resolution_reason=resolved.resolution_reason,
+                resolved_model_id=str(resolved.resolved_model_id),
+                install_candidates=[str(resolved.resolved_model_id)],
+            )
+
+        if primary_allowed:
+            candidates = list(policy.candidates)
+            resolved_model_id = policy.primary
+            resolution_reason = "exact"
+        else:
+            candidates = _feedback_loop_fallback_candidates(policy)
+            resolved_model_id = candidates[0]
+            resolution_reason = "resource_guard"
+        logger.info(
+            "Feedback-loop install plan: alias=%s candidates=%s reason=%s",
+            FEEDBACK_LOOP_REQUESTED_ALIAS,
+            candidates,
+            resolution_reason,
+        )
+        return None, InstallPlan(
+            requested_alias=FEEDBACK_LOOP_REQUESTED_ALIAS,
+            resolution_reason=resolution_reason,
+            resolved_model_id=resolved_model_id,
+            install_candidates=candidates,
+        )
+
+    if requested_name in installed_names:
+        return _standard_already_installed_response(requested_name), InstallPlan(
+            requested_alias=None,
+            resolution_reason="exact",
+            resolved_model_id=requested_name,
+            install_candidates=[requested_name],
+        )
+
+    return None, InstallPlan(
+        requested_alias=None,
+        resolution_reason="exact",
+        resolved_model_id=requested_name,
+        install_candidates=[requested_name],
+    )
+
+
+def _install_started_response(*, plan: InstallPlan) -> dict:
+    tier = classify_feedback_loop_tier(plan.resolved_model_id)
+    return {
+        "success": True,
+        "message": f"Pobieranie modelu {plan.resolved_model_id} rozpoczęte w tle",
+        "model_name": plan.resolved_model_id,
+        "requested_model_alias": plan.requested_alias,
+        "resolved_model_id": plan.resolved_model_id,
+        "resolution_reason": plan.resolution_reason,
+        "feedback_loop_ready": tier in {"primary", "fallback"},
+        "feedback_loop_tier": tier,
+        "install_candidates": plan.install_candidates,
+    }
+
+
 @router.get(
     "/models",
     responses={
@@ -453,87 +587,13 @@ async def install_model(
     try:
         requested_name = str(request.name or "").strip()
         installed_names = await _installed_model_names(model_manager)
-        requested_alias: str | None = None
-        resolution_reason = "exact"
-        resolved_model_id = requested_name
-        install_candidates: list[str] = []
-
-        if is_feedback_loop_alias(requested_name):
-            requested_alias = FEEDBACK_LOOP_REQUESTED_ALIAS
-            policy = feedback_loop_policy()
-            primary_allowed = await _feedback_loop_primary_allowed(model_manager)
-            resolved = resolve_feedback_loop_model(
-                requested_model=requested_name,
-                available_models=installed_names,
-                prefer_feedback_loop_default=False,
-                exact_only=False,
-                primary_allowed=primary_allowed,
-            )
-            if (
-                resolved.resolved_model_id
-                and resolved.resolved_model_id in installed_names
-            ):
-                logger.info(
-                    "Feedback-loop install skipped (already installed): alias=%s resolved=%s reason=%s",
-                    resolved.requested_model_alias,
-                    resolved.resolved_model_id,
-                    resolved.resolution_reason,
-                )
-                return {
-                    "success": True,
-                    "already_installed": True,
-                    "model_name": resolved.resolved_model_id,
-                    "requested_model_alias": resolved.requested_model_alias,
-                    "resolved_model_id": resolved.resolved_model_id,
-                    "resolution_reason": resolved.resolution_reason,
-                    "feedback_loop_ready": True,
-                    "feedback_loop_tier": classify_feedback_loop_tier(
-                        resolved.resolved_model_id
-                    ),
-                    "message": (
-                        "Model feedback-loop jest już zainstalowany: "
-                        f"{resolved.resolved_model_id}"
-                    ),
-                }
-
-            if primary_allowed:
-                install_candidates = list(policy.candidates)
-                resolved_model_id = policy.primary
-                resolution_reason = "exact"
-            else:
-                install_candidates = list(policy.fallbacks)
-                if not install_candidates:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            "Brak dostępnych modeli fallback dla feedback-loop przy "
-                            "aktywnym ograniczeniu zasobów."
-                        ),
-                    )
-                resolved_model_id = install_candidates[0]
-                resolution_reason = "resource_guard"
-            logger.info(
-                "Feedback-loop install plan: alias=%s candidates=%s reason=%s",
-                requested_alias,
-                install_candidates,
-                resolution_reason,
-            )
-        else:
-            if requested_name in installed_names:
-                return {
-                    "success": True,
-                    "already_installed": True,
-                    "model_name": requested_name,
-                    "requested_model_alias": None,
-                    "resolved_model_id": requested_name,
-                    "resolution_reason": "exact",
-                    "feedback_loop_ready": classify_feedback_loop_tier(requested_name)
-                    in {"primary", "fallback"},
-                    "feedback_loop_tier": classify_feedback_loop_tier(requested_name),
-                    "message": f"Model {requested_name} jest już zainstalowany",
-                }
-            install_candidates = [requested_name]
-            resolved_model_id = requested_name
+        immediate_response, plan = await _resolve_install_plan(
+            requested_name=requested_name,
+            installed_names=installed_names,
+            model_manager=model_manager,
+        )
+        if immediate_response is not None:
+            return immediate_response
 
         timeout_seconds = _parse_duration_to_seconds(
             getattr(SETTINGS, "OLLAMA_LOAD_TIMEOUT", "10m"),
@@ -548,10 +608,10 @@ async def install_model(
             logger.info(
                 "Install attempt started: requested=%s alias=%s candidates=%s",
                 requested_name,
-                requested_alias,
-                install_candidates,
+                plan.requested_alias,
+                plan.install_candidates,
             )
-            for candidate in install_candidates:
+            for candidate in plan.install_candidates:
                 installed_now = await _installed_model_names(model_manager)
                 if candidate in installed_now:
                     logger.info(
@@ -575,23 +635,12 @@ async def install_model(
             logger.error(
                 "Install result failure: requested=%s candidates=%s",
                 requested_name,
-                install_candidates,
+                plan.install_candidates,
             )
 
         background_tasks.add_task(pull_task)
 
-        return {
-            "success": True,
-            "message": f"Pobieranie modelu {resolved_model_id} rozpoczęte w tle",
-            "model_name": resolved_model_id,
-            "requested_model_alias": requested_alias,
-            "resolved_model_id": resolved_model_id,
-            "resolution_reason": resolution_reason,
-            "feedback_loop_ready": classify_feedback_loop_tier(resolved_model_id)
-            in {"primary", "fallback"},
-            "feedback_loop_tier": classify_feedback_loop_tier(resolved_model_id),
-            "install_candidates": install_candidates,
-        }
+        return _install_started_response(plan=plan)
     except HTTPException:
         raise
     except Exception as exc:

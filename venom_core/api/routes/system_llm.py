@@ -1212,6 +1212,195 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     return _activate_cloud_runtime(provider_raw, validated_model)
 
 
+def _validate_feedback_alias_request(*, server_name: str, requested_alias: str) -> None:
+    if not requested_alias:
+        return
+    if not is_feedback_loop_alias(requested_alias):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Nieobsługiwany model_alias. Dozwolony alias: "
+                f"{FEEDBACK_LOOP_REQUESTED_ALIAS}."
+            ),
+        )
+    if server_name != "ollama":
+        raise HTTPException(
+            status_code=400,
+            detail="Alias feedback-loop jest dostępny tylko dla serwera 'ollama'.",
+        )
+
+
+def _activate_onnx_server_switch(*, stop_results: dict[str, Any]) -> dict[str, Any]:
+    onnx_client = OnnxLlmClient()
+    try:
+        onnx_client.ensure_ready()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    config = config_manager.get_config(mask_secrets=False)
+    selected_model = config.get("LAST_MODEL_ONNX") or onnx_client.config.model_path
+    config_manager.update_config(
+        {
+            "LLM_SERVICE_TYPE": "onnx",
+            "ACTIVE_LLM_SERVER": "onnx",
+            "LLM_MODEL_NAME": selected_model,
+            "LAST_MODEL_ONNX": selected_model,
+        }
+    )
+    try:
+        SETTINGS.LLM_SERVICE_TYPE = "onnx"
+        SETTINGS.ACTIVE_LLM_SERVER = "onnx"
+        SETTINGS.LLM_MODEL_NAME = selected_model
+    except Exception:
+        logger.warning("Nie udało się zaktualizować SETTINGS dla ONNX runtime.")
+    runtime = get_active_llm_runtime()
+    feedback_resolution = _feedback_loop_resolution_defaults(runtime.model_name)
+    return {
+        "status": "success",
+        "active_server": runtime.provider,
+        "active_model": runtime.model_name,
+        "config_hash": runtime.config_hash,
+        "runtime_id": runtime.runtime_id,
+        "requested_model_alias": feedback_resolution["requested_model_alias"],
+        "resolved_model_id": feedback_resolution["resolved_model_id"],
+        "resolution_reason": feedback_resolution["resolution_reason"],
+        "start_result": {"ok": True, "mode": "in_process"},
+        "stop_results": stop_results,
+    }
+
+
+def _resolve_selected_model_for_switch(
+    *,
+    request: ActiveLlmServerRequest,
+    server_name: str,
+    config: dict[str, Any],
+    models: list[dict[str, Any]],
+) -> tuple[str, str]:
+    try:
+        selected_model, last_model_key, _ = _select_model_for_server(
+            server_name=server_name,
+            config=config,
+            models=models,
+        )
+        return selected_model, last_model_key
+    except HTTPException:
+        explicit_model_request = bool(
+            str(request.model or "").strip() or str(request.model_alias or "").strip()
+        )
+        if server_name != "ollama" or not explicit_model_request:
+            raise
+        available_ollama = _available_models_for_server(
+            models=models, server_name=server_name
+        )
+        if not available_ollama:
+            raise
+        return available_ollama[0], "LAST_MODEL_OLLAMA"
+
+
+def _feedback_alias_resolution_payload(resolution) -> dict[str, Any]:
+    return {
+        "requested_model_alias": resolution.requested_model_alias,
+        "resolved_model_id": resolution.resolved_model_id,
+        "resolution_reason": resolution.resolution_reason,
+    }
+
+
+async def _resolve_ollama_selected_model(
+    *,
+    request: ActiveLlmServerRequest,
+    requested_alias: str,
+    model_manager: Any,
+    models: list[dict[str, Any]],
+    selected_model: str,
+) -> tuple[str, dict[str, Any]]:
+    available_models = set(
+        _available_models_for_server(models=models, server_name="ollama")
+    )
+    requested_model = str(request.model or "").strip()
+    explicit_alias_request = bool(requested_alias) or is_feedback_loop_alias(
+        requested_model
+    )
+
+    if requested_model and not is_feedback_loop_alias(requested_model):
+        selected_model = (
+            _validate_requested_model_available(
+                requested_model=requested_model,
+                available_models=available_models,
+                server_name="ollama",
+            )
+            or selected_model
+        )
+
+    if explicit_alias_request:
+        guard = await _evaluate_feedback_loop_resource_guard(
+            model_manager=model_manager,
+            model_name=feedback_loop_policy().primary,
+        )
+        alias_resolution = resolve_feedback_loop_model(
+            requested_model=requested_alias or requested_model,
+            available_models=available_models,
+            prefer_feedback_loop_default=False,
+            exact_only=bool(request.exact_only),
+            primary_allowed=guard.allowed,
+        )
+        if not alias_resolution.resolved_model_id:
+            status_code = 409 if request.exact_only else 400
+            recommendation = f" {guard.recommendation}" if guard.recommendation else ""
+            raise HTTPException(
+                status_code=status_code,
+                detail=(
+                    "Nie udało się rozwiązać aliasu "
+                    f"'{FEEDBACK_LOOP_REQUESTED_ALIAS}' do dostępnego modelu."
+                    f"{recommendation}"
+                ),
+            )
+        logger.info(
+            "Feedback-loop alias resolved: requested=%s resolved=%s reason=%s",
+            alias_resolution.requested_model_alias,
+            alias_resolution.resolved_model_id,
+            alias_resolution.resolution_reason,
+        )
+        return alias_resolution.resolved_model_id, _feedback_alias_resolution_payload(
+            alias_resolution
+        )
+
+    selected_guard = await _evaluate_feedback_loop_resource_guard(
+        model_manager=model_manager,
+        model_name=selected_model,
+    )
+    if (
+        selected_guard.allowed
+        or classify_feedback_loop_tier(selected_model) != "primary"
+    ):
+        return selected_model, _feedback_loop_resolution_defaults(selected_model)
+    if request.exact_only:
+        raise HTTPException(
+            status_code=409,
+            detail=selected_guard.recommendation
+            or "Model 7B zablokowany przez guard zasobowy.",
+        )
+    fallback_resolution = resolve_feedback_loop_model(
+        requested_model=FEEDBACK_LOOP_REQUESTED_ALIAS,
+        available_models=available_models,
+        prefer_feedback_loop_default=True,
+        exact_only=False,
+        primary_allowed=False,
+    )
+    if not fallback_resolution.resolved_model_id:
+        raise HTTPException(
+            status_code=400,
+            detail=selected_guard.recommendation
+            or "Model 7B zablokowany przez guard zasobowy.",
+        )
+    logger.warning(
+        "Feedback-loop resource guard fallback: primary=%s fallback=%s",
+        selected_model,
+        fallback_resolution.resolved_model_id,
+    )
+    return fallback_resolution.resolved_model_id, _feedback_alias_resolution_payload(
+        fallback_resolution
+    )
+
+
 @router.post(
     "/system/llm-servers/active",
     responses=LLM_SERVER_ACTIVATE_RESPONSES,
@@ -1223,19 +1412,9 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     _ensure_server_allowed(request.server_name)
     server_name = request.server_name
     requested_alias = str(request.model_alias or "").strip()
-    if requested_alias and not is_feedback_loop_alias(requested_alias):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Nieobsługiwany model_alias. Dozwolony alias: "
-                f"{FEEDBACK_LOOP_REQUESTED_ALIAS}."
-            ),
-        )
-    if requested_alias and server_name != "ollama":
-        raise HTTPException(
-            status_code=400,
-            detail="Alias feedback-loop jest dostępny tylko dla serwera 'ollama'.",
-        )
+    _validate_feedback_alias_request(
+        server_name=server_name, requested_alias=requested_alias
+    )
     llm_controller = _get_llm_controller_or_503()
     servers = llm_controller.list_servers()
     stop_results = await _stop_other_servers(llm_controller, servers, server_name)
@@ -1243,41 +1422,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     if server_name != "onnx":
         _release_onnx_runtime_caches()
     if server_name == "onnx":
-        onnx_client = OnnxLlmClient()
-        try:
-            onnx_client.ensure_ready()
-        except RuntimeError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        config = config_manager.get_config(mask_secrets=False)
-        selected_model = config.get("LAST_MODEL_ONNX") or onnx_client.config.model_path
-        config_manager.update_config(
-            {
-                "LLM_SERVICE_TYPE": "onnx",
-                "ACTIVE_LLM_SERVER": "onnx",
-                "LLM_MODEL_NAME": selected_model,
-                "LAST_MODEL_ONNX": selected_model,
-            }
-        )
-        try:
-            SETTINGS.LLM_SERVICE_TYPE = "onnx"
-            SETTINGS.ACTIVE_LLM_SERVER = "onnx"
-            SETTINGS.LLM_MODEL_NAME = selected_model
-        except Exception:
-            logger.warning("Nie udało się zaktualizować SETTINGS dla ONNX runtime.")
-        runtime = get_active_llm_runtime()
-        feedback_resolution = _feedback_loop_resolution_defaults(runtime.model_name)
-        return {
-            "status": "success",
-            "active_server": runtime.provider,
-            "active_model": runtime.model_name,
-            "config_hash": runtime.config_hash,
-            "runtime_id": runtime.runtime_id,
-            "requested_model_alias": feedback_resolution["requested_model_alias"],
-            "resolved_model_id": feedback_resolution["resolved_model_id"],
-            "resolution_reason": feedback_resolution["resolution_reason"],
-            "start_result": {"ok": True, "mode": "in_process"},
-            "stop_results": stop_results,
-        }
+        return _activate_onnx_server_switch(stop_results=stop_results)
 
     _, model_manager, request_tracer = _validate_switch_dependencies()
 
@@ -1308,124 +1453,22 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
 
     config = config_manager.get_config(mask_secrets=False)
     models = await model_manager.list_local_models()
-    try:
-        selected_model, last_model_key, _ = _select_model_for_server(
-            server_name=server_name,
-            config=config,
-            models=models,
-        )
-    except HTTPException:
-        explicit_model_request = bool(
-            str(request.model or "").strip() or str(request.model_alias or "").strip()
-        )
-        if server_name != "ollama" or not explicit_model_request:
-            raise
-        available_ollama = _available_models_for_server(
-            models=models, server_name=server_name
-        )
-        if not available_ollama:
-            raise
-        selected_model = available_ollama[0]
-        last_model_key = "LAST_MODEL_OLLAMA"
+    selected_model, last_model_key = _resolve_selected_model_for_switch(
+        request=request,
+        server_name=server_name,
+        config=config,
+        models=models,
+    )
     feedback_resolution = _feedback_loop_resolution_defaults(selected_model)
 
     if server_name == "ollama":
-        available_models = set(
-            _available_models_for_server(models=models, server_name="ollama")
+        selected_model, feedback_resolution = await _resolve_ollama_selected_model(
+            request=request,
+            requested_alias=requested_alias,
+            model_manager=model_manager,
+            models=models,
+            selected_model=selected_model,
         )
-        requested_model = str(request.model or "").strip()
-        explicit_alias_request = bool(requested_alias) or is_feedback_loop_alias(
-            requested_model
-        )
-
-        if requested_model and not is_feedback_loop_alias(requested_model):
-            selected_model = (
-                _validate_requested_model_available(
-                    requested_model=requested_model,
-                    available_models=available_models,
-                    server_name=server_name,
-                )
-                or selected_model
-            )
-
-        if explicit_alias_request:
-            guard = await _evaluate_feedback_loop_resource_guard(
-                model_manager=model_manager,
-                model_name=feedback_loop_policy().primary,
-            )
-            alias_resolution = resolve_feedback_loop_model(
-                requested_model=requested_alias or requested_model,
-                available_models=available_models,
-                prefer_feedback_loop_default=False,
-                exact_only=bool(request.exact_only),
-                primary_allowed=guard.allowed,
-            )
-            if not alias_resolution.resolved_model_id:
-                status_code = 409 if request.exact_only else 400
-                recommendation = (
-                    f" {guard.recommendation}" if guard.recommendation else ""
-                )
-                raise HTTPException(
-                    status_code=status_code,
-                    detail=(
-                        "Nie udało się rozwiązać aliasu "
-                        f"'{FEEDBACK_LOOP_REQUESTED_ALIAS}' do dostępnego modelu."
-                        f"{recommendation}"
-                    ),
-                )
-            selected_model = alias_resolution.resolved_model_id
-            feedback_resolution = {
-                "requested_model_alias": alias_resolution.requested_model_alias,
-                "resolved_model_id": alias_resolution.resolved_model_id,
-                "resolution_reason": alias_resolution.resolution_reason,
-            }
-            logger.info(
-                "Feedback-loop alias resolved: requested=%s resolved=%s reason=%s",
-                alias_resolution.requested_model_alias,
-                alias_resolution.resolved_model_id,
-                alias_resolution.resolution_reason,
-            )
-        else:
-            selected_guard = await _evaluate_feedback_loop_resource_guard(
-                model_manager=model_manager,
-                model_name=selected_model,
-            )
-            if (
-                not selected_guard.allowed
-                and classify_feedback_loop_tier(selected_model) == "primary"
-            ):
-                if request.exact_only:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=selected_guard.recommendation
-                        or "Model 7B zablokowany przez guard zasobowy.",
-                    )
-                fallback_resolution = resolve_feedback_loop_model(
-                    requested_model=FEEDBACK_LOOP_REQUESTED_ALIAS,
-                    available_models=available_models,
-                    prefer_feedback_loop_default=True,
-                    exact_only=False,
-                    primary_allowed=False,
-                )
-                if not fallback_resolution.resolved_model_id:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=selected_guard.recommendation
-                        or "Model 7B zablokowany przez guard zasobowy.",
-                    )
-                logger.warning(
-                    "Feedback-loop resource guard fallback: primary=%s fallback=%s",
-                    selected_model,
-                    fallback_resolution.resolved_model_id,
-                )
-                selected_model = fallback_resolution.resolved_model_id
-                feedback_resolution = {
-                    "requested_model_alias": fallback_resolution.requested_model_alias,
-                    "resolved_model_id": fallback_resolution.resolved_model_id,
-                    "resolution_reason": fallback_resolution.resolution_reason,
-                }
-            else:
-                feedback_resolution = _feedback_loop_resolution_defaults(selected_model)
 
     old_last_model = config.get(last_model_key) or ""
     updates = _build_model_updates(

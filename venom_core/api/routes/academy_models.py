@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set, TypeAlias
+from typing import Any, Dict, List, Literal, Optional, Set
 
 import anyio
 
@@ -23,8 +23,8 @@ PAID_CLOUD_PROVIDERS = {
 }
 PAID_MODEL_MARKERS = ("gpt-", "claude", "gemini")
 LOCAL_RUNTIME_PREFERENCE = ("vllm", "ollama", "onnx")
-ModelSourceType: TypeAlias = Literal["local", "cloud"]
-ModelCostTier: TypeAlias = Literal["free", "paid", "unknown"]
+type ModelSourceType = Literal["local", "cloud"]
+type ModelCostTier = Literal["free", "paid", "unknown"]
 
 
 def is_model_trainable(

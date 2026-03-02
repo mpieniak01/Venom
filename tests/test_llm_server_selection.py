@@ -566,3 +566,142 @@ async def test_set_active_llm_server_releases_onnx_caches_when_switching_to_olla
         assert releases == [True]
     finally:
         _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_set_active_llm_server_resolves_feedback_loop_alias_to_primary(
+    monkeypatch,
+):
+    from venom_core.services.feedback_loop_policy import FeedbackLoopGuardResult
+
+    config = {
+        "LAST_MODEL_OLLAMA": "phi3:mini",
+        "PREVIOUS_MODEL_OLLAMA": "",
+        "LLM_MODEL_NAME": "phi3:mini",
+    }
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+
+    controller = DummyController(
+        [
+            {
+                "name": "ollama",
+                "supports": {"start": True, "stop": True},
+                "endpoint": "",
+            }
+        ]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps,
+        "_model_manager",
+        DummyModelManager(
+            [
+                {"name": "qwen2.5-coder:7b", "provider": "ollama"},
+                {"name": "qwen2.5-coder:3b", "provider": "ollama"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(system_routes, "_installed_local_servers", lambda: {"ollama"})
+
+    async def _guard_ok(**_kwargs):
+        return FeedbackLoopGuardResult(True, None, None)
+
+    monkeypatch.setattr(
+        system_routes,
+        "_evaluate_feedback_loop_resource_guard",
+        _guard_ok,
+    )
+
+    original = _snapshot_settings()
+    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    try:
+        request = system_routes.ActiveLlmServerRequest(
+            server_name="ollama",
+            model_alias="OpenCodeInterpreter-Qwen2.5-7B",
+        )
+        response = await system_routes.set_active_llm_server(request)
+        assert response["active_model"] == "qwen2.5-coder:7b"
+        assert response["requested_model_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
+        assert response["resolved_model_id"] == "qwen2.5-coder:7b"
+        assert response["resolution_reason"] == "exact"
+    finally:
+        _restore_settings(original)
+
+
+@pytest.mark.asyncio
+async def test_set_active_llm_server_feedback_loop_alias_fallback_on_resource_guard(
+    monkeypatch,
+):
+    from venom_core.services.feedback_loop_policy import FeedbackLoopGuardResult
+
+    config = {
+        "LAST_MODEL_OLLAMA": "phi3:mini",
+        "PREVIOUS_MODEL_OLLAMA": "",
+        "LLM_MODEL_NAME": "phi3:mini",
+    }
+    updates = {}
+    monkeypatch.setattr(
+        system_routes.config_manager, "get_config", lambda **_: config.copy()
+    )
+    monkeypatch.setattr(system_routes.config_manager, "update_config", updates.update)
+
+    controller = DummyController(
+        [
+            {
+                "name": "ollama",
+                "supports": {"start": True, "stop": True},
+                "endpoint": "",
+            }
+        ]
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_llm_controller", controller)
+    monkeypatch.setattr(
+        system_routes.system_deps,
+        "_model_manager",
+        DummyModelManager(
+            [
+                {"name": "qwen2.5-coder:7b", "provider": "ollama"},
+                {"name": "qwen2.5-coder:3b", "provider": "ollama"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
+    monkeypatch.setattr(system_routes, "_installed_local_servers", lambda: {"ollama"})
+
+    async def _guard_block(**_kwargs):
+        return FeedbackLoopGuardResult(
+            False,
+            "resource_guard",
+            "fallback to qwen2.5-coder:3b",
+        )
+
+    monkeypatch.setattr(
+        system_routes,
+        "_evaluate_feedback_loop_resource_guard",
+        _guard_block,
+    )
+
+    original = _snapshot_settings()
+    SETTINGS.VENOM_RUNTIME_PROFILE = "full"
+    SETTINGS.LLM_SERVICE_TYPE = "local"
+    SETTINGS.ACTIVE_LLM_SERVER = "ollama"
+    SETTINGS.LLM_MODEL_NAME = "phi3:mini"
+    try:
+        request = system_routes.ActiveLlmServerRequest(
+            server_name="ollama",
+            model_alias="OpenCodeInterpreter-Qwen2.5-7B",
+        )
+        response = await system_routes.set_active_llm_server(request)
+        assert response["active_model"] == "qwen2.5-coder:3b"
+        assert response["resolution_reason"] == "resource_guard"
+        assert response["requested_model_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
+    finally:
+        _restore_settings(original)

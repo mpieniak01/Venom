@@ -166,6 +166,23 @@ WSL note:
 - Historical environment audits showed `vmmem` can retain high memory reservations after workload bursts.
 - Keep WSL limits and restart procedures documented in `docs/WINDOWS_WSL_D_DRIVE_INSTALL.md`.
 
+### Ollama feedback-loop profile guidance (PR 187)
+- Target coding class alias: `OpenCodeInterpreter-Qwen2.5-7B`.
+- Primary/fallback policy:
+  - primary: `qwen2.5-coder:7b`
+  - fallbacks: `qwen2.5-coder:3b`, `codestral:latest`
+- Recommended minimum host resources for 7B activation:
+  - RAM: 12 GiB+
+  - VRAM: 6 GiB+ (when GPU metrics are available)
+- Runtime/profile sanity guard:
+  - `VENOM_OLLAMA_PROFILE=low-vram-8-12gb` will force fallback path for 7B class,
+  - context above `65536` is treated as unsafe for 7B activation and returns guard error/fallback.
+- Canonical status fields for UI/API:
+  - `requested_model_alias`, `resolved_model_id`, `resolution_reason`
+  - `feedback_loop_ready`, `feedback_loop_tier`
+- Operational exact-vs-fallback runbook:
+  - `docs/OLLAMA_FEEDBACK_LOOP_RUNBOOK.md`
+
 ---
 
 ## Using Profiles

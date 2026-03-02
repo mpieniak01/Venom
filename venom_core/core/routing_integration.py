@@ -10,6 +10,10 @@ from venom_core.contracts.routing import ReasonCode, RoutingDecision, RuntimeTar
 from venom_core.core.provider_governance import get_provider_governance
 from venom_core.core.slash_commands import normalize_forced_provider
 from venom_core.execution.model_router import HybridModelRouter, TaskType
+from venom_core.services.feedback_loop_policy import (
+    FEEDBACK_LOOP_REQUESTED_ALIAS,
+    is_feedback_loop_ready,
+)
 
 _TASK_TYPE_FROM_FORCED_INTENT: dict[str, TaskType] = {
     "RESEARCH": TaskType.RESEARCH,
@@ -80,6 +84,25 @@ def _to_reason_code(routing_info: dict[str, Any]) -> ReasonCode:
     return ReasonCode.DEFAULT_ECO_MODE
 
 
+def _resolve_decision_model(
+    *,
+    request: TaskRequest,
+    selected_provider: str,
+    routing_info: dict[str, Any],
+    runtime_info: Any,
+) -> str:
+    base_model = str(
+        routing_info.get("model_name") or getattr(runtime_info, "model_name", "")
+    )
+    if str(request.forced_intent or "").strip().upper() != "CODE_GENERATION":
+        return base_model
+    if selected_provider != "ollama":
+        return base_model
+    if is_feedback_loop_ready(base_model):
+        return base_model
+    return FEEDBACK_LOOP_REQUESTED_ALIAS
+
+
 def build_routing_decision(
     *,
     request: TaskRequest,
@@ -123,8 +146,11 @@ def build_routing_decision(
     decision = RoutingDecision(
         target_runtime=_to_runtime_target(selected_provider),
         provider=selected_provider,
-        model=str(
-            routing_info.get("model_name") or getattr(runtime_info, "model_name", "")
+        model=_resolve_decision_model(
+            request=request,
+            selected_provider=selected_provider,
+            routing_info=routing_info,
+            runtime_info=runtime_info,
         ),
         reason_code=reason_code,
         complexity_score=complexity_score,

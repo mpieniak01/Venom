@@ -140,6 +140,9 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
     assert runtimes["openai"]["configured"] is True
     assert runtimes["google"]["configured"] is False
     assert runtimes["google"]["reason"] == "GOOGLE_API_KEY not configured"
+    assert (
+        payload["feedback_loop"]["requested_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
+    )
 
 
 def test_runtime_options_returns_503_when_llm_controller_missing() -> None:
@@ -162,3 +165,16 @@ def test_runtime_options_returns_503_when_model_manager_missing() -> None:
 
     assert response.status_code == 503
     assert "ModelManager" in response.json().get("detail", "")
+
+
+def test_runtime_model_payload_contains_feedback_loop_metadata() -> None:
+    payload = system_llm._runtime_model_payload(  # noqa: SLF001
+        runtime_id="ollama",
+        model_id="qwen2.5-coder:7b",
+        name="qwen2.5-coder:7b",
+        provider="ollama",
+        active=False,
+        source_type="local-runtime",
+    )
+    assert payload["feedback_loop_ready"] is True
+    assert payload["feedback_loop_tier"] == "primary"

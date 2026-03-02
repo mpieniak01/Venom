@@ -378,7 +378,7 @@ def test_curate_dataset_handles_unexpected_exception(mock_settings):
 
 
 @patch("venom_core.config.SETTINGS")
-def test_trainable_models_endpoint_contains_trainable_and_non_trainable(mock_settings):
+def test_trainable_models_endpoint_returns_only_trainable(mock_settings):
     mock_settings.ENABLE_ACADEMY = True
     client = _make_client()
     academy_routes._model_manager.list_local_models = AsyncMock(
@@ -395,4 +395,15 @@ def test_trainable_models_endpoint_contains_trainable_and_non_trainable(mock_set
     assert resp.status_code == 200
     payload = resp.json()
     assert any(item["trainable"] for item in payload)
-    assert any(not item["trainable"] for item in payload)
+    assert all(item["trainable"] for item in payload)
+    assert all(item["model_id"] != "gemma3:latest" for item in payload)
+    assert all(item["source_type"] in {"local", "cloud"} for item in payload)
+    assert all(item["cost_tier"] in {"free", "paid", "unknown"} for item in payload)
+    assert all(isinstance(item["runtime_compatibility"], dict) for item in payload)
+    assert all(
+        all(isinstance(v, bool) for v in item["runtime_compatibility"].values())
+        for item in payload
+    )
+    assert all(isinstance(item["recommended_runtime"], str | None) for item in payload)
+    buckets = [item["priority_bucket"] for item in payload]
+    assert buckets == sorted(buckets)

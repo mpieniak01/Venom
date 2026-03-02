@@ -424,7 +424,7 @@ async def list_adapters() -> List[AdapterInfo]:
 async def activate_adapter(
     request: ActivateAdapterRequest, req: Request
 ) -> Dict[str, Any]:
-    return academy_route_handlers.activate_adapter_handler(
+    return await academy_route_handlers.activate_adapter_handler(
         request=request,
         req=req,
         academy=_academy_module(),

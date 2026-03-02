@@ -12,6 +12,27 @@ Venom supports three distinct runtime profiles to accommodate different hardware
 
 Use this document for profile requirements and environment context. Use the benchmark baseline for measured runtime results.
 
+## Runtime Availability Contract (Do not hardcode stack)
+
+Runtime engines (`ollama`, `vllm`, `onnx`) are configuration/installation options, not guaranteed constants.
+On a given host/profile, only a subset may be actually available.
+
+Canonical runtime discovery for UI/automation:
+
+- `GET /api/v1/system/llm-runtime/options`
+  - returns active runtime snapshot and currently available runtime targets/models,
+  - must be treated as source of truth for runtime/model selectors.
+
+Academy training/inference compatibility contract:
+
+- `GET /api/v1/academy/models/trainable`
+  - returns only trainable models,
+  - includes `runtime_compatibility` and `recommended_runtime` derived from available local stack,
+  - includes `source_type`, `cost_tier`, `priority_bucket` for local-first ordering.
+- `POST /api/v1/academy/adapters/activate`
+  - accepts optional `runtime_id`,
+  - rejects incompatible `base_model + adapter + runtime` combinations with `400`.
+
 ## Profile Definitions
 
 ### 1. LIGHT Profile (Privacy First)
@@ -109,7 +130,7 @@ LLM_WARMUP_ON_STARTUP=false
 
 **Capabilities:**
 - ✅ Backend + Frontend services
-- ✅ Local LLM 3-stack (Ollama by default, vLLM/ONNX optional)
+- ✅ Local LLM stack (Ollama by default, vLLM/ONNX optional and environment-dependent)
 - ✅ GPU acceleration support
 - ✅ Optional ONNX extras
 - ✅ All advanced features enabled

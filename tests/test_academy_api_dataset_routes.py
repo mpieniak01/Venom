@@ -685,10 +685,23 @@ def test_get_trainable_models(client):
     assert "trainable" in model
     assert "recommended" in model
     assert "installed_local" in model
+    assert "source_type" in model
+    assert model["source_type"] in {"local", "cloud"}
+    assert "cost_tier" in model
+    assert model["cost_tier"] in {"free", "paid", "unknown"}
+    assert "priority_bucket" in model
+    assert isinstance(model["priority_bucket"], int)
+    assert "runtime_compatibility" in model
+    assert isinstance(model["runtime_compatibility"], dict)
+    assert all(
+        isinstance(value, bool) for value in model["runtime_compatibility"].values()
+    )
+    assert "recommended_runtime" in model
+    assert isinstance(model["recommended_runtime"], str | None)
 
 
-def test_get_trainable_models_marks_ollama_as_non_trainable(client, mock_model_manager):
-    """Modele Ollama mają być widoczne, ale oznaczone jako nietrenowalne."""
+def test_get_trainable_models_excludes_non_trainable_models(client, mock_model_manager):
+    """Endpoint ma zwracać wyłącznie modele faktycznie trenowalne."""
     mock_model_manager.list_local_models = AsyncMock(
         return_value=[
             {
@@ -711,11 +724,16 @@ def test_get_trainable_models_marks_ollama_as_non_trainable(client, mock_model_m
     data = response.json()
 
     by_id = {item["model_id"]: item for item in data}
-    assert by_id["gemma3:latest"]["trainable"] is False
-    assert "ollama" in (by_id["gemma3:latest"]["reason_if_not_trainable"] or "").lower()
-    assert by_id["gemma3:latest"]["installed_local"] is True
+    assert "gemma3:latest" not in by_id
     assert by_id["unsloth/Phi-3-mini-4k-instruct"]["trainable"] is True
     assert by_id["unsloth/Phi-3-mini-4k-instruct"]["installed_local"] is True
+    assert by_id["unsloth/Phi-3-mini-4k-instruct"]["source_type"] == "local"
+    assert by_id["unsloth/Phi-3-mini-4k-instruct"]["cost_tier"] == "free"
+    assert by_id["unsloth/Phi-3-mini-4k-instruct"]["runtime_compatibility"] == {
+        "vllm": True,
+        "ollama": False,
+    }
+    assert by_id["unsloth/Phi-3-mini-4k-instruct"]["recommended_runtime"] == "vllm"
 
 
 def test_get_trainable_models_uses_fallback_when_model_catalog_fails(
@@ -733,8 +751,108 @@ def test_get_trainable_models_uses_fallback_when_model_catalog_fails(
     assert any(
         item["model_id"] == "unsloth/Phi-3-mini-4k-instruct"
         and item["installed_local"] is False
+        and item["source_type"] == "local"
+        and item["cost_tier"] == "free"
+        and item["runtime_compatibility"] == {}
+        and item["recommended_runtime"] is None
         for item in data
     )
+    buckets = [item["priority_bucket"] for item in data]
+    assert buckets == sorted(buckets)
+
+
+def test_get_trainable_models_mixed_catalog_contract_snapshot(
+    client, mock_model_manager
+):
+    """Snapshot kontraktu dla mixed katalogu (local + non-trainable stack hints)."""
+    mock_model_manager.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "Qwen/Qwen2.5-Coder-3B-Instruct",
+                "provider": "vllm",
+                "source": "models",
+                "runtime": "vllm",
+                "active": False,
+            },
+            {
+                "name": "gemma3:latest",
+                "provider": "ollama",
+                "source": "ollama",
+                "runtime": "ollama",
+                "active": True,
+            },
+            {
+                "name": "gemma-3-4b-it-onnx-int4",
+                "provider": "onnx",
+                "source": "models",
+                "runtime": "onnx",
+                "active": False,
+            },
+        ]
+    )
+
+    response = client.get("/api/v1/academy/models/trainable")
+    assert response.status_code == 200
+    data = response.json()
+    by_id = {item["model_id"]: item for item in data}
+
+    snapshot = [
+        {
+            "model_id": by_id["Qwen/Qwen2.5-Coder-3B-Instruct"]["model_id"],
+            "source_type": by_id["Qwen/Qwen2.5-Coder-3B-Instruct"]["source_type"],
+            "cost_tier": by_id["Qwen/Qwen2.5-Coder-3B-Instruct"]["cost_tier"],
+            "priority_bucket": by_id["Qwen/Qwen2.5-Coder-3B-Instruct"][
+                "priority_bucket"
+            ],
+            "runtime_compatibility": by_id["Qwen/Qwen2.5-Coder-3B-Instruct"][
+                "runtime_compatibility"
+            ],
+            "recommended_runtime": by_id["Qwen/Qwen2.5-Coder-3B-Instruct"][
+                "recommended_runtime"
+            ],
+        },
+        {
+            "model_id": by_id["unsloth/Phi-3-mini-4k-instruct"]["model_id"],
+            "source_type": by_id["unsloth/Phi-3-mini-4k-instruct"]["source_type"],
+            "cost_tier": by_id["unsloth/Phi-3-mini-4k-instruct"]["cost_tier"],
+            "priority_bucket": by_id["unsloth/Phi-3-mini-4k-instruct"][
+                "priority_bucket"
+            ],
+            "runtime_compatibility": by_id["unsloth/Phi-3-mini-4k-instruct"][
+                "runtime_compatibility"
+            ],
+            "recommended_runtime": by_id["unsloth/Phi-3-mini-4k-instruct"][
+                "recommended_runtime"
+            ],
+        },
+    ]
+
+    assert snapshot == [
+        {
+            "model_id": "Qwen/Qwen2.5-Coder-3B-Instruct",
+            "source_type": "local",
+            "cost_tier": "free",
+            "priority_bucket": 0,
+            "runtime_compatibility": {
+                "vllm": True,
+                "ollama": False,
+                "onnx": False,
+            },
+            "recommended_runtime": "vllm",
+        },
+        {
+            "model_id": "unsloth/Phi-3-mini-4k-instruct",
+            "source_type": "local",
+            "cost_tier": "free",
+            "priority_bucket": 1,
+            "runtime_compatibility": {
+                "vllm": True,
+                "ollama": False,
+                "onnx": False,
+            },
+            "recommended_runtime": "vllm",
+        },
+    ]
 
 
 # ==================== Curate with Scope Tests ====================
@@ -915,8 +1033,8 @@ def test_is_model_trainable():
     # Trainable models
     assert _is_model_trainable("unsloth/Phi-3-mini-4k-instruct") is True
     assert _is_model_trainable("unsloth/Llama-3.2-1B-Instruct") is True
-    assert _is_model_trainable("Phi-3.5-mini") is True
-    assert _is_model_trainable("Mistral-7B") is True
+    assert _is_model_trainable("Qwen/Qwen2.5-Coder-3B-Instruct") is True
+    assert _is_model_trainable("Mistral-7B") is False
 
     # Non-trainable models
     assert _is_model_trainable("gpt-4") is False

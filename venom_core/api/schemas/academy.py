@@ -1,6 +1,6 @@
 """API schemas for Academy (model training) endpoints."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -102,6 +102,7 @@ class ActivateAdapterRequest(BaseModel):
 
     adapter_id: str
     adapter_path: str
+    runtime_id: str | None = None
 
 
 class UploadFileInfo(BaseModel):
@@ -155,6 +156,12 @@ class TrainableModelInfo(BaseModel):
     reason_if_not_trainable: str | None = None
     recommended: bool = False
     installed_local: bool = False
+    # Training execution location (not model-origin distribution).
+    source_type: Literal["local", "cloud"] = "cloud"
+    cost_tier: Literal["free", "paid", "unknown"] = "unknown"
+    priority_bucket: int = Field(default=99, ge=0, le=99)
+    runtime_compatibility: dict[str, bool] = Field(default_factory=dict)
+    recommended_runtime: str | None = None
 
 
 class DatasetConversionFileInfo(BaseModel):

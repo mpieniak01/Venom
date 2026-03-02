@@ -379,6 +379,55 @@ Notes:
 - Endpoint updates `LLM_SERVICE_TYPE`, `LLM_MODEL_NAME`, `ACTIVE_LLM_SERVER`.
 - Requires active API key (`OPENAI_API_KEY` or `GOOGLE_API_KEY`).
 
+### Academy trainable-model contract (local-first)
+
+Academy training uses a dedicated contract:
+
+```bash
+GET /api/v1/academy/models/trainable
+```
+
+The response is metadata-driven (not name-based) and returns only trainable entries.
+Key fields:
+- `model_id`: base model identifier.
+- `provider`: model distribution/provider name (for example `huggingface`, `unsloth`, `vllm`, `ollama`).
+- `source_type`: **training execution location** (`local` or `cloud`), not model-origin distribution.
+- `cost_tier`: `free`, `paid`, or `unknown`.
+- `priority_bucket`: sorting priority (local-first).
+- `runtime_compatibility`: inference compatibility map per runtime (`{runtime_id: bool}`).
+- `recommended_runtime`: preferred runtime derived from compatibility.
+
+Important semantics:
+- `source_type` means where training runs, not where model files originally came from.
+- Runtime compatibility is discovered from the currently available local stack, not hardcoded.
+- If a stack does not expose a runtime (for example no ONNX), that runtime is not included in compatibility keys.
+
+Current local LoRA eligibility rules in Academy:
+- External API families (OpenAI/Gemini/Anthropic) are not local-LoRA trainable.
+- ONNX artifacts are inference-only in the Academy LoRA pipeline.
+- Ollama GGUF artifacts are inference-focused in this pipeline.
+- Local trainable artifacts require HuggingFace-like layout (`config.json` + weight files).
+
+### Academy adapter activation guard
+
+Adapter activation supports optional runtime validation:
+
+```bash
+POST /api/v1/academy/adapters/activate
+Content-Type: application/json
+
+{
+  "adapter_id": "training_20240101_120000",
+  "adapter_path": "./data/models/training_20240101_120000/adapter",
+  "runtime_id": "vllm"
+}
+```
+
+Rules:
+- `runtime_id` accepts local runtimes (`ollama`, `vllm`, `onnx`).
+- Backend validates `adapter base_model + runtime` compatibility before activation.
+- Incompatible combinations are rejected with HTTP `400` and a list of compatible runtimes.
+
 ## Cache and Offline Mode
 
 Backend caches trending lists and model catalogs for 30 minutes. Without Internet, endpoints return the last cached result with `stale: true` and optional `error`.

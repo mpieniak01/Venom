@@ -81,6 +81,15 @@ describe("model-domain-mapper", () => {
         trainable: true,
         recommended: true,
         installed_local: false,
+        source_type: "cloud",
+        cost_tier: "free",
+        priority_bucket: 2,
+        runtime_compatibility: {
+          ollama: false,
+          vllm: true,
+          onnx: false,
+        },
+        recommended_runtime: "vllm",
       },
       {
         model_id: "gpt-4",
@@ -90,6 +99,15 @@ describe("model-domain-mapper", () => {
         reason_if_not_trainable: "Model is not in Academy trainable families list",
         recommended: false,
         installed_local: false,
+        source_type: "cloud",
+        cost_tier: "paid",
+        priority_bucket: 4,
+        runtime_compatibility: {
+          ollama: false,
+          vllm: false,
+          onnx: false,
+        },
+        recommended_runtime: null,
       },
     ];
 
@@ -149,6 +167,15 @@ describe("model-domain-mapper", () => {
         trainable: true,
         recommended: true,
         installed_local: false,
+        source_type: "cloud",
+        cost_tier: "free",
+        priority_bucket: 2,
+        runtime_compatibility: {
+          ollama: false,
+          vllm: true,
+          onnx: false,
+        },
+        recommended_runtime: "vllm",
       },
     ];
 
@@ -196,6 +223,15 @@ describe("model-domain-mapper", () => {
         trainable: true,
         recommended: true,
         installed_local: true,
+        source_type: "local",
+        cost_tier: "free",
+        priority_bucket: 0,
+        runtime_compatibility: {
+          ollama: false,
+          vllm: true,
+          onnx: false,
+        },
+        recommended_runtime: "vllm",
       },
     ];
 

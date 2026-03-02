@@ -27,6 +27,7 @@ from venom_core.api.schemas.academy import (
     TrainingResponse,
     UploadFileInfo,
 )
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 
 def _collect_scope_counts(
@@ -371,7 +372,7 @@ async def list_adapters_handler(*, academy: Any) -> List[AdapterInfo]:
         )
 
 
-def activate_adapter_handler(
+async def activate_adapter_handler(
     *,
     request: Any,
     req: Request,
@@ -386,6 +387,16 @@ def activate_adapter_handler(
                 status_code=503,
                 detail="ModelManager not available for adapter activation",
             )
+        runtime_id = str(getattr(request, "runtime_id", "") or "").strip()
+        if not runtime_id:
+            active_runtime = get_active_llm_runtime()
+            runtime_id = str(getattr(active_runtime, "provider", "") or "").strip()
+        if runtime_id:
+            await academy.academy_models.validate_adapter_runtime_compatibility(
+                mgr=manager,
+                adapter_id=request.adapter_id,
+                runtime_id=runtime_id,
+            )
         return academy.academy_models.activate_adapter(
             mgr=manager,
             adapter_id=request.adapter_id,
@@ -393,6 +404,8 @@ def activate_adapter_handler(
 
     except academy.AcademyRouteError as e:
         raise academy._to_http_exception(e) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Adapter not found") from None
     except RuntimeError as e:

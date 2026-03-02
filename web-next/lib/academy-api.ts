@@ -180,6 +180,7 @@ export async function listAdapters(): Promise<AdapterInfo[]> {
 export async function activateAdapter(params: {
   adapter_id: string;
   adapter_path: string;
+  runtime_id?: string;
 }): Promise<{ success: boolean; message: string }> {
   return apiFetch<{ success: boolean; message: string }>("/api/v1/academy/adapters/activate", {
     method: "POST",
@@ -251,6 +252,11 @@ export interface TrainableModelInfo {
   reason_if_not_trainable?: string;
   recommended: boolean;
   installed_local: boolean;
+  source_type: "local" | "cloud";
+  cost_tier: "free" | "paid" | "unknown";
+  priority_bucket: number;
+  runtime_compatibility: Record<string, boolean>;
+  recommended_runtime?: string | null;
 }
 
 export interface DatasetConversionFileInfo {

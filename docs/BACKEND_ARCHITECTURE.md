@@ -68,6 +68,21 @@ Architecture guard tests:
   - invalid pair returns `400` with explicit error message.
 - `GET /api/v1/system/llm-servers` remains a local-runtime technical endpoint; operational UI flows (Chat + Models) should use `llm-runtime/options`.
 
+### Academy trainable-model contract (PR 186)
+- Canonical Academy picker contract: `GET /api/v1/academy/models/trainable`.
+- Each trainable entry carries:
+  - training execution location: `source_type` (`local` | `cloud`),
+  - cost classification: `cost_tier` (`free` | `paid` | `unknown`),
+  - stable backend ordering key: `priority_bucket`,
+  - inference compatibility map: `runtime_compatibility` (`{ [runtime_id]: boolean }`),
+  - optional preferred target for inference: `recommended_runtime`.
+- Ordering policy is backend-authoritative (UI only renders backend order):
+  - `local + installed_local` -> `local` -> `cloud free` -> `cloud unknown` -> `cloud paid`.
+- Runtime compatibility must be derived from actually available local stack/catalog, not from hardcoded runtime keys.
+- Adapter activation (`POST /api/v1/academy/adapters/activate`) includes compatibility validation:
+  - optional `runtime_id` input,
+  - rejects incompatible `base_model + adapter + runtime` with `400`.
+
 ## Execution Layer (Skills & MCP)
 Integrated with Microsoft Semantic Kernel, enabling agent capabilities expansion:
 - `venom_core/execution/skills/base_skill.py` – Base class for all skills.

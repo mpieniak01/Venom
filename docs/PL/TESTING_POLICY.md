@@ -102,6 +102,14 @@ Minimalny kontrakt testów dla runtime selection (Chat + Models):
 - frontend: `web-next/tests/use-runtime.test.ts` (mapowanie opcji runtime/model po stronie panelu Models),
 - frontend: `web-next/tests/chat-send-helpers.test.ts` (regresja przepływu wysyłki i przełączenia runtime).
 
+Minimalny kontrakt testów dla Academy trainable models (PR 186):
+
+- backend: `tests/test_academy_models_module.py` (klasyfikacja `source_type/cost_tier`, sortowanie `priority_bucket`, dynamiczna `runtime_compatibility`),
+- backend: `tests/test_academy_api_dataset_routes.py` + `tests/test_academy_api_edges_contract.py` (kontrakt `/api/v1/academy/models/trainable`),
+- backend: `tests/test_academy_api_contracts.py` (guard aktywacji adaptera przy niekompatybilnym runtime),
+- frontend: `web-next/tests/academy-training-picker.test.ts` (sekcje i kolejnosc pseudo-selecta: local -> cloud free -> cloud other),
+- frontend: `web-next/tests/cockpit-i18n-and-inspector-utils.test.ts` + testy chat selectora (regresja komunikatow i blokad adapter/runtime).
+
 Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.json`):
 
 - `domain`: zakres domenowy/systemowy (np. `academy`, `workflow`, `providers`, `runtime`)

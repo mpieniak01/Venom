@@ -68,6 +68,24 @@ Architecture guard tests:
   - invalid pair returns `400` with explicit error message.
 - `GET /api/v1/system/llm-servers` remains a local-runtime technical endpoint; operational UI flows (Chat + Models) should use `llm-runtime/options`.
 
+### Feedback-loop alias resolution (PR 187)
+- Product alias class for coding feedback-loop:
+  - `requested_alias`: `OpenCodeInterpreter-Qwen2.5-7B`
+  - `primary`: `qwen2.5-coder:7b`
+  - `fallbacks`: `qwen2.5-coder:3b`, `codestral:latest`
+- Runtime options (`GET /api/v1/system/llm-runtime/options`) now expose:
+  - active resolution fields: `requested_model_alias`, `resolved_model_id`, `resolution_reason`,
+  - model-level metadata: `feedback_loop_ready`, `feedback_loop_tier`,
+  - feedback-loop status block with `requested_alias`, `primary`, `fallbacks`.
+- Local runtime activation (`POST /api/v1/system/llm-servers/active`) supports:
+  - optional `model_alias` and `exact_only`,
+  - explicit resolution payload (`requested_model_alias`, `resolved_model_id`, `resolution_reason`),
+  - resource guard for 7B with safe fallback (or explicit error when `exact_only=true`).
+- Model install (`POST /api/v1/models/install`) supports feedback-loop alias flow:
+  - idempotent install (skip when already present),
+  - retry + timeout aware pull orchestration,
+  - guard-aware candidate plan (`primary` or fallback chain).
+
 ### Academy trainable-model contract (PR 186)
 - Canonical Academy picker contract: `GET /api/v1/academy/models/trainable`.
 - Each trainable entry carries:

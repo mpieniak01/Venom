@@ -112,6 +112,7 @@ tests/test_error_mappings.py
 tests/test_executive_agent_roi.py
 tests/test_eyes.py
 tests/test_feedback_hidden_prompts.py
+tests/test_feedback_loop_policy.py
 tests/test_feedback_routes_logic.py
 tests/test_file_floor_threshold_guard.py
 tests/test_file_skill.py
@@ -222,6 +223,7 @@ tests/test_model_requests.py
 tests/test_model_router.py
 tests/test_model_services.py
 tests/test_model_validators.py
+tests/test_models_install_feedback_loop.py
 tests/test_models_registry_ops_onnx.py
 tests/test_models_remote_api.py
 tests/test_models_remote_contracts.py

@@ -182,3 +182,55 @@ def test_build_routing_decision_sets_policy_gate_passed_from_governance(monkeypa
     )
 
     assert decision.policy_gate_passed is False
+
+
+def test_build_routing_decision_prefers_feedback_loop_alias_for_code_generation(
+    monkeypatch,
+):
+    class DummyRouter:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def route_task(self, task_type, prompt):
+            return {
+                "target": "local",
+                "model_name": "phi3:mini",
+                "provider": "local",
+                "reason": "Tryb LOCAL - zadanie CODING_SIMPLE",
+                "is_paid": False,
+            }
+
+        def calculate_complexity(self, prompt, task_type):
+            return 2
+
+    class DummyGovernance:
+        def select_provider_with_fallback(self, preferred_provider, reason=None):
+            return SimpleNamespace(
+                allowed=True,
+                provider="ollama",
+                reason_code="PRIMARY_PROVIDER_SELECTED",
+                fallback_applied=False,
+                user_message="ok",
+            )
+
+    monkeypatch.setattr(
+        "venom_core.core.routing_integration.HybridModelRouter", DummyRouter
+    )
+    monkeypatch.setattr(
+        "venom_core.core.routing_integration.get_provider_governance",
+        lambda: DummyGovernance(),
+    )
+
+    decision = build_routing_decision(
+        request=SimpleNamespace(
+            content="write code",
+            forced_intent="CODE_GENERATION",
+            forced_tool=None,
+            forced_provider=None,
+        ),
+        runtime_info=SimpleNamespace(provider="ollama", model_name="phi3:mini"),
+        state_manager=None,
+    )
+
+    assert decision.provider == "ollama"
+    assert decision.model == "OpenCodeInterpreter-Qwen2.5-7B"

@@ -147,6 +147,8 @@ export const cockpitLocale = {
       adapterBase: "Model bazowy (bez adaptera)",
       adapterIncompatible: "niekompatybilny z runtime {{runtime}}",
       noModels: "Brak modeli",
+      feedbackLoopPrimaryBadge: "feedback-loop: zalecany",
+      feedbackLoopFallbackBadge: "feedback-loop: fallback",
     },
     actions: {
       clear: "Wyczyść",

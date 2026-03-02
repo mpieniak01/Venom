@@ -82,7 +82,7 @@ async def test_activate_adapter_handler_returns_503_when_manager_missing() -> No
     academy._get_model_manager = lambda: None
     academy.academy_models = SimpleNamespace()
     with pytest.raises(HTTPException) as exc:
-        route_handlers.activate_adapter_handler(
+        await route_handlers.activate_adapter_handler(
             request=SimpleNamespace(adapter_id="a1"),
             req=SimpleNamespace(),
             academy=academy,

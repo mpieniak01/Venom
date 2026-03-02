@@ -1,7 +1,7 @@
 """Additional Academy API tests for edge-case coverage."""
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -20,7 +20,7 @@ def test_start_training_failure_updates_history(mock_settings, client_with_deps)
     mock_settings.ENABLE_ACADEMY = True
     mock_settings.ACADEMY_TRAINING_DIR = "./data/training"
     mock_settings.ACADEMY_MODELS_DIR = "./data/models"
-    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "test-model"
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
 
     with (
         patch("pathlib.Path.exists", return_value=True),
@@ -244,6 +244,35 @@ def test_activate_deactivate_return_503_when_model_manager_missing(
         deactivate = client_with_deps.post("/api/v1/academy/adapters/deactivate")
     assert activate.status_code == 503
     assert deactivate.status_code == 503
+
+
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_rejects_incompatible_runtime(mock_settings, client_with_deps):
+    mock_settings.ENABLE_ACADEMY = True
+    manager = MagicMock()
+    manager.activate_adapter.return_value = True
+    with (
+        patch("venom_core.api.routes.academy._get_model_manager", return_value=manager),
+        patch(
+            "venom_core.api.routes.academy_models.validate_adapter_runtime_compatibility",
+            new=AsyncMock(
+                side_effect=ValueError(
+                    "Adapter is incompatible with selected runtime 'onnx'. Compatible runtimes: vllm."
+                )
+            ),
+        ),
+        patch("pathlib.Path.exists", return_value=True),
+    ):
+        response = client_with_deps.post(
+            "/api/v1/academy/adapters/activate",
+            json={
+                "adapter_id": "a1",
+                "adapter_path": "/tmp/adapter",
+                "runtime_id": "onnx",
+            },
+        )
+    assert response.status_code == 400
+    assert "Compatible runtimes: vllm" in response.json()["detail"]
 
 
 @patch("venom_core.config.SETTINGS")

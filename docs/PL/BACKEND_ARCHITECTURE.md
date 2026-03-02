@@ -49,6 +49,21 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
   - niepoprawna para zwraca `400` z czytelnym komunikatem.
 - `GET /api/v1/system/llm-servers` pozostaje endpointem technicznym dla runtime lokalnych; flow operacyjne UI (Chat + Models) używają `llm-runtime/options`.
 
+### Kontrakt modeli treningowych Academy (PR 186)
+- Kanoniczny kontrakt selectora Academy: `GET /api/v1/academy/models/trainable`.
+- Kazda pozycja trainable zawiera:
+  - miejsce wykonywania treningu: `source_type` (`local` | `cloud`),
+  - klasyfikacje kosztu: `cost_tier` (`free` | `paid` | `unknown`),
+  - stabilny klucz kolejnosci backendu: `priority_bucket`,
+  - mape kompatybilnosci inferencyjnej: `runtime_compatibility` (`{ [runtime_id]: boolean }`),
+  - opcjonalny runtime rekomendowany: `recommended_runtime`.
+- Kolejnosc jest autorytatywna po stronie backendu (frontend tylko ja renderuje):
+  - `local + installed_local` -> `local` -> `cloud free` -> `cloud unknown` -> `cloud paid`.
+- Kompatybilnosc runtime ma wynikac z realnie dostepnego lokalnego stosu/katalogu, a nie z hardkodowanych kluczy runtime.
+- Aktywacja adaptera (`POST /api/v1/academy/adapters/activate`) waliduje kompatybilnosc:
+  - opcjonalny parametr `runtime_id`,
+  - przy niekompatybilnym `base_model + adapter + runtime` zwraca `400`.
+
 ## Warstwa Wykonawcza (Skills & MCP)
 Zintegrowana z Microsoft Semantic Kernel, pozwala na rozszerzanie możliwości agentów:
 - `venom_core/execution/skills/base_skill.py` – Klasa bazowa dla wszystkich umiejętności.

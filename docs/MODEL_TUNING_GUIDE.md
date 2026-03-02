@@ -4,6 +4,10 @@
 
 The Model Tuning system enables users to dynamically configure AI model inference parameters. It allows control over model "creativity" and behavior through an interface that automatically adapts to the selected model's capabilities.
 
+Scope note:
+- This document describes **inference-time generation tuning** (`generation_params`).
+- LoRA/QLoRA base-model selection and adapter lifecycle are handled by Academy APIs (`/api/v1/academy/*`) and documented in `docs/THE_ACADEMY.md`.
+
 ## Architecture
 
 ### Backend (venom_core)
@@ -144,6 +148,28 @@ API Payload:
 }
 ```
 
+## Relation to Academy LoRA workflow
+
+Inference tuning and Academy training are connected but separate:
+
+1. Academy base-model picker uses:
+   - `GET /api/v1/academy/models/trainable`
+2. Chat/runtime selection uses:
+   - `GET /api/v1/system/llm-runtime/options`
+3. Adapter activation can include runtime validation:
+   - `POST /api/v1/academy/adapters/activate` with optional `runtime_id`
+
+Important Academy contract fields:
+- `source_type`: where training runs (`local` or `cloud`), not model-origin distribution.
+- `runtime_compatibility`: map of runtimes where trained adapter can be served.
+- `recommended_runtime`: preferred runtime for adapter inference.
+
+Practical sequence:
+1. Choose trainable base model in Academy.
+2. Train adapter.
+3. In Chat, switch to runtime compatible with that base/adapter.
+4. Activate adapter (optionally with `runtime_id`) to enforce compatibility check.
+
 ## Usage
 
 ### For Users
@@ -208,7 +234,8 @@ Edit model manifest (`data/models/manifest.json`):
 
 - ✅ For "Llama 3" model, temperature slider has range 0.0-1.0
 - ✅ For specific model, additional options appear if defined in manifest
-- ⚠️ Parameter change in UI actually affects response (requires integration with LLMServerController)
+- ✅ Runtime-aware parameter mapping is applied through `GenerationParamsAdapter` (Ollama/vLLM/ONNX/OpenAI)
+- ⚠️ Effective impact still depends on provider/runtime support for a given parameter
 
 ## Implementation Status
 
@@ -216,16 +243,15 @@ Edit model manifest (`data/models/manifest.json`):
 - ✅ Backend: GenerationParameter and ModelCapabilities
 - ✅ Backend: Endpoint /api/v1/models/{name}/config
 - ✅ Backend: TaskRequest with generation_params
+- ✅ Backend: `GenerationParamsAdapter` mapping (`max_tokens` -> `num_predict` for Ollama, `repeat_penalty` -> `repetition_penalty` for vLLM/ONNX)
+- ✅ Backend: runtime/model overrides via `MODEL_GENERATION_OVERRIDES`
 - ✅ Frontend: DynamicParameterForm with dynamic rendering
 - ✅ Frontend: Tuning Button and Drawer
 - ✅ Frontend: Parameter passing to API
 
 ### To Be Completed
-- ⚠️ Backend: Integration with LLMServerController
-  - Parameter mapping for vLLM
-  - Parameter mapping for Ollama (e.g., num_predict instead of max_tokens)
-- ⚠️ Integration tests
-- ⚠️ Verification of parameter impact on responses
+- ⚠️ Cross-runtime E2E verification matrix (Ollama/vLLM/ONNX/cloud) for parameter effect consistency
+- ⚠️ UX presets/profiles for reusable tuning configurations
 
 ## Usage Example
 
@@ -260,7 +286,7 @@ POST /api/v1/tasks
 **Solution:** Add `generation_schema` in model manifest or use default
 
 **Problem:** Parameters don't affect response
-**Solution:** Ensure LLMServerController passes parameters to LLM engine
+**Solution:** Verify active runtime/model supports given parameter and check runtime-specific mapping in `GenerationParamsAdapter`
 
 **Problem:** UI doesn't render some parameter types
 **Solution:** Check if parameter type is supported (float, int, bool, list, enum)
@@ -268,6 +294,6 @@ POST /api/v1/tasks
 ## Roadmap
 
 1. **Phase 1** (Completed) - Backend schema + Frontend UI
-2. **Phase 2** (To do) - Integration with LLMServerController
+2. **Phase 2** (In progress) - Cross-runtime E2E validation of parameter effects
 3. **Phase 3** (Future) - Parameter profiles (saving favorite settings)
 4. **Phase 4** (Future) - A/B testing of parameters

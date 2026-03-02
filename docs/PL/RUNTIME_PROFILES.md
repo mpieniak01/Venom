@@ -12,6 +12,27 @@ Venom wspiera trzy różne profile runtime, aby dostosować się do różnych wy
 
 Ten dokument jest źródłem prawdy dla wymagań profili i kontekstu środowiskowego. Wyniki pomiarów runtime utrzymujemy w baseline benchmarku.
 
+## Kontrakt dostępności runtime (bez hardkodowania stosu)
+
+Silniki runtime (`ollama`, `vllm`, `onnx`) to opcje konfiguracyjno-instalacyjne, a nie stały zestaw gwarantowany na każdym hoście.
+W danym profilu/środowisku dostępny może być tylko podzbiór.
+
+Kanoniczne wykrywanie runtime dla UI/automatyzacji:
+
+- `GET /api/v1/system/llm-runtime/options`
+  - zwraca snapshot aktywnego runtime i realnie dostępne targety runtime/modele,
+  - jest źródłem prawdy dla selektorów runtime/model.
+
+Kontrakt kompatybilności Academy (trening -> inferencja):
+
+- `GET /api/v1/academy/models/trainable`
+  - zwraca tylko modele faktycznie trenowalne,
+  - zawiera `runtime_compatibility` i `recommended_runtime` wyliczane z realnie dostępnego lokalnego stosu,
+  - zawiera `source_type`, `cost_tier`, `priority_bucket` dla porządku local-first.
+- `POST /api/v1/academy/adapters/activate`
+  - przyjmuje opcjonalny `runtime_id`,
+  - odrzuca niekompatybilne kombinacje `base_model + adapter + runtime` kodem `400`.
+
 ## Definicje Profili
 
 ### 1. Profil LIGHT (Privacy First)
@@ -109,7 +130,7 @@ LLM_WARMUP_ON_STARTUP=false
 
 **Możliwości:**
 - ✅ Usługi Backend + Frontend
-- ✅ Lokalny LLM 3-stack (domyślnie Ollama, opcjonalnie vLLM/ONNX)
+- ✅ Lokalny stack LLM (domyślnie Ollama, vLLM/ONNX opcjonalnie i zależnie od środowiska)
 - ✅ Wsparcie akceleracji GPU
 - ✅ Opcjonalne extras ONNX
 - ✅ Wszystkie zaawansowane funkcje włączone

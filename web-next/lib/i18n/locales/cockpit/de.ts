@@ -111,8 +111,12 @@ export const cockpitLocale = {
     models: {
       server: "Server",
       model: "Modell",
+      adapter: "Adapter",
       chooseServer: "Server wählen",
       chooseModel: "Modell wählen",
+      loadingAdapters: "Adapter werden geladen",
+      adapterBase: "Basismodell (ohne Adapter)",
+      adapterIncompatible: "nicht kompatibel mit Runtime {{runtime}}",
       noModels: "Keine Modelle",
     },
     actions: {
@@ -122,6 +126,7 @@ export const cockpitLocale = {
       tuning: "Generierungsparameter anpassen",
       selectServer: "LLM-Server wählen",
       selectModel: "LLM-Modell wählen (Chat)",
+      selectAdapter: "LoRA-Adapter wählen (Chat)",
       selectMode: "Chat-Modus wählen",
     },
     suggestions: {

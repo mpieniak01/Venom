@@ -140,8 +140,12 @@ export const cockpitLocale = {
     models: {
       server: "Serwer",
       model: "Model",
+      adapter: "Adapter",
       chooseServer: "Wybierz serwer",
       chooseModel: "Wybierz model",
+      loadingAdapters: "Ładowanie adapterów",
+      adapterBase: "Model bazowy (bez adaptera)",
+      adapterIncompatible: "niekompatybilny z runtime {{runtime}}",
       noModels: "Brak modeli",
     },
     actions: {
@@ -151,6 +155,7 @@ export const cockpitLocale = {
       tuning: "Dostosuj parametry generacji",
       selectServer: "Wybierz serwer LLM",
       selectModel: "Wybierz model LLM (czat)",
+      selectAdapter: "Wybierz adapter LoRA (czat)",
       selectMode: "Wybierz tryb czatu",
     },
     suggestions: {

@@ -5,6 +5,7 @@ import { Play, Loader2, RefreshCw, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
 import { LogViewer } from "./log-viewer";
 import {
   startTraining,
@@ -14,11 +15,72 @@ import {
   type TrainingJobStatus,
   type TrainableModelInfo,
 } from "@/lib/academy-api";
-import { useLanguage, useTranslation } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
+
+type SupportedEngine =
+  | "unsloth"
+  | "huggingface"
+  | "onnx"
+  | "vllm"
+  | "ollama"
+  | "openai"
+  | "google"
+  | "config"
+  | "unknown";
+
+export type ModelSectionKey = "localFirst" | "cloudFree" | "cloudOther";
+export type ModelPickerOption = SelectMenuOption & {
+  kind: "section" | "model";
+  sectionKey?: ModelSectionKey;
+  model?: TrainableModelInfo;
+};
+
+type TranslateFn = (key: string) => string;
+
+export const MODEL_SECTION_ORDER: ModelSectionKey[] = [
+  "localFirst",
+  "cloudFree",
+  "cloudOther",
+];
+
+export function getTrainingModelSectionKey(model: TrainableModelInfo): ModelSectionKey {
+  if (model.source_type === "local") return "localFirst";
+  if (model.cost_tier === "free") return "cloudFree";
+  return "cloudOther";
+}
+
+export function buildTrainingModelPickerOptions(
+  trainableModels: TrainableModelInfo[],
+  t: TranslateFn,
+): ModelPickerOption[] {
+  const modelSections = MODEL_SECTION_ORDER.map((sectionKey) => ({
+    sectionKey,
+    models: trainableModels.filter((model) => getTrainingModelSectionKey(model) === sectionKey),
+  })).filter((section) => section.models.length > 0);
+
+  return modelSections.flatMap((section): ModelPickerOption[] => {
+    const sectionLabel = t(`academy.training.modelSections.${section.sectionKey}`);
+    const sectionMeta = t(`academy.training.modelSectionMeta.${section.sectionKey}`);
+    const header: ModelPickerOption = {
+      value: `__section__${section.sectionKey}`,
+      label: sectionLabel,
+      description: sectionMeta,
+      disabled: true,
+      kind: "section",
+      sectionKey: section.sectionKey,
+    };
+    const sectionModels = section.models.map((model) => ({
+      value: model.model_id,
+      label: model.model_id,
+      kind: "model" as const,
+      model,
+    }));
+    return [header, ...sectionModels];
+  });
+}
 
 export function TrainingPanel() {
   const t = useTranslation();
-  const { language } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
   const [loraRank, setLoraRank] = useState(16);
@@ -127,6 +189,52 @@ export function TrainingPanel() {
     return labels[status];
   };
 
+  const resolveEngineKey = (provider: string): SupportedEngine => {
+    const normalized = provider.trim().toLowerCase();
+    if (
+      normalized === "unsloth" ||
+      normalized === "huggingface" ||
+      normalized === "onnx" ||
+      normalized === "vllm" ||
+      normalized === "ollama" ||
+      normalized === "openai" ||
+      normalized === "google" ||
+      normalized === "config"
+    ) {
+      return normalized;
+    }
+    return "unknown";
+  };
+
+  const getRuntimeDisplayName = (runtimeId: string): string => {
+    const engineKey = resolveEngineKey(runtimeId);
+    if (engineKey === "unknown") {
+      return runtimeId;
+    }
+    return t(`academy.training.engineNames.${engineKey}`);
+  };
+
+  const getModelCompatibility = (model: TrainableModelInfo): string[] => {
+    const entries = Object.entries(model.runtime_compatibility ?? {})
+      .filter(([, isCompatible]) => Boolean(isCompatible))
+      .map(([runtimeId]) => runtimeId);
+    const runtimeOrder: Record<string, number> = {
+      vllm: 0,
+      ollama: 1,
+      onnx: 2,
+    };
+    return entries.sort((left, right) => {
+      const leftOrder = runtimeOrder[left] ?? 99;
+      const rightOrder = runtimeOrder[right] ?? 99;
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      return left.localeCompare(right);
+    });
+  };
+
+  const modelPickerOptions = buildTrainingModelPickerOptions(trainableModels, t);
+
   let baseModelPlaceholder = t("academy.training.loadingModels");
   if (!modelsLoading && trainableModels.length === 0) {
     baseModelPlaceholder = t("academy.training.noTrainableModels");
@@ -152,27 +260,104 @@ export function TrainingPanel() {
         <h3 className="mb-4 text-sm font-medium text-zinc-300">{t("academy.training.paramsTitle")}</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2 lg:col-span-4">
-            <Label htmlFor="base-model" className="text-zinc-300">
+            <p className="text-sm font-medium text-zinc-300">
               {t("academy.training.baseModel")}
-            </Label>
-            <select
-              id="base-model"
+            </p>
+            <div className="mt-2">
+              <SelectMenu
               value={selectedBaseModel}
-              onChange={(e) => setSelectedBaseModel(e.target.value)}
+              options={modelPickerOptions}
+              onChange={setSelectedBaseModel}
+              placeholder={baseModelPlaceholder}
+              ariaLabel={t("academy.training.baseModel")}
               disabled={modelsLoading || trainableModels.length === 0}
-              className="mt-2 flex h-10 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {modelsLoading || trainableModels.length === 0 ? (
-                <option value="">{baseModelPlaceholder}</option>
-              ) : (
-                trainableModels.map((model) => (
-                  <option key={model.model_id} value={model.model_id}>
-                    {model.label} • {model.installed_local ? t("academy.training.modelLocal") : t("academy.training.modelCloud")}
-                  </option>
-                ))
-              )}
-            </select>
+              buttonClassName="mt-0 h-11 w-full justify-between rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2"
+              menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-zinc-700 bg-zinc-950 p-1"
+              optionClassName="rounded-md px-3 py-2 text-zinc-100 hover:bg-zinc-800"
+              renderButton={(option) => {
+                const selectedOption = option as ModelPickerOption | null;
+                if (!selectedOption || selectedOption.kind !== "model" || !selectedOption.model) {
+                  return (
+                    <span className="min-w-0 flex-1 truncate text-left text-zinc-400">
+                      {baseModelPlaceholder}
+                    </span>
+                  );
+                }
+                const compatibility = getModelCompatibility(selectedOption.model);
+                const compatibilityLabel = compatibility.length > 0
+                  ? compatibility
+                    .map((runtime) => getRuntimeDisplayName(runtime))
+                    .join(" • ")
+                  : t("academy.training.runtimeUnknown");
+                return (
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-left text-sm text-zinc-100">
+                        {selectedOption.model.model_id}
+                      </p>
+                      <p className="truncate text-left text-[11px] text-zinc-400">
+                        {t("academy.training.compatibilityLabel")}: {compatibilityLabel}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs text-zinc-300">
+                      {t(`academy.training.engineNames.${resolveEngineKey(selectedOption.model.provider)}`)}
+                    </span>
+                  </div>
+                );
+              }}
+              renderOption={(option, active) => {
+                const typedOption = option as ModelPickerOption;
+                if (typedOption.kind === "section") {
+                  return (
+                    <div className="w-full cursor-default border-b border-zinc-800/80 px-1 py-2 text-left">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-200">
+                        {typedOption.label}
+                      </p>
+                      <p className="text-[11px] text-zinc-500">
+                        {typedOption.description}
+                      </p>
+                    </div>
+                  );
+                }
+                const model = typedOption.model;
+                if (!model) {
+                  return <span className="text-sm text-zinc-400">{typedOption.label}</span>;
+                }
+                const compatibility = getModelCompatibility(model);
+                const compatibilityBadges = compatibility.length > 0 ? compatibility : [];
+                return (
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className={`truncate text-sm ${active ? "text-white" : "text-zinc-100"}`}>
+                        {model.model_id}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {compatibilityBadges.length > 0 ? (
+                          compatibilityBadges.map((runtime) => (
+                            <span
+                              key={`${model.model_id}-${runtime}`}
+                              className="rounded-md border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-300"
+                            >
+                              {getRuntimeDisplayName(runtime)}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[11px] text-zinc-500">
+                            {t("academy.training.runtimeUnknown")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-xs text-zinc-300">
+                      {t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`)}
+                    </span>
+                  </div>
+                );
+              }}
+              />
+            </div>
             <p className="mt-1 text-xs text-zinc-400">{t("academy.training.baseModelHint")}</p>
+            <p className="mt-1 text-xs text-zinc-500">{t("academy.training.orderingHint")}</p>
           </div>
           <div>
             <Label htmlFor="lora-rank" className="text-zinc-300">
@@ -283,11 +468,11 @@ export function TrainingPanel() {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-zinc-400">
-                      {t("academy.training.startedAt")}: {new Date(job.started_at).toLocaleString(language)}
+                      {t("academy.training.startedAt")}: {new Date(job.started_at).toLocaleString()}
                     </p>
                     {job.finished_at && (
                       <p className="text-xs text-zinc-400">
-                        {t("academy.training.finishedAt")}: {new Date(job.finished_at).toLocaleString(language)}
+                        {t("academy.training.finishedAt")}: {new Date(job.finished_at).toLocaleString()}
                       </p>
                     )}
                   </div>

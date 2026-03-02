@@ -4,6 +4,10 @@
 
 System strojenia parametrów (Model Tuning) umożliwia użytkownikowi dynamiczną konfigurację parametrów inferencji modeli AI. Pozwala to na kontrolowanie "kreatywności" i zachowania modelu poprzez interfejs, który automatycznie dostosowuje się do możliwości wybranego modelu.
 
+Uwaga zakresowa:
+- Ten dokument opisuje **strojenie parametrów inferencji** (`generation_params`).
+- Selekcja modelu bazowego LoRA/QLoRA i lifecycle adapterów są obsługiwane przez API Academy (`/api/v1/academy/*`) i opisane w `docs/PL/THE_ACADEMY.md`.
+
 ## Architektura
 
 ### Backend (venom_core)
@@ -144,6 +148,28 @@ Payload do API:
 }
 ```
 
+## Relacja do flow LoRA w Academy
+
+Strojenie inferencji i trening Academy są powiązane, ale to osobne kontrakty:
+
+1. Selektor modelu bazowego Academy używa:
+   - `GET /api/v1/academy/models/trainable`
+2. Selekcja runtime/modelu w Chat używa:
+   - `GET /api/v1/system/llm-runtime/options`
+3. Aktywacja adaptera może zawierać walidację runtime:
+   - `POST /api/v1/academy/adapters/activate` z opcjonalnym `runtime_id`
+
+Kluczowe pola kontraktu Academy:
+- `source_type`: gdzie wykonywany jest trening (`local` lub `cloud`), nie skąd pochodzi model.
+- `runtime_compatibility`: mapa runtime, na których adapter po treningu może działać.
+- `recommended_runtime`: preferowany runtime dla inferencji adaptera.
+
+Praktyczna sekwencja:
+1. Wybierz treningowalny model bazowy w Academy.
+2. Wytrenuj adapter.
+3. W Chat przełącz runtime kompatybilny z tym modelem/adapterem.
+4. Aktywuj adapter (opcjonalnie z `runtime_id`), żeby wymusić walidację kompatybilności.
+
 ## Użycie
 
 ### Dla Użytkownika
@@ -208,7 +234,8 @@ Edytuj manifest modelu (`data/models/manifest.json`):
 
 - ✅ Dla modelu "Llama 3" suwak temperatury ma zakres 0.0-1.0
 - ✅ Dla modelu specyficznego pojawiają się dodatkowe opcje jeśli zdefiniowane w manifeście
-- ⚠️ Zmiana parametru w UI realnie wpływa na odpowiedź (wymaga integracji z LLMServerController)
+- ✅ Runtime-aware mapping parametrów jest realizowany przez `GenerationParamsAdapter` (Ollama/vLLM/ONNX/OpenAI)
+- ⚠️ Realny wpływ zależy od wsparcia danego parametru przez wybrany runtime/provider
 
 ## Status Implementacji
 
@@ -216,16 +243,15 @@ Edytuj manifest modelu (`data/models/manifest.json`):
 - ✅ Backend: GenerationParameter i ModelCapabilities
 - ✅ Backend: Endpoint /api/v1/models/{name}/config
 - ✅ Backend: TaskRequest z generation_params
+- ✅ Backend: mapowanie `GenerationParamsAdapter` (`max_tokens` -> `num_predict` dla Ollama, `repeat_penalty` -> `repetition_penalty` dla vLLM/ONNX)
+- ✅ Backend: runtime/model overrides przez `MODEL_GENERATION_OVERRIDES`
 - ✅ Frontend: DynamicParameterForm z dynamicznym renderowaniem
 - ✅ Frontend: Przycisk Tuning i Drawer
 - ✅ Frontend: Przekazywanie parametrów do API
 
 ### Do Zrealizowania
-- ⚠️ Backend: Integracja z LLMServerController
-  - Mapowanie parametrów dla vLLM
-  - Mapowanie parametrów dla Ollama (np. num_predict zamiast max_tokens)
-- ⚠️ Testy integracyjne
-- ⚠️ Weryfikacja wpływu parametrów na odpowiedzi
+- ⚠️ Macierz weryfikacji E2E wpływu parametrów między runtime (Ollama/vLLM/ONNX/cloud)
+- ⚠️ Presety/profile UX do ponownego użycia konfiguracji
 
 ## Przykład Użycia
 
@@ -260,7 +286,7 @@ POST /api/v1/tasks
 **Rozwiązanie:** Dodaj `generation_schema` w manifeście modelu lub użyj domyślnego
 
 **Problem:** Parametry nie wpływają na odpowiedź
-**Rozwiązanie:** Upewnij się że LLMServerController przekazuje parametry do silnika LLM
+**Rozwiązanie:** Zweryfikuj czy aktywny runtime/model wspiera dany parametr i sprawdź mapowanie runtime-specyficzne w `GenerationParamsAdapter`
 
 **Problem:** UI nie renderuje niektórych typów parametrów
 **Rozwiązanie:** Sprawdź czy typ parametru jest obsługiwany (float, int, bool, list, enum)
@@ -268,6 +294,6 @@ POST /api/v1/tasks
 ## Roadmap
 
 1. **Faza 1** (Zrealizowana) - Backend schema + Frontend UI
-2. **Faza 2** (Do zrobienia) - Integracja z LLMServerController
+2. **Faza 2** (W toku) - Walidacja E2E efektu parametrów między runtime
 3. **Faza 3** (Przyszłość) - Profile parametrów (zapisywanie ulubionych ustawień)
 4. **Faza 4** (Przyszłość) - A/B testing parametrów

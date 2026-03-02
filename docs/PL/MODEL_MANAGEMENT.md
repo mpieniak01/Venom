@@ -353,6 +353,56 @@ Uwagi:
 - Endpoint aktualizuje `LLM_SERVICE_TYPE`, `LLM_MODEL_NAME`, `ACTIVE_LLM_SERVER`.
 - Wymaga aktywnego klucza API (`OPENAI_API_KEY` lub `GOOGLE_API_KEY`).
 
+### Kontrakt modeli treningowych Academy (local-first)
+
+Academy używa dedykowanego kontraktu:
+
+```bash
+GET /api/v1/academy/models/trainable
+```
+
+Odpowiedź jest oparta o metadane (nie o same nazwy modeli) i zwraca tylko pozycje
+realnie treningowalne.
+Kluczowe pola:
+- `model_id`: identyfikator modelu bazowego.
+- `provider`: nazwa dystrybucji/providera modelu (np. `huggingface`, `unsloth`, `vllm`, `ollama`).
+- `source_type`: **miejsce wykonania treningu** (`local` lub `cloud`), a nie pochodzenie modelu.
+- `cost_tier`: `free`, `paid` lub `unknown`.
+- `priority_bucket`: priorytet sortowania (local-first).
+- `runtime_compatibility`: mapa kompatybilności inferencyjnej per runtime (`{runtime_id: bool}`).
+- `recommended_runtime`: preferowany runtime wyliczony z kompatybilności.
+
+Ważna semantyka:
+- `source_type` oznacza miejsce treningu, nie źródło plików modelu.
+- kompatybilność runtime jest wykrywana z aktualnie dostępnego lokalnego stosu, bez hardcode.
+- jeśli stos nie udostępnia runtime (np. brak ONNX), ten runtime nie pojawia się w kluczach kompatybilności.
+
+Aktualne reguły lokalnej kwalifikacji LoRA w Academy:
+- rodziny modeli API (OpenAI/Gemini/Anthropic) nie wspierają lokalnego treningu LoRA,
+- artefakty ONNX są inferencyjne-only w obecnym pipeline LoRA,
+- artefakty Ollama GGUF są inferencyjne w tym pipeline,
+- lokalne modele treningowalne wymagają układu HuggingFace (`config.json` + pliki wag).
+
+### Guard aktywacji adaptera Academy
+
+Aktywacja adaptera wspiera opcjonalną walidację runtime:
+
+```bash
+POST /api/v1/academy/adapters/activate
+Content-Type: application/json
+
+{
+  "adapter_id": "training_20240101_120000",
+  "adapter_path": "./data/models/training_20240101_120000/adapter",
+  "runtime_id": "vllm"
+}
+```
+
+Zasady:
+- `runtime_id` akceptuje lokalne runtime (`ollama`, `vllm`, `onnx`),
+- backend waliduje kompatybilność `model bazowy adaptera + runtime` przed aktywacją,
+- niekompatybilna kombinacja zwraca HTTP `400` wraz z listą kompatybilnych runtime.
+
 ## Cache i tryb offline
 
 Backend cache’uje listy trendów i katalogi modeli na 30 minut. W przypadku braku

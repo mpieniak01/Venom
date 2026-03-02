@@ -15,7 +15,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
 import { ConversationBubble } from "@/components/cockpit/conversation-bubble";
 import { useTranslation } from "@/lib/i18n";
-import { filterSlashSuggestions } from "@/lib/slash-commands";
+import { filterSlashSuggestions, filterAgentSuggestions } from "@/lib/slash-commands";
 import type { SlashCommand } from "@/lib/slash-commands";
 import { Settings, ThumbsDown, ThumbsUp } from "lucide-react";
 
@@ -117,7 +117,7 @@ export const ChatComposer = memo(
 
     const applySlashSuggestion = useCallback((suggestion: SlashCommand) => {
       setDraft((current) => {
-        const match = current.match(/^(\s*)\/[^\s]*/);
+        const match = current.match(/^(\s*)[@/][^\s]*/);
         if (!match) return `${suggestion.command} `;
         const prefix = match[1] ?? "";
         const rest = current.slice(match[0].length).replace(/^\s*/, " ");
@@ -130,7 +130,8 @@ export const ChatComposer = memo(
 
     const handleDraftChange = useCallback((value: string) => {
       setDraft(value);
-      const matches = filterSlashSuggestions(value, 3);
+      const agentMatches = filterAgentSuggestions(value, 3);
+      const matches = agentMatches.length > 0 ? agentMatches : filterSlashSuggestions(value, 3);
       setSlashSuggestions(matches);
       setSlashIndex(0);
     }, []);
@@ -350,7 +351,7 @@ type CockpitThreadItemProps = Readonly<{
 }>;
 
 const getForcedLabel = (msg: ChatMessage): string | null => {
-  if (msg.forcedProvider) return `/${msg.forcedProvider}`;
+  if (msg.forcedProvider) return `@${msg.forcedProvider}`;
   if (msg.forcedTool) return `/${msg.forcedTool}`;
   return null;
 };

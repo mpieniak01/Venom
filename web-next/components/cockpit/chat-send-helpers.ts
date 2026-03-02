@@ -1,6 +1,6 @@
 import { createParser } from "eventsource-parser";
 import { type GenerationParams, type HistoryRequestDetail } from "@/lib/types";
-import { parseSlashCommand } from "@/lib/slash-commands";
+import { type ParsedSlashCommand } from "@/lib/slash-commands";
 import { type SendTaskInput } from "@/hooks/use-api";
 
 export type ActiveServerInfo = {
@@ -452,7 +452,7 @@ export async function handleStandardTaskSend(params: {
     generationParams: GenerationParams | null;
     runtimeOverride: RuntimeOverride;
     activeServerInfo: ActiveServerInfo;
-    parsed: ReturnType<typeof parseSlashCommand>;
+    parsed: ParsedSlashCommand;
     forcedIntent: string | null;
     language: string;
     resolvedSession: string | null;
@@ -553,7 +553,7 @@ export async function handleStandardTaskSend(params: {
 }
 
 export async function handleRuntimeSwitch(params: {
-    parsed: ReturnType<typeof parseSlashCommand>;
+    parsed: ParsedSlashCommand;
     activeServerInfo: ActiveServerInfo;
     selectedLlmModel: string;
     setActiveLlmRuntime: ChatSendParams["setActiveLlmRuntime"];

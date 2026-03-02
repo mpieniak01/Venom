@@ -3,13 +3,16 @@ export type SlashCommand = {
   command: string;
   label: string;
   detail: string;
-  type: "provider" | "tool" | "action";
+  type: "agent" | "provider" | "tool" | "action";
   value: string;
 };
 
+export const AGENT_COMMANDS: SlashCommand[] = [
+  { id: "gem", command: "@gem", label: "Gemini", detail: "LLM API (Google)", type: "agent", value: "gem" },
+  { id: "gpt", command: "@gpt", label: "GPT", detail: "LLM API (OpenAI)", type: "agent", value: "gpt" },
+];
+
 export const SLASH_COMMANDS: SlashCommand[] = [
-  { id: "gem", command: "/gem", label: "Gemini", detail: "LLM API (Google)", type: "provider", value: "gem" },
-  { id: "gpt", command: "/gpt", label: "GPT", detail: "LLM API (OpenAI)", type: "provider", value: "gpt" },
   { id: "clear", command: "/clear", label: "Nowa sesja", detail: "Wyczyść kontekst czatu", type: "action", value: "clear" },
   { id: "assistant", command: "/assistant", label: "Assistant", detail: "Operacje asystenta", type: "tool", value: "assistant" },
   { id: "browser", command: "/browser", label: "Browser", detail: "Akcje w przegladarce", type: "tool", value: "browser" },
@@ -75,4 +78,41 @@ export function filterSlashSuggestions(input: string, limit = 3): SlashCommand[]
     entry.value.startsWith(lowered),
   );
   return matches.slice(0, limit);
+}
+
+export function filterAgentSuggestions(input: string, limit = 3): SlashCommand[] {
+  const trimmed = input.trimStart();
+  if (!trimmed.startsWith("@")) return [];
+  if (/^@\S+\s+/.test(trimmed)) return [];
+  const query = trimmed.slice(1).split(/\s+/)[0] || "";
+  const lowered = query.toLowerCase();
+  const matches = AGENT_COMMANDS.filter((entry) =>
+    entry.value.startsWith(lowered),
+  );
+  return matches.slice(0, limit);
+}
+
+export function parseAgentMention(input: string): ParsedSlashCommand {
+  const trimmed = input.trimStart();
+  if (!trimmed.startsWith("@")) {
+    return { cleaned: input };
+  }
+  const match = /^@([a-zA-Z0-9_-]+)\b/.exec(trimmed);
+  if (!match) return { cleaned: input };
+  const token = match[1];
+  const rest = trimmed.slice(match[0].length).trimStart();
+  const command = AGENT_COMMANDS.find((entry) => entry.value === token);
+  if (!command) {
+    return { cleaned: input };
+  }
+  return {
+    cleaned: rest,
+    forcedProvider: command.value,
+  };
+}
+
+export function parseInputCommand(input: string): ParsedSlashCommand {
+  const trimmed = input.trimStart();
+  if (trimmed.startsWith("@")) return parseAgentMention(input);
+  return parseSlashCommand(input);
 }

@@ -222,6 +222,32 @@ export const addInitialSimpleUserHistoryEntry = (
     });
 };
 
+export const addInitialSimpleAssistantPlaceholder = (
+    setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"],
+    clientId: string,
+    createdTimestamp: string,
+    resolvedSession: string | null,
+) => {
+    setLocalSessionHistory((prev) => {
+        const next = [...prev];
+        const exists = next.some(
+            (entry) => entry.request_id === clientId && entry.role === "assistant",
+        );
+        if (!exists) {
+            next.push({
+                role: "assistant",
+                content: "",
+                request_id: clientId,
+                timestamp: createdTimestamp,
+                session_id: resolvedSession ?? undefined,
+                pending: true,
+                status: "W toku",
+            });
+        }
+        return next;
+    });
+};
+
 export const buildSimpleStreamRequestPayload = (
     trimmed: string,
     selectedLlmModel: string,
@@ -279,6 +305,7 @@ export async function handleSimpleTaskSend(params: {
         setMessage,
         setSending,
     } = params;
+    let resolvedRequestId = clientId;
 
     try {
         const createdTimestamp = new Date().toISOString();
@@ -289,15 +316,21 @@ export async function handleSimpleTaskSend(params: {
             createdTimestamp,
             resolvedSession,
         );
+        addInitialSimpleAssistantPlaceholder(
+            setLocalSessionHistory,
+            clientId,
+            createdTimestamp,
+            resolvedSession,
+        );
         updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
         const response = await sendSimpleChatStream(
             buildSimpleStreamRequestPayload(trimmed, selectedLlmModel, generationParams, resolvedSession),
         );
         const headerRequestId = response.headers.get("x-request-id");
         const simpleRequestId = headerRequestId || `simple-${clientId}`;
+        resolvedRequestId = simpleRequestId;
         linkOptimisticRequest(clientId, simpleRequestId);
-
-        reconcileUserRequestId(setLocalSessionHistory, clientId, simpleRequestId);
+        reconcileRequestId(setLocalSessionHistory, clientId, simpleRequestId);
         let lastHistoryUpdate = 0;
         const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
             const now = Date.now();
@@ -308,6 +341,20 @@ export async function handleSimpleTaskSend(params: {
             setLocalSessionHistory((prev) => {
                 const next = [...prev];
                 upsertHistoryEntry(next, simpleRequestId, role, content, createdTimestamp, resolvedSession);
+                if (role === "assistant") {
+                    const idx = next.findIndex(
+                        (entry) =>
+                            entry.request_id === simpleRequestId &&
+                            entry.role === "assistant",
+                    );
+                    if (idx >= 0) {
+                        next[idx] = {
+                            ...next[idx],
+                            pending: true,
+                            status: "W toku",
+                        };
+                    }
+                }
                 return next;
             });
         };
@@ -372,6 +419,18 @@ export async function handleSimpleTaskSend(params: {
             const next = [...prev];
             upsertHistoryEntry(next, simpleRequestId, "user", trimmed, timestamp, resolvedSession);
             upsertHistoryEntry(next, simpleRequestId, "assistant", buffer, timestamp, resolvedSession);
+            const idx = next.findIndex(
+                (entry) =>
+                    entry.request_id === simpleRequestId &&
+                    entry.role === "assistant",
+            );
+            if (idx >= 0) {
+                next[idx] = {
+                    ...next[idx],
+                    pending: false,
+                    status: "COMPLETED",
+                };
+            }
             return next;
         });
         const timing = uiTimingsRef.current.get(simpleRequestId);
@@ -428,16 +487,25 @@ export async function handleSimpleTaskSend(params: {
         setMessage(err instanceof Error ? err.message : "Nie udało się wysłać zadania");
         setLocalSessionHistory((prev) => {
             const next = [...prev];
-            const exists = next.some((entry) => entry.request_id === clientId && entry.role === "assistant");
-            if (!exists) {
-                upsertHistoryEntry(
-                    next,
-                    clientId,
-                    "assistant",
-                    err instanceof Error ? err.message : "Błąd trybu prostego.",
-                    new Date().toISOString(),
-                    resolvedSession,
-                );
+            const errorText = err instanceof Error ? err.message : "Błąd trybu prostego.";
+            const requestId = resolvedRequestId;
+            upsertHistoryEntry(
+                next,
+                requestId,
+                "assistant",
+                errorText,
+                new Date().toISOString(),
+                resolvedSession,
+            );
+            const idx = next.findIndex(
+                (entry) => entry.request_id === requestId && entry.role === "assistant",
+            );
+            if (idx >= 0) {
+                next[idx] = {
+                    ...next[idx],
+                    pending: false,
+                    status: "FAILED",
+                };
             }
             return next;
         });

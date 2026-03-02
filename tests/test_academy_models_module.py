@@ -347,6 +347,15 @@ def test_activate_adapter_variants(mock_settings, tmp_path):
     assert payload["adapter_id"] == "ok-adapter"
 
 
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_rejects_path_traversal(mock_settings, tmp_path):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mgr = MagicMock()
+
+    with pytest.raises(ValueError, match="outside of models directory"):
+        academy_models.activate_adapter(mgr=mgr, adapter_id="../outside")
+
+
 def test_deactivate_adapter_variants():
     mgr = MagicMock()
     mgr.deactivate_adapter.return_value = False
@@ -378,6 +387,22 @@ async def test_validate_adapter_runtime_compatibility_rejects_non_local_runtime(
             mgr=MagicMock(),
             adapter_id="adapter-1",
             runtime_id="openai",
+        )
+
+
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
+async def test_validate_adapter_runtime_compatibility_rejects_path_traversal(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+    with pytest.raises(ValueError, match="outside of models directory"):
+        await academy_models.validate_adapter_runtime_compatibility(
+            mgr=MagicMock(),
+            adapter_id="../outside",
+            runtime_id="vllm",
         )
 
 

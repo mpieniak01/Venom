@@ -194,8 +194,13 @@ export const ChatComposer = memo(
     }, []);
 
     useEffect(() => {
-      void loadTrainableCatalog();
-      void loadAdapters();
+      async function loadAdapterDependencies() {
+        await loadTrainableCatalog();
+        await loadAdapters();
+      }
+      loadAdapterDependencies().catch((error) => {
+        console.error("Failed to initialize adapter selector dependencies:", error);
+      });
     }, [loadAdapters, loadTrainableCatalog]);
 
     const handleAdapterSelect = useCallback(
@@ -395,7 +400,9 @@ export const ChatComposer = memo(
                 value={selectedAdapter}
                 options={adapterOptions}
                 onChange={(value) => {
-                  void handleAdapterSelect(value);
+                  handleAdapterSelect(value).catch((error) => {
+                    console.error("Adapter switch action failed:", error);
+                  });
                 }}
                 ariaLabel={t("cockpit.actions.selectAdapter")}
                 buttonTestId="chat-adapter-select"

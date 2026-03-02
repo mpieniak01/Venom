@@ -15,7 +15,7 @@ import {
   type TrainingJobStatus,
   type TrainableModelInfo,
 } from "@/lib/academy-api";
-import { useTranslation } from "@/lib/i18n";
+import { useLanguage, useTranslation } from "@/lib/i18n";
 
 type SupportedEngine =
   | "unsloth"
@@ -80,6 +80,7 @@ export function buildTrainingModelPickerOptions(
 }
 
 export function TrainingPanel() {
+  const { language } = useLanguage();
   const t = useTranslation();
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
@@ -468,11 +469,11 @@ export function TrainingPanel() {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-zinc-400">
-                      {t("academy.training.startedAt")}: {new Date(job.started_at).toLocaleString()}
+                      {t("academy.training.startedAt")}: {new Date(job.started_at).toLocaleString(language)}
                     </p>
                     {job.finished_at && (
                       <p className="text-xs text-zinc-400">
-                        {t("academy.training.finishedAt")}: {new Date(job.finished_at).toLocaleString()}
+                        {t("academy.training.finishedAt")}: {new Date(job.finished_at).toLocaleString(language)}
                       </p>
                     )}
                   </div>

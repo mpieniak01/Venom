@@ -45,7 +45,8 @@ def _looks_like_hf_repo_id(model_id: str) -> bool:
     candidate = model_id.strip()
     if not candidate or " " in candidate:
         return False
-    if candidate.startswith(("http://", "https://")):
+    # Repository id should be a plain "org/model" handle, not a URL.
+    if "://" in candidate:
         return False
     parts = [part for part in candidate.split("/") if part]
     return len(parts) == 2
@@ -87,10 +88,12 @@ def _non_trainable_reason_from_local_artifacts(
     runtime = str(model_metadata.get("runtime") or "").lower()
     source = str(model_metadata.get("source") or "").lower()
 
-    if provider_lc == "onnx" or runtime == "onnx" or model_type == "onnx":
+    if _is_onnx_artifact(
+        provider_lc=provider_lc, runtime=runtime, model_type=model_type
+    ):
         return "ONNX runtime artifacts are inference-only in Academy LoRA pipeline"
 
-    if provider_lc == "ollama" or source == "ollama":
+    if _is_ollama_artifact(provider_lc=provider_lc, source=source):
         return (
             "Ollama runtime models are inference-focused in this pipeline; "
             "select a HuggingFace/Unsloth base model for Academy training"
@@ -102,22 +105,29 @@ def _non_trainable_reason_from_local_artifacts(
             return None
         return "Model capability cannot be verified for Academy LoRA training"
 
+    return _non_trainable_reason_from_model_path(model_path)
+
+
+def _is_onnx_artifact(*, provider_lc: str, runtime: str, model_type: str) -> bool:
+    return provider_lc == "onnx" or runtime == "onnx" or model_type == "onnx"
+
+
+def _is_ollama_artifact(*, provider_lc: str, source: str) -> bool:
+    return provider_lc == "ollama" or source == "ollama"
+
+
+def _non_trainable_reason_from_model_path(model_path: Path) -> Optional[str]:
     if model_path.is_file():
         suffix = model_path.suffix.lower()
         if suffix in {".onnx", ".gguf"}:
             return f"Model artifact '{model_path.name}' is inference-only and not LoRA-trainable"
         return "Model file artifact is not a supported HuggingFace training layout"
-
     if not model_path.is_dir():
         return "Model path does not point to a valid local model directory"
-
-    config_file = model_path / "config.json"
-    if not config_file.exists():
+    if not (model_path / "config.json").exists():
         return "Missing config.json in local model directory"
-
     if not _has_hf_weights(model_path):
         return "Missing HuggingFace weight files required for LoRA training"
-
     return None
 
 
@@ -175,7 +185,6 @@ def build_model_label(
 def classify_model_source_type(
     *,
     provider: str,
-    installed_local: bool,
     model_metadata: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Classify training execution location for Academy picker contract."""
@@ -260,9 +269,7 @@ def resolve_runtime_compatibility(
     model_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, bool]:
     """Resolve where trained model+adapter can be served for inference."""
-    compatibility: Dict[str, bool] = {
-        runtime_id: False for runtime_id in available_runtime_ids
-    }
+    compatibility: Dict[str, bool] = dict.fromkeys(available_runtime_ids, False)
     if not compatibility:
         return compatibility
 
@@ -428,7 +435,6 @@ def add_trainable_model_from_catalog(
         return
     resolved_source_type = source_type or classify_model_source_type(
         provider=provider,
-        installed_local=installed_local,
         model_metadata=model_metadata,
     )
     resolved_cost_tier = cost_tier or classify_model_cost_tier(
@@ -615,6 +621,18 @@ def _resolve_local_runtime_id(runtime_id: str) -> Optional[str]:
     return _canonical_local_runtime_id(runtime_id)
 
 
+def _resolve_adapter_dir(*, models_dir: Path, adapter_id: str) -> Path:
+    """Resolve adapter directory and reject path traversal."""
+    adapter_dir = (models_dir / adapter_id).resolve()
+    try:
+        adapter_dir.relative_to(models_dir)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid adapter_id '{adapter_id}': outside of models directory."
+        ) from exc
+    return adapter_dir
+
+
 async def validate_adapter_runtime_compatibility(
     *,
     mgr: Any,
@@ -635,7 +653,7 @@ async def validate_adapter_runtime_compatibility(
         )
 
     models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
-    adapter_dir = (models_dir / adapter_id).resolve()
+    adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
     base_model = _resolve_adapter_base_model(
         adapter_dir=adapter_dir,
         default_model=str(getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
@@ -723,7 +741,8 @@ def activate_adapter(mgr: Any, adapter_id: str) -> Dict[str, Any]:
     from venom_core.config import SETTINGS
 
     models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
-    adapter_path = (models_dir / adapter_id / "adapter").resolve()
+    adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
+    adapter_path = (adapter_dir / "adapter").resolve()
 
     if not adapter_path.exists():
         raise FileNotFoundError("Adapter not found")

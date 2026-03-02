@@ -259,8 +259,8 @@ export function TrainingPanel() {
       {/* Formularz parametrów */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-6">
         <h3 className="mb-4 text-sm font-medium text-zinc-300">{t("academy.training.paramsTitle")}</h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="sm:col-span-2 lg:col-span-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="sm:col-span-2 xl:col-span-5">
             <p className="text-sm font-medium text-zinc-300">
               {t("academy.training.baseModel")}
             </p>
@@ -423,25 +423,26 @@ export function TrainingPanel() {
             />
             <p className="mt-1 text-xs text-zinc-400">{t("academy.training.batchSizeHint")}</p>
           </div>
+          <div className="sm:col-span-2 xl:col-span-1 xl:self-end">
+            <Button
+              onClick={handleStartTraining}
+              disabled={loading || modelsLoading || !selectedBaseModel}
+              className="w-full gap-2"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t("academy.training.starting")}
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4" />
+                  {t("academy.training.start")}
+                </>
+              )}
+            </Button>
+          </div>
         </div>
-
-        <Button
-          onClick={handleStartTraining}
-          disabled={loading || modelsLoading || !selectedBaseModel}
-          className="mt-4 gap-2"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {t("academy.training.starting")}
-            </>
-          ) : (
-            <>
-              <Play className="h-4 w-4" />
-              {t("academy.training.start")}
-            </>
-          )}
-        </Button>
       </div>
 
       {/* Lista jobów */}

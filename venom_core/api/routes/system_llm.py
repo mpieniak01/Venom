@@ -1304,65 +1304,69 @@ def _feedback_alias_resolution_payload(resolution) -> dict[str, Any]:
     }
 
 
-async def _resolve_ollama_selected_model(
+def _resolve_non_alias_requested_model(
+    *, requested_model: str, available_models: set[str], selected_model: str
+) -> str:
+    if not requested_model or is_feedback_loop_alias(requested_model):
+        return selected_model
+    return (
+        _validate_requested_model_available(
+            requested_model=requested_model,
+            available_models=available_models,
+            server_name="ollama",
+        )
+        or selected_model
+    )
+
+
+async def _resolve_feedback_alias_model(
     *,
     request: ActiveLlmServerRequest,
     requested_alias: str,
+    requested_model: str,
+    available_models: set[str],
     model_manager: Any,
-    models: list[dict[str, Any]],
-    selected_model: str,
 ) -> tuple[str, dict[str, Any]]:
-    available_models = set(
-        _available_models_for_server(models=models, server_name="ollama")
+    guard = await _evaluate_feedback_loop_resource_guard(
+        model_manager=model_manager,
+        model_name=feedback_loop_policy().primary,
     )
-    requested_model = str(request.model or "").strip()
-    explicit_alias_request = bool(requested_alias) or is_feedback_loop_alias(
-        requested_model
+    alias_resolution = resolve_feedback_loop_model(
+        requested_model=requested_alias or requested_model,
+        available_models=available_models,
+        prefer_feedback_loop_default=False,
+        exact_only=bool(request.exact_only),
+        primary_allowed=guard.allowed,
+    )
+    if not alias_resolution.resolved_model_id:
+        status_code = 409 if request.exact_only else 400
+        recommendation = f" {guard.recommendation}" if guard.recommendation else ""
+        raise HTTPException(
+            status_code=status_code,
+            detail=(
+                "Nie udało się rozwiązać aliasu "
+                f"'{FEEDBACK_LOOP_REQUESTED_ALIAS}' do dostępnego modelu."
+                f"{recommendation}"
+            ),
+        )
+    logger.info(
+        "Feedback-loop alias resolved: requested=%s resolved=%s reason=%s",
+        alias_resolution.requested_model_alias,
+        alias_resolution.resolved_model_id,
+        alias_resolution.resolution_reason,
+    )
+    return alias_resolution.resolved_model_id, _feedback_alias_resolution_payload(
+        alias_resolution
     )
 
-    if requested_model and not is_feedback_loop_alias(requested_model):
-        selected_model = (
-            _validate_requested_model_available(
-                requested_model=requested_model,
-                available_models=available_models,
-                server_name="ollama",
-            )
-            or selected_model
-        )
 
-    if explicit_alias_request:
-        guard = await _evaluate_feedback_loop_resource_guard(
-            model_manager=model_manager,
-            model_name=feedback_loop_policy().primary,
-        )
-        alias_resolution = resolve_feedback_loop_model(
-            requested_model=requested_alias or requested_model,
-            available_models=available_models,
-            prefer_feedback_loop_default=False,
-            exact_only=bool(request.exact_only),
-            primary_allowed=guard.allowed,
-        )
-        if not alias_resolution.resolved_model_id:
-            status_code = 409 if request.exact_only else 400
-            recommendation = f" {guard.recommendation}" if guard.recommendation else ""
-            raise HTTPException(
-                status_code=status_code,
-                detail=(
-                    "Nie udało się rozwiązać aliasu "
-                    f"'{FEEDBACK_LOOP_REQUESTED_ALIAS}' do dostępnego modelu."
-                    f"{recommendation}"
-                ),
-            )
-        logger.info(
-            "Feedback-loop alias resolved: requested=%s resolved=%s reason=%s",
-            alias_resolution.requested_model_alias,
-            alias_resolution.resolved_model_id,
-            alias_resolution.resolution_reason,
-        )
-        return alias_resolution.resolved_model_id, _feedback_alias_resolution_payload(
-            alias_resolution
-        )
-
+async def _resolve_feedback_guarded_selection(
+    *,
+    request: ActiveLlmServerRequest,
+    model_manager: Any,
+    selected_model: str,
+    available_models: set[str],
+) -> tuple[str, dict[str, Any]]:
     selected_guard = await _evaluate_feedback_loop_resource_guard(
         model_manager=model_manager,
         model_name=selected_model,
@@ -1398,6 +1402,44 @@ async def _resolve_ollama_selected_model(
     )
     return fallback_resolution.resolved_model_id, _feedback_alias_resolution_payload(
         fallback_resolution
+    )
+
+
+async def _resolve_ollama_selected_model(
+    *,
+    request: ActiveLlmServerRequest,
+    requested_alias: str,
+    model_manager: Any,
+    models: list[dict[str, Any]],
+    selected_model: str,
+) -> tuple[str, dict[str, Any]]:
+    available_models = set(
+        _available_models_for_server(models=models, server_name="ollama")
+    )
+    requested_model = str(request.model or "").strip()
+    explicit_alias_request = bool(requested_alias) or is_feedback_loop_alias(
+        requested_model
+    )
+
+    selected_model = _resolve_non_alias_requested_model(
+        requested_model=requested_model,
+        available_models=available_models,
+        selected_model=selected_model,
+    )
+    if explicit_alias_request:
+        return await _resolve_feedback_alias_model(
+            request=request,
+            requested_alias=requested_alias,
+            requested_model=requested_model,
+            available_models=available_models,
+            model_manager=model_manager,
+        )
+
+    return await _resolve_feedback_guarded_selection(
+        request=request,
+        model_manager=model_manager,
+        selected_model=selected_model,
+        available_models=available_models,
     )
 
 

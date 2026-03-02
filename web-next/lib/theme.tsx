@@ -89,7 +89,7 @@ const ThemeContext = createContext<ThemeContextValue>({
 });
 
 export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [theme, setThemeState] = useState<ThemeId>(() => resolveInitialTheme());
+  const [themeState, setThemeState] = useState<ThemeId>(() => resolveInitialTheme());
   const [hasLocalOverride, setHasLocalOverride] = useState<boolean>(
     () => resolveStoredTheme() !== null,
   );
@@ -108,8 +108,8 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, []);
 
   useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
+    applyTheme(themeState);
+  }, [themeState]);
 
   useEffect(() => {
     if (hasLocalOverride) return;
@@ -149,11 +149,11 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   const value = useMemo<ThemeContextValue>(
     () => ({
-      theme,
+      theme: themeState,
       setTheme,
       availableThemes: THEME_IDS,
     }),
-    [setTheme, theme],
+    [setTheme, themeState],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

@@ -39,6 +39,45 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _grounding_chunk_sources(grounding_metadata: dict[str, Any]) -> list[str]:
+    sources: list[str] = []
+    chunks = (
+        _first_non_none(grounding_metadata, ("grounding_chunks", "groundingChunks"))
+        or []
+    )
+    for idx, chunk_raw in enumerate(chunks, 1):
+        chunk = _as_dict(chunk_raw)
+        web = _as_dict(chunk.get("web"))
+        title = (
+            web.get("title") or chunk.get("title") or chunk.get("uri") or "Brak tytułu"
+        )
+        uri = web.get("uri") or chunk.get("uri") or ""
+        if uri:
+            sources.append(f"[{idx}] {title} - {uri}")
+        elif title and title != "Brak tytułu":
+            sources.append(f"[{idx}] {title}")
+    return sources
+
+
+def _grounding_query_sources(
+    response_metadata: dict[str, Any], grounding_metadata: dict[str, Any]
+) -> list[str]:
+    web_queries = (
+        _first_non_none(grounding_metadata, ("web_search_queries", "webSearchQueries"))
+        or _first_non_none(
+            response_metadata, ("web_search_queries", "webSearchQueries")
+        )
+        or []
+    )
+    return [f"[{idx}] Zapytanie: {query}" for idx, query in enumerate(web_queries, 1)]
+
+
+def _render_sources_section(sources: list[str]) -> str:
+    if not sources:
+        return ""
+    return "\n\n---\n📚 Źródła (Google Grounding):\n" + "\n".join(sources)
+
+
 def format_grounding_sources(response_metadata: dict[str, Any]) -> str:
     """
     Formatuje źródła z Google Grounding do czytelnej formy.
@@ -52,53 +91,14 @@ def format_grounding_sources(response_metadata: dict[str, Any]) -> str:
     if not response_metadata:
         return ""
 
-    sources = []
-
-    # Sprawdź grounding metadata (snake_case i camelCase)
     grounding_metadata = _as_dict(
         _first_non_none(response_metadata, ("grounding_metadata", "groundingMetadata"))
     )
-    if grounding_metadata:
-        chunks = (
-            _first_non_none(grounding_metadata, ("grounding_chunks", "groundingChunks"))
-            or []
-        )
-        for idx, chunk_raw in enumerate(chunks, 1):
-            chunk = _as_dict(chunk_raw)
-            web = _as_dict(chunk.get("web"))
-            title = (
-                web.get("title")
-                or chunk.get("title")
-                or chunk.get("uri")
-                or "Brak tytułu"
-            )
-            uri = web.get("uri") or chunk.get("uri") or ""
-            # Dodaj źródło tylko jeśli ma URI (link)
-            if uri:
-                sources.append(f"[{idx}] {title} - {uri}")
-            # Jeśli jest tytuł ale brak URI, dodaj bez linku
-            elif title and title != "Brak tytułu":
-                sources.append(f"[{idx}] {title}")
-
-    # Sprawdź web_search_queries (alternatywne źródło metadanych)
-    web_queries = (
-        _first_non_none(grounding_metadata, ("web_search_queries", "webSearchQueries"))
-        or _first_non_none(
-            response_metadata, ("web_search_queries", "webSearchQueries")
-        )
-        or []
-    )
-    if web_queries and not sources:
-        for idx, query in enumerate(web_queries, 1):
-            sources.append(f"[{idx}] Zapytanie: {query}")
-
-    if sources:
-        sources_section = "\n\n---\n📚 Źródła (Google Grounding):\n" + "\n".join(
-            sources
-        )
-        return sources_section
-
-    return ""
+    chunk_sources = _grounding_chunk_sources(grounding_metadata)
+    if chunk_sources:
+        return _render_sources_section(chunk_sources)
+    query_sources = _grounding_query_sources(response_metadata, grounding_metadata)
+    return _render_sources_section(query_sources)
 
 
 class ResearcherAgent(BaseAgent):

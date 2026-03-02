@@ -91,7 +91,7 @@ export function RuntimeSection({
                         className="shrink-0 rounded-full px-5"
                         variant="secondary"
                         disabled={!selectedServer || !selectedModel}
-                        onClick={() => void handleActivateRuntimeSelection()}
+                        onClick={handleActivateRuntimeSelection}
                     >
                         {t("models.actions.activate")}
                     </Button>

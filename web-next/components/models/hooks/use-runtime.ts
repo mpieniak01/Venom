@@ -207,9 +207,11 @@ export function useRuntime() {
         }
     }, [activateRuntimeSelection, pushToast, setPending, t]);
 
-    const handleActivateRuntimeSelection = useCallback(async () => {
+    const handleActivateRuntimeSelection = useCallback(() => {
         if (!selectedServer || !selectedModel) return;
-        await handleActivateRuntimeModel(selectedServer, selectedModel);
+        handleActivateRuntimeModel(selectedServer, selectedModel).catch(() => {
+            // Error toast is emitted inside handleActivateRuntimeModel.
+        });
     }, [handleActivateRuntimeModel, selectedModel, selectedServer]);
 
     const handleActivate = async (model: ModelInfo) => {

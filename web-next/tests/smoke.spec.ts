@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("Venom Next Cockpit Smoke", () => {
-  test("Slash command /gpt potwierdza przelaczenie runtime i wysyla zadanie", async ({ page }) => {
+  test("Agent mention @gpt potwierdza przelaczenie runtime i wysyla zadanie", async ({ page }) => {
     await page.route("**/api/v1/system/llm-servers/active", async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({
@@ -86,7 +86,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await page.waitForResponse("**/api/v1/system/llm-servers/active");
 
     const textarea = page.getByTestId("cockpit-prompt-input");
-    await textarea.fill("/gpt Test zadania");
+    await textarea.fill("@gpt Test zadania");
 
     const [runtimeReq, taskReq] = await Promise.all([
       page.waitForRequest((req) =>

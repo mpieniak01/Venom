@@ -1031,7 +1031,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Coverage-floor anchor for venom_core/agents/coder.py in fast lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_coder_agent_mcp.py",
@@ -2671,7 +2671,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Changed-scope coverage reinforcement for cloud runtime activation contract."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_llm_runtime_options_api.py",
@@ -2685,7 +2685,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Runtime options API contract for cloud/local selection in Chat and Models panels."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_llm_runtime_utils.py",
@@ -3151,7 +3151,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Coverage-floor anchor for venom_core/core/model_registry_providers.py in fast lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_model_registry_split_modules.py",
@@ -3195,9 +3195,9 @@
     },
     {
       "path": "tests/test_model_services.py",
-      "domain": "bootstrap",
-      "test_type": "unit",
-      "intent": "regression",
+      "domain": "models",
+      "test_type": "service_contract",
+      "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -3205,7 +3205,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Coverage-floor anchor for venom_core/bootstrap/model_services.py in fast lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_model_validators.py",
@@ -3294,6 +3294,7 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
@@ -3307,6 +3308,7 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
@@ -3482,6 +3484,7 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
@@ -3823,6 +3826,7 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,

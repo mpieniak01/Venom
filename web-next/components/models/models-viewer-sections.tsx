@@ -50,17 +50,17 @@ export function RuntimeSection({
     t
 }: RuntimeSectionProps) {
     return (
-        <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
+        <div className="w-full rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 text-sm text-[color:var(--text-primary)] shadow-card">
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <p className="text-xs uppercase tracking-[0.35em] text-slate-400">{t("models.runtime.title")}</p>
-                    <p className="mt-1 text-sm text-slate-300">{t("models.runtime.description")}</p>
+                    <p className="text-xs uppercase tracking-[0.35em] text-[color:var(--ui-muted)]">{t("models.runtime.title")}</p>
+                    <p className="mt-1 text-sm text-[color:var(--text-primary)]">{t("models.runtime.description")}</p>
                 </div>
                 {installed.error && <Badge tone="warning">{installed.error}</Badge>}
             </div>
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
+            <div className="mt-4 rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
                 <div className="flex w-full flex-nowrap items-center gap-3 overflow-x-auto">
-                    <span className="whitespace-nowrap text-[11px] uppercase tracking-[0.3em] text-slate-400">
+                    <span className="whitespace-nowrap text-[11px] uppercase tracking-[0.3em] text-[color:var(--ui-muted)]">
                         {t("models.runtime.server")}
                     </span>
                     <SelectMenu
@@ -69,11 +69,11 @@ export function RuntimeSection({
                         onChange={(val) => setSelectedServer(val || null)}
                         placeholder={t("models.runtime.select")}
                         className="w-[180px] shrink-0"
-                        buttonClassName="w-full justify-between rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-slate-100 hover:border-white/30 hover:bg-white/10 overflow-hidden"
-                        renderButton={(opt) => <span className="flex-1 truncate text-left text-slate-100">{opt?.label ?? t("models.runtime.select")}</span>}
-                        renderOption={(opt) => <span className="w-full text-left text-sm normal-case tracking-normal text-slate-100">{opt.label}</span>}
+                        buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)] overflow-hidden"
+                        renderButton={(opt) => <span className="flex-1 truncate text-left text-[color:var(--text-primary)]">{opt?.label ?? t("models.runtime.select")}</span>}
+                        renderOption={(opt) => <span className="w-full text-left text-sm normal-case tracking-normal text-[color:var(--text-primary)]">{opt.label}</span>}
                     />
-                    <span className="whitespace-nowrap text-[11px] uppercase tracking-[0.3em] text-slate-400">
+                    <span className="whitespace-nowrap text-[11px] uppercase tracking-[0.3em] text-[color:var(--ui-muted)]">
                         {t("models.runtime.model")}
                     </span>
                     <SelectMenu
@@ -82,9 +82,9 @@ export function RuntimeSection({
                         onChange={(val) => setSelectedModel(val || null)}
                         placeholder={t("models.runtime.select")}
                         className="flex-1 min-w-[200px]"
-                        buttonClassName="w-full justify-between rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-slate-100 hover:border-white/30 hover:bg-white/10 overflow-hidden"
+                        buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)] overflow-hidden"
                         renderButton={(opt) => <span className="flex-1 truncate text-left">{opt?.label ?? t("models.runtime.select")}</span>}
-                        renderOption={(opt) => <span className="w-full text-left text-sm normal-case tracking-normal text-slate-100">{opt.label}</span>}
+                        renderOption={(opt) => <span className="w-full text-left text-sm normal-case tracking-normal text-[color:var(--text-primary)]">{opt.label}</span>}
                     />
                     <Button
                         size="sm"
@@ -96,7 +96,7 @@ export function RuntimeSection({
                         {t("models.actions.activate")}
                     </Button>
                     <Link className="shrink-0 inline-flex items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]" href="/docs/llm-models">
-                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/15 text-[11px]">?</span>
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[color:var(--ui-border-strong)] text-[11px]">?</span>
                         {t("models.ui.instructions")}
                     </Link>
                 </div>
@@ -136,7 +136,7 @@ export function SearchSection({
 }: SearchSectionProps) {
     return (
         <section className="grid gap-10">
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
+            <div className="rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 shadow-card">
                 <SectionHeader
                     title={t("models.search.title")}
                     subtitle={t("models.search.subtitle")}
@@ -145,17 +145,17 @@ export function SearchSection({
                 />
                 {!searchCollapsed && (
                     <div className="mt-5">
-                        <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <div className="rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
                             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                                <div className="flex h-9 min-w-[200px] flex-1 items-center gap-3 rounded-full border border-white/10 bg-white/5 px-4 mr-4">
-                                    <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                                <div className="flex h-9 min-w-[200px] flex-1 items-center gap-3 rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-4 mr-4">
+                                    <Search className="h-4 w-4 shrink-0 text-[color:var(--ui-muted)]" />
                                     <input
                                         type="text"
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                                         placeholder={t("models.search.placeholder")}
-                                        className="h-full w-full border-none !bg-transparent p-0 text-xs text-slate-100 placeholder-slate-500 !outline-none !ring-0 z-10"
+                                        className="h-full w-full border-none !bg-transparent p-0 text-xs text-[color:var(--text-primary)] placeholder:text-[color:var(--ui-muted)] !outline-none !ring-0 z-10"
                                     />
                                 </div>
                                 <SelectMenu
@@ -166,8 +166,8 @@ export function SearchSection({
                                     ]}
                                     onChange={(val) => setSearchProvider(val as "huggingface" | "ollama")}
                                     className="w-full sm:w-[160px]"
-                                    buttonClassName="w-full justify-between rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-100 hover:border-white/30 hover:bg-white/10"
-                                    renderButton={(opt) => <span className="flex-1 truncate text-left text-slate-100 uppercase tracking-wider text-[10px]">{opt?.label ?? "Provider"}</span>}
+                                    buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-4 py-2 text-xs text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)]"
+                                    renderButton={(opt) => <span className="flex-1 truncate text-left text-[color:var(--text-primary)] uppercase tracking-wider text-[10px]">{opt?.label ?? "Provider"}</span>}
                                 />
                                 <Button onClick={handleSearch} disabled={searchResults.loading || !searchQuery.trim()} className="rounded-full px-6 text-xs" size="sm" variant="secondary">
                                     {searchResults.loading ? t("models.search.searching") : t("models.search.button")}
@@ -176,7 +176,7 @@ export function SearchSection({
                         </div>
                         {searchResults.error && <p className="mt-4 text-sm text-amber-200">{searchResults.error}</p>}
                         {searchResults.performed && !searchResults.loading && searchResults.data.length === 0 && !searchResults.error && (
-                            <p className="mt-4 text-sm text-slate-400">{t("models.ui.noResults", { query: searchQuery })}</p>
+                            <p className="mt-4 text-sm text-[color:var(--ui-muted)]">{t("models.ui.noResults", { query: searchQuery })}</p>
                         )}
                         {searchResults.data.length > 0 && (
                             <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -226,22 +226,22 @@ export function NewsSection({
 
     const renderNewsBody = () => {
         if (newsHf.loading) {
-            return <p className="text-xs text-slate-500">{t("models.ui.loading")}</p>;
+            return <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p>;
         }
         if (newsHf.error) {
             return <p className="text-xs text-amber-200/70">{newsHf.error}</p>;
         }
         if (newsHf.items.length === 0) {
-            return <p className="text-xs text-slate-500">{t("models.ui.noData")}</p>;
+            return <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.noData")}</p>;
         }
         return (
             <div className="flex flex-col">
                 {sortedNews.slice(0, 5).map((item: NewsItem) => (
-                    <div key={buildNewsItemKey(item, "news")} className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 py-2.5 last:border-b-0 last:pb-0 first:pt-0">
-                        <p className="min-w-0 flex-1 text-sm font-medium text-slate-200 line-clamp-1">{item.title || "Nowa publikacja"}</p>
+                    <div key={buildNewsItemKey(item, "news")} className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--ui-border)] py-2.5 last:border-b-0 last:pb-0 first:pt-0">
+                        <p className="min-w-0 flex-1 text-sm font-medium text-[color:var(--text-primary)] line-clamp-1">{item.title || "Nowa publikacja"}</p>
                         <div className="flex items-center gap-4">
-                            <span className="text-[10px] tabular-nums text-slate-500 whitespace-nowrap">{formatDateTime(item.published_at, language, "news")}</span>
-                            {item.url && <a className="rounded-full border border-white/10 px-2.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-slate-400 hover:border-white/30 hover:text-white" href={item.url} target="_blank" rel="noreferrer">{t("models.ui.view")}</a>}
+                            <span className="text-[10px] tabular-nums text-[color:var(--ui-muted)] whitespace-nowrap">{formatDateTime(item.published_at, language, "news")}</span>
+                            {item.url && <a className="rounded-full border border-[color:var(--ui-border)] px-2.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-[color:var(--ui-muted)] hover:border-[color:var(--ui-border-strong)] hover:text-[color:var(--text-primary)]" href={item.url} target="_blank" rel="noreferrer">{t("models.ui.view")}</a>}
                         </div>
                     </div>
                 ))}
@@ -251,21 +251,21 @@ export function NewsSection({
 
     const renderPapersBody = () => {
         if (papersHf.loading) {
-            return <p className="col-span-full text-xs text-slate-500">{t("models.ui.loading")}</p>;
+            return <p className="col-span-full text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p>;
         }
         if (papersHf.error) {
             return <p className="col-span-full text-xs text-amber-200/70">{papersHf.error}</p>;
         }
         if (papersHf.items.length === 0) {
-            return <p className="col-span-full text-xs text-slate-500">{t("models.ui.noData")}</p>;
+            return <p className="col-span-full text-xs text-[color:var(--ui-muted)]">{t("models.ui.noData")}</p>;
         }
         return sortedPapers.slice(0, 3).map((item: NewsItem) => (
-            <div key={buildNewsItemKey(item, "paper")} className="flex h-full flex-col rounded-2xl border border-white/10 bg-black/30 p-4 text-sm">
-                <p className="text-sm font-semibold text-slate-100 line-clamp-2">{item.title || t("models.sections.papers.defaultTitle")}</p>
-                <p className="mt-2 text-[11px] text-slate-400 line-clamp-3 leading-relaxed">{item.summary || t("models.sections.papers.noPreview")}</p>
-                <div className="mt-auto pt-4 flex items-center justify-between text-[10px] text-slate-500">
+            <div key={buildNewsItemKey(item, "paper")} className="flex h-full flex-col rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4 text-sm">
+                <p className="text-sm font-semibold text-[color:var(--text-primary)] line-clamp-2">{item.title || t("models.sections.papers.defaultTitle")}</p>
+                <p className="mt-2 text-[11px] text-[color:var(--ui-muted)] line-clamp-3 leading-relaxed">{item.summary || t("models.sections.papers.noPreview")}</p>
+                <div className="mt-auto pt-4 flex items-center justify-between text-[10px] text-[color:var(--ui-muted)]">
                     <span>{formatDateTime(item.published_at, language, "news")}</span>
-                    {item.url && <a className="rounded-full border border-white/10 px-3 py-1 text-[9px] uppercase tracking-[0.1em] text-slate-400 hover:border-white/30 hover:text-white" href={item.url} target="_blank" rel="noreferrer">{t("models.ui.view")}</a>}
+                    {item.url && <a className="rounded-full border border-[color:var(--ui-border)] px-3 py-1 text-[9px] uppercase tracking-[0.1em] text-[color:var(--ui-muted)] hover:border-[color:var(--ui-border-strong)] hover:text-[color:var(--text-primary)]" href={item.url} target="_blank" rel="noreferrer">{t("models.ui.view")}</a>}
                 </div>
             </div>
         ));
@@ -273,7 +273,7 @@ export function NewsSection({
 
     return (
         <section className="grid gap-10">
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
+            <div className="rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 shadow-card">
                 <SectionHeader
                     title={t("models.sections.news.title")}
                     subtitle={t("models.sections.news.subtitle")}
@@ -285,9 +285,9 @@ export function NewsSection({
                     onToggle={() => setNewsCollapsed(!newsCollapsed)}
                     extra={
                         <div className="flex items-center gap-3">
-                            <span className="text-[10px] uppercase tracking-[0.2em] text-slate-500 whitespace-nowrap">{t("models.ui.sort")}</span>
+                            <span className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--ui-muted)] whitespace-nowrap">{t("models.ui.sort")}</span>
                             <select
-                                className="h-7 rounded-full border border-white/10 bg-white/5 px-3 text-[10px] text-slate-200 outline-none hover:border-white/20"
+                                className="h-7 rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 text-[10px] text-[color:var(--text-primary)] outline-none hover:border-[color:var(--ui-border-strong)]"
                                 value={newsSort}
                                 onChange={(e) => setNewsSort(e.target.value as "newest" | "oldest")}
                             >
@@ -298,13 +298,13 @@ export function NewsSection({
                     }
                 />
                 {!newsCollapsed && (
-                    <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4">
+                    <div className="mt-5 rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
                         {renderNewsBody()}
                     </div>
                 )}
             </div>
 
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
+            <div className="rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 shadow-card">
                 <SectionHeader
                     title={t("models.sections.papers.title")}
                     subtitle={t("models.sections.papers.subtitle")}
@@ -350,7 +350,7 @@ export function RecommendedAndCatalog({
 }: RecommendedAndCatalogProps) {
     return (
         <div className="flex flex-col gap-10">
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
+            <div className="rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 shadow-card">
                 <SectionHeader
                     title={t("models.sections.recommended.title")}
                     subtitle={t("models.sections.recommended.subtitle")}
@@ -366,10 +366,10 @@ export function RecommendedAndCatalog({
                         {[{ label: 'Ollama', res: trendingOllama }, { label: 'HuggingFace', res: trendingHf }].map(p => (
                             <div key={p.label} className="flex flex-col gap-4">
                                 <div className="flex items-center justify-between">
-                                    <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold">{p.label}</h3>
+                                    <h3 className="text-xs uppercase tracking-widest text-[color:var(--ui-muted)] font-semibold">{p.label}</h3>
                                     {p.res.stale && <Badge tone="warning" className="text-[9px]">{t("models.ui.offlineCache")}</Badge>}
                                 </div>
-                                {p.res.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> : (
+                                {p.res.loading ? <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p> : (
                                     <div className="grid gap-4">
                                         {p.res.data.slice(0, 4).map((m: ModelCatalogEntry) => {
                                             const enriched = enrichCatalogModel(m, trainableModels);
@@ -391,7 +391,7 @@ export function RecommendedAndCatalog({
                 )}
             </div>
 
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
+            <div className="rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 shadow-card">
                 <SectionHeader
                     title={t("models.sections.catalog.title")}
                     subtitle={t("models.sections.catalog.subtitle")}
@@ -406,8 +406,8 @@ export function RecommendedAndCatalog({
                     <div className="mt-5 grid gap-6 lg:grid-cols-2">
                         {[{ label: 'Ollama', res: catalogOllama }, { label: 'HuggingFace', res: catalogHf }].map(p => (
                             <div key={p.label} className="flex flex-col gap-4">
-                                <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold">{p.label}</h3>
-                                {p.res.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> : (
+                                <h3 className="text-xs uppercase tracking-widest text-[color:var(--ui-muted)] font-semibold">{p.label}</h3>
+                                {p.res.loading ? <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p> : (
                                     <div className="grid gap-4">
                                         {p.res.data.slice(0, 6).map((m: ModelCatalogEntry) => {
                                             const enriched = enrichCatalogModel(m, trainableModels);
@@ -472,19 +472,19 @@ export function InstalledAndOperations({
 
     const renderOperationsBody = () => {
         if (operations.loading) {
-            return <p className="text-xs text-slate-500">{t("models.ui.loading")}</p>;
+            return <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p>;
         }
         if (operations.data?.operations?.length) {
             return operations.data.operations.map((op: ModelOperation) => (
                 <OperationRow key={op.operation_id} op={op} />
             ));
         }
-        return <p className="text-xs text-slate-500">{t("models.sections.operations.noOperations")}</p>;
+        return <p className="text-xs text-[color:var(--ui-muted)]">{t("models.sections.operations.noOperations")}</p>;
     };
 
     return (
         <div className="flex flex-col gap-10">
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
+            <div className="rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 shadow-card">
                 <SectionHeader
                     title={t("models.sections.installed.title")}
                     subtitle={t("models.sections.installed.subtitle")}
@@ -497,16 +497,16 @@ export function InstalledAndOperations({
                 />
                 {!installedCollapsed && (
                     <div className="mt-5 space-y-6">
-                        {installed.loading ? <p className="text-xs text-slate-500">{t("models.ui.loading")}</p> : (
+                        {installed.loading ? <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p> : (
                             <>
                                 {providerSections.length === 0 && (
-                                    <p className="text-[11px] text-slate-500">{t("models.sections.installed.noModels")}</p>
+                                    <p className="text-[11px] text-[color:var(--ui-muted)]">{t("models.sections.installed.noModels")}</p>
                                 )}
                                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                     {providerSections.map(p => (
-                                        <div key={p.label} className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                                        <div key={p.label} className="rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-3">
                                             <div className="mb-2 flex items-center justify-between">
-                                                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-200">{p.label}</p>
+                                                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--text-primary)]">{p.label}</p>
                                                 <Badge tone="neutral" className="text-[9px]">{p.data.length}</Badge>
                                             </div>
                                             <div className="space-y-2">
@@ -519,7 +519,7 @@ export function InstalledAndOperations({
                                                         onRemove={allowRemoveProviders.has(m.provider ?? m.source ?? "") ? () => handleRemove(m) : undefined}
                                                         allowRemoveProviders={allowRemoveProviders}
                                                     />
-                                                )) : <p className="text-[11px] text-slate-500">{t("models.sections.installed.noModels")}</p>}
+                                                )) : <p className="text-[11px] text-[color:var(--ui-muted)]">{t("models.sections.installed.noModels")}</p>}
                                             </div>
                                         </div>
                                     ))}
@@ -530,7 +530,7 @@ export function InstalledAndOperations({
                 )}
             </div>
 
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
+            <div className="rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 shadow-card">
                 <SectionHeader
                     title={t("models.sections.operations.title")}
                     subtitle={t("models.sections.operations.subtitle")}
@@ -583,7 +583,7 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
     return (
         <div className="space-y-10">
             {/* Provider Status Section */}
-            <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
+            <div className="w-full rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 text-sm text-[color:var(--text-primary)] shadow-card">
                 <SectionHeader
                     title={t("models.sections.remote.providerStatus.title")}
                     subtitle={t("models.sections.remote.providerStatus.subtitle")}
@@ -593,23 +593,23 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                 />
                 <div className="mt-5 space-y-3">
                     {remoteProvidersLoading && (
-                        <p className="text-xs text-slate-400">{t("models.ui.loading")}</p>
+                        <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p>
                     )}
                     {remoteProvidersError && (
                         <Badge tone="danger">{remoteProvidersError}</Badge>
                     )}
                     {!remoteProvidersLoading && !remoteProvidersError && remoteProviders.length === 0 && (
-                        <p className="text-xs text-slate-400">{t("models.sections.remote.providerStatus.noProviders")}</p>
+                        <p className="text-xs text-[color:var(--ui-muted)]">{t("models.sections.remote.providerStatus.noProviders")}</p>
                     )}
                     {remoteProviders.map((provider) => (
-                        <div key={provider.provider} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <div key={provider.provider} className="flex items-center justify-between rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
                             <div className="flex items-center gap-3">
                                 <span className="text-sm font-medium capitalize">{provider.provider}</span>
                                 <Badge tone={provider.status === "configured" ? "success" : "neutral"}>
                                     {provider.status}
                                 </Badge>
                             </div>
-                            <div className="flex items-center gap-4 text-xs text-slate-400">
+                            <div className="flex items-center gap-4 text-xs text-[color:var(--ui-muted)]">
                                 {provider.latency_ms && (
                                     <span>{t("models.sections.remote.providerStatus.latency")}: {provider.latency_ms.toFixed(0)}ms</span>
                                 )}
@@ -624,13 +624,13 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
             </div>
 
             {/* Remote Models Catalog Section */}
-            <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
+            <div className="w-full rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 text-sm text-[color:var(--text-primary)] shadow-card">
                 <SectionHeader
                     title={t("models.sections.remote.catalog.title")}
                     subtitle={t("models.sections.remote.catalog.subtitle")}
                 />
                 <div className="mt-4 flex items-center gap-3">
-                    <span className="whitespace-nowrap text-[11px] uppercase tracking-[0.3em] text-slate-400">
+                    <span className="whitespace-nowrap text-[11px] uppercase tracking-[0.3em] text-[color:var(--ui-muted)]">
                         {t("models.sections.remote.catalog.provider")}
                     </span>
                     <SelectMenu
@@ -642,30 +642,30 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                         onChange={(val) => setSelectedProvider(val || null)}
                         placeholder={t("models.runtime.select")}
                         className="w-[180px]"
-                        buttonClassName="w-full justify-between rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-slate-100 hover:border-white/30 hover:bg-white/10"
+                        buttonClassName="w-full justify-between rounded-full border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-3 py-1.5 text-xs font-medium normal-case tracking-normal text-[color:var(--text-primary)] hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--ui-surface-hover)]"
                         renderButton={(opt) => <span className="flex-1 truncate text-left">{opt?.label ?? t("models.runtime.select")}</span>}
-                        renderOption={(opt) => <span className="w-full text-left text-sm normal-case tracking-normal text-slate-100">{opt.label}</span>}
+                        renderOption={(opt) => <span className="w-full text-left text-sm normal-case tracking-normal text-[color:var(--text-primary)]">{opt.label}</span>}
                     />
                 </div>
                 <div className="mt-5 space-y-3">
                     {remoteCatalogLoading && (
-                        <p className="text-xs text-slate-400">{t("models.ui.loading")}</p>
+                        <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p>
                     )}
                     {remoteCatalogError && (
                         <Badge tone="danger">{remoteCatalogError}</Badge>
                     )}
                     {!remoteCatalogLoading && !remoteCatalogError && remoteCatalog.length === 0 && selectedProvider && (
-                        <p className="text-xs text-slate-400">{t("models.sections.remote.catalog.noModels")}</p>
+                        <p className="text-xs text-[color:var(--ui-muted)]">{t("models.sections.remote.catalog.noModels")}</p>
                     )}
                     {remoteCatalog.map((model) => (
-                        <div key={model.id} className="flex items-start justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <div key={model.id} className="flex items-start justify-between rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
                             <div className="flex-1">
                                 <div className="flex items-center gap-3">
                                     <span className="text-sm font-medium">{model.name}</span>
                                     <Badge tone="neutral" className="text-[10px]">{model.provider}</Badge>
                                 </div>
                                 {model.model_alias && (
-                                    <p className="mt-1 text-xs text-slate-400">{model.model_alias}</p>
+                                    <p className="mt-1 text-xs text-[color:var(--ui-muted)]">{model.model_alias}</p>
                                 )}
                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                     {model.capabilities.map((cap) => (
@@ -690,7 +690,7 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                         </div>
                     ))}
                     {remoteCatalogRefreshedAt && remoteCatalogSource && (
-                        <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+                        <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--ui-muted)]">
                             <span>{t("models.sections.remote.catalog.source")}: {remoteCatalogSource}</span>
                             <span>{t("models.sections.remote.catalog.refreshed")}: {formatDateTime(remoteCatalogRefreshedAt)}</span>
                         </div>
@@ -699,7 +699,7 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
             </div>
 
             {/* Connectivity Map Section */}
-            <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
+            <div className="w-full rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 text-sm text-[color:var(--text-primary)] shadow-card">
                 <SectionHeader
                     title={t("models.sections.remote.connectivity.title")}
                     subtitle={t("models.sections.remote.connectivity.subtitle")}
@@ -709,38 +709,38 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                 />
                 <div className="mt-5">
                     {remoteBindingsLoading && (
-                        <p className="text-xs text-slate-400">{t("models.ui.loading")}</p>
+                        <p className="text-xs text-[color:var(--ui-muted)]">{t("models.ui.loading")}</p>
                     )}
                     {remoteBindingsError && (
                         <Badge tone="danger">{remoteBindingsError}</Badge>
                     )}
                     {!remoteBindingsLoading && !remoteBindingsError && remoteBindings.length === 0 && (
-                        <p className="text-xs text-slate-400">{t("models.sections.remote.connectivity.noBindings")}</p>
+                        <p className="text-xs text-[color:var(--ui-muted)]">{t("models.sections.remote.connectivity.noBindings")}</p>
                     )}
                     {!remoteBindingsLoading && !remoteBindingsError && remoteBindings.length > 0 && (
                         <div className="overflow-x-auto">
                             <table className="w-full border-collapse">
                                 <thead>
-                                    <tr className="border-b border-white/10">
-                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                    <tr className="border-b border-[color:var(--ui-border)]">
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-[color:var(--ui-muted)]">
                                             {t("models.sections.remote.connectivity.service")}
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-[color:var(--ui-muted)]">
                                             {t("models.sections.remote.connectivity.endpoint")}
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-[color:var(--ui-muted)]">
                                             {t("models.sections.remote.connectivity.method")}
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-[color:var(--ui-muted)]">
                                             {t("models.sections.remote.connectivity.provider")}
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-[color:var(--ui-muted)]">
                                             {t("models.sections.remote.connectivity.model")}
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-[color:var(--ui-muted)]">
                                             {t("models.sections.remote.connectivity.routing")}
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-slate-400">
+                                        <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-[color:var(--ui-muted)]">
                                             {t("models.sections.remote.connectivity.status")}
                                         </th>
                                     </tr>
@@ -749,7 +749,7 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                                     {remoteBindings.map((binding) => (
                                         <tr
                                             key={`${binding.service_id}:${binding.endpoint}:${binding.http_method}:${binding.provider}:${binding.model}`}
-                                            className="border-b border-white/5 hover:bg-white/5"
+                                            className="border-b border-[color:var(--ui-border)] hover:bg-[color:var(--ui-surface)]"
                                         >
                                             <td className="px-3 py-3 text-xs">{binding.service_id}</td>
                                             <td className="px-3 py-3 text-xs font-mono">{binding.endpoint}</td>
@@ -761,7 +761,7 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
                                             <td className="px-3 py-3 text-xs">
                                                 <Badge tone="neutral" className="text-[10px]">{binding.routing_mode}</Badge>
                                                 {binding.fallback_order && binding.fallback_order.length > 0 && (
-                                                    <span className="ml-2 text-[10px] text-slate-400">
+                                                    <span className="ml-2 text-[10px] text-[color:var(--ui-muted)]">
                                                         ({binding.fallback_order.join(" → ")})
                                                     </span>
                                                 )}
@@ -781,21 +781,21 @@ export function RemoteModelsSection(props: Readonly<ModelsViewerLogic>) {
             </div>
 
             {/* Policy/Runtime Section */}
-            <div className="w-full rounded-[24px] border border-white/10 bg-black/20 p-6 text-sm text-slate-200 shadow-card">
+            <div className="w-full rounded-[24px] border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6 text-sm text-[color:var(--text-primary)] shadow-card">
                 <SectionHeader
                     title={t("models.sections.remote.policy.title")}
                     subtitle={t("models.sections.remote.policy.subtitle")}
                 />
                 <div className="mt-5 space-y-3">
-                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                    <div className="flex items-center justify-between rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
                         <span className="text-sm">{t("models.sections.remote.policy.localFirst")}</span>
                         <Badge tone="success">Enabled</Badge>
                     </div>
-                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                    <div className="flex items-center justify-between rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
                         <span className="text-sm">{t("models.sections.remote.policy.fallback")}</span>
-                        <span className="text-xs text-slate-400">ollama → vllm → openai → google</span>
+                        <span className="text-xs text-[color:var(--ui-muted)]">ollama → vllm → openai → google</span>
                     </div>
-                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 p-4">
+                    <div className="flex items-center justify-between rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
                         <span className="text-sm">{t("models.sections.remote.policy.rateClass")}</span>
                         <Badge tone="neutral">Standard</Badge>
                     </div>

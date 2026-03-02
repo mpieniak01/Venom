@@ -13,6 +13,7 @@ import { CommandPalette } from "./command-palette";
 import { NotificationDrawer } from "./notification-drawer";
 import { ServiceStatusDrawer } from "./service-status-drawer";
 import { LanguageSwitcher } from "./language-switcher";
+import { ThemeSwitcher } from "./theme-switcher";
 import { useTranslation } from "@/lib/i18n";
 
 export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: StatusPillsInitialData }>) {
@@ -36,7 +37,7 @@ export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: Sta
   }, []);
 
   return (
-    <div className="glass-panel allow-overflow sticky top-0 z-30 border-b border-white/5 bg-black/40 px-4 py-4 backdrop-blur-2xl sm:px-6">
+    <div className="glass-panel allow-overflow sticky top-0 z-30 border-b border-[color:var(--ui-border)] bg-[color:var(--topbar-bg)] px-4 py-4 backdrop-blur-2xl sm:px-6">
       <div className="mr-auto flex w-full max-w-[1320px] items-center justify-between gap-6 2xl:max-w-[68vw]">
         <div className="flex items-center gap-3">
           <MobileNav />
@@ -88,6 +89,7 @@ export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: Sta
               {t("topBar.commandCenter")}
             </span>
           </Button>
+          <ThemeSwitcher />
           <LanguageSwitcher />
         </div>
       </div>
@@ -134,7 +136,7 @@ function TopBarIconAction({
       variant="outline"
       size="sm"
       className={cn(
-        "relative p-2.5 hover:bg-white/10 transition-colors",
+        "relative p-2.5 transition-colors hover:bg-[color:var(--button-outline-hover)]",
         displayClass,
       )}
     >

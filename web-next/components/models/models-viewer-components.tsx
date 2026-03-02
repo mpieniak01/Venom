@@ -40,9 +40,9 @@ export const SectionHeader = ({
         <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between gap-4">
                 <div className="flex flex-col">
-                    <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">{title}</p>
-                    {subtitle && <p className="mt-0.5 text-xs text-slate-300">{subtitle}</p>}
-                    {description && <p className="mt-1 text-[11px] text-slate-400 italic">{description}</p>}
+                    <p className="text-[10px] uppercase tracking-[0.35em] text-[color:var(--ui-muted)]">{title}</p>
+                    {subtitle && <p className="mt-0.5 text-xs text-[color:var(--text-primary)]">{subtitle}</p>}
+                    {description && <p className="mt-1 text-[11px] text-[color:var(--ui-muted)] italic">{description}</p>}
                 </div>
                 <div className="flex items-center gap-3">
                     {extra && <div className="flex items-center gap-2">{extra}</div>}
@@ -61,7 +61,7 @@ export const SectionHeader = ({
                     {onToggle && (
                         <button
                             type="button"
-                            className="inline-flex h-7 items-center rounded-full border border-white/10 px-3 text-[10px] uppercase tracking-[0.15em] text-slate-400 transition hover:border-white/20 hover:text-white"
+                            className="inline-flex h-7 items-center rounded-full border border-[color:var(--ui-border)] px-3 text-[10px] uppercase tracking-[0.15em] text-[color:var(--ui-muted)] transition hover:border-[color:var(--ui-border-strong)] hover:text-[color:var(--text-primary)]"
                             onClick={onToggle}
                             aria-expanded={!isCollapsed}
                         >
@@ -93,15 +93,15 @@ export const CatalogCard = ({
 }) => {
     const { t } = useLanguage();
     return (
-        <div className="rounded-3xl box-base p-5 text-white shadow-card">
+        <div className="rounded-3xl box-base p-5 text-[color:var(--text-primary)] shadow-card">
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-lg font-semibold">{model.display_name}</p>
-                    <p className="text-xs text-slate-400">{model.model_name}</p>
+                    <p className="text-xs text-[color:var(--ui-muted)]">{model.model_name}</p>
                 </div>
                 <Badge tone="neutral">{model.runtime}</Badge>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
+            <div className="mt-4 flex flex-wrap gap-2 text-xs text-[color:var(--text-primary)]">
                 <span>{t("models.status.provider")}: {model.provider}</span>
                 <span>
                     {t("models.status.size")}: {typeof model.size_gb === "number" ? `${model.size_gb.toFixed(2)} GB` : "—"}
@@ -144,11 +144,11 @@ export const EnrichedCatalogCard = ({
 }) => {
     const { t } = useLanguage();
     return (
-        <div className="rounded-3xl box-base p-5 text-white shadow-card">
+        <div className="rounded-3xl box-base p-5 text-[color:var(--text-primary)] shadow-card">
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-lg font-semibold">{model.display_name || model.name}</p>
-                    <p className="text-xs text-slate-400">{model.name}</p>
+                    <p className="text-xs text-[color:var(--ui-muted)]">{model.name}</p>
                 </div>
                 <Badge tone="neutral">{model.runtime || "vllm"}</Badge>
             </div>
@@ -166,7 +166,7 @@ export const EnrichedCatalogCard = ({
                 />
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
+            <div className="mt-4 flex flex-wrap gap-2 text-xs text-[color:var(--text-primary)]">
                 <span>{t("models.status.provider")}: {model.provider}</span>
                 <span>
                     {t("models.status.size")}: {typeof model.size_gb === "number" ? `${model.size_gb.toFixed(2)} GB` : "—"}
@@ -214,11 +214,11 @@ export const InstalledCard = ({
     const { t } = useLanguage();
     const providerLabel = model.provider ?? model.source ?? "vllm";
     return (
-        <div className="rounded-2xl box-base px-3 py-3 text-white shadow-card">
+        <div className="rounded-2xl box-base px-3 py-3 text-[color:var(--text-primary)] shadow-card">
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-sm font-medium leading-tight">{model.name}</p>
-                    <p className="mt-1 text-[11px] text-slate-400">
+                    <p className="mt-1 text-[11px] text-[color:var(--ui-muted)]">
                         {getInstalledModelSizeLabel(t, model.size_gb)}{" "}
                         • {providerLabel}
                     </p>
@@ -254,16 +254,16 @@ export const InstalledCard = ({
 };
 
 export const OperationRow = ({ op }: { op: ModelOperation }) => (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl box-base px-4 py-3 text-sm text-slate-200">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl box-base px-4 py-3 text-sm text-[color:var(--text-primary)]">
         <div>
-            <p className="font-medium text-white">{op.model_name}</p>
-            <p className="text-xs text-slate-400">
+            <p className="font-medium text-[color:var(--text-primary)]">{op.model_name}</p>
+            <p className="text-xs text-[color:var(--ui-muted)]">
                 {op.operation_type} • {op.message || "—"}
             </p>
         </div>
         <div className="flex items-center gap-2">
             {typeof op.progress === "number" && (
-                <span className="text-xs text-slate-400">{Math.round(op.progress)}%</span>
+                <span className="text-xs text-[color:var(--ui-muted)]">{Math.round(op.progress)}%</span>
             )}
             <Badge tone={getStatusTone(op.status)}>{op.status}</Badge>
         </div>

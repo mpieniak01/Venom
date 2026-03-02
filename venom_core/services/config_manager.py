@@ -23,6 +23,8 @@ from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
+VALID_THEME_IDS = ("venom-dark", "venom-light-dev")
+
 
 # Whitelist parametrów dostępnych do edycji przez UI
 CONFIG_WHITELIST = {
@@ -36,6 +38,7 @@ CONFIG_WHITELIST = {
     "WORKFLOW_RUNTIME",
     "KERNEL",
     "INTENT_MODE",
+    "UI_THEME_DEFAULT",
     "EMBEDDING_MODEL",
     "LLM_LOCAL_API_KEY",
     "SIMPLE_MODE_SYSTEM_PROMPT",
@@ -410,6 +413,12 @@ class ConfigUpdateRequest(BaseModel):
             if str(updates["URL_SCHEME_POLICY"]).lower() not in valid_policies:
                 errors.append(
                     "URL_SCHEME_POLICY musi być jednym z: " + ", ".join(valid_policies)
+                )
+
+        if "UI_THEME_DEFAULT" in updates:
+            if str(updates["UI_THEME_DEFAULT"]) not in VALID_THEME_IDS:
+                errors.append(
+                    "UI_THEME_DEFAULT musi być jednym z: " + ", ".join(VALID_THEME_IDS)
                 )
 
 

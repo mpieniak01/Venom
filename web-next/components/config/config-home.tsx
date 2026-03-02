@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Settings, Server, FileCode, Network, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { THEME_TAB_BAR_CLASS, getThemeTabClass } from "@/lib/theme-ui";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import { ServicesPanel } from "./services-panel";
@@ -27,17 +28,12 @@ export function ConfigHome() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-white/10">
+      <div className={THEME_TAB_BAR_CLASS}>
         <Button
           onClick={() => setActiveTab("services")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "services"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "services"))}
         >
           <Server className="h-4 w-4" />
           {t("config.tabs.services")}
@@ -46,12 +42,7 @@ export function ConfigHome() {
           onClick={() => setActiveTab("parameters")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "parameters"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "parameters"))}
         >
           <FileCode className="h-4 w-4" />
           {t("config.tabs.parameters")}
@@ -60,12 +51,7 @@ export function ConfigHome() {
           onClick={() => setActiveTab("apiMap")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "apiMap"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "apiMap"))}
         >
           <Network className="h-4 w-4" />
           {t("config.apiMap.title")}
@@ -74,12 +60,7 @@ export function ConfigHome() {
           onClick={() => setActiveTab("audit")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "audit"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "audit"))}
         >
           <ShieldCheck className="h-4 w-4" />
           {t("config.tabs.audit")}

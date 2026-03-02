@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from venom_core.services.config_manager import ConfigManager, ConfigUpdateRequest
+from venom_core.services.config_manager import (
+    VALID_THEME_IDS,
+    ConfigManager,
+    ConfigUpdateRequest,
+)
 
 
 @pytest.fixture
@@ -41,6 +45,8 @@ def test_get_effective_config_with_sources_uses_defaults(config_manager: ConfigM
     assert sources["AI_MODE"] == "env"
     assert config["ENABLE_ACADEMY"] in {"true", "false"}
     assert sources["ENABLE_ACADEMY"] == "default"
+    assert config["UI_THEME_DEFAULT"] in VALID_THEME_IDS
+    assert sources["UI_THEME_DEFAULT"] == "default"
 
 
 def test_update_config_writes_and_backs_up(config_manager: ConfigManager):
@@ -92,6 +98,31 @@ def test_config_update_request_rejects_non_dict_updates():
         ConfigUpdateRequest(updates=["bad", "payload"])  # type: ignore[arg-type]
 
     assert "musi być mapą klucz->wartość" in str(exc.value)
+
+
+def test_config_update_request_validates_theme_id():
+    with pytest.raises(ValueError) as exc:
+        ConfigUpdateRequest(updates={"UI_THEME_DEFAULT": "custom-theme"})
+
+    assert "UI_THEME_DEFAULT" in str(exc.value)
+
+
+def test_config_update_request_rejects_theme_with_wrong_case():
+    with pytest.raises(ValueError) as exc:
+        ConfigUpdateRequest(updates={"UI_THEME_DEFAULT": "Venom-Dark"})
+
+    assert "UI_THEME_DEFAULT" in str(exc.value)
+
+
+def test_update_config_accepts_supported_theme(config_manager: ConfigManager):
+    config_manager.env_file.write_text("AI_MODE=LOCAL\n", encoding="utf-8")
+
+    result = config_manager.update_config({"UI_THEME_DEFAULT": "venom-light-dev"})
+
+    assert result["success"] is True
+    assert "UI_THEME_DEFAULT" in result["changed_keys"]
+    env_contents = config_manager.env_file.read_text(encoding="utf-8")
+    assert "UI_THEME_DEFAULT=venom-light-dev" in env_contents
 
 
 def test_cleanup_old_backups_removes_excess(config_manager: ConfigManager):

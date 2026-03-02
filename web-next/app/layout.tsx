@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBarWrapper, TopBarSkeleton } from "@/components/layout/top-bar-wrapper";
 import { SystemStatusBarWrapper, SystemStatusBarSkeleton } from "@/components/layout/system-status-bar-wrapper";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Suspense } from "react";
+import { DEFAULT_THEME, THEME_IDS, THEME_STORAGE_KEY } from "@/lib/theme-registry";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -30,14 +32,37 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const serializedThemeIds = JSON.stringify(THEME_IDS);
+  const themeBootstrapScript = `
+    (function () {
+      var validThemes = ${serializedThemeIds};
+      try {
+        var stored = globalThis.localStorage.getItem("${THEME_STORAGE_KEY}");
+        var theme = typeof stored === "string" && validThemes.includes(stored)
+          ? stored
+          : "${DEFAULT_THEME}";
+        globalThis.document.documentElement.dataset.theme = theme;
+      } catch (e) {
+        globalThis.document.documentElement.dataset.theme = "${DEFAULT_THEME}";
+      }
+    })();
+  `;
+
   return (
-    <html lang="pl" suppressHydrationWarning>
+    <html lang="pl" data-theme={DEFAULT_THEME} suppressHydrationWarning>
+      <head>
+        <Script
+          id="venom-theme-bootstrap"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: themeBootstrapScript }}
+        />
+      </head>
       <body className={`${inter.variable} ${jetBrains.variable} font-sans antialiased`}>
         <Providers>
-          <div className="relative min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(0,184,255,0.18),_transparent_55%)] text-zinc-100">
+          <div className="relative min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,var(--app-shell-radial),_transparent_55%)] text-[color:var(--text-primary)]">
             <div className="pointer-events-none absolute inset-0 opacity-60 blur-3xl">
-              <div className="absolute -left-10 top-10 h-64 w-64 rounded-full bg-emerald-500/10" />
-              <div className="absolute bottom-10 right-10 h-72 w-72 rounded-full bg-violet-500/20" />
+              <div className="absolute -left-10 top-10 h-64 w-64 rounded-full bg-[color:var(--app-orb-left)]" />
+              <div className="absolute bottom-10 right-10 h-72 w-72 rounded-full bg-[color:var(--app-orb-right)]" />
             </div>
             <div className="relative z-10 flex">
               <Sidebar />

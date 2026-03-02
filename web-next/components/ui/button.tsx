@@ -41,10 +41,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       "bg-gradient-to-r from-violet-600 to-indigo-500 text-white border border-white/10 shadow-neon hover:-translate-y-[1px]",
     macro:
       "border border-violet-300/50 bg-violet-500/30 text-white shadow-neon hover:border-violet-200/80 hover:-translate-y-[1px]",
-    secondary: "bg-white/5 text-white border border-white/10 hover:bg-white/10",
-    outline: "border border-white/10 text-white hover:bg-white/5",
-    ghost: "text-white hover:bg-white/5",
-    subtle: "border border-white/5 bg-white/5 text-white hover:border-violet-500/40",
+    secondary:
+      "border border-[color:var(--button-secondary-border)] bg-[color:var(--button-secondary-bg)] text-[color:var(--button-secondary-text)] hover:bg-[color:var(--button-secondary-hover)]",
+    outline:
+      "border border-[color:var(--button-outline-border)] bg-[color:var(--button-outline-bg)] text-[color:var(--button-outline-text)] hover:bg-[color:var(--button-outline-hover)]",
+    ghost:
+      "border border-transparent bg-transparent text-[color:var(--button-ghost-text)] hover:bg-[color:var(--button-ghost-hover)]",
+    subtle:
+      "border border-[color:var(--button-subtle-border)] bg-[color:var(--button-subtle-bg)] text-[color:var(--button-subtle-text)] hover:border-[color:var(--button-subtle-hover-border)]",
     warning:
       "border border-amber-500/40 bg-amber-500/10 text-amber-100 hover:border-amber-500/60",
     amber:

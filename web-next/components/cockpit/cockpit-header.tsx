@@ -12,7 +12,7 @@ export function CockpitHeader() {
       eyebrow={t("cockpit.header.eyebrow")}
       title={t("cockpit.header.dashboardTitle")}
       description={
-        <span className="text-zinc-200">
+        <span className="text-[color:var(--text-primary)]">
           {t("cockpit.header.dashboardDescription")}
         </span>
       }

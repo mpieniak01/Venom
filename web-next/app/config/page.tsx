@@ -11,7 +11,7 @@ export default function ConfigPage() {
     <Suspense
       fallback={
         <div className="flex min-h-[400px] items-center justify-center">
-          <div className="text-zinc-400">{t("common.loading")}</div>
+          <div className="text-[color:var(--ui-muted)]">{t("common.loading")}</div>
         </div>
       }
     >

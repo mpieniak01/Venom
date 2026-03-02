@@ -123,6 +123,7 @@ class Settings(BaseSettings):
 
     # Konfiguracja LLM (Local-First Brain)
     VENOM_RUNTIME_PROFILE: str = "light"  # full|light|llm_off
+    UI_THEME_DEFAULT: str = "venom-dark"  # venom-dark|venom-light-dev
     LLM_SERVICE_TYPE: str = "local"  # Opcje: "local", "openai", "azure", "google"
     LLM_LOCAL_ENDPOINT: str = _default_url("localhost", 11434, "/v1")  # Ollama/vLLM
     LLM_MODEL_NAME: str = "phi3:latest"

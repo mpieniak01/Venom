@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Layers, Newspaper, Server, Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { THEME_TAB_BAR_CLASS, getThemeTabClass } from "@/lib/theme-ui";
 import { cn } from "@/lib/utils";
 import { useModelsViewerLogic } from "./use-models-viewer-logic";
 import {
@@ -32,17 +33,12 @@ export const ModelsViewer = () => {
       />
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-white/10">
+      <div className={THEME_TAB_BAR_CLASS}>
         <Button
           onClick={() => setActiveTab("news")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "news"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "news"))}
         >
           <Newspaper className="h-4 w-4" />
           {t("models.tabs.news")}
@@ -51,12 +47,7 @@ export const ModelsViewer = () => {
           onClick={() => setActiveTab("models")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "models"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "models"))}
         >
           <Server className="h-4 w-4" />
           {t("models.tabs.models")}
@@ -65,12 +56,7 @@ export const ModelsViewer = () => {
           onClick={() => setActiveTab("remote")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "remote"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "remote"))}
         >
           <Cloud className="h-4 w-4" />
           {t("models.tabs.remoteModels")}

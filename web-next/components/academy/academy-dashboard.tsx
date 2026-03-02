@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { THEME_TAB_BAR_CLASS, getThemeTabClass } from "@/lib/theme-ui";
 import { cn } from "@/lib/utils";
 import { AcademyOverview } from "./academy-overview";
 import { DatasetPanel } from "./dataset-panel";
@@ -62,7 +63,7 @@ export function AcademyDashboard() {
           <p className="text-sm text-red-300">
             ❌ {t("academy.dashboard.unavailable")} {error || t("academy.common.unknownError")}
           </p>
-          <p className="mt-2 text-xs text-zinc-400">
+          <p className="mt-2 text-xs text-[color:var(--ui-muted)]">
             {t("academy.dashboard.unavailableHint")}
           </p>
           <Button
@@ -93,7 +94,7 @@ export function AcademyDashboard() {
           <p className="text-sm text-yellow-300">
             ⚠️ {t("academy.dashboard.disabled")}
           </p>
-          <p className="mt-2 text-xs text-zinc-400">
+          <p className="mt-2 text-xs text-[color:var(--ui-muted)]">
             {t("academy.dashboard.disabledHint")}
           </p>
         </div>
@@ -113,17 +114,12 @@ export function AcademyDashboard() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-white/10">
+      <div className={THEME_TAB_BAR_CLASS}>
         <Button
           onClick={() => setActiveTab("overview")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "overview"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "overview"))}
         >
           <Server className="h-4 w-4" />
           {t("academy.dashboard.tabs.overview")}
@@ -132,12 +128,7 @@ export function AcademyDashboard() {
           onClick={() => setActiveTab("conversion")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "conversion"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "conversion"))}
         >
           <ArrowRightLeft className="h-4 w-4" />
           {t("academy.dashboard.tabs.conversion")}
@@ -146,12 +137,7 @@ export function AcademyDashboard() {
           onClick={() => setActiveTab("dataset")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "dataset"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "dataset"))}
         >
           <Database className="h-4 w-4" />
           {t("academy.dashboard.tabs.dataset")}
@@ -160,12 +146,7 @@ export function AcademyDashboard() {
           onClick={() => setActiveTab("training")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "training"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "training"))}
         >
           <Play className="h-4 w-4" />
           {t("academy.dashboard.tabs.training")}
@@ -174,12 +155,7 @@ export function AcademyDashboard() {
           onClick={() => setActiveTab("adapters")}
           variant="ghost"
           size="sm"
-          className={cn(
-            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
-            activeTab === "adapters"
-              ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
-              : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          )}
+          className={cn(getThemeTabClass(activeTab === "adapters"))}
         >
           <Zap className="h-4 w-4" />
           {t("academy.dashboard.tabs.adapters")}
@@ -189,13 +165,13 @@ export function AcademyDashboard() {
       {/* Content */}
       <div className="min-h-[500px]">
         {loading && (
-          <div className="space-y-4 rounded-xl border border-white/10 bg-black/20 p-6">
-            <p className="text-sm text-zinc-400">{t("academy.common.loadingAcademy")}</p>
+          <div className="space-y-4 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6">
+            <p className="text-sm text-[color:var(--ui-muted)]">{t("academy.common.loadingAcademy")}</p>
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="h-24 rounded-lg bg-white/5 animate-pulse" />
-              <div className="h-24 rounded-lg bg-white/5 animate-pulse" />
-              <div className="h-24 rounded-lg bg-white/5 animate-pulse" />
-              <div className="h-24 rounded-lg bg-white/5 animate-pulse" />
+              <div className="h-24 rounded-lg bg-[color:var(--ui-surface-hover)] animate-pulse" />
+              <div className="h-24 rounded-lg bg-[color:var(--ui-surface-hover)] animate-pulse" />
+              <div className="h-24 rounded-lg bg-[color:var(--ui-surface-hover)] animate-pulse" />
+              <div className="h-24 rounded-lg bg-[color:var(--ui-surface-hover)] animate-pulse" />
             </div>
           </div>
         )}

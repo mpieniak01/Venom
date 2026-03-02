@@ -22,6 +22,7 @@ import { adminLocale } from "./admin/pl";
 export const pl = {
   common: {
     switchLanguage: "Przełącz język",
+    switchTheme: "Przełącz styl systemu",
     menu: "Menu",
     openNavigation: "Otwórz nawigację",
     provider: "Dostawca",
@@ -36,6 +37,21 @@ export const pl = {
     unknown: "Nieznany",
     total: "Łącznie",
     loading: "Ładowanie...",
+  },
+  theme: {
+    label: "Styl",
+    options: {
+      venomDark: {
+        short: "Dark",
+        name: "Venom Dark",
+        description: "Tryb bazowy (ciemny, wysokokontrastowy).",
+      },
+      venomLightDev: {
+        short: "Light Dev",
+        name: "Venom Light Dev",
+        description: "Jasny styl deweloperski do długich sesji pracy.",
+      },
+    },
   },
 
   topBar,

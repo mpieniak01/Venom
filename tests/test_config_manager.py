@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from venom_core.services.config_manager import ConfigManager, ConfigUpdateRequest
+from venom_core.services.config_manager import (
+    VALID_THEME_IDS,
+    ConfigManager,
+    ConfigUpdateRequest,
+)
 
 
 @pytest.fixture
@@ -41,7 +45,7 @@ def test_get_effective_config_with_sources_uses_defaults(config_manager: ConfigM
     assert sources["AI_MODE"] == "env"
     assert config["ENABLE_ACADEMY"] in {"true", "false"}
     assert sources["ENABLE_ACADEMY"] == "default"
-    assert config["UI_THEME_DEFAULT"] in {"venom-dark", "venom-light-dev"}
+    assert config["UI_THEME_DEFAULT"] in VALID_THEME_IDS
     assert sources["UI_THEME_DEFAULT"] == "default"
 
 
@@ -99,6 +103,13 @@ def test_config_update_request_rejects_non_dict_updates():
 def test_config_update_request_validates_theme_id():
     with pytest.raises(ValueError) as exc:
         ConfigUpdateRequest(updates={"UI_THEME_DEFAULT": "custom-theme"})
+
+    assert "UI_THEME_DEFAULT" in str(exc.value)
+
+
+def test_config_update_request_rejects_theme_with_wrong_case():
+    with pytest.raises(ValueError) as exc:
+        ConfigUpdateRequest(updates={"UI_THEME_DEFAULT": "Venom-Dark"})
 
     assert "UI_THEME_DEFAULT" in str(exc.value)
 

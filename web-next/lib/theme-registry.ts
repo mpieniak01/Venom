@@ -13,6 +13,7 @@ export const THEME_REGISTRY = {
 } as const;
 
 export type ThemeId = keyof typeof THEME_REGISTRY;
+export const THEME_IDS = Object.keys(THEME_REGISTRY) as ThemeId[];
 
 export function isThemeId(value: string | null | undefined): value is ThemeId {
   if (!value) return false;

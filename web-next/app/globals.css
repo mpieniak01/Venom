@@ -91,6 +91,7 @@
 }
 
 html[data-theme="venom-light-dev"] {
+  color-scheme: light;
   --bg-dark: #e9f0f8;
   --bg-gradient-body: radial-gradient(circle at 40% 0%,
       #f7fbff 0%,
@@ -657,10 +658,6 @@ select option:hover {
   background-color: var(--ui-menu-item-active);
 }
 
-html[data-theme="venom-light-dev"] {
-  color-scheme: light;
-}
-
 html[data-theme="venom-light-dev"] body::before {
   opacity: 0.01;
 }
@@ -669,6 +666,8 @@ html[data-theme="venom-light-dev"] body::after {
   background: radial-gradient(circle at center, transparent 30%, rgba(148, 163, 184, 0.2) 130%);
 }
 
+/* Transitional compatibility layer for legacy Tailwind utility classes.
+   Keep limited and migrate components to semantic token classes progressively. */
 html[data-theme="venom-light-dev"] .text-white,
 html[data-theme="venom-light-dev"] .text-zinc-100,
 html[data-theme="venom-light-dev"] .text-zinc-200,

@@ -11,12 +11,12 @@ import {
 } from "react";
 import {
   DEFAULT_THEME,
-  THEME_REGISTRY,
+  THEME_IDS,
   THEME_STORAGE_KEY,
   isThemeId,
   normalizeTheme,
   type ThemeId,
-} from "./theme-registry";
+  } from "./theme-registry";
 
 export type { ThemeId } from "./theme-registry";
 
@@ -56,7 +56,9 @@ async function fetchBackendDefaultTheme(): Promise<ThemeId | null> {
     };
     if (data.status !== "success") return null;
     const value = data.config?.[BACKEND_THEME_KEY];
-    return isThemeId(typeof value === "string" ? value : null) ? value : null;
+    const candidate = typeof value === "string" ? value : null;
+    if (!isThemeId(candidate)) return null;
+    return candidate;
   } catch {
     return null;
   }
@@ -83,7 +85,7 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue>({
   theme: DEFAULT_THEME,
   setTheme: () => {},
-  availableThemes: Object.keys(THEME_REGISTRY) as ThemeId[],
+  availableThemes: THEME_IDS,
 });
 
 export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
@@ -149,7 +151,7 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
     () => ({
       theme,
       setTheme,
-      availableThemes: Object.keys(THEME_REGISTRY) as ThemeId[],
+      availableThemes: THEME_IDS,
     }),
     [setTheme, theme],
   );

@@ -23,6 +23,8 @@ from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
+VALID_THEME_IDS = ("venom-dark", "venom-light-dev")
+
 
 # Whitelist parametrów dostępnych do edycji przez UI
 CONFIG_WHITELIST = {
@@ -414,10 +416,9 @@ class ConfigUpdateRequest(BaseModel):
                 )
 
         if "UI_THEME_DEFAULT" in updates:
-            valid_themes = ["venom-dark", "venom-light-dev"]
-            if str(updates["UI_THEME_DEFAULT"]).lower() not in valid_themes:
+            if str(updates["UI_THEME_DEFAULT"]) not in VALID_THEME_IDS:
                 errors.append(
-                    "UI_THEME_DEFAULT musi być jednym z: " + ", ".join(valid_themes)
+                    "UI_THEME_DEFAULT musi być jednym z: " + ", ".join(VALID_THEME_IDS)
                 )
 
 

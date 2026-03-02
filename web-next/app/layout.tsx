@@ -7,7 +7,7 @@ import { SystemStatusBarWrapper, SystemStatusBarSkeleton } from "@/components/la
 import "./globals.css";
 import { Providers } from "./providers";
 import { Suspense } from "react";
-import { DEFAULT_THEME, THEME_STORAGE_KEY } from "@/lib/theme-registry";
+import { DEFAULT_THEME, THEME_IDS, THEME_STORAGE_KEY } from "@/lib/theme-registry";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -32,11 +32,15 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const serializedThemeIds = JSON.stringify(THEME_IDS);
   const themeBootstrapScript = `
     (function () {
+      var validThemes = ${serializedThemeIds};
       try {
         var stored = globalThis.localStorage.getItem("${THEME_STORAGE_KEY}");
-        var theme = stored === "venom-light-dev" || stored === "venom-dark" ? stored : "${DEFAULT_THEME}";
+        var theme = typeof stored === "string" && validThemes.includes(stored)
+          ? stored
+          : "${DEFAULT_THEME}";
         globalThis.document.documentElement.dataset.theme = theme;
       } catch (e) {
         globalThis.document.documentElement.dataset.theme = "${DEFAULT_THEME}";

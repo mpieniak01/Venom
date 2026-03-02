@@ -3,11 +3,12 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { Palette } from "lucide-react";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
-import { useTheme, type ThemeId } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
+import { DEFAULT_THEME, THEME_REGISTRY, isThemeId } from "@/lib/theme-registry";
 
 export function ThemeSwitcher({ className }: Readonly<{ className?: string }>) {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, availableThemes } = useTheme();
   const t = useTranslation();
   const mounted = useSyncExternalStore(
     () => () => {},
@@ -16,23 +17,20 @@ export function ThemeSwitcher({ className }: Readonly<{ className?: string }>) {
   );
 
   const options = useMemo<SelectMenuOption[]>(
-    () => [
-      {
-        value: "venom-dark",
-        label: t("theme.options.venomDark.short"),
-        description: t("theme.options.venomDark.description"),
-      },
-      {
-        value: "venom-light-dev",
-        label: t("theme.options.venomLightDev.short"),
-        description: t("theme.options.venomLightDev.description"),
-      },
-    ],
-    [t],
+    () =>
+      availableThemes.map((themeId) => {
+        const keyBase = THEME_REGISTRY[themeId].translationKey;
+        return {
+          value: themeId,
+          label: t(`${keyBase}.short`),
+          description: t(`${keyBase}.description`),
+        };
+      }),
+    [availableThemes, t],
   );
 
   const current = useMemo(() => {
-    const target = mounted ? theme : "venom-dark";
+    const target = mounted ? theme : DEFAULT_THEME;
     return options.find((option) => option.value === target) ?? options[0];
   }, [mounted, options, theme]);
 
@@ -40,7 +38,11 @@ export function ThemeSwitcher({ className }: Readonly<{ className?: string }>) {
     <SelectMenu
       value={theme}
       options={options}
-      onChange={(next) => setTheme(next as ThemeId)}
+      onChange={(next) => {
+        if (isThemeId(next)) {
+          setTheme(next);
+        }
+      }}
       ariaLabel={t("common.switchTheme")}
       className={className}
       buttonTestId="topbar-theme-switcher"

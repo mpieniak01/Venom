@@ -52,7 +52,7 @@ function extractThemeBlock(css: string, selector: string, expectedVar: string) {
 }
 
 function extractVar(block: string, name: string) {
-  const escaped = name.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = block.match(new RegExp(`${escaped}:\\s*([^;]+);`));
   assert.ok(match, `Missing variable ${name}`);
   return match[1].trim();

@@ -83,6 +83,79 @@ def is_feedback_loop_ready(model_id: str | None) -> bool:
     return classify_feedback_loop_tier(model_id) in {"primary", "fallback"}
 
 
+def _resolve_feedback_loop_alias(
+    *,
+    policy: FeedbackLoopPolicy,
+    requested: str,
+    prefer_feedback_loop_default: bool,
+) -> str | None:
+    if is_feedback_loop_alias(requested):
+        return policy.requested_alias
+    if not requested and prefer_feedback_loop_default:
+        return policy.requested_alias
+    return None
+
+
+def _non_alias_resolution(requested: str | None) -> FeedbackLoopResolution:
+    requested_value = requested or None
+    return FeedbackLoopResolution(
+        requested_model_alias=None,
+        requested_model_id=requested_value,
+        resolved_model_id=requested_value,
+        resolution_reason="exact",
+        feedback_loop_tier=classify_feedback_loop_tier(requested_value),
+        feedback_loop_ready=is_feedback_loop_ready(requested_value),
+    )
+
+
+def _exact_primary_resolution(
+    *,
+    requested_alias: str,
+    requested_model_id: str | None,
+    resolved_model_id: str,
+) -> FeedbackLoopResolution:
+    return FeedbackLoopResolution(
+        requested_model_alias=requested_alias,
+        requested_model_id=requested_model_id,
+        resolved_model_id=resolved_model_id,
+        resolution_reason="exact",
+        feedback_loop_tier="primary",
+        feedback_loop_ready=True,
+    )
+
+
+def _not_found_feedback_resolution(
+    *,
+    requested_alias: str,
+    requested_model_id: str | None,
+) -> FeedbackLoopResolution:
+    return FeedbackLoopResolution(
+        requested_model_alias=requested_alias,
+        requested_model_id=requested_model_id,
+        resolved_model_id=None,
+        resolution_reason="not_found",
+        feedback_loop_tier="primary",
+        feedback_loop_ready=False,
+    )
+
+
+def _fallback_feedback_resolution(
+    *,
+    requested_alias: str,
+    requested_model_id: str | None,
+    resolved_model_id: str,
+    primary_allowed: bool,
+) -> FeedbackLoopResolution:
+    return FeedbackLoopResolution(
+        requested_model_alias=requested_alias,
+        requested_model_id=requested_model_id,
+        resolved_model_id=resolved_model_id,
+        resolution_reason=("resource_guard" if not primary_allowed else "fallback"),
+        feedback_loop_tier="fallback",
+        feedback_loop_ready=True,
+    )
+
+
 def resolve_feedback_loop_model(
     *,
     requested_model: str | None,
@@ -94,82 +167,53 @@ def resolve_feedback_loop_model(
     """Resolve requested model (or default) to feedback-loop primary/fallback model."""
     policy = feedback_loop_policy()
     requested = str(requested_model or "").strip()
+    requested_model_id = requested or None
     available_map = {
         _normalize(model_id): str(model_id).strip()
         for model_id in available_models
         if str(model_id).strip()
     }
 
-    requested_alias: str | None = None
-    if is_feedback_loop_alias(requested):
-        requested_alias = policy.requested_alias
-    elif not requested and prefer_feedback_loop_default:
-        requested_alias = policy.requested_alias
+    requested_alias = _resolve_feedback_loop_alias(
+        policy=policy,
+        requested=requested,
+        prefer_feedback_loop_default=prefer_feedback_loop_default,
+    )
 
     # Explicit non-alias request: preserve standard exact behavior.
     if requested and requested_alias is None:
-        tier = classify_feedback_loop_tier(requested)
-        return FeedbackLoopResolution(
-            requested_model_alias=None,
-            requested_model_id=requested,
-            resolved_model_id=requested,
-            resolution_reason="exact",
-            feedback_loop_tier=tier,
-            feedback_loop_ready=is_feedback_loop_ready(requested),
-        )
+        return _non_alias_resolution(requested)
 
     if requested_alias is None:
-        return FeedbackLoopResolution(
-            requested_model_alias=None,
-            requested_model_id=requested or None,
-            resolved_model_id=requested or None,
-            resolution_reason="exact",
-            feedback_loop_tier=classify_feedback_loop_tier(requested or None),
-            feedback_loop_ready=is_feedback_loop_ready(requested or None),
-        )
+        return _non_alias_resolution(requested_model_id)
 
     primary_key = _normalize(policy.primary)
     if primary_allowed and primary_key in available_map:
-        return FeedbackLoopResolution(
-            requested_model_alias=requested_alias,
-            requested_model_id=requested or None,
+        return _exact_primary_resolution(
+            requested_alias=requested_alias,
+            requested_model_id=requested_model_id,
             resolved_model_id=available_map[primary_key],
-            resolution_reason="exact",
-            feedback_loop_tier="primary",
-            feedback_loop_ready=True,
         )
 
     if exact_only:
-        return FeedbackLoopResolution(
-            requested_model_alias=requested_alias,
-            requested_model_id=requested or None,
-            resolved_model_id=None,
-            resolution_reason="not_found",
-            feedback_loop_tier="primary",
-            feedback_loop_ready=False,
+        return _not_found_feedback_resolution(
+            requested_alias=requested_alias,
+            requested_model_id=requested_model_id,
         )
 
     for fallback in policy.fallbacks:
         key = _normalize(fallback)
         if key in available_map:
-            return FeedbackLoopResolution(
-                requested_model_alias=requested_alias,
-                requested_model_id=requested or None,
+            return _fallback_feedback_resolution(
+                requested_alias=requested_alias,
+                requested_model_id=requested_model_id,
                 resolved_model_id=available_map[key],
-                resolution_reason=(
-                    "resource_guard" if not primary_allowed else "fallback"
-                ),
-                feedback_loop_tier="fallback",
-                feedback_loop_ready=True,
+                primary_allowed=primary_allowed,
             )
 
-    return FeedbackLoopResolution(
-        requested_model_alias=requested_alias,
-        requested_model_id=requested or None,
-        resolved_model_id=None,
-        resolution_reason="not_found",
-        feedback_loop_tier="primary",
-        feedback_loop_ready=False,
+    return _not_found_feedback_resolution(
+        requested_alias=requested_alias,
+        requested_model_id=requested_model_id,
     )
 
 

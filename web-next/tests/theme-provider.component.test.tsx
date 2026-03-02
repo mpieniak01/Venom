@@ -20,7 +20,7 @@ function ThemeHarness() {
     <div>
       <output data-testid="active-theme">{theme}</output>
       <output data-testid="theme-options">{availableThemes.join(",")}</output>
-      <button type="button" onClick={() => setTheme("venom-light-dev")}>
+      <button type="button" onClick={() => setTheme("venom-light")}>
         set-light
       </button>
       <button type="button" onClick={() => setTheme("venom-dark")}>
@@ -39,6 +39,22 @@ afterEach(() => {
 
 describe("ThemeProvider", () => {
   it("hydrates from localStorage and applies matching data-theme", async () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "venom-light");
+
+    render(
+      <ThemeProvider>
+        <ThemeHarness />
+      </ThemeProvider>,
+    );
+
+    await flushEffects();
+
+    assert.equal(screen.getByTestId("active-theme").textContent, "venom-light");
+    assert.equal(screen.getByTestId("theme-options").textContent, "venom-dark,venom-light");
+    assert.equal(document.documentElement.dataset.theme, "venom-light");
+  });
+
+  it("migrates legacy localStorage theme to canonical id", async () => {
     window.localStorage.setItem(THEME_STORAGE_KEY, "venom-light-dev");
 
     render(
@@ -49,9 +65,9 @@ describe("ThemeProvider", () => {
 
     await flushEffects();
 
-    assert.equal(screen.getByTestId("active-theme").textContent, "venom-light-dev");
-    assert.equal(screen.getByTestId("theme-options").textContent, "venom-dark,venom-light-dev");
-    assert.equal(document.documentElement.dataset.theme, "venom-light-dev");
+    assert.equal(screen.getByTestId("active-theme").textContent, "venom-light");
+    assert.equal(document.documentElement.dataset.theme, "venom-light");
+    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), "venom-light");
   });
 
   it("falls back to default theme when storage contains invalid value", async () => {
@@ -96,11 +112,11 @@ describe("ThemeProvider", () => {
       screen.getByRole("button", { name: "set-light" }).click();
     });
 
-    assert.equal(screen.getByTestId("active-theme").textContent, "venom-light-dev");
-    assert.equal(document.documentElement.dataset.theme, "venom-light-dev");
-    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), "venom-light-dev");
+    assert.equal(screen.getByTestId("active-theme").textContent, "venom-light");
+    assert.equal(document.documentElement.dataset.theme, "venom-light");
+    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), "venom-light");
     assert.equal(calls.some((entry) => entry.method === "POST"), true);
-    assert.equal(calls.some((entry) => entry.body?.includes('"UI_THEME_DEFAULT":"venom-light-dev"')), true);
+    assert.equal(calls.some((entry) => entry.body?.includes('"UI_THEME_DEFAULT":"venom-light"')), true);
   });
 
   it("uses backend default when local override is missing", async () => {
@@ -108,7 +124,7 @@ describe("ThemeProvider", () => {
       new Response(
         JSON.stringify({
           status: "success",
-          config: { UI_THEME_DEFAULT: "venom-light-dev" },
+          config: { UI_THEME_DEFAULT: "venom-light" },
         }),
         { status: 200 },
       )) as typeof fetch;
@@ -122,9 +138,43 @@ describe("ThemeProvider", () => {
     await flushEffects();
     await flushEffects();
 
-    assert.equal(screen.getByTestId("active-theme").textContent, "venom-light-dev");
-    assert.equal(document.documentElement.dataset.theme, "venom-light-dev");
+    assert.equal(screen.getByTestId("active-theme").textContent, "venom-light");
+    assert.equal(document.documentElement.dataset.theme, "venom-light");
     assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), null);
+  });
+
+  it("migrates legacy backend default to canonical id", async () => {
+    const calls: Array<{ method: string; body: string | null }> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      calls.push({ method, body: init?.body?.toString() ?? null });
+      if (method === "POST") {
+        return new Response(JSON.stringify({ status: "success" }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          status: "success",
+          config: { UI_THEME_DEFAULT: "venom-light-dev" },
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    render(
+      <ThemeProvider>
+        <ThemeHarness />
+      </ThemeProvider>,
+    );
+
+    await flushEffects();
+    await flushEffects();
+
+    assert.equal(screen.getByTestId("active-theme").textContent, "venom-light");
+    assert.equal(document.documentElement.dataset.theme, "venom-light");
+    assert.equal(
+      calls.some((entry) => entry.method === "POST" && entry.body?.includes('"UI_THEME_DEFAULT":"venom-light"')),
+      true,
+    );
   });
 
   it("keeps local override above backend default", async () => {
@@ -135,7 +185,7 @@ describe("ThemeProvider", () => {
       return new Response(
         JSON.stringify({
           status: "success",
-          config: { UI_THEME_DEFAULT: "venom-light-dev" },
+          config: { UI_THEME_DEFAULT: "venom-light" },
         }),
         { status: 200 },
       );

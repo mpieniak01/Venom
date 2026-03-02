@@ -178,17 +178,17 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(switcher).toBeVisible();
 
     await switcher.click();
-    await page.getByTestId("theme-option-venom-light-dev").click();
+    await page.getByTestId("theme-option-venom-light").click();
 
     await expect
       .poll(async () => page.evaluate(() => document.documentElement.dataset.theme))
-      .toBe("venom-light-dev");
+      .toBe("venom-light");
 
     await page.reload();
 
     await expect
       .poll(async () => page.evaluate(() => document.documentElement.dataset.theme))
-      .toBe("venom-light-dev");
+      .toBe("venom-light");
   });
 
   test("Awaryjne zatrzymanie kolejki zwraca komunikat", async ({ page }) => {

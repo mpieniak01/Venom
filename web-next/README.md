@@ -45,7 +45,7 @@ npm run start
 - `lucide-react` (ikony), `tailwindcss-animate`
 
 ## Theming (globalny styl aplikacji)
-- Dostępne motywy: `venom-dark`, `venom-light-dev`.
+- Dostępne motywy: `venom-dark`, `venom-light`.
 - Rejestr motywów: `lib/theme-registry.ts` (`ThemeId`, `THEME_REGISTRY`, `DEFAULT_THEME`).
 - Provider i runtime state: `lib/theme.tsx` (`ThemeProvider`, `useTheme`).
 - Bootstrap bez migania: `app/layout.tsx` (ustawienie `data-theme` przed hydratacją).

@@ -36,14 +36,16 @@ web-next/
 - **Naming conventions:** all interfaces/types in `web-next/lib/types.ts` use English names (`Lesson`, `LessonsStats`, `ServiceStatus`, `Task`, `Metrics`, `ModelsUsageResponse`). We don't add parallel PL aliases or import shortcuts – instead of `Lekcja` we use `Lesson`, instead of `StatusSłużba` → `ServiceStatus`. UI translations live in `lib/i18n`, but code/types maintain a uniform English prefix to avoid convention drift when adding new modules.
 
 ### 0.2.1 Theming architecture (global style switch)
-- Theme IDs and metadata are defined in `web-next/lib/theme-registry.ts` (`venom-dark`, `venom-light-dev`).
+- Theme IDs and metadata are defined in `web-next/lib/theme-registry.ts` (`venom-dark`, `venom-light`).
 - Runtime state is managed by `web-next/lib/theme.tsx` (`ThemeProvider`, `useTheme`), with source priority:
   `localStorage["venom-theme"]` (user override) > backend `UI_THEME_DEFAULT` (`GET /api/v1/config/runtime`) > app fallback (`DEFAULT_THEME`).
+- Legacy migration: `venom-light-dev` is accepted as input and normalized to `venom-light`.
 - User theme changes are persisted in `localStorage["venom-theme"]` and synchronized best-effort to backend (`POST /api/v1/config/runtime`, `UI_THEME_DEFAULT`).
 - App bootstrap in `web-next/app/layout.tsx` sets `html[data-theme]` before interactive hydration to reduce FOUC.
 - `web-next/app/globals.css` contains semantic tokens in `:root` and per-theme overrides in `html[data-theme="<id>"]`.
 - Global selector UI lives in `web-next/components/layout/theme-switcher.tsx` and is mounted in TopBar.
 - Required i18n keys for theme labels/descriptions are guarded by `web-next/tests/theme-i18n-keys.test.ts`.
+- Full runbook: `docs/THEMING_GUIDE.md`.
 
 ### 0.3 NPM scripts / workflow
 | Command                               | Purpose                                                                               |

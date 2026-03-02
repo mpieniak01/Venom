@@ -37,9 +37,9 @@ const REQUIRED_THEME_KEYS = [
   "theme.options.venomDark.short",
   "theme.options.venomDark.name",
   "theme.options.venomDark.description",
-  "theme.options.venomLightDev.short",
-  "theme.options.venomLightDev.name",
-  "theme.options.venomLightDev.description",
+  "theme.options.venomLight.short",
+  "theme.options.venomLight.name",
+  "theme.options.venomLight.description",
 ] as const;
 
 describe("theme i18n keys", () => {

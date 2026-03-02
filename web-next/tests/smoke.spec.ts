@@ -172,6 +172,25 @@ test.describe("Venom Next Cockpit Smoke", () => {
     }
   });
 
+  test("Theme selector persists selection after reload", async ({ page }) => {
+    await page.goto("/");
+    const switcher = page.getByTestId("topbar-theme-switcher");
+    await expect(switcher).toBeVisible();
+
+    await switcher.click();
+    await page.getByTestId("theme-option-venom-light-dev").click();
+
+    await expect
+      .poll(async () => page.evaluate(() => document.documentElement.dataset.theme))
+      .toBe("venom-light-dev");
+
+    await page.reload();
+
+    await expect
+      .poll(async () => page.evaluate(() => document.documentElement.dataset.theme))
+      .toBe("venom-light-dev");
+  });
+
   test("Awaryjne zatrzymanie kolejki zwraca komunikat", async ({ page }) => {
     await page.route("**/api/v1/queue/status", async (route) => {
       await route.fulfill({

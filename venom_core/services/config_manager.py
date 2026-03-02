@@ -36,6 +36,7 @@ CONFIG_WHITELIST = {
     "WORKFLOW_RUNTIME",
     "KERNEL",
     "INTENT_MODE",
+    "UI_THEME_DEFAULT",
     "EMBEDDING_MODEL",
     "LLM_LOCAL_API_KEY",
     "SIMPLE_MODE_SYSTEM_PROMPT",
@@ -410,6 +411,13 @@ class ConfigUpdateRequest(BaseModel):
             if str(updates["URL_SCHEME_POLICY"]).lower() not in valid_policies:
                 errors.append(
                     "URL_SCHEME_POLICY musi być jednym z: " + ", ".join(valid_policies)
+                )
+
+        if "UI_THEME_DEFAULT" in updates:
+            valid_themes = ["venom-dark", "venom-light-dev"]
+            if str(updates["UI_THEME_DEFAULT"]).lower() not in valid_themes:
+                errors.append(
+                    "UI_THEME_DEFAULT musi być jednym z: " + ", ".join(valid_themes)
                 )
 
 

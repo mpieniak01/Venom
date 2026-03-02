@@ -129,7 +129,7 @@ export function SelectMenu({
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         className={cn(
-          "flex min-w-0 items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs uppercase tracking-wider text-white transition hover:border-white/40 hover:bg-white/5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+          "flex min-w-0 items-center gap-2 rounded-full border border-[color:var(--ui-border)] bg-[color:var(--button-outline-bg)] px-3 py-1.5 text-xs uppercase tracking-wider text-[color:var(--button-outline-text)] transition hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--button-outline-hover)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
           buttonClassName,
         )}
         aria-haspopup="listbox"
@@ -146,7 +146,7 @@ export function SelectMenu({
             {currentOption?.label ?? placeholder}
           </span>
         )}
-        <ChevronDown className="h-3 w-3 text-zinc-400" aria-hidden />
+        <ChevronDown className="h-3 w-3 text-[color:var(--ui-muted)]" aria-hidden />
       </button>
       {open &&
         typeof document !== "undefined" &&
@@ -155,13 +155,13 @@ export function SelectMenu({
             ref={menuRef}
             style={menuStyle}
             className={cn(
-              "mt-2 rounded-2xl border border-white/10 bg-zinc-950/95 p-1 text-left shadow-xl",
+              "mt-2 rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--ui-menu-bg)] p-1 text-left text-[color:var(--text-primary)] shadow-xl",
               menuClassName,
             )}
             data-testid={menuTestId}
           >
             {uniqueOptions.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-zinc-500">Brak opcji</div>
+              <div className="px-3 py-2 text-xs text-[color:var(--ui-muted)]">Brak opcji</div>
             ) : (
               uniqueOptions.map((option) => {
                 const active = option.value === value;
@@ -170,8 +170,8 @@ export function SelectMenu({
                     key={option.value}
                     type="button"
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60",
-                      active ? "bg-white/10" : "",
+                      "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-[color:var(--text-primary)] transition hover:bg-[color:var(--ui-surface-hover)] disabled:cursor-not-allowed disabled:opacity-60",
+                      active ? "bg-[color:var(--ui-menu-item-active)]" : "",
                       optionClassName,
                     )}
                     data-testid={
@@ -191,7 +191,7 @@ export function SelectMenu({
                       <>
                         {option.icon}
                         <div className="flex flex-col text-left">
-                          <span className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                          <span className="text-xs uppercase tracking-[0.3em] text-[color:var(--ui-muted)]">
                             {option.label}
                           </span>
                           {option.description && (

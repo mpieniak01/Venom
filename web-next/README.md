@@ -38,11 +38,26 @@ npm run start
 - `next.config.ts` – proxy do FastAPI (dev), output `standalone`
 
 ## Stack UI
-- Tailwind CSS 4 + autorski `tailwind.config.ts` (ciemny motyw, glassmorphism)
+- Tailwind CSS 4 + autorski `tailwind.config.ts` (system themingu oparty o tokeny CSS)
 - shadcn/ui (Sheet, Accordion) na bazie Radix UI
 - `framer-motion` (animacje chatu), `@tremor/react` (karty KPI)
 - `react-zoom-pan-pinch` w Inspectorze (nawigacja po Mermaid)
 - `lucide-react` (ikony), `tailwindcss-animate`
+
+## Theming (globalny styl aplikacji)
+- Dostępne motywy: `venom-dark`, `venom-light-dev`.
+- Rejestr motywów: `lib/theme-registry.ts` (`ThemeId`, `THEME_REGISTRY`, `DEFAULT_THEME`).
+- Provider i runtime state: `lib/theme.tsx` (`ThemeProvider`, `useTheme`).
+- Bootstrap bez migania: `app/layout.tsx` (ustawienie `data-theme` przed hydratacją).
+- Priorytet źródeł motywu: `localStorage["venom-theme"]` (user override) > backend `UI_THEME_DEFAULT` (`/api/v1/config/runtime`) > `DEFAULT_THEME`.
+- Persist preferencji: `localStorage` pod kluczem `venom-theme` + best-effort sync do backendu (`UI_THEME_DEFAULT`).
+- Selektor UI: `components/layout/theme-switcher.tsx` (TopBar).
+
+Dodawanie nowego motywu:
+1. Dopisz ID i metadane do `lib/theme-registry.ts`.
+2. Dodaj mapę tokenów w `app/globals.css` pod `html[data-theme="<id>"]`.
+3. Dodaj etykiety i opisy i18n (`pl/en/de`) w `lib/i18n/locales/*`.
+4. Rozszerz testy: `tests/theme-registry.test.ts`, `tests/theme-i18n-keys.test.ts`.
 
 ## System design / tokeny
 - **Tokeny globalne** (`app/globals.css`):

@@ -143,7 +143,7 @@ def resolve_feedback_loop_model(
         return FeedbackLoopResolution(
             requested_model_alias=requested_alias,
             requested_model_id=requested or None,
-            resolved_model_id=policy.primary,
+            resolved_model_id=None,
             resolution_reason="not_found",
             feedback_loop_tier="primary",
             feedback_loop_ready=False,

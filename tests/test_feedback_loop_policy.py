@@ -1,10 +1,12 @@
 from types import SimpleNamespace
 
 from venom_core.services.feedback_loop_policy import (
+    FEEDBACK_LOOP_FALLBACK_MODELS,
     FEEDBACK_LOOP_PRIMARY_MODEL,
     FEEDBACK_LOOP_REQUESTED_ALIAS,
     classify_feedback_loop_tier,
     evaluate_feedback_loop_guard,
+    feedback_loop_policy,
     resolve_feedback_loop_model,
 )
 
@@ -49,6 +51,48 @@ def test_resolve_feedback_loop_alias_resource_guard_fallback() -> None:
     assert resolved.resolution_reason == "resource_guard"
 
 
+def test_resolve_feedback_loop_alias_exact_only_not_found_sets_null_resolved() -> None:
+    resolved = resolve_feedback_loop_model(
+        requested_model=FEEDBACK_LOOP_REQUESTED_ALIAS,
+        available_models={"qwen2.5-coder:3b"},
+        prefer_feedback_loop_default=False,
+        exact_only=True,
+        primary_allowed=True,
+    )
+    assert resolved.resolved_model_id is None
+    assert resolved.resolution_reason == "not_found"
+    assert resolved.feedback_loop_ready is False
+
+
+def test_resolve_feedback_loop_default_alias_when_preferred() -> None:
+    resolved = resolve_feedback_loop_model(
+        requested_model=None,
+        available_models={FEEDBACK_LOOP_PRIMARY_MODEL},
+        prefer_feedback_loop_default=True,
+        exact_only=False,
+        primary_allowed=True,
+    )
+    assert resolved.requested_model_alias == FEEDBACK_LOOP_REQUESTED_ALIAS
+    assert resolved.resolved_model_id == FEEDBACK_LOOP_PRIMARY_MODEL
+    assert resolved.resolution_reason == "exact"
+
+
+def test_resolve_feedback_loop_preserves_non_alias_request() -> None:
+    resolved = resolve_feedback_loop_model(
+        requested_model="qwen2.5-coder:3b",
+        available_models=set(),
+        prefer_feedback_loop_default=True,
+        exact_only=False,
+        primary_allowed=False,
+    )
+    assert resolved.requested_model_alias is None
+    assert resolved.requested_model_id == "qwen2.5-coder:3b"
+    assert resolved.resolved_model_id == "qwen2.5-coder:3b"
+    assert resolved.resolution_reason == "exact"
+    assert resolved.feedback_loop_tier == "fallback"
+    assert resolved.feedback_loop_ready is True
+
+
 def test_evaluate_feedback_loop_guard_blocks_low_vram_profile() -> None:
     settings = SimpleNamespace(
         VENOM_OLLAMA_PROFILE="low-vram-8-12gb",
@@ -68,6 +112,34 @@ def test_evaluate_feedback_loop_guard_blocks_low_vram_profile() -> None:
     assert guard.allowed is False
     assert guard.guard_reason == "resource_guard"
     assert "qwen2.5-coder:3b" in str(guard.recommendation)
+
+
+def test_evaluate_feedback_loop_guard_blocks_low_ram() -> None:
+    settings = SimpleNamespace(
+        VENOM_OLLAMA_PROFILE="balanced-12-24gb",
+        OLLAMA_CONTEXT_LENGTH=32768,
+        OLLAMA_NUM_PARALLEL=0,
+        OLLAMA_MAX_QUEUE=0,
+        OLLAMA_KV_CACHE_TYPE="",
+        OLLAMA_FLASH_ATTENTION=True,
+        LLM_KEEP_ALIVE="30m",
+    )
+    guard = evaluate_feedback_loop_guard(
+        model_id=FEEDBACK_LOOP_PRIMARY_MODEL,
+        settings=settings,
+        ram_total_gb=8.0,
+        vram_total_mb=8192.0,
+    )
+    assert guard.allowed is False
+    assert guard.guard_reason == "resource_guard"
+
+
+def test_feedback_loop_policy_candidates_include_primary_and_fallbacks() -> None:
+    policy = feedback_loop_policy()
+    assert policy.candidates == (
+        FEEDBACK_LOOP_PRIMARY_MODEL,
+        *FEEDBACK_LOOP_FALLBACK_MODELS,
+    )
 
 
 def test_classify_feedback_loop_tier_values() -> None:

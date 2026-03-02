@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Dict, List
 
+import psutil
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from venom_core.api.model_schemas.model_requests import (
@@ -93,10 +94,14 @@ async def _feedback_loop_primary_allowed(model_manager) -> bool:
                 vram_total_mb = float(raw_vram)
         except Exception:
             vram_total_mb = None
+    try:
+        ram_total_gb = round(float(psutil.virtual_memory().total) / float(1024**3), 2)
+    except Exception:
+        ram_total_gb = None
     guard = evaluate_feedback_loop_guard(
         model_id=feedback_loop_policy().primary,
         settings=SETTINGS,
-        ram_total_gb=None,
+        ram_total_gb=ram_total_gb,
         vram_total_mb=vram_total_mb,
     )
     return bool(guard.allowed)
@@ -497,6 +502,14 @@ async def install_model(
                 resolution_reason = "exact"
             else:
                 install_candidates = list(policy.fallbacks)
+                if not install_candidates:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Brak dostępnych modeli fallback dla feedback-loop przy "
+                            "aktywnym ograniczeniu zasobów."
+                        ),
+                    )
                 resolved_model_id = install_candidates[0]
                 resolution_reason = "resource_guard"
             logger.info(
@@ -579,6 +592,8 @@ async def install_model(
             "feedback_loop_tier": classify_feedback_loop_tier(resolved_model_id),
             "install_candidates": install_candidates,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(f"Błąd podczas inicjalizacji pobierania modelu: {exc}")
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")

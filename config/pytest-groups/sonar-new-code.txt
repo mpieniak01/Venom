@@ -57,6 +57,7 @@ tests/test_error_mappings.py
 tests/test_executive_agent_roi.py
 tests/test_eyes.py
 tests/test_feedback_hidden_prompts.py
+tests/test_feedback_loop_policy.py
 tests/test_file_skill.py
 tests/test_flow_coordinator.py
 tests/test_forge_flow.py
@@ -88,6 +89,7 @@ tests/test_lessons_manager.py
 tests/test_llm_runtime_activation_api.py
 tests/test_llm_runtime_options_api.py
 tests/test_llm_runtime_utils.py
+tests/test_llm_server_selection.py
 tests/test_llm_simple_payload_service.py
 tests/test_logger_utils.py
 tests/test_main_internal_helpers.py
@@ -114,6 +116,7 @@ tests/test_model_registry_split_modules.py
 tests/test_model_router.py
 tests/test_model_services.py
 tests/test_model_validators.py
+tests/test_models_install_feedback_loop.py
 tests/test_models_remote_api.py
 tests/test_models_remote_contracts.py
 tests/test_module_data_policy.py

@@ -327,14 +327,13 @@ async def _host_vram_total_mb(model_manager: Any) -> float | None:
         return None
     try:
         usage = await usage_reader()
-    except Exception:
-        return None
-    raw_value = usage.get("vram_total_mb")
-    if raw_value is None:
-        return None
-    try:
+        raw_value = usage.get("vram_total_mb")
+        if raw_value is None:
+            return None
         return float(raw_value)
     except (TypeError, ValueError):
+        return None
+    except Exception:
         return None
 
 
@@ -979,6 +978,7 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
     active_feedback_resolution = _feedback_loop_resolution_defaults(
         active_runtime.model_name
     )
+    feedback_policy = feedback_loop_policy()
     return {
         "status": "success",
         "active": {
@@ -997,8 +997,8 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         "runtimes": [*local_targets, *cloud_targets],
         "feedback_loop": {
             "requested_alias": FEEDBACK_LOOP_REQUESTED_ALIAS,
-            "primary": feedback_loop_policy().primary,
-            "fallbacks": list(feedback_loop_policy().fallbacks),
+            "primary": feedback_policy.primary,
+            "fallbacks": list(feedback_policy.fallbacks),
             "active_tier": active_feedback_resolution["feedback_loop_tier"],
             "active_ready": active_feedback_resolution["feedback_loop_ready"],
             "active_resolved_model_id": active_feedback_resolution["resolved_model_id"],

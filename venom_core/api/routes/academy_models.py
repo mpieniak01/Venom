@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set, TypeAlias
 
 import anyio
 
@@ -23,6 +23,8 @@ PAID_CLOUD_PROVIDERS = {
 }
 PAID_MODEL_MARKERS = ("gpt-", "claude", "gemini")
 LOCAL_RUNTIME_PREFERENCE = ("vllm", "ollama", "onnx")
+ModelSourceType: TypeAlias = Literal["local", "cloud"]
+ModelCostTier: TypeAlias = Literal["free", "paid", "unknown"]
 
 
 def is_model_trainable(
@@ -186,7 +188,7 @@ def classify_model_source_type(
     *,
     provider: str,
     model_metadata: Optional[Dict[str, Any]] = None,
-) -> str:
+) -> ModelSourceType:
     """Classify training execution location for Academy picker contract."""
     provider_lc = provider.strip().lower()
     if provider_lc in PAID_CLOUD_PROVIDERS:
@@ -204,7 +206,9 @@ def classify_model_source_type(
     return "local"
 
 
-def classify_model_cost_tier(*, source_type: str, provider: str, model_id: str) -> str:
+def classify_model_cost_tier(
+    *, source_type: ModelSourceType, provider: str, model_id: str
+) -> ModelCostTier:
     """Classify training-cost tier with safe defaults."""
     if source_type == "local":
         return "free"
@@ -222,8 +226,8 @@ def classify_model_cost_tier(*, source_type: str, provider: str, model_id: str) 
 
 def resolve_model_priority_bucket(
     *,
-    source_type: str,
-    cost_tier: str,
+    source_type: ModelSourceType,
+    cost_tier: ModelCostTier,
     installed_local: bool,
 ) -> int:
     """Return deterministic priority bucket for local-first Academy UX."""
@@ -425,8 +429,8 @@ def add_trainable_model_from_catalog(
     default_model: str,
     reason: Optional[str] = None,
     installed_local: bool = False,
-    source_type: Optional[str] = None,
-    cost_tier: Optional[str] = None,
+    source_type: Optional[ModelSourceType] = None,
+    cost_tier: Optional[ModelCostTier] = None,
     available_runtime_ids: Optional[List[str]] = None,
     model_metadata: Optional[Dict[str, Any]] = None,
 ) -> None:

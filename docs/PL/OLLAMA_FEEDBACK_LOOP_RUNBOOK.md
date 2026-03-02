@@ -1,13 +1,13 @@
 # Runbook Ollama Feedback-Loop
 
 ## Cel
-Sterowanie rozwiazywaniem klasy modelu codingowego `OpenCodeInterpreter-Qwen2.5-7B`.
+Sterowanie rozwiązywaniem klasy modelu codingowego `OpenCodeInterpreter-Qwen2.5-7B`.
 
 Polityka runtime:
 - primary: `qwen2.5-coder:7b`
 - fallbacks: `qwen2.5-coder:3b`, `codestral:latest`
 
-## Sprawdz stan runtime
+## Sprawdź stan runtime
 ```bash
 curl -s http://127.0.0.1:8000/api/v1/system/llm-runtime/options | jq '.feedback_loop, .active'
 ```
@@ -25,8 +25,8 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/models/install \
 ```
 
 Oczekiwane zachowanie:
-- jesli model juz jest: `already_installed=true`
-- jesli primary jest zablokowany guardem zasobowym: instalator planuje fallback
+- jeśli model już jest: `already_installed=true`
+- jeśli primary jest zablokowany guardem zasobowym: instalator planuje fallback
 
 ## Aktywacja z fallbackiem
 ```bash
@@ -43,13 +43,13 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/system/llm-servers/active \
 ```
 
 Oczekiwane zachowanie:
-- zwraca 409, gdy primary jest niedostepny lub zablokowany guardem zasobowym
-- blad zawiera rekomendacje fallbacku albo zmiany profilu/zasobow
+- zwraca 409, gdy primary jest niedostępny lub zablokowany guardem zasobowym
+- błąd zawiera rekomendację fallbacku albo zmiany profilu/zasobów
 
 ## Typowe naprawy
 1. Guard zasobowy na niskim profilu:
 - ustaw `VENOM_OLLAMA_PROFILE=balanced-12-24gb`
 2. Brak 7B w lokalnym katalogu:
 - zainstaluj `qwen2.5-coder:7b`
-3. Za slaby host dla 7B:
-- uzyj fallbacku `qwen2.5-coder:3b`
+3. Za słaby host dla 7B:
+- użyj fallbacku `qwen2.5-coder:3b`

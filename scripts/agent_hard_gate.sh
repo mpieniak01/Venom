@@ -25,6 +25,30 @@ if [[ "${reason}" == "cancel" || "${reason}" == "cancelled" || "${reason}" == "e
   exit 0
 fi
 
+# Skip hard gate for markdown-only change sets.
+collect_changed_files() {
+  {
+    git diff --name-only
+    git diff --cached --name-only
+    git ls-files --others --exclude-standard
+  } | sed '/^$/d' | sort -u
+}
+
+mapfile -t changed_files < <(collect_changed_files)
+if [[ "${#changed_files[@]}" -gt 0 ]]; then
+  markdown_only=1
+  for file_path in "${changed_files[@]}"; do
+    if [[ "${file_path}" != *.md ]]; then
+      markdown_only=0
+      break
+    fi
+  done
+  if [[ "${markdown_only}" -eq 1 ]]; then
+    echo "Hard Gate skipped: markdown-only change set (*.md)." >&2
+    exit 0
+  fi
+fi
+
 tmp_log="$(mktemp)"
 trap 'rm -f "$tmp_log"' EXIT
 

@@ -99,22 +99,18 @@ Tryb "partial done" przy failujących gate'ach jest zabroniony.
 1. ustaw `HARD_GATE_ENV_BLOCKER=1` dla wykonania hooka hard-gate,
 2. obowiązkowo opisz bloker i jego wpływ w sekcji ryzyk/ograniczeń PR.
 
-## Szybka ścieżka dla dokumentacji (wyjątek)
+## Szybka ścieżka dla Markdown (wyjątek)
 
-Dla zadań wyłącznie dokumentacyjnych można pominąć ciężkie bramki lokalne.
+Dla zadań wyłącznie markdownowych można pominąć ciężkie bramki lokalne.
 
-Zakres doc-only (wszystkie zmienione pliki muszą pasować):
-1. `docs/**`
-2. `docs_dev/**`
-3. `README.md`
-4. `README_PL.md`
-5. inne pliki `*.md` w katalogu głównym repo
+Zakres markdown-only (wszystkie zmienione pliki muszą pasować):
+1. każda zmieniona ścieżka kończy się na `.md` (dowolny katalog)
 
 Zasady:
-1. Jeśli choć jeden zmieniony plik jest poza zakresem doc-only, obowiązuje pełna polityka hard-gate.
-2. Dla zakresu doc-only pomijamy:
+1. Jeśli choć jeden zmieniony plik jest poza zakresem markdown-only, obowiązuje pełna polityka hard-gate.
+2. Dla zakresu markdown-only pomijamy:
    - `make pr-fast`
-3. W raporcie końcowym obowiązkowo dopisać: "zmiana doc-only, hard gate pominięte zgodnie z polityką".
+3. W raporcie końcowym obowiązkowo dopisać: "zmiana markdown-only, hard gate pominięte zgodnie z polityką".
 
 ## Kontrakt raportu końcowego (obowiązkowy)
 
@@ -122,7 +118,7 @@ Raport końcowy (oraz opis PR) musi zawierać:
 
 1. listę wykonanych komend walidacyjnych,
 2. wynik pass/fail dla każdej komendy,
-3. changed-lines coverage z outputu `make pr-fast`,
+3. changed-lines coverage z outputu `make pr-fast` (lub `N/A` dla zmian markdown-only, gdy gate pominięto zgodnie z polityką),
 4. znane ryzyka/skipy z uzasadnieniem.
 
 Baza formatu: `.github/pull_request_template.md`.

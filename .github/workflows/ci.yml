@@ -69,7 +69,7 @@ jobs:
     name: Backend lite (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [forbidden-paths, architecture-drift-guard]
+    needs: [forbidden-paths]
     env:
       CI: "true"
       PYTHONUNBUFFERED: "1"

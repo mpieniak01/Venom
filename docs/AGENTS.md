@@ -101,20 +101,16 @@ Environment blocker path:
 
 ## Documentation-Only Fast Path (Exception)
 
-For documentation-only tasks, hard gates may be skipped to keep feedback fast.
+For markdown-only tasks, hard gates may be skipped to keep feedback fast.
 
-Doc-only scope (all changed files must match):
-1. `docs/**`
-2. `docs_dev/**`
-3. `README.md`
-4. `README_PL.md`
-5. other root `*.md` files
+Markdown-only scope (all changed files must match):
+1. every changed file path ends with `.md` (any directory)
 
 Rules:
-1. If any changed file is outside doc-only scope, full hard-gate policy is mandatory.
-2. For doc-only scope, skip:
+1. If any changed file is outside markdown-only scope, full hard-gate policy is mandatory.
+2. For markdown-only scope, skip:
    - `make pr-fast`
-3. Completion report must include explicit note: "doc-only change, hard gates skipped by policy".
+3. Completion report must include explicit note: "markdown-only change, hard gates skipped by policy".
 
 ## Completion Report Contract (Mandatory)
 
@@ -122,7 +118,7 @@ Every agent-generated completion summary (and PR description) must include:
 
 1. list of executed validation commands,
 2. pass/fail result for each command,
-3. changed-lines coverage percentage from `make pr-fast` output,
+3. changed-lines coverage percentage from `make pr-fast` output (or `N/A` for markdown-only change sets where gate is skipped by policy),
 4. known skips/risks with explicit justification.
 
 Use `.github/pull_request_template.md` as the report format baseline.

@@ -1,9 +1,9 @@
 {
   "appName": "web-next",
   "version": "1.6.0",
-  "commit": "78a2933c",
-  "timestamp": "2026-02-28T08:03:59.272Z",
-  "environmentRole": "preprod",
+  "commit": "09af7893",
+  "timestamp": "2026-03-02T06:07:52.789Z",
+  "environmentRole": "dev",
   "generatedBy": "scripts/generate-meta.mjs",
   "nodeVersion": "v20.19.0"
 }

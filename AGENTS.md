@@ -14,7 +14,7 @@ Use `docs/AGENTS.md` as the canonical ruleset. This file is intentionally short.
 Minimal contract:
 1. Before completion, run `make pr-fast`.
 2. If gate fails, fix and rerun until green (or confirmed environment blocker path from `docs/AGENTS.md`).
-3. For doc-only changes (`docs/**`, `docs_dev/**`, root `*.md`, `README*.md`) hard gates may be skipped.
+3. For markdown-only changes (all changed files are `*.md`, regardless of directory) hard gates may be skipped.
 4. Final report must include commands run, pass/fail, changed-lines coverage (from `pr-fast` output), and known risks/skips.
 
 Canonical process details:

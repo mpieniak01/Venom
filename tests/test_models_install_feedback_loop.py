@@ -170,6 +170,17 @@ def test_feedback_loop_resolution_paths_and_ready_flags() -> None:
     assert exact_only_not_found.resolution_reason == "not_found"
     assert exact_only_not_found.resolved_model_id is None
 
+    default_alias = resolve_feedback_loop_model(
+        requested_model=None,
+        available_models={FEEDBACK_LOOP_PRIMARY_MODEL},
+        prefer_feedback_loop_default=True,
+        exact_only=False,
+        primary_allowed=True,
+    )
+    assert default_alias.requested_model_alias == FEEDBACK_LOOP_REQUESTED_ALIAS
+    assert default_alias.resolution_reason == "exact"
+    assert default_alias.resolved_model_id == FEEDBACK_LOOP_PRIMARY_MODEL
+
     no_request = resolve_feedback_loop_model(
         requested_model=None,
         available_models={"phi3:mini"},

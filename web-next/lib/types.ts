@@ -123,6 +123,8 @@ export interface LlmRuntimeModelOption {
   active: boolean;
   capabilities?: string[];
   chat_compatible?: boolean;
+  feedback_loop_ready?: boolean;
+  feedback_loop_tier?: "primary" | "fallback" | "not_recommended";
 }
 
 export interface LlmRuntimeTargetOption {
@@ -146,8 +148,19 @@ export interface LlmRuntimeOptionsResponse {
     active_endpoint?: string | null;
     config_hash?: string | null;
     source_type?: "local-runtime" | "cloud-api";
+    requested_model_alias?: string | null;
+    resolved_model_id?: string | null;
+    resolution_reason?: "exact" | "fallback" | "resource_guard" | "not_found" | null;
   };
   runtimes: LlmRuntimeTargetOption[];
+  feedback_loop?: {
+    requested_alias?: string;
+    primary?: string;
+    fallbacks?: string[];
+    active_tier?: "primary" | "fallback" | "not_recommended";
+    active_ready?: boolean;
+    active_resolved_model_id?: string | null;
+  };
 }
 
 export interface ActiveLlmServerResponse {
@@ -158,6 +171,9 @@ export interface ActiveLlmServerResponse {
   config_hash?: string | null;
   runtime_id?: string | null;
   source_type?: "local-runtime" | "cloud-api";
+  requested_model_alias?: string | null;
+  resolved_model_id?: string | null;
+  resolution_reason?: "exact" | "fallback" | "resource_guard" | "not_found" | null;
   last_models?: {
     ollama?: string;
     vllm?: string;

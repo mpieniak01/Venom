@@ -1,7 +1,13 @@
 "use client";
 
 import { createElement, useMemo, useCallback } from "react";
-import type { ServiceStatus, HistoryRequest, GenerationParams, ContextUsed } from "@/lib/types";
+import type {
+  ServiceStatus,
+  HistoryRequest,
+  GenerationParams,
+  ContextUsed,
+  LlmRuntimeModelOption,
+} from "@/lib/types";
 import type { LogEntryType } from "@/lib/logs";
 import { CockpitHiddenPromptsPanel } from "@/components/cockpit/cockpit-hidden-prompts-panel";
 import { useCockpitRuntimeSectionProps } from "@/components/cockpit/cockpit-runtime-props";
@@ -10,6 +16,20 @@ import { useTranslation } from "@/lib/i18n";
 import { useCockpitContext } from "@/components/cockpit/cockpit-context";
 import { mapTelemetryTone, type TelemetryFeedEntry } from "@/components/cockpit/cockpit-utils";
 
+
+
+export function formatRuntimeModelOptionLabel(
+  model: Pick<LlmRuntimeModelOption, "name" | "feedback_loop_tier">,
+  t: (key: string) => string,
+): string {
+  if (model.feedback_loop_tier === "primary") {
+    return `${model.name} · ${t("cockpit.models.feedbackLoopPrimaryBadge")}`;
+  }
+  if (model.feedback_loop_tier === "fallback") {
+    return `${model.name} · ${t("cockpit.models.feedbackLoopFallbackBadge")}`;
+  }
+  return model.name;
+}
 
 
 export function useCockpitSectionProps() {
@@ -100,8 +120,12 @@ export function useCockpitSectionProps() {
     return (target?.models ?? []).filter((model) => model.chat_compatible !== false);
   }, [resolvedServerId, runtimeTargets]);
   const llmModelOptions = useMemo(
-    () => selectedRuntimeModels.map((model) => ({ label: model.name, value: model.name })),
-    [selectedRuntimeModels],
+    () =>
+      selectedRuntimeModels.map((model) => ({
+        label: formatRuntimeModelOptionLabel(model, t),
+        value: model.name,
+      })),
+    [selectedRuntimeModels, t],
   );
   const hasModels = useMemo(
     () => llmModelOptions.length > 0,

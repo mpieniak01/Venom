@@ -49,6 +49,24 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
   - niepoprawna para zwraca `400` z czytelnym komunikatem.
 - `GET /api/v1/system/llm-servers` pozostaje endpointem technicznym dla runtime lokalnych; flow operacyjne UI (Chat + Models) używają `llm-runtime/options`.
 
+### Rozwiazywanie aliasu feedback-loop (PR 187)
+- Alias produktowy dla coding feedback-loop:
+  - `requested_alias`: `OpenCodeInterpreter-Qwen2.5-7B`
+  - `primary`: `qwen2.5-coder:7b`
+  - `fallbacks`: `qwen2.5-coder:3b`, `codestral:latest`
+- Runtime options (`GET /api/v1/system/llm-runtime/options`) zwraca teraz:
+  - pola resolution aktywnego runtime: `requested_model_alias`, `resolved_model_id`, `resolution_reason`,
+  - metadata per model: `feedback_loop_ready`, `feedback_loop_tier`,
+  - blok statusu feedback-loop z `requested_alias`, `primary`, `fallbacks`.
+- Aktywacja runtime lokalnego (`POST /api/v1/system/llm-servers/active`) obsluguje:
+  - opcjonalne `model_alias` i `exact_only`,
+  - jawny payload resolution (`requested_model_alias`, `resolved_model_id`, `resolution_reason`),
+  - guard zasobowy dla 7B z bezpiecznym fallbackiem (lub blad gdy `exact_only=true`).
+- Instalacja modeli (`POST /api/v1/models/install`) obsluguje alias feedback-loop:
+  - idempotencja (brak ponownego pull przy juz zainstalowanym modelu),
+  - retry + timeout dla `ollama pull`,
+  - plan kandydatow zalezny od guardow (`primary` lub fallback chain).
+
 ### Kontrakt modeli treningowych Academy (PR 186)
 - Kanoniczny kontrakt selectora Academy: `GET /api/v1/academy/models/trainable`.
 - Kazda pozycja trainable zawiera:

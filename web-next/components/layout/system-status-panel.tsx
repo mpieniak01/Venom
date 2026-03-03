@@ -41,8 +41,8 @@ export function SystemStatusPanel() {
     }
     const llmHint = hasLlm
       ? t("systemStatus.hints.llmDetails", {
-        server: llmActive?.active_server ?? "unknown",
-        model: llmActive?.active_model ?? "unknown",
+        server: llmActive?.active_server ?? t("systemStatus.hints.unknown"),
+        model: llmActive?.active_model ?? t("systemStatus.hints.unknown"),
       })
       : llmError ?? t("systemStatus.hints.llmNone");
 

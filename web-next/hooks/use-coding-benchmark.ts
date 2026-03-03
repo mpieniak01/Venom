@@ -145,6 +145,7 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
   const startBenchmark = useCallback(async (req: CodingBenchmarkStartRequest) => {
     reset();
     setStatus("pending");
+    const unknownLabel = t("benchmark.preflight.unknown");
     emitPreflightLogs(addLog, {
       preparing: t("benchmark.preflight.preparing"),
       unloading: t("benchmark.preflight.unloading"),
@@ -159,8 +160,8 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
         const state = await stateResp.json() as { active_server?: string; active_model?: string };
         addLog(
           t("benchmark.preflight.llmState", {
-            server: state.active_server ?? "unknown",
-            model: state.active_model ?? "unknown",
+            server: state.active_server ?? unknownLabel,
+            model: state.active_model ?? unknownLabel,
           }),
           "info",
         );
@@ -191,16 +192,22 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const detail = (errorData as { detail?: string }).detail;
-        throw new Error(
+        const fallbackMessage = t("benchmark.preflight.genericError", {
+          status: response.status,
+          statusText: response.statusText || t("benchmark.preflight.unknownStatusText"),
+        });
+        const classifiedMessage = classifyStartError(detail, {
+          conflict: t("benchmark.preflight.conflict"),
+          runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
+        });
+        const message =
           response.status === 409
             ? t("benchmark.preflight.conflict")
-            : classifyStartError(detail, {
-              conflict: t("benchmark.preflight.conflict"),
-              runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
-            }) ||
-            t("benchmark.coding.logs.startFailed", {
-              status: response.statusText,
-            })
+            : detail
+              ? classifiedMessage
+              : fallbackMessage;
+        throw new Error(
+          message,
         );
       }
 

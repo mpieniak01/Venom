@@ -160,17 +160,11 @@ class RuntimeExclusiveGuard:
         benchmark_service: Any,
         coding_benchmark_service: Any,
     ) -> None:
-        if source != "llm" and self._has_active_llm_runs(benchmark_service):
+        if source not in {"llm", "coding"}:
+            logger.debug("Unknown benchmark source in guard: %s", source)
+        if self._has_active_llm_runs(benchmark_service):
             raise RuntimeExclusiveConflictError("LLM benchmark already running")
-        if source != "coding" and self._has_active_coding_runs(
-            coding_benchmark_service
-        ):
-            raise RuntimeExclusiveConflictError("Coding benchmark already running")
-        if source == "llm" and self._has_active_llm_runs(benchmark_service):
-            raise RuntimeExclusiveConflictError("LLM benchmark already running")
-        if source == "coding" and self._has_active_coding_runs(
-            coding_benchmark_service
-        ):
+        if self._has_active_coding_runs(coding_benchmark_service):
             raise RuntimeExclusiveConflictError("Coding benchmark already running")
 
     def _has_active_llm_runs(self, service: Any) -> bool:
@@ -208,18 +202,30 @@ class RuntimeExclusiveGuard:
         loaded_models = await self._ollama_loaded_models(base)
         if not loaded_models:
             return []
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            for model_name in loaded_models:
-                # keep_alive=0 zwalnia model z RAM/VRAM w Ollama.
-                await client.post(
-                    f"{base}/api/generate",
-                    json={
-                        "model": model_name,
-                        "prompt": "",
-                        "stream": False,
-                        "keep_alive": 0,
-                    },
-                )
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                for model_name in loaded_models:
+                    # keep_alive=0 zwalnia model z RAM/VRAM w Ollama.
+                    response = await client.post(
+                        f"{base}/api/generate",
+                        json={
+                            "model": model_name,
+                            "prompt": "",
+                            "stream": False,
+                            "keep_alive": 0,
+                        },
+                    )
+                    if response.status_code >= 400:
+                        raise RuntimeExclusivePreflightError(
+                            f"Ollama /api/generate failed for model {model_name} "
+                            f"with {response.status_code}"
+                        )
+        except RuntimeExclusivePreflightError:
+            raise
+        except Exception as exc:
+            raise RuntimeExclusivePreflightError(
+                f"Unable to unload Ollama models: {exc}"
+            ) from exc
         remaining = await self._ollama_loaded_models(base)
         if remaining:
             raise RuntimeExclusivePreflightError(

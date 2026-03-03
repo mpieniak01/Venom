@@ -7,6 +7,7 @@ export const systemStatus = {
     waiting: "Oczekiwanie na odpowiedź...",
     queueDetails: "Aktywne {{active}} • Oczekujące {{pending}}",
     queueEmpty: "Brak danych kolejki",
+    unknown: "nieznany",
     llmDetails: "{{server}} • {{model}}",
     llmNone: "Brak aktywnego modelu LLM",
   },

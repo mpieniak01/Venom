@@ -176,6 +176,11 @@ export const pl = {
       llmState: "LLM: serwer {{server}}, model {{model}}",
       llmStateUnavailable: "Nie udało się pobrać stanu aktywnego LLM.",
       testingModel: "Testowany model: {{model}}",
+      unknown: "nieznany",
+      unknownStatusText: "nieznany status",
+      genericError: "Nie udało się uruchomić benchmarku ({{status}}: {{statusText}}).",
+      startingModels: "Rozpoczynam benchmark dla modeli: {{models}}",
+      started: "Benchmark uruchomiony (ID: {{benchmarkId}}). Oczekiwanie na wyniki...",
     },
     coding: {
       tasks: {

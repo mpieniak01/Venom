@@ -248,6 +248,11 @@ async def test_preflight_conflict_when_llm_run_active(monkeypatch):
         def list_benchmarks(self, limit=10):  # noqa: ARG002
             return [{"status": "running"}]
 
+    async def _noop_healthcheck(**_kwargs):
+        return None
+
+    monkeypatch.setattr(guard, "_healthcheck_runtime", _noop_healthcheck)
+
     with pytest.raises(RuntimeExclusiveConflictError):
         await guard.preflight_for_benchmark(
             source="coding",
@@ -255,6 +260,45 @@ async def test_preflight_conflict_when_llm_run_active(monkeypatch):
             coding_benchmark_service=None,
             endpoint="http://127.0.0.1:11434",
         )
+
+
+@pytest.mark.asyncio
+async def test_drain_loaded_model_raises_on_unload_http_error(monkeypatch):
+    guard = RuntimeExclusiveGuard()
+    responses = [_FakeResponse(503, {"error": "down"})]
+
+    async def _loaded_models(_base):
+        return ["model-a"]
+
+    monkeypatch.setattr(guard, "_ollama_loaded_models", _loaded_models)
+    monkeypatch.setattr(
+        "venom_core.services.runtime_exclusive_guard.httpx.AsyncClient",
+        lambda timeout=10.0: _FakeClient(responses),  # noqa: ARG005
+    )
+
+    with pytest.raises(RuntimeExclusivePreflightError):
+        await guard._drain_loaded_model(
+            runtime="ollama", endpoint="http://127.0.0.1:11434"
+        )  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_drain_loaded_model_wraps_unexpected_unload_exception(monkeypatch):
+    guard = RuntimeExclusiveGuard()
+
+    async def _loaded_models(_base):
+        return ["model-a"]
+
+    monkeypatch.setattr(guard, "_ollama_loaded_models", _loaded_models)
+    monkeypatch.setattr(
+        "venom_core.services.runtime_exclusive_guard.httpx.AsyncClient",
+        lambda timeout=10.0: _RaisingClient([]),  # noqa: ARG005
+    )
+
+    with pytest.raises(RuntimeExclusivePreflightError):
+        await guard._drain_loaded_model(
+            runtime="ollama", endpoint="http://127.0.0.1:11434"
+        )  # noqa: SLF001
 
 
 @pytest.mark.asyncio

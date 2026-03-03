@@ -108,6 +108,7 @@ export function useBenchmark(): UseBenchmarkReturn {
         reset();
         setStatus("running");
         lastModelRef.current = null;
+        const unknownLabel = t("benchmark.preflight.unknown");
         emitPreflightLogs(addLog, {
             preparing: t("benchmark.preflight.preparing"),
             unloading: t("benchmark.preflight.unloading"),
@@ -122,8 +123,8 @@ export function useBenchmark(): UseBenchmarkReturn {
                 const state = await stateResp.json() as { active_server?: string; active_model?: string };
                 addLog(
                     t("benchmark.preflight.llmState", {
-                        server: state.active_server ?? "unknown",
-                        model: state.active_model ?? "unknown",
+                        server: state.active_server ?? unknownLabel,
+                        model: state.active_model ?? unknownLabel,
                     }),
                     "info",
                 );
@@ -131,7 +132,10 @@ export function useBenchmark(): UseBenchmarkReturn {
         } catch {
             addLog(t("benchmark.preflight.llmStateUnavailable"), "warning");
         }
-        addLog(`Rozpoczynam benchmark dla modeli: ${config.models.join(", ")}`, "info");
+        addLog(
+            t("benchmark.preflight.startingModels", { models: config.models.join(", ") }),
+            "info",
+        );
 
         try {
             const response = await fetch(buildApiUrl("/api/v1/benchmark/start"), {
@@ -148,21 +152,28 @@ export function useBenchmark(): UseBenchmarkReturn {
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const detail = (errorData as { detail?: string }).detail;
-                throw new Error(
+                const fallbackMessage = t("benchmark.preflight.genericError", {
+                    status: response.status,
+                    statusText: response.statusText || t("benchmark.preflight.unknownStatusText"),
+                });
+                const classifiedMessage = classifyStartError(detail, {
+                    conflict: t("benchmark.preflight.conflict"),
+                    runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
+                });
+                const message =
                     response.status === 409
                         ? t("benchmark.preflight.conflict")
-                        : classifyStartError(detail, {
-                            conflict: t("benchmark.preflight.conflict"),
-                            runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
-                        })
-                );
+                        : detail
+                            ? classifiedMessage
+                            : fallbackMessage;
+                throw new Error(message);
             }
 
             const data: BenchmarkStartResponse = await response.json();
             const benchmarkId = data.benchmark_id;
 
             addLog(t("benchmark.preflight.success"), "info");
-            addLog(`Benchmark uruchomiony (ID: ${benchmarkId}). Oczekiwanie na wyniki...`, "info");
+            addLog(t("benchmark.preflight.started", { benchmarkId }), "info");
 
             // Start polling
             pollingIntervalRef.current = setInterval(() => {

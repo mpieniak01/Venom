@@ -102,7 +102,7 @@ export function useBenchmark(): UseBenchmarkReturn {
             // Don't stop polling immediately on temporary network errors, but maybe count them?
             // For simplicity, we just log.
         }
-    }, [addLog, stopPolling]);
+    }, [addLog, stopPolling, t]);
 
     const startBenchmark = useCallback(async (config: BenchmarkConfig) => {
         reset();

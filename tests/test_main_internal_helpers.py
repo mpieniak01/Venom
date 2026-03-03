@@ -483,6 +483,69 @@ def test_initialize_model_services_handles_missing_monitor(monkeypatch, tmp_path
     assert main_module.benchmark_service is None
 
 
+def test_initialize_model_services_initializes_coding_guard(monkeypatch, tmp_path):
+    class DummyCodingBenchmarkService:
+        def __init__(self, storage_dir):
+            self.storage_dir = storage_dir
+
+    class DummyRuntimeExclusiveGuard:
+        pass
+
+    monkeypatch.setattr(main_module, "service_monitor", object())
+    monkeypatch.setattr(main_module, "llm_controller", object())
+    monkeypatch.setattr(
+        main_module,
+        "initialize_model_services",
+        lambda **_kwargs: ("mm", "mr", "bs"),
+    )
+    monkeypatch.setattr(
+        "venom_core.services.benchmark_coding.CodingBenchmarkService",
+        DummyCodingBenchmarkService,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "venom_core.services.runtime_exclusive_guard.RuntimeExclusiveGuard",
+        DummyRuntimeExclusiveGuard,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        main_module.SETTINGS, "STORAGE_PREFIX", str(tmp_path), raising=False
+    )
+
+    main_module._initialize_model_services()
+
+    assert isinstance(main_module.coding_benchmark_service, DummyCodingBenchmarkService)
+    assert isinstance(main_module.runtime_exclusive_guard, DummyRuntimeExclusiveGuard)
+    assert (
+        main_module.coding_benchmark_service.storage_dir
+        == f"{tmp_path}/data/benchmarks/coding"
+    )
+
+
+def test_initialize_model_services_handles_coding_init_error(monkeypatch):
+    class BrokenCodingBenchmarkService:
+        def __init__(self, storage_dir):  # noqa: ARG002
+            raise RuntimeError("cannot init coding service")
+
+    monkeypatch.setattr(main_module, "service_monitor", object())
+    monkeypatch.setattr(main_module, "llm_controller", object())
+    monkeypatch.setattr(
+        main_module,
+        "initialize_model_services",
+        lambda **_kwargs: ("mm", "mr", "bs"),
+    )
+    monkeypatch.setattr(
+        "venom_core.services.benchmark_coding.CodingBenchmarkService",
+        BrokenCodingBenchmarkService,
+        raising=True,
+    )
+
+    main_module._initialize_model_services()
+
+    assert main_module.coding_benchmark_service is None
+    assert main_module.runtime_exclusive_guard is None
+
+
 @pytest.mark.asyncio
 async def test_initialize_observability_success(monkeypatch, tmp_path):
     class DummyTracer:

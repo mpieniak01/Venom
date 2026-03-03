@@ -124,6 +124,34 @@
       "rationale": "Integration-heavy behavior delegated to release lane."
     },
     {
+      "path": "tests/ollama_bench/test_common_and_scoreboard.py",
+      "domain": "misc",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/ollama_bench/test_scheduler.py",
+      "domain": "tasks",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/perf/test_chat_pipeline.py",
       "domain": "performance",
       "test_type": "perf",

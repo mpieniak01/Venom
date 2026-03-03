@@ -17,6 +17,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _ACTIVE_RUN_STATES = frozenset({"pending", "running"})
+_DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 
 
 class RuntimeExclusiveConflictError(RuntimeError):
@@ -259,15 +260,15 @@ class RuntimeExclusiveGuard:
 
     def _resolve_base_url(self, *, runtime: str, endpoint: Optional[str]) -> str:
         if runtime == "ollama":
-            default_endpoint = SETTINGS.LLM_LOCAL_ENDPOINT or "http://127.0.0.1:11434"
+            default_endpoint = SETTINGS.LLM_LOCAL_ENDPOINT or _DEFAULT_OLLAMA_BASE_URL
             raw = endpoint or default_endpoint
             parsed = urlparse(raw)
             base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
             if base.endswith("/v1"):
                 base = base[:-3]
-            return base.rstrip("/") or "http://127.0.0.1:11434"
+            return base.rstrip("/") or _DEFAULT_OLLAMA_BASE_URL
         if runtime == "vllm":
             base = endpoint or SETTINGS.VLLM_ENDPOINT or "http://127.0.0.1:8000"
             return str(base).rstrip("/")
-        base = endpoint or SETTINGS.LLM_LOCAL_ENDPOINT or "http://127.0.0.1:11434"
+        base = endpoint or SETTINGS.LLM_LOCAL_ENDPOINT or _DEFAULT_OLLAMA_BASE_URL
         return str(base).rstrip("/")

@@ -1,0 +1,66 @@
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # This exact job name is required by GitHub Copilot coding agent.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web-next/package-lock.json
+
+      - name: Bootstrap Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .venv/bin/activate || python3 -m venv .venv
+          source .venv/bin/activate
+          python -m pip install -U pip
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-ci-lite.txt
+          .venv/bin/python -m pip check
+
+      - name: Bootstrap frontend dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix web-next ci
+
+      - name: Verify critical tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          .venv/bin/python --version
+          node --version
+          npm --version
+          npm --prefix web-next ls tsx --depth=0
+
+      - name: Verify repo preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          make ci-lite-preflight

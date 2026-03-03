@@ -16,7 +16,7 @@ import {
   resolveThemeId,
   normalizeTheme,
   type ThemeId,
-  } from "./theme-registry";
+} from "./theme-registry";
 
 export type { ThemeId } from "./theme-registry";
 

@@ -76,10 +76,10 @@ describe("providers ui helpers", () => {
   });
 
   it("exposes stable colors for all provider statuses", () => {
-    assert.equal(providerStatusColors.connected, "bg-green-500");
-    assert.equal(providerStatusColors.degraded, "bg-yellow-500");
-    assert.equal(providerStatusColors.offline, "bg-red-500");
-    assert.equal(providerStatusColors.unknown, "bg-gray-400");
+    assert.equal(providerStatusColors.connected, "bg-tone-success border-theme");
+    assert.equal(providerStatusColors.degraded, "bg-tone-warning border-theme");
+    assert.equal(providerStatusColors.offline, "bg-tone-danger border-theme");
+    assert.equal(providerStatusColors.unknown, "bg-theme-overlay border-theme");
   });
 
   it("shows latency only for connected status with value", () => {

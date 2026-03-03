@@ -157,19 +157,19 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
       case "error":
         return "text-red-400";
       default:
-        return "text-zinc-400";
+        return "text-theme-muted";
     }
   };
 
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-900/50 overflow-hidden">
+    <div className="rounded-xl border border-theme bg-theme-overlay-strong overflow-hidden">
       {/* Header */}
-      <div className="border-b border-white/10 bg-zinc-900">
+      <div className="border-b border-theme bg-theme-overlay-strong">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <Terminal className="h-5 w-5 text-emerald-400" />
             <div>
-              <h3 className="text-sm font-semibold text-white">
+              <h3 className="text-sm font-semibold text-theme-primary">
                 {t("academy.logs.title")} - {jobId}
               </h3>
               <p className={`text-xs ${getStatusColor()}`}>
@@ -215,13 +215,13 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
 
       {/* Metrics Bar */}
       {metrics && (
-        <div className="border-b border-white/10 bg-zinc-900/70 px-4 py-2">
+        <div className="border-b border-theme bg-theme-overlay-strong px-4 py-2">
           <div className="flex items-center gap-6 text-xs">
             {metrics.current_epoch !== undefined && metrics.total_epochs && (
               <div className="flex items-center gap-2">
                 <Activity className="h-4 w-4 text-blue-400" />
-                <span className="text-zinc-400">{t("academy.logs.epoch")}:</span>
-                <span className="font-semibold text-white">
+                <span className="text-theme-muted">{t("academy.logs.epoch")}:</span>
+                <span className="font-semibold text-theme-primary">
                   {metrics.current_epoch}/{metrics.total_epochs}
                 </span>
                 {metrics.progress_percent !== undefined && (
@@ -237,12 +237,12 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
             {metrics.latest_loss !== undefined && (
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-emerald-400" />
-                <span className="text-zinc-400">{t("academy.logs.loss")}:</span>
-                <span className="font-semibold text-white">
+                <span className="text-theme-muted">{t("academy.logs.loss")}:</span>
+                <span className="font-semibold text-theme-primary">
                   {metrics.latest_loss.toFixed(4)}
                 </span>
                 {metrics.min_loss !== undefined && (
-                  <span className="text-zinc-500 text-[10px]">
+                  <span className="text-theme-muted text-[10px]">
                     ({t("academy.logs.best")}: {metrics.min_loss.toFixed(4)})
                   </span>
                 )}
@@ -256,7 +256,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
       <div
         ref={logContainerRef}
         onScroll={handleScroll}
-        className="h-96 overflow-y-auto bg-black/50 p-4 font-mono text-xs"
+        className="h-96 overflow-y-auto bg-theme-overlay-strong p-4 font-mono text-xs"
       >
         {error && (
           <div className="mb-2 rounded border border-red-500/20 bg-red-500/10 p-2 text-red-300">
@@ -265,7 +265,7 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
         )}
 
         {logs.length === 0 && !error && (
-          <div className="flex h-full items-center justify-center text-zinc-500">
+          <div className="flex h-full items-center justify-center text-theme-muted">
             {status === "connecting" ? t("academy.logs.connecting") : t("academy.logs.noLogsYet")}
           </div>
         )}
@@ -273,24 +273,24 @@ export function LogViewer({ jobId, onClose }: LogViewerProps) {
         {logs.map((log) => (
           <div
             key={log.line}
-            className="group flex gap-2 hover:bg-white/5 px-1 -mx-1"
+            className="group flex gap-2 hover:bg-theme-overlay px-1 -mx-1"
           >
-            <span className="text-zinc-600 select-none w-12 text-right shrink-0">
+            <span className="text-theme-muted select-none w-12 text-right shrink-0">
               {log.line}
             </span>
             {log.timestamp && (
-              <span className="text-zinc-600 select-none shrink-0">
+              <span className="text-theme-muted select-none shrink-0">
                 {log.timestamp.split("T")[1]?.split("Z")[0] || log.timestamp}
               </span>
             )}
-            <span className="text-zinc-300 break-all">{log.message}</span>
+            <span className="text-theme-secondary break-all">{log.message}</span>
           </div>
         ))}
       </div>
 
       {/* Footer */}
-      <div className="border-t border-white/10 bg-zinc-900 px-4 py-2">
-        <p className="text-xs text-zinc-400">
+      <div className="border-t border-theme bg-theme-overlay-strong px-4 py-2">
+        <p className="text-xs text-theme-muted">
           {logs.length} {t("academy.logs.lines")} • {t(isPaused ? "academy.logs.paused" : "academy.logs.live")}
           {!autoScrollEnabled && ` • ${t("academy.logs.autoScrollDisabled")}`}
         </p>

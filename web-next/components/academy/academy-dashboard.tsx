@@ -60,7 +60,7 @@ export function AcademyDashboard() {
           rightSlot={<GraduationCap className="page-heading-icon" />}
         />
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-6">
-          <p className="text-sm text-red-300">
+          <p className="text-sm font-medium text-[color:var(--text-heading)]">
             ❌ {t("academy.dashboard.unavailable")} {error || t("academy.common.unknownError")}
           </p>
           <p className="mt-2 text-xs text-[color:var(--ui-muted)]">
@@ -91,7 +91,7 @@ export function AcademyDashboard() {
           rightSlot={<GraduationCap className="page-heading-icon" />}
         />
         <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-6">
-          <p className="text-sm text-yellow-300">
+          <p className="text-sm font-medium text-[color:var(--text-heading)]">
             ⚠️ {t("academy.dashboard.disabled")}
           </p>
           <p className="mt-2 text-xs text-[color:var(--ui-muted)]">

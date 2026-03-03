@@ -34,10 +34,10 @@ export function ProviderHealthCard({ provider, health }: Readonly<ProviderHealth
   if (!health) {
     return (
       <div className="card-shell card-base p-5 text-sm">
-        <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+        <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
           {t("providers.health.status.unknown")}
         </p>
-        <p className="mt-4 text-center text-zinc-400">
+        <p className="mt-4 text-center text-theme-muted">
           {t("providers.metrics.noData")}
         </p>
       </div>
@@ -53,7 +53,7 @@ export function ProviderHealthCard({ provider, health }: Readonly<ProviderHealth
       case "critical":
         return "text-red-400";
       default:
-        return "text-zinc-400";
+        return "text-theme-muted";
     }
   };
 
@@ -79,7 +79,7 @@ export function ProviderHealthCard({ provider, health }: Readonly<ProviderHealth
   return (
     <div className="card-shell card-base p-5 text-sm space-y-4">
       <div>
-        <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+        <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
           {t("providers.metrics.healthScore")} - {provider}
         </p>
       </div>
@@ -88,7 +88,7 @@ export function ProviderHealthCard({ provider, health }: Readonly<ProviderHealth
       <div className={`rounded-2xl bg-gradient-to-br ${getHealthBgColor(health.health_status)} p-4`}>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-400">
+            <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
               {t("providers.health.status.healthy")}
             </p>
             <p className={`text-3xl font-semibold ${getHealthColor(health.health_status)}`}>
@@ -96,7 +96,7 @@ export function ProviderHealthCard({ provider, health }: Readonly<ProviderHealth
             </p>
           </div>
           <div className="text-right">
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-400">
+            <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
               {t("providers.metrics.healthScore")}
             </p>
             <p className={`text-3xl font-semibold ${getScoreColor(health.health_score)}`}>
@@ -109,28 +109,28 @@ export function ProviderHealthCard({ provider, health }: Readonly<ProviderHealth
       {/* Current metrics vs SLO targets */}
       <div className="space-y-2">
         <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-          <span className="text-xs text-zinc-400">{t("providers.metrics.availability")}</span>
+          <span className="text-xs text-theme-muted">{t("providers.metrics.availability")}</span>
           <span className="text-sm font-semibold">
             {(health.availability * 100).toFixed(2)}% / {(health.slo_target.availability_target * 100).toFixed(2)}%
           </span>
         </div>
         {health.latency_p99_ms !== null && (
           <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-            <span className="text-xs text-zinc-400">{t("providers.metrics.latency.p99")}</span>
+            <span className="text-xs text-theme-muted">{t("providers.metrics.latency.p99")}</span>
             <span className="text-sm font-semibold">
               {health.latency_p99_ms.toFixed(0)}ms / {health.slo_target.latency_p99_ms.toFixed(0)}ms
             </span>
           </div>
         )}
         <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-          <span className="text-xs text-zinc-400">{t("providers.metrics.errorRate")}</span>
+          <span className="text-xs text-theme-muted">{t("providers.metrics.errorRate")}</span>
           <span className="text-sm font-semibold">
             {(health.error_rate * 100).toFixed(2)}% / {(health.slo_target.error_rate_target * 100).toFixed(2)}%
           </span>
         </div>
         {health.slo_target.cost_budget_usd > 0 && (
           <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-            <span className="text-xs text-zinc-400">{t("providers.metrics.totalCost")}</span>
+            <span className="text-xs text-theme-muted">{t("providers.metrics.totalCost")}</span>
             <span className="text-sm font-semibold">
               ${health.cost_usage_usd.toFixed(2)} / ${health.slo_target.cost_budget_usd.toFixed(2)}
             </span>
@@ -141,7 +141,7 @@ export function ProviderHealthCard({ provider, health }: Readonly<ProviderHealth
       {/* SLO breaches */}
       {health.slo_breaches.length > 0 ? (
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-2">
+          <p className="text-xs uppercase tracking-[0.35em] text-theme-muted mb-2">
             {t("providers.health.sloBreaches")}
           </p>
           <div className="space-y-1">

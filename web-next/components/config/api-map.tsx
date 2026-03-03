@@ -54,30 +54,30 @@ function ConnectionCard({
         <button
             onClick={onClick}
             className={cn(
-                "w-full text-left relative overflow-hidden rounded-xl border p-4 transition-all hover:bg-white/5",
+                "w-full text-left relative overflow-hidden rounded-xl border p-4 transition-all hover:bg-theme-overlay",
                 isSelected
                     ? "border-emerald-500/50 bg-emerald-500/10 ring-1 ring-emerald-500/20"
-                    : "border-white/5 bg-white/5"
+                    : "border-theme bg-theme-overlay"
             )}
         >
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                     <div className={cn(
                         "flex h-8 w-8 items-center justify-center rounded-lg border",
-                        isSelected ? "border-emerald-500/30 bg-emerald-500/20" : "border-white/10 bg-white/10"
+                        isSelected ? "border-emerald-500/30 bg-emerald-500/20" : "border-theme bg-white/10"
                     )}>
-                        <TargetIcon className={cn("h-4 w-4", isSelected ? "text-emerald-300" : "text-zinc-400")} />
+                        <TargetIcon className={cn("h-4 w-4", isSelected ? "text-emerald-300" : "text-theme-muted")} />
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <span className={cn("font-medium", isSelected ? "text-emerald-300" : "text-zinc-200")}>
+                            <span className={cn("font-medium", isSelected ? "text-emerald-300" : "text-theme-secondary")}>
                                 {connection.target_component}
                             </span>
                             {connection.is_critical && (
                                 <Shield className="h-3 w-3 text-red-400" aria-label={criticalLabel} />
                             )}
                         </div>
-                        <p className="text-xs text-zinc-500 line-clamp-1">{connection.description}</p>
+                        <p className="text-xs text-theme-muted line-clamp-1">{connection.description}</p>
                     </div>
                 </div>
                 {statusIcon}
@@ -151,7 +151,7 @@ export function ApiMap() {
             <span
                 className={cn(
                     "rounded-md border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider",
-                    colors[key] || "bg-zinc-800 text-zinc-400"
+                    colors[key] || "bg-zinc-800 text-theme-muted"
                 )}
             >
                 {t(`config.apiMap.filters.protocol.${key}`)}
@@ -168,7 +168,7 @@ export function ApiMap() {
             case "down":
                 return <XCircle className="h-4 w-4 text-red-400" />;
             default:
-                return <HelpCircle className="h-4 w-4 text-zinc-500" />;
+                return <HelpCircle className="h-4 w-4 text-theme-muted" />;
         }
     };
 
@@ -194,10 +194,10 @@ export function ApiMap() {
     if (loading && !data) {
         return (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <div className="h-[400px] rounded-xl bg-white/5 animate-pulse" />
+                <div className="h-[400px] rounded-xl bg-theme-overlay animate-pulse" />
                 <div className="space-y-4">
                     {[1, 2, 3].map((i) => (
-                        <div key={i} className="h-24 rounded-xl bg-white/5 animate-pulse" />
+                        <div key={i} className="h-24 rounded-xl bg-theme-overlay animate-pulse" />
                     ))}
                 </div>
             </div>
@@ -225,14 +225,14 @@ export function ApiMap() {
             {/* Left Column: List of Providers */}
             <div className="flex-1 lg:overflow-hidden flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                    <h3 className="heading-h3 text-zinc-400 uppercase tracking-widest text-xs font-semibold">
+                    <h3 className="heading-h3 text-theme-muted uppercase tracking-widest text-xs font-semibold">
                         {t("config.apiMap.description")}
                     </h3>
                     <Button
                         variant="ghost"
                         size="sm"
                         onClick={fetchData}
-                        className="h-8 text-zinc-400 hover:text-white"
+                        className="h-8 text-theme-muted hover:text-theme-primary"
                     >
                         <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loading && "animate-spin")} />
                         {t("config.apiMap.refresh")}
@@ -242,10 +242,10 @@ export function ApiMap() {
                 {/* Filters Toolbar */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
                     <Select value={filterType} onValueChange={(v: string) => setFilterType(v as "all" | "internal" | "external")}>
-                        <SelectTrigger className="w-[130px] h-8 text-xs bg-black/20 border-white/10 text-zinc-300">
+                        <SelectTrigger className="w-[130px] h-8 text-xs bg-theme-overlay-strong border-theme text-theme-secondary">
                             <SelectValue placeholder={t("config.apiMap.filters.type.label")} />
                         </SelectTrigger>
-                        <SelectContent className="bg-zinc-950 border-white/10 text-zinc-300">
+                        <SelectContent className="bg-zinc-950 border-theme text-theme-secondary">
                             <SelectItem value="all">{t("config.apiMap.filters.type.all")}</SelectItem>
                             <SelectItem value="internal">{t("config.apiMap.filters.type.internal")}</SelectItem>
                             <SelectItem value="external">{t("config.apiMap.filters.type.external")}</SelectItem>
@@ -253,10 +253,10 @@ export function ApiMap() {
                     </Select>
 
                     <Select value={filterSource} onValueChange={setFilterSource}>
-                        <SelectTrigger className="w-[130px] h-8 text-xs bg-black/20 border-white/10 text-zinc-300">
+                        <SelectTrigger className="w-[130px] h-8 text-xs bg-theme-overlay-strong border-theme text-theme-secondary">
                             <SelectValue placeholder={t("config.apiMap.filters.source.label")} />
                         </SelectTrigger>
-                        <SelectContent className="bg-zinc-950 border-white/10 text-zinc-300">
+                        <SelectContent className="bg-zinc-950 border-theme text-theme-secondary">
                             <SelectItem value="all">{t("config.apiMap.filters.source.all")}</SelectItem>
                             <SelectItem value="local">{t("config.apiMap.filters.source.local")}</SelectItem>
                             <SelectItem value="cloud">{t("config.apiMap.filters.source.cloud")}</SelectItem>
@@ -265,10 +265,10 @@ export function ApiMap() {
                     </Select>
 
                     <Select value={filterStatus} onValueChange={setFilterStatus}>
-                        <SelectTrigger className="w-[130px] h-8 text-xs bg-black/20 border-white/10 text-zinc-300">
+                        <SelectTrigger className="w-[130px] h-8 text-xs bg-theme-overlay-strong border-theme text-theme-secondary">
                             <SelectValue placeholder={t("config.apiMap.filters.status.label")} />
                         </SelectTrigger>
-                        <SelectContent className="bg-zinc-950 border-white/10 text-zinc-300">
+                        <SelectContent className="bg-zinc-950 border-theme text-theme-secondary">
                             <SelectItem value="all">{t("config.apiMap.filters.status.all")}</SelectItem>
                             <SelectItem value="ok">{t("config.apiMap.filters.status.ok")}</SelectItem>
                             <SelectItem value="degraded">{t("config.apiMap.filters.status.degraded")}</SelectItem>
@@ -278,10 +278,10 @@ export function ApiMap() {
                     </Select>
 
                     <Select value={filterProtocol} onValueChange={setFilterProtocol}>
-                        <SelectTrigger className="w-[130px] h-8 text-xs bg-black/20 border-white/10 text-zinc-300">
+                        <SelectTrigger className="w-[130px] h-8 text-xs bg-theme-overlay-strong border-theme text-theme-secondary">
                             <SelectValue placeholder={t("config.apiMap.filters.protocol.label")} />
                         </SelectTrigger>
-                        <SelectContent className="bg-zinc-950 border-white/10 text-zinc-300">
+                        <SelectContent className="bg-zinc-950 border-theme text-theme-secondary">
                             <SelectItem value="all">{t("config.apiMap.filters.protocol.all")}</SelectItem>
                             <SelectItem value="http">{t("config.apiMap.filters.protocol.http")}</SelectItem>
                             <SelectItem value="https">{t("config.apiMap.filters.protocol.https")}</SelectItem>
@@ -300,8 +300,8 @@ export function ApiMap() {
                             <section className="space-y-3">
                                 <div className="flex items-center gap-2 px-1">
                                     <Network className="h-4 w-4 text-emerald-400" />
-                                    <h3 className="text-sm font-medium text-zinc-200">{t("config.apiMap.internal")}</h3>
-                                    <span className="text-xs text-zinc-500">({filteredInternal.length})</span>
+                                    <h3 className="text-sm font-medium text-theme-secondary">{t("config.apiMap.internal")}</h3>
+                                    <span className="text-xs text-theme-muted">({filteredInternal.length})</span>
                                 </div>
                                 <div className="space-y-2">
                                     {filteredInternal.map((conn) => (
@@ -323,8 +323,8 @@ export function ApiMap() {
                             <section className="space-y-3">
                                 <div className="flex items-center gap-2 px-1">
                                     <Globe className="h-4 w-4 text-blue-400" />
-                                    <h3 className="text-sm font-medium text-zinc-200">{t("config.apiMap.external")}</h3>
-                                    <span className="text-xs text-zinc-500">({filteredExternal.length})</span>
+                                    <h3 className="text-sm font-medium text-theme-secondary">{t("config.apiMap.external")}</h3>
+                                    <span className="text-xs text-theme-muted">({filteredExternal.length})</span>
                                 </div>
                                 <div className="space-y-2">
                                     {filteredExternal.map((conn) => (
@@ -342,7 +342,7 @@ export function ApiMap() {
                         )}
 
                         {filteredInternal.length === 0 && filteredExternal.length === 0 && (
-                            <div className="text-center py-12 text-zinc-500">
+                            <div className="text-center py-12 text-theme-muted">
                                 {t("config.apiMap.noResults")}
                             </div>
                         )}
@@ -356,12 +356,12 @@ export function ApiMap() {
                     {selectedConnection ? (
                         <div className="space-y-6 flex-1 flex flex-col overflow-hidden">
                             {/* Header */}
-                            <div className="flex items-start justify-between border-b border-white/5 pb-6">
+                            <div className="flex items-start justify-between border-b border-theme pb-6">
                                 <div className="space-y-1">
                                     <h2 className="heading-h2 text-2xl">{selectedConnection.target_component}</h2>
-                                    <p className="text-zinc-400">{selectedConnection.description}</p>
+                                    <p className="text-theme-muted">{selectedConnection.description}</p>
                                     <div className="flex items-center gap-2 mt-2">
-                                        <span className="text-xs text-zinc-500 flex items-center gap-1">
+                                        <span className="text-xs text-theme-muted flex items-center gap-1">
                                             <ArrowRight className="h-3 w-3" />
                                             {selectedConnection.source_component}
                                         </span>
@@ -373,7 +373,7 @@ export function ApiMap() {
                                         selectedConnection.status === "ok" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
                                         selectedConnection.status === "degraded" && "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
                                         selectedConnection.status === "down" && "bg-red-500/10 text-red-400 border-red-500/20",
-                                        selectedConnection.status === "unknown" && "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+                                        selectedConnection.status === "unknown" && "bg-zinc-500/10 text-theme-muted border-zinc-500/20",
                                     )}>
                                         {getStatusIcon(selectedConnection.status)}
                                         <span className="uppercase">{t(`config.apiMap.filters.status.${selectedConnection.status}`)}</span>
@@ -389,52 +389,52 @@ export function ApiMap() {
                             {/* Metadata Grid */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <p className="text-xs text-zinc-500">{t("config.apiMap.connection.protocol")}</p>
+                                    <p className="text-xs text-theme-muted">{t("config.apiMap.connection.protocol")}</p>
                                     <div className="flex items-center">
                                         {getProtocolBadge(selectedConnection.protocol)}
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-xs text-zinc-500">{t("config.apiMap.connection.auth")}</p>
+                                    <p className="text-xs text-theme-muted">{t("config.apiMap.connection.auth")}</p>
                                     <div className="flex items-center gap-2">
                                         {selectedConnection.auth_type === "none" ? (
-                                            <span className="text-sm text-zinc-500">-</span>
+                                            <span className="text-sm text-theme-muted">-</span>
                                         ) : (
-                                            <span className="flex items-center gap-1.5 text-sm text-zinc-300">
-                                                <Lock className="h-3.5 w-3.5 text-zinc-500" />
+                                            <span className="flex items-center gap-1.5 text-sm text-theme-secondary">
+                                                <Lock className="h-3.5 w-3.5 text-theme-muted" />
                                                 <span className="uppercase">{t(`config.apiMap.auth.${selectedConnection.auth_type}`)}</span>
                                             </span>
                                         )}
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-xs text-zinc-500">{t("config.apiMap.connection.source")}</p>
-                                    <p className="text-sm text-zinc-300 uppercase">{t(`config.apiMap.filters.source.${selectedConnection.source_type}`)}</p>
+                                    <p className="text-xs text-theme-muted">{t("config.apiMap.connection.source")}</p>
+                                    <p className="text-sm text-theme-secondary uppercase">{t(`config.apiMap.filters.source.${selectedConnection.source_type}`)}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-xs text-zinc-500">{t(`config.apiMap.legend.outbound`)}</p>
-                                    <p className="text-sm text-zinc-300 uppercase">{t(`config.apiMap.legend.${selectedConnection.direction}`)}</p>
+                                    <p className="text-xs text-theme-muted">{t(`config.apiMap.legend.outbound`)}</p>
+                                    <p className="text-sm text-theme-secondary uppercase">{t(`config.apiMap.legend.${selectedConnection.direction}`)}</p>
                                 </div>
                             </div>
 
                             {/* Methods List */}
-                            <div className="flex-1 flex flex-col overflow-hidden pt-4 border-t border-white/5">
+                            <div className="flex-1 flex flex-col overflow-hidden pt-4 border-t border-theme">
                                 <div className="flex items-center gap-2 mb-4">
                                     <Code className="h-4 w-4 text-emerald-400" />
-                                    <h3 className="text-sm font-medium text-white">{t("config.apiMap.methods")}</h3>
+                                    <h3 className="text-sm font-medium text-theme-primary">{t("config.apiMap.methods")}</h3>
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto -mr-4 pr-4">
                                     {selectedConnection.methods && selectedConnection.methods.length > 0 ? (
                                         <div className="space-y-2">
                                             {selectedConnection.methods.map((method) => (
-                                                <div key={`${selectedConnection.target_component}-${method}`} className="font-mono text-xs bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-zinc-300 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors cursor-default">
+                                                <div key={`${selectedConnection.target_component}-${method}`} className="font-mono text-xs bg-theme-overlay-strong border border-theme rounded-lg px-3 py-2 text-theme-secondary hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors cursor-default">
                                                     {method}
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="text-center py-8 text-zinc-500 text-sm italic">
+                                        <div className="text-center py-8 text-theme-muted text-sm italic">
                                             {t("config.apiMap.no_methods")}
                                         </div>
                                     )}
@@ -443,8 +443,8 @@ export function ApiMap() {
                         </div>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                            <Network className="h-12 w-12 text-zinc-600 mb-4 opacity-50" />
-                            <p className="text-zinc-500">{t("config.apiMap.select")}</p>
+                            <Network className="h-12 w-12 text-theme-muted mb-4 opacity-50" />
+                            <p className="text-theme-muted">{t("config.apiMap.select")}</p>
                         </div>
                     )}
                 </div>

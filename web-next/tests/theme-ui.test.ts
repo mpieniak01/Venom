@@ -12,7 +12,7 @@ describe("theme ui helpers", () => {
     const active = getThemeTabClass(true);
     const inactive = getThemeTabClass(false);
 
-    assert.match(active, /border-\[color:var\(--accent\)\]/);
+    assert.match(active, /border-b-\[color:var\(--accent\)\]/);
     assert.match(active, /bg-\[color:var\(--primary-dim\)\]/);
     assert.match(inactive, /text-\[color:var\(--ui-muted\)\]/);
     assert.match(inactive, /hover:bg-\[color:var\(--ui-surface-hover\)\]/);

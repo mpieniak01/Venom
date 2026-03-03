@@ -106,7 +106,7 @@ export function WorkflowCanvas({
   );
 
   return (
-    <div className="h-full w-full bg-slate-50 dark:bg-slate-950">
+    <div className="h-full w-full bg-[color:var(--ui-surface)]">
       <ReactFlowComponent
         nodes={nodes}
         edges={edges}
@@ -123,7 +123,7 @@ export function WorkflowCanvas({
         <MiniMapView
           position="top-right"
           nodeColor={miniMapNodeColor}
-          className="!bg-slate-950 rounded-lg border border-slate-800 shadow-xl"
+          className="rounded-lg border border-[color:var(--ui-border)] !bg-[color:var(--bg-panel)] shadow-xl"
           maskColor="rgba(2, 6, 23, 0.7)"
         />
       </ReactFlowComponent>

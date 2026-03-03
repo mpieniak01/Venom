@@ -61,63 +61,63 @@ export function BenchmarkConfigurator({
     <div className="space-y-4">
       {/* Runtime Selection */}
       <fieldset className="space-y-2 border-0 p-0 m-0">
-        <legend className="mb-2 block text-sm font-medium text-zinc-300">Runtime</legend>
+        <legend className="mb-2 block text-sm font-medium text-[color:var(--text-secondary)]">Runtime</legend>
         <div className="flex gap-2" role="radiogroup" aria-label="Wybór runtime">
           {hasVllmModels && (
             <Button
-            type="button"
-            role="radio"
-            aria-checked={runtime === "vllm"}
-            onClick={() => {
-              setRuntime("vllm");
-              setSelectedModels([]);
-            }}
-            disabled={disabled}
-            variant="outline"
-            size="sm"
-            className={cn(
-              "flex-1 justify-center rounded-xl border px-4 py-2 text-sm font-medium transition",
-              runtime === "vllm"
-                ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
-                : "border-white/10 bg-black/30 text-zinc-400 hover:bg-white/5",
-              disabled && "cursor-not-allowed opacity-50"
-            )}
-          >
-            vLLM
-          </Button>
+              type="button"
+              role="radio"
+              aria-checked={runtime === "vllm"}
+              onClick={() => {
+                setRuntime("vllm");
+                setSelectedModels([]);
+              }}
+              disabled={disabled}
+              variant="outline"
+              size="sm"
+              className={cn(
+                "flex-1 justify-center rounded-xl border px-4 py-2 text-sm font-medium transition",
+                runtime === "vllm"
+                  ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
+                  : "border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:bg-[color:var(--ui-surface)]",
+                disabled && "cursor-not-allowed opacity-50"
+              )}
+            >
+              vLLM
+            </Button>
           )}
           {hasOllamaModels && (
             <Button
-            type="button"
-            role="radio"
-            aria-checked={runtime === "ollama"}
-            onClick={() => {
-              setRuntime("ollama");
-              setSelectedModels([]);
-            }}
-            disabled={disabled}
-            variant="outline"
-            size="sm"
-            className={cn(
-              "flex-1 justify-center rounded-xl border px-4 py-2 text-sm font-medium transition",
-              runtime === "ollama"
-                ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
-                : "border-white/10 bg-black/30 text-zinc-400 hover:bg-white/5",
-              disabled && "cursor-not-allowed opacity-50"
-            )}
-          >
-            Ollama
-          </Button>
+              type="button"
+              role="radio"
+              aria-checked={runtime === "ollama"}
+              onClick={() => {
+                setRuntime("ollama");
+                setSelectedModels([]);
+              }}
+              disabled={disabled}
+              variant="outline"
+              size="sm"
+              className={cn(
+                "flex-1 justify-center rounded-xl border px-4 py-2 text-sm font-medium transition",
+                runtime === "ollama"
+                  ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
+                  : "border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:bg-[color:var(--ui-surface)]",
+                disabled && "cursor-not-allowed opacity-50"
+              )}
+            >
+              Ollama
+            </Button>
           )}
         </div>
       </fieldset>
 
       {/* Models Multi-Select */}
       <div>
-        <p className="mb-2 block text-sm font-medium text-zinc-300">
+        <p className="mb-2 block text-sm font-medium text-[color:var(--text-secondary)]">
           Modele do testowania
           {" "}
-          <span className="ml-2 text-xs text-zinc-500">
+          <span className="ml-2 text-xs text-[color:var(--ui-muted)]">
             ({selectedModels.length} wybrano)
           </span>
         </p>
@@ -137,7 +137,7 @@ export function BenchmarkConfigurator({
                     "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition",
                     selectedModels.includes(model.name)
                       ? "border-violet-500/40 bg-violet-500/10"
-                      : "border-white/5 bg-black/20 hover:border-white/20",
+                      : "border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] hover:border-[color:var(--ui-border-strong)]",
                     disabled && "cursor-not-allowed opacity-50"
                   )}
                 >
@@ -147,9 +147,9 @@ export function BenchmarkConfigurator({
                     checked={selectedModels.includes(model.name)}
                     onChange={() => handleModelToggle(model.name)}
                     disabled={disabled}
-                    className="h-4 w-4 rounded border-white/20 bg-black/50 text-violet-500 focus:ring-violet-500/50"
+                    className="h-4 w-4 rounded border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--accent)] focus:ring-[color:var(--primary-glow)]"
                   />
-                  <span className="flex-1 text-sm text-zinc-200">
+                  <span className="flex-1 text-sm text-[color:var(--text-primary)]">
                     {model.name}
                   </span>
                 </label>
@@ -163,7 +163,7 @@ export function BenchmarkConfigurator({
       <div>
         <label
           htmlFor="num-questions"
-          className="mb-2 block text-sm font-medium text-zinc-300"
+          className="mb-2 block text-sm font-medium text-[color:var(--text-secondary)]"
         >
           Liczba pytań testowych
         </label>
@@ -175,9 +175,9 @@ export function BenchmarkConfigurator({
           value={numQuestions}
           onChange={(e) => setNumQuestions(Math.min(100, Math.max(1, Number.parseInt(e.target.value, 10) || 1)))}
           disabled={disabled}
-          className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white outline-none transition focus:border-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-4 py-2 text-sm text-[color:var(--text-primary)] outline-none transition focus:border-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
         />
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-xs text-hint">
           Im więcej pytań, tym dokładniejszy pomiar (zalecane: 5-20)
         </p>
       </div>

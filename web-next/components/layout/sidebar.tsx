@@ -35,7 +35,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "glass-panel fixed inset-y-0 left-0 z-40 hidden border-r border-white/5 bg-black/25 text-zinc-100 shadow-card lg:block",
+        "glass-panel fixed inset-y-0 left-0 z-40 hidden border-r border-[color:var(--ui-border)] bg-[color:var(--bg-sidebar)] text-[color:var(--text-primary)] shadow-card lg:block",
         isSynced && "transition-all duration-300 ease-in-out",
         collapsed ? "w-24 px-3 py-6 pb-8" : "w-72 px-5 py-6 pb-8",
       )}

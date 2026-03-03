@@ -229,15 +229,15 @@ export function DatasetPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-white">{t("academy.dataset.title")}</h2>
-        <p className="text-sm text-zinc-400">
+        <h2 className="text-lg font-semibold text-[color:var(--text-heading)]">{t("academy.dataset.title")}</h2>
+        <p className="text-sm text-hint">
           {t("academy.dataset.subtitle")}
         </p>
       </div>
 
       {/* User Uploads Section */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-        <h3 className="text-base font-semibold text-white mb-4">{t("academy.dataset.yourFiles")}</h3>
+      <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6">
+        <h3 className="text-base font-semibold text-[color:var(--text-heading)] mb-4">{t("academy.dataset.yourFiles")}</h3>
 
         <div className="space-y-4">
           <div>
@@ -268,26 +268,26 @@ export function DatasetPanel() {
                 </>
               )}
             </Button>
-            <p className="mt-2 text-xs text-zinc-400">
+            <p className="mt-2 text-xs text-hint">
               {t("academy.dataset.supported")}
             </p>
           </div>
 
           {uploads.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm font-medium text-zinc-300">{t("academy.dataset.uploadedFiles")}</p>
+              <p className="text-sm font-medium text-[color:var(--text-secondary)]">{t("academy.dataset.uploadedFiles")}</p>
               {uploads.map((upload) => (
                 <div
                   key={upload.id}
-                  className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+                  className="flex items-center gap-3 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3"
                 >
                   <Checkbox
                     checked={selectedUploadIds.includes(upload.id)}
                     onCheckedChange={() => toggleUploadSelection(upload.id)}
                   />
                   <div className="flex-1">
-                    <p className="text-sm text-white">{upload.name}</p>
-                    <p className="text-xs text-zinc-400">
+                    <p className="text-sm text-[color:var(--text-primary)]">{upload.name}</p>
+                    <p className="text-xs text-hint">
                       {(upload.size_bytes / 1024).toFixed(1)} KB • ~{upload.records_estimate} {t("academy.dataset.records")} • {new Date(upload.created_at).toLocaleString(language)}
                     </p>
                   </div>
@@ -295,7 +295,7 @@ export function DatasetPanel() {
                     size="sm"
                     variant="ghost"
                     onClick={() => setDeleteConfirm({ open: true, fileId: upload.id })}
-                    className="text-red-400 hover:text-red-300"
+                    className="text-[color:var(--text-heading)] hover:text-red-400"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -306,21 +306,21 @@ export function DatasetPanel() {
 
           {convertedFiles.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm font-medium text-zinc-300">
+              <p className="text-sm font-medium text-[color:var(--text-secondary)]">
                 {t("academy.dataset.convertedReadyFiles")}
               </p>
               {convertedFiles.map((file) => (
                 <div
                   key={file.file_id}
-                  className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+                  className="flex items-center gap-3 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3"
                 >
                   <Checkbox
                     checked={selectedConvertedIds.includes(file.file_id)}
                     onCheckedChange={() => toggleConvertedSelection(file.file_id)}
                   />
                   <div className="flex-1">
-                    <p className="text-sm text-white">{file.name}</p>
-                    <p className="text-xs text-zinc-400">
+                    <p className="text-sm text-[color:var(--text-primary)]">{file.name}</p>
+                    <p className="text-xs text-hint">
                       {(file.size_bytes / 1024).toFixed(1)} KB • {new Date(file.created_at).toLocaleString(language)}
                     </p>
                   </div>
@@ -333,8 +333,8 @@ export function DatasetPanel() {
       </div>
 
       {/* Training Scope Section */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-        <h3 className="text-base font-semibold text-white mb-4">{t("academy.dataset.trainingScope")}</h3>
+      <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6">
+        <h3 className="text-base font-semibold text-[color:var(--text-heading)] mb-4">{t("academy.dataset.trainingScope")}</h3>
 
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -343,14 +343,14 @@ export function DatasetPanel() {
               checked={includeLessons}
               onCheckedChange={(checked) => setIncludeLessons(checked === true)}
             />
-            <Label htmlFor="include-lessons" className="text-zinc-300 cursor-pointer">
+            <Label htmlFor="include-lessons" className="text-[color:var(--text-secondary)] cursor-pointer">
               {t("academy.dataset.lessonsStore")}
             </Label>
           </div>
 
           {includeLessons && (
             <div className="ml-6">
-              <Label htmlFor="lessons-limit" className="text-zinc-300 text-sm">
+              <Label htmlFor="lessons-limit" className="text-[color:var(--text-secondary)] text-sm">
                 {t("academy.dataset.lessonsLimit")}
               </Label>
               <Input
@@ -371,14 +371,14 @@ export function DatasetPanel() {
               checked={includeGit}
               onCheckedChange={(checked) => setIncludeGit(checked === true)}
             />
-            <Label htmlFor="include-git" className="text-zinc-300 cursor-pointer">
+            <Label htmlFor="include-git" className="text-[color:var(--text-secondary)] cursor-pointer">
               {t("academy.dataset.gitHistory")}
             </Label>
           </div>
 
           {includeGit && (
             <div className="ml-6">
-              <Label htmlFor="git-limit" className="text-zinc-300 text-sm">
+              <Label htmlFor="git-limit" className="text-[color:var(--text-secondary)] text-sm">
                 {t("academy.dataset.commitsLimit")}
               </Label>
               <Input
@@ -399,22 +399,22 @@ export function DatasetPanel() {
               checked={includeTaskHistory}
               onCheckedChange={(checked) => setIncludeTaskHistory(checked === true)}
             />
-            <Label htmlFor="include-task-history" className="text-zinc-300 cursor-pointer">
+            <Label htmlFor="include-task-history" className="text-[color:var(--text-secondary)] cursor-pointer">
               {t("academy.dataset.taskHistoryExperimental")}
             </Label>
           </div>
 
           {selectedUploadIds.length > 0 && (
-            <div className="mt-2 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
-              <p className="text-sm text-blue-300">
+            <div className="mt-2 rounded-lg border border-[color:var(--stat-card-blue-border)] bg-[color:var(--stat-card-blue-bg)] p-3">
+              <p className="text-sm text-[color:var(--stat-card-blue-text)]">
                 ✓ {t("academy.dataset.selectedUploads", { count: selectedUploadIds.length })}
               </p>
             </div>
           )}
 
           {selectedConvertedIds.length > 0 && (
-            <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-              <p className="text-sm text-emerald-300">
+            <div className="mt-2 rounded-lg border border-[color:var(--stat-card-emerald-border)] bg-[color:var(--stat-card-emerald-bg)] p-3">
+              <p className="text-sm text-[color:var(--stat-card-emerald-text)]">
                 ✓ {t("academy.dataset.selectedConverted", { count: selectedConvertedIds.length })}
               </p>
             </div>
@@ -464,28 +464,28 @@ export function DatasetPanel() {
 
       {/* Preview Results */}
       {preview && (
-        <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-6">
+        <div className="rounded-xl border border-[color:var(--stat-card-blue-border)] bg-[color:var(--stat-card-blue-bg)] p-6">
           <div className="flex items-start gap-3">
-            <Eye className="h-6 w-6 text-blue-400" />
+            <Eye className="h-6 w-6 text-[color:var(--stat-card-blue-text)]" />
             <div className="flex-1">
-              <p className="font-medium text-blue-300">{t("academy.dataset.previewTitle")}</p>
+              <p className="font-medium text-[color:var(--stat-card-blue-text)]">{t("academy.dataset.previewTitle")}</p>
 
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div>
-                  <p className="text-xs text-zinc-400">{t("academy.dataset.totalCount")}</p>
-                  <p className="mt-1 text-lg font-semibold text-white">
+                  <p className="text-xs text-hint">{t("academy.dataset.totalCount")}</p>
+                  <p className="mt-1 text-lg font-semibold text-[color:var(--text-primary)]">
                     {preview.total_examples}
                   </p>
                 </div>
                 {Object.entries(preview.by_source).map(([source, count]) => (
                   <div key={source}>
-                    <p className="text-xs text-zinc-400 capitalize">{sourceLabel(source)}</p>
-                    <p className="mt-1 text-lg font-semibold text-white">{count}</p>
+                    <p className="text-xs text-hint capitalize">{sourceLabel(source)}</p>
+                    <p className="mt-1 text-lg font-semibold text-[color:var(--text-primary)]">{count}</p>
                   </div>
                 ))}
                 <div>
-                  <p className="text-xs text-zinc-400">{t("academy.dataset.rejected")}</p>
-                  <p className="mt-1 text-lg font-semibold text-white">
+                  <p className="text-xs text-hint">{t("academy.dataset.rejected")}</p>
+                  <p className="mt-1 text-lg font-semibold text-[color:var(--text-primary)]">
                     {preview.removed_low_quality}
                   </p>
                 </div>
@@ -494,7 +494,7 @@ export function DatasetPanel() {
               {preview.warnings.length > 0 && (
                 <div className="mt-4 space-y-2">
                   {preview.warnings.map((warning) => (
-                    <div key={warning} className="flex items-start gap-2 text-sm text-yellow-400">
+                    <div key={warning} className="flex items-start gap-2 text-sm text-[color:var(--stat-card-yellow-text)]">
                       <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                       <p>{warning}</p>
                     </div>
@@ -504,16 +504,16 @@ export function DatasetPanel() {
 
               {preview.samples.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-sm font-medium text-zinc-300 mb-2">{t("academy.dataset.sampleRecords")}</p>
+                  <p className="text-sm font-medium text-[color:var(--text-primary)] mb-2">{t("academy.dataset.sampleRecords")}</p>
                   <div className="space-y-2">
                     {preview.samples.slice(0, 3).map((sample) => (
                       <div
                         key={`${sample.instruction}:${sample.input}:${sample.output}`}
-                        className="rounded-lg bg-black/20 p-3 text-xs"
+                        className="rounded-lg bg-[color:var(--surface-muted)] p-3 text-xs"
                       >
-                        <p className="text-blue-300 font-medium">📝 {sample.instruction}</p>
-                        {sample.input && <p className="text-zinc-400 mt-1">➡️ {sample.input}</p>}
-                        <p className="text-zinc-300 mt-1">✓ {sample.output}</p>
+                        <p className="text-[color:var(--stat-card-blue-text)] font-medium">📝 {sample.instruction}</p>
+                        {sample.input && <p className="text-hint mt-1">➡️ {sample.input}</p>}
+                        <p className="text-[color:var(--text-secondary)] mt-1">✓ {sample.output}</p>
                       </div>
                     ))}
                   </div>
@@ -526,19 +526,16 @@ export function DatasetPanel() {
 
       {/* Curate Results */}
       {result && (
-        <div className={`rounded-xl border p-6 ${
-          result.success
-            ? "border-emerald-500/20 bg-emerald-500/5"
-            : "border-red-500/20 bg-red-500/5"
-        }`}>
+        <div className={`rounded-xl border p-6 ${result.success
+            ? "border-[color:var(--stat-card-emerald-border)] bg-[color:var(--stat-card-emerald-bg)]"
+            : "border-[color:var(--stat-card-red-border)] bg-[color:var(--stat-card-red-bg)]"
+          }`}>
           <div className="flex items-start gap-3">
-            <Database className={`h-6 w-6 ${
-              result.success ? "text-emerald-400" : "text-red-400"
-            }`} />
+            <Database className={`h-6 w-6 ${result.success ? "text-[color:var(--stat-card-emerald-text)]" : "text-[color:var(--stat-card-red-text)]"
+              }`} />
             <div className="flex-1">
-              <p className={`font-medium ${
-                result.success ? "text-emerald-300" : "text-red-300"
-              }`}>
+              <p className={`font-medium ${result.success ? "text-[color:var(--stat-card-emerald-text)]" : "text-[color:var(--stat-card-red-text)]"
+                }`}>
                 {result.message}
               </p>
 
@@ -546,14 +543,14 @@ export function DatasetPanel() {
                 <div className="mt-4">
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-4">
                     <div>
-                      <p className="text-xs text-zinc-400">{t("academy.dataset.totalCount")}</p>
-                      <p className="mt-1 text-lg font-semibold text-white">
+                      <p className="text-xs text-hint">{t("academy.dataset.totalCount")}</p>
+                      <p className="mt-1 text-lg font-semibold text-[color:var(--text-primary)]">
                         {result.statistics.total_examples}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-zinc-400">{t("academy.dataset.removed")}</p>
-                      <p className="mt-1 text-lg font-semibold text-white">
+                      <p className="text-xs text-hint">{t("academy.dataset.removed")}</p>
+                      <p className="mt-1 text-lg font-semibold text-[color:var(--text-primary)]">
                         {result.statistics.removed_low_quality}
                       </p>
                     </div>
@@ -562,9 +559,9 @@ export function DatasetPanel() {
                   {result.statistics.by_source && (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       {Object.entries(result.statistics.by_source).map(([source, count]) => (
-                        <div key={source} className="rounded-lg bg-white/5 p-2">
-                          <p className="text-xs text-zinc-400 capitalize">{sourceLabel(source)}</p>
-                          <p className="mt-1 text-sm font-semibold text-white">{count}</p>
+                        <div key={source} className="rounded-lg bg-[color:var(--ui-surface)] p-2">
+                          <p className="text-xs text-hint capitalize">{sourceLabel(source)}</p>
+                          <p className="mt-1 text-sm font-semibold text-[color:var(--text-primary)]">{count}</p>
                         </div>
                       ))}
                     </div>
@@ -573,7 +570,7 @@ export function DatasetPanel() {
               )}
 
               {result.dataset_path && (
-                <p className="mt-3 text-xs font-mono text-zinc-400">
+                <p className="mt-3 text-xs font-mono text-hint">
                   📁 {result.dataset_path}
                 </p>
               )}
@@ -583,11 +580,11 @@ export function DatasetPanel() {
       )}
 
       {/* Information */}
-      <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
-        <p className="text-sm text-blue-300 font-medium mb-2">
+      <div className="rounded-xl border border-[color:var(--stat-card-blue-border)] bg-[color:var(--stat-card-blue-bg)] p-4">
+        <p className="text-sm text-[color:var(--stat-card-blue-text)] font-medium mb-2">
           ℹ️ {t("academy.dataset.infoTitle")}
         </p>
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs text-hint">
           {t("academy.dataset.infoDescription")}
         </p>
       </div>

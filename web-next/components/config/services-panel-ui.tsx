@@ -42,7 +42,7 @@ export function ServicesProfilesCard(input: Readonly<{
           {t("config.services.profiles.llmOff")}
         </Button>
       </div>
-      <p className="mt-3 text-xs text-zinc-500">{t("config.services.profiles.description")}</p>
+      <p className="mt-3 text-xs text-theme-muted">{t("config.services.profiles.description")}</p>
     </div>
   );
 }
@@ -58,11 +58,11 @@ function ServiceCardSkeleton() {
         <div className="h-5 w-16 bg-white/10 rounded-full" />
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <div className="h-8 bg-white/5 rounded-lg" />
-        <div className="h-8 bg-white/5 rounded-lg" />
-        <div className="h-8 bg-white/5 rounded-lg" />
+        <div className="h-8 bg-theme-overlay rounded-lg" />
+        <div className="h-8 bg-theme-overlay rounded-lg" />
+        <div className="h-8 bg-theme-overlay rounded-lg" />
       </div>
-      <div className="h-8 w-full bg-white/5 rounded-lg" />
+      <div className="h-8 w-full bg-theme-overlay rounded-lg" />
     </div>
   );
 }
@@ -100,29 +100,29 @@ function ServiceCard(input: Readonly<{
 
       <div className="mb-3 grid grid-cols-3 gap-2 text-xs">
         <div>
-          <p className="text-zinc-500">{t("config.services.info.pid")}</p>
-          <p className="font-mono text-[11px] text-white">{service.pid || "—"}</p>
+          <p className="text-theme-muted">{t("config.services.info.pid")}</p>
+          <p className="font-mono text-[11px] text-theme-primary">{service.pid || "—"}</p>
         </div>
         <div className="space-y-2">
           <div>
-            <p className="text-zinc-500">{t("config.services.info.port")}</p>
-            <p className="font-mono text-[11px] text-white">{service.port || "—"}</p>
+            <p className="text-theme-muted">{t("config.services.info.port")}</p>
+            <p className="font-mono text-[11px] text-theme-primary">{service.port || "—"}</p>
           </div>
           <div>
-            <p className="text-zinc-500">{t("config.services.info.ram")}</p>
-            <p className="font-mono text-[11px] text-white">
+            <p className="text-theme-muted">{t("config.services.info.ram")}</p>
+            <p className="font-mono text-[11px] text-theme-primary">
               {isRunning ? `${service.memory_mb.toFixed(0)} MB` : "—"}
             </p>
           </div>
         </div>
         <div className="space-y-2">
           <div>
-            <p className="text-zinc-500">{t("config.services.info.uptime")}</p>
-            <p className="font-mono text-[11px] text-white">{formatUptime(service.uptime_seconds)}</p>
+            <p className="text-theme-muted">{t("config.services.info.uptime")}</p>
+            <p className="font-mono text-[11px] text-theme-primary">{formatUptime(service.uptime_seconds)}</p>
           </div>
           <div>
-            <p className="text-zinc-500">{t("config.services.info.cpu")}</p>
-            <p className="font-mono text-[11px] text-white">
+            <p className="text-theme-muted">{t("config.services.info.cpu")}</p>
+            <p className="font-mono text-[11px] text-theme-primary">
               {isRunning ? `${service.cpu_percent.toFixed(1)}%` : "—"}
             </p>
           </div>
@@ -221,7 +221,7 @@ export function ServicesStorageCard(input: Readonly<{
       <div className="flex flex-col gap-1">
         <span>
           {t("config.services.storage.wslUsage")}:{" "}
-          <span className="font-semibold text-white">
+          <span className="font-semibold text-theme-primary">
             {formatBytes(
               storageSnapshot.disk_root.used_bytes ??
                 Math.max(
@@ -238,7 +238,7 @@ export function ServicesStorageCard(input: Readonly<{
     storageSummary = (
       <span className="text-sm">
         {t("config.services.storage.physical")}:{" "}
-        <span className="font-semibold text-white">
+        <span className="font-semibold text-theme-primary">
           {formatBytes(storageSnapshot.disk.total_bytes)}
         </span>
       </span>
@@ -249,7 +249,7 @@ export function ServicesStorageCard(input: Readonly<{
     <div className="glass-panel rounded-2xl box-subtle p-6">
       <h2 className="mb-4 heading-h2">{t("config.services.storage.title")}</h2>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-zinc-200">{storageSummary}</div>
+        <div className="text-sm text-theme-secondary">{storageSummary}</div>
         <Button
           size="xs"
           variant="outline"
@@ -265,7 +265,7 @@ export function ServicesStorageCard(input: Readonly<{
         </Button>
       </div>
       {storageSnapshot?.refreshed_at ? (
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-theme-muted">
           {t("config.services.storage.lastCheck")}:{" "}
           {formatStorageTimestamp(storageSnapshot.refreshed_at, language)}
         </p>
@@ -286,24 +286,24 @@ export function ServicesHistoryCard(input: Readonly<{
       <h2 className="mb-4 heading-h2">{t("config.services.history.title")}</h2>
       <div className="space-y-2">
         {history.length === 0 ? (
-          <p className="text-sm text-zinc-500">{t("config.services.history.empty")}</p>
+          <p className="text-sm text-theme-muted">{t("config.services.history.empty")}</p>
         ) : (
           history.map((entry) => (
             <div
               key={`${entry.timestamp}-${entry.service}-${entry.action}-${entry.message}`}
-              className="flex items-center justify-between rounded-lg border border-white/5 bg-black/20 p-3"
+              className="flex items-center justify-between rounded-lg border border-theme bg-theme-overlay-strong p-3"
             >
               <div className="flex items-center gap-3">
                 <span className={`inline-block h-2 w-2 rounded-full ${entry.success ? "bg-emerald-400" : "bg-red-400"}`} />
                 <div>
-                  <p className="text-sm font-medium text-white">
+                  <p className="text-sm font-medium text-theme-primary">
                     {getDisplayName(entry.service, t)} →{" "}
                     {t(`config.services.actions.${entry.action.toLowerCase()}`) || entry.action}
                   </p>
-                  <p className="text-xs text-zinc-500">{entry.message}</p>
+                  <p className="text-xs text-theme-muted">{entry.message}</p>
                 </div>
               </div>
-              <p className="text-xs text-zinc-600">
+              <p className="text-xs text-theme-muted">
                 {new Date(entry.timestamp).toLocaleTimeString(language === "pl" ? "pl-PL" : "en-US")}
               </p>
             </div>

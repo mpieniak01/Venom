@@ -93,8 +93,8 @@ export function AdaptersPanel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">{t("academy.adapters.title")}</h2>
-          <p className="text-sm text-zinc-400">
+          <h2 className="text-lg font-semibold text-theme-primary">{t("academy.adapters.title")}</h2>
+          <p className="text-sm text-theme-muted">
             {t("academy.adapters.subtitle")}
           </p>
         </div>
@@ -135,10 +135,10 @@ export function AdaptersPanel() {
       {/* Lista adapterów */}
       <div className="space-y-3">
         {adapters.length === 0 ? (
-          <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
-            <Zap className="mx-auto h-12 w-12 text-zinc-600" />
-            <p className="mt-4 text-sm text-zinc-400">{t("academy.adapters.emptyTitle")}</p>
-            <p className="mt-1 text-xs text-zinc-500">
+          <div className="rounded-xl border border-theme bg-theme-overlay p-8 text-center">
+            <Zap className="mx-auto h-12 w-12 text-theme-muted" />
+            <p className="mt-4 text-sm text-theme-muted">{t("academy.adapters.emptyTitle")}</p>
+            <p className="mt-1 text-xs text-theme-muted">
               {t("academy.adapters.emptyDescription")}
             </p>
           </div>
@@ -149,13 +149,13 @@ export function AdaptersPanel() {
               className={`rounded-xl border p-6 ${
                 adapter.is_active
                   ? "border-emerald-500/30 bg-emerald-500/10"
-                  : "border-white/10 bg-white/5"
+                  : "border-theme bg-theme-overlay"
               }`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-semibold text-white">
+                    <span className="font-mono text-sm font-semibold text-theme-primary">
                       {adapter.adapter_id}
                     </span>
                     {adapter.is_active && (
@@ -168,12 +168,12 @@ export function AdaptersPanel() {
 
                   <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                     <div>
-                      <span className="text-zinc-400">{t("academy.adapters.baseModel")}:</span>
-                      <p className="mt-0.5 font-mono text-zinc-200">{adapter.base_model}</p>
+                      <span className="text-theme-muted">{t("academy.adapters.baseModel")}:</span>
+                      <p className="mt-0.5 font-mono text-theme-secondary">{adapter.base_model}</p>
                     </div>
                     <div>
-                      <span className="text-zinc-400">{t("academy.adapters.createdAt")}:</span>
-                      <p className="mt-0.5 text-zinc-200">
+                      <span className="text-theme-muted">{t("academy.adapters.createdAt")}:</span>
+                      <p className="mt-0.5 text-theme-secondary">
                         {adapter.created_at === "unknown"
                           ? t("academy.adapters.unknownDate")
                           : new Date(adapter.created_at).toLocaleString(language)}
@@ -183,12 +183,12 @@ export function AdaptersPanel() {
 
                   {Object.keys(adapter.training_params).length > 0 && (
                     <div className="mt-2">
-                      <span className="text-xs text-zinc-400">{t("academy.adapters.parameters")}:</span>
+                      <span className="text-xs text-theme-muted">{t("academy.adapters.parameters")}:</span>
                       <div className="mt-1 flex flex-wrap gap-2">
                         {Object.entries(adapter.training_params).map(([key, value]) => (
                           <span
                             key={key}
-                            className="rounded bg-white/10 px-2 py-0.5 text-xs text-zinc-300"
+                            className="rounded bg-white/10 px-2 py-0.5 text-xs text-theme-secondary"
                           >
                             {key}: {String(value)}
                           </span>
@@ -197,7 +197,7 @@ export function AdaptersPanel() {
                     </div>
                   )}
 
-                  <p className="mt-2 text-xs font-mono text-zinc-500">{adapter.adapter_path}</p>
+                  <p className="mt-2 text-xs font-mono text-theme-muted">{adapter.adapter_path}</p>
                 </div>
 
                 <Button
@@ -220,7 +220,7 @@ export function AdaptersPanel() {
         <p className="text-sm text-blue-300">
           ℹ {t("academy.adapters.infoTitle")}
         </p>
-        <p className="mt-2 text-xs text-zinc-400">
+        <p className="mt-2 text-xs text-theme-muted">
           {t("academy.adapters.infoDescription")}
         </p>
       </div>

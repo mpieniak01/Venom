@@ -39,6 +39,11 @@
   --app-orb-left: rgba(16, 185, 129, 0.1);
   --app-orb-right: rgba(139, 92, 246, 0.2);
   --button-secondary-bg: rgba(255, 255, 255, 0.05);
+  --button-primary-start: #7c3aed;
+  --button-primary-end: #4f46e5;
+  --button-primary-text: #ffffff;
+  --button-primary-border: rgba(255, 255, 255, 0.14);
+  --button-primary-shadow: rgba(99, 102, 241, 0.38);
   --button-secondary-text: var(--text-primary);
   --button-secondary-border: rgba(255, 255, 255, 0.12);
   --button-secondary-hover: rgba(255, 255, 255, 0.12);
@@ -190,6 +195,11 @@ html[data-theme="venom-light"] {
   --border-glass: 1px solid rgba(13, 148, 136, 0.15);
   --shadow-card: 0 4px 20px rgba(13, 148, 136, 0.04);
   --button-secondary-bg: #ffffff;
+  --button-primary-start: #0d9488;
+  --button-primary-end: #0284c7;
+  --button-primary-text: #f8fafc;
+  --button-primary-border: rgba(6, 182, 212, 0.25);
+  --button-primary-shadow: rgba(14, 116, 144, 0.28);
   --button-secondary-text: #134e4a;
   --button-secondary-border: rgba(13, 148, 136, 0.2);
   --button-secondary-hover: rgba(13, 148, 136, 0.05);

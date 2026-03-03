@@ -49,7 +49,9 @@ export function resolveInitialTheme(): ThemeId {
 
 function applyTheme(theme: ThemeId) {
   if (globalThis.window === undefined) return;
-  document.documentElement.dataset.theme = theme;
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  root.style.colorScheme = theme === "venom-light" ? "light" : "dark";
 }
 
 async function fetchBackendDefaultTheme(): Promise<ThemeId | null> {

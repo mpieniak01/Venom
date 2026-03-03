@@ -74,7 +74,7 @@ export function CockpitChatConsole({
           label={chatFullscreen ? t("cockpit.fullscreen.off") : t("cockpit.fullscreen.on")}
           size="xs"
           variant="outline"
-          className="absolute right-6 top-6 z-20 border-white/10 text-white pointer-events-auto"
+          className="absolute right-6 top-6 z-20 border-[color:var(--ui-border)] text-[color:var(--text-primary)] pointer-events-auto"
           icon={
             chatFullscreen ? (
               <Minimize2 className="h-3.5 w-3.5" />
@@ -124,17 +124,17 @@ export function CockpitChatConsole({
               {composer}
               {quickActions}
               {message && (
-                <p className="mt-2 text-xs text-amber-300">{message}</p>
+                <p className="mt-2 text-xs text-tone-warning">{message}</p>
               )}
             </div>
           </div>
         </div>
       </CockpitPanel3D>
       {!chatFullscreen && showSharedSections && showArtifacts && (
-        <div className="mt-4 space-y-3 rounded-2xl box-base px-4 py-4 text-sm text-zinc-300">
+        <div className="mt-4 space-y-3 rounded-2xl box-base px-4 py-4 text-sm text-[color:var(--text-secondary)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-caption">{t("cockpit.suggestions.eyebrow")}</p>
-            <span className="text-caption text-zinc-600">
+            <span className="text-caption text-[color:var(--ui-muted)]">
               {t("cockpit.suggestions.hint")}
             </span>
           </div>

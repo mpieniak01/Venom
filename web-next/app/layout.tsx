@@ -52,9 +52,13 @@ export default function RootLayout({
         if (resolved && stored !== resolved) {
           globalThis.localStorage.setItem("${THEME_STORAGE_KEY}", resolved);
         }
-        globalThis.document.documentElement.dataset.theme = theme;
+        var root = globalThis.document.documentElement;
+        root.dataset.theme = theme;
+        root.style.colorScheme = theme === "venom-light" ? "light" : "dark";
       } catch (e) {
-        globalThis.document.documentElement.dataset.theme = "${DEFAULT_THEME}";
+        var fallbackRoot = globalThis.document.documentElement;
+        fallbackRoot.dataset.theme = "${DEFAULT_THEME}";
+        fallbackRoot.style.colorScheme = "dark";
       }
     })();
   `;

@@ -98,7 +98,7 @@ export function HistoryList({
                   : "bg-[color:var(--surface-muted)] hover:bg-[color:var(--ui-surface)]",
                 isSelected
                   ? "border-emerald-400/60 shadow-[0_0_20px_rgba(0,255,157,0.15)]"
-                  : "border-white/5",
+                  : "border-[color:var(--ui-border)]",
               )}
             >
               <div className="flex w-full flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.3em] text-[color:var(--accent)]">
@@ -123,7 +123,7 @@ export function HistoryList({
                 </div>
               )}
               {item.error_code && (
-                <p className="mt-2 text-caption text-rose-300">
+                <p className="mt-2 text-caption text-tone-danger">
                   {formatErrorDetail(item)}
                 </p>
               )}

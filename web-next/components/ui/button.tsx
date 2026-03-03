@@ -38,7 +38,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 ) {
   const variantClass = {
     primary:
-      "bg-gradient-to-r from-violet-600 to-indigo-500 text-white border border-white/10 shadow-neon hover:-translate-y-[1px]",
+      "border border-[color:var(--button-primary-border)] bg-gradient-to-r from-[color:var(--button-primary-start)] to-[color:var(--button-primary-end)] text-[color:var(--button-primary-text)] shadow-[0_0_22px_var(--button-primary-shadow)] hover:-translate-y-[1px]",
     macro:
       "border border-[color:var(--btn-macro-border)] bg-[color:var(--btn-macro-bg)] text-[color:var(--btn-macro-text)] shadow-neon hover:border-[color:var(--btn-macro-hover-border)] hover:-translate-y-[1px]",
     secondary:

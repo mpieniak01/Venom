@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Gauge, Code2 } from "lucide-react";
+import { Gauge, Code2, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
@@ -10,17 +10,19 @@ import { BenchmarkConsole } from "@/components/benchmark/benchmark-console";
 import { BenchmarkResults } from "@/components/benchmark/benchmark-results";
 import { BenchmarkCodingConfigurator } from "@/components/benchmark/benchmark-coding-configurator";
 import { BenchmarkCodingConsole } from "@/components/benchmark/benchmark-coding-console";
+import { BenchmarkCodingResults } from "@/components/benchmark/benchmark-coding-results";
+import { BenchmarkCodingCharts } from "@/components/benchmark/benchmark-coding-charts";
 import { useModels } from "@/hooks/use-api";
 import { useBenchmark } from "@/hooks/use-benchmark";
 import { useCodingBenchmark } from "@/hooks/use-coding-benchmark";
 import type { BenchmarkConfig, CodingBenchmarkStartRequest } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
 
-type BenchmarkTab = "llm" | "coding";
+type BenchmarkTab = "llmModels" | "codeModels" | "codeResults";
 
 export default function BenchmarkPage() {
   const t = useTranslation();
-  const [activeTab, setActiveTab] = useState<BenchmarkTab>("llm");
+  const [activeTab, setActiveTab] = useState<BenchmarkTab>("llmModels");
   const { data: modelsData, loading: modelsLoading } = useModels(15000);
 
   const {
@@ -35,6 +37,8 @@ export default function BenchmarkPage() {
     run: codingRun,
     logs: codingLogs,
     startBenchmark: startCodingBenchmark,
+    deleteRun,
+    clearAllRuns,
   } = useCodingBenchmark();
 
   const handleStart = async (config: BenchmarkConfig) => {
@@ -52,8 +56,9 @@ export default function BenchmarkPage() {
     })) || [];
 
   const tabs: Array<{ id: BenchmarkTab; label: string; icon: React.ReactNode }> = [
-    { id: "llm", label: t("benchmark.tabs.llm"), icon: <Gauge className="w-4 h-4" /> },
-    { id: "coding", label: t("benchmark.tabs.coding"), icon: <Code2 className="w-4 h-4" /> },
+    { id: "llmModels", label: t("benchmark.tabs.llmModels"), icon: <Gauge className="w-4 h-4" /> },
+    { id: "codeModels", label: t("benchmark.tabs.codeModels"), icon: <Code2 className="w-4 h-4" /> },
+    { id: "codeResults", label: t("benchmark.tabs.codeResults"), icon: <BarChart3 className="w-4 h-4" /> },
   ];
 
   return (
@@ -87,8 +92,8 @@ export default function BenchmarkPage() {
         ))}
       </div>
 
-      {/* LLM Benchmark */}
-      {activeTab === "llm" && (
+      {/* Tab 1: LLM Models Benchmark */}
+      {activeTab === "llmModels" && (
         <>
           <div className="grid gap-6 lg:grid-cols-2">
             <Panel
@@ -131,8 +136,8 @@ export default function BenchmarkPage() {
         </>
       )}
 
-      {/* Coding Benchmark */}
-      {activeTab === "coding" && (
+      {/* Tab 2: Code Models — start/status */}
+      {activeTab === "codeModels" && (
         <div className="grid gap-6 lg:grid-cols-2">
           <Panel
             eyebrow={t("benchmark.coding.config.eyebrow")}
@@ -168,8 +173,36 @@ export default function BenchmarkPage() {
           </Panel>
         </div>
       )}
+
+      {/* Tab 3: Code Results — history + table + charts */}
+      {activeTab === "codeResults" && (
+        <>
+          <Panel
+            eyebrow={t("benchmark.coding.results.eyebrow")}
+            title={t("benchmark.coding.results.title")}
+            description={t("benchmark.coding.results.description")}
+          >
+            <BenchmarkCodingResults
+              currentRun={codingRun}
+              onDelete={deleteRun}
+              onClearAll={clearAllRuns}
+            />
+          </Panel>
+
+          {codingRun?.jobs && codingRun.jobs.length > 0 && (
+            <Panel
+              eyebrow={t("benchmark.coding.charts.passRate")}
+              title={t("benchmark.coding.charts.timing")}
+              description=""
+            >
+              <BenchmarkCodingCharts jobs={codingRun.jobs} />
+            </Panel>
+          )}
+        </>
+      )}
     </div>
   );
 }
+
 
 

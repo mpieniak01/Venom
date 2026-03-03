@@ -145,8 +145,8 @@ export const pl = {
       description: "Testuj wydajność modeli i porównaj ich parametry (czas odpowiedzi, tokens/sec, użycie VRAM)",
     },
     tabs: {
-      classic: "Klasyczny Benchmark",
-      coding: "Coding Benchmark",
+      llm: "Modele LLM",
+      coding: "Modele Code",
     },
     steps: {
       config: {
@@ -175,11 +175,6 @@ export const pl = {
         eyebrow: "Krok 2",
         title: "Postęp wykonania",
         description: "Logi na żywo z coding benchmarku",
-      },
-      results: {
-        eyebrow: "Krok 3",
-        title: "Wyniki Coding",
-        description: "Wyniki jobów i historia coding benchmarków",
       },
     },
     loading: "Ładowanie modeli...",

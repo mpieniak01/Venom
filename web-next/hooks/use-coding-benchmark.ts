@@ -11,6 +11,26 @@ const POLLING_INTERVAL_MS = 1500;
 const resolveApiRoot = (): string => getApiBaseUrl() || "";
 const buildApiUrl = (path: string): string => `${resolveApiRoot()}${path}`;
 
+// ─── Pure helpers (exported for tests) ───────────────────────────────────────
+
+/** Map raw API status string to hook CodingBenchmarkStatus, or null if unchanged. */
+export function resolvePollStatus(apiStatus: string): CodingBenchmarkStatus | null {
+  if (apiStatus === "completed") return "completed";
+  if (apiStatus === "failed") return "failed";
+  if (apiStatus === "running") return "running";
+  return null;
+}
+
+/** Build a human-readable progress log from a run summary, or null if not applicable. */
+export function buildProgressLog(
+  summary: { completed: number; total_jobs: number } | null | undefined,
+): string | null {
+  if (!summary || summary.total_jobs === 0) return null;
+  return `Postęp: ${summary.completed}/${summary.total_jobs} zadań ukończonych`;
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
 interface UseCodingBenchmarkReturn {
   status: CodingBenchmarkStatus;
   runId: string | null;

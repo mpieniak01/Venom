@@ -8,6 +8,8 @@ tests/test_academy_conversion_contracts.py
 tests/test_agents_skill_manager_paths.py
 tests/test_api_dependencies.py
 tests/test_architecture_contracts_guard.py
+tests/test_benchmark_coding_routes.py
+tests/test_benchmark_coding_service.py
 tests/test_bootstrap_routes_contracts.py
 tests/test_compose_skill_validation.py
 tests/test_config_paths.py

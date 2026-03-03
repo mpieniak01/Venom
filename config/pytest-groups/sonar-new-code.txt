@@ -27,6 +27,8 @@ tests/test_audio_stream_handler_roi.py
 tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
 tests/test_autonomy_enforcement.py
+tests/test_benchmark_coding_routes.py
+tests/test_benchmark_coding_service.py
 tests/test_bootstrap_routes_contracts.py
 tests/test_bootstrap_runtime_stack_modules.py
 tests/test_browser_skill.py

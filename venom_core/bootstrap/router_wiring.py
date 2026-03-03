@@ -15,6 +15,7 @@ class RouterModules:
     strategy_routes: Any
     models_routes: Any
     benchmark_routes: Any
+    benchmark_coding_routes: Any
     calendar_routes: Any
     memory_projection_routes: Any
     academy_routes: Any
@@ -43,6 +44,7 @@ class RuntimeDependencies:
     node_manager: Any
     model_registry: Any
     benchmark_service: Any
+    coding_benchmark_service: Any
     google_calendar_skill: Any
     professor: Any
     dataset_curator: Any
@@ -115,6 +117,7 @@ def apply_router_dependencies(
         model_registry=runtime.model_registry,
     )
     routes.benchmark_routes.set_dependencies(runtime.benchmark_service)
+    routes.benchmark_coding_routes.set_dependencies(runtime.coding_benchmark_service)
     routes.calendar_routes.set_dependencies(runtime.google_calendar_skill)
     routes.memory_projection_routes.set_dependencies(runtime.vector_store)
     routes.academy_routes.set_dependencies(

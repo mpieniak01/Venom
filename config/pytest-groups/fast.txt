@@ -43,6 +43,8 @@ tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
 tests/test_autonomy_enforcement.py
 tests/test_base_skill.py
+tests/test_benchmark_coding_routes.py
+tests/test_benchmark_coding_service.py
 tests/test_benchmark_service.py
 tests/test_benchmark_service_activation.py
 tests/test_benchmark_service_runtime_selection.py

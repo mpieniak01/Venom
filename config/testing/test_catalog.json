@@ -850,6 +850,34 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_coding_run_service.py",
+      "domain": "core",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coding benchmark service unit tests - 190B wave 1."
+    },
+    {
+      "path": "tests/test_coding_run_routes.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coding benchmark API route contract tests - 190B wave 1."
+    },
+    {
       "path": "tests/test_bootstrap_routes_contracts.py",
       "domain": "bootstrap",
       "test_type": "route_contract",

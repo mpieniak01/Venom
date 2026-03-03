@@ -9,6 +9,8 @@ tests/test_agents_skill_manager_paths.py
 tests/test_api_dependencies.py
 tests/test_architecture_contracts_guard.py
 tests/test_bootstrap_routes_contracts.py
+tests/test_coding_run_routes.py
+tests/test_coding_run_service.py
 tests/test_compose_skill_validation.py
 tests/test_config_paths.py
 tests/test_dispatcher.py

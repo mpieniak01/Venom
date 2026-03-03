@@ -64,6 +64,8 @@ tests/test_coder.py
 tests/test_coder_agent_mcp.py
 tests/test_coder_critic_loop.py
 tests/test_coder_with_sandbox.py
+tests/test_coding_run_routes.py
+tests/test_coding_run_service.py
 tests/test_complexity_skill.py
 tests/test_component_engine.py
 tests/test_compose_skill.py

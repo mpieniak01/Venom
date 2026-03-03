@@ -19,6 +19,7 @@ from venom_core.api.routes import academy as academy_routes
 from venom_core.api.routes import agents as agents_routes
 from venom_core.api.routes import audit_stream as audit_stream_routes
 from venom_core.api.routes import benchmark as benchmark_routes
+from venom_core.api.routes import benchmark_coding as benchmark_coding_routes
 from venom_core.api.routes import calendar as calendar_routes
 from venom_core.api.routes import feedback as feedback_routes
 from venom_core.api.routes import flow as flow_routes
@@ -175,6 +176,9 @@ model_manager = None
 
 # Inicjalizacja Benchmark Service
 benchmark_service = None
+
+# Inicjalizacja Coding Benchmark Service
+coding_benchmark_service = None
 
 # Inicjalizacja Model Registry (dla endpointów models)
 model_registry = None
@@ -420,7 +424,7 @@ async def _initialize_observability() -> None:
 
 
 def _initialize_model_services() -> None:
-    global model_manager, model_registry, benchmark_service
+    global model_manager, model_registry, benchmark_service, coding_benchmark_service
 
     previous_model_registry = model_registry
     model_manager, new_model_registry, benchmark_service = initialize_model_services(
@@ -433,6 +437,16 @@ def _initialize_model_services() -> None:
         model_registry = new_model_registry
     else:
         model_registry = previous_model_registry
+
+    try:
+        from venom_core.services.benchmark_coding import CodingBenchmarkService
+
+        storage_dir = str(Path(SETTINGS.STORAGE_PREFIX) / "data/benchmarks/coding")
+        coding_benchmark_service = CodingBenchmarkService(storage_dir=storage_dir)
+        logger.info("CodingBenchmarkService zainicjalizowany")
+    except Exception as exc:
+        logger.warning(f"Nie udało się zainicjalizować CodingBenchmarkService: {exc}")
+        coding_benchmark_service = None
 
 
 def _initialize_calendar_skill() -> None:
@@ -954,6 +968,7 @@ def setup_router_dependencies():
             strategy_routes=strategy_routes,
             models_routes=models_routes,
             benchmark_routes=benchmark_routes,
+            benchmark_coding_routes=benchmark_coding_routes,
             calendar_routes=calendar_routes,
             memory_projection_routes=memory_projection_routes,
             academy_routes=academy_routes,
@@ -980,6 +995,7 @@ def setup_router_dependencies():
             node_manager=node_manager,
             model_registry=model_registry,
             benchmark_service=benchmark_service,
+            coding_benchmark_service=coding_benchmark_service,
             google_calendar_skill=google_calendar_skill,
             professor=professor,
             dataset_curator=dataset_curator,
@@ -1051,6 +1067,7 @@ app.include_router(audit_stream_routes.router)
 app.include_router(workflow_control_routes.router)
 app.include_router(workflow_operations_routes.router)
 app.include_router(benchmark_routes.router)
+app.include_router(benchmark_coding_routes.router)
 app.include_router(calendar_routes.router)
 app.include_router(traffic_control_routes.router)
 include_optional_api_routers(app, SETTINGS)

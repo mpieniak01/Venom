@@ -684,3 +684,72 @@ export interface ContextUsed {
   memory_entries?: string[];
   [key: string]: unknown; // Allow for future expansion
 }
+
+// Coding Benchmark types
+export type CodingBenchmarkStatus = "idle" | "pending" | "running" | "completed" | "failed";
+export type CodingBenchmarkRunStatus = Exclude<CodingBenchmarkStatus, "idle">;
+
+export interface CodingBenchmarkConfig {
+  models: string[];
+  tasks: string[];
+  loop_task: string;
+  first_sieve_task: string;
+  timeout: number;
+  max_rounds: number;
+  endpoint: string;
+  stop_on_failure: boolean;
+}
+
+export interface CodingBenchmarkStartRequest {
+  models: string[];
+  tasks?: string[];
+  loop_task?: string;
+  first_sieve_task?: string;
+  timeout?: number;
+  max_rounds?: number;
+  options?: Record<string, unknown>;
+  model_timeout_overrides?: Record<string, number>;
+  stop_on_failure?: boolean;
+  endpoint?: string;
+}
+
+export interface CodingJob {
+  id: string;
+  model: string;
+  mode: string;
+  task: string;
+  role: string;
+  status: string;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  rc?: number | null;
+  artifact?: string | null;
+  passed?: boolean | null;
+  warmup_seconds?: number | null;
+  coding_seconds?: number | null;
+  request_wall_seconds?: number | null;
+  total_seconds?: number | null;
+  error?: string | null;
+}
+
+export interface CodingBenchmarkSummary {
+  total_jobs: number;
+  completed: number;
+  failed: number;
+  pending: number;
+  skipped: number;
+  success_rate: number;
+}
+
+export interface CodingBenchmarkRun {
+  run_id: string;
+  status: CodingBenchmarkRunStatus;
+  config: CodingBenchmarkConfig;
+  jobs: CodingJob[];
+  summary?: CodingBenchmarkSummary | null;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error_message?: string | null;
+}

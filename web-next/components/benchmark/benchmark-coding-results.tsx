@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { CodingBenchmarkRun, CodingJob } from "@/lib/types";
 import { Clock, RefreshCw, Trash2, X, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { getApiBaseUrl } from "@/lib/env";
-import { useTranslation } from "@/lib/i18n";
+import { useLanguage, useTranslation } from "@/lib/i18n";
 
 interface BenchmarkCodingResultsProps {
   readonly currentRun: CodingBenchmarkRun | null;
@@ -29,6 +29,7 @@ export function BenchmarkCodingResults({
   onClearAll,
 }: BenchmarkCodingResultsProps) {
   const t = useTranslation();
+  const { language } = useLanguage();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const apiBase = useMemo(() => getApiBaseUrl() || "", []);
@@ -50,7 +51,7 @@ export function BenchmarkCodingResults({
 
   useEffect(() => {
     fetchHistory();
-  }, [currentRun, fetchHistory]);
+  }, [fetchHistory]);
 
   const handleDelete = async (id: string) => {
     if (confirm(t("benchmark.coding.results.confirmDelete"))) {
@@ -68,7 +69,7 @@ export function BenchmarkCodingResults({
 
   const formatDate = (iso: string | null | undefined) => {
     if (!iso) return "-";
-    return new Date(iso).toLocaleString("pl-PL", {
+    return new Date(iso).toLocaleString(language, {
       day: "2-digit",
       month: "2-digit",
       hour: "2-digit",
@@ -91,7 +92,7 @@ export function BenchmarkCodingResults({
           <h4 className="heading-h4 text-[color:var(--text-heading)]">
             {currentRun.run_id.slice(0, 8)}...
           </h4>
-          <JobsTable jobs={currentRun.jobs} />
+          <JobsTable jobs={currentRun.jobs} t={t} />
         </div>
       ) : null}
 
@@ -183,18 +184,37 @@ export function BenchmarkCodingResults({
   );
 }
 
-function JobsTable({ jobs }: Readonly<{ jobs: ReadonlyArray<CodingJob> }>) {
+function JobsTable({
+  jobs,
+  t,
+}: Readonly<{ jobs: ReadonlyArray<CodingJob>; t: (path: string) => string }>) {
+  const renderJobResult = (job: CodingJob) => {
+    if (job.passed === true) {
+      return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mx-auto" />;
+    }
+    if (job.passed === false) {
+      return <XCircle className="w-3.5 h-3.5 text-rose-400 mx-auto" />;
+    }
+    if (job.status === "running") {
+      return <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin mx-auto" />;
+    }
+    return <span className="text-[color:var(--ui-muted)]">-</span>;
+  };
+
+  const formatDuration = (value: number | null | undefined) =>
+    value == null ? "-" : value.toFixed(1);
+
   return (
     <div className="overflow-x-auto rounded-xl bg-[color:var(--surface-muted)] border border-[color:var(--ui-border)]">
       <table className="w-full text-left text-xs">
         <thead>
           <tr className="border-b border-[color:var(--ui-border)] text-[color:var(--text-secondary)]">
-            <th className="py-2 px-3 font-medium">Model</th>
-            <th className="py-2 px-3 font-medium">Task</th>
-            <th className="py-2 px-3 font-medium">Mode</th>
-            <th className="py-2 px-3 text-center font-medium">Status</th>
-            <th className="py-2 px-3 text-right font-medium">Time (s)</th>
-            <th className="py-2 px-3 text-center font-medium">Result</th>
+            <th className="py-2 px-3 font-medium">{t("benchmark.coding.results.table.model")}</th>
+            <th className="py-2 px-3 font-medium">{t("benchmark.coding.results.table.task")}</th>
+            <th className="py-2 px-3 font-medium">{t("benchmark.coding.results.table.mode")}</th>
+            <th className="py-2 px-3 text-center font-medium">{t("benchmark.coding.results.table.status")}</th>
+            <th className="py-2 px-3 text-right font-medium">{t("benchmark.coding.results.table.timeSeconds")}</th>
+            <th className="py-2 px-3 text-center font-medium">{t("benchmark.coding.results.table.result")}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[color:var(--ui-border)]">
@@ -209,21 +229,9 @@ function JobsTable({ jobs }: Readonly<{ jobs: ReadonlyArray<CodingJob> }>) {
                 <JobStatusBadge status={job.status} />
               </td>
               <td className="py-2 px-3 text-right text-[color:var(--ui-muted)]">
-                {job.coding_seconds != null ? job.coding_seconds.toFixed(1) : "-"}
+                {formatDuration(job.coding_seconds)}
               </td>
-              <td className="py-2 px-3 text-center">
-                {job.passed === true && (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mx-auto" />
-                )}
-                {job.passed === false && (
-                  <XCircle className="w-3.5 h-3.5 text-rose-400 mx-auto" />
-                )}
-                {job.passed == null && job.status === "running" ? (
-                  <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin mx-auto" />
-                ) : job.passed == null ? (
-                  <span className="text-[color:var(--ui-muted)]">-</span>
-                ) : null}
-              </td>
+              <td className="py-2 px-3 text-center">{renderJobResult(job)}</td>
             </tr>
           ))}
         </tbody>

@@ -14,6 +14,7 @@ class CodingBenchmarkStartRequest(BaseModel):
     tasks: list[str] = Field(
         default=["python_complex"],
         description="Zadania codingowe do uruchomienia (python_sanity, python_simple, python_complex, python_complex_bugfix)",
+        min_length=1,
     )
     loop_task: str = Field(
         default="python_complex_bugfix",

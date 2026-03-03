@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import type { BenchmarkLog, CodingBenchmarkRun } from "@/lib/types";
+import { useLanguage, useTranslation } from "@/lib/i18n";
 
 const LEVEL_ICONS = {
   error: "❌",
@@ -31,6 +32,8 @@ export function BenchmarkCodingConsole({
   run,
   isRunning = false,
 }: BenchmarkCodingConsoleProps) {
+  const t = useTranslation();
+  const { language } = useLanguage();
   const consoleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,11 +50,11 @@ export function BenchmarkCodingConsole({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="heading-h4 text-zinc-300">Logi wykonania</h4>
+        <h4 className="heading-h4 text-zinc-300">{t("benchmark.coding.console.title")}</h4>
         {isRunning && (
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-            <span className="text-xs text-emerald-400">W trakcie...</span>
+            <span className="text-xs text-emerald-400">{t("benchmark.coding.console.running")}</span>
           </div>
         )}
       </div>
@@ -61,7 +64,10 @@ export function BenchmarkCodingConsole({
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-[color:var(--ui-muted)]">
             <span>
-              {completedJobs}/{totalJobs} zadań
+              {t("benchmark.coding.console.progressLabel", {
+                completed: completedJobs,
+                total: totalJobs,
+              })}
             </span>
             <span>{progressPct}%</span>
           </div>
@@ -83,7 +89,7 @@ export function BenchmarkCodingConsole({
       >
         {logs.length === 0 ? (
           <p className="text-[color:var(--ui-muted)]">
-            Brak logów. Uruchom coding benchmark, aby zobaczyć postęp.
+            {t("benchmark.coding.console.empty")}
           </p>
         ) : (
           <div className="space-y-1">
@@ -93,7 +99,7 @@ export function BenchmarkCodingConsole({
                 className="flex gap-2"
               >
                 <span className="text-hint">
-                  {new Date(log.timestamp).toLocaleTimeString("pl-PL")}
+                  {new Date(log.timestamp).toLocaleTimeString(language)}
                 </span>
                 <span className={getLevelColor(log.level)}>{getLevelIcon(log.level)}</span>
                 <span className={cn("flex-1", getLevelColor(log.level))}>{log.message}</span>

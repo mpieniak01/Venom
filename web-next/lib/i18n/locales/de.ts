@@ -144,8 +144,8 @@ export const de = {
       description: "Modellleistung testen und Metriken vergleichen (Antwortzeit, Token/Sek, VRAM-Nutzung)",
     },
     tabs: {
-      classic: "Klassischer Benchmark",
-      coding: "Coding-Benchmark",
+      llm: "LLM-Modelle",
+      coding: "Code-Modelle",
     },
     steps: {
       config: {
@@ -174,11 +174,6 @@ export const de = {
         eyebrow: "Schritt 2",
         title: "Ausführungsfortschritt",
         description: "Live-Logs des Coding-Benchmarks",
-      },
-      results: {
-        eyebrow: "Schritt 3",
-        title: "Coding-Ergebnisse",
-        description: "Job-Ergebnisse und Verlauf der Coding-Benchmarks",
       },
     },
     loading: "Lade Modelle...",

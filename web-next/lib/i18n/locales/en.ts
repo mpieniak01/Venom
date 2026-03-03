@@ -144,8 +144,8 @@ export const en = {
       description: "Test model performance and compare metrics (response time, tokens/sec, VRAM usage)",
     },
     tabs: {
-      classic: "Classic Benchmark",
-      coding: "Coding Benchmark",
+      llm: "LLM Models",
+      coding: "Code Models",
     },
     steps: {
       config: {
@@ -174,11 +174,6 @@ export const en = {
         eyebrow: "Step 2",
         title: "Execution Progress",
         description: "Live log of coding benchmark execution",
-      },
-      results: {
-        eyebrow: "Step 3",
-        title: "Coding Results",
-        description: "Job-level results and history for coding benchmarks",
       },
     },
     loading: "Loading models...",

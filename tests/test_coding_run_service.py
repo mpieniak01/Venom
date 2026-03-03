@@ -9,6 +9,7 @@ import pytest
 
 from venom_core.services.benchmark_coding import (
     CodingBenchmarkService,
+    _enrich_job_dict,
     _is_valid_run_id,
     _parse_scheduler_state,
     _safe_float,
@@ -327,3 +328,63 @@ def test_load_persisted_runs(tmp_path):
     svc2 = CodingBenchmarkService(storage_dir=str(storage))
     assert run_id in svc2._runs
     assert svc2._runs[run_id].status == "completed"
+
+
+def test_enrich_job_dict_reads_request_wall_seconds(tmp_path):
+    """Test _enrich_job_dict poprawnie wczytuje request_wall_seconds z artefaktu."""
+    import json as _json
+    from venom_core.services.benchmark_coding import CodingJobState
+
+    artifact_file = tmp_path / "artifact.json"
+    artifact_data = {
+        "timing": {
+            "warmup_seconds": 1.0,
+            "coding_seconds": 2.5,
+            "request_wall_seconds": 3.1,
+            "total_seconds": 6.6,
+        },
+        "passed": True,
+        "error": None,
+    }
+    artifact_file.write_text(_json.dumps(artifact_data), encoding="utf-8")
+
+    job = CodingJobState(
+        id="j1",
+        model="m1",
+        mode="ollama",
+        task="python_complex",
+        artifact=str(artifact_file),
+    )
+    result = _enrich_job_dict(job)
+
+    assert result["request_wall_seconds"] == 3.1
+    assert result["warmup_seconds"] == 1.0
+    assert result["passed"] is True
+
+
+def test_run_dir_raises_for_invalid_run_id(service):
+    """Test _run_dir rzuca ValueError dla nieprawidłowego run_id."""
+    with pytest.raises(ValueError, match="Invalid run_id"):
+        service._run_dir("../../etc/passwd")
+
+
+def test_run_dir_raises_for_path_traversal(service, tmp_path):
+    """Test _run_dir rzuca ValueError gdy ścieżka wychodzi poza storage_dir."""
+    import uuid
+
+    valid_looking_id = str(uuid.uuid4())
+    # Patch resolve so run_dir escapes storage_root
+    from pathlib import Path
+    original_resolve = Path.resolve
+
+    call_count = {"n": 0}
+
+    def patched_resolve(self):  # type: ignore[override]
+        call_count["n"] += 1
+        if call_count["n"] == 2:  # second call = run_dir.resolve()
+            return Path("/tmp/escaped_path")
+        return original_resolve(self)
+
+    with patch.object(Path, "resolve", patched_resolve):
+        with pytest.raises(ValueError, match="escapes storage directory"):
+            service._run_dir(valid_looking_id)

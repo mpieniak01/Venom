@@ -8,19 +8,19 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { BenchmarkConfigurator } from "@/components/benchmark/benchmark-configurator";
 import { BenchmarkConsole } from "@/components/benchmark/benchmark-console";
 import { BenchmarkResults } from "@/components/benchmark/benchmark-results";
-import { CodingBenchmarkConfigurator } from "@/components/benchmark/coding-benchmark-configurator";
-import { CodingBenchmarkResults } from "@/components/benchmark/coding-benchmark-results";
+import { BenchmarkCodingConfigurator } from "@/components/benchmark/benchmark-coding-configurator";
+import { BenchmarkCodingConsole } from "@/components/benchmark/benchmark-coding-console";
 import { useModels } from "@/hooks/use-api";
 import { useBenchmark } from "@/hooks/use-benchmark";
 import { useCodingBenchmark } from "@/hooks/use-coding-benchmark";
 import type { BenchmarkConfig, CodingBenchmarkStartRequest } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
 
-type BenchmarkTab = "classic" | "coding";
+type BenchmarkTab = "llm" | "coding";
 
 export default function BenchmarkPage() {
   const t = useTranslation();
-  const [activeTab, setActiveTab] = useState<BenchmarkTab>("classic");
+  const [activeTab, setActiveTab] = useState<BenchmarkTab>("llm");
   const { data: modelsData, loading: modelsLoading } = useModels(15000);
 
   const {
@@ -35,8 +35,6 @@ export default function BenchmarkPage() {
     run: codingRun,
     logs: codingLogs,
     startBenchmark: startCodingBenchmark,
-    deleteRun,
-    clearAllRuns,
   } = useCodingBenchmark();
 
   const handleStart = async (config: BenchmarkConfig) => {
@@ -54,7 +52,7 @@ export default function BenchmarkPage() {
     })) || [];
 
   const tabs: Array<{ id: BenchmarkTab; label: string; icon: React.ReactNode }> = [
-    { id: "classic", label: t("benchmark.tabs.classic"), icon: <Gauge className="w-4 h-4" /> },
+    { id: "llm", label: t("benchmark.tabs.llm"), icon: <Gauge className="w-4 h-4" /> },
     { id: "coding", label: t("benchmark.tabs.coding"), icon: <Code2 className="w-4 h-4" /> },
   ];
 
@@ -80,7 +78,7 @@ export default function BenchmarkPage() {
               "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
               activeTab === tab.id
                 ? "bg-[color:var(--ui-surface)] text-[color:var(--text-primary)] shadow-sm"
-                : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]",
             )}
           >
             {tab.icon}
@@ -89,8 +87,8 @@ export default function BenchmarkPage() {
         ))}
       </div>
 
-      {/* Classic Benchmark */}
-      {activeTab === "classic" && (
+      {/* LLM Benchmark */}
+      {activeTab === "llm" && (
         <>
           <div className="grid gap-6 lg:grid-cols-2">
             <Panel
@@ -135,55 +133,43 @@ export default function BenchmarkPage() {
 
       {/* Coding Benchmark */}
       {activeTab === "coding" && (
-        <>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Panel
-              eyebrow={t("benchmark.coding.config.eyebrow")}
-              title={t("benchmark.coding.config.title")}
-              description={t("benchmark.coding.config.description")}
-            >
-              {modelsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
-                  <span className="ml-3 text-sm text-zinc-400">
-                    {t("benchmark.loading")}
-                  </span>
-                </div>
-              ) : (
-                <CodingBenchmarkConfigurator
-                  availableModels={availableModels}
-                  onStart={handleCodingStart}
-                  disabled={codingStatus === "running" || codingStatus === "pending"}
-                />
-              )}
-            </Panel>
-
-            <Panel
-              eyebrow={t("benchmark.coding.console.eyebrow")}
-              title={t("benchmark.coding.console.title")}
-              description={t("benchmark.coding.console.description")}
-            >
-              <BenchmarkConsole
-                logs={codingLogs}
-                isRunning={codingStatus === "running"}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Panel
+            eyebrow={t("benchmark.coding.config.eyebrow")}
+            title={t("benchmark.coding.config.title")}
+            description={t("benchmark.coding.config.description")}
+          >
+            {modelsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+                <span className="ml-3 text-sm text-zinc-400">
+                  {t("benchmark.loading")}
+                </span>
+              </div>
+            ) : (
+              <BenchmarkCodingConfigurator
+                availableModels={availableModels}
+                onStart={handleCodingStart}
+                disabled={codingStatus === "running" || codingStatus === "pending"}
               />
-            </Panel>
-          </div>
+            )}
+          </Panel>
 
           <Panel
-            eyebrow={t("benchmark.coding.results.eyebrow")}
-            title={t("benchmark.coding.results.title")}
-            description={t("benchmark.coding.results.description")}
+            eyebrow={t("benchmark.coding.console.eyebrow")}
+            title={t("benchmark.coding.console.title")}
+            description={t("benchmark.coding.console.description")}
           >
-            <CodingBenchmarkResults
-              currentRun={codingRun}
-              onDelete={deleteRun}
-              onClearAll={clearAllRuns}
+            <BenchmarkCodingConsole
+              logs={codingLogs}
+              run={codingRun}
+              isRunning={codingStatus === "running"}
             />
           </Panel>
-        </>
+        </div>
       )}
     </div>
   );
 }
+
 

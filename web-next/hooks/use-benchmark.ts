@@ -9,7 +9,11 @@ import type {
 } from "@/lib/types";
 import { getApiBaseUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
-import { classifyStartError, emitPreflightLogs } from "@/hooks/benchmark-preflight";
+import {
+    emitActiveLlmStateLog,
+    emitPreflightLogs,
+    resolveStartFailureMessage,
+} from "@/hooks/benchmark-preflight";
 
 const POLLING_INTERVAL_MS = 1000;
 const resolveApiRoot = (): string => getApiBaseUrl() || "";
@@ -108,7 +112,6 @@ export function useBenchmark(): UseBenchmarkReturn {
         reset();
         setStatus("running");
         lastModelRef.current = null;
-        const unknownLabel = t("benchmark.preflight.unknown");
         emitPreflightLogs(addLog, {
             preparing: t("benchmark.preflight.preparing"),
             unloading: t("benchmark.preflight.unloading"),
@@ -117,21 +120,7 @@ export function useBenchmark(): UseBenchmarkReturn {
             conflict: t("benchmark.preflight.conflict"),
             runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
         });
-        try {
-            const stateResp = await fetch(buildApiUrl("/api/v1/system/llm-servers/active"));
-            if (stateResp.ok) {
-                const state = await stateResp.json() as { active_server?: string; active_model?: string };
-                addLog(
-                    t("benchmark.preflight.llmState", {
-                        server: state.active_server ?? unknownLabel,
-                        model: state.active_model ?? unknownLabel,
-                    }),
-                    "info",
-                );
-            }
-        } catch {
-            addLog(t("benchmark.preflight.llmStateUnavailable"), "warning");
-        }
+        await emitActiveLlmStateLog(buildApiUrl, addLog, t);
         addLog(
             t("benchmark.preflight.startingModels", { models: config.models.join(", ") }),
             "info",
@@ -152,20 +141,7 @@ export function useBenchmark(): UseBenchmarkReturn {
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const detail = (errorData as { detail?: string }).detail;
-                const fallbackMessage = t("benchmark.preflight.genericError", {
-                    status: response.status,
-                    statusText: response.statusText || t("benchmark.preflight.unknownStatusText"),
-                });
-                const classifiedMessage = classifyStartError(detail, {
-                    conflict: t("benchmark.preflight.conflict"),
-                    runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
-                });
-                const message =
-                    response.status === 409
-                        ? t("benchmark.preflight.conflict")
-                        : detail
-                            ? classifiedMessage
-                            : fallbackMessage;
+                const message = resolveStartFailureMessage(response, detail, t);
                 throw new Error(message);
             }
 

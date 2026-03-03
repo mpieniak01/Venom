@@ -420,7 +420,7 @@ class CodingBenchmarkService:
             )
             with self._lock:
                 self._active_procs[run_id] = proc
-            stdout, stderr = proc.communicate()
+            _, stderr = proc.communicate()
             # Odczytaj finalny stan jobów
             state_file = self._state_file(run_id)
             if state_file.exists():

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # ruff: noqa: E402
-"""Orkiestrator benchmarku dev: proste + złożone + feedback loop dla modeli Ollama."""
+"""Orkiestrator benchmarku dev: proste + złożone + feedback loop dla modeli Ollama.
+
+Konwencja kodów wyjścia:
+- `0`: wszystkie kroki zakończone sukcesem,
+- `2`: co najmniej jeden krok benchmarku zakończył się błędem.
+"""
 
 from __future__ import annotations
 
@@ -51,6 +56,7 @@ def main() -> int:
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
+    python_bin = sys.executable or "python3"
 
     models = discover_models(endpoint=args.endpoint)
     if args.models.strip():
@@ -77,7 +83,7 @@ def main() -> int:
         )
         for task in task_sequence:
             cmd = [
-                "python",
+                python_bin,
                 "scripts/ollama_bench/run_python_task.py",
                 "--model",
                 model,
@@ -104,7 +110,7 @@ def main() -> int:
             )
 
         loop_cmd = [
-            "python",
+            python_bin,
             "scripts/ollama_bench/run_feedback_loop.py",
             "--model",
             model,
@@ -133,7 +139,7 @@ def main() -> int:
         )
 
     score_cmd = [
-        "python",
+        python_bin,
         "scripts/ollama_bench/scoreboard.py",
         "--input",
         args.out,

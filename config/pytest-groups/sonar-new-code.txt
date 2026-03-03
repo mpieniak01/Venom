@@ -1,6 +1,8 @@
 # AUTO-GENERATED from config/testing/test_catalog.json
 # Do not edit manually. Run: make test-groups-sync
 
+tests/ollama_bench/test_common_and_scoreboard.py
+tests/ollama_bench/test_scheduler.py
 tests/test_academy_api.py
 tests/test_academy_api_contracts.py
 tests/test_academy_api_dataset_edge_cases.py

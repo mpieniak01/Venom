@@ -398,7 +398,8 @@ def main() -> int:
             ensure_ascii=False,
         )
     )
-    return 0 if summary["failed"] == 0 else 2
+    scoreboard_failed = summary.get("scoreboard", {}).get("rc", 0) != 0
+    return 0 if summary["failed"] == 0 and not scoreboard_failed else 2
 
 
 if __name__ == "__main__":

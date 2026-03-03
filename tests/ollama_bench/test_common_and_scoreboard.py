@@ -1,3 +1,5 @@
+import pytest
+
 from scripts.ollama_bench.common import (
     ensure_files_map,
     extract_generate_timing,
@@ -23,12 +25,8 @@ def test_extract_json_object_handles_markdown_fence():
 
 def test_ensure_files_map_rejects_path_traversal():
     payload = {"files": {"../evil.py": "print('x')"}}
-    try:
+    with pytest.raises(ValueError, match="Unsafe file path"):
         ensure_files_map(payload)
-    except ValueError as exc:
-        assert "Unsafe file path" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError for unsafe path")
 
 
 def test_ensure_files_map_normalizes_escaped_newlines():
@@ -95,14 +93,8 @@ def test_parse_model_files_response_does_not_use_json_fence_as_python_code():
     }
     ```
     """
-    try:
+    with pytest.raises(ValueError, match="No fenced code block found"):
         parse_model_files_response(raw, ("solution.py",))
-    except ValueError as exc:
-        assert "No fenced code block found" in str(exc)
-    else:
-        raise AssertionError(
-            "Expected ValueError for JSON-only response without Python code"
-        )
 
 
 def test_normalize_model_code_removes_control_chars():

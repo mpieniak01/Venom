@@ -261,7 +261,7 @@ def parse_model_files_response(
 
     try:
         payload = extract_json_object(raw)
-    except Exception as json_exc:  # noqa: BLE001
+    except (ValueError, json.JSONDecodeError) as json_exc:
         payload = None
         payload_error = json_exc
     else:
@@ -274,7 +274,7 @@ def parse_model_files_response(
                 for _path, content in files.items():
                     if content.strip():
                         return {required: content}
-        except Exception as files_exc:  # noqa: BLE001
+        except ValueError as files_exc:
             payload_error = files_exc
         else:
             payload_error = ValueError(

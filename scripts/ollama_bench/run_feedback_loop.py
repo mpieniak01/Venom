@@ -13,10 +13,12 @@ if str(REPO_ROOT) not in sys.path:
 
 import argparse
 import json
+import subprocess
 from typing import Any
 
 from scripts.ollama_bench.common import (
     DEFAULT_OLLAMA_ENDPOINT,
+    OllamaError,
     build_workspace,
     ensure_files_map,
     extract_json_object,
@@ -130,7 +132,12 @@ def main() -> int:
                     "checks": final_checks.to_dict(),
                 }
             )
-    except Exception as exc:  # noqa: BLE001
+    except (
+        OllamaError,
+        ValueError,
+        json.JSONDecodeError,
+        subprocess.TimeoutExpired,
+    ) as exc:
         run_error = str(exc)
 
     artifact = {

@@ -54,7 +54,7 @@ def parse_line(line: str) -> tuple[str, int]:
     raw = line.strip()
     if not raw:
         raise ValueError("empty line")
-    # BUG: split is too permissive for extra commas
+    # BUG: invalid points are not validated with dedicated error handling.
     team, points = raw.split(",", 1)
     team = team.strip().lower()
     if not team:
@@ -145,7 +145,7 @@ from validators import parse_line
 
 def test_parse_line_and_build_scoreboard():
     lines = ["red,3", "blue,4", "red,2", "blue,1", "green,7"]
-    assert build_scoreboard(lines) == [("blue", 5), ("green", 7), ("red", 5)] or build_scoreboard(lines) == [("green", 7), ("blue", 5), ("red", 5)]
+    assert build_scoreboard(lines) == [("green", 7), ("blue", 5), ("red", 5)]
 
 
 def test_sort_tie_alphabetical():

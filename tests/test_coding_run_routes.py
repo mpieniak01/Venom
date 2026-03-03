@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock
 
-import pytest
-from fastapi.testclient import TestClient
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from venom_core.api.routes import benchmark_coding as benchmark_coding_routes
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,7 +44,14 @@ def _mock_service(
             "stop_on_failure": False,
         },
         "jobs": [],
-        "summary": {"total_jobs": 0, "completed": 0, "failed": 0, "pending": 0, "skipped": 0, "success_rate": 0.0},
+        "summary": {
+            "total_jobs": 0,
+            "completed": 0,
+            "failed": 0,
+            "pending": 0,
+            "skipped": 0,
+            "success_rate": 0.0,
+        },
         "created_at": "2024-01-01T00:00:00+00:00",
         "started_at": None,
         "finished_at": None,

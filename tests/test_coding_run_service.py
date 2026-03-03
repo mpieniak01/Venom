@@ -3,20 +3,16 @@
 from __future__ import annotations
 
 import json
-import threading
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from venom_core.services.benchmark_coding import (
     CodingBenchmarkService,
-    CodingRunConfig,
     _is_valid_run_id,
     _parse_scheduler_state,
     _safe_float,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -78,6 +74,7 @@ def scheduler_state_file(tmp_path):
 def test_is_valid_run_id_valid():
     """Test walidacji poprawnego UUID run_id."""
     import uuid
+
     valid_id = str(uuid.uuid4())
     assert _is_valid_run_id(valid_id) is True
 
@@ -182,6 +179,7 @@ def test_get_run_status_returns_dict(service):
 def test_get_run_status_not_found(service):
     """Test pobierania statusu nieistniejącego run."""
     import uuid
+
     result = service.get_run_status(str(uuid.uuid4()))
     assert result is None
 
@@ -224,6 +222,7 @@ def test_delete_run(service):
 def test_delete_run_not_found(service):
     """Test usuwania nieistniejącego run."""
     import uuid
+
     assert service.delete_run(str(uuid.uuid4())) is False
 
 

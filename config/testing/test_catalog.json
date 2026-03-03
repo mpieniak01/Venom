@@ -850,7 +850,7 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
-      "path": "tests/test_benchmark_coding_service.py",
+      "path": "tests/test_coding_run_service.py",
       "domain": "core",
       "test_type": "service_contract",
       "intent": "contract",
@@ -864,7 +864,7 @@
       "rationale": "Coding benchmark service unit tests - 190B wave 1."
     },
     {
-      "path": "tests/test_benchmark_coding_routes.py",
+      "path": "tests/test_coding_run_routes.py",
       "domain": "api",
       "test_type": "route_contract",
       "intent": "contract",

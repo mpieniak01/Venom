@@ -43,12 +43,22 @@ make ci-lite-preflight
 2. Register in `config/testing/test_catalog.json` with:
    - `primary_lane: "new-code"`
    - `allowed_lanes: ["new-code", "ci-lite", "release"]`
-3. Run `make test-groups-sync`.
-4. Verify test appears in `config/pytest-groups/sonar-new-code.txt`.
-5. Run `make check-new-code-coverage-diagnostics`.
+3. Use neutral test filename/path (required for new-code coverage selection), e.g.:
+   - `tests/test_coding_run_service.py`
+4. Do not use blocked slow-pattern tokens in test path/name:
+   - `benchmark`
+   - `integration`
+5. If a new test was already added with a blocked token, rename it in the same PR.
+6. Run the full validation checklist (in order):
+   - `make test-groups-sync`
+   - `make test-groups-check`
+   - `rg "tests/test_<new_name>\\.py" config/pytest-groups/sonar-new-code.txt`
+   - `make check-new-code-coverage-diagnostics`
+   - `make pr-fast`
 
-Pitfall:
-- Avoid `benchmark` and `integration` in new test path/name when changed-code coverage selection is required (`NEW_CODE_EXCLUDE_SLOW_FASTLANE=1`).
+Interpretation rule:
+1. If the test is missing in `config/pytest-groups/sonar-new-code.txt`, do not continue to `make pr-fast`.
+2. Fix naming/catalog/lane first, then rerun the checklist.
 
 ## Handoff Gate (for GitHub Coding Agent)
 

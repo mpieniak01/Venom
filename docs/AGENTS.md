@@ -241,6 +241,29 @@ Known pitfall (critical):
 3. Current slow path patterns include `integration` and `benchmark`.
 4. For tests that must participate in changed-code coverage, avoid slow-pattern tokens in the test path/name.
 
+Required naming convention for new-code tests:
+
+1. Use neutral names, e.g. `tests/test_coding_run_service.py`.
+2. Avoid slow-pattern tokens in filename/path:
+   - `benchmark`
+   - `integration`
+3. If a new test was already created with a blocked token, rename it in the same PR.
+
+Minimal verification checklist (run in order):
+
+```bash
+make test-groups-sync
+make test-groups-check
+rg "tests/test_<new_name>\\.py" config/pytest-groups/sonar-new-code.txt
+make check-new-code-coverage-diagnostics
+make pr-fast
+```
+
+Interpretation rule:
+
+1. If the test is missing in `sonar-new-code.txt`, do not continue to `make pr-fast`.
+2. Fix catalog/lane/naming first, then rerun the checklist.
+
 ## User-Facing Messages i18n Rule (Mandatory)
 
 - Any user-facing message (UI label, button, toast, modal, validation error, API error shown in UI, empty-state text) must be implemented via translation keys, not hardcoded strings.

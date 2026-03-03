@@ -1,37 +1,43 @@
-# Coding Agent Starter Prompt (Hard Gate)
+# Coding Agent Starter Prompt (Hard Gate, 1h Mode)
 
 Use this prompt when assigning coding tasks to GitHub Coding Agent:
 
 ```text
-Implement the change end-to-end.
-Before completion, run:
+Implement the change end-to-end in one focused session.
+
+Mandatory 1h checkpoints:
+1) 0-5 min: preflight only (target files, env/tools, no deep re-exploration).
+   - If frontend scope exists: run `npm --prefix web-next ci` before frontend tests.
+2) 5-25 min: implement minimal end-to-end slice.
+3) <=30 min: create first commit (WIP allowed).
+4) 30-50 min: finish scope + run targeted tests.
+5) 50-60 min: run make pr-fast and finalize.
+
+Hard rules:
+- Do not restart repository exploration after implementation started.
+- Max one sub-agent invocation per phase (explore/implement/verify).
+- If no code change appears within 15 minutes: stop and report blocker.
+- If the same gate fails twice without code/environment changes: stop and report blocker.
+- Do not run extra heavy checks before make pr-fast is green.
+- When adding tests: register them in `config/testing/test_catalog.json`, run `make test-groups-sync`, and verify they are present in `config/pytest-groups/sonar-new-code.txt`.
+- Avoid slow-pattern tokens in new test filenames/paths for changed-code coverage selection (notably `benchmark`, `integration`).
+
+Required gate before completion:
 1) make pr-fast
 
 Exception:
 - If all changed files are `*.md`, you may skip `make pr-fast`.
 
-If gate fails, fix and rerun until green.
-If a test hangs/timeouts, treat it as a bug to fix (not a rerun-until-green loop).
+If gate fails, fix and rerun until green (or report confirmed environment blocker).
+Never infer green status from tail/grep snippets alone; verify command exit code.
+If output is piped, use `set -o pipefail` and validate `PIPESTATUS[0]`.
 
-Execution policy:
-- Run heavy checks (CodeQL/code_review) only once at the end.
-- During fix loops, run only targeted tests + `make pr-fast` (you may use `make agent-pr-fast` as a helper wrapper if available).
-- Invoke a sub-agent task only once per phase; re-invoke only with explicit new reason.
-- Do not restart from repository exploration after implementation already started.
-- Do not run `make pr-fast` repeatedly without any code or environment change.
-- Never infer green status from `grep`/`tail` snippets alone; verify command exit code.
-- If output is truncated, inspect the full log file before deciding pass/fail.
-- If CodeQL times out once in this session, do not rerun it; record environment blocker and continue with required hard gates.
-- Keep a time reserve: when less than 10 minutes remain, skip non-blocking checks and finalize.
-
-In the final summary include:
+Final summary must include:
 - commands run,
-- pass/fail result per command,
+- pass/fail per command,
 - changed-lines coverage (or `N/A` for markdown-only change sets),
 - known risks/skips with justification.
-Do not mark task done with red gates.
 
 Stop condition:
-- After first confirmed green `make pr-fast` and final report generation, stop.
-- Do not trigger additional `task` delegation or duplicate final reports.
+- after first confirmed green make pr-fast + final report.
 ```

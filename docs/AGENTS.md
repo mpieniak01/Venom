@@ -14,6 +14,32 @@ If you are looking for the list of Venom system agents, use:
 - Make error paths explicit and covered by tests where practical.
 - Before running Python tooling, activate the repository virtualenv with `source .venv/bin/activate`.
 
+## One-Hour Delivery Contract (Mandatory)
+
+This section is the default execution mode for GitHub Coding Agent and takes priority over verbose exploration.
+
+Timeboxes:
+
+1. `0-5 min`: preflight only (`git status`, target files, required env/tool check).
+2. `5-25 min`: implement minimal end-to-end slice.
+3. `<=30 min`: create first commit (WIP is allowed if tests are not green yet).
+4. `30-50 min`: finish scope + targeted tests.
+5. `50-60 min`: run `make pr-fast`, fix blockers, publish final report.
+
+Hard stop rules:
+
+1. No repeated repository exploration after implementation started.
+2. Max one sub-agent invocation per phase (explore/implement/verify).
+3. If no code change is produced within 15 minutes, stop and report blocker.
+4. If the same gate fails twice without code/environment change, stop and report blocker.
+5. Do not run non-required heavy checks before `make pr-fast` is green.
+
+Commit discipline:
+
+1. First commit must appear within 30 minutes from session start.
+2. Prefer 1-3 focused commits over one final giant commit.
+3. Do not postpone all commits until after long debugging loops.
+
 ## Quick Bootstrap (Package Install)
 
 Use this exact sequence when environment state is unknown:
@@ -33,6 +59,14 @@ python -m pip install -r requirements-extras-onnx.txt
 ```
 
 Do not rely on ad-hoc one-off `pip install ...` without mapping it to the proper repository requirements file.
+
+Frontend bootstrap (required when frontend scope is touched):
+
+```bash
+npm --prefix web-next ci
+```
+
+Do not diagnose frontend test failures before `npm ci` is completed for `web-next`.
 
 ## Environment Variables (Reliable Loading)
 
@@ -75,6 +109,11 @@ make pr-fast 2>&1 | tail -n 200
 test ${PIPESTATUS[0]} -eq 0
 ```
 
+Important:
+
+1. `... | tail ...` returns tail's status by default, not the original command status.
+2. Always use `set -o pipefail` and check `PIPESTATUS[0]` when command output is piped.
+
 ## Hard Gate Policy (Mandatory)
 
 Coding agents must not finish a task with red quality gates.
@@ -98,6 +137,31 @@ Environment blocker path:
 
 1. set `HARD_GATE_ENV_BLOCKER=1` for the hard-gate hook execution,
 2. include blocker details and impact in PR risks/limitations section.
+
+## Two-Stage Quality Flow (GitHub Agent + Supervisor)
+
+To keep one-hour GitHub Coding Agent sessions productive, use two stages:
+
+Stage A: Session Gate (GitHub Coding Agent, mandatory before handoff)
+
+1. implement the requested scope (no endless re-exploration),
+2. create at least one commit within 30 minutes,
+3. run targeted tests for touched modules,
+4. run:
+   - `make test-groups-check`
+   - `make check-new-code-coverage-diagnostics`
+5. publish a handoff report with blockers and exact failing commands.
+
+Stage B: Merge Gate (Supervisor agent / final owner, mandatory before merge)
+
+1. run full `make pr-fast`,
+2. fix remaining gate failures,
+3. merge only with green final gate status.
+
+Rule:
+
+1. Stage A does not replace Stage B.
+2. Stage B remains the final repository-quality decision point.
 
 ## Documentation-Only Fast Path (Exception)
 
@@ -156,6 +220,26 @@ Anti-patterns:
 
 1. `git stash && make ... | grep ... | head ...` as evidence,
 2. "pre-existing issue" claim without clean-main reproduction.
+
+## New-Test Registration Protocol (Mandatory)
+
+When adding new tests for changed code, complete all items below in the same PR:
+
+1. add test file under `tests/`,
+2. register the test in `config/testing/test_catalog.json`,
+3. for changed-code coverage use lanes:
+   - `primary_lane: "new-code"`
+   - `allowed_lanes: ["new-code", "ci-lite", "release"]`
+4. run `make test-groups-sync`,
+5. verify presence in `config/pytest-groups/sonar-new-code.txt`,
+6. run `make check-new-code-coverage-diagnostics`.
+
+Known pitfall (critical):
+
+1. `make pr-fast` runs new-code selection with `NEW_CODE_EXCLUDE_SLOW_FASTLANE=1`.
+2. Files matching slow patterns from `scripts/resolve_sonar_new_code_tests.py` may be excluded from coverage selection.
+3. Current slow path patterns include `integration` and `benchmark`.
+4. For tests that must participate in changed-code coverage, avoid slow-pattern tokens in the test path/name.
 
 ## User-Facing Messages i18n Rule (Mandatory)
 

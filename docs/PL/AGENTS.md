@@ -282,7 +282,7 @@ pytest -q
 - Polityka MCP: `.github/CODING_AGENT_MCP_POLICY.md`.
 - Profile custom agents: `.github/agents/`.
 - Bootstrap środowiska Copilot coding-agent: `.github/workflows/copilot-setup-steps.yml`.
-- Anti-loop template zadania (190B): `.github/coding-agent-task-template-190b.md`.
+- Anti-loop template zadania: `.github/coding-agent-task-template.md`.
 
 ## Referencje Architektury
 

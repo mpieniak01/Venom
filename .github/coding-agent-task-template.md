@@ -1,6 +1,6 @@
-# 190B Coding Agent Task Template (Anti-Loop)
+# Coding Agent Task Template (Anti-Loop)
 
-Use this template when assigning work for benchmark coding UI/API integration.
+Use this template for any coding-agent implementation task.
 
 ## Task Scope (fill before assigning)
 

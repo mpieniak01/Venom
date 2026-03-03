@@ -13,7 +13,7 @@ export function AuthorSignature() {
             label: "GitHub",
             href: "https://github.com/mpieniak01",
             icon: Github,
-            color: "text-zinc-400 hover:text-white",
+            color: "text-[color:var(--ui-muted)] hover:text-[color:var(--text-primary)]",
         },
         {
             label: "LinkedIn",
@@ -30,11 +30,11 @@ export function AuthorSignature() {
     ];
 
     return (
-        <div className="mt-6 border-t border-white/5 pt-4">
+        <div className="mt-6 border-t border-[color:var(--ui-border)] pt-4">
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <div className="flex items-center gap-2 text-xs text-[color:var(--ui-muted)]">
                     <CodeXml className="h-3 w-3" />
-                    <span>{t("sidebar.author.createdBy")} <span className="text-zinc-400 font-medium">mpieniak</span></span>
+                    <span>{t("sidebar.author.createdBy")} <span className="text-[color:var(--text-secondary)] font-medium">mpieniak</span></span>
                 </div>
                 <div className="flex items-center gap-1">
                     {links.map((link) => (

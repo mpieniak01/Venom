@@ -117,12 +117,23 @@ def test_config_update_request_rejects_theme_with_wrong_case():
 def test_update_config_accepts_supported_theme(config_manager: ConfigManager):
     config_manager.env_file.write_text("AI_MODE=LOCAL\n", encoding="utf-8")
 
-    result = config_manager.update_config({"UI_THEME_DEFAULT": "venom-light-dev"})
+    result = config_manager.update_config({"UI_THEME_DEFAULT": "venom-light"})
 
     assert result["success"] is True
     assert "UI_THEME_DEFAULT" in result["changed_keys"]
     env_contents = config_manager.env_file.read_text(encoding="utf-8")
-    assert "UI_THEME_DEFAULT=venom-light-dev" in env_contents
+    assert "UI_THEME_DEFAULT=venom-light" in env_contents
+
+
+def test_update_config_normalizes_legacy_theme_alias(config_manager: ConfigManager):
+    config_manager.env_file.write_text("AI_MODE=LOCAL\n", encoding="utf-8")
+
+    result = config_manager.update_config({"UI_THEME_DEFAULT": "venom-light-dev"})
+
+    assert result["success"] is True
+    env_contents = config_manager.env_file.read_text(encoding="utf-8")
+    assert "UI_THEME_DEFAULT=venom-light" in env_contents
+    assert "venom-light-dev" not in env_contents
 
 
 def test_cleanup_old_backups_removes_excess(config_manager: ConfigManager):

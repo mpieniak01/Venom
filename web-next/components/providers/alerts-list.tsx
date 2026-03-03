@@ -58,7 +58,7 @@ export function AlertsList({ alerts, providerFilter, severityFilter }: Readonly<
       case "info":
         return "border-blue-500/30 bg-blue-500/10 text-blue-400";
       default:
-        return "border-zinc-500/30 bg-zinc-500/10 text-zinc-400";
+        return "border-zinc-500/30 bg-zinc-500/10 text-theme-muted";
     }
   };
 
@@ -104,7 +104,7 @@ export function AlertsList({ alerts, providerFilter, severityFilter }: Readonly<
   if (filteredAlerts.length === 0) {
     return (
       <div className="card-shell card-base p-5 text-center">
-        <p className="text-zinc-400">{t("providers.alerts.noAlerts")}</p>
+        <p className="text-theme-muted">{t("providers.alerts.noAlerts")}</p>
       </div>
     );
   }
@@ -123,8 +123,8 @@ export function AlertsList({ alerts, providerFilter, severityFilter }: Readonly<
                 <span className="text-xs font-semibold uppercase tracking-wider">
                   {t(`providers.alerts.severity.${alert.severity}`)}
                 </span>
-                <span className="text-xs text-zinc-500">•</span>
-                <span className="text-xs text-zinc-400">{alert.provider}</span>
+                <span className="text-xs text-theme-muted">•</span>
+                <span className="text-xs text-theme-muted">{alert.provider}</span>
               </div>
               <p className="text-sm font-medium mb-1">
                 {t(`providers.alerts.types.${alert.alert_type}`)}
@@ -133,12 +133,12 @@ export function AlertsList({ alerts, providerFilter, severityFilter }: Readonly<
                 {formatAlertMessage(alert)}
               </p>
               {alert.technical_details && (
-                <p className="text-xs text-zinc-500 mt-2 font-mono">
+                <p className="text-xs text-theme-muted mt-2 font-mono">
                   {alert.technical_details}
                 </p>
               )}
             </div>
-            <div className="text-right text-xs text-zinc-500 whitespace-nowrap">
+            <div className="text-right text-xs text-theme-muted whitespace-nowrap">
               {formatTimestamp(alert.timestamp)}
             </div>
           </div>
@@ -165,13 +165,13 @@ export function AlertsSummary({ summary }: Readonly<AlertsSummaryProps>) {
 
   return (
     <div className="card-shell card-base p-5">
-      <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-4">
+      <p className="text-xs uppercase tracking-[0.35em] text-theme-muted mb-4">
         {t("providers.alerts.title")}
       </p>
 
       <div className="grid grid-cols-4 gap-3 mb-4">
         <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-          <p className="text-xs text-zinc-400">{t("providers.alerts.summary.total")}</p>
+          <p className="text-xs text-theme-muted">{t("providers.alerts.summary.total")}</p>
           <p className="text-2xl font-semibold">{summary.total_active}</p>
         </div>
         <div className="rounded-2xl box-subtle px-3 py-2 text-center">
@@ -190,10 +190,10 @@ export function AlertsSummary({ summary }: Readonly<AlertsSummaryProps>) {
 
       {Object.keys(summary.by_provider).length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{t("providers.alerts.summary.byProvider")}</p>
+          <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">{t("providers.alerts.summary.byProvider")}</p>
           {Object.entries(summary.by_provider).map(([provider, count]) => (
             <div key={provider} className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-              <span className="text-xs text-zinc-400">{provider}</span>
+              <span className="text-xs text-theme-muted">{provider}</span>
               <span className="text-sm font-semibold">{count}</span>
             </div>
           ))}

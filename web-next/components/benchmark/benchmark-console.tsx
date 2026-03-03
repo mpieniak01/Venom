@@ -58,15 +58,15 @@ export function BenchmarkConsole({ logs, isRunning = false }: BenchmarkConsolePr
 
       <div
         ref={consoleRef}
-        className="h-64 overflow-y-auto rounded-xl border border-white/10 bg-black/50 p-4 font-mono text-xs"
+        className="h-64 overflow-y-auto rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--terminal)] text-[color:var(--text-primary)] p-4 font-mono text-xs"
       >
         {logs.length === 0 ? (
-          <p className="text-zinc-500">Brak logów. Uruchom benchmark, aby zobaczyć postęp.</p>
+          <p className="text-[color:var(--ui-muted)]">Brak logów. Uruchom benchmark, aby zobaczyć postęp.</p>
         ) : (
           <div className="space-y-1">
             {logs.map((log) => (
               <div key={`${log.timestamp}-${log.level}-${log.message}`} className="flex gap-2">
-                <span className="text-zinc-600">
+                <span className="text-hint">
                   {new Date(log.timestamp).toLocaleTimeString("pl-PL")}
                 </span>
                 <span className={getLevelColor(log.level)}>

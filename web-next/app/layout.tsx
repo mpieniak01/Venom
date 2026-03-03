@@ -7,7 +7,12 @@ import { SystemStatusBarWrapper, SystemStatusBarSkeleton } from "@/components/la
 import "./globals.css";
 import { Providers } from "./providers";
 import { Suspense } from "react";
-import { DEFAULT_THEME, THEME_IDS, THEME_STORAGE_KEY } from "@/lib/theme-registry";
+import {
+  DEFAULT_THEME,
+  LEGACY_THEME_ALIASES,
+  THEME_IDS,
+  THEME_STORAGE_KEY,
+} from "@/lib/theme-registry";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -33,14 +38,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const serializedThemeIds = JSON.stringify(THEME_IDS);
+  const serializedThemeAliases = JSON.stringify(LEGACY_THEME_ALIASES);
   const themeBootstrapScript = `
     (function () {
       var validThemes = ${serializedThemeIds};
+      var legacyAliases = ${serializedThemeAliases};
       try {
         var stored = globalThis.localStorage.getItem("${THEME_STORAGE_KEY}");
-        var theme = typeof stored === "string" && validThemes.includes(stored)
+        var resolved = typeof stored === "string" && validThemes.includes(stored)
           ? stored
-          : "${DEFAULT_THEME}";
+          : (typeof stored === "string" ? legacyAliases[stored] : null);
+        var theme = resolved || "${DEFAULT_THEME}";
+        if (resolved && stored !== resolved) {
+          globalThis.localStorage.setItem("${THEME_STORAGE_KEY}", resolved);
+        }
         globalThis.document.documentElement.dataset.theme = theme;
       } catch (e) {
         globalThis.document.documentElement.dataset.theme = "${DEFAULT_THEME}";

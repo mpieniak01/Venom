@@ -31,7 +31,7 @@ describe("ThemeSwitcher", () => {
     });
 
     assert.ok(screen.getByTestId("theme-option-venom-dark"));
-    assert.ok(screen.getByTestId("theme-option-venom-light-dev"));
+    assert.ok(screen.getByTestId("theme-option-venom-light"));
   });
 
   it("switches theme and persists selection", async () => {
@@ -48,11 +48,11 @@ describe("ThemeSwitcher", () => {
     });
 
     await act(async () => {
-      screen.getByTestId("theme-option-venom-light-dev").click();
+      screen.getByTestId("theme-option-venom-light").click();
     });
 
-    assert.equal(document.documentElement.dataset.theme, "venom-light-dev");
-    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), "venom-light-dev");
+    assert.equal(document.documentElement.dataset.theme, "venom-light");
+    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), "venom-light");
   });
 
   it("keeps stable rendered labels for dark and light snapshots", async () => {
@@ -68,7 +68,7 @@ describe("ThemeSwitcher", () => {
     assert.equal(darkLabel?.includes("Dark"), true);
     dark.unmount();
 
-    window.localStorage.setItem(THEME_STORAGE_KEY, "venom-light-dev");
+    window.localStorage.setItem(THEME_STORAGE_KEY, "venom-light");
     render(
       <ThemeProvider>
         <LanguageProvider>
@@ -79,6 +79,6 @@ describe("ThemeSwitcher", () => {
     const lightLabel = screen
       .getByTestId("topbar-theme-switcher")
       .textContent?.replace(/\s+/g, " ");
-    assert.equal(lightLabel?.includes("Light Dev"), true);
+    assert.equal(lightLabel?.includes("Light"), true);
   });
 });

@@ -71,15 +71,15 @@ export function LessonPruningPanel() {
         <div className="space-y-6 animate-in fade-in">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Statistics Card */}
-                <div className="bg-black/20 border border-white/10 rounded-2xl p-4">
+                <div className="bg-theme-overlay-strong border border-theme rounded-2xl p-4">
                     <div className="mb-4">
-                        <h3 className="text-sm font-medium text-zinc-400">{t("brain.hygiene.lessonStats")}</h3>
+                        <h3 className="text-sm font-medium text-theme-muted">{t("brain.hygiene.lessonStats")}</h3>
                     </div>
                     <div>
-                        <div className="text-2xl font-bold text-white mb-2">
+                        <div className="text-2xl font-bold text-theme-primary mb-2">
                             {stats?.stats?.total_lessons ?? "—"}
                         </div>
-                        <p className="text-xs text-zinc-500 mb-4">{t("brain.hygiene.totalLessons")}</p>
+                        <p className="text-xs text-theme-muted mb-4">{t("brain.hygiene.totalLessons")}</p>
                         <div className="flex flex-wrap gap-2">
                             {stats?.stats?.tag_distribution ? (
                                 Object.entries(stats.stats.tag_distribution)
@@ -95,27 +95,27 @@ export function LessonPruningPanel() {
                                         </Badge>
                                     ))
                             ) : (
-                                <span className="text-xs text-zinc-600">{t("brain.hygiene.noTags")}</span>
+                                <span className="text-xs text-theme-muted">{t("brain.hygiene.noTags")}</span>
                             )}
                         </div>
                     </div>
                 </div>
 
                 {/* Maintenance Card */}
-                <div className="bg-black/20 border border-white/10 rounded-2xl p-4 col-span-2">
+                <div className="bg-theme-overlay-strong border border-theme rounded-2xl p-4 col-span-2">
                     <div className="mb-4">
-                        <h3 className="text-sm font-medium text-zinc-400">{t("brain.hygiene.autoHygiene")}</h3>
-                        <p className="text-xs text-zinc-500">{t("brain.hygiene.autoHygieneDesc")}</p>
+                        <h3 className="text-sm font-medium text-theme-muted">{t("brain.hygiene.autoHygiene")}</h3>
+                        <p className="text-xs text-theme-muted">{t("brain.hygiene.autoHygieneDesc")}</p>
                     </div>
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between p-3 border border-white/5 rounded-lg bg-white/5">
+                        <div className="flex items-center justify-between p-3 border border-theme rounded-lg bg-theme-overlay">
                             <div className="flex items-center gap-3">
                                 <div className="h-8 w-8 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400">
                                     <RefreshCw className="h-4 w-4" />
                                 </div>
                                 <div>
-                                    <div className="text-sm font-medium text-white">{t("brain.hygiene.deduplication")}</div>
-                                    <div className="text-xs text-zinc-500">{t("brain.hygiene.deduplicationDesc")}</div>
+                                    <div className="text-sm font-medium text-theme-primary">{t("brain.hygiene.deduplication")}</div>
+                                    <div className="text-xs text-theme-muted">{t("brain.hygiene.deduplicationDesc")}</div>
                                 </div>
                             </div>
                             <Button
@@ -133,8 +133,8 @@ export function LessonPruningPanel() {
                                     <Trash2 className="h-4 w-4" />
                                 </div>
                                 <div>
-                                    <div className="text-sm font-medium text-white">{t("brain.hygiene.nuke")}</div>
-                                    <div className="text-xs text-zinc-500">{t("brain.hygiene.nukeDesc")}</div>
+                                    <div className="text-sm font-medium text-theme-primary">{t("brain.hygiene.nuke")}</div>
+                                    <div className="text-xs text-theme-muted">{t("brain.hygiene.nukeDesc")}</div>
                                 </div>
                             </div>
                             <Button
@@ -152,7 +152,7 @@ export function LessonPruningPanel() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/* Prune by TTL */}
                 <div className="space-y-3">
-                    <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-theme-muted flex items-center gap-2">
                         <Calendar className="h-4 w-4" /> {t("brain.hygiene.byAge")}
                     </h3>
                     <div className="flex gap-2">
@@ -160,7 +160,7 @@ export function LessonPruningPanel() {
                             placeholder={t("brain.hygiene.daysPlaceholder")}
                             value={ttlDays}
                             onChange={e => setTtlDays(e.target.value)}
-                            className="flex-1 bg-black/20 border border-white/10 rounded-md px-3 py-1 text-sm text-white focus:outline-none focus:border-white/30"
+                            className="flex-1 bg-theme-overlay-strong border border-theme rounded-md px-3 py-1 text-sm text-theme-primary focus:outline-none focus:border-theme"
                         />
                         <Button
                             variant="secondary"
@@ -170,14 +170,14 @@ export function LessonPruningPanel() {
                             {isActionLoading(`${t("brain.hygiene.remove")} > ${ttlDays}d`) ? <Loader2 className="h-4 w-4 animate-spin" /> : t("brain.hygiene.remove")}
                         </Button>
                     </div>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-theme-muted">
                         {t("brain.hygiene.byAgeDesc")}
                     </p>
                 </div>
 
                 {/* Prune by Tag */}
                 <div className="space-y-3">
-                    <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-theme-muted flex items-center gap-2">
                         <Tag className="h-4 w-4" /> {t("brain.hygiene.byTag")}
                     </h3>
                     <div className="flex gap-2">
@@ -185,7 +185,7 @@ export function LessonPruningPanel() {
                             placeholder={t("brain.hygiene.tagName")}
                             value={tagToPrune}
                             onChange={e => setTagToPrune(e.target.value)}
-                            className="flex-1 bg-black/20 border border-white/10 rounded-md px-3 py-1 text-sm text-white focus:outline-none focus:border-white/30"
+                            className="flex-1 bg-theme-overlay-strong border border-theme rounded-md px-3 py-1 text-sm text-theme-primary focus:outline-none focus:border-theme"
                         />
                         <Button
                             variant="secondary"
@@ -195,14 +195,14 @@ export function LessonPruningPanel() {
                             {isActionLoading(`${t("brain.hygiene.remove")} #${tagToPrune}`) ? <Loader2 className="h-4 w-4 animate-spin" /> : t("brain.hygiene.remove")}
                         </Button>
                     </div>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-theme-muted">
                         {t("brain.hygiene.byTagDesc")}
                     </p>
                 </div>
 
                 {/* Prune Latest */}
                 <div className="space-y-3">
-                    <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-theme-muted flex items-center gap-2">
                         <Trash2 className="h-4 w-4" /> {t("brain.hygiene.recentEntries")}
                     </h3>
                     <div className="flex gap-2">
@@ -210,7 +210,7 @@ export function LessonPruningPanel() {
                             placeholder={t("brain.hygiene.countPlaceholder")}
                             value={countToPrune}
                             onChange={e => setCountToPrune(e.target.value)}
-                            className="flex-1 bg-black/20 border border-white/10 rounded-md px-3 py-1 text-sm text-white focus:outline-none focus:border-white/30"
+                            className="flex-1 bg-theme-overlay-strong border border-theme rounded-md px-3 py-1 text-sm text-theme-primary focus:outline-none focus:border-theme"
                         />
                         <Button
                             variant="secondary"
@@ -220,7 +220,7 @@ export function LessonPruningPanel() {
                             {isActionLoading(`${t("brain.hygiene.remove")} ${countToPrune}`) ? <Loader2 className="h-4 w-4 animate-spin" /> : t("brain.hygiene.remove")}
                         </Button>
                     </div>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-theme-muted">
                         {t("brain.hygiene.recentEntriesDesc")}
                     </p>
                 </div>

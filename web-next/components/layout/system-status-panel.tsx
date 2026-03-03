@@ -78,7 +78,7 @@ export function SystemStatusPanel() {
   };
 
   return (
-    <div className="surface-card p-4 text-sm text-zinc-100" data-testid="system-status-panel">
+    <div className="surface-card p-4 text-sm text-[color:var(--text-primary)]" data-testid="system-status-panel">
       <p className="eyebrow">{t("systemStatus.title")}</p>
       <div className="mt-3 space-y-3">
         {statuses.map((status) => (

@@ -13,10 +13,10 @@ import {
   DEFAULT_THEME,
   THEME_IDS,
   THEME_STORAGE_KEY,
-  isThemeId,
+  resolveThemeId,
   normalizeTheme,
   type ThemeId,
-  } from "./theme-registry";
+} from "./theme-registry";
 
 export type { ThemeId } from "./theme-registry";
 
@@ -27,7 +27,13 @@ function resolveStoredTheme(): ThemeId | null {
   if (globalThis.window === undefined) return null;
   try {
     const stored = globalThis.window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (isThemeId(stored)) return stored;
+    const resolved = resolveThemeId(stored);
+    if (resolved) {
+      if (stored !== resolved) {
+        globalThis.window.localStorage.setItem(THEME_STORAGE_KEY, resolved);
+      }
+      return resolved;
+    }
     if (stored) {
       globalThis.window.localStorage.removeItem(THEME_STORAGE_KEY);
     }
@@ -57,8 +63,12 @@ async function fetchBackendDefaultTheme(): Promise<ThemeId | null> {
     if (data.status !== "success") return null;
     const value = data.config?.[BACKEND_THEME_KEY];
     const candidate = typeof value === "string" ? value : null;
-    if (!isThemeId(candidate)) return null;
-    return candidate;
+    const resolved = resolveThemeId(candidate);
+    if (!resolved) return null;
+    if (candidate !== resolved) {
+      void syncBackendThemePreference(resolved);
+    }
+    return resolved;
   } catch {
     return null;
   }
@@ -129,7 +139,7 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
       if (event.key !== THEME_STORAGE_KEY) return;
       const next = normalizeTheme(event.newValue);
       setThemeState(next);
-      setHasLocalOverride(isThemeId(event.newValue));
+      setHasLocalOverride(resolveThemeId(event.newValue) !== null);
     };
     globalThis.window.addEventListener("storage", onStorage);
     return () => {

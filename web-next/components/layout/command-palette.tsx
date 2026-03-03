@@ -100,10 +100,10 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in data-[state=closed]:fade-out" />
-        <Dialog.Content className="card-shell fixed left-1/2 top-24 z-50 w-full max-w-3xl -translate-x-1/2 bg-zinc-950/95 p-6 shadow-2xl focus:outline-none">
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-theme-overlay-strong backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in data-[state=closed]:fade-out" />
+        <Dialog.Content className="card-shell fixed left-1/2 top-24 z-50 w-full max-w-3xl -translate-x-1/2 bg-theme-overlay-strong p-6 shadow-2xl focus:outline-none">
           <div className="mb-4 flex items-center gap-3">
-            <div className="rounded-2xl bg-white/5 p-2 text-violet-200">
+            <div className="rounded-2xl bg-theme-overlay p-2 text-violet-200">
               <Command className="h-5 w-5" />
             </div>
             <div>
@@ -113,13 +113,13 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
               </Dialog.Description>
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-2xl box-base px-4 py-2 text-sm text-white">
-            <Search className="h-4 w-4 text-zinc-500" />
+          <div className="flex items-center gap-2 rounded-2xl box-base px-4 py-2 text-sm text-theme-primary">
+            <Search className="h-4 w-4 text-theme-muted" />
             <input
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
+              className="w-full bg-transparent text-sm outline-none placeholder:text-theme-muted"
               placeholder={t("commandPalette.searchPlaceholder")}
             />
             <span className="pill-badge">⌘K</span>
@@ -127,14 +127,14 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
           <div className="mt-4 max-h-[50vh] space-y-4 overflow-y-auto">
             {Object.entries(grouped).map(([category, actions]) => (
               <div key={category}>
-                <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">{category}</p>
+                <p className="text-xs uppercase tracking-[0.3em] text-theme-muted">{category}</p>
                 <div className="mt-2 space-y-2">
                   {actions.map((action) => (
                     <Button
                       key={action.id}
                       variant="ghost"
                       size="sm"
-                      className="w-full justify-between rounded-2xl box-base px-4 py-3 text-left text-sm text-white transition hover:border-violet-500/40 hover:bg-violet-500/10"
+                      className="w-full justify-between rounded-2xl box-base px-4 py-3 text-left text-sm text-theme-primary transition hover:border-violet-500/40 hover:bg-violet-500/10"
                       onClick={() => handleRun(action)}
                       disabled={!!running}
                     >
@@ -149,11 +149,11 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
               </div>
             ))}
             {filtered.length === 0 && (
-              <p className="text-sm text-zinc-500">{t("commandPalette.empty")}</p>
+              <p className="text-sm text-theme-muted">{t("commandPalette.empty")}</p>
             )}
           </div>
           {message && (
-            <div className="mt-3 rounded-2xl box-base px-3 py-2 text-xs text-zinc-300">
+            <div className="mt-3 rounded-2xl box-base px-3 py-2 text-xs text-theme-secondary">
               {message}
             </div>
           )}

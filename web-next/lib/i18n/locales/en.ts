@@ -46,10 +46,10 @@ export const en = {
         name: "Venom Dark",
         description: "Default dark mode with high contrast.",
       },
-      venomLightDev: {
-        short: "Light Dev",
-        name: "Venom Light Dev",
-        description: "Light developer-focused style for long coding sessions.",
+      venomLight: {
+        short: "Light",
+        name: "Venom Light",
+        description: "High-contrast light style optimized for long technical sessions.",
       },
     },
   },

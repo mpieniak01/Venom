@@ -50,20 +50,20 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         data-testid="service-status-drawer"
-        className="flex h-full max-w-xl flex-col gap-4 border-l border-white/10 bg-zinc-950/95"
+        className="glass-panel flex h-full max-w-xl flex-col gap-4 border-l border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]"
       >
         <SheetHeader>
           <SheetTitle>{t("serviceStatus.title")}</SheetTitle>
           <SheetDescription>{t("serviceStatus.description")}</SheetDescription>
         </SheetHeader>
-        <div className="surface-card flex items-center justify-between gap-4 p-4 text-sm text-zinc-200">
+        <div className="surface-card flex items-center justify-between gap-4 p-4 text-sm text-[color:var(--text-primary)]">
           <div className="flex items-center gap-3">
             <ServerCog className="h-5 w-5 text-violet-300" />
             <div>
               <p className="eyebrow">
                 {t("serviceStatus.summary")}
               </p>
-              <p className="text-base font-semibold text-white">
+              <p className="text-base font-semibold text-[color:var(--text-heading)]">
                 {serviceEntries.length > 0
                   ? t("serviceStatus.servicesCount", { count: serviceEntries.length })
                   : t("serviceStatus.noData")}

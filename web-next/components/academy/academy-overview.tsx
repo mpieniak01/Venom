@@ -16,13 +16,13 @@ interface ComponentStatusProps {
 }
 
 const ComponentStatus = ({ name, active }: ComponentStatusProps) => (
-  <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-3">
+  <div className="flex items-center gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-3">
     {active ? (
       <CheckCircle2 className="h-4 w-4 text-emerald-400" />
     ) : (
       <XCircle className="h-4 w-4 text-red-400" />
     )}
-    <span className="text-sm text-zinc-300">{name}</span>
+    <span className="text-sm text-[color:var(--text-primary)]">{name}</span>
   </div>
 );
 
@@ -35,10 +35,10 @@ interface StatCardProps {
 
 const StatCard = ({ label, value, icon: Icon, color = "emerald" }: StatCardProps) => {
   const colorClasses = {
-    emerald: "border-emerald-500/20 bg-emerald-500/5 text-emerald-300",
-    blue: "border-blue-500/20 bg-blue-500/5 text-blue-300",
-    yellow: "border-yellow-500/20 bg-yellow-500/5 text-yellow-300",
-    red: "border-red-500/20 bg-red-500/5 text-red-300",
+    emerald: "border-[color:var(--stat-card-emerald-border)] bg-[color:var(--stat-card-emerald-bg)] text-[color:var(--stat-card-emerald-text)]",
+    blue: "border-[color:var(--stat-card-blue-border)] bg-[color:var(--stat-card-blue-bg)] text-[color:var(--stat-card-blue-text)]",
+    yellow: "border-[color:var(--stat-card-yellow-border)] bg-[color:var(--stat-card-yellow-bg)] text-[color:var(--stat-card-yellow-text)]",
+    red: "border-[color:var(--stat-card-red-border)] bg-[color:var(--stat-card-red-bg)] text-[color:var(--stat-card-red-text)]",
   };
 
   return (
@@ -61,8 +61,8 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
       {/* Status nagłówek */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">{t("academy.overview.title")}</h2>
-          <p className="text-sm text-zinc-400">{t("academy.overview.subtitle")}</p>
+          <h2 className="text-lg font-semibold text-[color:var(--text-heading)]">{t("academy.overview.title")}</h2>
+          <p className="text-sm text-hint">{t("academy.overview.subtitle")}</p>
         </div>
         <Button onClick={onRefresh} variant="outline" size="sm" className="gap-2">
           <RefreshCw className="h-4 w-4" />
@@ -71,22 +71,20 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
       </div>
 
       {/* GPU Status */}
-      <div className={`rounded-xl border p-4 ${
-        status.gpu.available
-          ? "border-emerald-500/20 bg-emerald-500/5"
-          : "border-yellow-500/20 bg-yellow-500/5"
-      }`}>
+      <div className={`rounded-xl border p-4 ${status.gpu.available
+        ? "border-emerald-500/20 bg-emerald-500/5"
+        : "border-yellow-500/20 bg-yellow-500/5"
+        }`}>
         <div className="flex items-center gap-3">
-          <Cpu className={`h-6 w-6 ${
-            status.gpu.available ? "text-emerald-400" : "text-yellow-400"
-          }`} />
+          <Cpu className={`h-6 w-6 ${status.gpu.available ? "text-emerald-400" : "text-yellow-400"
+            }`} />
           <div>
-            <p className="font-medium text-white">
+            <p className="font-medium text-[color:var(--text-heading)]">
               {status.gpu.available
                 ? t("academy.overview.gpuAvailable")
                 : t("academy.overview.gpuUnavailable")}
             </p>
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-hint">
               {status.gpu.enabled
                 ? t("academy.overview.gpuEnabledHint")
                 : t("academy.overview.gpuDisabledHint")}
@@ -125,7 +123,7 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
 
       {/* Komponenty */}
       <div>
-        <h3 className="mb-3 text-sm font-medium text-zinc-300">{t("academy.overview.componentsTitle")}</h3>
+        <h3 className="mb-3 text-sm font-medium text-[color:var(--text-secondary)]">{t("academy.overview.componentsTitle")}</h3>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
           <ComponentStatus name="Professor" active={status.components.professor} />
           <ComponentStatus name="DatasetCurator" active={status.components.dataset_curator} />
@@ -136,20 +134,20 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
       </div>
 
       {/* Konfiguracja */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-        <h3 className="mb-4 text-sm font-medium text-zinc-300">{t("academy.overview.configTitle")}</h3>
+      <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6">
+        <h3 className="mb-4 text-sm font-medium text-[color:var(--text-secondary)]">{t("academy.overview.configTitle")}</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <p className="text-xs text-zinc-400">{t("academy.overview.minLessons")}</p>
-            <p className="mt-1 text-lg font-semibold text-white">{status.config.min_lessons}</p>
+            <p className="text-xs text-hint">{t("academy.overview.minLessons")}</p>
+            <p className="mt-1 text-lg font-semibold text-[color:var(--text-heading)]">{status.config.min_lessons}</p>
           </div>
           <div>
-            <p className="text-xs text-zinc-400">{t("academy.overview.trainingInterval")}</p>
-            <p className="mt-1 text-lg font-semibold text-white">{status.config.training_interval_hours}h</p>
+            <p className="text-xs text-hint">{t("academy.overview.trainingInterval")}</p>
+            <p className="mt-1 text-lg font-semibold text-[color:var(--text-heading)]">{status.config.training_interval_hours}h</p>
           </div>
           <div>
-            <p className="text-xs text-zinc-400">{t("academy.overview.baseModel")}</p>
-            <p className="mt-1 text-sm font-mono text-white">{status.config.default_base_model}</p>
+            <p className="text-xs text-hint">{t("academy.overview.baseModel")}</p>
+            <p className="mt-1 text-sm font-mono text-[color:var(--text-heading)]">{status.config.default_base_model}</p>
           </div>
         </div>
       </div>

@@ -58,7 +58,7 @@ export function TopBar({ initialStatusData }: Readonly<{ initialStatusData?: Sta
             testId="topbar-notifications"
           />
           <TopBarIconAction
-            icon={<CommandIcon className="h-4 w-4 text-zinc-200" />}
+            icon={<CommandIcon className="h-4 w-4 text-[color:var(--text-primary)]" />}
             label={t("topBar.commandPalette")}
             onClick={() => setPaletteOpen(true)}
             hidden="mobile"

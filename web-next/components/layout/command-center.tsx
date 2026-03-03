@@ -85,7 +85,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         data-testid="command-center-drawer"
-        className="flex h-full max-w-2xl flex-col gap-6 overflow-y-auto border-l border-white/10 bg-zinc-950/95"
+        className="glass-panel flex h-full max-w-2xl flex-col gap-6 overflow-y-auto border-l border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]"
       >
         <SheetHeader>
           <SheetTitle>{t("commandCenter.title")}</SheetTitle>
@@ -126,7 +126,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
           />
         </div>
         {queueOffline && (
-          <p className="text-xs text-zinc-500" data-testid="command-center-queue-offline">
+          <p className="text-xs text-[color:var(--text-secondary)]" data-testid="command-center-queue-offline">
             {queueOfflineMessage}
           </p>
         )}
@@ -149,7 +149,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
                 key={link.href}
                 title={link.label}
                 subtitle={link.description}
-                meta={<span className="text-xs text-zinc-400">{t("commandCenter.shortcuts.goTo")}</span>}
+                meta={<span className="text-xs text-[color:var(--ui-muted)]">{t("commandCenter.shortcuts.goTo")}</span>}
                 badge={<ArrowUpRight className="h-4 w-4" />}
                 onClick={() => {
                   router.push(link.href);

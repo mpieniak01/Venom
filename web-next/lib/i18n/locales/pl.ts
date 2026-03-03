@@ -46,10 +46,10 @@ export const pl = {
         name: "Venom Dark",
         description: "Tryb bazowy (ciemny, wysokokontrastowy).",
       },
-      venomLightDev: {
-        short: "Light Dev",
-        name: "Venom Light Dev",
-        description: "Jasny styl deweloperski do długich sesji pracy.",
+      venomLight: {
+        short: "Light",
+        name: "Venom Light",
+        description: "Jasny styl techniczny o wysokiej czytelności i wyraźnym kontraście.",
       },
     },
   },

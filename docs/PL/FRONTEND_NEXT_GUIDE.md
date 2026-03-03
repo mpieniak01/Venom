@@ -36,14 +36,16 @@ web-next/
 - **Konwencje nazewnictwa:** wszystkie interfejsy/typy w `web-next/lib/types.ts` używają angielskich nazw (`Lesson`, `LessonsStats`, `ServiceStatus`, `Task`, `Metrics`, `ModelsUsageResponse`). Nie dopisujemy równoległych aliasów PL ani skrótów w importach – zamiast `Lekcja` używamy `Lesson`, zamiast `StatusSłużba` → `ServiceStatus`. Translacje dla UI żyją w `lib/i18n`, ale kod/typy zachowują jednolity, angielski prefiks, żeby uniknąć dryfowania konwencji przy dodawaniu nowych modułów.
 
 ### 0.2.1 Architektura themingu (globalny switch stylu)
-- Identyfikatory motywów i metadane są w `web-next/lib/theme-registry.ts` (`venom-dark`, `venom-light-dev`).
+- Identyfikatory motywów i metadane są w `web-next/lib/theme-registry.ts` (`venom-dark`, `venom-light`).
 - Stan runtime jest zarządzany przez `web-next/lib/theme.tsx` (`ThemeProvider`, `useTheme`) z priorytetem źródeł:
   `localStorage["venom-theme"]` (user override) > backend `UI_THEME_DEFAULT` (`GET /api/v1/config/runtime`) > fallback aplikacji (`DEFAULT_THEME`).
+- Migracja legacy: `venom-light-dev` jest akceptowany jako wejście i normalizowany do `venom-light`.
 - Zmiana motywu przez użytkownika zapisuje preferencję w `localStorage["venom-theme"]` i wykonuje best-effort sync do backendu (`POST /api/v1/config/runtime`, klucz `UI_THEME_DEFAULT`).
 - Bootstrap w `web-next/app/layout.tsx` ustawia `html[data-theme]` przed hydratacją interaktywną, aby ograniczyć FOUC.
 - `web-next/app/globals.css` zawiera tokeny semantyczne w `:root` i nadpisania per-theme w `html[data-theme="<id>"]`.
 - Globalny selektor stylu znajduje się w `web-next/components/layout/theme-switcher.tsx` i jest osadzony w TopBar.
 - Wymagane klucze i18n dla nazw/opisów motywów są pilnowane testem `web-next/tests/theme-i18n-keys.test.ts`.
+- Pełny runbook: `docs/PL/THEMING_GUIDE.md`.
 
 ### 0.3 Skrypty NPM / workflow
 | Komenda                               | Cel                                                                                   |

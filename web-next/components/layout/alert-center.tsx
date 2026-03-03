@@ -63,7 +63,7 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         data-testid="alert-center-drawer"
-        className="flex h-full max-w-3xl flex-col gap-4 overflow-hidden border-l border-white/10 bg-zinc-950/95"
+        className="glass-panel flex h-full max-w-3xl flex-col gap-4 overflow-hidden border-l border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]"
       >
         <SheetHeader>
           <SheetTitle>{t("alertCenter.title")}</SheetTitle>
@@ -71,7 +71,7 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
         </SheetHeader>
 
         <div className="flex flex-wrap items-center gap-3 text-xs">
-          <Filter className="h-4 w-4 text-zinc-500" />
+          <Filter className="h-4 w-4 text-[color:var(--ui-muted)]" />
           {filterOptions.map((item) => (
             <Button
               key={item.value}
@@ -126,7 +126,7 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
                     meta={<span className="text-hint">{formatTimestamp(entry.ts)}</span>}
                   >
                     {entry.details && (
-                      <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-black/40 p-3 text-xs text-zinc-300">
+                      <pre className="mt-2 max-h-48 overflow-auto rounded-xl box-muted bg-[color:var(--ui-surface-hover)] p-3 text-xs text-[color:var(--text-secondary)]">
                         {entry.details}
                       </pre>
                     )}

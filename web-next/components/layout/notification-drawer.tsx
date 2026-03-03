@@ -49,7 +49,7 @@ export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerPro
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         data-testid="notification-drawer"
-        className="flex h-full max-w-lg flex-col border-l border-white/10 bg-zinc-950/95"
+        className="glass-panel flex h-full max-w-lg flex-col border-l border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]"
       >
         <SheetHeader>
           <SheetTitle>{t("notifications.title")}</SheetTitle>

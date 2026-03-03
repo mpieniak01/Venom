@@ -23,7 +23,10 @@ from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
-VALID_THEME_IDS = ("venom-dark", "venom-light-dev")
+VALID_THEME_IDS = ("venom-dark", "venom-light")
+LEGACY_THEME_ALIASES = {
+    "venom-light-dev": "venom-light",
+}
 
 
 # Whitelist parametrów dostępnych do edycji przez UI
@@ -395,6 +398,13 @@ class ConfigUpdateRequest(BaseModel):
                 errors.append(f"{param} musi być liczbą całkowitą")
 
     @classmethod
+    def _normalize_theme_id(cls, value: Any) -> str | None:
+        raw_value = str(value or "")
+        if raw_value in VALID_THEME_IDS:
+            return raw_value
+        return LEGACY_THEME_ALIASES.get(raw_value)
+
+    @classmethod
     def _validate_mode_params(cls, updates: Dict[str, Any], errors: List[str]) -> None:
         if "AI_MODE" in updates:
             valid_modes = ["LOCAL", "CLOUD", "HYBRID"]
@@ -416,10 +426,14 @@ class ConfigUpdateRequest(BaseModel):
                 )
 
         if "UI_THEME_DEFAULT" in updates:
-            if str(updates["UI_THEME_DEFAULT"]) not in VALID_THEME_IDS:
+            normalized_theme = cls._normalize_theme_id(updates["UI_THEME_DEFAULT"])
+            if not normalized_theme:
                 errors.append(
-                    "UI_THEME_DEFAULT musi być jednym z: " + ", ".join(VALID_THEME_IDS)
+                    "UI_THEME_DEFAULT musi być jednym z: "
+                    + ", ".join(VALID_THEME_IDS + tuple(LEGACY_THEME_ALIASES.keys()))
                 )
+            else:
+                updates["UI_THEME_DEFAULT"] = normalized_theme
 
 
 class ConfigManager:

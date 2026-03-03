@@ -40,7 +40,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     primary:
       "bg-gradient-to-r from-violet-600 to-indigo-500 text-white border border-white/10 shadow-neon hover:-translate-y-[1px]",
     macro:
-      "border border-violet-300/50 bg-violet-500/30 text-white shadow-neon hover:border-violet-200/80 hover:-translate-y-[1px]",
+      "border border-[color:var(--btn-macro-border)] bg-[color:var(--btn-macro-bg)] text-[color:var(--btn-macro-text)] shadow-neon hover:border-[color:var(--btn-macro-hover-border)] hover:-translate-y-[1px]",
     secondary:
       "border border-[color:var(--button-secondary-border)] bg-[color:var(--button-secondary-bg)] text-[color:var(--button-secondary-text)] hover:bg-[color:var(--button-secondary-hover)]",
     outline:
@@ -50,11 +50,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     subtle:
       "border border-[color:var(--button-subtle-border)] bg-[color:var(--button-subtle-bg)] text-[color:var(--button-subtle-text)] hover:border-[color:var(--button-subtle-hover-border)]",
     warning:
-      "border border-amber-500/40 bg-amber-500/10 text-amber-100 hover:border-amber-500/60",
+      "border border-[color:var(--btn-warning-border)] bg-[color:var(--btn-warning-bg)] text-[color:var(--btn-warning-text)] hover:border-[color:var(--btn-warning-hover-border)]",
     amber:
-      "border-amber-500/30 bg-amber-500/10 text-amber-200 hover:border-amber-500/50 hover:bg-amber-500/20",
+      "border border-[color:var(--btn-amber-border)] bg-[color:var(--btn-amber-bg)] text-[color:var(--btn-amber-text)] hover:border-[color:var(--btn-amber-hover-border)] hover:bg-[color:var(--btn-amber-hover-bg)]",
     danger:
-      "border border-rose-500/40 bg-rose-500/10 text-rose-100 hover:border-rose-500/60",
+      "border border-[color:var(--btn-danger-border)] bg-[color:var(--btn-danger-bg)] text-[color:var(--btn-danger-text)] hover:border-[color:var(--btn-danger-hover-border)]",
   }[variant];
 
   const sizeClassBySize: Record<ButtonSize, string> = {

@@ -41,23 +41,25 @@ type StatCardProps = Readonly<{
 
 export function StatCard({ label, value, hint, accent = "purple", suppressHydrationWarning }: StatCardProps) {
   const accentPalette: Record<StatCardAccent, string> = {
-    purple: "from-purple-500/25 to-purple-500/5 border-purple-500/30",
-    green: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30",
-    blue: "from-sky-500/20 to-sky-500/5 border-sky-500/30",
-    violet: "from-violet-500/20 to-violet-500/5 border-violet-500/30",
-    indigo: "from-indigo-500/20 to-indigo-500/5 border-indigo-500/30",
+    purple: "from-violet-500/16 via-violet-500/8 to-transparent border-violet-400/35",
+    green: "from-emerald-500/14 via-emerald-500/8 to-transparent border-emerald-400/35",
+    blue: "from-sky-500/14 via-sky-500/8 to-transparent border-sky-400/35",
+    violet: "from-fuchsia-500/14 via-fuchsia-500/8 to-transparent border-fuchsia-400/35",
+    indigo: "from-indigo-500/14 via-indigo-500/8 to-transparent border-indigo-400/35",
   };
 
   const accentColor = accentPalette[accent] ?? accentPalette.purple;
 
   return (
     <div
-      className={`rounded-xl border bg-gradient-to-br ${accentColor} px-4 py-3 shadow-inner shadow-black/20`}
+      className={`rounded-xl border bg-[color:var(--surface-overlay-soft)] bg-gradient-to-br ${accentColor} px-4 py-3 shadow-[inset_0_1px_0_var(--ui-border)] backdrop-blur-md`}
     >
-      <p className="text-xs uppercase tracking-wide text-[--color-muted]">
+      <p className="text-xs uppercase tracking-wide text-theme-muted">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-semibold text-white" suppressHydrationWarning={suppressHydrationWarning}>{value}</p>
+      <p className="mt-2 text-2xl font-semibold text-theme-primary" suppressHydrationWarning={suppressHydrationWarning}>
+        {value}
+      </p>
       {hint && <p className="mt-1 text-hint">{hint}</p>}
     </div>
   );

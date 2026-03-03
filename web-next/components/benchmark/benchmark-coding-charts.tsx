@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import type { CodingJob } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
 
@@ -18,6 +19,26 @@ export interface ModelTiming {
   warmupSeconds: number;
   codingSeconds: number;
   requestSeconds: number;
+}
+
+type ChartInstance = import("chart.js").Chart;
+type BarChartConfig = import("chart.js").ChartConfiguration<"bar">;
+
+async function renderBarChart(
+  canvas: HTMLCanvasElement,
+  chartRef: MutableRefObject<ChartInstance | null>,
+  config: BarChartConfig,
+  isActive: () => boolean,
+): Promise<void> {
+  const { Chart } = await import("chart.js/auto");
+  if (!isActive()) return;
+  chartRef.current?.destroy();
+  chartRef.current = new Chart(canvas, config);
+}
+
+function destroyChart(chartRef: MutableRefObject<ChartInstance | null>) {
+  chartRef.current?.destroy();
+  chartRef.current = null;
 }
 
 /** Compute pass-rate per model from a flat list of jobs. */
@@ -104,67 +125,60 @@ interface PassRateChartProps {
 
 function PassRateChart({ passRates, title }: PassRateChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<import("chart.js").Chart | null>(null);
+  const chartRef = useRef<ChartInstance | null>(null);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
-    let destroyed = false;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let active = true;
 
-    import("chart.js/auto").then(({ Chart }) => {
-      if (destroyed || !canvasRef.current) return;
-      chartRef.current?.destroy();
-      chartRef.current = new Chart(canvasRef.current, {
-        type: "bar",
-        data: {
-          labels: passRates.map((r) => r.model),
-          datasets: [
-            {
-              label: title,
-              data: passRates.map((r) => Math.round(r.passRate * 10) / 10),
-              backgroundColor: passRates.map((r) =>
-                r.passRate >= 80 ? "rgba(52, 211, 153, 0.7)" : "rgba(251, 191, 36, 0.7)",
-              ),
-              borderColor: passRates.map((r) =>
-                r.passRate >= 80 ? "rgb(52, 211, 153)" : "rgb(251, 191, 36)",
-              ),
-              borderWidth: 1,
-              borderRadius: 4,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            y: {
-              min: 0,
-              max: 100,
-              ticks: { color: "#9ca3af", callback: (v) => `${v}%` },
-              grid: { color: "rgba(255,255,255,0.05)" },
-            },
-            x: { ticks: { color: "#9ca3af" }, grid: { display: false } },
+    const config: BarChartConfig = {
+      type: "bar",
+      data: {
+        labels: passRates.map((r) => r.model),
+        datasets: [
+          {
+            label: title,
+            data: passRates.map((r) => Math.round(r.passRate * 10) / 10),
+            backgroundColor: passRates.map((r) =>
+              r.passRate >= 80 ? "rgba(52, 211, 153, 0.7)" : "rgba(251, 191, 36, 0.7)",
+            ),
+            borderColor: passRates.map((r) =>
+              r.passRate >= 80 ? "rgb(52, 211, 153)" : "rgb(251, 191, 36)",
+            ),
+            borderWidth: 1,
+            borderRadius: 4,
           },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: {
+            min: 0,
+            max: 100,
+            ticks: { color: "#9ca3af", callback: (v) => `${v}%` },
+            grid: { color: "rgba(255,255,255,0.05)" },
+          },
+          x: { ticks: { color: "#9ca3af" }, grid: { display: false } },
         },
-      });
-    });
+      },
+    };
+
+    void renderBarChart(canvas, chartRef, config, () => active);
 
     return () => {
-      destroyed = true;
-      chartRef.current?.destroy();
-      chartRef.current = null;
+      active = false;
+      destroyChart(chartRef);
     };
   }, [passRates, title]);
 
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
-        {title}
-      </p>
-      <div className="relative h-48 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3">
-        <canvas ref={canvasRef} />
-      </div>
-    </div>
+    <ChartPanel title={title}>
+      <canvas ref={canvasRef} />
+    </ChartPanel>
   );
 }
 
@@ -178,78 +192,87 @@ interface TimingChartProps {
 
 function TimingChart({ timings, title, labels }: TimingChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<import("chart.js").Chart | null>(null);
+  const chartRef = useRef<ChartInstance | null>(null);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
-    let destroyed = false;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let active = true;
 
-    import("chart.js/auto").then(({ Chart }) => {
-      if (destroyed || !canvasRef.current) return;
-      chartRef.current?.destroy();
-      chartRef.current = new Chart(canvasRef.current, {
-        type: "bar",
-        data: {
-          labels: timings.map((t) => t.model),
-          datasets: [
-            {
-              label: labels.warmup,
-              data: timings.map((t) => Math.round(t.warmupSeconds * 10) / 10),
-              backgroundColor: "rgba(139, 92, 246, 0.7)",
-              borderColor: "rgb(139, 92, 246)",
-              borderWidth: 1,
-              borderRadius: 2,
-            },
-            {
-              label: labels.coding,
-              data: timings.map((t) => Math.round(t.codingSeconds * 10) / 10),
-              backgroundColor: "rgba(52, 211, 153, 0.7)",
-              borderColor: "rgb(52, 211, 153)",
-              borderWidth: 1,
-            },
-            {
-              label: labels.request,
-              data: timings.map((t) => Math.round(t.requestSeconds * 10) / 10),
-              backgroundColor: "rgba(251, 191, 36, 0.7)",
-              borderColor: "rgb(251, 191, 36)",
-              borderWidth: 1,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: "#9ca3af", boxWidth: 10 } } },
-          scales: {
-            y: {
-              stacked: true,
-              ticks: { color: "#9ca3af", callback: (v) => `${v}s` },
-              grid: { color: "rgba(255,255,255,0.05)" },
-            },
-            x: {
-              stacked: true,
-              ticks: { color: "#9ca3af" },
-              grid: { display: false },
-            },
+    const config: BarChartConfig = {
+      type: "bar",
+      data: {
+        labels: timings.map((t) => t.model),
+        datasets: [
+          {
+            label: labels.warmup,
+            data: timings.map((t) => Math.round(t.warmupSeconds * 10) / 10),
+            backgroundColor: "rgba(139, 92, 246, 0.7)",
+            borderColor: "rgb(139, 92, 246)",
+            borderWidth: 1,
+            borderRadius: 2,
+          },
+          {
+            label: labels.coding,
+            data: timings.map((t) => Math.round(t.codingSeconds * 10) / 10),
+            backgroundColor: "rgba(52, 211, 153, 0.7)",
+            borderColor: "rgb(52, 211, 153)",
+            borderWidth: 1,
+          },
+          {
+            label: labels.request,
+            data: timings.map((t) => Math.round(t.requestSeconds * 10) / 10),
+            backgroundColor: "rgba(251, 191, 36, 0.7)",
+            borderColor: "rgb(251, 191, 36)",
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: "#9ca3af", boxWidth: 10 } } },
+        scales: {
+          y: {
+            stacked: true,
+            ticks: { color: "#9ca3af", callback: (v) => `${v}s` },
+            grid: { color: "rgba(255,255,255,0.05)" },
+          },
+          x: {
+            stacked: true,
+            ticks: { color: "#9ca3af" },
+            grid: { display: false },
           },
         },
-      });
-    });
+      },
+    };
+
+    void renderBarChart(canvas, chartRef, config, () => active);
 
     return () => {
-      destroyed = true;
-      chartRef.current?.destroy();
-      chartRef.current = null;
+      active = false;
+      destroyChart(chartRef);
     };
   }, [timings, title, labels]);
 
+  return (
+    <ChartPanel title={title}>
+      <canvas ref={canvasRef} />
+    </ChartPanel>
+  );
+}
+
+function ChartPanel({
+  title,
+  children,
+}: Readonly<{ title: string; children: ReactNode }>) {
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
         {title}
       </p>
       <div className="relative h-48 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3">
-        <canvas ref={canvasRef} />
+        {children}
       </div>
     </div>
   );

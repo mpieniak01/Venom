@@ -45,17 +45,18 @@ describe("buildProgressLog", () => {
     assert.strictEqual(buildProgressLog({ completed: 0, total_jobs: 0 }), null);
   });
 
-  it("returns progress string when total_jobs > 0", () => {
+  it("returns progress object when total_jobs > 0", () => {
     const result = buildProgressLog({ completed: 3, total_jobs: 10 });
     assert.ok(result !== null, "Expected non-null result");
-    assert.ok(result.includes("3"), "Should contain completed count");
-    assert.ok(result.includes("10"), "Should contain total count");
+    assert.strictEqual(result?.completed, 3);
+    assert.strictEqual(result?.total, 10);
   });
 
-  it("returns correct string for fully completed run", () => {
+  it("returns correct object for fully completed run", () => {
     const result = buildProgressLog({ completed: 5, total_jobs: 5 });
     assert.ok(result !== null);
-    assert.ok(result.includes("5/5"));
+    assert.strictEqual(result?.completed, 5);
+    assert.strictEqual(result?.total, 5);
   });
 });
 

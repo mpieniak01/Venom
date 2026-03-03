@@ -156,8 +156,13 @@ def _enrich_job_dict(job: CodingJobState) -> dict[str, Any]:
             d["total_seconds"] = _safe_float(timing.get("total_seconds"))
             d["passed"] = artifact_data.get("passed")
             d["error"] = artifact_data.get("error")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Nie można odczytać artefaktu joba %s z %s: %s",
+                d.get("id"),
+                artifact_file,
+                exc,
+            )
     return d
 
 
@@ -202,7 +207,11 @@ class CodingBenchmarkService:
     def __init__(self, storage_dir: str, repo_root: Optional[str] = None) -> None:
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self.repo_root = Path(repo_root) if repo_root else Path(".")
+        self.repo_root = (
+            Path(repo_root).resolve()
+            if repo_root
+            else Path(__file__).resolve().parents[2]
+        )
         self._runs: dict[str, CodingBenchmarkRun] = {}
         self._lock = threading.Lock()
         self._load_persisted_runs()
@@ -272,6 +281,13 @@ class CodingBenchmarkService:
                     finished_at=data.get("finished_at"),
                     error_message=data.get("error_message"),
                 )
+                if run.status == "running":
+                    run.status = "failed"
+                    if not run.error_message:
+                        run.error_message = (
+                            "Run oznaczony jako running po restarcie serwisu; "
+                            "oznaczono jako failed."
+                        )
                 # Odczytaj stan jobów z scheduler_state.json
                 state_file = self._state_file(run_id)
                 if state_file.exists():
@@ -289,6 +305,8 @@ class CodingBenchmarkService:
     def _validate_start_request(self, models: list[str], tasks: list[str]) -> None:
         if not models:
             raise ValueError("Lista modeli nie może być pusta")
+        if not tasks:
+            raise ValueError("Lista zadań nie może być pusta")
         invalid_tasks = [t for t in tasks if t not in _VALID_TASKS]
         if invalid_tasks:
             raise ValueError(
@@ -344,11 +362,13 @@ class CodingBenchmarkService:
     def _build_scheduler_command(self, run: CodingBenchmarkRun) -> list[str]:
         cfg = run.config
         python_bin = sys.executable or "python3"
-        scheduler = str(self.repo_root / _SCHEDULER_SCRIPT)
+        scheduler = (self.repo_root / _SCHEDULER_SCRIPT).resolve()
+        if not scheduler.exists():
+            raise FileNotFoundError(f"Nie znaleziono schedulera: {scheduler}")
         out_dir = str(self._run_dir(run.run_id))
         cmd = [
             python_bin,
-            scheduler,
+            str(scheduler),
             "--models",
             ",".join(cfg.models),
             "--tasks",
@@ -395,6 +415,7 @@ class CodingBenchmarkService:
                 text=True,
                 capture_output=True,
                 check=False,
+                cwd=str(self.repo_root),
             )
             # Odczytaj finalny stan jobów
             state_file = self._state_file(run_id)

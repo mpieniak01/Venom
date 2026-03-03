@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type {
   CodingBenchmarkStatus,
   CodingBenchmarkStartRequest,
@@ -6,6 +6,7 @@ import type {
   BenchmarkLog,
 } from "@/lib/types";
 import { getApiBaseUrl } from "@/lib/env";
+import { useTranslation } from "@/lib/i18n";
 
 const POLLING_INTERVAL_MS = 1500;
 const resolveApiRoot = (): string => getApiBaseUrl() || "";
@@ -21,12 +22,20 @@ export function resolvePollStatus(apiStatus: string): CodingBenchmarkStatus | nu
   return null;
 }
 
-/** Build a human-readable progress log from a run summary, or null if not applicable. */
+export interface CodingBenchmarkProgress {
+  completed: number;
+  total: number;
+}
+
+/** Build structured progress data, or null if not applicable. */
 export function buildProgressLog(
   summary: { completed: number; total_jobs: number } | null | undefined,
-): string | null {
+): CodingBenchmarkProgress | null {
   if (!summary || summary.total_jobs === 0) return null;
-  return `Postęp: ${summary.completed}/${summary.total_jobs} zadań ukończonych`;
+  return {
+    completed: summary.completed,
+    total: summary.total_jobs,
+  };
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -44,6 +53,7 @@ interface UseCodingBenchmarkReturn {
 }
 
 export function useCodingBenchmark(): UseCodingBenchmarkReturn {
+  const t = useTranslation();
   const [status, setStatus] = useState<CodingBenchmarkStatus>("idle");
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<CodingBenchmarkRun | null>(null);
@@ -51,6 +61,7 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
   const [error, setError] = useState<string | null>(null);
 
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastProgressRef = useRef<string | null>(null);
 
   const addLog = useCallback((message: string, level: BenchmarkLog["level"] = "info") => {
     setLogs((prev) => [
@@ -73,7 +84,10 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
     setRun(null);
     setLogs([]);
     setError(null);
+    lastProgressRef.current = null;
   }, [stopPolling]);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   const pollStatus = useCallback(async (id: string) => {
     try {
@@ -88,31 +102,60 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
         stopPolling();
         setStatus("completed");
         const rate = data.summary?.success_rate ?? 0;
-        addLog(`Coding benchmark zakończony. Wynik: ${rate.toFixed(1)}% zadań zdanych.`, "info");
+        addLog(
+          t("benchmark.coding.logs.completed", {
+            rate: rate.toFixed(1),
+          }),
+          "info",
+        );
       } else if (data.status === "failed") {
         stopPolling();
         setStatus("failed");
-        const msg = data.error_message || "Nieznany błąd";
+        const msg = data.error_message || t("benchmark.coding.logs.unknownError");
         setError(msg);
-        addLog(`Coding benchmark nie powiódł się: ${msg}`, "error");
+        addLog(
+          t("benchmark.coding.logs.failed", {
+            message: msg,
+          }),
+          "error",
+        );
       } else if (data.status === "running") {
         setStatus("running");
-        const completed = data.summary?.completed ?? 0;
-        const total = data.summary?.total_jobs ?? 0;
-        if (total > 0) {
-          addLog(`Postęp: ${completed}/${total} zadań ukończonych`, "info");
+        const progress = buildProgressLog(data.summary);
+        if (progress) {
+          const progressKey = `${progress.completed}/${progress.total}`;
+          if (lastProgressRef.current !== progressKey) {
+            lastProgressRef.current = progressKey;
+            addLog(
+              t("benchmark.coding.logs.progress", {
+                completed: progress.completed,
+                total: progress.total,
+              }),
+              "info",
+            );
+          }
         }
       }
     } catch (err) {
       console.error("Coding benchmark polling error:", err);
     }
-  }, [addLog, stopPolling]);
+  }, [addLog, stopPolling, t]);
 
   const startBenchmark = useCallback(async (req: CodingBenchmarkStartRequest) => {
     reset();
     setStatus("pending");
-    addLog(`Uruchamiam coding benchmark dla modeli: ${req.models.join(", ")}`, "info");
-    addLog(`Zadania: ${(req.tasks ?? ["python_complex"]).join(", ")}`, "info");
+    addLog(
+      t("benchmark.coding.logs.startingModels", {
+        models: req.models.join(", "),
+      }),
+      "info",
+    );
+    addLog(
+      t("benchmark.coding.logs.startingTasks", {
+        tasks: (req.tasks ?? ["python_complex"]).join(", "),
+      }),
+      "info",
+    );
 
     try {
       const response = await fetch(buildApiUrl("/api/v1/benchmark/coding/start"), {
@@ -125,7 +168,9 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(
           (errorData as { detail?: string }).detail ||
-          `Nie udało się uruchomić coding benchmarku: ${response.statusText}`
+            t("benchmark.coding.logs.startFailed", {
+              status: response.statusText,
+            })
         );
       }
 
@@ -133,19 +178,29 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
       const id = data.run_id;
       setRunId(id);
       setStatus("running");
-      addLog(`Coding benchmark uruchomiony (ID: ${id.slice(0, 8)}...)`, "info");
+      addLog(
+        t("benchmark.coding.logs.started", {
+          runId: id.slice(0, 8),
+        }),
+        "info",
+      );
 
       pollingIntervalRef.current = setInterval(() => {
         pollStatus(id);
       }, POLLING_INTERVAL_MS);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Nieznany błąd";
+      const msg = err instanceof Error ? err.message : t("benchmark.coding.logs.unknownError");
       setError(msg);
       setStatus("failed");
-      addLog(`Błąd uruchomienia: ${msg}`, "error");
+      addLog(
+        t("benchmark.coding.logs.startError", {
+          message: msg,
+        }),
+        "error",
+      );
       stopPolling();
     }
-  }, [addLog, pollStatus, reset, stopPolling]);
+  }, [addLog, pollStatus, reset, stopPolling, t]);
 
   const deleteRun = useCallback(async (id: string) => {
     try {
@@ -153,14 +208,19 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
         method: "DELETE",
       });
       if (!response.ok) throw new Error("Nie udało się usunąć coding benchmark run");
-      addLog(`Usunięto coding benchmark run: ${id.slice(0, 8)}...`, "info");
+      addLog(
+        t("benchmark.coding.logs.deleted", {
+          runId: id.slice(0, 8),
+        }),
+        "info",
+      );
       return true;
     } catch (err) {
       console.error(err);
-      addLog("Błąd podczas usuwania coding benchmark run", "error");
+      addLog(t("benchmark.coding.logs.deleteError"), "error");
       return false;
     }
-  }, [addLog]);
+  }, [addLog, t]);
 
   const clearAllRuns = useCallback(async () => {
     try {
@@ -168,14 +228,14 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
         method: "DELETE",
       });
       if (!response.ok) throw new Error("Nie udało się wyczyścić coding benchmarków");
-      addLog("Wyczyszczono historię coding benchmarków", "info");
+      addLog(t("benchmark.coding.logs.cleared"), "info");
       return true;
     } catch (err) {
       console.error(err);
-      addLog("Błąd czyszczenia historii coding benchmarków", "error");
+      addLog(t("benchmark.coding.logs.clearError"), "error");
       return false;
     }
-  }, [addLog]);
+  }, [addLog, t]);
 
   return {
     status,

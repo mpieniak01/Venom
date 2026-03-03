@@ -4,12 +4,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { CodingBenchmarkStartRequest } from "@/lib/types";
+import { useTranslation } from "@/lib/i18n";
 
 const AVAILABLE_TASKS = [
-  { id: "python_sanity", label: "Python Sanity" },
-  { id: "python_simple", label: "Python Simple" },
-  { id: "python_complex", label: "Python Complex" },
-  { id: "python_complex_bugfix", label: "Python Bugfix" },
+  { id: "python_sanity", key: "benchmark.coding.tasks.python_sanity" },
+  { id: "python_simple", key: "benchmark.coding.tasks.python_simple" },
+  { id: "python_complex", key: "benchmark.coding.tasks.python_complex" },
+  { id: "python_complex_bugfix", key: "benchmark.coding.tasks.python_complex_bugfix" },
 ] as const;
 
 interface BenchmarkCodingConfiguratorProps {
@@ -23,6 +24,7 @@ export function BenchmarkCodingConfigurator({
   onStart,
   disabled = false,
 }: BenchmarkCodingConfiguratorProps) {
+  const t = useTranslation();
   const ollamaModels = availableModels.filter((m) => m.provider === "ollama");
 
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
@@ -64,11 +66,11 @@ export function BenchmarkCodingConfigurator({
       {/* Modele Ollama */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
-          Modele Ollama
+          {t("benchmark.coding.config.modelsLabel")}
         </p>
         {ollamaModels.length === 0 ? (
           <p className="text-xs text-[color:var(--ui-muted)]">
-            Brak modeli Ollama. Sprawdź połączenie z Ollama.
+            {t("benchmark.coding.config.noModels")}
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -95,7 +97,7 @@ export function BenchmarkCodingConfigurator({
       {/* Zadania codingowe */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
-          Zadania testowe
+          {t("benchmark.coding.config.tasksLabel")}
         </p>
         <div className="flex flex-wrap gap-2">
           {AVAILABLE_TASKS.map((task) => (
@@ -111,7 +113,7 @@ export function BenchmarkCodingConfigurator({
                 disabled && "opacity-50 cursor-not-allowed",
               )}
             >
-              {task.label}
+              {t(task.key)}
             </button>
           ))}
         </div>
@@ -123,7 +125,7 @@ export function BenchmarkCodingConfigurator({
           htmlFor="coding-loop-task"
           className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider"
         >
-          Zadanie pętli (Feedback Loop)
+          {t("benchmark.coding.config.loopTaskLabel")}
         </label>
         <select
           id="coding-loop-task"
@@ -132,10 +134,10 @@ export function BenchmarkCodingConfigurator({
           disabled={disabled}
           className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-primary)] focus:outline-none focus:border-violet-400/50 disabled:opacity-50"
         >
-          <option value="">Brak (wyłącz pętlę)</option>
+          <option value="">{t("benchmark.coding.config.loopTaskDisabled")}</option>
           {AVAILABLE_TASKS.map((task) => (
             <option key={task.id} value={task.id}>
-              {task.label}
+              {t(task.key)}
             </option>
           ))}
         </select>
@@ -145,7 +147,7 @@ export function BenchmarkCodingConfigurator({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label htmlFor="coding-timeout" className="text-xs text-[color:var(--text-secondary)]">
-            Timeout (s)
+            {t("benchmark.coding.config.timeoutLabel")}
           </label>
           <input
             id="coding-timeout"
@@ -160,7 +162,7 @@ export function BenchmarkCodingConfigurator({
         </div>
         <div className="space-y-1">
           <label htmlFor="coding-max-rounds" className="text-xs text-[color:var(--text-secondary)]">
-            Maks. rund (pętla)
+            {t("benchmark.coding.config.maxRoundsLabel")}
           </label>
           <input
             id="coding-max-rounds"
@@ -185,7 +187,7 @@ export function BenchmarkCodingConfigurator({
           className="rounded border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] accent-violet-500 disabled:opacity-50"
         />
         <span className="text-xs text-[color:var(--text-secondary)]">
-          Zatrzymaj przy pierwszym błędzie
+          {t("benchmark.coding.config.stopOnFailureLabel")}
         </span>
       </label>
 
@@ -195,7 +197,7 @@ export function BenchmarkCodingConfigurator({
         disabled={!canStart}
         className={cn("w-full", !canStart && "opacity-50 cursor-not-allowed")}
       >
-        {disabled ? "W trakcie..." : "▶ Uruchom Coding Benchmark"}
+        {disabled ? t("benchmark.coding.config.running") : t("benchmark.coding.config.start")}
       </Button>
     </div>
   );

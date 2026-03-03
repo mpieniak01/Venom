@@ -687,6 +687,7 @@ export interface ContextUsed {
 
 // Coding Benchmark types
 export type CodingBenchmarkStatus = "idle" | "pending" | "running" | "completed" | "failed";
+export type CodingBenchmarkRunStatus = Exclude<CodingBenchmarkStatus, "idle">;
 
 export interface CodingBenchmarkConfig {
   models: string[];
@@ -743,7 +744,7 @@ export interface CodingBenchmarkSummary {
 
 export interface CodingBenchmarkRun {
   run_id: string;
-  status: string;
+  status: CodingBenchmarkRunStatus;
   config: CodingBenchmarkConfig;
   jobs: CodingJob[];
   summary?: CodingBenchmarkSummary | null;

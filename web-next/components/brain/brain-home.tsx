@@ -476,7 +476,7 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       />
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1 rounded-full border border-white/10 bg-black/40 p-1.5">
+        <div className="flex items-center gap-1 rounded-full border border-theme bg-theme-overlay-strong p-1.5">
           {(["memory", "repo", "hygiene"] as const).map((tab) => (
             <Button
               key={tab}
@@ -526,46 +526,46 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
       ) : (
         <>
           <div
-            className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card"
+            className="relative overflow-hidden rounded-[32px] border border-theme bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card"
             data-testid="brain-graph-panel"
           >
             <div ref={cyRef} data-testid="graph-container" className="relative h-[70vh] w-full" />
             {isMemoryEmpty && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/70 text-center">
-                <p className="text-sm text-zinc-400">{t("brain.file.noData")}</p>
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-theme-overlay-strong text-center">
+                <p className="text-sm text-theme-muted">{t("brain.file.noData")}</p>
                 <Button onClick={handleScanGraph} disabled={scanning}>
                   {t("brain.actions.scan")}
                 </Button>
               </div>
             )}
             {graphLoading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70" data-testid="brain-graph-loading">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-theme-overlay-strong" data-testid="brain-graph-loading">
                 <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
               </div>
             )}
             <div className="absolute left-6 top-6 flex flex-col gap-3">
               <GraphFilterButtons selectedFilters={filters} onToggleFilter={handleFilterToggle} />
 
-              <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 p-3 backdrop-blur lg:w-[260px]" data-testid="brain-filter-panel">
+              <div className="flex flex-col gap-2 rounded-2xl border border-theme bg-theme-overlay-strong p-3 backdrop-blur lg:w-[260px]" data-testid="brain-filter-panel">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="show-memory" className="text-xs text-zinc-300">{t("brain.filters.memoryLayer")}</Label>
+                  <Label htmlFor="show-memory" className="text-xs text-theme-secondary">{t("brain.filters.memoryLayer")}</Label>
                   <Switch id="show-memory" checked={showMemoryLayer} onCheckedChange={setShowMemoryLayer} />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="show-labels" className="text-xs text-zinc-300">{t("brain.filters.edgeLabels")}</Label>
+                  <Label htmlFor="show-labels" className="text-xs text-theme-secondary">{t("brain.filters.edgeLabels")}</Label>
                   <Switch id="show-labels" checked={showEdgeLabels} onCheckedChange={setShowEdgeLabels} />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="include-isolates" className="text-xs text-zinc-300">{t("brain.filters.includeIsolates")}</Label>
+                  <Label htmlFor="include-isolates" className="text-xs text-theme-secondary">{t("brain.filters.includeIsolates")}</Label>
                   <Switch id="include-isolates" checked={includeIsolates} onCheckedChange={setIncludeIsolates} />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="layout-name" className="text-xs text-zinc-300">{t("brain.filters.layout")}</Label>
+                  <Label htmlFor="layout-name" className="text-xs text-theme-secondary">{t("brain.filters.layout")}</Label>
                   <select
                     id="layout-name"
                     value={layoutName}
                     onChange={(e) => setLayoutName(e.target.value as "preset" | "cola" | "cose")}
-                    className="h-6 rounded bg-black/50 px-1 text-[10px] text-zinc-300 border-white/10"
+                    className="h-6 rounded bg-theme-overlay-strong px-1 text-[10px] text-theme-secondary border-theme"
                     data-testid="brain-layout-select"
                   >
                     <option value="preset">{t("brain.filters.layoutPreset")}</option>
@@ -576,35 +576,35 @@ export function BrainHome({ initialData }: Readonly<{ initialData: BrainInitialD
                 {showMemoryLayer && (
                   <>
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="only-pinned" className="text-xs text-zinc-300">{t("brain.filters.pinnedOnly")}</Label>
+                      <Label htmlFor="only-pinned" className="text-xs text-theme-secondary">{t("brain.filters.pinnedOnly")}</Label>
                       <Switch id="only-pinned" checked={memoryOnlyPinned} onCheckedChange={setMemoryOnlyPinned} />
                     </div>
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="include-lessons" className="text-xs text-zinc-300">{t("brain.filters.includeLessons")}</Label>
+                      <Label htmlFor="include-lessons" className="text-xs text-theme-secondary">{t("brain.filters.includeLessons")}</Label>
                       <Switch id="include-lessons" checked={includeLessons} onCheckedChange={setIncludeLessons} />
                     </div>
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="flow-mode" className="text-xs text-zinc-300">{t("brain.filters.flowMode")}</Label>
+                      <Label htmlFor="flow-mode" className="text-xs text-theme-secondary">{t("brain.filters.flowMode")}</Label>
                       <Switch id="flow-mode" checked={flowMode === "flow"} onCheckedChange={(val) => setFlowMode(val ? "flow" : "default")} />
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="session-filter" className="text-xs text-zinc-300">{t("brain.filters.sessionId")}</Label>
+                      <Label htmlFor="session-filter" className="text-xs text-theme-secondary">{t("brain.filters.sessionId")}</Label>
                       <Input
                         id="session-filter"
                         value={memorySessionFilter}
                         onChange={(e) => setMemorySessionFilter(e.target.value)}
-                        className="h-7 text-xs bg-black/50 border-white/10"
+                        className="h-7 text-xs bg-theme-overlay-strong border-theme"
                         placeholder={t("brain.filters.sessionPlaceholder")}
                         data-testid="brain-session-filter"
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="topic-filter" className="text-xs text-zinc-300">{t("brain.filters.topic")}</Label>
+                      <Label htmlFor="topic-filter" className="text-xs text-theme-secondary">{t("brain.filters.topic")}</Label>
                       <Input
                         id="topic-filter"
                         value={topicFilter}
                         onChange={(e) => setTopicFilter(e.target.value)}
-                        className="h-7 text-xs bg-black/50 border-white/10"
+                        className="h-7 text-xs bg-theme-overlay-strong border-theme"
                         placeholder={t("brain.filters.topicPlaceholder")}
                         data-testid="brain-topic-filter"
                       />

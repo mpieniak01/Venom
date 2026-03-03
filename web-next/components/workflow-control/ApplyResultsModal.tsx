@@ -70,7 +70,7 @@ export function ApplyResultsModal({
                 {appliedChanges.map((change: AppliedChange) => (
                   <div
                     key={`${change.resource_type}:${change.resource_id}:${change.message}`}
-                    className="p-2 rounded bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-sm"
+                    className="rounded border border-[color:var(--tone-success-border)] bg-[color:var(--tone-success-bg)] p-2 text-sm text-[color:var(--tone-success-text)]"
                   >
                     <div className="font-mono text-xs">
                       {change.resource_type}: {change.resource_id}
@@ -95,7 +95,7 @@ export function ApplyResultsModal({
                 {pendingRestart.map((service: string) => (
                   <div
                     key={service}
-                    className="p-2 rounded bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 text-sm"
+                    className="rounded border border-[color:var(--tone-warning-border)] bg-[color:var(--tone-warning-bg)] p-2 text-sm text-[color:var(--tone-warning-text)]"
                   >
                     <div className="font-mono text-xs">{service}</div>
                   </div>
@@ -115,7 +115,7 @@ export function ApplyResultsModal({
                 {failedChanges.map((error: string) => (
                   <div
                     key={error}
-                    className="p-2 rounded bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-sm"
+                    className="rounded border border-[color:var(--tone-danger-border)] bg-[color:var(--tone-danger-bg)] p-2 text-sm text-[color:var(--tone-danger-text)]"
                   >
                     <div className="text-xs">{error}</div>
                   </div>
@@ -126,7 +126,7 @@ export function ApplyResultsModal({
 
           {/* Rollback Info */}
           {results?.rollback_available && (
-            <div className="p-3 rounded bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-sm">
+            <div className="rounded border border-[color:var(--tone-info-border)] bg-[color:var(--tone-info-bg)] p-3 text-sm text-[color:var(--tone-info-text)]">
               {t("workflowControl.apply.rollback")}
             </div>
           )}

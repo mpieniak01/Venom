@@ -9,7 +9,7 @@ Zdefiniowane w `web-next/lib/theme-registry.ts`:
 - `venom-dark` (domyślny)
 - `venom-light`
 
-Alias legacy (tylko migracyjnie):
+Alias legacy (tylko migracyjnie, runtime):
 - `venom-light-dev` -> `venom-light`
 
 ## 2. Przegląd architektury
@@ -36,6 +36,7 @@ Kluczowe pliki:
 - `web-next/app/globals.css`
   - bazowe tokeny semantyczne w `:root`
   - nadpisania per-theme w `html[data-theme="<id>"]`
+  - brak warstwy kompatybilności utility dla `venom-light-dev` (tylko canonical selector)
 - `web-next/components/layout/theme-switcher.tsx`
   - globalny selektor motywu w TopBar
 - `web-next/lib/i18n/locales/{pl,en,de}.ts`
@@ -75,15 +76,20 @@ Przy zmianach istniejącego motywu:
    - Academy (`/academy`)
    - Config (`/config`)
 5. Po zmianach tokenów uruchom testy unit/component.
+6. Utrzymuj guardy stabilizacji:
+   - brak `dark:` w `web-next/components` i `web-next/app`,
+   - brak `venom-light-dev` w `web-next/app/globals.css`,
+   - brak sekcji compatibility layer dla legacy utility klas.
 
 ## 5. Zalecany zakres tokenów
 
 Preferowane tokeny semantyczne:
 
 - Tekst: `--text-primary`, `--text-secondary`, `--text-heading`, `--ui-muted`
-- Powierzchnie: `--bg-dark`, `--bg-panel`, `--ui-surface`, `--surface-muted`
+- Powierzchnie: `--bg-base`, `--bg-panel`, `--ui-surface`, `--surface-muted`, `--surface-overlay-*`
 - Obrysy: `--ui-border`, `--ui-border-strong`, `--border-glass`
 - Akcje: `--primary`, `--secondary`, zestaw tokenów przycisków
+- Statusy: `--tone-success-*`, `--tone-warning-*`, `--tone-danger-*`, `--tone-info-*`, `--tone-neutral-*`
 - Efekty: `--shadow-card`, `--app-shell-radial`, `--noise-image`
 
 Unikaj dodawania osobnych, hardcoded palet per komponent, jeśli da się użyć istniejących tokenów.

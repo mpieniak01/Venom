@@ -148,13 +148,13 @@ export function CockpitChatConsole({
                 data-testid={`cockpit-preset-${preset.id}`}
                 variant="ghost"
                 size="sm"
-                className="w-full items-center gap-3 rounded-2xl box-muted px-4 py-3 text-left transition hover:border-violet-400/50 hover:bg-black/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/60"
+                className="w-full items-center gap-3 rounded-2xl box-muted px-4 py-3 text-left transition hover:border-[color:var(--accent)] hover:bg-[color:var(--ui-surface-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--accent)]"
               >
-                <span className="rounded-2xl bg-white/10 px-3 py-2 text-lg">
+                <span className="rounded-2xl bg-[color:var(--ui-border)] px-3 py-2 text-lg">
                   {preset.icon}
                 </span>
                 <div className="flex-1">
-                  <p className="font-semibold text-white">{preset.category}</p>
+                  <p className="font-semibold text-[color:var(--text-heading)]">{preset.category}</p>
                   <p className="text-hint">{preset.description}</p>
                 </div>
               </Button>

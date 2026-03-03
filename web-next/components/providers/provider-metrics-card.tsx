@@ -43,10 +43,10 @@ export function ProviderMetricsCard({ provider, metrics }: Readonly<ProviderMetr
   if (!metrics) {
     return (
       <div className="card-shell card-base p-5 text-sm">
-        <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+        <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
           {t("providers.metrics.title")}
         </p>
-        <p className="mt-4 text-center text-zinc-400">
+        <p className="mt-4 text-center text-theme-muted">
           {t("providers.metrics.noData")}
         </p>
       </div>
@@ -61,7 +61,7 @@ export function ProviderMetricsCard({ provider, metrics }: Readonly<ProviderMetr
   return (
     <div className="card-shell card-base p-5 text-sm space-y-4">
       <div>
-        <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+        <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
           {t("providers.metrics.title")} - {provider}
         </p>
       </div>
@@ -69,13 +69,13 @@ export function ProviderMetricsCard({ provider, metrics }: Readonly<ProviderMetr
       {/* Key metrics row */}
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded-2xl box-subtle px-3 py-2">
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+          <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
             {t("providers.metrics.totalRequests")}
           </p>
           <p className="text-2xl font-semibold">{metrics.total_requests.toLocaleString()}</p>
         </div>
         <div className="rounded-2xl box-subtle px-3 py-2">
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+          <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
             {t("providers.metrics.successRate")}
           </p>
           <p className="text-2xl font-semibold">{metrics.success_rate.toFixed(1)}%</p>
@@ -84,20 +84,20 @@ export function ProviderMetricsCard({ provider, metrics }: Readonly<ProviderMetr
 
       {/* Latency metrics */}
       <div>
-        <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-2">
+        <p className="text-xs uppercase tracking-[0.35em] text-theme-muted mb-2">
           {t("providers.metrics.latency.p50")}
         </p>
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-            <p className="text-xs text-zinc-400">{t("providers.metrics.latency.p50Label")}</p>
+            <p className="text-xs text-theme-muted">{t("providers.metrics.latency.p50Label")}</p>
             <p className="text-lg font-semibold">{formatLatency(metrics.latency.p50_ms)}</p>
           </div>
           <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-            <p className="text-xs text-zinc-400">{t("providers.metrics.latency.p95Label")}</p>
+            <p className="text-xs text-theme-muted">{t("providers.metrics.latency.p95Label")}</p>
             <p className="text-lg font-semibold">{formatLatency(metrics.latency.p95_ms)}</p>
           </div>
           <div className="rounded-2xl box-subtle px-3 py-2 text-center">
-            <p className="text-xs text-zinc-400">{t("providers.metrics.latency.p99Label")}</p>
+            <p className="text-xs text-theme-muted">{t("providers.metrics.latency.p99Label")}</p>
             <p className="text-lg font-semibold">{formatLatency(metrics.latency.p99_ms)}</p>
           </div>
         </div>
@@ -107,13 +107,13 @@ export function ProviderMetricsCard({ provider, metrics }: Readonly<ProviderMetr
       {metrics.cost.total_usd > 0 && (
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-2xl box-subtle px-3 py-2">
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
               {t("providers.metrics.totalCost")}
             </p>
             <p className="text-2xl font-semibold">${metrics.cost.total_usd.toFixed(4)}</p>
           </div>
           <div className="rounded-2xl box-subtle px-3 py-2">
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            <p className="text-xs uppercase tracking-[0.35em] text-theme-muted">
               {t("providers.metrics.totalTokens")}
             </p>
             <p className="text-2xl font-semibold">{metrics.cost.total_tokens.toLocaleString()}</p>
@@ -124,29 +124,29 @@ export function ProviderMetricsCard({ provider, metrics }: Readonly<ProviderMetr
       {/* Error breakdown */}
       {metrics.errors.total > 0 && (
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-2">
+          <p className="text-xs uppercase tracking-[0.35em] text-theme-muted mb-2">
             {t("providers.metrics.errorRate")}
           </p>
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-              <span className="text-xs text-zinc-400">{t("providers.metrics.errors.total")}</span>
+              <span className="text-xs text-theme-muted">{t("providers.metrics.errors.total")}</span>
               <span className="text-sm font-semibold text-red-400">{metrics.errors.total}</span>
             </div>
             {metrics.errors.timeouts > 0 && (
               <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-                <span className="text-xs text-zinc-400">{t("providers.metrics.errors.timeouts")}</span>
+                <span className="text-xs text-theme-muted">{t("providers.metrics.errors.timeouts")}</span>
                 <span className="text-sm font-semibold">{metrics.errors.timeouts}</span>
               </div>
             )}
             {metrics.errors.auth_errors > 0 && (
               <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-                <span className="text-xs text-zinc-400">{t("providers.metrics.errors.authErrors")}</span>
+                <span className="text-xs text-theme-muted">{t("providers.metrics.errors.authErrors")}</span>
                 <span className="text-sm font-semibold">{metrics.errors.auth_errors}</span>
               </div>
             )}
             {metrics.errors.budget_errors > 0 && (
               <div className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
-                <span className="text-xs text-zinc-400">{t("providers.metrics.errors.budgetErrors")}</span>
+                <span className="text-xs text-theme-muted">{t("providers.metrics.errors.budgetErrors")}</span>
                 <span className="text-sm font-semibold">{metrics.errors.budget_errors}</span>
               </div>
             )}

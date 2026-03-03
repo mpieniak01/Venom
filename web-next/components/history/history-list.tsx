@@ -65,7 +65,7 @@ export function HistoryList({
         className={cn(
           "rounded-3xl px-4 py-6",
           variant === "preview"
-            ? "card-shell bg-gradient-to-br from-emerald-500/5 via-black/20 to-transparent"
+            ? "card-shell bg-gradient-to-br from-[color:var(--primary-dim)] via-[color:var(--ui-surface)] to-[color:var(--bg-panel)]"
             : "box-muted",
         )}
       />
@@ -77,7 +77,7 @@ export function HistoryList({
       className={cn(
         "rounded-3xl p-4",
         variant === "preview"
-          ? "card-shell bg-gradient-to-b from-emerald-500/5 via-black/30 to-transparent"
+          ? "card-shell bg-gradient-to-b from-[color:var(--primary-dim)] via-[color:var(--ui-surface)] to-transparent"
           : "box-muted",
       )}
     >
@@ -92,27 +92,27 @@ export function HistoryList({
               variant="ghost"
               size="sm"
               className={cn(
-                "flex w-full flex-col items-start gap-2 rounded-2xl border px-4 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/60",
+                "flex w-full flex-col items-start gap-2 rounded-2xl border px-4 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--primary)]",
                 variant === "preview"
-                  ? "bg-black/30 hover:bg-black/50"
-                  : "bg-zinc-950/40 hover:bg-zinc-900/60",
+                  ? "bg-[color:var(--ui-surface)] hover:bg-[color:var(--ui-surface-hover)]"
+                  : "bg-[color:var(--surface-muted)] hover:bg-[color:var(--ui-surface)]",
                 isSelected
                   ? "border-emerald-400/60 shadow-[0_0_20px_rgba(0,255,157,0.15)]"
                   : "border-white/5",
               )}
             >
-              <div className="flex w-full flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.3em] text-emerald-200/70">
+              <div className="flex w-full flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.3em] text-[color:var(--accent)]">
                 <span>
                   {mounted ? formatRelativeTime(item.created_at) : item.created_at}
                 </span>
-                <span className="font-mono tracking-normal text-white">
+                <span className="font-mono tracking-normal text-[color:var(--text-heading)]">
                   #{item.request_id.slice(0, 10)}
                 </span>
               </div>
-              <p className="text-sm text-zinc-300">
+              <p className="text-sm text-[color:var(--text-primary)]">
                 {item.prompt?.trim() ? item.prompt : "Brak promptu."}
               </p>
-              <p className="text-caption text-zinc-400">
+              <p className="text-caption text-hint">
                 {formatHistoryModel(item)}
               </p>
               {item.error_code && (
@@ -134,7 +134,7 @@ export function HistoryList({
       {remaining > 0 && viewAllHref && (
         <Link
           href={viewAllHref}
-          className="mt-4 flex items-center justify-between rounded-2xl border border-emerald-400/30 bg-emerald-500/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-200 transition hover:border-emerald-400/60"
+          className="mt-4 flex items-center justify-between rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--primary-dim)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-[color:var(--accent)] transition hover:border-[color:var(--ui-border-strong)] hover:bg-[color:var(--primary-glow)]"
         >
           <span>+{remaining} w Inspectorze</span>
           <span className="text-hint">Zobacz wszystko ↗</span>

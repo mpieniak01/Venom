@@ -394,11 +394,11 @@ function AuditFiltersSection({
   return (
     <div className="grid gap-2 md:grid-cols-2">
       <label className="space-y-1">
-        <span className="text-[11px] uppercase text-zinc-500">{t("config.audit.filters.source")}</span>
+        <span className="text-[11px] uppercase text-theme-muted">{t("config.audit.filters.source")}</span>
         <select
           value={model.apiChannelFilter}
           onChange={(event) => model.setApiChannelFilter(event.target.value)}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-100"
+          className="w-full rounded-lg border border-zinc-700 bg-theme-overlay-strong px-2 py-1 text-xs text-theme-primary"
         >
           <option value={ALL_CHANNELS}>{t("config.audit.filters.allSources")}</option>
           {model.apiChannels.map((channel) => (
@@ -409,11 +409,11 @@ function AuditFiltersSection({
         </select>
       </label>
       <label className="space-y-1">
-        <span className="text-[11px] uppercase text-zinc-500">{t("config.audit.filters.outcome")}</span>
+        <span className="text-[11px] uppercase text-theme-muted">{t("config.audit.filters.outcome")}</span>
         <select
           value={model.outcomeFilter}
           onChange={(event) => model.setOutcomeFilter(event.target.value as OutcomeFilter)}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-100"
+          className="w-full rounded-lg border border-zinc-700 bg-theme-overlay-strong px-2 py-1 text-xs text-theme-primary"
         >
           <option value="all">{t("config.audit.filters.allOutcomes")}</option>
           <option value="success">{t("config.audit.filters.success")}</option>
@@ -485,19 +485,19 @@ function AuditRows({
               <button
                 type="button"
                 className={`w-full rounded-md px-1 py-1 text-left transition-colors ${
-                  isActive ? "bg-blue-500/10 ring-1 ring-blue-400/40" : "hover:bg-white/5"
+                  isActive ? "bg-blue-500/10 ring-1 ring-blue-400/40" : "hover:bg-theme-overlay"
                 }`}
                 onClick={() => model.setSelectedEntryId(row.idRef)}
               >
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="w-[19ch] shrink-0 text-zinc-500">
+                  <span className="w-[19ch] shrink-0 text-theme-muted">
                     {formatFixedDateTime(row.timestamp, model.noDataLabel)}
                   </span>
-                  <span className="shrink-0 font-semibold uppercase text-zinc-300">{row.action}</span>
-                  <span className="shrink-0 text-zinc-500">{truncateMiddle(row.source, 16)}</span>
-                  <span className="shrink-0 text-zinc-500">{truncateMiddle(row.actor, 18)}</span>
-                  <span className="min-w-0 truncate text-zinc-500">{truncateMiddle(row.context, 18)}</span>
-                  <span className="shrink-0 text-zinc-500">{truncateMiddle(row.idRef, 14)}</span>
+                  <span className="shrink-0 font-semibold uppercase text-theme-secondary">{row.action}</span>
+                  <span className="shrink-0 text-theme-muted">{truncateMiddle(row.source, 16)}</span>
+                  <span className="shrink-0 text-theme-muted">{truncateMiddle(row.actor, 18)}</span>
+                  <span className="min-w-0 truncate text-theme-muted">{truncateMiddle(row.context, 18)}</span>
+                  <span className="shrink-0 text-theme-muted">{truncateMiddle(row.idRef, 14)}</span>
                   <div className="ml-auto flex shrink-0 items-center gap-2">
                     <Badge
                       tone="neutral"
@@ -516,7 +516,7 @@ function AuditRows({
           );
         })}
         {model.hasMoreRows ? (
-          <li className="px-1 py-2 text-center text-[11px] text-zinc-500">
+          <li className="px-1 py-2 text-center text-[11px] text-theme-muted">
             {t("common.loading")}
           </li>
         ) : null}
@@ -536,23 +536,23 @@ function AuditEntrySummary({
 }>) {
   return (
     <>
-      <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-        <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+      <div className="rounded-2xl border border-theme bg-theme-overlay-strong p-3">
+        <p className="text-[11px] uppercase tracking-wide text-theme-muted">
           {t("config.audit.details.entryTitle")}
         </p>
-        <p className="font-semibold text-zinc-100">{row.action}</p>
-        <p className="text-zinc-400">{formatFixedDateTime(row.timestamp, noDataLabel)}</p>
+        <p className="font-semibold text-theme-primary">{row.action}</p>
+        <p className="text-theme-muted">{formatFixedDateTime(row.timestamp, noDataLabel)}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/25 p-3 text-[11px]">
-        <div className="text-zinc-500">{t("config.audit.details.actor")}</div>
-        <div className="text-zinc-200">{row.actor}</div>
-        <div className="text-zinc-500">{t("config.audit.details.source")}</div>
-        <div className="text-zinc-200">{row.source}</div>
-        <div className="text-zinc-500">{t("config.audit.details.apiChannel")}</div>
-        <div className="text-zinc-200">{row.apiChannel}</div>
-        <div className="text-zinc-500">{t("config.audit.details.status")}</div>
-        <div className="text-zinc-200">{row.status}</div>
+      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-theme bg-theme-overlay-strong p-3 text-[11px]">
+        <div className="text-theme-muted">{t("config.audit.details.actor")}</div>
+        <div className="text-theme-secondary">{row.actor}</div>
+        <div className="text-theme-muted">{t("config.audit.details.source")}</div>
+        <div className="text-theme-secondary">{row.source}</div>
+        <div className="text-theme-muted">{t("config.audit.details.apiChannel")}</div>
+        <div className="text-theme-secondary">{row.apiChannel}</div>
+        <div className="text-theme-muted">{t("config.audit.details.status")}</div>
+        <div className="text-theme-secondary">{row.status}</div>
       </div>
     </>
   );
@@ -573,19 +573,19 @@ function AuditAutonomyDetails({
         {t("config.audit.details.autonomy.title")}
       </p>
       {autonomy.current === null ? null : (
-        <p className="text-zinc-100">
+        <p className="text-theme-primary">
           {t("config.audit.details.autonomy.current")}: {autonomy.current}
           {autonomy.currentName ? ` (${autonomy.currentName})` : ""}
         </p>
       )}
       {autonomy.required === null ? null : (
-        <p className="text-zinc-100">
+        <p className="text-theme-primary">
           {t("config.audit.details.autonomy.required")}: {autonomy.required}
           {autonomy.requiredName ? ` (${autonomy.requiredName})` : ""}
         </p>
       )}
       {autonomy.oldLevel !== null || autonomy.newLevel !== null ? (
-        <p className="text-zinc-100">
+        <p className="text-theme-primary">
           {t("config.audit.details.autonomy.change")}: {autonomy.oldLevel ?? "?"}
           {autonomy.oldName ? ` (${autonomy.oldName})` : ""}
           {" -> "}
@@ -594,12 +594,12 @@ function AuditAutonomyDetails({
         </p>
       ) : null}
       {policy?.check ? (
-        <p className="text-zinc-100">
+        <p className="text-theme-primary">
           {t("config.audit.details.autonomy.policy")}: {policy.check}
         </p>
       ) : null}
       {policy?.compliant === null ? null : (
-        <p className="text-zinc-100">
+        <p className="text-theme-primary">
           {t("config.audit.details.autonomy.compliance")}:{" "}
           {policy?.compliant
             ? t("config.audit.details.autonomy.yes")
@@ -615,11 +615,11 @@ function AuditDetailsJson({
   details,
 }: Readonly<{ t: ReturnType<typeof useTranslation>; details: Record<string, unknown> }>) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-      <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">
+    <div className="rounded-2xl border border-theme bg-theme-overlay-strong p-3">
+      <p className="mb-1 text-[11px] uppercase tracking-wide text-theme-muted">
         {t("config.audit.details.json")}
       </p>
-      <pre className="max-h-56 overflow-auto rounded-md border border-white/10 bg-zinc-950/70 p-2 text-[11px] text-zinc-300">
+      <pre className="max-h-56 overflow-auto rounded-md border border-theme bg-theme-overlay-strong p-2 text-[11px] text-theme-secondary">
         {JSON.stringify(details, null, 2)}
       </pre>
     </div>
@@ -633,7 +633,7 @@ function AuditDetails({
   if (!model.selectedRow) {
     return (
       <aside className="glass-panel rounded-2xl box-subtle p-4 text-xs">
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-4 text-zinc-400">
+        <div className="rounded-2xl border border-theme bg-theme-overlay-strong p-4 text-theme-muted">
           {t("config.audit.details.noneSelected")}
         </div>
       </aside>
@@ -665,7 +665,7 @@ function AuditBody({
     return <AuditLoadingSkeleton />;
   }
   if (!model.filteredRows.length) {
-    return <p className="text-zinc-400">{t("config.audit.empty")}</p>;
+    return <p className="text-theme-muted">{t("config.audit.empty")}</p>;
   }
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
@@ -685,7 +685,7 @@ export function AuditPanel() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-medium text-cyan-100">{t("config.audit.title")}</h2>
-            <p className="text-sm text-zinc-400">{t("config.audit.description")}</p>
+            <p className="text-sm text-theme-muted">{t("config.audit.description")}</p>
           </div>
           <Button
             type="button"
@@ -699,7 +699,7 @@ export function AuditPanel() {
         </div>
       </div>
 
-      <div className="glass-panel space-y-3 rounded-2xl border border-white/10 p-4">
+      <div className="glass-panel space-y-3 rounded-2xl border border-theme p-4">
         <AuditFiltersSection t={t} model={model} />
         {model.loadError ? <p className="text-xs text-amber-300">{model.loadError}</p> : null}
         <AuditBody t={t} model={model} />

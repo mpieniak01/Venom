@@ -9,7 +9,7 @@ Defined in `web-next/lib/theme-registry.ts`:
 - `venom-dark` (default)
 - `venom-light`
 
-Legacy alias (migration only):
+Legacy alias (runtime migration only):
 - `venom-light-dev` -> `venom-light`
 
 ## 2. Architecture Overview
@@ -36,6 +36,7 @@ Core files:
 - `web-next/app/globals.css`
   - Base semantic tokens in `:root`
   - Per-theme overrides in `html[data-theme="<id>"]`
+  - Legacy utility compatibility layer removed from visual CSS contract
 - `web-next/components/layout/theme-switcher.tsx`
   - Global selector UI in TopBar
 - `web-next/lib/i18n/locales/{pl,en,de}.ts`
@@ -75,15 +76,20 @@ When adjusting an existing theme:
    - Academy (`/academy`)
    - Config (`/config`)
 5. Re-run unit/component tests after visual token changes.
+6. Keep stabilization guards green:
+   - no `dark:` usage in `web-next/components` and `web-next/app`,
+   - no `venom-light-dev` selector in `web-next/app/globals.css`,
+   - no transitional compatibility layer for legacy utility classes.
 
 ## 5. Recommended Token Scope
 
 Prefer theme-safe semantic tokens:
 
 - Text: `--text-primary`, `--text-secondary`, `--text-heading`, `--ui-muted`
-- Surfaces: `--bg-dark`, `--bg-panel`, `--ui-surface`, `--surface-muted`
+- Surfaces: `--bg-base`, `--bg-panel`, `--ui-surface`, `--surface-muted`, `--surface-overlay-*`
 - Borders: `--ui-border`, `--ui-border-strong`, `--border-glass`
 - Actions: `--primary`, `--secondary`, button token set
+- Status tones: `--tone-success-*`, `--tone-warning-*`, `--tone-danger-*`, `--tone-info-*`, `--tone-neutral-*`
 - Effects: `--shadow-card`, `--app-shell-radial`, `--noise-image`
 
 Avoid introducing component-specific hardcoded palettes when an existing token can be reused.

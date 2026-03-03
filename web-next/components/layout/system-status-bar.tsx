@@ -104,33 +104,33 @@ export function SystemStatusBar({ initialData }: Readonly<{ initialData?: System
       data-testid="bottom-status-bar"
       className="pointer-events-none absolute inset-x-0 bottom-6 z-30 px-4 sm:px-8 lg:px-10 lg:pl-[calc(var(--sidebar-width)+2.5rem)] xl:px-12 xl:pl-[calc(var(--sidebar-width)+3rem)]"
     >
-      <div className="pointer-events-auto mr-auto w-full max-w-[1320px] xl:max-w-[1536px] 2xl:max-w-[85vw] border border-white/15 bg-black/75 px-5 py-4 text-xs text-left shadow-2xl shadow-emerald-900/40 backdrop-blur-2xl">
+      <div className="pointer-events-auto mr-auto w-full max-w-[1320px] xl:max-w-[1536px] 2xl:max-w-[85vw] glass-panel px-5 py-4 text-xs text-left shadow-2xl backdrop-blur-2xl">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div
             className="flex flex-wrap items-center gap-x-4 gap-y-1 text-hint"
             data-testid="status-bar-resources"
           >
-            <span className="font-semibold text-white" suppressHydrationWarning>{t("statusBar.resourcesLabel")}:</span>
+            <span className="font-semibold text-[color:var(--text-heading)]" suppressHydrationWarning>{t("statusBar.resourcesLabel")}:</span>
             {resourceItems.map((item) => (
               <span key={item.key} className="flex items-center gap-1">
-                <span className="text-zinc-400" suppressHydrationWarning>{item.label}</span>
-                <span className="text-white">{item.value}</span>
+                <span className="text-[color:var(--ui-muted)]" suppressHydrationWarning>{item.label}</span>
+                <span className="text-[color:var(--text-primary)]">{item.value}</span>
               </span>
             ))}
           </div>
-          <div className="flex flex-col items-start gap-0.5 text-sm text-zinc-300 lg:items-end lg:text-right" aria-live="polite">
+          <div className="flex flex-col items-start gap-0.5 text-sm text-[color:var(--text-secondary)] lg:items-end lg:text-right" aria-live="polite">
             <div className="flex items-center gap-2">
               <span suppressHydrationWarning>{t("statusBar.versionLabel")}:</span>
-              <span data-testid="status-bar-version" className="font-semibold text-white" suppressHydrationWarning>
+              <span data-testid="status-bar-version" className="font-semibold text-[color:var(--text-heading)]" suppressHydrationWarning>
                 {versionDisplay}
               </span>
-              <span className="text-zinc-500">|</span>
-              <span className="text-zinc-300" suppressHydrationWarning>{t("statusBar.environmentLabel")}:</span>
-              <span data-testid="status-bar-environment" className="font-semibold text-white" suppressHydrationWarning>
+              <span className="text-[color:var(--ui-muted)] font-bold">|</span>
+              <span className="text-[color:var(--text-secondary)]" suppressHydrationWarning>{t("statusBar.environmentLabel")}:</span>
+              <span data-testid="status-bar-environment" className="font-semibold text-[color:var(--text-heading)]" suppressHydrationWarning>
                 {environmentDisplay}
               </span>
             </div>
-            <div className="flex max-w-full items-center gap-1.5 text-[11px] text-zinc-400">
+            <div className="flex max-w-full items-center gap-1.5 text-[11px] text-[color:var(--ui-muted)]">
               <span suppressHydrationWarning>{t("statusBar.repoLabel")}:</span>
               <span
                 data-testid="status-bar-repo"
@@ -202,10 +202,10 @@ function resolveRepoTone(compareStatus: string | undefined, hasChanges: boolean)
     compareStatus === "no_local_main";
   const isClean = (!compareStatus && !hasChanges) || (compareStatus === "equal" && !hasChanges);
   return {
-    "text-zinc-400": false,
-    "text-rose-300/80": isBehindOrDiverged,
-    "text-amber-300/75": isNeedsAttention,
-    "text-emerald-300/75": isClean,
+    "text-[color:var(--ui-muted)]": false,
+    "text-tone-danger": isBehindOrDiverged,
+    "text-tone-warning": isNeedsAttention,
+    "text-tone-success": isClean,
   };
 }
 
@@ -218,7 +218,7 @@ function resolveRepoStatus(
   if (!gitStatus) {
     return {
       text: gitLoading ? t("statusBar.versionLoading") : t("statusBar.repoUnavailable"),
-      tone: { "text-zinc-400": true },
+      tone: { "text-[color:var(--ui-muted)]": true },
       title: undefined,
     };
   }
@@ -226,7 +226,7 @@ function resolveRepoStatus(
   if (gitStatus.is_git_repo === false) {
     return {
       text: t("statusBar.repoNotGit"),
-      tone: { "text-zinc-400": true },
+      tone: { "text-[color:var(--ui-muted)]": true },
       title: getRepoStatusTitle(gitStatus),
     };
   }

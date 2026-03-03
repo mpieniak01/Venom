@@ -13,10 +13,10 @@ interface ProviderStatusIndicatorProps {
 }
 
 export const providerStatusColors: Record<ConnectionStatus, string> = {
-  connected: "bg-green-500",
-  degraded: "bg-yellow-500",
-  offline: "bg-red-500",
-  unknown: "bg-gray-400",
+  connected: "bg-tone-success border-theme",
+  degraded: "bg-tone-warning border-theme",
+  offline: "bg-tone-danger border-theme",
+  unknown: "bg-theme-overlay border-theme",
 };
 
 export function shouldShowProviderLatency(
@@ -42,17 +42,17 @@ export function ProviderStatusIndicator({
 
   return (
     <div className="flex items-center gap-2">
-      <div className={`h-2 w-2 rounded-full ${providerStatusColors[status]}`} />
-      <span className="text-sm text-gray-700 dark:text-gray-300">
+      <div className={`h-2.5 w-2.5 rounded-full border ${providerStatusColors[status]}`} />
+      <span className="text-sm text-theme-secondary">
         {t(`providers.status.${status}`)}
       </span>
       {shouldShowProviderLatency(status, latency_ms) && (
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+        <span className="text-xs text-theme-muted">
           ({Math.round(latency_ms ?? 0)}ms)
         </span>
       )}
       {shouldShowProviderMessage(status, message) && (
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+        <span className="text-xs text-theme-muted">
           {message}
         </span>
       )}

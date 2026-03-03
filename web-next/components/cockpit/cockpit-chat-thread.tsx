@@ -328,12 +328,12 @@ export const ChatComposer = memo(
       : "ml-auto flex flex-wrap items-center justify-end gap-2";
 
     return (
-      <div className="mt-3 shrink-0 border-t border-white/5 pt-3">
+      <div className="mt-3 shrink-0 border-t border-[color:var(--ui-border)] pt-3">
         <div className="relative">
           <textarea
             ref={textareaRef}
             rows={2}
-            className="min-h-[64px] w-full rounded-xl box-base p-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
+            className="min-h-[64px] w-full rounded-xl box-base p-2 text-sm text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--ui-muted)] focus:border-[color:var(--accent)] 2xl:text-base"
             placeholder={t("cockpit.inputPlaceholder")}
             value={draft}
             onChange={(event) => handleDraftChange(event.target.value)}
@@ -341,17 +341,17 @@ export const ChatComposer = memo(
             data-testid="cockpit-prompt-input"
           />
           {slashSuggestions.length > 0 && (
-            <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-2xl border border-white/10 bg-[#0c0f1c] shadow-xl">
+            <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-2xl border border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] shadow-xl">
               {slashSuggestions.map((suggestion, index) => (
                 <button
                   key={suggestion.id}
                   type="button"
                   onClick={() => applySlashSuggestion(suggestion)}
-                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition ${index === slashIndex ? "bg-white/10 text-white" : "text-zinc-300 hover:bg-white/5"
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition ${index === slashIndex ? "bg-[color:var(--ui-menu-item-active)] text-[color:var(--text-primary)]" : "text-[color:var(--text-secondary)] hover:bg-[color:var(--ui-surface-hover)]"
                     }`}
                 >
-                  <span className="font-semibold text-zinc-100">{suggestion.command}</span>
-                  <span className="text-[11px] text-zinc-500">{suggestion.detail}</span>
+                  <span className="font-semibold text-[color:var(--text-heading)]">{suggestion.command}</span>
+                  <span className="text-[11px] text-hint">{suggestion.detail}</span>
                 </button>
               ))}
             </div>
@@ -368,7 +368,7 @@ export const ChatComposer = memo(
                 ariaLabel={t("cockpit.actions.selectServer")}
                 buttonTestId="llm-server-select"
                 placeholder={t("cockpit.models.chooseServer")}
-                buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap"
+                buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />
             </div>
@@ -390,7 +390,7 @@ export const ChatComposer = memo(
                 placeholder={t("cockpit.models.noModels")}
                 disabled={!hasModels}
                 menuWidth="content"
-                buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap overflow-hidden text-ellipsis"
+                buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />
             </div>
@@ -408,7 +408,7 @@ export const ChatComposer = memo(
                 buttonTestId="chat-adapter-select"
                 placeholder={t("cockpit.models.loadingAdapters")}
                 disabled={adapterSelectLoading || adapterMutationPending}
-                buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap"
+                buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />
             </div>
@@ -422,7 +422,7 @@ export const ChatComposer = memo(
                 buttonTestId="chat-mode-select"
                 menuTestId="chat-mode-menu"
                 optionTestIdPrefix="chat-mode-option"
-                buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap"
+                buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />
             </div>
@@ -451,7 +451,7 @@ export const ChatComposer = memo(
                 variant="outline"
                 size="sm"
                 onClick={() => setDraft("")}
-                className="text-zinc-300"
+                className="text-[color:var(--text-secondary)]"
               >
                 {t("cockpit.actions.clear")}
               </Button>
@@ -616,7 +616,7 @@ function renderFeedbackExtra(input: {
   return (
     <>
       <textarea
-        className="min-h-[70px] w-full rounded-2xl box-muted px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
+        className="min-h-[70px] w-full rounded-2xl box-muted px-3 py-2 text-xs text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--ui-muted)]"
         placeholder={t("cockpit.feedback.placeholder")}
         value={feedbackState.comment || ""}
         onChange={(event) =>
@@ -715,7 +715,7 @@ export function CockpitChatThread({
     () => (
       <>
         {chatMessages.length === 0 && (
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-hint">
             {t("cockpit.history.empty")}
           </p>
         )}

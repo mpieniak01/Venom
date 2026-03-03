@@ -60,11 +60,11 @@ function extractVar(block: string, name: string) {
 
 describe("theme contrast a11y", () => {
   const css = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
-  const rootBlock = extractThemeBlock(css, ":root", "--bg-dark");
+  const rootBlock = extractThemeBlock(css, ":root", "--bg-base");
   const lightBlock = extractThemeBlock(
     css,
-    'html\\[data-theme="venom-light"\\],\\s*html\\[data-theme="venom-light-dev"\\]',
-    "--bg-dark",
+    'html\\[data-theme="venom-light"\\]',
+    "--bg-base",
   );
 
   it("defines required semantic tokens for dark and light theme", () => {
@@ -72,7 +72,7 @@ describe("theme contrast a11y", () => {
       ["venom-dark", rootBlock],
       ["venom-light", lightBlock],
     ] as const) {
-      assert.ok(extractVar(block, "--bg-dark"), `Missing --bg-dark in ${name}`);
+      assert.ok(extractVar(block, "--bg-base"), `Missing --bg-base in ${name}`);
       assert.ok(extractVar(block, "--text-primary"), `Missing --text-primary in ${name}`);
       assert.ok(extractVar(block, "--ui-muted"), `Missing --ui-muted in ${name}`);
     }
@@ -81,11 +81,11 @@ describe("theme contrast a11y", () => {
   it("keeps primary text contrast at AA level", () => {
     const darkRatio = contrastRatio(
       extractVar(rootBlock, "--text-primary"),
-      extractVar(rootBlock, "--bg-dark"),
+      extractVar(rootBlock, "--bg-base"),
     );
     const lightRatio = contrastRatio(
       extractVar(lightBlock, "--text-primary"),
-      extractVar(lightBlock, "--bg-dark"),
+      extractVar(lightBlock, "--bg-base"),
     );
 
     assert.ok(darkRatio >= 4.5, `venom-dark ratio too low: ${darkRatio.toFixed(2)}`);
@@ -95,11 +95,11 @@ describe("theme contrast a11y", () => {
   it("keeps muted text contrast at readable level", () => {
     const darkRatio = contrastRatio(
       extractVar(rootBlock, "--ui-muted"),
-      extractVar(rootBlock, "--bg-dark"),
+      extractVar(rootBlock, "--bg-base"),
     );
     const lightRatio = contrastRatio(
       extractVar(lightBlock, "--ui-muted"),
-      extractVar(lightBlock, "--bg-dark"),
+      extractVar(lightBlock, "--bg-base"),
     );
 
     assert.ok(darkRatio >= 3.0, `venom-dark muted ratio too low: ${darkRatio.toFixed(2)}`);

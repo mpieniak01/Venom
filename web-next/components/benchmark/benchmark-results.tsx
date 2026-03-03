@@ -73,24 +73,24 @@ export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
       {/* Sekcja bieżących wyników (jeśli są) */}
       {safeResults.length > 0 && (
         <div className="space-y-3">
-          <h4 className="heading-h4 text-zinc-300">Bieżący wynik</h4>
-          <div className="overflow-x-auto rounded-xl box-muted">
+          <h4 className="heading-h4 text-[color:var(--text-heading)]">Bieżący wynik</h4>
+          <div className="overflow-x-auto rounded-xl bg-[color:var(--surface-muted)]">
             <ResultsTable results={safeResults} />
           </div>
         </div>
       )}
 
       {/* Sekcja historii */}
-      <div className="space-y-3 pt-6 border-t border-white/10">
+      <div className="space-y-3 pt-6 border-t border-[color:var(--ui-border)]">
         <div className="flex items-center justify-between">
-          <h4 className="heading-h4 text-zinc-300 flex items-center gap-2">
-            <History className="w-4 h-4 text-primary-400" />
+          <h4 className="heading-h4 text-[color:var(--text-heading)] flex items-center gap-2">
+            <History className="w-4 h-4 text-[color:var(--accent)]" />
             Historia Testów
           </h4>
           <div className="flex gap-2">
             <button
               onClick={fetchHistory}
-              className="p-2 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+              className="p-2 rounded-lg hover:bg-[color:var(--ui-surface-hover)] text-[color:var(--ui-muted)] hover:text-[color:var(--text-primary)] transition-colors"
               title="Odśwież"
             >
               <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
@@ -108,13 +108,13 @@ export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
         </div>
 
         {history.length === 0 ? (
-          <div className="text-center py-8 text-zinc-500 text-sm">
+          <div className="text-center py-8 text-[color:var(--ui-muted)] text-sm">
             Brak zapisanych wyników benchmarków.
           </div>
         ) : (
           <div className="grid gap-4">
             {history.map((item) => (
-              <div key={item.benchmark_id} className="rounded-xl box-muted p-4 relative group">
+              <div key={item.benchmark_id} className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-4 relative group">
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -122,19 +122,19 @@ export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
                         "w-2 h-2 rounded-full",
                         resolveStatusColor(item.status)
                       )} />
-                      <span className="font-mono text-xs text-zinc-500">{item.benchmark_id.slice(0, 8)}</span>
-                      <span className="text-xs text-zinc-400 flex items-center gap-1">
+                      <span className="font-mono text-xs text-[color:var(--ui-muted)]">{item.benchmark_id.slice(0, 8)}</span>
+                      <span className="text-xs text-[color:var(--text-secondary)] flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         {formatDate(item.created_at)}
                       </span>
                     </div>
-                    <div className="text-sm font-medium text-zinc-300">
+                    <div className="text-sm font-medium text-[color:var(--text-primary)]">
                       Modele: {item.models.join(", ")}
                     </div>
                   </div>
                   <button
                     onClick={() => handleDelete(item.benchmark_id)}
-                    className="opacity-0 group-hover:opacity-100 p-2 text-zinc-500 hover:text-rose-400 transition-all"
+                    className="opacity-0 group-hover:opacity-100 p-2 text-[color:var(--ui-muted)] hover:text-rose-400 transition-all"
                     title="Usuń wynik"
                   >
                     <X className="w-4 h-4" />
@@ -161,7 +161,7 @@ function ResultsTable({ results, mini = false }: Readonly<{ results: ReadonlyArr
   return (
     <table className="w-full text-left">
       <thead>
-        <tr className="border-b border-white/5 text-zinc-500">
+        <tr className="border-b border-[color:var(--ui-border)] text-[color:var(--text-secondary)]">
           <th className="py-2 font-medium">Model</th>
           <th className="py-2 text-right">Latencja</th>
           <th className="py-2 text-right">Speed</th>
@@ -169,13 +169,13 @@ function ResultsTable({ results, mini = false }: Readonly<{ results: ReadonlyArr
           {!mini && <th className="py-2 text-center">Status</th>}
         </tr>
       </thead>
-      <tbody className="divide-y divide-white/5">
+      <tbody className="divide-y divide-[color:var(--ui-border)]">
         {results.map((r: BenchmarkModelResult) => (
           <tr key={r.model_name}>
-            <td className="py-2 font-medium text-zinc-300">{r.model_name}</td>
-            <td className="py-2 text-right text-zinc-400">{r.latency_ms == null ? "-" : `${r.latency_ms}ms`}</td>
-            <td className="py-2 text-right text-zinc-400">{r.tokens_per_second == null ? "-" : `${r.tokens_per_second} t/s`}</td>
-            <td className="py-2 text-right text-zinc-400">{r.peak_vram_mb == null ? "-" : `${r.peak_vram_mb} MB`}</td>
+            <td className="py-2 font-medium text-[color:var(--text-primary)]">{r.model_name}</td>
+            <td className="py-2 text-right text-[color:var(--ui-muted)]">{r.latency_ms == null ? "-" : `${r.latency_ms}ms`}</td>
+            <td className="py-2 text-right text-[color:var(--ui-muted)]">{r.tokens_per_second == null ? "-" : `${r.tokens_per_second} t/s`}</td>
+            <td className="py-2 text-right text-[color:var(--ui-muted)]">{r.peak_vram_mb == null ? "-" : `${r.peak_vram_mb} MB`}</td>
             {!mini && (
               <td className="py-2 text-center">
                 <span className={cn(
@@ -200,7 +200,7 @@ function resolveStatusColor(status: string): string {
 }
 
 function resolveResultStatusColor(status: string): string {
-  if (status === 'completed') return "bg-emerald-500/20 text-emerald-400";
-  if (status === 'failed') return "bg-rose-500/20 text-rose-400";
-  return "bg-zinc-500/20 text-zinc-400";
+  if (status === 'completed') return "bg-[color:var(--badge-success-bg)] text-[color:var(--badge-success-text)]";
+  if (status === 'failed') return "bg-[color:var(--badge-danger-bg)] text-[color:var(--badge-danger-text)]";
+  return "bg-[color:var(--badge-neutral-bg)] text-[color:var(--badge-neutral-text)]";
 }

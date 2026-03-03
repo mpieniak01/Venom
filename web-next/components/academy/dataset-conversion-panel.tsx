@@ -181,16 +181,16 @@ export function DatasetConversionPanel() {
 
   const renderConvertedListContent = () => {
     if (loading) {
-      return <p className="text-sm text-zinc-400">{t("academy.common.loadingAcademy")}</p>;
+      return <p className="text-sm text-hint">{t("academy.common.loadingAcademy")}</p>;
     }
     if (convertedFiles.length === 0) {
-      return <p className="text-sm text-zinc-400">{t("academy.conversion.emptyConverted")}</p>;
+      return <p className="text-sm text-hint">{t("academy.conversion.emptyConverted")}</p>;
     }
     return convertedFiles.map((file) => (
-      <div key={file.file_id} className="rounded-lg border border-white/10 bg-black/20 p-3">
+      <div key={file.file_id} className="rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3 shadow-sm">
         <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-sm text-white">{file.name}</p>
-          <span className="text-xs text-zinc-500">{formatFileSize(file.size_bytes)}</span>
+          <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">{file.name}</p>
+          <span className="text-xs text-hint">{formatFileSize(file.size_bytes)}</span>
         </div>
         <div className="mt-2 flex items-center gap-2">
           <Checkbox
@@ -198,9 +198,9 @@ export function DatasetConversionPanel() {
             disabled={selectionUpdatingId === file.file_id}
             onCheckedChange={(checked) => onTrainingSelectionChange(file, checked === true)}
           />
-          <span className="text-xs text-zinc-300">{t("academy.conversion.useForTraining")}</span>
+          <span className="text-xs text-[color:var(--text-secondary)]">{t("academy.conversion.useForTraining")}</span>
           {selectionUpdatingId === file.file_id ? (
-            <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
+            <Loader2 className="h-3 w-3 animate-spin text-hint" />
           ) : null}
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -211,7 +211,7 @@ export function DatasetConversionPanel() {
           ) : null}
           <a
             href={`/api/v1/academy/dataset/conversion/files/${file.file_id}/download`}
-            className="inline-flex items-center rounded-md border border-white/15 px-2 py-1 text-xs text-zinc-200 hover:bg-white/5"
+            className="inline-flex items-center rounded-md border border-[color:var(--ui-border)] px-2 py-1 text-xs text-[color:var(--text-secondary)] hover:bg-[color:var(--ui-surface-hover)]"
           >
             {t("academy.conversion.download")}
           </a>
@@ -222,23 +222,23 @@ export function DatasetConversionPanel() {
 
   const renderSourceListContent = () => {
     if (loading) {
-      return <p className="text-sm text-zinc-400">{t("academy.common.loadingAcademy")}</p>;
+      return <p className="text-sm text-hint">{t("academy.common.loadingAcademy")}</p>;
     }
     if (sourceFiles.length === 0) {
-      return <p className="text-sm text-zinc-400">{t("academy.conversion.emptySource")}</p>;
+      return <p className="text-sm text-hint">{t("academy.conversion.emptySource")}</p>;
     }
     return sourceFiles.map((file) => (
-      <div key={file.file_id} className="rounded-lg border border-white/10 bg-black/20 p-3">
+      <div key={file.file_id} className="rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3 shadow-sm">
         <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-sm text-white">{file.name}</p>
-          <span className="text-xs text-zinc-500">{formatFileSize(file.size_bytes)}</span>
+          <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">{file.name}</p>
+          <span className="text-xs text-hint">{formatFileSize(file.size_bytes)}</span>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <select
             data-file-id={file.file_id}
             value={targetBySource[file.file_id] ?? "md"}
             onChange={handleTargetFormatSelectChange}
-            className="rounded-md border border-white/15 bg-[#03162a] px-2 py-1 text-xs text-zinc-200"
+            className="rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2 py-1 text-xs text-[color:var(--text-primary)]"
           >
             {TARGET_FORMATS.map((format) => (
               <option key={format} value={format}>
@@ -273,11 +273,11 @@ export function DatasetConversionPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-white">{t("academy.conversion.title")}</h2>
-        <p className="text-sm text-zinc-400">{t("academy.conversion.subtitle")}</p>
+        <h2 className="text-lg font-semibold text-[color:var(--text-heading)]">{t("academy.conversion.title")}</h2>
+        <p className="text-sm text-hint">{t("academy.conversion.subtitle")}</p>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+      <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
         <div className="flex flex-wrap items-center gap-3">
           <input
             ref={fileInputRef}
@@ -291,40 +291,40 @@ export function DatasetConversionPanel() {
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {uploading ? t("academy.conversion.uploading") : t("academy.conversion.uploadFiles")}
           </Button>
-          <p className="text-xs text-zinc-400">{t("academy.conversion.supported")}</p>
+          <p className="text-xs text-hint">{t("academy.conversion.supported")}</p>
         </div>
         {workspaceDir ? (
-          <p className="mt-3 text-xs text-zinc-500">
+          <p className="mt-3 text-xs text-hint/60">
             {t("academy.conversion.workspace")}: <code>{workspaceDir}</code>
           </p>
         ) : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-white">{t("academy.conversion.convertedFiles")}</h3>
+        <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
+          <h3 className="mb-3 text-sm font-semibold text-[color:var(--text-heading)]">{t("academy.conversion.convertedFiles")}</h3>
           <div className="space-y-2">
             {renderConvertedListContent()}
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-white">{t("academy.conversion.sourceFiles")}</h3>
+        <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
+          <h3 className="mb-3 text-sm font-semibold text-[color:var(--text-heading)]">{t("academy.conversion.sourceFiles")}</h3>
           <div className="space-y-2">
             {renderSourceListContent()}
           </div>
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
+      <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4 shadow-sm">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[color:var(--text-primary)]">
           <FileText className="h-4 w-4" />
           {previewTitle || t("academy.conversion.previewPanel")}
         </div>
         <textarea
           value={previewText}
           readOnly
-          className="min-h-[280px] w-full rounded-lg border border-white/10 bg-[#020e1e] p-3 text-xs text-zinc-200"
+          className="min-h-[280px] w-full rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--terminal)] p-3 text-xs text-[color:var(--text-primary)]"
           placeholder={
             allPreviewable.length > 0
               ? t("academy.conversion.previewHint")

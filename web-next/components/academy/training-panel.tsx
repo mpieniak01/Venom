@@ -245,8 +245,8 @@ export function TrainingPanel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">{t("academy.training.title")}</h2>
-          <p className="text-sm text-zinc-400">
+          <h2 className="text-lg font-semibold text-[color:var(--text-heading)]">{t("academy.training.title")}</h2>
+          <p className="text-sm text-hint">
             {t("academy.training.subtitle")}
           </p>
         </div>
@@ -257,111 +257,111 @@ export function TrainingPanel() {
       </div>
 
       {/* Formularz parametrów */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-        <h3 className="mb-4 text-sm font-medium text-zinc-300">{t("academy.training.paramsTitle")}</h3>
+      <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6">
+        <h3 className="mb-4 text-sm font-medium text-[color:var(--text-secondary)]">{t("academy.training.paramsTitle")}</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <div className="sm:col-span-2 xl:col-span-5">
-            <p className="text-sm font-medium text-zinc-300">
+            <p className="text-sm font-medium text-[color:var(--text-secondary)]">
               {t("academy.training.baseModel")}
             </p>
             <div className="mt-2">
               <SelectMenu
-              value={selectedBaseModel}
-              options={modelPickerOptions}
-              onChange={setSelectedBaseModel}
-              placeholder={baseModelPlaceholder}
-              ariaLabel={t("academy.training.baseModel")}
-              disabled={modelsLoading || trainableModels.length === 0}
-              buttonClassName="mt-0 h-11 w-full justify-between rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2"
-              menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-zinc-700 bg-zinc-950 p-1"
-              optionClassName="rounded-md px-3 py-2 text-zinc-100 hover:bg-zinc-800"
-              renderButton={(option) => {
-                const selectedOption = option as ModelPickerOption | null;
-                if (!selectedOption || selectedOption.kind !== "model" || !selectedOption.model) {
+                value={selectedBaseModel}
+                options={modelPickerOptions}
+                onChange={setSelectedBaseModel}
+                placeholder={baseModelPlaceholder}
+                ariaLabel={t("academy.training.baseModel")}
+                disabled={modelsLoading || trainableModels.length === 0}
+                buttonClassName="mt-0 h-11 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
+                menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
+                optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
+                renderButton={(option) => {
+                  const selectedOption = option as ModelPickerOption | null;
+                  if (!selectedOption || selectedOption.kind !== "model" || !selectedOption.model) {
+                    return (
+                      <span className="min-w-0 flex-1 truncate text-left text-hint">
+                        {baseModelPlaceholder}
+                      </span>
+                    );
+                  }
+                  const compatibility = getModelCompatibility(selectedOption.model);
+                  const compatibilityLabel = compatibility.length > 0
+                    ? compatibility
+                      .map((runtime) => getRuntimeDisplayName(runtime))
+                      .join(" • ")
+                    : t("academy.training.runtimeUnknown");
                   return (
-                    <span className="min-w-0 flex-1 truncate text-left text-zinc-400">
-                      {baseModelPlaceholder}
-                    </span>
-                  );
-                }
-                const compatibility = getModelCompatibility(selectedOption.model);
-                const compatibilityLabel = compatibility.length > 0
-                  ? compatibility
-                    .map((runtime) => getRuntimeDisplayName(runtime))
-                    .join(" • ")
-                  : t("academy.training.runtimeUnknown");
-                return (
-                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-left text-sm text-zinc-100">
-                        {selectedOption.model.model_id}
-                      </p>
-                      <p className="truncate text-left text-[11px] text-zinc-400">
-                        {t("academy.training.compatibilityLabel")}: {compatibilityLabel}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-xs text-zinc-300">
-                      {t(`academy.training.engineNames.${resolveEngineKey(selectedOption.model.provider)}`)}
-                    </span>
-                  </div>
-                );
-              }}
-              renderOption={(option, active) => {
-                const typedOption = option as ModelPickerOption;
-                if (typedOption.kind === "section") {
-                  return (
-                    <div className="w-full cursor-default border-b border-zinc-800/80 px-1 py-2 text-left">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-200">
-                        {typedOption.label}
-                      </p>
-                      <p className="text-[11px] text-zinc-500">
-                        {typedOption.description}
-                      </p>
-                    </div>
-                  );
-                }
-                const model = typedOption.model;
-                if (!model) {
-                  return <span className="text-sm text-zinc-400">{typedOption.label}</span>;
-                }
-                const compatibility = getModelCompatibility(model);
-                const compatibilityBadges = compatibility.length > 0 ? compatibility : [];
-                return (
-                  <div className="flex w-full items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className={`truncate text-sm ${active ? "text-white" : "text-zinc-100"}`}>
-                        {model.model_id}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        {compatibilityBadges.length > 0 ? (
-                          compatibilityBadges.map((runtime) => (
-                            <span
-                              key={`${model.model_id}-${runtime}`}
-                              className="rounded-md border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-300"
-                            >
-                              {getRuntimeDisplayName(runtime)}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-[11px] text-zinc-500">
-                            {t("academy.training.runtimeUnknown")}
-                          </span>
-                        )}
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-left text-sm text-[color:var(--text-primary)]">
+                          {selectedOption.model.model_id}
+                        </p>
+                        <p className="truncate text-left text-[11px] text-hint">
+                          {t("academy.training.compatibilityLabel")}: {compatibilityLabel}
+                        </p>
                       </div>
+                      <span className="shrink-0 text-xs text-[color:var(--ui-muted)]">
+                        {t(`academy.training.engineNames.${resolveEngineKey(selectedOption.model.provider)}`)}
+                      </span>
                     </div>
-                    <span className="shrink-0 text-xs text-zinc-300">
-                      {t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`)}
-                    </span>
-                  </div>
-                );
-              }}
+                  );
+                }}
+                renderOption={(option, active) => {
+                  const typedOption = option as ModelPickerOption;
+                  if (typedOption.kind === "section") {
+                    return (
+                      <div className="w-full cursor-default border-b border-[color:var(--ui-border)] px-1 py-2 text-left">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                          {typedOption.label}
+                        </p>
+                        <p className="text-[11px] text-hint">
+                          {typedOption.description}
+                        </p>
+                      </div>
+                    );
+                  }
+                  const model = typedOption.model;
+                  if (!model) {
+                    return <span className="text-sm text-hint">{typedOption.label}</span>;
+                  }
+                  const compatibility = getModelCompatibility(model);
+                  const compatibilityBadges = compatibility.length > 0 ? compatibility : [];
+                  return (
+                    <div className="flex w-full items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className={`truncate text-sm ${active ? "text-[color:var(--primary)]" : "text-[color:var(--text-primary)]"}`}>
+                          {model.model_id}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {compatibilityBadges.length > 0 ? (
+                            compatibilityBadges.map((runtime) => (
+                              <span
+                                key={`${model.model_id}-${runtime}`}
+                                className="rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--ui-muted)]"
+                              >
+                                {getRuntimeDisplayName(runtime)}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[11px] text-hint">
+                              {t("academy.training.runtimeUnknown")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-xs text-[color:var(--ui-muted)]">
+                        {t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`)}
+                      </span>
+                    </div>
+                  );
+                }}
               />
             </div>
-            <p className="mt-1 text-xs text-zinc-400">{t("academy.training.baseModelHint")}</p>
-            <p className="mt-1 text-xs text-zinc-500">{t("academy.training.orderingHint")}</p>
+            <p className="mt-1 text-xs text-hint">{t("academy.training.baseModelHint")}</p>
+            <p className="mt-1 text-xs text-hint/60">{t("academy.training.orderingHint")}</p>
           </div>
           <div>
-            <Label htmlFor="lora-rank" className="text-zinc-300">
+            <Label htmlFor="lora-rank" className="text-[color:var(--text-secondary)]">
               LoRA Rank
             </Label>
             <Input
@@ -373,10 +373,10 @@ export function TrainingPanel() {
               max={64}
               className="mt-2"
             />
-            <p className="mt-1 text-xs text-zinc-400">{t("academy.training.loraHint")}</p>
+            <p className="mt-1 text-xs text-hint">{t("academy.training.loraHint")}</p>
           </div>
           <div>
-            <Label htmlFor="learning-rate" className="text-zinc-300">
+            <Label htmlFor="learning-rate" className="text-[color:var(--text-secondary)]">
               {t("academy.training.learningRate")}
             </Label>
             <Input
@@ -391,10 +391,10 @@ export function TrainingPanel() {
               max={0.01}
               className="mt-2"
             />
-            <p className="mt-1 text-xs text-zinc-400">0.00001-0.01</p>
+            <p className="mt-1 text-xs text-hint">0.00001-0.01</p>
           </div>
           <div>
-            <Label htmlFor="num-epochs" className="text-zinc-300">
+            <Label htmlFor="num-epochs" className="text-[color:var(--text-secondary)]">
               Epochs
             </Label>
             <Input
@@ -406,10 +406,10 @@ export function TrainingPanel() {
               max={20}
               className="mt-2"
             />
-            <p className="mt-1 text-xs text-zinc-400">1-20</p>
+            <p className="mt-1 text-xs text-hint">1-20</p>
           </div>
           <div>
-            <Label htmlFor="batch-size" className="text-zinc-300">
+            <Label htmlFor="batch-size" className="text-[color:var(--text-secondary)]">
               Batch Size
             </Label>
             <Input
@@ -421,7 +421,7 @@ export function TrainingPanel() {
               max={32}
               className="mt-2"
             />
-            <p className="mt-1 text-xs text-zinc-400">{t("academy.training.batchSizeHint")}</p>
+            <p className="mt-1 text-xs text-hint">{t("academy.training.batchSizeHint")}</p>
           </div>
           <div className="sm:col-span-2 xl:col-span-1 xl:self-end">
             <Button
@@ -447,41 +447,41 @@ export function TrainingPanel() {
 
       {/* Lista jobów */}
       <div>
-        <h3 className="mb-3 text-sm font-medium text-zinc-300">
+        <h3 className="mb-3 text-sm font-medium text-[color:var(--text-secondary)]">
           {t("academy.training.history", { count: jobs.length })}
         </h3>
         <div className="space-y-2">
           {jobs.length === 0 ? (
-            <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
-              <p className="text-sm text-zinc-400">{t("academy.training.noJobs")}</p>
+            <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-8 text-center">
+              <p className="text-sm text-hint">{t("academy.training.noJobs")}</p>
             </div>
           ) : (
             jobs.map((job) => (
               <div
                 key={job.job_id}
-                className="rounded-xl border border-white/10 bg-white/5 p-4"
+                className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-white">{job.job_id}</span>
+                      <span className="font-mono text-sm text-[color:var(--text-primary)]">{job.job_id}</span>
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getStatusColor(job.status)}`}>
                         {getStatusLabel(job.status)}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-zinc-400">
+                    <p className="mt-1 text-xs text-hint">
                       {t("academy.training.startedAt")}: {new Date(job.started_at).toLocaleString(language)}
                     </p>
                     {job.finished_at && (
-                      <p className="text-xs text-zinc-400">
+                      <p className="text-xs text-hint">
                         {t("academy.training.finishedAt")}: {new Date(job.finished_at).toLocaleString(language)}
                       </p>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
-                      <p className="text-xs text-zinc-400">{t("academy.training.epochs")}: {job.parameters.num_epochs}</p>
-                      <p className="text-xs text-zinc-400">{t("academy.training.lora")}: {job.parameters.lora_rank}</p>
+                      <p className="text-xs text-hint">{t("academy.training.epochs")}: {job.parameters.num_epochs}</p>
+                      <p className="text-xs text-hint">{t("academy.training.lora")}: {job.parameters.lora_rank}</p>
                     </div>
                     <Button
                       onClick={() => setViewingLogs(job.job_id)}

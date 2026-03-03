@@ -80,7 +80,7 @@ export function LanguageSwitcher({ className }: Readonly<{ className?: string }>
       className={className}
       renderButton={() => (
         <>
-          <Globe className="h-4 w-4 text-emerald-200" aria-hidden />
+          <Globe className="h-4 w-4 text-[color:var(--primary)]" aria-hidden />
           {currentLanguage?.icon}
           <span>{currentLanguage?.label}</span>
         </>
@@ -89,7 +89,7 @@ export function LanguageSwitcher({ className }: Readonly<{ className?: string }>
         <>
           {option.icon}
           <div className="flex flex-col text-left">
-            <span className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+            <span className="text-xs uppercase tracking-[0.3em] text-[color:var(--ui-muted)]">
               {option.label}
             </span>
             <span className="text-sm">{option.description}</span>

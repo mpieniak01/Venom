@@ -143,6 +143,10 @@ export const en = {
       title: "Benchmark Panel",
       description: "Test model performance and compare metrics (response time, tokens/sec, VRAM usage)",
     },
+    tabs: {
+      classic: "Classic Benchmark",
+      coding: "Coding Benchmark",
+    },
     steps: {
       config: {
         eyebrow: "Step 1",
@@ -158,6 +162,23 @@ export const en = {
         eyebrow: "Step 3",
         title: "Comparative Results",
         description: "Performance metrics table for tested models",
+      },
+    },
+    coding: {
+      config: {
+        eyebrow: "Step 1",
+        title: "Coding Task Configuration",
+        description: "Select Ollama models and coding tasks to benchmark",
+      },
+      console: {
+        eyebrow: "Step 2",
+        title: "Execution Progress",
+        description: "Live log of coding benchmark execution",
+      },
+      results: {
+        eyebrow: "Step 3",
+        title: "Coding Results",
+        description: "Job-level results and history for coding benchmarks",
       },
     },
     loading: "Loading models...",

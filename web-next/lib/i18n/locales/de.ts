@@ -143,6 +143,10 @@ export const de = {
       title: "Benchmark Panel",
       description: "Modellleistung testen und Metriken vergleichen (Antwortzeit, Token/Sek, VRAM-Nutzung)",
     },
+    tabs: {
+      classic: "Klassischer Benchmark",
+      coding: "Coding-Benchmark",
+    },
     steps: {
       config: {
         eyebrow: "Schritt 1",
@@ -158,6 +162,23 @@ export const de = {
         eyebrow: "Schritt 3",
         title: "Vergleichsergebnisse",
         description: "Leistungsmetriken-Tabelle für getestete Modelle",
+      },
+    },
+    coding: {
+      config: {
+        eyebrow: "Schritt 1",
+        title: "Coding-Aufgaben-Konfiguration",
+        description: "Ollama-Modelle und Coding-Aufgaben für den Benchmark auswählen",
+      },
+      console: {
+        eyebrow: "Schritt 2",
+        title: "Ausführungsfortschritt",
+        description: "Live-Logs des Coding-Benchmarks",
+      },
+      results: {
+        eyebrow: "Schritt 3",
+        title: "Coding-Ergebnisse",
+        description: "Job-Ergebnisse und Verlauf der Coding-Benchmarks",
       },
     },
     loading: "Lade Modelle...",

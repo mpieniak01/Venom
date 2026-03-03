@@ -179,6 +179,7 @@ benchmark_service = None
 
 # Inicjalizacja Coding Benchmark Service
 coding_benchmark_service = None
+runtime_exclusive_guard = None
 
 # Inicjalizacja Model Registry (dla endpointów models)
 model_registry = None
@@ -425,6 +426,7 @@ async def _initialize_observability() -> None:
 
 def _initialize_model_services() -> None:
     global model_manager, model_registry, benchmark_service, coding_benchmark_service
+    global runtime_exclusive_guard
 
     previous_model_registry = model_registry
     model_manager, new_model_registry, benchmark_service = initialize_model_services(
@@ -440,13 +442,16 @@ def _initialize_model_services() -> None:
 
     try:
         from venom_core.services.benchmark_coding import CodingBenchmarkService
+        from venom_core.services.runtime_exclusive_guard import RuntimeExclusiveGuard
 
         storage_dir = str(Path(SETTINGS.STORAGE_PREFIX) / "data/benchmarks/coding")
         coding_benchmark_service = CodingBenchmarkService(storage_dir=storage_dir)
+        runtime_exclusive_guard = RuntimeExclusiveGuard()
         logger.info("CodingBenchmarkService zainicjalizowany")
     except Exception as exc:
         logger.warning(f"Nie udało się zainicjalizować CodingBenchmarkService: {exc}")
         coding_benchmark_service = None
+        runtime_exclusive_guard = None
 
 
 def _initialize_calendar_skill() -> None:
@@ -996,6 +1001,7 @@ def setup_router_dependencies():
             model_registry=model_registry,
             benchmark_service=benchmark_service,
             coding_benchmark_service=coding_benchmark_service,
+            runtime_exclusive_guard=runtime_exclusive_guard,
             google_calendar_skill=google_calendar_skill,
             professor=professor,
             dataset_curator=dataset_curator,

@@ -27,6 +27,7 @@ tests/test_audio_stream_handler_roi.py
 tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
 tests/test_autonomy_enforcement.py
+tests/test_benchmark_routes_guard.py
 tests/test_bootstrap_routes_contracts.py
 tests/test_bootstrap_runtime_stack_modules.py
 tests/test_browser_skill.py
@@ -169,6 +170,7 @@ tests/test_route_service_extractions.py
 tests/test_routing_contract.py
 tests/test_routing_integration.py
 tests/test_runtime_conversion_contracts.py
+tests/test_runtime_exclusive_guard.py
 tests/test_runtime_policy_regression_contracts.py
 tests/test_runtime_registry_contracts.py
 tests/test_runtime_registry_translation_contracts.py

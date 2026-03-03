@@ -1,6 +1,7 @@
 """Moduł: routes/benchmark - Endpointy API dla benchmarkingu modeli."""
 
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -11,6 +12,10 @@ from venom_core.api.schemas.benchmark import (
     BenchmarkStartResponse,
     BenchmarkStatusResponse,
 )
+from venom_core.services.runtime_exclusive_guard import (
+    RuntimeExclusiveConflictError,
+    RuntimeExclusivePreflightError,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,17 +25,25 @@ BENCHMARK_SERVICE_UNAVAILABLE_DETAIL = "BenchmarkService nie jest dostępny"
 
 # Zależność - będzie ustawiona w main.py
 _benchmark_service = None
+_coding_benchmark_service = None
+_runtime_exclusive_guard = None
 
 
-def set_dependencies(benchmark_service):
+def set_dependencies(
+    benchmark_service,
+    runtime_exclusive_guard=None,
+    coding_benchmark_service=None,
+):
     """
     Ustaw zależności dla routera.
 
     Args:
         benchmark_service: Instancja BenchmarkService
     """
-    global _benchmark_service
+    global _benchmark_service, _runtime_exclusive_guard, _coding_benchmark_service
     _benchmark_service = benchmark_service
+    _runtime_exclusive_guard = runtime_exclusive_guard
+    _coding_benchmark_service = coding_benchmark_service
 
 
 @router.post(
@@ -38,6 +51,7 @@ def set_dependencies(benchmark_service):
     response_model=BenchmarkStartResponse,
     responses={
         503: {"description": BENCHMARK_SERVICE_UNAVAILABLE_DETAIL},
+        409: {"description": "Inny benchmark jest już aktywny"},
         400: {"description": "Nieprawidłowe parametry benchmarku"},
         500: {"description": "Błąd wewnętrzny podczas uruchamiania benchmarku"},
     },
@@ -68,25 +82,46 @@ async def start_benchmark(request: BenchmarkStartRequest):
             status_code=503, detail=BENCHMARK_SERVICE_UNAVAILABLE_DETAIL
         )
 
+    lock_owner = f"benchmark:{uuid4()}"
+    if _runtime_exclusive_guard is not None:
+        try:
+            _runtime_exclusive_guard.acquire_lock(lock_owner)
+        except RuntimeExclusiveConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     try:
-        benchmark_id = await _benchmark_service.start_benchmark(
-            models=request.models, num_questions=request.num_questions
-        )
+        try:
+            if _runtime_exclusive_guard is not None:
+                await _runtime_exclusive_guard.preflight_for_benchmark(
+                    source="llm",
+                    benchmark_service=_benchmark_service,
+                    coding_benchmark_service=_coding_benchmark_service,
+                )
+            benchmark_id = await _benchmark_service.start_benchmark(
+                models=request.models, num_questions=request.num_questions
+            )
 
-        return BenchmarkStartResponse(
-            benchmark_id=benchmark_id,
-            message=f"Benchmark uruchomiony dla {len(request.models)} modeli",
-        )
+            return BenchmarkStartResponse(
+                benchmark_id=benchmark_id,
+                message=f"Benchmark uruchomiony dla {len(request.models)} modeli",
+            )
 
-    except ValueError as e:
-        logger.error(f"Nieprawidłowe parametry benchmarku: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        logger.exception("Błąd podczas uruchamiania benchmarku")
-        raise HTTPException(
-            status_code=500,
-            detail="Nie udało się uruchomić benchmarku. Sprawdź logi serwera.",
-        ) from e
+        except RuntimeExclusiveConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeExclusivePreflightError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as e:
+            logger.error(f"Nieprawidłowe parametry benchmarku: {e}")
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            logger.exception("Błąd podczas uruchamiania benchmarku")
+            raise HTTPException(
+                status_code=500,
+                detail="Nie udało się uruchomić benchmarku. Sprawdź logi serwera.",
+            ) from e
+    finally:
+        if _runtime_exclusive_guard is not None:
+            _runtime_exclusive_guard.release_lock(lock_owner)
 
 
 @router.get(

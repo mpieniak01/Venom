@@ -43,6 +43,7 @@ tests/test_audit_stream_api.py
 tests/test_audit_stream_service.py
 tests/test_autonomy_enforcement.py
 tests/test_base_skill.py
+tests/test_benchmark_routes_guard.py
 tests/test_benchmark_service.py
 tests/test_benchmark_service_activation.py
 tests/test_benchmark_service_runtime_selection.py
@@ -296,6 +297,7 @@ tests/test_runtime_controller_api.py
 tests/test_runtime_controller_roi.py
 tests/test_runtime_conversion_contracts.py
 tests/test_runtime_environment_regressions.py
+tests/test_runtime_exclusive_guard.py
 tests/test_runtime_policy_regression_contracts.py
 tests/test_runtime_provider_ops.py
 tests/test_runtime_registry_contracts.py

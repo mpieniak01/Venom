@@ -814,6 +814,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_benchmark_routes_guard.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_benchmark_service.py",
       "domain": "core",
       "test_type": "service_contract",
@@ -848,34 +862,6 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
-    },
-    {
-      "path": "tests/test_coding_run_service.py",
-      "domain": "core",
-      "test_type": "service_contract",
-      "intent": "contract",
-      "primary_lane": "ci-lite",
-      "allowed_lanes": [
-        "ci-lite",
-        "new-code",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Coding benchmark service unit tests - 190B wave 1."
-    },
-    {
-      "path": "tests/test_coding_run_routes.py",
-      "domain": "api",
-      "test_type": "route_contract",
-      "intent": "contract",
-      "primary_lane": "ci-lite",
-      "allowed_lanes": [
-        "ci-lite",
-        "new-code",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Coding benchmark API route contract tests - 190B wave 1."
     },
     {
       "path": "tests/test_bootstrap_routes_contracts.py",
@@ -1126,6 +1112,34 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_coding_run_routes.py",
+      "domain": "api",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coding benchmark API route contract tests - 190B wave 1."
+    },
+    {
+      "path": "tests/test_coding_run_service.py",
+      "domain": "core",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coding benchmark service unit tests - 190B wave 1."
     },
     {
       "path": "tests/test_complexity_skill.py",
@@ -4341,6 +4355,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_runtime_exclusive_guard.py",
+      "domain": "runtime",
+      "test_type": "service_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_runtime_policy_regression_contracts.py",

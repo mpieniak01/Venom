@@ -97,6 +97,22 @@ def test_parse_model_files_response_does_not_use_json_fence_as_python_code():
         parse_model_files_response(raw, ("solution.py",))
 
 
+def test_parse_model_files_response_falls_back_to_unfenced_python_for_single_file():
+    raw = """
+    Oto rozwiązanie:
+
+    import math
+
+    def safe_divide(a: float, b: float) -> float | None:
+        if b == 0:
+            return None
+        return a / b
+    """
+    files = parse_model_files_response(raw, ("solution.py",))
+    assert "solution.py" in files
+    assert "def safe_divide" in files["solution.py"]
+
+
 def test_normalize_model_code_removes_control_chars():
     raw = "print('ok')\x00\x01\n"
     assert normalize_model_code(raw) == "print('ok')\n"

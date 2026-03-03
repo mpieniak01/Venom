@@ -8,6 +8,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import benchmark_coding as benchmark_coding_routes
+from venom_core.services.runtime_exclusive_guard import (
+    RuntimeExclusiveConflictError,
+    RuntimeExclusivePreflightError,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -21,6 +25,35 @@ def _make_app(service=None):
     app = FastAPI()
     app.include_router(benchmark_coding_routes.router)
     return app
+
+
+class _ConflictGuard:
+    def acquire_lock(self, _owner):
+        raise RuntimeExclusiveConflictError("lock busy")
+
+    def release_lock(self, _owner):
+        return None
+
+
+class _PassGuard:
+    def acquire_lock(self, _owner):
+        return None
+
+    def release_lock(self, _owner):
+        return None
+
+    async def preflight_for_benchmark(self, **_kwargs):
+        return None
+
+
+class _PreflightConflictGuard(_PassGuard):
+    async def preflight_for_benchmark(self, **_kwargs):
+        raise RuntimeExclusiveConflictError("active benchmark")
+
+
+class _PreflightErrorGuard(_PassGuard):
+    async def preflight_for_benchmark(self, **_kwargs):
+        raise RuntimeExclusivePreflightError("runtime down")
 
 
 def _mock_service(
@@ -109,6 +142,72 @@ def test_start_endpoint_default_tasks():
     assert resp.status_code == 200
 
 
+def test_start_endpoint_returns_409_when_guard_lock_busy():
+    svc = _mock_service()
+    benchmark_coding_routes.set_dependencies(
+        svc,
+        runtime_exclusive_guard=_ConflictGuard(),
+    )
+    app = FastAPI()
+    app.include_router(benchmark_coding_routes.router)
+    client = TestClient(app)
+    payload = {"models": ["llama3:latest"], "tasks": ["python_sanity"]}
+    resp = client.post("/api/v1/benchmark/coding/start", json=payload)
+    assert resp.status_code == 409
+
+
+def test_start_endpoint_calls_guard_preflight():
+    svc = _mock_service()
+    guard = _PassGuard()
+    benchmark_coding_routes.set_dependencies(
+        svc,
+        runtime_exclusive_guard=guard,
+    )
+    app = FastAPI()
+    app.include_router(benchmark_coding_routes.router)
+    client = TestClient(app)
+    payload = {"models": ["llama3:latest"], "tasks": ["python_sanity"]}
+    resp = client.post("/api/v1/benchmark/coding/start", json=payload)
+    assert resp.status_code == 200
+
+
+def test_start_endpoint_returns_409_when_guard_preflight_conflicts():
+    svc = _mock_service()
+    benchmark_coding_routes.set_dependencies(
+        svc,
+        runtime_exclusive_guard=_PreflightConflictGuard(),
+    )
+    app = FastAPI()
+    app.include_router(benchmark_coding_routes.router)
+    client = TestClient(app)
+    payload = {"models": ["llama3:latest"], "tasks": ["python_sanity"]}
+    resp = client.post("/api/v1/benchmark/coding/start", json=payload)
+    assert resp.status_code == 409
+
+
+def test_start_endpoint_returns_503_when_guard_preflight_fails():
+    svc = _mock_service()
+    benchmark_coding_routes.set_dependencies(
+        svc,
+        runtime_exclusive_guard=_PreflightErrorGuard(),
+    )
+    app = FastAPI()
+    app.include_router(benchmark_coding_routes.router)
+    client = TestClient(app)
+    payload = {"models": ["llama3:latest"], "tasks": ["python_sanity"]}
+    resp = client.post("/api/v1/benchmark/coding/start", json=payload)
+    assert resp.status_code == 503
+
+
+def test_start_endpoint_returns_500_for_unexpected_error():
+    svc = _mock_service()
+    svc.start_run.side_effect = RuntimeError("boom")
+    client = TestClient(_make_app(svc))
+    payload = {"models": ["llama3:latest"], "tasks": ["python_sanity"]}
+    resp = client.post("/api/v1/benchmark/coding/start", json=payload)
+    assert resp.status_code == 500
+
+
 # ---------------------------------------------------------------------------
 # GET /list
 # ---------------------------------------------------------------------------
@@ -140,6 +239,14 @@ def test_list_endpoint_limit_query():
     resp = client.get("/api/v1/benchmark/coding/list?limit=5")
     assert resp.status_code == 200
     svc.list_runs.assert_called_once_with(limit=5)
+
+
+def test_list_endpoint_returns_500_when_service_raises():
+    svc = _mock_service()
+    svc.list_runs.side_effect = RuntimeError("db fail")
+    client = TestClient(_make_app(svc))
+    resp = client.get("/api/v1/benchmark/coding/list")
+    assert resp.status_code == 500
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +281,14 @@ def test_status_endpoint_no_service():
     assert resp.status_code == 503
 
 
+def test_status_endpoint_returns_500_for_unexpected_error():
+    svc = _mock_service()
+    svc.get_run_status.side_effect = RuntimeError("status fail")
+    client = TestClient(_make_app(svc))
+    resp = client.get("/api/v1/benchmark/coding/some-id/status")
+    assert resp.status_code == 500
+
+
 # ---------------------------------------------------------------------------
 # DELETE /all
 # ---------------------------------------------------------------------------
@@ -195,6 +310,14 @@ def test_delete_all_endpoint_no_service():
     client = TestClient(_make_app(None))
     resp = client.delete("/api/v1/benchmark/coding/all")
     assert resp.status_code == 503
+
+
+def test_delete_all_endpoint_returns_500_when_service_raises():
+    svc = _mock_service()
+    svc.clear_all_runs.side_effect = RuntimeError("clear fail")
+    client = TestClient(_make_app(svc))
+    resp = client.delete("/api/v1/benchmark/coding/all")
+    assert resp.status_code == 500
 
 
 # ---------------------------------------------------------------------------
@@ -227,3 +350,11 @@ def test_delete_run_endpoint_no_service():
     client = TestClient(_make_app(None))
     resp = client.delete("/api/v1/benchmark/coding/some-id")
     assert resp.status_code == 503
+
+
+def test_delete_run_endpoint_returns_500_for_unexpected_error():
+    svc = _mock_service()
+    svc.delete_run.side_effect = RuntimeError("delete fail")
+    client = TestClient(_make_app(svc))
+    resp = client.delete("/api/v1/benchmark/coding/some-id")
+    assert resp.status_code == 500

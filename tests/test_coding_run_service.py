@@ -286,9 +286,9 @@ def test_scheduler_thread_success(service, tmp_path):
 
     mock_proc = MagicMock()
     mock_proc.returncode = 0
-    mock_proc.stderr = ""
+    mock_proc.communicate.return_value = ("", "")
 
-    with patch("subprocess.run", return_value=mock_proc):
+    with patch("subprocess.Popen", return_value=mock_proc):
         service._run_scheduler_thread(run_id)
 
     assert run.status == "completed"
@@ -304,13 +304,47 @@ def test_scheduler_thread_failure(service):
 
     mock_proc = MagicMock()
     mock_proc.returncode = 1
-    mock_proc.stderr = "Error message"
+    mock_proc.communicate.return_value = ("", "Error message")
 
-    with patch("subprocess.run", return_value=mock_proc):
+    with patch("subprocess.Popen", return_value=mock_proc):
         service._run_scheduler_thread(run_id)
 
     assert run.status == "failed"
     assert run.error_message is not None
+
+
+def test_delete_run_stops_active_process(service):
+    """Test że delete_run kończy aktywny proces benchmarku."""
+    with patch.object(service, "_run_scheduler_thread"):
+        run_id = service.start_run(models=["m1"], tasks=["python_sanity"])
+
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None
+    service._active_procs[run_id] = mock_proc
+
+    assert service.delete_run(run_id) is True
+    mock_proc.terminate.assert_called_once()
+    mock_proc.wait.assert_called()
+    assert run_id not in service._active_procs
+
+
+def test_clear_all_runs_stops_active_processes(service):
+    """Test że clear_all_runs kończy wszystkie aktywne procesy benchmarku."""
+    with patch.object(service, "_run_scheduler_thread"):
+        run_id_1 = service.start_run(models=["m1"], tasks=["python_sanity"])
+        run_id_2 = service.start_run(models=["m2"], tasks=["python_simple"])
+
+    mock_proc_1 = MagicMock()
+    mock_proc_1.poll.return_value = None
+    mock_proc_2 = MagicMock()
+    mock_proc_2.poll.return_value = None
+    service._active_procs[run_id_1] = mock_proc_1
+    service._active_procs[run_id_2] = mock_proc_2
+
+    assert service.clear_all_runs() == 2
+    mock_proc_1.terminate.assert_called_once()
+    mock_proc_2.terminate.assert_called_once()
+    assert service._active_procs == {}
 
 
 def test_load_persisted_runs(tmp_path):
@@ -333,6 +367,7 @@ def test_load_persisted_runs(tmp_path):
 def test_enrich_job_dict_reads_request_wall_seconds(tmp_path):
     """Test _enrich_job_dict poprawnie wczytuje request_wall_seconds z artefaktu."""
     import json as _json
+
     from venom_core.services.benchmark_coding import CodingJobState
 
     artifact_file = tmp_path / "artifact.json"
@@ -375,6 +410,7 @@ def test_run_dir_raises_for_path_traversal(service, tmp_path):
     valid_looking_id = str(uuid.uuid4())
     # Patch resolve so run_dir escapes storage_root
     from pathlib import Path
+
     original_resolve = Path.resolve
 
     call_count = {"n": 0}

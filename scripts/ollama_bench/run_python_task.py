@@ -28,6 +28,14 @@ from scripts.ollama_bench.common import (
 )
 from scripts.ollama_bench.tasks import build_prompt, get_task, list_tasks
 
+_RETRY_HINT = (
+    "\n\nIMPORTANT FORMAT REQUIREMENT:\n"
+    "Return ONLY a JSON object with key `files`.\n"
+    "For single-file tasks return:\n"
+    '{"files":{"solution.py":"<python code>"}}\n'
+    "No prose, no markdown fences."
+)
+
 
 def _parse_options(raw: str) -> dict[str, Any]:
     if not raw.strip():
@@ -77,14 +85,37 @@ def main() -> int:
     }
 
     try:
-        raw, timing = ollama_generate_with_timing(
-            model=args.model,
-            prompt=prompt,
-            endpoint=args.endpoint,
-            timeout=args.timeout,
-            options=options,
-        )
-        model_files = parse_model_files_response(raw, task.required_files)
+        raw = ""
+        timing: dict[str, Any] = {}
+        max_attempts = 2
+        parse_error: Exception | None = None
+        model_files: dict[str, str] | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            prompt_for_attempt = prompt
+            if attempt > 1:
+                prompt_for_attempt = f"{prompt}{_RETRY_HINT}"
+            raw, timing = ollama_generate_with_timing(
+                model=args.model,
+                prompt=prompt_for_attempt,
+                endpoint=args.endpoint,
+                timeout=args.timeout,
+                options=options,
+            )
+            try:
+                model_files = parse_model_files_response(raw, task.required_files)
+                artifact["attempts"] = attempt
+                break
+            except (ValueError, json.JSONDecodeError) as exc:
+                parse_error = exc
+                artifact["raw_response_preview"] = safe_snippet(raw, 1200)
+                if attempt == max_attempts:
+                    raise
+
+        if model_files is None:
+            if parse_error is not None:
+                raise parse_error
+            raise ValueError("Failed to parse model response")
 
         workspace = build_workspace(model_files, task.tests)
         checks = run_checks(workspace)

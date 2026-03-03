@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQueueStatus } from "@/hooks/use-api";
-import { useTelemetryFeed } from "@/hooks/use-telemetry";
+import { useActiveLlmServer, useQueueStatus } from "@/hooks/use-api";
 import { useTranslation } from "@/lib/i18n";
 
 type StatusTone = "success" | "warning" | "danger" | "neutral";
@@ -16,7 +15,7 @@ type StatusRow = {
 
 export function SystemStatusPanel() {
   const { data: queue, error: queueError } = useQueueStatus(10000);
-  const { connected } = useTelemetryFeed(5);
+  const { data: llmActive, error: llmError } = useActiveLlmServer(10000);
   const t = useTranslation();
 
   const statuses: StatusRow[] = useMemo(() => {
@@ -33,19 +32,19 @@ export function SystemStatusPanel() {
       queueTone = queue?.paused ? "warning" : "success";
     }
 
-    let wsTone: StatusTone = "danger";
-    if (connected) {
-      wsTone = "success";
-    } else if (hasQueue) {
-      wsTone = "warning";
+    const hasLlm = Boolean(llmActive?.active_server || llmActive?.active_model);
+    let llmTone: StatusTone = "warning";
+    if (hasLlm) {
+      llmTone = "success";
+    } else if (llmError) {
+      llmTone = "danger";
     }
-
-    let wsHint = t("systemStatus.hints.wsChannel");
-    if (connected) {
-      wsHint = t("systemStatus.hints.wsLive");
-    } else if (hasQueue) {
-      wsHint = t("systemStatus.hints.wsInactive");
-    }
+    const llmHint = hasLlm
+      ? t("systemStatus.hints.llmDetails", {
+        server: llmActive?.active_server ?? t("systemStatus.hints.unknown"),
+        model: llmActive?.active_model ?? t("systemStatus.hints.unknown"),
+      })
+      : llmError ?? t("systemStatus.hints.llmNone");
 
     return [
       {
@@ -63,13 +62,13 @@ export function SystemStatusPanel() {
         tone: queueTone,
       },
       {
-        id: "ws",
-        label: t("systemStatus.ws"),
-        hint: wsHint,
-        tone: wsTone,
+        id: "llm",
+        label: t("systemStatus.llm"),
+        hint: llmHint,
+        tone: llmTone,
       },
     ];
-  }, [connected, queue, queueError, t]);
+  }, [llmActive, llmError, queue, queueError, t]);
 
   const toneClassName = (tone: StatusTone) => {
     if (tone === "success") return "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]";

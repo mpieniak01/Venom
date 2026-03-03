@@ -45,6 +45,7 @@ class RuntimeDependencies:
     model_registry: Any
     benchmark_service: Any
     coding_benchmark_service: Any
+    runtime_exclusive_guard: Any
     google_calendar_skill: Any
     professor: Any
     dataset_curator: Any
@@ -116,8 +117,16 @@ def apply_router_dependencies(
         runtime.model_manager,
         model_registry=runtime.model_registry,
     )
-    routes.benchmark_routes.set_dependencies(runtime.benchmark_service)
-    routes.benchmark_coding_routes.set_dependencies(runtime.coding_benchmark_service)
+    routes.benchmark_routes.set_dependencies(
+        runtime.benchmark_service,
+        runtime_exclusive_guard=runtime.runtime_exclusive_guard,
+        coding_benchmark_service=runtime.coding_benchmark_service,
+    )
+    routes.benchmark_coding_routes.set_dependencies(
+        runtime.coding_benchmark_service,
+        runtime_exclusive_guard=runtime.runtime_exclusive_guard,
+        benchmark_service=runtime.benchmark_service,
+    )
     routes.calendar_routes.set_dependencies(runtime.google_calendar_skill)
     routes.memory_projection_routes.set_dependencies(runtime.vector_store)
     routes.academy_routes.set_dependencies(

@@ -7,6 +7,11 @@ import type {
 } from "@/lib/types";
 import { getApiBaseUrl } from "@/lib/env";
 import { useTranslation } from "@/lib/i18n";
+import {
+  emitActiveLlmStateLog,
+  emitPreflightLogs,
+  resolveStartFailureMessage,
+} from "@/hooks/benchmark-preflight";
 
 const POLLING_INTERVAL_MS = 1500;
 const resolveApiRoot = (): string => getApiBaseUrl() || "";
@@ -144,6 +149,15 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
   const startBenchmark = useCallback(async (req: CodingBenchmarkStartRequest) => {
     reset();
     setStatus("pending");
+    emitPreflightLogs(addLog, {
+      preparing: t("benchmark.preflight.preparing"),
+      unloading: t("benchmark.preflight.unloading"),
+      starting: t("benchmark.preflight.starting"),
+      success: t("benchmark.preflight.success"),
+      conflict: t("benchmark.preflight.conflict"),
+      runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
+    });
+    await emitActiveLlmStateLog(buildApiUrl, addLog, t);
     addLog(
       t("benchmark.coding.logs.startingModels", {
         models: req.models.join(", "),
@@ -166,18 +180,16 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          (errorData as { detail?: string }).detail ||
-            t("benchmark.coding.logs.startFailed", {
-              status: response.statusText,
-            })
-        );
+        const detail = (errorData as { detail?: string }).detail;
+        const message = resolveStartFailureMessage(response, detail, t);
+        throw new Error(message);
       }
 
       const data = await response.json() as { run_id: string; message?: string };
       const id = data.run_id;
       setRunId(id);
       setStatus("running");
+      addLog(t("benchmark.preflight.success"), "info");
       addLog(
         t("benchmark.coding.logs.started", {
           runId: id.slice(0, 8),

@@ -213,6 +213,7 @@ class CodingBenchmarkService:
             else Path(__file__).resolve().parents[2]
         )
         self._runs: dict[str, CodingBenchmarkRun] = {}
+        self._active_procs: dict[str, subprocess.Popen[str]] = {}
         self._lock = threading.Lock()
         self._load_persisted_runs()
 
@@ -410,13 +411,16 @@ class CodingBenchmarkService:
         cmd = self._build_scheduler_command(run)
         logger.info(f"Uruchamiam coding benchmark {run_id}")
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 text=True,
-                capture_output=True,
-                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 cwd=str(self.repo_root),
             )
+            with self._lock:
+                self._active_procs[run_id] = proc
+            _, stderr = proc.communicate()
             # Odczytaj finalny stan jobów
             state_file = self._state_file(run_id)
             if state_file.exists():
@@ -427,7 +431,7 @@ class CodingBenchmarkService:
                 run.status = "completed"
             else:
                 run.status = "failed"
-                stderr = (proc.stderr or "").strip()
+                stderr = (stderr or "").strip()
                 run.error_message = (
                     f"Scheduler rc={proc.returncode}: {stderr[:500]}"
                     if stderr
@@ -438,8 +442,34 @@ class CodingBenchmarkService:
             run.status = "failed"
             run.error_message = str(exc)
             run.finished_at = _utc_now_iso()
+        finally:
+            with self._lock:
+                self._active_procs.pop(run_id, None)
 
-        self._persist_meta(run)
+        with self._lock:
+            is_still_registered = self._runs.get(run_id) is run
+        if is_still_registered:
+            self._persist_meta(run)
+
+    def _stop_active_process(self, run_id: str) -> None:
+        """Kończy aktywny proces schedulera dla run, jeśli istnieje."""
+        with self._lock:
+            proc = self._active_procs.get(run_id)
+        if proc is None:
+            return
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=3)
+        except Exception as exc:
+            logger.warning("Nie można zatrzymać procesu run %s: %s", run_id, exc)
+        finally:
+            with self._lock:
+                self._active_procs.pop(run_id, None)
 
     def _refresh_running_jobs(self, run: CodingBenchmarkRun) -> None:
         """Odświeża stan jobów dla running run z scheduler_state.json."""
@@ -477,6 +507,7 @@ class CodingBenchmarkService:
         """Usuwa run. Zwraca True jeśli usunięto, False jeśli nie znaleziono."""
         if not _is_valid_run_id(run_id):
             return False
+        self._stop_active_process(run_id)
         with self._lock:
             run = self._runs.pop(run_id, None)
         if run is None:
@@ -498,6 +529,8 @@ class CodingBenchmarkService:
         with self._lock:
             run_ids = list(self._runs.keys())
             self._runs.clear()
+        for run_id in run_ids:
+            self._stop_active_process(run_id)
         count = len(run_ids)
         for run_id in run_ids:
             try:

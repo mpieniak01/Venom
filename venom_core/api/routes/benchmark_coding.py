@@ -1,6 +1,7 @@
 """Moduł: routes/benchmark_coding - Endpointy API dla coding benchmarków Ollama."""
 
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -11,6 +12,10 @@ from venom_core.api.schemas.benchmark_coding import (
     CodingBenchmarkStartResponse,
     CodingBenchmarkStatusResponse,
 )
+from venom_core.services.runtime_exclusive_guard import (
+    RuntimeExclusiveConflictError,
+    RuntimeExclusivePreflightError,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,12 +25,20 @@ CODING_SERVICE_UNAVAILABLE_DETAIL = "CodingBenchmarkService nie jest dostępny"
 
 # Zależność - ustawiana przez router_wiring.py
 _coding_benchmark_service = None
+_benchmark_service = None
+_runtime_exclusive_guard = None
 
 
-def set_dependencies(coding_benchmark_service) -> None:
+def set_dependencies(
+    coding_benchmark_service,
+    runtime_exclusive_guard=None,
+    benchmark_service=None,
+) -> None:
     """Ustaw zależności dla routera."""
-    global _coding_benchmark_service
+    global _coding_benchmark_service, _runtime_exclusive_guard, _benchmark_service
     _coding_benchmark_service = coding_benchmark_service
+    _runtime_exclusive_guard = runtime_exclusive_guard
+    _benchmark_service = benchmark_service
 
 
 @router.post(
@@ -33,6 +46,7 @@ def set_dependencies(coding_benchmark_service) -> None:
     response_model=CodingBenchmarkStartResponse,
     responses={
         503: {"description": CODING_SERVICE_UNAVAILABLE_DETAIL},
+        409: {"description": "Inny benchmark jest już aktywny"},
         400: {"description": "Nieprawidłowe parametry benchmarku"},
         500: {"description": "Błąd wewnętrzny podczas uruchamiania benchmarku"},
     },
@@ -53,32 +67,55 @@ async def start_coding_benchmark(request: CodingBenchmarkStartRequest):
     if _coding_benchmark_service is None:
         raise HTTPException(status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL)
 
+    lock_owner = f"benchmark-coding:{uuid4()}"
+    if _runtime_exclusive_guard is not None:
+        try:
+            _runtime_exclusive_guard.acquire_lock(lock_owner)
+        except RuntimeExclusiveConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     try:
-        run_id = _coding_benchmark_service.start_run(
-            models=request.models,
-            tasks=request.tasks,
-            loop_task=request.loop_task,
-            first_sieve_task=request.first_sieve_task,
-            timeout=request.timeout,
-            max_rounds=request.max_rounds,
-            options=request.options,
-            model_timeout_overrides=request.model_timeout_overrides,
-            stop_on_failure=request.stop_on_failure,
-            endpoint=request.endpoint,
-        )
-        return CodingBenchmarkStartResponse(
-            run_id=run_id,
-            message=f"Coding benchmark uruchomiony dla {len(request.models)} modeli, {len(request.tasks)} zadań",
-        )
-    except ValueError as exc:
-        logger.error(f"Nieprawidłowe parametry coding benchmarku: {exc}")
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Błąd podczas uruchamiania coding benchmarku")
-        raise HTTPException(
-            status_code=500,
-            detail="Nie udało się uruchomić coding benchmarku. Sprawdź logi serwera.",
-        ) from exc
+        try:
+            if _runtime_exclusive_guard is not None:
+                await _runtime_exclusive_guard.preflight_for_benchmark(
+                    source="coding",
+                    benchmark_service=_benchmark_service,
+                    coding_benchmark_service=_coding_benchmark_service,
+                    endpoint=request.endpoint,
+                )
+
+            run_id = _coding_benchmark_service.start_run(
+                models=request.models,
+                tasks=request.tasks,
+                loop_task=request.loop_task,
+                first_sieve_task=request.first_sieve_task,
+                timeout=request.timeout,
+                max_rounds=request.max_rounds,
+                options=request.options,
+                model_timeout_overrides=request.model_timeout_overrides,
+                stop_on_failure=request.stop_on_failure,
+                endpoint=request.endpoint,
+            )
+            return CodingBenchmarkStartResponse(
+                run_id=run_id,
+                message=f"Coding benchmark uruchomiony dla {len(request.models)} modeli, {len(request.tasks)} zadań",
+            )
+        except RuntimeExclusiveConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeExclusivePreflightError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            logger.error(f"Nieprawidłowe parametry coding benchmarku: {exc}")
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("Błąd podczas uruchamiania coding benchmarku")
+            raise HTTPException(
+                status_code=500,
+                detail="Nie udało się uruchomić coding benchmarku. Sprawdź logi serwera.",
+            ) from exc
+    finally:
+        if _runtime_exclusive_guard is not None:
+            _runtime_exclusive_guard.release_lock(lock_owner)
 
 
 @router.get(

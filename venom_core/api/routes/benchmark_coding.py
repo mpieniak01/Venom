@@ -51,9 +51,7 @@ async def start_coding_benchmark(request: CodingBenchmarkStartRequest):
         HTTPException: 400 jeśli parametry nieprawidłowe
     """
     if _coding_benchmark_service is None:
-        raise HTTPException(
-            status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL
-        )
+        raise HTTPException(status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL)
 
     try:
         run_id = _coding_benchmark_service.start_run(
@@ -88,11 +86,10 @@ async def start_coding_benchmark(request: CodingBenchmarkStartRequest):
     response_model=CodingBenchmarkListResponse,
     responses={
         503: {"description": CODING_SERVICE_UNAVAILABLE_DETAIL},
+        500: {"description": "Błąd wewnętrzny podczas pobierania listy benchmarków"},
     },
 )
-def list_coding_benchmarks(
-    limit: Annotated[int, Query(ge=1, le=100)] = 10
-):
+def list_coding_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
     """
     Lista ostatnich coding benchmarków.
 
@@ -103,9 +100,7 @@ def list_coding_benchmarks(
         Lista benchmarków posortowanych od najnowszych
     """
     if _coding_benchmark_service is None:
-        raise HTTPException(
-            status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL
-        )
+        raise HTTPException(status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL)
 
     try:
         runs = _coding_benchmark_service.list_runs(limit=limit)
@@ -124,6 +119,7 @@ def list_coding_benchmarks(
     response_model=CodingBenchmarkDeleteResponse,
     responses={
         503: {"description": CODING_SERVICE_UNAVAILABLE_DETAIL},
+        500: {"description": "Błąd wewnętrzny podczas czyszczenia benchmarków"},
     },
 )
 def clear_all_coding_benchmarks():
@@ -134,9 +130,7 @@ def clear_all_coding_benchmarks():
         Informacja o liczbie usuniętych run
     """
     if _coding_benchmark_service is None:
-        raise HTTPException(
-            status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL
-        )
+        raise HTTPException(status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL)
 
     try:
         count = _coding_benchmark_service.clear_all_runs()
@@ -157,6 +151,7 @@ def clear_all_coding_benchmarks():
     responses={
         503: {"description": CODING_SERVICE_UNAVAILABLE_DETAIL},
         404: {"description": "Run nie znaleziony"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu run"},
     },
 )
 def get_coding_benchmark_status(run_id: str):
@@ -175,9 +170,7 @@ def get_coding_benchmark_status(run_id: str):
         HTTPException: 404 jeśli run nie znaleziony
     """
     if _coding_benchmark_service is None:
-        raise HTTPException(
-            status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL
-        )
+        raise HTTPException(status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL)
 
     try:
         status = _coding_benchmark_service.get_run_status(run_id)
@@ -203,6 +196,7 @@ def get_coding_benchmark_status(run_id: str):
     responses={
         503: {"description": CODING_SERVICE_UNAVAILABLE_DETAIL},
         404: {"description": "Run nie znaleziony"},
+        500: {"description": "Błąd wewnętrzny podczas usuwania run"},
     },
 )
 def delete_coding_benchmark(run_id: str):
@@ -216,9 +210,7 @@ def delete_coding_benchmark(run_id: str):
         HTTPException: 404 jeśli run nie znaleziony
     """
     if _coding_benchmark_service is None:
-        raise HTTPException(
-            status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL
-        )
+        raise HTTPException(status_code=503, detail=CODING_SERVICE_UNAVAILABLE_DETAIL)
 
     try:
         success = _coding_benchmark_service.delete_run(run_id)

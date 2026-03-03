@@ -28,7 +28,7 @@ export function BenchmarkCodingConfigurator({
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [selectedTasks, setSelectedTasks] = useState<string[]>(["python_complex"]);
   const [loopTask, setLoopTask] = useState("python_complex_bugfix");
-  const [timeout, setTimeoutValue] = useState(180);
+  const [timeout, setTimeout] = useState(180);
   const [maxRounds, setMaxRounds] = useState(3);
   const [stopOnFailure, setStopOnFailure] = useState(false);
 
@@ -63,9 +63,9 @@ export function BenchmarkCodingConfigurator({
     <div className="space-y-5">
       {/* Modele Ollama */}
       <div className="space-y-2">
-        <label className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
+        <p className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
           Modele Ollama
-        </label>
+        </p>
         {ollamaModels.length === 0 ? (
           <p className="text-xs text-[color:var(--ui-muted)]">
             Brak modeli Ollama. Sprawdź połączenie z Ollama.
@@ -94,9 +94,9 @@ export function BenchmarkCodingConfigurator({
 
       {/* Zadania codingowe */}
       <div className="space-y-2">
-        <label className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
+        <p className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
           Zadania testowe
-        </label>
+        </p>
         <div className="flex flex-wrap gap-2">
           {AVAILABLE_TASKS.map((task) => (
             <button
@@ -119,10 +119,14 @@ export function BenchmarkCodingConfigurator({
 
       {/* Zadanie pętli */}
       <div className="space-y-2">
-        <label className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
+        <label
+          htmlFor="coding-loop-task"
+          className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider"
+        >
           Zadanie pętli (Feedback Loop)
         </label>
         <select
+          id="coding-loop-task"
           value={loopTask}
           onChange={(e) => setLoopTask(e.target.value)}
           disabled={disabled}
@@ -140,20 +144,26 @@ export function BenchmarkCodingConfigurator({
       {/* Parametry */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-xs text-[color:var(--text-secondary)]">Timeout (s)</label>
+          <label htmlFor="coding-timeout" className="text-xs text-[color:var(--text-secondary)]">
+            Timeout (s)
+          </label>
           <input
+            id="coding-timeout"
             type="number"
             min={10}
             max={3600}
             value={timeout}
-            onChange={(e) => setTimeoutValue(Number(e.target.value))}
+            onChange={(e) => setTimeout(Number(e.target.value))}
             disabled={disabled}
             className="w-full rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-primary)] focus:outline-none focus:border-violet-400/50 disabled:opacity-50"
           />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-[color:var(--text-secondary)]">Maks. rund (pętla)</label>
+          <label htmlFor="coding-max-rounds" className="text-xs text-[color:var(--text-secondary)]">
+            Maks. rund (pętla)
+          </label>
           <input
+            id="coding-max-rounds"
             type="number"
             min={1}
             max={20}

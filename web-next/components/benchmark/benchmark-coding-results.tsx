@@ -86,14 +86,14 @@ export function BenchmarkCodingResults({
   return (
     <div className="space-y-6">
       {/* Bieżący run – szczegóły jobów */}
-      {currentRun && currentRun.jobs && currentRun.jobs.length > 0 && (
+      {currentRun?.jobs?.length ? (
         <div className="space-y-3">
           <h4 className="heading-h4 text-[color:var(--text-heading)]">
             {currentRun.run_id.slice(0, 8)}...
           </h4>
           <JobsTable jobs={currentRun.jobs} />
         </div>
-      )}
+      ) : null}
 
       {/* Historia */}
       <div className="space-y-3 pt-6 border-t border-[color:var(--ui-border)]">
@@ -218,12 +218,11 @@ function JobsTable({ jobs }: Readonly<{ jobs: ReadonlyArray<CodingJob> }>) {
                 {job.passed === false && (
                   <XCircle className="w-3.5 h-3.5 text-rose-400 mx-auto" />
                 )}
-                {job.passed == null && job.status === "running" && (
+                {job.passed == null && job.status === "running" ? (
                   <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin mx-auto" />
-                )}
-                {job.passed == null && job.status !== "running" && (
+                ) : job.passed == null ? (
                   <span className="text-[color:var(--ui-muted)]">-</span>
-                )}
+                ) : null}
               </td>
             </tr>
           ))}

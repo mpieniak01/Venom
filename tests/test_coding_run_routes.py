@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import benchmark_coding as benchmark_coding_routes
+from venom_core.services.runtime_exclusive_guard import RuntimeExclusiveConflictError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -21,6 +22,25 @@ def _make_app(service=None):
     app = FastAPI()
     app.include_router(benchmark_coding_routes.router)
     return app
+
+
+class _ConflictGuard:
+    def acquire_lock(self, _owner):
+        raise RuntimeExclusiveConflictError("lock busy")
+
+    def release_lock(self, _owner):
+        return None
+
+
+class _PassGuard:
+    def acquire_lock(self, _owner):
+        return None
+
+    def release_lock(self, _owner):
+        return None
+
+    async def preflight_for_benchmark(self, **_kwargs):
+        return None
 
 
 def _mock_service(
@@ -105,6 +125,35 @@ def test_start_endpoint_default_tasks():
     svc = _mock_service()
     client = TestClient(_make_app(svc))
     payload = {"models": ["llama3:latest"]}
+    resp = client.post("/api/v1/benchmark/coding/start", json=payload)
+    assert resp.status_code == 200
+
+
+def test_start_endpoint_returns_409_when_guard_lock_busy():
+    svc = _mock_service()
+    benchmark_coding_routes.set_dependencies(
+        svc,
+        runtime_exclusive_guard=_ConflictGuard(),
+    )
+    app = FastAPI()
+    app.include_router(benchmark_coding_routes.router)
+    client = TestClient(app)
+    payload = {"models": ["llama3:latest"], "tasks": ["python_sanity"]}
+    resp = client.post("/api/v1/benchmark/coding/start", json=payload)
+    assert resp.status_code == 409
+
+
+def test_start_endpoint_calls_guard_preflight():
+    svc = _mock_service()
+    guard = _PassGuard()
+    benchmark_coding_routes.set_dependencies(
+        svc,
+        runtime_exclusive_guard=guard,
+    )
+    app = FastAPI()
+    app.include_router(benchmark_coding_routes.router)
+    client = TestClient(app)
+    payload = {"models": ["llama3:latest"], "tasks": ["python_sanity"]}
     resp = client.post("/api/v1/benchmark/coding/start", json=payload)
     assert resp.status_code == 200
 

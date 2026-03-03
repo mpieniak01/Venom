@@ -166,6 +166,17 @@ export const pl = {
         description: "Tabela z metrykami wydajności dla testowanych modeli",
       },
     },
+    preflight: {
+      preparing: "Przygotowuję runtime benchmarku...",
+      unloading: "Zwalniam poprzednio załadowany model...",
+      starting: "Startuję benchmark...",
+      success: "Preflight zakończony pomyślnie.",
+      conflict: "Inny benchmark jest już aktywny. Poczekaj na jego zakończenie.",
+      runtimeUnhealthy: "Runtime nie jest gotowy lub nie udało się zwolnić modelu.",
+      llmState: "LLM: serwer {{server}}, model {{model}}",
+      llmStateUnavailable: "Nie udało się pobrać stanu aktywnego LLM.",
+      testingModel: "Testowany model: {{model}}",
+    },
     coding: {
       tasks: {
         python_sanity: "Python Sanity",

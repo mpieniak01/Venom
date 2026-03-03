@@ -8,6 +8,8 @@ import type {
     BenchmarkStatusResponse,
 } from "@/lib/types";
 import { getApiBaseUrl } from "@/lib/env";
+import { useTranslation } from "@/lib/i18n";
+import { classifyStartError, emitPreflightLogs } from "@/hooks/benchmark-preflight";
 
 const POLLING_INTERVAL_MS = 1000;
 const resolveApiRoot = (): string => getApiBaseUrl() || "";
@@ -25,6 +27,7 @@ interface UseBenchmarkReturn {
 }
 
 export function useBenchmark(): UseBenchmarkReturn {
+    const t = useTranslation();
     const [status, setStatus] = useState<BenchmarkStatus>("idle");
     const [logs, setLogs] = useState<BenchmarkLog[]>([]);
     const [results, setResults] = useState<BenchmarkModelResult[]>([]);
@@ -32,6 +35,7 @@ export function useBenchmark(): UseBenchmarkReturn {
 
     // Ref for polling interval to clear it on unmount/stop
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const lastModelRef = useRef<string | null>(null);
 
     const addLog = useCallback((message: string, level: BenchmarkLog["level"] = "info") => {
         setLogs((prev) => [
@@ -73,9 +77,13 @@ export function useBenchmark(): UseBenchmarkReturn {
 
             // Add progress log based on current_model
             if (data.status === "running" && data.current_model) {
-                // Unique log logic could be improved to avoid spam,
-                // but for now relying on backend logs might be better if we fetch them.
-                // Since API doesn't return full logs history, we generate synthetic logs from status updates.
+                if (lastModelRef.current !== data.current_model) {
+                    lastModelRef.current = data.current_model;
+                    addLog(
+                        t("benchmark.preflight.testingModel", { model: data.current_model }),
+                        "info",
+                    );
+                }
             }
 
             if (data.status === "completed") {
@@ -99,6 +107,30 @@ export function useBenchmark(): UseBenchmarkReturn {
     const startBenchmark = useCallback(async (config: BenchmarkConfig) => {
         reset();
         setStatus("running");
+        lastModelRef.current = null;
+        emitPreflightLogs(addLog, {
+            preparing: t("benchmark.preflight.preparing"),
+            unloading: t("benchmark.preflight.unloading"),
+            starting: t("benchmark.preflight.starting"),
+            success: t("benchmark.preflight.success"),
+            conflict: t("benchmark.preflight.conflict"),
+            runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
+        });
+        try {
+            const stateResp = await fetch(buildApiUrl("/api/v1/system/llm-servers/active"));
+            if (stateResp.ok) {
+                const state = await stateResp.json() as { active_server?: string; active_model?: string };
+                addLog(
+                    t("benchmark.preflight.llmState", {
+                        server: state.active_server ?? "unknown",
+                        model: state.active_model ?? "unknown",
+                    }),
+                    "info",
+                );
+            }
+        } catch {
+            addLog(t("benchmark.preflight.llmStateUnavailable"), "warning");
+        }
         addLog(`Rozpoczynam benchmark dla modeli: ${config.models.join(", ")}`, "info");
 
         try {
@@ -115,12 +147,21 @@ export function useBenchmark(): UseBenchmarkReturn {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `Failed to start benchmark: ${response.statusText}`);
+                const detail = (errorData as { detail?: string }).detail;
+                throw new Error(
+                    response.status === 409
+                        ? t("benchmark.preflight.conflict")
+                        : classifyStartError(detail, {
+                            conflict: t("benchmark.preflight.conflict"),
+                            runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
+                        })
+                );
             }
 
             const data: BenchmarkStartResponse = await response.json();
             const benchmarkId = data.benchmark_id;
 
+            addLog(t("benchmark.preflight.success"), "info");
             addLog(`Benchmark uruchomiony (ID: ${benchmarkId}). Oczekiwanie na wyniki...`, "info");
 
             // Start polling
@@ -135,7 +176,7 @@ export function useBenchmark(): UseBenchmarkReturn {
             addLog(`Błąd uruchomienia: ${errorMessage}`, "error");
             stopPolling();
         }
-    }, [addLog, pollStatus, reset, stopPolling]);
+    }, [addLog, pollStatus, reset, stopPolling, t]);
 
     // Clean up on unmount
     // useEffect(() => () => stopPolling(), [stopPolling]); // Commented out to avoid double mounting issues in strict mode canceling too early, manual reset handles most.

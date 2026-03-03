@@ -165,6 +165,17 @@ export const en = {
         description: "Performance metrics table for tested models",
       },
     },
+    preflight: {
+      preparing: "Preparing benchmark runtime...",
+      unloading: "Unloading previously loaded model...",
+      starting: "Starting benchmark...",
+      success: "Preflight completed successfully.",
+      conflict: "Another benchmark is already active. Wait for it to finish.",
+      runtimeUnhealthy: "Runtime is not healthy or model unload failed.",
+      llmState: "LLM: server {{server}}, model {{model}}",
+      llmStateUnavailable: "Unable to read active LLM state.",
+      testingModel: "Testing model: {{model}}",
+    },
     coding: {
       tasks: {
         python_sanity: "Python Sanity",

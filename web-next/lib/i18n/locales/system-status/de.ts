@@ -2,13 +2,12 @@ export const systemStatus = {
   title: "SYSTEMSTATUS",
   api: "API",
   queue: "Queue",
-  ws: "WS Kanal",
+  llm: "LLM",
   hints: {
     waiting: "Warte auf Antwort...",
     queueDetails: "Aktiv {{active}} • Ausstehend {{pending}}",
     queueEmpty: "Keine Queue-Daten",
-    wsLive: "Telemetrie live",
-    wsInactive: "WS inaktiv",
-    wsChannel: "Kanal /ws/events",
+    llmDetails: "{{server}} • {{model}}",
+    llmNone: "Kein aktives LLM-Modell",
   },
 };

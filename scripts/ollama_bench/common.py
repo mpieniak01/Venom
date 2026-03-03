@@ -249,6 +249,38 @@ def extract_python_code_fence(text: str) -> str:
     raise ValueError("No fenced code block found in model response")
 
 
+def extract_python_code_unfenced(text: str) -> str:
+    """Wyciąga kod Python z odpowiedzi bez fenced code block (fallback)."""
+    if "```" in text:
+        raise ValueError("Fenced block present; use fenced parser first")
+
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    start_idx = None
+    code_start_re = re.compile(
+        r"^\s*(from\s+\w+|import\s+\w+|def\s+\w+\s*\(|class\s+\w+|if\s+.+:|for\s+.+:|while\s+.+:|try:|with\s+.+:|@|#|[A-Za-z_]\w*\s*=|print\s*\()"
+    )
+    for idx, line in enumerate(lines):
+        if code_start_re.search(line):
+            start_idx = idx
+            break
+    if start_idx is None:
+        raise ValueError("No obvious unfenced Python code found")
+
+    candidate = "\n".join(lines[start_idx:]).strip()
+    if not candidate:
+        raise ValueError("Unfenced Python candidate is empty")
+    if candidate.startswith("{") or candidate.startswith("["):
+        raise ValueError("Unfenced candidate looks like JSON, not Python code")
+
+    # Minimal guard: require at least one Python-shaped token.
+    if not re.search(
+        r"\b(def|class|import|from|return|if|for|while|try|with|assert|print)\b",
+        candidate,
+    ):
+        raise ValueError("Unfenced candidate does not look like Python code")
+    return candidate
+
+
 def parse_model_files_response(
     raw: str, required_files: tuple[str, ...]
 ) -> dict[str, str]:
@@ -290,7 +322,13 @@ def parse_model_files_response(
                         return {required: normalized}
 
     if single_required:
-        code = extract_python_code_fence(raw)
+        try:
+            code = extract_python_code_fence(raw)
+        except ValueError as fence_exc:
+            try:
+                code = extract_python_code_unfenced(raw)
+            except ValueError:
+                raise fence_exc
         normalized = normalize_model_code(code)
         if normalized.strip():
             return {required: normalized}

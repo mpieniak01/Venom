@@ -165,6 +165,17 @@ export const de = {
         description: "Leistungsmetriken-Tabelle für getestete Modelle",
       },
     },
+    preflight: {
+      preparing: "Benchmark-Runtime wird vorbereitet...",
+      unloading: "Vorher geladenes Modell wird entladen...",
+      starting: "Benchmark wird gestartet...",
+      success: "Preflight erfolgreich abgeschlossen.",
+      conflict: "Ein anderer Benchmark ist bereits aktiv. Bitte warten.",
+      runtimeUnhealthy: "Runtime ist nicht bereit oder Modell konnte nicht entladen werden.",
+      llmState: "LLM: Server {{server}}, Modell {{model}}",
+      llmStateUnavailable: "Aktiver LLM-Status konnte nicht gelesen werden.",
+      testingModel: "Getestetes Modell: {{model}}",
+    },
     coding: {
       tasks: {
         python_sanity: "Python Sanity",

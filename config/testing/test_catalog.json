@@ -124,6 +124,30 @@
       "rationale": "Integration-heavy behavior delegated to release lane."
     },
     {
+      "path": "tests/ollama_bench/test_common_and_scoreboard.py",
+      "domain": "misc",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/ollama_bench/test_scheduler.py",
+      "domain": "tasks",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/perf/test_chat_pipeline.py",
       "domain": "performance",
       "test_type": "perf",

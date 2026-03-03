@@ -2,6 +2,8 @@
 # Do not edit manually. Run: make test-groups-sync
 
 tests/integration/test_verify_backend.py
+tests/ollama_bench/test_common_and_scoreboard.py
+tests/ollama_bench/test_scheduler.py
 tests/test_agents_release_integration_contracts.py
 tests/test_agents_routes_integration_regression.py
 tests/test_architecture_contracts_guard.py

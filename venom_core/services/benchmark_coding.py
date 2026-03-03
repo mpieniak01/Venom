@@ -143,7 +143,6 @@ class CodingBenchmarkRun:
 def _enrich_job_dict(job: CodingJobState) -> dict[str, Any]:
     """Dodaj metryki timing z pliku artefaktu jeśli istnieje."""
     d = job.to_dict()
-    artifact_path = d.pop("output", None)
     d.pop("output", None)
     # artifact field contains the path to the JSON artifact
     artifact_file = d.get("artifact")
@@ -153,9 +152,7 @@ def _enrich_job_dict(job: CodingJobState) -> dict[str, Any]:
             timing = artifact_data.get("timing") or {}
             d["warmup_seconds"] = _safe_float(timing.get("warmup_seconds"))
             d["coding_seconds"] = _safe_float(timing.get("coding_seconds"))
-            d["request_wall_seconds"] = _safe_float(
-                timing.get("request_wall_seconds")
-            )
+            d["request_wall_seconds"] = _safe_float(timing.get("request_wall_seconds"))
             d["total_seconds"] = _safe_float(timing.get("total_seconds"))
             d["passed"] = artifact_data.get("passed")
             d["error"] = artifact_data.get("error")
@@ -211,7 +208,20 @@ class CodingBenchmarkService:
         self._load_persisted_runs()
 
     def _run_dir(self, run_id: str) -> Path:
-        return self.storage_dir / run_id
+        """
+        Zwraca bezpieczną ścieżkę katalogu run.
+
+        Ścieżka jest zawsze normalizowana i musi pozostać wewnątrz storage_dir.
+        """
+        if not _is_valid_run_id(run_id):
+            raise ValueError("Invalid run_id")
+        storage_root = self.storage_dir.resolve()
+        run_dir = (storage_root / run_id).resolve()
+        try:
+            run_dir.relative_to(storage_root)
+        except ValueError as exc:
+            raise ValueError("Run path escapes storage directory") from exc
+        return run_dir
 
     def _meta_file(self, run_id: str) -> Path:
         return self._run_dir(run_id) / "meta.json"
@@ -276,9 +286,7 @@ class CodingBenchmarkService:
             except Exception as exc:
                 logger.warning(f"Nie można załadować run {meta_file}: {exc}")
 
-    def _validate_start_request(
-        self, models: list[str], tasks: list[str]
-    ) -> None:
+    def _validate_start_request(self, models: list[str], tasks: list[str]) -> None:
         if not models:
             raise ValueError("Lista modeli nie może być pusta")
         invalid_tasks = [t for t in tasks if t not in _VALID_TASKS]
@@ -399,7 +407,11 @@ class CodingBenchmarkService:
             else:
                 run.status = "failed"
                 stderr = (proc.stderr or "").strip()
-                run.error_message = f"Scheduler rc={proc.returncode}: {stderr[:500]}" if stderr else f"Scheduler rc={proc.returncode}"
+                run.error_message = (
+                    f"Scheduler rc={proc.returncode}: {stderr[:500]}"
+                    if stderr
+                    else f"Scheduler rc={proc.returncode}"
+                )
         except Exception as exc:
             logger.exception(f"Błąd schedulera dla run {run_id}")
             run.status = "failed"
@@ -451,7 +463,9 @@ class CodingBenchmarkService:
         # Usuń pliki z dysku
         try:
             import shutil
-            run_dir = self._run_dir(run_id)
+
+            # Use persisted run identifier from in-memory state, not raw request value.
+            run_dir = self._run_dir(run.run_id)
             if run_dir.exists():
                 shutil.rmtree(run_dir)
         except Exception as exc:
@@ -467,6 +481,7 @@ class CodingBenchmarkService:
         for run_id in run_ids:
             try:
                 import shutil
+
                 run_dir = self._run_dir(run_id)
                 if run_dir.exists():
                     shutil.rmtree(run_dir)

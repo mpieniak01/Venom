@@ -96,3 +96,30 @@ VENOM_LLM_MODEL='gemma-3-4b-it' VENOM_LLM_REPEATS=2 .venv/bin/pytest -q -s tests
 1. Ten plik utrzymujemy jako bieżący pełny baseline.
 2. Nowe pomiary dopisujemy jawnie w tym pliku (bez zależności od dokumentacji prywatnej).
 3. Każda aktualizacja musi zawierać: komendy + czasy.
+
+## Benchmark sanity coding Python (PR 190, 2026-03-03)
+
+Artefakty zrodlowe:
+- `data/benchmarks/ollama_first_sieve_rerun_with_timing_20260303/scheduler_summary.json`
+- `data/benchmarks/ollama_first_sieve_rerun_with_timing_20260303/single_*_python_sanity.json`
+
+Okno (UTC): `2026-03-03T10:47:12Z` -> `2026-03-03T10:58:35Z`.
+Wynik: `7/10 PASS` (`70.0%`).
+
+Definicje czasow:
+- `warmup [s]` -> `load_duration` z Ollama
+- `coding [s]` -> `eval_duration` z Ollama
+- `request [s]` -> calkowity czas requestu po stronie runnera
+
+| Model | Wynik | warmup [s] | coding [s] | request [s] | Uwagi |
+|---|---|---:|---:|---:|---|
+| `codestral:latest` | PASS | 290.716 | 9.402 | 301.156 | Zaliczony po zwiekszeniu timeout |
+| `deepcoder:latest` | PASS | 197.823 | 16.231 | 214.823 | Zaliczony po zwiekszeniu timeout |
+| `deepseek-r1:8b` | PASS | 7.287 | 2.791 | 10.302 | Stabilny PASS |
+| `gemma3:4b` | PASS | 4.198 | 1.607 | 5.998 | Stabilny PASS |
+| `gemma3:latest` | PASS | 0.246 | 1.158 | 1.490 | Stabilny PASS |
+| `qwen2.5-coder:7b` | PASS | 13.456 | 1.357 | 15.029 | Stabilny PASS |
+| `qwen3:4b` | PASS | 2.981 | 38.335 | 42.426 | Wolna faza kodowania |
+| `openclaw-qwen3vl-8b-opt:latest` | FAIL | - | - | - | Pusta odpowiedz z `/api/generate` |
+| `qwen2.5-coder:3b` | FAIL | - | - | - | Brak poprawnego bloku kodu w odpowiedzi |
+| `voytas26/openclaw-qwen3vl-8b-opt:latest` | FAIL | - | - | - | Pusta odpowiedz z `/api/generate` |

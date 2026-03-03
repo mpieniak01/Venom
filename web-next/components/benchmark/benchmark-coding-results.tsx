@@ -5,8 +5,9 @@ import { cn } from "@/lib/utils";
 import type { CodingBenchmarkRun, CodingJob } from "@/lib/types";
 import { Clock, RefreshCw, Trash2, X, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { getApiBaseUrl } from "@/lib/env";
+import { useTranslation } from "@/lib/i18n";
 
-interface CodingBenchmarkResultsProps {
+interface BenchmarkCodingResultsProps {
   readonly currentRun: CodingBenchmarkRun | null;
   readonly onDelete: (runId: string) => Promise<boolean>;
   readonly onClearAll: () => Promise<boolean>;
@@ -22,11 +23,12 @@ interface HistoryItem {
   error_message?: string | null;
 }
 
-export function CodingBenchmarkResults({
+export function BenchmarkCodingResults({
   currentRun,
   onDelete,
   onClearAll,
-}: CodingBenchmarkResultsProps) {
+}: BenchmarkCodingResultsProps) {
+  const t = useTranslation();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const apiBase = useMemo(() => getApiBaseUrl() || "", []);
@@ -51,14 +53,14 @@ export function CodingBenchmarkResults({
   }, [currentRun, fetchHistory]);
 
   const handleDelete = async (id: string) => {
-    if (confirm("Czy na pewno chcesz usunąć ten coding benchmark run?")) {
+    if (confirm(t("benchmark.coding.results.confirmDelete"))) {
       const success = await onDelete(id);
       if (success) fetchHistory();
     }
   };
 
   const handleClearAll = async () => {
-    if (confirm("Czy na pewno chcesz usunąć CAŁĄ historię coding benchmarków?")) {
+    if (confirm(t("benchmark.coding.results.confirmClearAll"))) {
       const success = await onClearAll();
       if (success) fetchHistory();
     }
@@ -87,7 +89,7 @@ export function CodingBenchmarkResults({
       {currentRun && currentRun.jobs && currentRun.jobs.length > 0 && (
         <div className="space-y-3">
           <h4 className="heading-h4 text-[color:var(--text-heading)]">
-            Bieżący run — szczegóły ({currentRun.run_id.slice(0, 8)}...)
+            {currentRun.run_id.slice(0, 8)}...
           </h4>
           <JobsTable jobs={currentRun.jobs} />
         </div>
@@ -97,13 +99,13 @@ export function CodingBenchmarkResults({
       <div className="space-y-3 pt-6 border-t border-[color:var(--ui-border)]">
         <div className="flex items-center justify-between">
           <h4 className="heading-h4 text-[color:var(--text-heading)]">
-            Historia Coding Benchmarków
+            {t("benchmark.coding.results.title")}
           </h4>
           <div className="flex gap-2">
             <button
               onClick={fetchHistory}
               className="p-2 rounded-lg hover:bg-[color:var(--ui-surface-hover)] text-[color:var(--ui-muted)] hover:text-[color:var(--text-primary)] transition-colors"
-              title="Odśwież"
+              title={t("benchmark.coding.results.refresh")}
             >
               <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
             </button>
@@ -113,7 +115,7 @@ export function CodingBenchmarkResults({
                 className="p-2 rounded-lg hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-2 text-xs font-medium"
               >
                 <Trash2 className="w-4 h-4" />
-                Wyczyść wszystko
+                {t("benchmark.coding.results.clearAll")}
               </button>
             )}
           </div>
@@ -121,7 +123,7 @@ export function CodingBenchmarkResults({
 
         {history.length === 0 ? (
           <div className="text-center py-8 text-[color:var(--ui-muted)] text-sm">
-            Brak historii coding benchmarków.
+            {t("benchmark.coding.results.noHistory")}
           </div>
         ) : (
           <div className="grid gap-4">
@@ -143,19 +145,23 @@ export function CodingBenchmarkResults({
                       </span>
                     </div>
                     <div className="text-sm font-medium text-[color:var(--text-primary)]">
-                      Modele: {item.config.models.join(", ")}
+                      {t("benchmark.coding.results.models")}: {item.config.models.join(", ")}
                     </div>
                     <div className="text-xs text-[color:var(--text-secondary)]">
-                      Zadania: {item.config.tasks.join(", ")}
+                      {t("benchmark.coding.results.tasks")}: {item.config.tasks.join(", ")}
                     </div>
                     {item.summary && (
                       <div className="text-xs text-[color:var(--ui-muted)] mt-1">
-                        {item.summary.completed}/{item.summary.total_jobs} zadań •{" "}
-                        <span className={cn(
-                          "font-medium",
-                          item.summary.success_rate >= 80 ? "text-emerald-400" : "text-amber-400"
-                        )}>
-                          {item.summary.success_rate.toFixed(1)}% sukces
+                        {item.summary.completed}/{item.summary.total_jobs} •{" "}
+                        <span
+                          className={cn(
+                            "font-medium",
+                            item.summary.success_rate >= 80
+                              ? "text-emerald-400"
+                              : "text-amber-400",
+                          )}
+                        >
+                          {item.summary.success_rate.toFixed(1)}%
                         </span>
                       </div>
                     )}
@@ -163,7 +169,7 @@ export function CodingBenchmarkResults({
                   <button
                     onClick={() => handleDelete(item.run_id)}
                     className="opacity-0 group-hover:opacity-100 p-2 text-[color:var(--ui-muted)] hover:text-rose-400 transition-all"
-                    title="Usuń run"
+                    title={t("benchmark.coding.results.deleteRun")}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -184,11 +190,11 @@ function JobsTable({ jobs }: Readonly<{ jobs: ReadonlyArray<CodingJob> }>) {
         <thead>
           <tr className="border-b border-[color:var(--ui-border)] text-[color:var(--text-secondary)]">
             <th className="py-2 px-3 font-medium">Model</th>
-            <th className="py-2 px-3 font-medium">Zadanie</th>
-            <th className="py-2 px-3 font-medium">Tryb</th>
+            <th className="py-2 px-3 font-medium">Task</th>
+            <th className="py-2 px-3 font-medium">Mode</th>
             <th className="py-2 px-3 text-center font-medium">Status</th>
-            <th className="py-2 px-3 text-right font-medium">Czas (s)</th>
-            <th className="py-2 px-3 text-center font-medium">Wynik</th>
+            <th className="py-2 px-3 text-right font-medium">Time (s)</th>
+            <th className="py-2 px-3 text-center font-medium">Result</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[color:var(--ui-border)]">
@@ -206,8 +212,12 @@ function JobsTable({ jobs }: Readonly<{ jobs: ReadonlyArray<CodingJob> }>) {
                 {job.coding_seconds != null ? job.coding_seconds.toFixed(1) : "-"}
               </td>
               <td className="py-2 px-3 text-center">
-                {job.passed === true && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mx-auto" />}
-                {job.passed === false && <XCircle className="w-3.5 h-3.5 text-rose-400 mx-auto" />}
+                {job.passed === true && (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mx-auto" />
+                )}
+                {job.passed === false && (
+                  <XCircle className="w-3.5 h-3.5 text-rose-400 mx-auto" />
+                )}
                 {job.passed == null && job.status === "running" && (
                   <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin mx-auto" />
                 )}

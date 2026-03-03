@@ -241,6 +241,29 @@ Znany pitfall (krytyczny):
 3. Aktualne slow-patterny ścieżek zawierają m.in. `integration` i `benchmark`.
 4. Jeśli test ma brać udział w changed-code coverage, unikaj tych tokenów w nazwie/ścieżce testu.
 
+Wymagana konwencja nazewnictwa nowych testów:
+
+1. Używaj neutralnych nazw, np. `tests/test_coding_run_service.py`.
+2. Unikaj tokenów slow-pattern w nazwie/ścieżce:
+   - `benchmark`
+   - `integration`
+3. Jeśli test został już dodany z blokującym tokenem, zrób rename w tym samym PR.
+
+Minimalna checklista walidacyjna (kolejność obowiązkowa):
+
+```bash
+make test-groups-sync
+make test-groups-check
+rg "tests/test_<new_name>\\.py" config/pytest-groups/sonar-new-code.txt
+make check-new-code-coverage-diagnostics
+make pr-fast
+```
+
+Zasada interpretacji:
+
+1. Jeśli testu nie ma w `sonar-new-code.txt`, nie przechodź do `make pr-fast`.
+2. Najpierw popraw katalog/lane/nazewnictwo, potem uruchom checklistę ponownie.
+
 ## Zasada i18n Komunikatów Użytkownika (obowiązkowa)
 
 - Każdy komunikat widoczny dla użytkownika (labelki UI, przyciski, toasty, modale, błędy walidacji, błędy API pokazywane w UI, teksty empty-state) musi być realizowany przez klucze tłumaczeń, bez hardkodowanych stringów.

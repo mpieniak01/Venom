@@ -18,6 +18,7 @@ WEB_PID_FILE ?= .web-next.pid
 NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
 START_MODE ?= dev
+START_WEB_MODE ?= webpack
 ALLOW_DEGRADED_START ?= 0
 UVICORN_DEV_FLAGS ?= --reload
 UVICORN_PROD_FLAGS ?= --no-server-header
@@ -40,7 +41,7 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod start-preprod stop restart status clean-ports \
+.PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-turbo start-prod start-preprod stop restart status clean-ports \
 		pytest e2e test-optimal test-ci-light test-fast-coverage test-light-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap \
 		test-intelligence-report \
@@ -436,7 +437,16 @@ endef
 start: start-dev
 
 start-dev: START_MODE=dev
+start-dev: START_WEB_MODE=webpack
 start-dev:
+	$(MAKE) --no-print-directory ensure-env-file
+	$(MAKE) --no-print-directory _start
+
+start2: start-dev-turbo
+
+start-dev-turbo: START_MODE=dev
+start-dev-turbo: START_WEB_MODE=turbo
+start-dev-turbo:
 	$(MAKE) --no-print-directory ensure-env-file
 	$(MAKE) --no-print-directory _start
 
@@ -710,9 +720,23 @@ _start:
 			NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 			echo $$! > $(WEB_PID_FILE); \
 		else \
-			echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
-			NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
-			echo $$! > $(WEB_PID_FILE); \
+			if [ "$(START_WEB_MODE)" != "webpack" ] && [ "$(START_WEB_MODE)" != "turbo" ] && [ "$(START_WEB_MODE)" != "turbo-debug" ]; then \
+				echo "❌ Nieznany START_WEB_MODE='$(START_WEB_MODE)' (dozwolone: webpack|turbo|turbo-debug)"; \
+				exit 1; \
+			fi; \
+			if [ "$(START_WEB_MODE)" = "turbo" ]; then \
+				echo "▶️  Uruchamiam UI (Next.js dev:turbo, host $(WEB_HOST), port $(WEB_PORT))"; \
+				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				echo $$! > $(WEB_PID_FILE); \
+			elif [ "$(START_WEB_MODE)" = "turbo-debug" ]; then \
+				echo "▶️  Uruchamiam UI (Next.js dev:turbo:debug, host $(WEB_HOST), port $(WEB_PORT))"; \
+				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo:debug -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				echo $$! > $(WEB_PID_FILE); \
+			else \
+				echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
+				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				echo $$! > $(WEB_PID_FILE); \
+			fi; \
 		fi; \
 		WPID=$$(cat $(WEB_PID_FILE)); \
 		ui_ready=""; \
@@ -1020,6 +1044,7 @@ help:
 	@echo ""
 	@echo "Start/Stop:"
 	@echo "  make start                    - start backend + frontend + runtime LLM"
+	@echo "  make start2                   - start backend + frontend (turbopack) + runtime LLM"
 	@echo "  make stop                     - stop backend + frontend + runtime LLM"
 	@echo "  make status                   - status procesów"
 	@echo "  make web-dev                  - frontend dev (webpack, stabilny)"

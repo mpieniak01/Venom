@@ -21,6 +21,13 @@ npm --prefix web-next run dev          # http://localhost:3000 (proxy to API)
 npm --prefix web-next run dev:turbo    # optional Turbopack mode
 ```
 
+Stack presets (from repo root):
+
+```bash
+make start   # full dev stack: backend + web-next (webpack) + active LLM runtime
+make start2  # full dev stack: backend + web-next (turbopack) + active LLM runtime
+```
+
 Most important frontend environment variables:
 
 ```
@@ -45,6 +52,7 @@ Use `Makefile` wrappers from repository root (`/home/ubuntu/venom`) to keep back
 
 ```bash
 make start                    # full stack (backend + frontend + active LLM runtime)
+make start2                   # full stack (backend + frontend on turbopack + active LLM runtime)
 make stop                     # stop full stack
 make status                   # runtime/process status
 ```

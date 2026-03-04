@@ -18,6 +18,7 @@ WEB_PID_FILE ?= .web-next.pid
 NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
 START_MODE ?= dev
+START_WEB_MODE ?= webpack
 ALLOW_DEGRADED_START ?= 0
 UVICORN_DEV_FLAGS ?= --reload
 UVICORN_PROD_FLAGS ?= --no-server-header
@@ -40,17 +41,18 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start-dev start-prod start-preprod stop restart status clean-ports \
+.PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-turbo start-prod start-preprod stop restart status clean-ports \
 		pytest e2e test-optimal test-ci-light test-fast-coverage test-light-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap \
 		test-intelligence-report \
-		api api-dev api-preprod api-stop web web-dev web-preprod web-stop \
+		api api-dev api-preprod api-stop web web-dev web-dev-turbo web-dev-turbo-debug web-preprod web-stop \
+		test-web-turbo-smoke test-web-turbo-smoke-clean \
 		startpre stoppre restartpre statuspre apipre webpre testpre ensurepreenv \
 		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check prebackup prerestore preverify preaudit predrill prereadiness \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
-		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke \
+		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke help \
 		modules-status modules-pull modules-branches modules-exec architecture-drift-check optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
 
 lint:
@@ -70,6 +72,7 @@ test:
 	@set +e; \
 	VENOM_TEST_ARTIFACT_MODE=clean VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
+	$(call handle_pytest_no_tests,test) \
 	if [ $$rc -ne 0 ]; then \
 		echo ""; \
 		echo "❌ make test: testy nie przeszły (exit=$$rc)."; \
@@ -82,6 +85,7 @@ test-data:
 	@set +e; \
 	VENOM_TEST_ARTIFACT_MODE=preserve VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
+	$(call handle_pytest_no_tests,test-data) \
 	if [ $$rc -ne 0 ]; then \
 		echo ""; \
 		echo "❌ make test-data: testy nie przeszły (exit=$$rc)."; \
@@ -119,6 +123,12 @@ test-web-unit:
 
 test-web-e2e:
 	$(NPM) --prefix $(WEB_DIR) run test:e2e
+
+test-web-turbo-smoke:
+	$(NPM) --prefix $(WEB_DIR) run test:dev:turbo:smoke
+
+test-web-turbo-smoke-clean:
+	$(NPM) --prefix $(WEB_DIR) run test:dev:turbo:smoke:clean
 
 test-all: test test-web-unit test-web-e2e
 
@@ -242,6 +252,7 @@ pytest:
 	@set +e; \
 	VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
+	$(call handle_pytest_no_tests,pytest) \
 	if [ $$rc -ne 0 ]; then \
 		echo ""; \
 		echo "❌ make pytest: testy nie przeszły (exit=$$rc)."; \
@@ -402,26 +413,52 @@ define ensure_process_not_running
 	fi
 endef
 
+define handle_pytest_no_tests
+	if [ $$rc -eq 5 ]; then \
+		echo ""; \
+		echo "⚠️  make $(1): pytest zakończył się kodem 5 (brak zebranych testów)."; \
+		echo "   Sprawdź grupy testowe i katalog testów:"; \
+		echo "   - make test-groups-check"; \
+		echo "   - make test-catalog-check"; \
+		exit $$rc; \
+	fi;
+endef
+
+define start_web_turbo_target
+	@mkdir -p logs
+	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
+	: > $(WEB_LOG)
+	@echo "▶️  Uruchamiam UI ($(1), host $(WEB_HOST), port $(WEB_PORT))"
+	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(4) setsid $(NPM) --prefix $(WEB_DIR) run $(2) -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	echo $$! > $(WEB_PID_FILE)
+	@echo "✅ UI ($(1)) wystartował z PID $$(cat $(WEB_PID_FILE))"
+	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
+	@echo "$(3)"
+endef
+
 start: start-dev
 
-start-dev: START_MODE=dev
 start-dev:
 	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory _start
+	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=webpack _start
 
-start-prod: START_MODE=prod
+start2: start-dev-turbo
+
+start-dev-turbo:
+	$(MAKE) --no-print-directory ensure-env-file
+	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=turbo _start
+
 start-prod:
 	@echo "⚠️  OSTRZEŻENIE: tryb 'prod' nie jest jeszcze oficjalnie zwalidowany/rekomendowany operacyjnie."
 	@echo "⚠️  Zalecane środowiska: 'dev' (testy/prace) oraz 'preprod' (UAT + smoke read-only)."
 	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory _start
+	$(MAKE) --no-print-directory START_MODE=prod _start
 
-start-preprod: START_MODE=prod
 start-preprod:
 	$(PREPROD_ENV_READONLY) \
 		$(MAKE) --no-print-directory ensure-env-file
 	$(PREPROD_ENV_READONLY) \
-		$(MAKE) --no-print-directory _start
+		$(MAKE) --no-print-directory START_MODE=prod _start
 
 # Preprod aliases (short commands)
 startpre: start-preprod
@@ -504,7 +541,6 @@ _start:
 		exit 1; \
 	fi
 	@mkdir -p logs
-	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
 	@active_server=""; \
 	if [ -f "$(ENV_FILE)" ]; then \
 		active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' "$(ENV_FILE)" 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true); \
@@ -604,6 +640,18 @@ _start:
 			PID=$$(cat "$(PID_FILE)"); \
 			if ! kill -0 $$PID 2>/dev/null; then rm -f "$(PID_FILE)"; fi; \
 		fi; \
+	elif [ -f "$(PID_FILE)" ]; then \
+		PID=$$(cat "$(PID_FILE)"); \
+		if kill -0 $$PID 2>/dev/null; then \
+			echo "⚠️  Backend PID $$PID istnieje, ale /system/status jest niedostępny. Restartuję backend."; \
+			kill $$PID 2>/dev/null || true; \
+			for attempt in {1..30}; do \
+				if kill -0 $$PID 2>/dev/null; then sleep 0.2; else break; fi; \
+			done; \
+			rm -f "$(PID_FILE)"; \
+		else \
+			rm -f "$(PID_FILE)"; \
+		fi; \
 	fi; \
 	if [ -z "$$backend_reused" ]; then \
 		if [ -f "$(PID_FILE)" ]; then \
@@ -661,11 +709,81 @@ _start:
 		echo "✅ Backend gotowy (używam już działającej instancji)"; \
 	fi
 	@ui_skip=""; \
+	if [ ! -f $(WEB_PID_FILE) ]; then \
+		EXT_UI_PIDS=""; \
+		if command -v lsof >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
+		fi; \
+		if [ -z "$$EXT_UI_PIDS" ] && command -v fuser >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
+		fi; \
+		if [ -z "$$EXT_UI_PIDS" ] && command -v ss >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
+		fi; \
+		if [ -n "$$EXT_UI_PIDS" ]; then \
+			echo "⚠️  Port $(WEB_PORT) zajęty przez niezarządzany proces UI ($$EXT_UI_PIDS). Czyszczę."; \
+			kill $$EXT_UI_PIDS 2>/dev/null || true; \
+			for attempt in {1..30}; do \
+				EXT_STILL=""; \
+				if command -v lsof >/dev/null 2>&1; then \
+					EXT_STILL=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
+				fi; \
+				if [ -z "$$EXT_STILL" ] && command -v fuser >/dev/null 2>&1; then \
+					EXT_STILL=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
+				fi; \
+				if [ -z "$$EXT_STILL" ] && command -v ss >/dev/null 2>&1; then \
+					EXT_STILL=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
+				fi; \
+				if [ -z "$$EXT_STILL" ]; then break; fi; \
+				sleep 0.2; \
+			done; \
+			EXT_STILL=""; \
+			if command -v lsof >/dev/null 2>&1; then \
+				EXT_STILL=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
+			fi; \
+			if [ -z "$$EXT_STILL" ] && command -v fuser >/dev/null 2>&1; then \
+				EXT_STILL=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
+			fi; \
+			if [ -z "$$EXT_STILL" ] && command -v ss >/dev/null 2>&1; then \
+				EXT_STILL=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
+			fi; \
+			if [ -n "$$EXT_STILL" ]; then \
+				echo "❌ Nie udało się zwolnić portu $(WEB_PORT) (PID: $$EXT_STILL). Użyj: make web-stop"; \
+				exit 1; \
+			fi; \
+		fi; \
+	fi; \
 	if [ -f $(WEB_PID_FILE) ]; then \
 		WPID=$$(cat $(WEB_PID_FILE)); \
 		if kill -0 $$WPID 2>/dev/null; then \
-			echo "⚠️  UI (Next.js) już działa (PID $$WPID). Pomijam start UI."; \
-			ui_skip="yes"; \
+			if [ "$(START_MODE)" = "dev" ]; then \
+				cmdline=$$(tr '\0' ' ' < /proc/$$WPID/cmdline 2>/dev/null || true); \
+				want=""; \
+				if [ "$(START_WEB_MODE)" = "turbo" ]; then \
+					want="dev:turbo"; \
+				elif [ "$(START_WEB_MODE)" = "turbo-debug" ]; then \
+					want="dev:turbo:debug"; \
+				else \
+					want="dev --"; \
+				fi; \
+					if printf '%s' "$$cmdline" | grep -Fq "$$want"; then \
+						echo "⚠️  UI (Next.js) już działa w trybie $(START_WEB_MODE) (PID $$WPID). Pomijam start UI."; \
+						ui_skip="yes"; \
+					else \
+						echo "🔁 UI (Next.js) działa w innym trybie. Restartuję do trybu $(START_WEB_MODE)."; \
+						kill -TERM -$$WPID 2>/dev/null || kill $$WPID 2>/dev/null || true; \
+						for attempt in {1..20}; do \
+							if kill -0 $$WPID 2>/dev/null; then sleep 0.2; else break; fi; \
+						done; \
+						if kill -0 $$WPID 2>/dev/null; then \
+							kill -KILL -$$WPID 2>/dev/null || kill -KILL $$WPID 2>/dev/null || true; \
+						fi; \
+						rm -f $(WEB_PID_FILE); \
+					fi; \
+				else \
+				echo "⚠️  UI (Next.js) już działa (PID $$WPID). Pomijam start UI."; \
+				ui_skip="yes"; \
+			fi; \
 		else \
 			rm -f $(WEB_PID_FILE); \
 		fi; \
@@ -679,9 +797,23 @@ _start:
 			NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 			echo $$! > $(WEB_PID_FILE); \
 		else \
-			echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
-			NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
-			echo $$! > $(WEB_PID_FILE); \
+			if [ "$(START_WEB_MODE)" != "webpack" ] && [ "$(START_WEB_MODE)" != "turbo" ] && [ "$(START_WEB_MODE)" != "turbo-debug" ]; then \
+				echo "❌ Nieznany START_WEB_MODE='$(START_WEB_MODE)' (dozwolone: webpack|turbo|turbo-debug)"; \
+				exit 1; \
+			fi; \
+			if [ "$(START_WEB_MODE)" = "turbo" ]; then \
+				echo "▶️  Uruchamiam UI (Next.js dev:turbo, host $(WEB_HOST), port $(WEB_PORT))"; \
+				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				echo $$! > $(WEB_PID_FILE); \
+			elif [ "$(START_WEB_MODE)" = "turbo-debug" ]; then \
+				echo "▶️  Uruchamiam UI (Next.js dev:turbo:debug, host $(WEB_HOST), port $(WEB_PORT))"; \
+				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo:debug -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				echo $$! > $(WEB_PID_FILE); \
+			else \
+				echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
+				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				echo $$! > $(WEB_PID_FILE); \
+			fi; \
 		fi; \
 		WPID=$$(cat $(WEB_PID_FILE)); \
 		ui_ready=""; \
@@ -697,22 +829,46 @@ _start:
 			fi; \
 			sleep 1; \
 		done; \
-		if [ -z "$$ui_ready" ]; then \
-			echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
-			kill $$WPID 2>/dev/null || true; \
-			rm -f $(WEB_PID_FILE); \
-			# zatrzymaj backend, aby nie zostawiać pół-startu \
+			if [ -z "$$ui_ready" ]; then \
+				echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
+				kill -TERM -$$WPID 2>/dev/null || kill $$WPID 2>/dev/null || true; \
+				rm -f $(WEB_PID_FILE); \
+				# zatrzymaj backend, aby nie zostawiać pół-startu
 			if [ -f $(PID_FILE) ]; then \
 				BPID=$$(cat $(PID_FILE)); \
 				kill $$BPID 2>/dev/null || true; \
 				rm -f $(PID_FILE); \
 			fi; \
 			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
-			$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
-			exit 1; \
-		fi; \
-		echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"; \
-	fi
+				$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+				exit 1; \
+			fi; \
+			if [ "$(START_MODE)" = "dev" ]; then \
+				expected_bundler=""; \
+				if [ "$(START_WEB_MODE)" = "webpack" ]; then \
+					expected_bundler="webpack"; \
+				else \
+					expected_bundler="turbopack"; \
+				fi; \
+				bundler_line_ok=""; \
+				for attempt in {1..15}; do \
+					if [ -f "$(WEB_LOG)" ] && grep -Eiq "Next\\.js .+\\($$expected_bundler\\)" "$(WEB_LOG)"; then \
+						bundler_line_ok="yes"; \
+						break; \
+					fi; \
+					sleep 1; \
+				done; \
+				if [ -z "$$bundler_line_ok" ]; then \
+					echo "❌ UI nie potwierdził oczekiwanego bundlera '$$expected_bundler' w logach."; \
+					echo "ℹ️  Ostatnie logi UI:"; \
+					tail -n 60 "$(WEB_LOG)" || true; \
+					kill $$WPID 2>/dev/null || true; \
+					rm -f $(WEB_PID_FILE); \
+					exit 1; \
+				fi; \
+			fi; \
+			echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"; \
+		fi
 	@echo "🚀 Gotowe: backend http://$(HOST_DISPLAY):$(PORT), dashboard http://$(WEB_DISPLAY):$(WEB_PORT)"
 
 stop:
@@ -739,7 +895,22 @@ status:
 			echo "⚠️  WEB_PID_FILE istnieje, ale proces $$WPID nie żyje"; \
 		fi; \
 	else \
-		echo "ℹ️  UI (Next.js) nie jest uruchomione"; \
+		EXT_UI_PIDS=""; \
+		if command -v lsof >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
+		fi; \
+		if [ -z "$$EXT_UI_PIDS" ] && command -v fuser >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
+		fi; \
+		if [ -z "$$EXT_UI_PIDS" ] && command -v ss >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
+		fi; \
+		if [ -n "$$EXT_UI_PIDS" ]; then \
+			echo "⚠️  UI zajmuje port $(WEB_PORT), ale bez $(WEB_PID_FILE) (PID: $$EXT_UI_PIDS)"; \
+			echo "    Użyj: make web-stop"; \
+		else \
+			echo "ℹ️  UI (Next.js) nie jest uruchomione"; \
+		fi; \
 	fi
 
 clean-ports:
@@ -849,6 +1020,12 @@ web-dev:
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
 	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
+
+web-dev-turbo:
+	$(call start_web_turbo_target,Next.js dev:turbo,dev:turbo,⚡ Turbopack: aktywny (opt-in),NEXT_TELEMETRY_DISABLED=1)
+
+web-dev-turbo-debug:
+	$(call start_web_turbo_target,Next.js dev:turbo:debug,dev:turbo:debug,🧪 Debug turbo: NEXT_DEBUG + --trace-warnings,)
 
 web-preprod:
 	$(PREPROD_ENV_READONLY) \
@@ -961,3 +1138,28 @@ mcp-status:
 	@ls -1 venom_core/skills/mcp/_repos 2>/dev/null || echo "Brak."
 	@echo "📝 Wygenerowane wrappery (.py):"
 	@ls -1 venom_core/skills/custom/mcp_*.py 2>/dev/null || echo "Brak."
+
+help:
+	@echo "Venom Makefile - najczęściej używane komendy"
+	@echo ""
+	@echo "Start/Stop:"
+	@echo "  make start                    - start backend + frontend + runtime LLM"
+	@echo "  make start2                   - start backend + frontend (turbopack) + runtime LLM"
+	@echo "  make stop                     - stop backend + frontend + runtime LLM"
+	@echo "  make status                   - status procesów"
+	@echo "  make web-dev                  - frontend dev (webpack, stabilny)"
+	@echo "  make web-dev-turbo            - frontend dev (turbopack, opt-in)"
+	@echo "  make web-dev-turbo-debug      - frontend dev turbopack + debug logi"
+	@echo ""
+	@echo "Testy:"
+	@echo "  make test                     - backend testy (clean artifacts)"
+	@echo "  make test-data                - backend testy (preserve artifacts)"
+	@echo "  make test-web-unit            - frontend unit"
+	@echo "  make test-web-e2e             - frontend e2e"
+	@echo "  make test-web-turbo-smoke     - smoke dev:turbo"
+	@echo "  make test-web-turbo-smoke-clean - smoke dev:turbo + clean .next"
+	@echo ""
+	@echo "Jakość:"
+	@echo "  make pr-fast                  - hard gate (wymagane przed zakończeniem)"
+	@echo "  make test-groups-check        - weryfikacja grup testów"
+	@echo "  make test-catalog-check       - weryfikacja katalogu testów"

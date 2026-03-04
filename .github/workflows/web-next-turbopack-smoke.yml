@@ -1,0 +1,55 @@
+name: "Web Next Turbopack Smoke"
+
+on:
+  workflow_dispatch:
+    inputs:
+      clean_next:
+        description: "Clear web-next/.next before smoke run"
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: "15 2 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "web-next/**"
+      - ".github/workflows/web-next-turbopack-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-next-turbopack-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  turbopack-smoke:
+    name: Turbopack smoke (/ /academy /benchmark)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: web-next/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix web-next ci
+
+      - name: Turbopack smoke (clean cache)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.clean_next == true }}
+        run: npm --prefix web-next run test:dev:turbo:smoke:clean
+
+      - name: Turbopack smoke (reuse cache)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_next == false }}
+        run: npm --prefix web-next run test:dev:turbo:smoke

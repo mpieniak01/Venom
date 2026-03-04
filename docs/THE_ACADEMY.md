@@ -683,7 +683,9 @@ Academy dashboard is available at **http://localhost:3000/academy**
 ### Dev Stability Note (web-next)
 - Default local dev runtime uses webpack:
   - `npm --prefix web-next run dev` -> `next dev --webpack`
-  - `npm --prefix web-next run dev:turbo` -> optional Turbopack mode
+  - `npm --prefix web-next run dev:turbo` -> optional Turbopack mode (`next dev --turbo`)
+- Turbopack regression smoke:
+  - `npm --prefix web-next run test:dev:turbo:smoke:clean`
 - Keep one active dev instance to avoid `.next/dev/lock` conflicts.
 
 ## Roadmap

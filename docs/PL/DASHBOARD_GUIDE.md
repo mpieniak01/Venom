@@ -18,6 +18,14 @@ Szczegółowe źródła danych, testy i zasady SCC znajdziesz również w `docs/
 ```bash
 npm --prefix web-next install          # jednorazowo
 npm --prefix web-next run dev          # http://localhost:3000 (proxy do API)
+npm --prefix web-next run dev:turbo    # opcjonalny tryb Turbopack
+```
+
+Presety stacku (z roota repo):
+
+```bash
+make start   # pełny stack dev: backend + web-next (webpack) + aktywny runtime LLM
+make start2  # pełny stack dev: backend + web-next (turbopack) + aktywny runtime LLM
 ```
 
 Najważniejsze zmienne środowiskowe frontu:
@@ -34,11 +42,36 @@ API_PROXY_TARGET=http://localhost:8000              # cel rewritera Next (dev)
 |-------------------------------------|-------------------------------------------------------|
 | Build produkcyjny                   | `npm --prefix web-next run build`                     |
 | Serwowanie buildu (`next start`)    | `npm --prefix web-next run start`                     |
+| Smoke regresyjny Turbopack          | `npm --prefix web-next run test:dev:turbo:smoke:clean` |
 | Playwright smoke (15 testów)        | `npm --prefix web-next run test:e2e`                  |
 | Lint + typy                         | `npm --prefix web-next run lint`                      |
 | Walidacja tłumaczeń                 | `npm --prefix web-next run lint:locales`              |
 
-### 1.4 Struktura
+### 1.4 Tryby uruchamiania stacku (zalecane)
+Korzystaj z wrapperów `Makefile` z roota repo (`/home/ubuntu/venom`), żeby spójnie uruchamiać backend/frontend/runtime.
+
+```bash
+make start                    # pełny stack (backend + frontend + aktywny runtime LLM)
+make start2                   # pełny stack (backend + frontend na turbopack + aktywny runtime LLM)
+make stop                     # zatrzymanie pełnego stacku
+make status                   # status procesów/runtime
+```
+
+Tryby lekkie/celowane:
+
+```bash
+make api-dev                  # tylko backend (uvicorn --reload)
+make web-dev                  # tylko frontend (webpack, stabilny default)
+make web-dev-turbo            # tylko frontend (turbopack, opt-in)
+make web-dev-turbo-debug      # turbopack z rozszerzonym logowaniem
+make test-web-turbo-smoke-clean # smoke regresyjny dla dev:turbo
+```
+
+Zasada operacyjna:
+1. Utrzymuj jedną aktywną instancję `next dev`, aby uniknąć konfliktu `.next/dev/lock`.
+2. `web-dev` (webpack) traktuj jako tryb domyślny, a `web-dev-turbo` jako walidowany fast-path.
+
+### 1.5 Struktura
 ```
 web-next/
 ├── app/ (Cockpit, Brain, Inspector, Strategy – server components)
@@ -49,14 +82,14 @@ web-next/
 └── tests/ (Playwright smoke)
 ```
 
-### 1.5 Uwagi
+### 1.6 Uwagi
 - Interfejs korzysta z `useTranslation` (PL/EN/DE) i SCC – komponenty klientowe posiadają `"use client"`.
 - Aktualizacje w czasie rzeczywistym realizuje `usePolling` (fetch + odświeżanie) oraz WebSocket (`useTelemetryFeed`).
 - Dolna belka statusu i overlaye TopBaru mają `data-testid`, co umożliwia stabilne testy E2E.
 - Build generuje `public/meta.json` (wersja + commit) – wykorzystywany do weryfikacji środowiska w UI.
 - Inspector dostępny jest w `web-next` (`/inspector`) i renderuje przepływy Mermaid z zoom/pan.
 
-### 1.6 Cockpit – panel operacyjny
+### 1.7 Cockpit – panel operacyjny
 Najważniejsze bloki w Cockpicie (web-next):
 - **Serwery LLM** – wybór runtime (Ollama/vLLM/ONNX), lista modeli dla wybranego runtime, aktywacja modelu.
 - **Slash commands** – `/gpt`, `/gem`, `/<tool>` z autouzupełnianiem, wymuszenie routingu i badge „Forced”.
@@ -65,7 +98,7 @@ Najważniejsze bloki w Cockpicie (web-next):
 - **Hidden prompts** – agregacja, filtracja i aktywacja zatwierdzonych odpowiedzi.
 - **Logi nauki** – podgląd zapisów LLM-only z `data/learning/requests.jsonl`.
 
-### 1.7 Szybki start tooli
+### 1.8 Szybki start tooli
 - Zobacz [TOOLS_USAGE_GUIDE.md](TOOLS_USAGE_GUIDE.md), gdzie jest aktualna mapa slash tooli, zasady routingu `forced_tool` i wymagane zależności web-search w `.venv`.
 
 ---

@@ -42,7 +42,7 @@ class SelfLearningRagConfig(BaseModel):
 
     collection: str = Field(default="default", min_length=1, max_length=64)
     category: str = Field(default="academy_self_learning", min_length=1, max_length=64)
-    chunk_text: bool = True
+    chunk_text: bool = False
     embedding_profile_id: str | None = Field(default=None, min_length=1, max_length=128)
     embedding_policy: SelfLearningEmbeddingPolicy = "strict"
 

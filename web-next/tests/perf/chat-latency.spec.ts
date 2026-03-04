@@ -81,7 +81,7 @@ async function fillPromptForTarget(page: Page, target: TargetConfig, prompt: str
 }
 
 async function ensureChatRuntimeReady(page: Page, target: TargetConfig): Promise<boolean> {
-  const modelButton = page.getByRole("button", { name: /Wybierz model LLM \(czat\)|Wybierz model LLM/i });
+  const modelButton = page.getByTestId("llm-model-select");
   if ((await modelButton.count()) === 0) {
     return true;
   }

@@ -268,22 +268,6 @@ test.describe("Academy smoke", () => {
       });
     });
 
-    await page.route("**/api/v1/academy/self-learning/*", async (route) => {
-      if (route.request().method() !== "DELETE") {
-        await route.fallback();
-        return;
-      }
-      selfLearningRuns = [];
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          message: "Deleted",
-          count: 1,
-        }),
-      });
-    });
-
     await page.route("**/api/v1/academy/self-learning/all", async (route) => {
       if (route.request().method() !== "DELETE") {
         await route.fallback();
@@ -296,6 +280,26 @@ test.describe("Academy smoke", () => {
         body: JSON.stringify({
           message: "Cleared",
           count: 0,
+        }),
+      });
+    });
+
+    await page.route("**/api/v1/academy/self-learning/*", async (route) => {
+      if (route.request().method() !== "DELETE") {
+        await route.fallback();
+        return;
+      }
+      if (route.request().url().endsWith("/all")) {
+        await route.fallback();
+        return;
+      }
+      selfLearningRuns = [];
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          message: "Deleted",
+          count: 1,
         }),
       });
     });

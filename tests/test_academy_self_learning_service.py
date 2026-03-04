@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from venom_core.config import SETTINGS
 from venom_core.services.academy.self_learning_service import SelfLearningService
 
 
@@ -38,6 +39,14 @@ class DummyVectorStore:
             }
         )
         return {"message": "ok", "chunks_count": 1}
+
+
+class DummyModelManager:
+    def __init__(self, models):
+        self._models = models
+
+    async def list_local_models(self):
+        return self._models
 
 
 async def _wait_terminal(
@@ -278,6 +287,112 @@ async def test_rag_strict_policy_fails_when_fallback_active(tmp_path: Path):
 
     assert status["status"] == "failed"
     assert "fallback mode" in (status.get("error_message") or "")
+
+
+@pytest.mark.asyncio
+async def test_load_trainable_models_falls_back_when_loader_raises(tmp_path: Path):
+    async def _broken_loader(_mgr):
+        raise RuntimeError("loader failed")
+
+    manager = DummyModelManager(
+        [
+            {
+                "name": "Qwen/Qwen2.5-Coder-3B-Instruct",
+                "provider": "huggingface",
+                "runtime": "vllm",
+            }
+        ]
+    )
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        model_manager=manager,
+        trainable_models_loader=_broken_loader,
+    )
+
+    models = await service._load_trainable_models()
+    assert models
+    assert any(item["model_id"] == "Qwen/Qwen2.5-Coder-3B-Instruct" for item in models)
+
+
+@pytest.mark.asyncio
+async def test_load_trainable_models_uses_loader_payload_when_present(tmp_path: Path):
+    async def _loader(_mgr):
+        return [
+            {
+                "model_id": "custom/model",
+                "label": "Custom",
+                "provider": "huggingface",
+                "trainable": True,
+                "runtime_compatibility": {"vllm": True},
+                "recommended_runtime": "vllm",
+            }
+        ]
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        model_manager=DummyModelManager([]),
+        trainable_models_loader=_loader,
+    )
+
+    models = await service._load_trainable_models()
+    assert models == [
+        {
+            "model_id": "custom/model",
+            "label": "Custom",
+            "provider": "huggingface",
+            "recommended": False,
+            "runtime_compatibility": {"vllm": True},
+            "recommended_runtime": "vllm",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_load_trainable_models_adds_config_default_when_missing(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        model_manager=DummyModelManager([]),
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "custom/default-model")
+    monkeypatch.setattr(
+        SelfLearningService,
+        "_is_trainable_model_candidate",
+        staticmethod(lambda _model_id, _provider=None: True),
+    )
+    try:
+        models = await service._load_trainable_models()
+    finally:
+        monkeypatch.undo()
+
+    assert any(
+        item["model_id"] == "custom/default-model" and item["provider"] == "config"
+        for item in models
+    )
+
+
+def test_chunk_text_prefers_natural_split_when_possible():
+    text = ("alpha beta gamma delta epsilon\n" * 200).strip()
+    chunks = SelfLearningService._chunk_text(text, chunk_size=1000, overlap=120)
+    assert len(chunks) > 1
+    assert all(chunk.strip() for chunk in chunks)
+
+
+def test_add_log_trims_to_limit(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = type("RunStub", (), {"logs": []})()
+
+    for index in range(520):
+        service._add_log(run, f"log-{index}")
+
+    assert len(run.logs) == 500
+    assert run.logs[0] == "log-20"
 
 
 @pytest.mark.asyncio

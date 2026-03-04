@@ -123,12 +123,71 @@ def test_get_self_learning_status_not_found(
     assert response.status_code == 404
 
 
+def test_start_self_learning_validation_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.start_run.side_effect = ValueError("bad request")
+    response = client.post(
+        "/api/v1/academy/self-learning/start",
+        json={
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "limits": {
+                "max_file_size_kb": 256,
+                "max_files": 500,
+                "max_total_size_mb": 50,
+            },
+            "rag_config": {"embedding_profile_id": "local:default"},
+            "dry_run": False,
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "bad request"
+
+
+def test_start_self_learning_internal_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.start_run.side_effect = RuntimeError("boom")
+    response = client.post(
+        "/api/v1/academy/self-learning/start",
+        json={
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "limits": {
+                "max_file_size_kb": 256,
+                "max_files": 500,
+                "max_total_size_mb": 50,
+            },
+            "rag_config": {"embedding_profile_id": "local:default"},
+            "dry_run": False,
+        },
+    )
+    assert response.status_code == 500
+
+
 def test_list_self_learning_runs(client: TestClient):
     response = client.get("/api/v1/academy/self-learning/list?limit=20")
     assert response.status_code == 200
     data = response.json()
     assert data["count"] == 1
     assert len(data["runs"]) == 1
+
+
+def test_get_self_learning_capabilities_internal_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.get_capabilities = AsyncMock(side_effect=RuntimeError("boom"))
+    response = client.get("/api/v1/academy/self-learning/capabilities")
+    assert response.status_code == 500
+
+
+def test_list_self_learning_runs_internal_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.list_runs.side_effect = RuntimeError("boom")
+    response = client.get("/api/v1/academy/self-learning/list?limit=20")
+    assert response.status_code == 500
 
 
 def test_delete_self_learning_run(client: TestClient):
@@ -138,10 +197,28 @@ def test_delete_self_learning_run(client: TestClient):
     assert response.status_code == 200
 
 
+def test_delete_self_learning_run_internal_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.delete_run.side_effect = RuntimeError("boom")
+    response = client.delete(
+        "/api/v1/academy/self-learning/6de0cc81-77db-4bbf-a598-b66c7a8d45e8"
+    )
+    assert response.status_code == 500
+
+
 def test_clear_all_self_learning_runs(client: TestClient):
     response = client.delete("/api/v1/academy/self-learning/all")
     assert response.status_code == 200
     assert response.json()["count"] == 1
+
+
+def test_clear_all_self_learning_runs_internal_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.clear_all_runs.side_effect = RuntimeError("boom")
+    response = client.delete("/api/v1/academy/self-learning/all")
+    assert response.status_code == 500
 
 
 def test_service_unavailable_returns_503(mock_service: MagicMock):

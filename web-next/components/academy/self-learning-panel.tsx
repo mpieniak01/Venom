@@ -122,6 +122,7 @@ export function SelfLearningPanel() {
 
   useEffect(() => {
     if (!selectedRunId) {
+      stopPolling();
       setCurrentRun(null);
       return;
     }
@@ -130,7 +131,7 @@ export function SelfLearningPanel() {
     if (existing && !isTerminalSelfLearningStatus(existing.status)) {
       beginPolling(existing.run_id);
     }
-  }, [beginPolling, runs, selectedRunId]);
+  }, [beginPolling, runs, selectedRunId, stopPolling]);
 
   const handleStart = useCallback(
     async (config: SelfLearningConfig) => {

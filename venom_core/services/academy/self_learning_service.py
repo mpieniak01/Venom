@@ -55,6 +55,8 @@ _BLOCKED_PATH_PARTS = {
     "__pycache__",
     ".next",
 }
+_RUN_LOG_LIMIT = 500
+_CHUNK_SPLIT_THRESHOLD_RATIO = 0.6
 
 
 _SOURCE_PATHS: dict[str, tuple[str, ...]] = {
@@ -210,6 +212,8 @@ class SelfLearningService:
         self.is_model_trainable_fn = is_model_trainable_fn
         self._runs: dict[str, SelfLearningRun] = {}
         self._lock = threading.Lock()
+        self._snapshot_lock = threading.Lock()
+        self._manifest_lock = threading.Lock()
         self._runs_log_file = self.storage_dir / "runs.jsonl"
         self._index_manifest_file = self.storage_dir / "index_manifest.json"
         self._index_manifest = self._load_index_manifest()
@@ -446,34 +450,16 @@ class SelfLearningService:
         }
 
     async def _load_trainable_models(self) -> list[dict[str, Any]]:
-        if self.trainable_models_loader is not None:
-            try:
-                loaded = await self.trainable_models_loader(self.model_manager)
-                normalized = self._normalize_trainable_models_payload(loaded)
-                if normalized:
-                    return normalized
-            except Exception as exc:
-                logger.warning(
-                    "trainable_models_loader failed in self-learning: %s",
-                    exc,
-                )
+        from_loader = await self._load_trainable_models_from_loader()
+        if from_loader:
+            return from_loader
 
         result: list[dict[str, Any]] = []
         seen: set[str] = set()
-        local_models: list[dict[str, Any]] = []
+        local_models = await self._fetch_local_models()
         default_model = str(
             getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "") or ""
         ).strip()
-
-        if self.model_manager is not None and hasattr(
-            self.model_manager, "list_local_models"
-        ):
-            try:
-                fetched = await self.model_manager.list_local_models()
-                if isinstance(fetched, list):
-                    local_models = [item for item in fetched if isinstance(item, dict)]
-            except Exception as exc:
-                logger.warning("Failed to load local models for self-learning: %s", exc)
 
         available_runtime_ids = self._resolve_available_runtime_ids(local_models)
         default_runtime_compatibility = self._resolve_runtime_compatibility(
@@ -484,6 +470,71 @@ class SelfLearningService:
             default_runtime_compatibility
         )
 
+        self._append_local_trainable_models(
+            result=result,
+            seen=seen,
+            local_models=local_models,
+            default_model=default_model,
+            available_runtime_ids=available_runtime_ids,
+        )
+        self._append_default_trainable_models(
+            result=result,
+            seen=seen,
+            default_model=default_model,
+            default_runtime_compatibility=default_runtime_compatibility,
+            default_recommended_runtime=default_recommended_runtime,
+        )
+        self._append_config_default_trainable_model(
+            result=result,
+            seen=seen,
+            default_model=default_model,
+            default_runtime_compatibility=default_runtime_compatibility,
+            default_recommended_runtime=default_recommended_runtime,
+        )
+
+        result.sort(
+            key=lambda item: (
+                not bool(item.get("recommended")),
+                str(item.get("label") or item.get("model_id") or "").lower(),
+            )
+        )
+        return result
+
+    async def _load_trainable_models_from_loader(self) -> list[dict[str, Any]]:
+        if self.trainable_models_loader is None:
+            return []
+        try:
+            loaded = await self.trainable_models_loader(self.model_manager)
+            return self._normalize_trainable_models_payload(loaded)
+        except Exception as exc:
+            logger.warning(
+                "trainable_models_loader failed in self-learning: %s",
+                exc,
+            )
+            return []
+
+    async def _fetch_local_models(self) -> list[dict[str, Any]]:
+        if self.model_manager is None or not hasattr(
+            self.model_manager, "list_local_models"
+        ):
+            return []
+        try:
+            fetched = await self.model_manager.list_local_models()
+            if isinstance(fetched, list):
+                return [item for item in fetched if isinstance(item, dict)]
+        except Exception as exc:
+            logger.warning("Failed to load local models for self-learning: %s", exc)
+        return []
+
+    def _append_local_trainable_models(
+        self,
+        *,
+        result: list[dict[str, Any]],
+        seen: set[str],
+        local_models: list[dict[str, Any]],
+        default_model: str,
+        available_runtime_ids: list[str],
+    ) -> None:
         for model in local_models:
             model_id = str(model.get("name") or "").strip()
             provider = str(model.get("provider") or model.get("source") or "unknown")
@@ -510,6 +561,15 @@ class SelfLearningService:
             )
             seen.add(model_id)
 
+    @staticmethod
+    def _append_default_trainable_models(
+        *,
+        result: list[dict[str, Any]],
+        seen: set[str],
+        default_model: str,
+        default_runtime_compatibility: dict[str, bool],
+        default_recommended_runtime: str | None,
+    ) -> None:
         for model_id, label, provider in _DEFAULT_TRAINABLE_MODELS:
             if model_id in seen:
                 continue
@@ -525,29 +585,31 @@ class SelfLearningService:
             )
             seen.add(model_id)
 
+    def _append_config_default_trainable_model(
+        self,
+        *,
+        result: list[dict[str, Any]],
+        seen: set[str],
+        default_model: str,
+        default_runtime_compatibility: dict[str, bool],
+        default_recommended_runtime: str | None,
+    ) -> None:
         if (
-            default_model
-            and default_model not in seen
-            and self._is_trainable_model_candidate(default_model)
+            not default_model
+            or default_model in seen
+            or not self._is_trainable_model_candidate(default_model)
         ):
-            result.append(
-                {
-                    "model_id": default_model,
-                    "label": f"{default_model} (default)",
-                    "provider": "config",
-                    "recommended": True,
-                    "runtime_compatibility": dict(default_runtime_compatibility),
-                    "recommended_runtime": default_recommended_runtime,
-                }
-            )
-
-        result.sort(
-            key=lambda item: (
-                not bool(item.get("recommended")),
-                str(item.get("label") or item.get("model_id") or "").lower(),
-            )
+            return
+        result.append(
+            {
+                "model_id": default_model,
+                "label": f"{default_model} (default)",
+                "provider": "config",
+                "recommended": True,
+                "runtime_compatibility": dict(default_runtime_compatibility),
+                "recommended_runtime": default_recommended_runtime,
+            }
         )
-        return result
 
     @staticmethod
     def _normalize_trainable_models_payload(payload: list[Any]) -> list[dict[str, Any]]:
@@ -885,9 +947,10 @@ class SelfLearningService:
             indexed_vectors += int(upsert_result.get("chunks_count", 0))
             newly_indexed_file_keys.add(file_key)
 
-        # Mark all files from this run as indexed when at least one chunk made it to vector DB.
-        self._index_manifest.update(newly_indexed_file_keys & eligible_keys)
-        self._save_index_manifest()
+        # Mark file keys that were successfully indexed in this run.
+        with self._manifest_lock:
+            self._index_manifest.update(newly_indexed_file_keys & eligible_keys)
+            self._save_index_manifest_unlocked()
 
         run.progress.indexed_vectors = indexed_vectors
         run.artifacts["collection"] = run.rag_config.collection
@@ -1001,7 +1064,7 @@ class SelfLearningService:
             chunk = text[start:end]
             if end < len(text):
                 split_at = max(chunk.rfind("\n\n"), chunk.rfind("\n"), chunk.rfind(" "))
-                if split_at > int(chunk_size * 0.6):
+                if split_at > int(chunk_size * _CHUNK_SPLIT_THRESHOLD_RATIO):
                     chunk = chunk[:split_at]
                     end = start + len(chunk)
             items.append(chunk.strip())
@@ -1047,13 +1110,14 @@ class SelfLearningService:
 
     def _add_log(self, run: SelfLearningRun, message: str) -> None:
         run.logs.append(message)
-        if len(run.logs) > 500:
-            del run.logs[: len(run.logs) - 500]
+        if len(run.logs) > _RUN_LOG_LIMIT:
+            run.logs[:] = run.logs[-_RUN_LOG_LIMIT:]
 
     def _append_run_snapshot(self, run: SelfLearningRun) -> None:
         snapshot = run.to_dict()
-        with self._runs_log_file.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(snapshot, ensure_ascii=False) + "\n")
+        with self._snapshot_lock:
+            with self._runs_log_file.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(snapshot, ensure_ascii=False) + "\n")
 
     def _load_persisted_runs(self) -> None:
         if not self._runs_log_file.exists():
@@ -1142,10 +1206,14 @@ class SelfLearningService:
         return {str(item) for item in payload}
 
     def _save_index_manifest(self) -> None:
-        self._index_manifest_file.write_text(
-            json.dumps(sorted(self._index_manifest), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        with self._manifest_lock:
+            self._save_index_manifest_unlocked()
+
+    def _save_index_manifest_unlocked(self) -> None:
+        tmp_file = self._index_manifest_file.with_suffix(".tmp")
+        payload = json.dumps(sorted(self._index_manifest), ensure_ascii=False, indent=2)
+        tmp_file.write_text(payload, encoding="utf-8")
+        tmp_file.replace(self._index_manifest_file)
 
     def _is_path_within_repo(self, path: Path) -> bool:
         try:

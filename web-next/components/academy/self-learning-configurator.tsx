@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -64,26 +64,16 @@ export function SelfLearningConfigurator({
     () => embeddingProfiles[0]?.profile_id ?? "",
     [embeddingProfiles],
   );
+  const effectiveBaseModel = selectedBaseModel || defaultBaseModel;
+  const effectiveEmbeddingProfile = selectedEmbeddingProfile || defaultEmbeddingProfile;
   const selectedEmbeddingProfileState = useMemo(
-    () => embeddingProfiles.find((profile) => profile.profile_id === selectedEmbeddingProfile) ?? null,
-    [embeddingProfiles, selectedEmbeddingProfile],
+    () => embeddingProfiles.find((profile) => profile.profile_id === effectiveEmbeddingProfile) ?? null,
+    [embeddingProfiles, effectiveEmbeddingProfile],
   );
-
-  useEffect(() => {
-    if (!selectedBaseModel && defaultBaseModel) {
-      setSelectedBaseModel(defaultBaseModel);
-    }
-  }, [defaultBaseModel, selectedBaseModel]);
-
-  useEffect(() => {
-    if (!selectedEmbeddingProfile && defaultEmbeddingProfile) {
-      setSelectedEmbeddingProfile(defaultEmbeddingProfile);
-    }
-  }, [defaultEmbeddingProfile, selectedEmbeddingProfile]);
 
   const canStart = useMemo(() => {
     if (sources.length === 0 || loading) return false;
-    if (mode === "llm_finetune") return selectedBaseModel.length > 0;
+    if (mode === "llm_finetune") return effectiveBaseModel.length > 0;
     if (!selectedEmbeddingProfileState || !selectedEmbeddingProfileState.healthy) return false;
     if (embeddingPolicy === "strict" && selectedEmbeddingProfileState.fallback_active) return false;
     return true;
@@ -91,7 +81,7 @@ export function SelfLearningConfigurator({
     sources.length,
     loading,
     mode,
-    selectedBaseModel,
+    effectiveBaseModel,
     selectedEmbeddingProfileState,
     embeddingPolicy,
   ]);
@@ -116,7 +106,7 @@ export function SelfLearningConfigurator({
       llm_config:
         mode === "llm_finetune"
           ? {
-              base_model: selectedBaseModel,
+              base_model: effectiveBaseModel,
               lora_rank: 16,
               learning_rate: 0.0002,
               num_epochs: 3,
@@ -130,7 +120,7 @@ export function SelfLearningConfigurator({
               collection: "default",
               category: "academy_self_learning",
               chunk_text: false,
-              embedding_profile_id: selectedEmbeddingProfile,
+              embedding_profile_id: effectiveEmbeddingProfile,
               embedding_policy: embeddingPolicy,
             }
           : null,
@@ -187,7 +177,7 @@ export function SelfLearningConfigurator({
           </label>
           <select
             id="self-learning-base-model"
-            value={selectedBaseModel}
+            value={effectiveBaseModel}
             onChange={(event) => setSelectedBaseModel(event.target.value)}
             className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
           >
@@ -211,7 +201,7 @@ export function SelfLearningConfigurator({
               </label>
               <select
                 id="self-learning-embedding-profile"
-                value={selectedEmbeddingProfile}
+                value={effectiveEmbeddingProfile}
                 onChange={(event) => setSelectedEmbeddingProfile(event.target.value)}
                 className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
               >

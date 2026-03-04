@@ -95,9 +95,7 @@ export function SelfLearningHistory({
           {t("academy.selfLearning.history.details")}
         </h3>
 
-        {!selectedRun ? (
-          <p className="text-sm text-hint">{t("academy.selfLearning.history.noSelection")}</p>
-        ) : (
+        {selectedRun ? (
           <>
             <div className="grid gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3 text-xs text-[color:var(--text-secondary)] md:grid-cols-2">
               <div>
@@ -151,6 +149,8 @@ export function SelfLearningHistory({
               </Button>
             </div>
           </>
+        ) : (
+          <p className="text-sm text-hint">{t("academy.selfLearning.history.noSelection")}</p>
         )}
       </div>
     </div>

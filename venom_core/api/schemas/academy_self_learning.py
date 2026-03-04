@@ -18,6 +18,10 @@ SelfLearningStatus = Literal[
 SelfLearningEmbeddingPolicy = Literal["strict", "allow_fallback"]
 
 
+def _default_sources() -> list[SelfLearningSource]:
+    return ["docs"]
+
+
 class SelfLearningLimits(BaseModel):
     """Safety limits for source discovery and parsing."""
 
@@ -51,7 +55,7 @@ class SelfLearningStartRequest(BaseModel):
     """Request to start self-learning pipeline."""
 
     mode: SelfLearningMode
-    sources: list[SelfLearningSource] = Field(default_factory=lambda: ["docs"])
+    sources: list[SelfLearningSource] = Field(default_factory=_default_sources)
     limits: SelfLearningLimits = Field(default_factory=SelfLearningLimits)
     llm_config: SelfLearningLlmConfig | None = None
     rag_config: SelfLearningRagConfig | None = None

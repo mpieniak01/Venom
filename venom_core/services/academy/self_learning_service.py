@@ -12,7 +12,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Iterable, Literal, Optional
+from typing import Any, Awaitable, Callable, Iterable, Literal, Optional, cast
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -59,11 +59,19 @@ _RUN_LOG_LIMIT = 500
 _CHUNK_SPLIT_THRESHOLD_RATIO = 0.6
 
 
-_SOURCE_PATHS: dict[str, tuple[str, ...]] = {
+_SOURCE_PATHS: dict[SelfLearningSource, tuple[str, ...]] = {
     "docs": ("docs",),
     "docs_dev": ("docs_dev",),
     "code": ("venom_core", "web-next", "scripts"),
 }
+_VALID_MODES: tuple[SelfLearningMode, ...] = ("llm_finetune", "rag_index")
+_VALID_STATUSES: tuple[SelfLearningStatus, ...] = (
+    "pending",
+    "running",
+    "completed",
+    "completed_with_warnings",
+    "failed",
+)
 
 _LOCAL_RUNTIME_IDS = ("vllm", "ollama", "onnx")
 _BLOCKED_TRAINING_PROVIDERS = {
@@ -76,6 +84,7 @@ _BLOCKED_TRAINING_PROVIDERS = {
     "onnx",
 }
 _BLOCKED_TRAINING_NAME_MARKERS = ("gpt-", "claude", "gemini")
+_VLLM_COMPATIBLE_PROVIDERS = {"huggingface", "unsloth", "hf", "config", "unknown"}
 _DEFAULT_TRAINABLE_MODELS: tuple[tuple[str, str, str], ...] = (
     ("unsloth/Phi-3-mini-4k-instruct", "Phi-3 Mini 4K (Unsloth)", "unsloth"),
     ("unsloth/Phi-3.5-mini-instruct", "Phi-3.5 Mini (Unsloth)", "unsloth"),
@@ -332,7 +341,7 @@ class SelfLearningService:
         with self._lock:
             self._pipeline_tasks.pop(run_id, None)
 
-    def _validate_sources(self, sources: list[str]) -> None:
+    def _validate_sources(self, sources: Iterable[str]) -> None:
         if not sources:
             raise ValueError("At least one source must be selected")
         invalid = [s for s in sources if s not in _SOURCE_PATHS]
@@ -681,7 +690,26 @@ class SelfLearningService:
         available_runtime_ids: list[str],
         model_metadata: dict[str, Any] | None = None,
     ) -> dict[str, bool]:
-        compatibility = {runtime: False for runtime in _LOCAL_RUNTIME_IDS}
+        compatibility = dict.fromkeys(_LOCAL_RUNTIME_IDS, False)
+        preferred = SelfLearningService._preferred_runtime_ids(
+            provider=provider,
+            model_metadata=model_metadata,
+        )
+        for runtime in preferred:
+            if runtime in compatibility:
+                compatibility[runtime] = True
+        SelfLearningService._apply_runtime_availability_filter(
+            compatibility=compatibility,
+            available_runtime_ids=available_runtime_ids,
+        )
+        return compatibility
+
+    @staticmethod
+    def _preferred_runtime_ids(
+        *,
+        provider: str,
+        model_metadata: dict[str, Any] | None = None,
+    ) -> set[str]:
         runtime_hint = (
             str(model_metadata.get("runtime") or "").strip().lower()
             if model_metadata
@@ -703,20 +731,24 @@ class SelfLearningService:
             preferred.add("onnx")
         if provider_lc == "ollama" or source_hint == "ollama":
             preferred.add("ollama")
-        if provider_lc in {"huggingface", "unsloth", "hf", "config", "unknown"}:
+        if provider_lc in _VLLM_COMPATIBLE_PROVIDERS:
             preferred.add("vllm")
         if runtime_hint in _LOCAL_RUNTIME_IDS:
             preferred.add(runtime_hint)
         if not preferred:
             preferred.add("vllm")
-        for runtime in preferred:
-            if runtime in compatibility:
-                compatibility[runtime] = True
+        return preferred
+
+    @staticmethod
+    def _apply_runtime_availability_filter(
+        *,
+        compatibility: dict[str, bool],
+        available_runtime_ids: list[str],
+    ) -> None:
         if available_runtime_ids:
             for runtime in list(compatibility.keys()):
                 if runtime not in available_runtime_ids and compatibility[runtime]:
                     compatibility[runtime] = runtime == "vllm"
-        return compatibility
 
     @staticmethod
     def _resolve_recommended_runtime(
@@ -821,14 +853,14 @@ class SelfLearningService:
                 self._append_run_snapshot(run)
                 return
 
-            chunks = self._chunk_extracted_files(run, extracted_files)
+            chunks = self._chunk_extracted_files(extracted_files)
             run.progress.chunks_created = len(chunks)
             self._add_log(run, f"Chunks created: {len(chunks)}")
 
             if run.mode == "llm_finetune":
-                await self._run_llm_finetune(run, chunks)
+                self._run_llm_finetune(run, chunks)
             elif run.mode == "rag_index":
-                await self._run_rag_index(run, chunks, extracted_files)
+                self._run_rag_index(run, chunks, extracted_files)
             else:
                 raise SelfLearningError(f"Unsupported mode: {run.mode}")
 
@@ -846,7 +878,7 @@ class SelfLearningService:
             self._add_log(run, f"Run failed: {exc}")
             self._append_run_snapshot(run)
 
-    async def _run_llm_finetune(
+    def _run_llm_finetune(
         self,
         run: SelfLearningRun,
         chunks: list[dict[str, Any]],
@@ -901,7 +933,7 @@ class SelfLearningService:
         run.artifacts["training_output_dir"] = str(output_dir)
         self._add_log(run, f"Training job started: {training_job_id}")
 
-    async def _run_rag_index(
+    def _run_rag_index(
         self,
         run: SelfLearningRun,
         chunks: list[dict[str, Any]],
@@ -992,37 +1024,61 @@ class SelfLearningService:
         collected: list[tuple[Path, SelfLearningSource]] = []
 
         for source, root in allowed_roots:
-            for current_root, dirs, files in os.walk(root):
-                dirs[:] = [d for d in dirs if d not in _BLOCKED_PATH_PARTS]
-                if self._contains_blocked_part(Path(current_root)):
-                    continue
-                for file_name in files:
-                    path = Path(current_root) / file_name
-                    if len(collected) >= max_files:
-                        self._add_log(run, "Reached max_files limit.")
-                        return collected
-                    if path.suffix.lower() not in _ALLOWED_EXTENSIONS:
-                        continue
-                    if not self._is_path_within_repo(path):
-                        self._add_log(run, f"Skipped outside repo path: {path}")
-                        continue
-                    if self._contains_blocked_part(path):
-                        continue
-                    try:
-                        size = path.stat().st_size
-                    except OSError:
-                        continue
-                    if size <= 0:
-                        continue
-                    if size > max_file_size:
-                        self._add_log(run, f"Skipped oversize file: {path}")
-                        continue
-                    if total_size + size > max_total_size:
-                        self._add_log(run, "Reached max_total_size limit.")
-                        return collected
+            for path in self._iter_candidate_paths(root):
+                if len(collected) >= max_files:
+                    self._add_log(run, "Reached max_files limit.")
+                    return collected
+                decision, size = self._evaluate_candidate_path(
+                    run=run,
+                    path=path,
+                    max_file_size=max_file_size,
+                    max_total_size=max_total_size,
+                    current_total_size=total_size,
+                )
+                if decision == "collect":
                     total_size += size
                     collected.append((path.resolve(), source))
+                if decision == "limit_total":
+                    return collected
         return collected
+
+    def _iter_candidate_paths(self, root: Path) -> Iterable[Path]:
+        for current_root, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if d not in _BLOCKED_PATH_PARTS]
+            if self._contains_blocked_part(Path(current_root)):
+                continue
+            for file_name in files:
+                yield Path(current_root) / file_name
+
+    def _evaluate_candidate_path(
+        self,
+        *,
+        run: SelfLearningRun,
+        path: Path,
+        max_file_size: int,
+        max_total_size: int,
+        current_total_size: int,
+    ) -> tuple[Literal["collect", "skip", "limit_total"], int]:
+        if path.suffix.lower() not in _ALLOWED_EXTENSIONS:
+            return "skip", 0
+        if not self._is_path_within_repo(path):
+            self._add_log(run, f"Skipped outside repo path: {path}")
+            return "skip", 0
+        if self._contains_blocked_part(path):
+            return "skip", 0
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return "skip", 0
+        if size <= 0:
+            return "skip", 0
+        if size > max_file_size:
+            self._add_log(run, f"Skipped oversize file: {path}")
+            return "skip", 0
+        if current_total_size + size > max_total_size:
+            self._add_log(run, "Reached max_total_size limit.")
+            return "limit_total", 0
+        return "collect", size
 
     def _extract_file_text(
         self,
@@ -1050,7 +1106,6 @@ class SelfLearningService:
 
     def _chunk_extracted_files(
         self,
-        run: SelfLearningRun,
         extracted_files: list[tuple[Path, str, str, str, SelfLearningSource]],
     ) -> list[dict[str, Any]]:
         chunk_size = 1000
@@ -1166,8 +1221,8 @@ class SelfLearningService:
         rag_cfg = payload.get("rag_config") or {}
         return SelfLearningRun(
             run_id=str(payload.get("run_id", "")),
-            mode=str(payload.get("mode", "rag_index")),
-            sources=[s for s in payload.get("sources", []) if s in _SOURCE_PATHS],
+            mode=self._coerce_mode(payload.get("mode")),
+            sources=self._coerce_sources(payload.get("sources")),
             limits=RunLimits(
                 max_file_size_kb=_safe_int(limits.get("max_file_size_kb"), 256),
                 max_files=_safe_int(limits.get("max_files"), 1500),
@@ -1198,7 +1253,7 @@ class SelfLearningService:
                 ),
             ),
             dry_run=bool(payload.get("dry_run", False)),
-            status=str(payload.get("status", "failed")),
+            status=self._coerce_status(payload.get("status")),
             created_at=str(payload.get("created_at", "")),
             started_at=payload.get("started_at"),
             finished_at=payload.get("finished_at"),
@@ -1213,6 +1268,28 @@ class SelfLearningService:
             logs=list(payload.get("logs") or []),
             error_message=payload.get("error_message"),
         )
+
+    @staticmethod
+    def _coerce_mode(value: Any) -> SelfLearningMode:
+        candidate = str(value or "rag_index")
+        if candidate in _VALID_MODES:
+            return cast(SelfLearningMode, candidate)
+        return "rag_index"
+
+    @staticmethod
+    def _coerce_status(value: Any) -> SelfLearningStatus:
+        candidate = str(value or "failed")
+        if candidate in _VALID_STATUSES:
+            return cast(SelfLearningStatus, candidate)
+        return "failed"
+
+    @staticmethod
+    def _coerce_sources(value: Any) -> list[SelfLearningSource]:
+        if not isinstance(value, list):
+            return []
+        return [
+            cast(SelfLearningSource, item) for item in value if item in _SOURCE_PATHS
+        ]
 
     def _load_index_manifest(self) -> set[str]:
         if not self._index_manifest_file.exists():

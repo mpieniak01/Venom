@@ -35,6 +35,79 @@ interface Props {
   readonly onStart: (config: SelfLearningConfig) => Promise<void> | void;
 }
 
+function computeCanStart(params: {
+  sourcesCount: number;
+  loading: boolean;
+  mode: SelfLearningMode;
+  effectiveBaseModel: string;
+  selectedEmbeddingProfileState: SelfLearningEmbeddingProfile | null;
+  embeddingPolicy: SelfLearningEmbeddingPolicy;
+}): boolean {
+  if (params.sourcesCount === 0 || params.loading) {
+    return false;
+  }
+  if (params.mode === "llm_finetune") {
+    return params.effectiveBaseModel.length > 0;
+  }
+  if (!params.selectedEmbeddingProfileState?.healthy) {
+    return false;
+  }
+  if (
+    params.embeddingPolicy === "strict" &&
+    params.selectedEmbeddingProfileState.fallback_active
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function buildSelfLearningConfig(params: {
+  mode: SelfLearningMode;
+  sources: SelfLearningSource[];
+  dryRun: boolean;
+  maxFileSizeKb: number;
+  maxFiles: number;
+  maxTotalSizeMb: number;
+  effectiveBaseModel: string;
+  effectiveEmbeddingProfile: string;
+  embeddingPolicy: SelfLearningEmbeddingPolicy;
+}): SelfLearningConfig {
+  const llmConfig: SelfLearningLlmConfig | null =
+    params.mode === "llm_finetune"
+      ? {
+          base_model: params.effectiveBaseModel,
+          lora_rank: 16,
+          learning_rate: 0.0002,
+          num_epochs: 3,
+          batch_size: 4,
+          max_seq_length: 2048,
+        }
+      : null;
+  const ragConfig: SelfLearningRagConfig | null =
+    params.mode === "rag_index"
+      ? {
+          collection: "default",
+          category: "academy_self_learning",
+          chunk_text: false,
+          embedding_profile_id: params.effectiveEmbeddingProfile,
+          embedding_policy: params.embeddingPolicy,
+        }
+      : null;
+
+  return {
+    mode: params.mode,
+    sources: params.sources,
+    dry_run: params.dryRun,
+    limits: {
+      max_file_size_kb: params.maxFileSizeKb,
+      max_files: params.maxFiles,
+      max_total_size_mb: params.maxTotalSizeMb,
+    },
+    llm_config: llmConfig,
+    rag_config: ragConfig,
+  };
+}
+
 export function SelfLearningConfigurator({
   loading,
   trainableModels,
@@ -71,20 +144,18 @@ export function SelfLearningConfigurator({
     [embeddingProfiles, effectiveEmbeddingProfile],
   );
 
-  const canStart = useMemo(() => {
-    if (sources.length === 0 || loading) return false;
-    if (mode === "llm_finetune") return effectiveBaseModel.length > 0;
-    if (!selectedEmbeddingProfileState || !selectedEmbeddingProfileState.healthy) return false;
-    if (embeddingPolicy === "strict" && selectedEmbeddingProfileState.fallback_active) return false;
-    return true;
-  }, [
-    sources.length,
-    loading,
-    mode,
-    effectiveBaseModel,
-    selectedEmbeddingProfileState,
-    embeddingPolicy,
-  ]);
+  const canStart = useMemo(
+    () =>
+      computeCanStart({
+        sourcesCount: sources.length,
+        loading,
+        mode,
+        effectiveBaseModel,
+        selectedEmbeddingProfileState,
+        embeddingPolicy,
+      }),
+    [sources.length, loading, mode, effectiveBaseModel, selectedEmbeddingProfileState, embeddingPolicy],
+  );
 
   const toggleSource = (source: SelfLearningSource) => {
     setSources((prev) =>
@@ -94,37 +165,19 @@ export function SelfLearningConfigurator({
 
   const handleStart = async () => {
     if (!canStart) return;
-    await onStart({
-      mode,
-      sources,
-      dry_run: dryRun,
-      limits: {
-        max_file_size_kb: maxFileSizeKb,
-        max_files: maxFiles,
-        max_total_size_mb: maxTotalSizeMb,
-      },
-      llm_config:
-        mode === "llm_finetune"
-          ? {
-              base_model: effectiveBaseModel,
-              lora_rank: 16,
-              learning_rate: 0.0002,
-              num_epochs: 3,
-              batch_size: 4,
-              max_seq_length: 2048,
-            }
-          : null,
-      rag_config:
-        mode === "rag_index"
-          ? {
-              collection: "default",
-              category: "academy_self_learning",
-              chunk_text: false,
-              embedding_profile_id: effectiveEmbeddingProfile,
-              embedding_policy: embeddingPolicy,
-            }
-          : null,
-    });
+    await onStart(
+      buildSelfLearningConfig({
+        mode,
+        sources,
+        dryRun,
+        maxFileSizeKb,
+        maxFiles,
+        maxTotalSizeMb,
+        effectiveBaseModel,
+        effectiveEmbeddingProfile,
+        embeddingPolicy,
+      }),
+    );
   };
 
   return (

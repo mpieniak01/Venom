@@ -6,7 +6,9 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import shutil
+import subprocess
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -21,6 +23,12 @@ logger = get_logger(__name__)
 
 SelfLearningMode = Literal["llm_finetune", "rag_index"]
 SelfLearningSource = Literal["docs", "docs_dev", "code"]
+SelfLearningDatasetStrategy = Literal[
+    "reconstruct",
+    "qa_from_docs",
+    "repo_tasks_basic",
+]
+SelfLearningTaskMixPreset = Literal["balanced", "qa-heavy", "repair-heavy"]
 SelfLearningStatus = Literal[
     "pending",
     "running",
@@ -29,6 +37,8 @@ SelfLearningStatus = Literal[
     "failed",
 ]
 SelfLearningEmbeddingPolicy = Literal["strict", "allow_fallback"]
+SelfLearningRagChunkingMode = Literal["plain", "code_aware"]
+SelfLearningRagRetrievalMode = Literal["vector", "hybrid"]
 
 _ALLOWED_EXTENSIONS = {
     ".md",
@@ -57,6 +67,13 @@ _BLOCKED_PATH_PARTS = {
 }
 _RUN_LOG_LIMIT = 500
 _CHUNK_SPLIT_THRESHOLD_RATIO = 0.6
+_MIN_DATASET_RECORDS = 3
+_MIN_RECORD_INPUT_CHARS = 20
+_MIN_RECORD_OUTPUT_CHARS = 24
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
 
 
 _SOURCE_PATHS: dict[SelfLearningSource, tuple[str, ...]] = {
@@ -71,6 +88,24 @@ _VALID_STATUSES: tuple[SelfLearningStatus, ...] = (
     "completed",
     "completed_with_warnings",
     "failed",
+)
+_VALID_DATASET_STRATEGIES: tuple[SelfLearningDatasetStrategy, ...] = (
+    "reconstruct",
+    "qa_from_docs",
+    "repo_tasks_basic",
+)
+_VALID_TASK_MIX_PRESETS: tuple[SelfLearningTaskMixPreset, ...] = (
+    "balanced",
+    "qa-heavy",
+    "repair-heavy",
+)
+_VALID_RAG_CHUNKING_MODES: tuple[SelfLearningRagChunkingMode, ...] = (
+    "plain",
+    "code_aware",
+)
+_VALID_RAG_RETRIEVAL_MODES: tuple[SelfLearningRagRetrievalMode, ...] = (
+    "vector",
+    "hybrid",
 )
 
 _LOCAL_RUNTIME_IDS = ("vllm", "ollama", "onnx")
@@ -122,6 +157,8 @@ class RunLimits:
 @dataclass
 class LlmConfig:
     base_model: Optional[str] = None
+    dataset_strategy: SelfLearningDatasetStrategy = "reconstruct"
+    task_mix_preset: SelfLearningTaskMixPreset = "balanced"
     lora_rank: int = 16
     learning_rate: float = 2e-4
     num_epochs: int = 3
@@ -134,6 +171,8 @@ class RagConfig:
     collection: str = "default"
     category: str = "academy_self_learning"
     chunk_text: bool = False
+    chunking_mode: SelfLearningRagChunkingMode = "plain"
+    retrieval_mode: SelfLearningRagRetrievalMode = "vector"
     embedding_profile_id: str | None = None
     embedding_policy: SelfLearningEmbeddingPolicy = "strict"
 
@@ -283,6 +322,8 @@ class SelfLearningService:
             status="pending",
             created_at=_utc_now_iso(),
         )
+        run.artifacts["repo_commit_sha"] = self._resolve_repo_commit_sha()
+        run.artifacts["knowledge_snapshot_at"] = run.created_at
         with self._lock:
             self._runs[run_id] = run
         self._append_run_snapshot(run)
@@ -367,10 +408,22 @@ class SelfLearningService:
 
     def _parse_llm_config(self, payload: dict[str, Any] | None) -> LlmConfig:
         data = payload or {}
+        dataset_strategy_raw = str(data.get("dataset_strategy") or "reconstruct")
+        dataset_strategy = dataset_strategy_raw.strip().lower()
+        if dataset_strategy not in _VALID_DATASET_STRATEGIES:
+            dataset_strategy = "reconstruct"
+
+        task_mix_raw = str(data.get("task_mix_preset") or "balanced")
+        task_mix_preset = task_mix_raw.strip().lower()
+        if task_mix_preset not in _VALID_TASK_MIX_PRESETS:
+            task_mix_preset = "balanced"
+
         return LlmConfig(
             base_model=(str(data.get("base_model")).strip() or None)
             if data.get("base_model")
             else None,
+            dataset_strategy=cast(SelfLearningDatasetStrategy, dataset_strategy),
+            task_mix_preset=cast(SelfLearningTaskMixPreset, task_mix_preset),
             lora_rank=max(4, min(64, _safe_int(data.get("lora_rank"), 16))),
             learning_rate=float(data.get("learning_rate", 2e-4)),
             num_epochs=max(1, min(20, _safe_int(data.get("num_epochs"), 3))),
@@ -389,6 +442,12 @@ class SelfLearningService:
             or "academy_self_learning"
         )
         chunk_text = bool(data.get("chunk_text", False))
+        chunking_mode_raw = str(data.get("chunking_mode") or "plain").strip().lower()
+        if chunking_mode_raw not in _VALID_RAG_CHUNKING_MODES:
+            chunking_mode_raw = "plain"
+        retrieval_mode_raw = str(data.get("retrieval_mode") or "vector").strip().lower()
+        if retrieval_mode_raw not in _VALID_RAG_RETRIEVAL_MODES:
+            retrieval_mode_raw = "vector"
         embedding_profile_id = data.get("embedding_profile_id")
         embedding_policy = str(data.get("embedding_policy") or "strict").strip().lower()
         if embedding_policy not in {"strict", "allow_fallback"}:
@@ -397,6 +456,8 @@ class SelfLearningService:
             collection=collection[:64],
             category=category[:64],
             chunk_text=chunk_text,
+            chunking_mode=cast(SelfLearningRagChunkingMode, chunking_mode_raw),
+            retrieval_mode=cast(SelfLearningRagRetrievalMode, retrieval_mode_raw),
             embedding_profile_id=(
                 str(embedding_profile_id).strip()[:128]
                 if embedding_profile_id
@@ -947,7 +1008,11 @@ class SelfLearningService:
                 self._append_run_snapshot(run)
                 return
 
-            chunks = self._chunk_extracted_files(extracted_files)
+            chunks = self._chunk_extracted_files(
+                extracted_files,
+                rag_mode=(run.mode == "rag_index"),
+                rag_config=run.rag_config,
+            )
             run.progress.chunks_created = len(chunks)
             self._add_log(run, f"Chunks created: {len(chunks)}")
 
@@ -957,6 +1022,7 @@ class SelfLearningService:
                 self._run_rag_index(run, chunks, extracted_files)
             else:
                 raise SelfLearningError(f"Unsupported mode: {run.mode}")
+            self._run_eval_harness(run)
 
             run.finished_at = _utc_now_iso()
             if warnings_count > 0 and run.status != "failed":
@@ -980,23 +1046,41 @@ class SelfLearningService:
         run_dir = self._run_dir(run.run_id)
         run_dir.mkdir(parents=True, exist_ok=True)
         dataset_path = run_dir / "dataset.jsonl"
-
-        records = [
-            {
-                "instruction": f"Learn repository knowledge from file: {chunk['path']}",
-                "input": chunk["text"],
-                "output": chunk["text"],
-            }
-            for chunk in chunks
-        ]
+        records = self._build_dataset_records(run, chunks)
+        accepted_records, dataset_report = self._validate_and_report_dataset_quality(
+            run, records
+        )
 
         with dataset_path.open("w", encoding="utf-8") as handle:
-            for record in records:
+            for record in accepted_records:
+                record.pop("__task_type", None)
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-        run.progress.records_created = len(records)
+        dataset_report_path = run_dir / "dataset_report.json"
+        dataset_report_path.write_text(
+            json.dumps(dataset_report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        run.progress.records_created = len(accepted_records)
         run.artifacts["dataset_path"] = str(dataset_path)
+        run.artifacts["dataset_report_path"] = str(dataset_report_path)
+        run.artifacts["dataset_strategy"] = run.llm_config.dataset_strategy
+        run.artifacts["task_mix_preset"] = run.llm_config.task_mix_preset
         self._add_log(run, f"Dataset created: {dataset_path}")
+        self._add_log(
+            run,
+            "Dataset quality accepted="
+            f"{dataset_report['accepted_records']}/"
+            f"{dataset_report['input_records']} "
+            f"(duplicates_removed={dataset_report['duplicates_removed']}, "
+            f"too_short_removed={dataset_report['too_short_removed']})",
+        )
+
+        if not dataset_report["quality_ok"]:
+            raise SelfLearningError(
+                "Dataset quality check failed: insufficient accepted records for selected strategy"
+            )
 
         if run.dry_run:
             self._add_log(run, "Dry run enabled; training startup skipped.")
@@ -1027,6 +1111,394 @@ class SelfLearningService:
         run.artifacts["training_output_dir"] = str(output_dir)
         self._add_log(run, f"Training job started: {training_job_id}")
 
+    def _run_eval_harness(self, run: SelfLearningRun) -> None:
+        """
+        Lightweight run evaluation (phase 191B.3) based on observable run metrics.
+
+        This is a proxy benchmark and does not replace full task-level evaluation.
+        """
+        if run.mode == "llm_finetune":
+            evaluation = self._evaluate_llm_run(run)
+        else:
+            evaluation = self._evaluate_rag_run(run)
+
+        run_dir = self._run_dir(run.run_id)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        evaluation_report_path = run_dir / "evaluation_report.json"
+        evaluation_report_path.write_text(
+            json.dumps(evaluation, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        run.artifacts["evaluation"] = evaluation
+        run.artifacts["evaluation_report_path"] = str(evaluation_report_path)
+        run.artifacts["promotion_decision"] = evaluation["decision"]
+        run.artifacts["promotion_score"] = evaluation["score"]
+        self._add_log(
+            run,
+            "Evaluation completed: "
+            f"decision={evaluation['decision']}, score={evaluation['score']}, "
+            f"passed={evaluation['passed']}",
+        )
+
+    def _evaluate_llm_run(self, run: SelfLearningRun) -> dict[str, Any]:
+        dataset_report = self._read_dataset_report(run)
+        accepted_records = int(dataset_report.get("accepted_records") or 0)
+        chunks_created = max(1, int(run.progress.chunks_created))
+        qa_signal = 0.2 if run.llm_config.dataset_strategy == "reconstruct" else 0.55
+        qa_accuracy = _clamp01((accepted_records / chunks_created) * 0.45 + qa_signal)
+
+        task_distribution = dataset_report.get("task_distribution") or {}
+        bugfix_ratio = 0.0
+        total_tasks = max(1, sum(int(v) for v in task_distribution.values()))
+        if isinstance(task_distribution, dict):
+            bugfix_ratio = float(task_distribution.get("bugfix_hint", 0)) / float(
+                total_tasks
+            )
+        code_localization_accuracy = _clamp01(0.35 + (qa_accuracy * 0.35))
+        fix_success_rate = _clamp01(0.2 + (bugfix_ratio * 0.8))
+        hallucination_rate = _clamp01(
+            1.0 - ((qa_accuracy * 0.65) + (code_localization_accuracy * 0.35))
+        )
+
+        baseline = {
+            "repo_qa_accuracy": 0.55,
+            "code_localization_accuracy": 0.45,
+            "fix_success_rate": 0.25,
+            "hallucination_rate_max": 0.35,
+        }
+        return self._finalize_evaluation_payload(
+            run=run,
+            metrics={
+                "repo_qa_accuracy": round(qa_accuracy, 4),
+                "code_localization_accuracy": round(code_localization_accuracy, 4),
+                "fix_success_rate": round(fix_success_rate, 4),
+                "hallucination_rate": round(hallucination_rate, 4),
+            },
+            baseline=baseline,
+        )
+
+    def _evaluate_rag_run(self, run: SelfLearningRun) -> dict[str, Any]:
+        indexed_vectors = max(1, int(run.progress.indexed_vectors))
+        chunks_created = max(1, int(run.progress.chunks_created))
+        symbol_chunks = int(run.artifacts.get("symbol_chunks") or 0)
+        symbol_ratio = float(symbol_chunks) / float(chunks_created)
+
+        qa_accuracy = _clamp01(
+            0.45 + min(0.35, (indexed_vectors / chunks_created) * 0.35)
+        )
+        code_localization_accuracy = _clamp01(
+            0.35
+            + (0.25 if run.rag_config.chunking_mode == "code_aware" else 0.0)
+            + (0.15 if run.rag_config.retrieval_mode == "hybrid" else 0.0)
+            + (symbol_ratio * 0.15)
+        )
+        fix_success_rate = _clamp01(0.2 + (code_localization_accuracy * 0.6))
+        hallucination_rate = _clamp01(
+            1.0 - ((qa_accuracy * 0.6) + (code_localization_accuracy * 0.4))
+        )
+
+        baseline = {
+            "repo_qa_accuracy": 0.6,
+            "code_localization_accuracy": 0.55,
+            "fix_success_rate": 0.3,
+            "hallucination_rate_max": 0.3,
+        }
+        return self._finalize_evaluation_payload(
+            run=run,
+            metrics={
+                "repo_qa_accuracy": round(qa_accuracy, 4),
+                "code_localization_accuracy": round(code_localization_accuracy, 4),
+                "fix_success_rate": round(fix_success_rate, 4),
+                "hallucination_rate": round(hallucination_rate, 4),
+            },
+            baseline=baseline,
+        )
+
+    def _read_dataset_report(self, run: SelfLearningRun) -> dict[str, Any]:
+        report_path = run.artifacts.get("dataset_report_path")
+        if not report_path:
+            return {}
+        try:
+            payload = json.loads(Path(str(report_path)).read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                return payload
+        except Exception:
+            return {}
+        return {}
+
+    @staticmethod
+    def _finalize_evaluation_payload(
+        *,
+        run: SelfLearningRun,
+        metrics: dict[str, float],
+        baseline: dict[str, float],
+    ) -> dict[str, Any]:
+        passed = (
+            metrics["repo_qa_accuracy"] >= baseline["repo_qa_accuracy"]
+            and metrics["code_localization_accuracy"]
+            >= baseline["code_localization_accuracy"]
+            and metrics["fix_success_rate"] >= baseline["fix_success_rate"]
+            and metrics["hallucination_rate"] <= baseline["hallucination_rate_max"]
+        )
+        weighted_score = _clamp01(
+            (metrics["repo_qa_accuracy"] * 0.35)
+            + (metrics["code_localization_accuracy"] * 0.3)
+            + (metrics["fix_success_rate"] * 0.25)
+            + ((1.0 - metrics["hallucination_rate"]) * 0.1)
+        )
+        return {
+            "version": "191b.3-proxy-v1",
+            "kind": "proxy_eval",
+            "mode": run.mode,
+            "evaluated_at": _utc_now_iso(),
+            "metrics": metrics,
+            "baseline": baseline,
+            "score": round(weighted_score, 4),
+            "decision": "promote" if passed else "reject",
+            "passed": passed,
+        }
+
+    def _build_dataset_records(
+        self,
+        run: SelfLearningRun,
+        chunks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        strategy = run.llm_config.dataset_strategy
+        if strategy == "reconstruct":
+            return self._build_reconstruct_records(chunks)
+        if strategy == "qa_from_docs":
+            return self._build_qa_from_docs_records(chunks)
+        return self._build_repo_tasks_basic_records(
+            chunks,
+            task_mix_preset=run.llm_config.task_mix_preset,
+        )
+
+    @staticmethod
+    def _shorten_context(text: str, limit: int = 900) -> str:
+        compact = " ".join(text.strip().split())
+        if len(compact) <= limit:
+            return compact
+        return compact[:limit].rstrip() + "..."
+
+    def _build_reconstruct_records(
+        self,
+        chunks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "instruction": f"Learn repository knowledge from file: {chunk['path']}",
+                "input": chunk["text"],
+                "output": chunk["text"],
+                "__task_type": "reconstruct",
+            }
+            for chunk in chunks
+        ]
+
+    def _build_qa_from_docs_records(
+        self,
+        chunks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        for chunk in chunks:
+            snippet = self._shorten_context(str(chunk.get("text") or ""))
+            path = str(chunk.get("path") or "unknown")
+            source = str(chunk.get("source") or "unknown")
+            records.append(
+                {
+                    "instruction": "Answer repository questions using provided context.",
+                    "input": (
+                        f"Question: What key information is documented in `{path}`?\n"
+                        f"Source: {source}\n"
+                        f"Context:\n{snippet}"
+                    ),
+                    "output": (
+                        f"Primary reference file: `{path}`.\nKey context:\n{snippet}"
+                    ),
+                    "__task_type": "qa",
+                }
+            )
+        return records
+
+    def _build_repo_tasks_basic_records(
+        self,
+        chunks: list[dict[str, Any]],
+        *,
+        task_mix_preset: SelfLearningTaskMixPreset,
+    ) -> list[dict[str, Any]]:
+        sequence = self._task_sequence_for_preset(task_mix_preset)
+        records: list[dict[str, Any]] = []
+        for index, chunk in enumerate(chunks):
+            task_type = sequence[index % len(sequence)]
+            if task_type == "qa":
+                records.append(self._build_repo_task_qa_record(chunk))
+                continue
+            if task_type == "where_is":
+                records.append(self._build_repo_task_where_is_record(chunk))
+                continue
+            records.append(self._build_repo_task_bugfix_record(chunk))
+        return records
+
+    @staticmethod
+    def _task_sequence_for_preset(
+        task_mix_preset: SelfLearningTaskMixPreset,
+    ) -> tuple[str, ...]:
+        if task_mix_preset == "qa-heavy":
+            return (
+                "qa",
+                "qa",
+                "qa",
+                "qa",
+                "qa",
+                "qa",
+                "qa",
+                "where_is",
+                "where_is",
+                "bugfix_hint",
+            )
+        if task_mix_preset == "repair-heavy":
+            return (
+                "bugfix_hint",
+                "bugfix_hint",
+                "bugfix_hint",
+                "bugfix_hint",
+                "bugfix_hint",
+                "qa",
+                "qa",
+                "qa",
+                "where_is",
+                "where_is",
+            )
+        return (
+            "qa",
+            "qa",
+            "qa",
+            "qa",
+            "qa",
+            "where_is",
+            "where_is",
+            "where_is",
+            "bugfix_hint",
+            "bugfix_hint",
+        )
+
+    def _build_repo_task_qa_record(self, chunk: dict[str, Any]) -> dict[str, Any]:
+        path = str(chunk.get("path") or "unknown")
+        snippet = self._shorten_context(str(chunk.get("text") or ""))
+        return {
+            "instruction": "Explain repository modules and responsibilities from context.",
+            "input": (
+                f"Task: Explain what this module/file is responsible for.\n"
+                f"File: {path}\n"
+                f"Context:\n{snippet}"
+            ),
+            "output": (
+                f"Module reference: `{path}`.\nUse this context to answer:\n{snippet}"
+            ),
+            "__task_type": "qa",
+        }
+
+    def _build_repo_task_where_is_record(self, chunk: dict[str, Any]) -> dict[str, Any]:
+        path = str(chunk.get("path") or "unknown")
+        snippet = self._shorten_context(str(chunk.get("text") or ""))
+        return {
+            "instruction": "Locate implementation files based on repository hints.",
+            "input": (
+                "Task: Find where this behavior is implemented and provide the best "
+                "starting file.\n"
+                f"Hint excerpt:\n{snippet}"
+            ),
+            "output": (
+                f"Start in `{path}`.\n"
+                "If needed, inspect related references from this excerpt:\n"
+                f"{snippet}"
+            ),
+            "__task_type": "where_is",
+        }
+
+    def _build_repo_task_bugfix_record(self, chunk: dict[str, Any]) -> dict[str, Any]:
+        path = str(chunk.get("path") or "unknown")
+        snippet = self._shorten_context(str(chunk.get("text") or ""))
+        return {
+            "instruction": "Propose first debugging and repair steps from repository evidence.",
+            "input": (
+                "Issue: Unexpected behavior reported by user.\n"
+                f"Candidate file: {path}\n"
+                f"Observed context:\n{snippet}"
+            ),
+            "output": (
+                f"Investigate `{path}` first.\n"
+                "Validate logic and tests around this context:\n"
+                f"{snippet}"
+            ),
+            "__task_type": "bugfix_hint",
+        }
+
+    def _validate_and_report_dataset_quality(
+        self,
+        run: SelfLearningRun,
+        records: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        accepted: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        duplicates_removed = 0
+        too_short_removed = 0
+
+        for record in records:
+            instruction = str(record.get("instruction") or "").strip()
+            input_text = str(record.get("input") or "").strip()
+            output_text = str(record.get("output") or "").strip()
+            if (
+                len(input_text) < _MIN_RECORD_INPUT_CHARS
+                or len(output_text) < _MIN_RECORD_OUTPUT_CHARS
+            ):
+                too_short_removed += 1
+                continue
+            dedup_key = _sha256_bytes(
+                f"{instruction}\n{input_text}\n{output_text}".encode("utf-8")
+            )
+            if dedup_key in seen:
+                duplicates_removed += 1
+                continue
+            seen.add(dedup_key)
+            accepted.append(
+                {
+                    "instruction": instruction,
+                    "input": input_text,
+                    "output": output_text,
+                    "__task_type": record.get("__task_type") or "unknown",
+                }
+            )
+
+        task_distribution: dict[str, int] = {}
+        for item in accepted:
+            task_type = str(item.get("__task_type") or "unknown")
+            task_distribution[task_type] = task_distribution.get(task_type, 0) + 1
+
+        required_min_records = self._required_min_dataset_records(
+            run.llm_config.dataset_strategy
+        )
+        report = {
+            "strategy": run.llm_config.dataset_strategy,
+            "task_mix_preset": run.llm_config.task_mix_preset,
+            "input_records": len(records),
+            "accepted_records": len(accepted),
+            "duplicates_removed": duplicates_removed,
+            "too_short_removed": too_short_removed,
+            "required_min_records": required_min_records,
+            "quality_ok": len(accepted) >= required_min_records,
+            "task_distribution": task_distribution,
+        }
+        return accepted, report
+
+    @staticmethod
+    def _required_min_dataset_records(
+        strategy: SelfLearningDatasetStrategy,
+    ) -> int:
+        if strategy == "reconstruct":
+            return 1
+        return _MIN_DATASET_RECORDS
+
     def _run_rag_index(
         self,
         run: SelfLearningRun,
@@ -1035,6 +1507,13 @@ class SelfLearningService:
     ) -> None:
         if run.dry_run:
             run.progress.indexed_vectors = len(chunks)
+            run.artifacts["chunking_mode"] = run.rag_config.chunking_mode
+            run.artifacts["retrieval_mode"] = run.rag_config.retrieval_mode
+            run.artifacts["knowledge_freshness"] = {
+                "indexed_at": _utc_now_iso(),
+                "repo_commit_sha": run.artifacts.get("repo_commit_sha"),
+                "mode": "dry_run",
+            }
             self._add_log(run, "Dry run enabled; vector index upsert skipped.")
             return
 
@@ -1070,9 +1549,14 @@ class SelfLearningService:
             "fallback_active": selected_profile_state.get("fallback_active"),
             "policy": run.rag_config.embedding_policy,
         }
+        run.artifacts["chunking_mode"] = run.rag_config.chunking_mode
+        run.artifacts["retrieval_mode"] = run.rag_config.retrieval_mode
 
         indexed_vectors = 0
         newly_indexed_file_keys: set[str] = set()
+        skipped_manifest_chunks = 0
+        symbol_chunks = 0
+        doc_chunks = 0
         eligible_keys = {
             f"{file_hash}:{rel_path}"
             for _, _, file_hash, rel_path, _ in extracted_files
@@ -1081,7 +1565,13 @@ class SelfLearningService:
         for chunk in chunks:
             file_key = f"{chunk['sha256']}:{chunk['path']}"
             if file_key in self._index_manifest:
+                skipped_manifest_chunks += 1
                 continue
+            chunk_symbol = chunk.get("symbol")
+            if chunk_symbol:
+                symbol_chunks += 1
+            else:
+                doc_chunks += 1
 
             metadata = {
                 "source": chunk["source"],
@@ -1089,6 +1579,9 @@ class SelfLearningService:
                 "sha256": chunk["sha256"],
                 "run_id": run.run_id,
                 "chunk_index": chunk["chunk_index"],
+                "language": chunk.get("language"),
+                "symbol": chunk_symbol,
+                "last_modified": chunk.get("last_modified"),
                 "mode": run.mode,
                 "category": run.rag_config.category,
             }
@@ -1109,7 +1602,23 @@ class SelfLearningService:
         run.progress.indexed_vectors = indexed_vectors
         run.artifacts["collection"] = run.rag_config.collection
         run.artifacts["indexed_file_keys"] = len(newly_indexed_file_keys)
+        run.artifacts["symbol_chunks"] = symbol_chunks
+        run.artifacts["doc_chunks"] = doc_chunks
+        run.artifacts["skipped_manifest_chunks"] = skipped_manifest_chunks
+        run.artifacts["knowledge_freshness"] = {
+            "indexed_at": _utc_now_iso(),
+            "repo_commit_sha": run.artifacts.get("repo_commit_sha"),
+            "mode": "indexed",
+        }
         self._add_log(run, f"Indexed vectors: {indexed_vectors}")
+        self._add_log(
+            run,
+            "RAG stats: "
+            f"chunking_mode={run.rag_config.chunking_mode}, "
+            f"retrieval_mode={run.rag_config.retrieval_mode}, "
+            f"symbol_chunks={symbol_chunks}, doc_chunks={doc_chunks}, "
+            f"skipped_manifest_chunks={skipped_manifest_chunks}",
+        )
 
     def _discover_files(
         self,
@@ -1209,26 +1718,186 @@ class SelfLearningService:
     def _chunk_extracted_files(
         self,
         extracted_files: list[tuple[Path, str, str, str, SelfLearningSource]],
+        *,
+        rag_mode: bool = False,
+        rag_config: RagConfig | None = None,
     ) -> list[dict[str, Any]]:
         chunk_size = 1000
         overlap = 120
         chunks: list[dict[str, Any]] = []
+        use_code_aware = bool(
+            rag_mode
+            and rag_config is not None
+            and rag_config.chunking_mode == "code_aware"
+        )
 
-        for _path, text, file_hash, rel_path, source in extracted_files:
-            file_chunks = self._chunk_text(text, chunk_size=chunk_size, overlap=overlap)
-            for idx, chunk in enumerate(file_chunks):
+        for file_path, text, file_hash, rel_path, source in extracted_files:
+            language = self._language_from_path(rel_path)
+            last_modified = self._safe_last_modified_iso(file_path)
+            if use_code_aware and self._is_code_file(rel_path):
+                file_chunks = self._chunk_text_code_aware(
+                    text,
+                    chunk_size=chunk_size,
+                    overlap=overlap,
+                )
+            else:
+                file_chunks = [
+                    (chunk, None)
+                    for chunk in self._chunk_text(
+                        text,
+                        chunk_size=chunk_size,
+                        overlap=overlap,
+                    )
+                ]
+            for idx, (chunk, symbol) in enumerate(file_chunks):
                 if not chunk.strip():
                     continue
                 chunks.append(
-                    {
-                        "text": chunk,
-                        "sha256": file_hash,
-                        "path": rel_path,
-                        "source": source,
-                        "chunk_index": idx,
-                    }
+                    self._build_chunk_entry(
+                        text=chunk,
+                        file_hash=file_hash,
+                        rel_path=rel_path,
+                        source=source,
+                        chunk_index=idx,
+                        language=language,
+                        symbol=symbol,
+                        last_modified=last_modified,
+                    )
                 )
         return chunks
+
+    @staticmethod
+    def _build_chunk_entry(
+        *,
+        text: str,
+        file_hash: str,
+        rel_path: str,
+        source: SelfLearningSource,
+        chunk_index: int,
+        language: str,
+        symbol: str | None,
+        last_modified: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "text": text,
+            "sha256": file_hash,
+            "path": rel_path,
+            "source": source,
+            "chunk_index": chunk_index,
+            "language": language,
+            "symbol": symbol,
+            "last_modified": last_modified,
+        }
+
+    @staticmethod
+    def _safe_last_modified_iso(path: Path) -> str | None:
+        try:
+            return datetime.fromtimestamp(
+                path.stat().st_mtime, tz=timezone.utc
+            ).isoformat()
+        except OSError:
+            return None
+
+    @staticmethod
+    def _language_from_path(rel_path: str) -> str:
+        suffix = Path(rel_path).suffix.lower()
+        mapping = {
+            ".py": "python",
+            ".ts": "typescript",
+            ".tsx": "tsx",
+            ".js": "javascript",
+            ".json": "json",
+            ".yaml": "yaml",
+            ".yml": "yaml",
+            ".toml": "toml",
+            ".ini": "ini",
+            ".md": "markdown",
+            ".txt": "text",
+            ".rst": "rst",
+        }
+        return mapping.get(suffix, "text")
+
+    @staticmethod
+    def _is_code_file(rel_path: str) -> bool:
+        return Path(rel_path).suffix.lower() in {".py", ".ts", ".tsx", ".js"}
+
+    def _chunk_text_code_aware(
+        self,
+        text: str,
+        *,
+        chunk_size: int,
+        overlap: int,
+    ) -> list[tuple[str, str | None]]:
+        symbol_blocks = self._extract_symbol_blocks(text)
+        if not symbol_blocks:
+            return [
+                (chunk, None)
+                for chunk in self._chunk_text(
+                    text, chunk_size=chunk_size, overlap=overlap
+                )
+            ]
+
+        chunks: list[tuple[str, str | None]] = []
+        for symbol, block in symbol_blocks:
+            for piece in self._chunk_text(
+                block, chunk_size=chunk_size, overlap=overlap
+            ):
+                clean_piece = piece.strip()
+                if clean_piece:
+                    chunks.append((clean_piece, symbol))
+        return chunks
+
+    @staticmethod
+    def _extract_symbol_blocks(text: str) -> list[tuple[str | None, str]]:
+        lines = text.splitlines()
+        if not lines:
+            return []
+
+        symbol_markers: list[tuple[int, str]] = []
+        symbol_patterns = (
+            re.compile(r"^\s*async\s+def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),
+            re.compile(r"^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),
+            re.compile(r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\b"),
+            re.compile(
+                r"^\s*export\s+(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("
+            ),
+            re.compile(r"^\s*function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),
+            re.compile(r"^\s*export\s+class\s+([A-Za-z_][A-Za-z0-9_]*)\b"),
+            re.compile(
+                r"^\s*(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?\("
+            ),
+        )
+
+        for idx, line in enumerate(lines):
+            symbol_name: str | None = None
+            for pattern in symbol_patterns:
+                matched = pattern.match(line)
+                if matched:
+                    symbol_name = matched.group(1)
+                    break
+            if symbol_name:
+                symbol_markers.append((idx, symbol_name))
+
+        if not symbol_markers:
+            return []
+
+        blocks: list[tuple[str | None, str]] = []
+        first_symbol_line = symbol_markers[0][0]
+        if first_symbol_line > 0:
+            preamble = "\n".join(lines[:first_symbol_line]).strip()
+            if preamble:
+                blocks.append(("module_preamble", preamble))
+
+        for marker_index, (start_line, symbol_name) in enumerate(symbol_markers):
+            end_line = (
+                symbol_markers[marker_index + 1][0]
+                if marker_index + 1 < len(symbol_markers)
+                else len(lines)
+            )
+            block = "\n".join(lines[start_line:end_line]).strip()
+            if block:
+                blocks.append((symbol_name, block))
+        return blocks
 
     @staticmethod
     def _chunk_text(text: str, *, chunk_size: int, overlap: int) -> list[str]:
@@ -1275,6 +1944,24 @@ class SelfLearningService:
         except ValueError as exc:
             raise ValueError("Run path escapes storage_dir") from exc
         return run_dir
+
+    def _resolve_repo_commit_sha(self) -> str | None:
+        try:
+            process = subprocess.run(
+                ["git", "-C", str(self.repo_root), "rev-parse", "HEAD"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+            )
+            if process.returncode != 0:
+                return None
+            sha = process.stdout.strip()
+            if len(sha) >= 7:
+                return sha
+            return None
+        except Exception:
+            return None
 
     def _get_run(self, run_id: str) -> SelfLearningRun | None:
         with self._lock:
@@ -1332,6 +2019,20 @@ class SelfLearningService:
             ),
             llm_config=LlmConfig(
                 base_model=llm_cfg.get("base_model"),
+                dataset_strategy=cast(
+                    SelfLearningDatasetStrategy,
+                    str(llm_cfg.get("dataset_strategy") or "reconstruct").strip()
+                    if str(llm_cfg.get("dataset_strategy") or "reconstruct").strip()
+                    in _VALID_DATASET_STRATEGIES
+                    else "reconstruct",
+                ),
+                task_mix_preset=cast(
+                    SelfLearningTaskMixPreset,
+                    str(llm_cfg.get("task_mix_preset") or "balanced").strip()
+                    if str(llm_cfg.get("task_mix_preset") or "balanced").strip()
+                    in _VALID_TASK_MIX_PRESETS
+                    else "balanced",
+                ),
                 lora_rank=_safe_int(llm_cfg.get("lora_rank"), 16),
                 learning_rate=float(llm_cfg.get("learning_rate", 2e-4)),
                 num_epochs=_safe_int(llm_cfg.get("num_epochs"), 3),
@@ -1342,6 +2043,20 @@ class SelfLearningService:
                 collection=str(rag_cfg.get("collection") or "default"),
                 category=str(rag_cfg.get("category") or "academy_self_learning"),
                 chunk_text=bool(rag_cfg.get("chunk_text", False)),
+                chunking_mode=cast(
+                    SelfLearningRagChunkingMode,
+                    str(rag_cfg.get("chunking_mode") or "plain").strip()
+                    if str(rag_cfg.get("chunking_mode") or "plain").strip()
+                    in _VALID_RAG_CHUNKING_MODES
+                    else "plain",
+                ),
+                retrieval_mode=cast(
+                    SelfLearningRagRetrievalMode,
+                    str(rag_cfg.get("retrieval_mode") or "vector").strip()
+                    if str(rag_cfg.get("retrieval_mode") or "vector").strip()
+                    in _VALID_RAG_RETRIEVAL_MODES
+                    else "vector",
+                ),
                 embedding_profile_id=(
                     str(rag_cfg.get("embedding_profile_id")).strip()[:128]
                     if rag_cfg.get("embedding_profile_id")

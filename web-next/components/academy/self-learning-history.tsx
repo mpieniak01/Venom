@@ -23,6 +23,44 @@ const STATUS_CLASS: Record<SelfLearningStatus, string> = {
   failed: "text-red-300",
 };
 
+function readArtifactString(
+  artifacts: Record<string, unknown>,
+  key: string
+): string | null {
+  const value = artifacts[key];
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function readKnowledgeFreshness(
+  artifacts: Record<string, unknown>
+): { indexedAt: string | null; mode: string | null } {
+  const payload = artifacts["knowledge_freshness"];
+  if (!payload || typeof payload !== "object") {
+    return { indexedAt: null, mode: null };
+  }
+  const typed = payload as Record<string, unknown>;
+  const indexedAt = typeof typed.indexed_at === "string" ? typed.indexed_at : null;
+  const mode = typeof typed.mode === "string" ? typed.mode : null;
+  return { indexedAt, mode };
+}
+
+function readEvaluationSummary(
+  artifacts: Record<string, unknown>
+): { score: number | null; decision: string | null } {
+  const payload = artifacts["evaluation"];
+  if (!payload || typeof payload !== "object") {
+    return { score: null, decision: null };
+  }
+  const typed = payload as Record<string, unknown>;
+  const score = typeof typed.score === "number" ? typed.score : null;
+  const decision = typeof typed.decision === "string" ? typed.decision : null;
+  return { score, decision };
+}
+
 export function SelfLearningHistory({
   runs,
   selectedRunId,
@@ -35,6 +73,18 @@ export function SelfLearningHistory({
   const { language } = useLanguage();
 
   const selectedRun = runs.find((run) => run.run_id === selectedRunId) ?? null;
+  const selectedCommitSha = selectedRun
+    ? readArtifactString(selectedRun.artifacts, "repo_commit_sha")
+    : null;
+  const selectedSnapshotAt = selectedRun
+    ? readArtifactString(selectedRun.artifacts, "knowledge_snapshot_at")
+    : null;
+  const selectedKnowledgeFreshness = selectedRun
+    ? readKnowledgeFreshness(selectedRun.artifacts)
+    : { indexedAt: null, mode: null };
+  const selectedEvaluation = selectedRun
+    ? readEvaluationSummary(selectedRun.artifacts)
+    : { score: null, decision: null };
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(260px,340px)_1fr]">
@@ -127,6 +177,53 @@ export function SelfLearningHistory({
                     <th className="px-3 py-2 text-[color:var(--text-secondary)]">{t("academy.selfLearning.history.metrics.vectors")}</th>
                     <td className="px-3 py-2">{selectedRun.progress.indexed_vectors}</td>
                   </tr>
+                  {selectedCommitSha ? (
+                    <tr className="border-t border-[color:var(--ui-border)]">
+                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                        {t("academy.selfLearning.history.metrics.commit")}
+                      </th>
+                      <td className="px-3 py-2 font-mono">{selectedCommitSha.slice(0, 12)}</td>
+                    </tr>
+                  ) : null}
+                  {selectedSnapshotAt ? (
+                    <tr>
+                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                        {t("academy.selfLearning.history.metrics.snapshot")}
+                      </th>
+                      <td className="px-3 py-2">
+                        {new Date(selectedSnapshotAt).toLocaleString(language)}
+                      </td>
+                    </tr>
+                  ) : null}
+                  {selectedKnowledgeFreshness.indexedAt ? (
+                    <tr>
+                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                        {t("academy.selfLearning.history.metrics.freshness")}
+                      </th>
+                      <td className="px-3 py-2">
+                        {new Date(selectedKnowledgeFreshness.indexedAt).toLocaleString(language)}
+                        {selectedKnowledgeFreshness.mode
+                          ? ` (${selectedKnowledgeFreshness.mode})`
+                          : ""}
+                      </td>
+                    </tr>
+                  ) : null}
+                  {selectedEvaluation.score !== null ? (
+                    <tr>
+                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                        {t("academy.selfLearning.history.metrics.evalScore")}
+                      </th>
+                      <td className="px-3 py-2">{selectedEvaluation.score.toFixed(4)}</td>
+                    </tr>
+                  ) : null}
+                  {selectedEvaluation.decision ? (
+                    <tr>
+                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                        {t("academy.selfLearning.history.metrics.evalDecision")}
+                      </th>
+                      <td className="px-3 py-2">{selectedEvaluation.decision}</td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>

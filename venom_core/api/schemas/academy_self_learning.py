@@ -8,6 +8,12 @@ from pydantic import BaseModel, Field
 
 SelfLearningMode = Literal["llm_finetune", "rag_index"]
 SelfLearningSource = Literal["docs", "docs_dev", "code"]
+SelfLearningDatasetStrategy = Literal[
+    "reconstruct",
+    "qa_from_docs",
+    "repo_tasks_basic",
+]
+SelfLearningTaskMixPreset = Literal["balanced", "qa-heavy", "repair-heavy"]
 SelfLearningStatus = Literal[
     "pending",
     "running",
@@ -16,6 +22,8 @@ SelfLearningStatus = Literal[
     "failed",
 ]
 SelfLearningEmbeddingPolicy = Literal["strict", "allow_fallback"]
+SelfLearningRagChunkingMode = Literal["plain", "code_aware"]
+SelfLearningRagRetrievalMode = Literal["vector", "hybrid"]
 
 
 def _default_sources() -> list[SelfLearningSource]:
@@ -34,6 +42,8 @@ class SelfLearningLlmConfig(BaseModel):
     """Optional overrides for LLM fine-tuning mode."""
 
     base_model: str | None = None
+    dataset_strategy: SelfLearningDatasetStrategy = "reconstruct"
+    task_mix_preset: SelfLearningTaskMixPreset = "balanced"
     lora_rank: int = Field(default=16, ge=4, le=64)
     learning_rate: float = Field(default=2e-4, gt=0, le=1e-2)
     num_epochs: int = Field(default=3, ge=1, le=20)
@@ -47,6 +57,8 @@ class SelfLearningRagConfig(BaseModel):
     collection: str = Field(default="default", min_length=1, max_length=64)
     category: str = Field(default="academy_self_learning", min_length=1, max_length=64)
     chunk_text: bool = False
+    chunking_mode: SelfLearningRagChunkingMode = "plain"
+    retrieval_mode: SelfLearningRagRetrievalMode = "vector"
     embedding_profile_id: str | None = Field(default=None, min_length=1, max_length=128)
     embedding_policy: SelfLearningEmbeddingPolicy = "strict"
 

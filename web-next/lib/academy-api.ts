@@ -181,8 +181,21 @@ export async function activateAdapter(params: {
   adapter_id: string;
   adapter_path: string;
   runtime_id?: string;
-}): Promise<{ success: boolean; message: string }> {
-  return apiFetch<{ success: boolean; message: string }>("/api/v1/academy/adapters/activate", {
+  deploy_to_chat_runtime?: boolean;
+}): Promise<{
+  success: boolean;
+  message: string;
+  deployed?: boolean;
+  runtime_id?: string;
+  chat_model?: string;
+}> {
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    deployed?: boolean;
+    runtime_id?: string;
+    chat_model?: string;
+  }>("/api/v1/academy/adapters/activate", {
     method: "POST",
     body: JSON.stringify(params),
   });
@@ -191,8 +204,20 @@ export async function activateAdapter(params: {
 /**
  * Dezaktywacja adaptera (rollback do modelu bazowego)
  */
-export async function deactivateAdapter(): Promise<{ success: boolean; message: string }> {
-  return apiFetch<{ success: boolean; message: string }>("/api/v1/academy/adapters/deactivate", {
+export async function deactivateAdapter(): Promise<{
+  success: boolean;
+  message: string;
+  rolled_back?: boolean;
+  runtime_id?: string;
+  chat_model?: string;
+}> {
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    rolled_back?: boolean;
+    runtime_id?: string;
+    chat_model?: string;
+  }>("/api/v1/academy/adapters/deactivate", {
     method: "POST",
   });
 }
@@ -538,6 +563,13 @@ export async function setDatasetConversionTrainingSelection(params: {
 export type SelfLearningMode = "llm_finetune" | "rag_index";
 export type SelfLearningSource = "docs" | "docs_dev" | "code";
 export type SelfLearningEmbeddingPolicy = "strict" | "allow_fallback";
+export type SelfLearningRagChunkingMode = "plain" | "code_aware";
+export type SelfLearningRagRetrievalMode = "vector" | "hybrid";
+export type SelfLearningDatasetStrategy =
+  | "reconstruct"
+  | "qa_from_docs"
+  | "repo_tasks_basic";
+export type SelfLearningTaskMixPreset = "balanced" | "qa-heavy" | "repair-heavy";
 export type SelfLearningStatus =
   | "pending"
   | "running"
@@ -553,6 +585,8 @@ export interface SelfLearningLimits {
 
 export interface SelfLearningLlmConfig {
   base_model?: string | null;
+  dataset_strategy?: SelfLearningDatasetStrategy;
+  task_mix_preset?: SelfLearningTaskMixPreset;
   lora_rank: number;
   learning_rate: number;
   num_epochs: number;
@@ -564,6 +598,8 @@ export interface SelfLearningRagConfig {
   collection: string;
   category: string;
   chunk_text: boolean;
+  chunking_mode?: SelfLearningRagChunkingMode;
+  retrieval_mode?: SelfLearningRagRetrievalMode;
   embedding_profile_id?: string | null;
   embedding_policy?: SelfLearningEmbeddingPolicy;
 }

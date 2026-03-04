@@ -408,7 +408,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
   test("Sidebar system status panel is visible", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("system-status-panel")).toBeVisible();
-    for (const id of ["system-status-api", "system-status-queue", "system-status-ws"]) {
+    for (const id of ["system-status-api", "system-status-queue", "system-status-llm"]) {
       await expect(page.getByTestId(id)).toBeVisible();
     }
   });

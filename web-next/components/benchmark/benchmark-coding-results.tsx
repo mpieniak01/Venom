@@ -46,21 +46,21 @@ export function BenchmarkCodingResults({
       const data = await res.json();
       const runs = (data.runs || []) as HistoryItem[];
       setHistory(runs);
-
-      if (currentRun?.run_id) {
-        setSelectedRunId(currentRun.run_id);
-        return;
-      }
-      if (selectedRunId && runs.some((item) => item.run_id === selectedRunId)) {
-        return;
-      }
-      setSelectedRunId(runs[0]?.run_id ?? null);
+      setSelectedRunId((prev) => {
+        if (currentRun?.run_id) {
+          return currentRun.run_id;
+        }
+        if (prev && runs.some((item) => item.run_id === prev)) {
+          return prev;
+        }
+        return runs[0]?.run_id ?? null;
+      });
     } catch (e) {
       console.error("Failed to fetch coding benchmark history", e);
     } finally {
       setLoadingHistory(false);
     }
-  }, [apiBase, currentRun?.run_id, selectedRunId]);
+  }, [apiBase, currentRun?.run_id]);
 
   const fetchRunDetails = useCallback(async (runId: string) => {
     setLoadingSelected(true);
@@ -77,7 +77,7 @@ export function BenchmarkCodingResults({
   }, [apiBase]);
 
   useEffect(() => {
-    void fetchHistory();
+    fetchHistory().catch(() => undefined);
   }, [fetchHistory]);
 
   useEffect(() => {
@@ -91,14 +91,14 @@ export function BenchmarkCodingResults({
       setSelectedRun(null);
       return;
     }
-    if (currentRun?.run_id === selectedRunId && currentRun.jobs.length > 0) {
+    if (currentRun?.run_id === selectedRunId) {
       setSelectedRun(currentRun);
       return;
     }
-    if (selectedRun?.run_id === selectedRunId && selectedRun.jobs.length > 0) {
+    if (selectedRun?.run_id === selectedRunId) {
       return;
     }
-    void fetchRunDetails(selectedRunId);
+    fetchRunDetails(selectedRunId).catch(() => undefined);
   }, [selectedRunId, currentRun, selectedRun, fetchRunDetails]);
 
   const handleDelete = async (id: string) => {
@@ -243,63 +243,61 @@ export function BenchmarkCodingResults({
               {history.map((item) => (
                 <div
                   key={item.run_id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedRunId(item.run_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedRunId(item.run_id);
-                    }
-                  }}
                   className={cn(
-                    "group rounded-xl border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500/50",
+                    "group relative rounded-xl border p-3 transition-colors",
                     selectedRunId === item.run_id
                       ? "border-violet-500/50 bg-violet-500/10"
                       : "border-[color:var(--ui-border)] bg-[color:var(--terminal)] hover:border-[color:var(--ui-border-strong)]",
                   )}
                 >
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDot(item.status))} />
-                        <span className="font-mono text-xs text-[color:var(--ui-muted)]">
-                          {item.run_id.slice(0, 8)}
-                        </span>
-                        <span className="text-[10px] text-[color:var(--text-secondary)] flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {formatDate(item.created_at)}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-xs text-[color:var(--text-primary)]">
-                        {resolveRunStatusLabel(item.status)}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRunId(item.run_id)}
+                    className="w-full text-left focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDot(item.status))} />
+                          <span className="font-mono text-xs text-[color:var(--ui-muted)]">
+                            {item.run_id.slice(0, 8)}
+                          </span>
+                          <span className="flex items-center gap-1 text-[10px] text-[color:var(--text-secondary)]">
+                            <Clock className="h-3 w-3" />
+                            {formatDate(item.created_at)}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-[color:var(--text-primary)]">
+                          {resolveRunStatusLabel(item.status)}
+                        </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleDelete(item.run_id);
-                      }}
-                      className="opacity-0 p-1 text-[color:var(--ui-muted)] transition-all hover:text-rose-400 group-hover:opacity-100"
-                      title={t("benchmark.coding.results.deleteRun")}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
 
-                  <div className="text-xs text-[color:var(--text-secondary)]">
-                    {t("benchmark.coding.results.models")}: {item.config.models.join(", ")}
-                  </div>
-                  <div className="text-xs text-[color:var(--text-secondary)]">
-                    {t("benchmark.coding.results.tasks")}: {item.config.tasks.join(", ")}
-                  </div>
-
-                  {item.summary && (
-                    <div className="mt-1 text-xs text-[color:var(--ui-muted)]">
-                      {item.summary.completed}/{item.summary.total_jobs} • {item.summary.success_rate.toFixed(1)}%
+                    <div className="text-xs text-[color:var(--text-secondary)]">
+                      {t("benchmark.coding.results.models")}: {item.config.models.join(", ")}
                     </div>
-                  )}
+                    <div className="text-xs text-[color:var(--text-secondary)]">
+                      {t("benchmark.coding.results.tasks")}: {item.config.tasks.join(", ")}
+                    </div>
+
+                    {item.summary && (
+                      <div className="mt-1 text-xs text-[color:var(--ui-muted)]">
+                        {item.summary.completed}/{item.summary.total_jobs} • {item.summary.success_rate.toFixed(1)}%
+                      </div>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDelete(item.run_id).catch(() => undefined);
+                    }}
+                    className="absolute right-3 top-3 p-1 text-[color:var(--ui-muted)] opacity-0 transition-all hover:text-rose-400 group-hover:opacity-100"
+                    title={t("benchmark.coding.results.deleteRun")}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
               ))}
             </div>

@@ -41,6 +41,7 @@ export function AdaptersPanel() {
       await activateAdapter({
         adapter_id: adapter.adapter_id,
         adapter_path: adapter.adapter_path,
+        deploy_to_chat_runtime: true,
       });
       await loadAdapters();
     } catch (err) {

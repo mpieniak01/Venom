@@ -103,6 +103,7 @@ class ActivateAdapterRequest(BaseModel):
     adapter_id: str
     adapter_path: str
     runtime_id: str | None = None
+    deploy_to_chat_runtime: bool = False
 
 
 class UploadFileInfo(BaseModel):

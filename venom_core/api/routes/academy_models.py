@@ -9,7 +9,12 @@ from typing import Any, Dict, List, Literal, Optional, Set
 import anyio
 
 from venom_core.api.schemas.academy import AdapterInfo, TrainableModelInfo
+from venom_core.config import SETTINGS
+from venom_core.services.config_manager import config_manager
+from venom_core.services.system_llm_service import previous_model_key_for_server
+from venom_core.utils.llm_runtime import compute_llm_config_hash, get_active_llm_runtime
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -625,6 +630,151 @@ def _resolve_local_runtime_id(runtime_id: str) -> Optional[str]:
     return _canonical_local_runtime_id(runtime_id)
 
 
+def _resolve_runtime_for_adapter_deploy(runtime_id: str | None) -> str:
+    requested = (runtime_id or "").strip().lower()
+    if requested:
+        return requested
+    active_runtime = get_active_llm_runtime()
+    active_provider = str(getattr(active_runtime, "provider", "") or "").strip().lower()
+    if active_provider:
+        return active_provider
+    fallback = str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+    return fallback or "ollama"
+
+
+def _runtime_endpoint_for_hash(runtime_id: str) -> str | None:
+    if runtime_id == "vllm":
+        return str(getattr(SETTINGS, "VLLM_ENDPOINT", "")).strip() or None
+    if runtime_id == "onnx":
+        return None
+    return build_http_url("localhost", 11434, "/v1")
+
+
+def _deploy_adapter_to_chat_runtime(
+    *,
+    mgr: Any,
+    adapter_id: str,
+    runtime_id: str | None,
+) -> Dict[str, Any]:
+    runtime_candidate = _resolve_runtime_for_adapter_deploy(runtime_id)
+    runtime_local_id = _resolve_local_runtime_id(runtime_candidate)
+    if runtime_local_id is None:
+        return {
+            "deployed": False,
+            "reason": f"runtime_not_local:{runtime_candidate}",
+            "runtime_id": runtime_candidate,
+        }
+
+    if runtime_local_id != "ollama":
+        return {
+            "deployed": False,
+            "reason": f"runtime_not_supported:{runtime_local_id}",
+            "runtime_id": runtime_local_id,
+        }
+
+    ollama_model_name = f"venom-adapter-{adapter_id}"
+    deployed_model = mgr.create_ollama_modelfile(
+        version_id=adapter_id,
+        output_name=ollama_model_name,
+    )
+    if not deployed_model:
+        raise RuntimeError("Failed to create Ollama model for adapter deployment")
+
+    config = config_manager.get_config(mask_secrets=False)
+    last_model_key = "LAST_MODEL_OLLAMA"
+    previous_model_key = previous_model_key_for_server(runtime_local_id)
+    previous_model = str(
+        config.get(last_model_key) or config.get("LLM_MODEL_NAME") or ""
+    ).strip()
+    selected_model = str(deployed_model)
+    updates: Dict[str, Any] = {
+        "ACTIVE_LLM_SERVER": runtime_local_id,
+        "LLM_MODEL_NAME": selected_model,
+        "HYBRID_LOCAL_MODEL": selected_model,
+        last_model_key: selected_model,
+    }
+    if previous_model and previous_model != selected_model:
+        updates[previous_model_key] = previous_model
+    endpoint = _runtime_endpoint_for_hash(runtime_local_id)
+    config_hash = compute_llm_config_hash(runtime_local_id, endpoint, selected_model)
+    updates["LLM_CONFIG_HASH"] = config_hash
+    config_manager.update_config(updates)
+    try:
+        SETTINGS.ACTIVE_LLM_SERVER = runtime_local_id
+        SETTINGS.LLM_MODEL_NAME = selected_model
+        SETTINGS.HYBRID_LOCAL_MODEL = selected_model
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+    except Exception:
+        logger.warning("Failed to update SETTINGS for adapter chat deployment.")
+
+    return {
+        "deployed": True,
+        "runtime_id": runtime_local_id,
+        "chat_model": selected_model,
+        "config_hash": config_hash,
+    }
+
+
+def _rollback_chat_runtime_after_adapter_deactivation() -> Dict[str, Any]:
+    active_runtime = get_active_llm_runtime()
+    runtime_candidate = (
+        str(getattr(active_runtime, "provider", "") or "").strip().lower()
+    )
+    runtime_candidate = (
+        runtime_candidate
+        or str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+    )
+    runtime_local_id = _resolve_local_runtime_id(runtime_candidate or "ollama")
+    if runtime_local_id is None:
+        return {
+            "rolled_back": False,
+            "reason": f"runtime_not_local:{runtime_candidate or 'unknown'}",
+        }
+
+    if runtime_local_id != "ollama":
+        return {
+            "rolled_back": False,
+            "reason": f"runtime_not_supported:{runtime_local_id}",
+            "runtime_id": runtime_local_id,
+        }
+
+    config = config_manager.get_config(mask_secrets=False)
+    previous_key = previous_model_key_for_server(runtime_local_id)
+    fallback_model = str(config.get(previous_key) or "").strip()
+    if not fallback_model:
+        return {
+            "rolled_back": False,
+            "reason": "previous_model_missing",
+            "runtime_id": runtime_local_id,
+        }
+
+    updates = {
+        "ACTIVE_LLM_SERVER": runtime_local_id,
+        "LLM_MODEL_NAME": fallback_model,
+        "HYBRID_LOCAL_MODEL": fallback_model,
+        "LAST_MODEL_OLLAMA": fallback_model,
+        previous_key: "",
+    }
+    endpoint = _runtime_endpoint_for_hash(runtime_local_id)
+    config_hash = compute_llm_config_hash(runtime_local_id, endpoint, fallback_model)
+    updates["LLM_CONFIG_HASH"] = config_hash
+    config_manager.update_config(updates)
+    try:
+        SETTINGS.ACTIVE_LLM_SERVER = runtime_local_id
+        SETTINGS.LLM_MODEL_NAME = fallback_model
+        SETTINGS.HYBRID_LOCAL_MODEL = fallback_model
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+    except Exception:
+        logger.warning("Failed to update SETTINGS during adapter chat rollback.")
+
+    return {
+        "rolled_back": True,
+        "runtime_id": runtime_local_id,
+        "chat_model": fallback_model,
+        "config_hash": config_hash,
+    }
+
+
 def _resolve_adapter_dir(*, models_dir: Path, adapter_id: str) -> Path:
     """Resolve adapter directory and reject path traversal."""
     adapter_dir = (models_dir / adapter_id).resolve()
@@ -740,7 +890,13 @@ async def list_adapters(mgr: Any) -> List[AdapterInfo]:
     return adapters
 
 
-def activate_adapter(mgr: Any, adapter_id: str) -> Dict[str, Any]:
+def activate_adapter(
+    mgr: Any,
+    adapter_id: str,
+    *,
+    runtime_id: str | None = None,
+    deploy_to_chat_runtime: bool = False,
+) -> Dict[str, Any]:
     """Activate adapter in model manager, returning API payload."""
     from venom_core.config import SETTINGS
 
@@ -757,16 +913,38 @@ def activate_adapter(mgr: Any, adapter_id: str) -> Dict[str, Any]:
     if not success:
         raise RuntimeError(f"Failed to activate adapter {adapter_id}")
 
-    logger.info("Activated adapter: %s", adapter_id)
-    return {
+    payload: Dict[str, Any] = {
         "success": True,
         "message": f"Adapter {adapter_id} activated successfully",
         "adapter_id": adapter_id,
         "adapter_path": str(adapter_path),
     }
+    if deploy_to_chat_runtime:
+        deploy_payload = _deploy_adapter_to_chat_runtime(
+            mgr=mgr,
+            adapter_id=adapter_id,
+            runtime_id=runtime_id,
+        )
+        payload.update(deploy_payload)
+        if deploy_payload.get("deployed"):
+            payload["message"] = (
+                f"Adapter {adapter_id} activated and deployed to chat runtime "
+                f"({deploy_payload.get('runtime_id')}:{deploy_payload.get('chat_model')})"
+            )
+        else:
+            payload["message"] = (
+                f"Adapter {adapter_id} activated, chat runtime deploy skipped "
+                f"({deploy_payload.get('reason', 'unknown')})"
+            )
+    logger.info("Activated adapter: %s", adapter_id)
+    return payload
 
 
-def deactivate_adapter(mgr: Any) -> Dict[str, Any]:
+def deactivate_adapter(
+    mgr: Any,
+    *,
+    deploy_to_chat_runtime: bool = False,
+) -> Dict[str, Any]:
     """Deactivate active adapter in model manager."""
     success = mgr.deactivate_adapter()
     if not success:
@@ -775,8 +953,22 @@ def deactivate_adapter(mgr: Any) -> Dict[str, Any]:
             "message": "No active adapter to deactivate",
         }
 
-    logger.info("Adapter deactivated - rolled back to base model")
-    return {
+    payload: Dict[str, Any] = {
         "success": True,
         "message": "Adapter deactivated successfully - using base model",
     }
+    if deploy_to_chat_runtime:
+        rollback_payload = _rollback_chat_runtime_after_adapter_deactivation()
+        payload.update(rollback_payload)
+        if rollback_payload.get("rolled_back"):
+            payload["message"] = (
+                "Adapter deactivated and chat runtime rolled back "
+                f"to {rollback_payload.get('chat_model')}"
+            )
+        else:
+            payload["message"] = (
+                "Adapter deactivated, chat runtime rollback skipped "
+                f"({rollback_payload.get('reason', 'unknown')})"
+            )
+    logger.info("Adapter deactivated - rolled back to base model")
+    return payload

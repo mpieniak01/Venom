@@ -367,6 +367,57 @@ def test_deactivate_adapter_variants():
     assert payload["success"] is True
 
 
+@patch("venom_core.api.routes.academy_models.config_manager")
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_with_chat_runtime_deploy_ollama(
+    mock_settings, mock_config_manager, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACTIVE_LLM_SERVER = "ollama"
+    mgr = MagicMock()
+
+    adapter_dir = tmp_path / "ok-adapter" / "adapter"
+    adapter_dir.mkdir(parents=True)
+    mgr.activate_adapter.return_value = True
+    mgr.create_ollama_modelfile.return_value = "venom-adapter-ok-adapter"
+    mock_config_manager.get_config.return_value = {"LAST_MODEL_OLLAMA": "phi3:latest"}
+
+    payload = academy_models.activate_adapter(
+        mgr=mgr,
+        adapter_id="ok-adapter",
+        runtime_id="ollama",
+        deploy_to_chat_runtime=True,
+    )
+    assert payload["success"] is True
+    assert payload["deployed"] is True
+    assert payload["runtime_id"] == "ollama"
+    assert payload["chat_model"] == "venom-adapter-ok-adapter"
+    assert mock_config_manager.update_config.call_count >= 1
+
+
+@patch("venom_core.api.routes.academy_models.config_manager")
+@patch("venom_core.config.SETTINGS")
+def test_deactivate_adapter_with_chat_runtime_rollback_ollama(
+    mock_settings, mock_config_manager
+):
+    mock_settings.ACTIVE_LLM_SERVER = "ollama"
+    mgr = MagicMock()
+    mgr.deactivate_adapter.return_value = True
+    mock_config_manager.get_config.return_value = {
+        "PREVIOUS_MODEL_OLLAMA": "phi3:latest"
+    }
+
+    payload = academy_models.deactivate_adapter(
+        mgr,
+        deploy_to_chat_runtime=True,
+    )
+    assert payload["success"] is True
+    assert payload["rolled_back"] is True
+    assert payload["runtime_id"] == "ollama"
+    assert payload["chat_model"] == "phi3:latest"
+    assert mock_config_manager.update_config.call_count >= 1
+
+
 @pytest.mark.asyncio
 @patch("venom_core.config.SETTINGS")
 async def test_validate_adapter_runtime_compatibility_rejects_non_local_runtime(

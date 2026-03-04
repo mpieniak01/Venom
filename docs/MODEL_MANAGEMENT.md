@@ -419,7 +419,8 @@ Content-Type: application/json
 {
   "adapter_id": "training_20240101_120000",
   "adapter_path": "./data/models/training_20240101_120000/adapter",
-  "runtime_id": "vllm"
+  "runtime_id": "vllm",
+  "deploy_to_chat_runtime": true
 }
 ```
 
@@ -427,6 +428,11 @@ Rules:
 - `runtime_id` accepts local runtimes (`ollama`, `vllm`, `onnx`).
 - Backend validates `adapter base_model + runtime` compatibility before activation.
 - Incompatible combinations are rejected with HTTP `400` and a list of compatible runtimes.
+- `deploy_to_chat_runtime` is optional (default `false`) and attempts adapter deployment into the active chat runtime.
+
+Current limitation:
+1. Automatic adapter deploy/rollback to chat runtime is currently implemented for `ollama`.
+2. Deploy/rollback support for `vllm` and `onnx` is planned as follow-up.
 
 ## Cache and Offline Mode
 

@@ -97,6 +97,63 @@ def test_start_self_learning(client: TestClient, mock_service: MagicMock):
     assert data["message"]
 
 
+def test_start_self_learning_passes_llm_dataset_fields(
+    client: TestClient, mock_service: MagicMock
+):
+    response = client.post(
+        "/api/v1/academy/self-learning/start",
+        json={
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {
+                "max_file_size_kb": 256,
+                "max_files": 500,
+                "max_total_size_mb": 50,
+            },
+            "llm_config": {
+                "base_model": "qwen2.5-coder:3b",
+                "dataset_strategy": "repo_tasks_basic",
+                "task_mix_preset": "repair-heavy",
+            },
+            "dry_run": True,
+        },
+    )
+
+    assert response.status_code == 200
+    start_kwargs = mock_service.start_run.call_args.kwargs
+    assert start_kwargs["mode"] == "llm_finetune"
+    assert start_kwargs["llm_config"]["dataset_strategy"] == "repo_tasks_basic"
+    assert start_kwargs["llm_config"]["task_mix_preset"] == "repair-heavy"
+
+
+def test_start_self_learning_passes_rag_chunking_and_retrieval_fields(
+    client: TestClient, mock_service: MagicMock
+):
+    response = client.post(
+        "/api/v1/academy/self-learning/start",
+        json={
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "limits": {
+                "max_file_size_kb": 256,
+                "max_files": 500,
+                "max_total_size_mb": 50,
+            },
+            "rag_config": {
+                "embedding_profile_id": "local:default",
+                "chunking_mode": "code_aware",
+                "retrieval_mode": "hybrid",
+            },
+            "dry_run": True,
+        },
+    )
+
+    assert response.status_code == 200
+    start_kwargs = mock_service.start_run.call_args.kwargs
+    assert start_kwargs["rag_config"]["chunking_mode"] == "code_aware"
+    assert start_kwargs["rag_config"]["retrieval_mode"] == "hybrid"
+
+
 def test_get_self_learning_status(client: TestClient):
     response = client.get(
         "/api/v1/academy/self-learning/6de0cc81-77db-4bbf-a598-b66c7a8d45e8/status"

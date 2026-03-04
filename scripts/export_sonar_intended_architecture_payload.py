@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
+try:
+    import yaml
+except ImportError as exc:
+    raise SystemExit(
+        "ERROR: PyYAML is required to run scripts/export_sonar_intended_architecture_payload.py. "
+        "Install it with 'pip install PyYAML' and rerun."
+    ) from exc
 
 
 @dataclass(frozen=True)

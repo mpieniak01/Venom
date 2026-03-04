@@ -18,7 +18,7 @@ WEB_PID_FILE ?= .web-next.pid
 NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
 START_MODE ?= dev
-START_WEB_MODE ?= webpack
+START_WEB_MODE ?= turbo
 ALLOW_DEGRADED_START ?= 0
 UVICORN_DEV_FLAGS ?= --reload
 UVICORN_PROD_FLAGS ?= --no-server-header
@@ -440,13 +440,16 @@ start: start-dev
 
 start-dev:
 	$(MAKE) --no-print-directory ensure-env-file
+	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=turbo _start
+
+start2: start-dev-webpack
+
+start-dev-webpack:
+	$(MAKE) --no-print-directory ensure-env-file
 	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=webpack _start
 
-start2: start-dev-turbo
-
 start-dev-turbo:
-	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=turbo _start
+	$(MAKE) --no-print-directory start-dev
 
 start-prod:
 	@echo "⚠️  OSTRZEŻENIE: tryb 'prod' nie jest jeszcze oficjalnie zwalidowany/rekomendowany operacyjnie."
@@ -1143,12 +1146,12 @@ help:
 	@echo "Venom Makefile - najczęściej używane komendy"
 	@echo ""
 	@echo "Start/Stop:"
-	@echo "  make start                    - start backend + frontend + runtime LLM"
-	@echo "  make start2                   - start backend + frontend (turbopack) + runtime LLM"
+	@echo "  make start                    - start backend + frontend (turbopack) + runtime LLM"
+	@echo "  make start2                   - start backend + frontend (webpack) + runtime LLM"
 	@echo "  make stop                     - stop backend + frontend + runtime LLM"
 	@echo "  make status                   - status procesów"
-	@echo "  make web-dev                  - frontend dev (webpack, stabilny)"
-	@echo "  make web-dev-turbo            - frontend dev (turbopack, opt-in)"
+	@echo "  make web-dev                  - frontend dev (webpack, fallback)"
+	@echo "  make web-dev-turbo            - frontend dev (turbopack, domyślny tryb dev)"
 	@echo "  make web-dev-turbo-debug      - frontend dev turbopack + debug logi"
 	@echo ""
 	@echo "Testy:"

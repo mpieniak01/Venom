@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -95,6 +96,10 @@ async def test_rag_index_run_completes_and_indexes_vectors(tmp_path: Path):
     assert status["status"] == "completed"
     assert status["progress"]["indexed_vectors"] > 0
     assert vector_store.calls
+    assert "repo_commit_sha" in status["artifacts"]
+    freshness = status["artifacts"].get("knowledge_freshness")
+    assert isinstance(freshness, dict)
+    assert freshness.get("mode") == "indexed"
 
 
 @pytest.mark.asyncio
@@ -133,6 +138,69 @@ async def test_llm_finetune_dry_run_creates_dataset_artifact(tmp_path: Path):
     dataset_path = status["artifacts"].get("dataset_path")
     assert isinstance(dataset_path, str)
     assert Path(dataset_path).exists()
+    report_path = status["artifacts"].get("dataset_report_path")
+    assert isinstance(report_path, str)
+    report_payload = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    assert report_payload["strategy"] == "reconstruct"
+    assert report_payload["quality_ok"] is True
+    evaluation = status["artifacts"].get("evaluation")
+    assert isinstance(evaluation, dict)
+    assert evaluation.get("kind") == "proxy_eval"
+    assert evaluation.get("decision") in {"promote", "reject"}
+    eval_report_path = status["artifacts"].get("evaluation_report_path")
+    assert isinstance(eval_report_path, str)
+    assert Path(eval_report_path).exists()
+
+
+@pytest.mark.asyncio
+async def test_llm_finetune_repo_tasks_strategy_uses_task_mix_and_report(
+    tmp_path: Path,
+):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "architecture.md").write_text(
+        "Venom architecture module A.\n" * 120,
+        encoding="utf-8",
+    )
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        SelfLearningService,
+        "_is_trainable_model_candidate",
+        staticmethod(lambda _model_id: True),
+    )
+
+    try:
+        run_id = service.start_run(
+            mode="llm_finetune",
+            sources=["docs"],
+            llm_config={
+                "base_model": "qwen2.5-coder:3b",
+                "dataset_strategy": "repo_tasks_basic",
+                "task_mix_preset": "repair-heavy",
+            },
+            dry_run=True,
+        )
+        status = await _wait_terminal(service, run_id)
+    finally:
+        monkeypatch.undo()
+
+    assert status["status"] == "completed"
+    report_path = status["artifacts"].get("dataset_report_path")
+    assert isinstance(report_path, str)
+    report_payload = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    assert report_payload["strategy"] == "repo_tasks_basic"
+    assert report_payload["task_mix_preset"] == "repair-heavy"
+    assert report_payload["accepted_records"] > 0
+    assert report_payload["task_distribution"].get("bugfix_hint", 0) > 0
+    evaluation = status["artifacts"].get("evaluation")
+    assert isinstance(evaluation, dict)
+    assert evaluation.get("mode") == "llm_finetune"
 
 
 @pytest.mark.asyncio
@@ -518,6 +586,8 @@ def test_parse_rag_config_normalizes_policy_and_profile(tmp_path: Path):
             "collection": "  custom  ",
             "category": "  cat  ",
             "chunk_text": 1,
+            "chunking_mode": "invalid-mode",
+            "retrieval_mode": "unknown-mode",
             "embedding_profile_id": "  local:default  ",
             "embedding_policy": "unsupported",
         }
@@ -525,8 +595,27 @@ def test_parse_rag_config_normalizes_policy_and_profile(tmp_path: Path):
     assert cfg.collection == "custom"
     assert cfg.category == "cat"
     assert cfg.chunk_text is True
+    assert cfg.chunking_mode == "plain"
+    assert cfg.retrieval_mode == "vector"
     assert cfg.embedding_profile_id == "local:default"
     assert cfg.embedding_policy == "strict"
+
+
+def test_parse_llm_config_normalizes_dataset_strategy_and_task_mix(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    cfg = service._parse_llm_config(
+        {
+            "base_model": "qwen2.5-coder:3b",
+            "dataset_strategy": "unsupported",
+            "task_mix_preset": "invalid",
+        }
+    )
+    assert cfg.base_model == "qwen2.5-coder:3b"
+    assert cfg.dataset_strategy == "reconstruct"
+    assert cfg.task_mix_preset == "balanced"
 
 
 def test_extract_file_text_handles_read_error_and_empty_content(tmp_path: Path):
@@ -552,6 +641,50 @@ def test_extract_file_text_handles_read_error_and_empty_content(tmp_path: Path):
     assert service._extract_file_text(run, empty_file) is None
 
 
+def test_chunk_extracted_files_code_aware_adds_symbol_and_language_metadata(
+    tmp_path: Path,
+):
+    repo_root = tmp_path / "repo"
+    source_file = repo_root / "venom_core" / "sample.py"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text(
+        "class Demo:\n    pass\n\n"
+        "def first_function():\n    return 1\n\n"
+        "def second_function():\n    return 2\n",
+        encoding="utf-8",
+    )
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+    )
+    extracted_files = [
+        (
+            source_file,
+            source_file.read_text(encoding="utf-8"),
+            "sha",
+            "venom_core/sample.py",
+            "code",
+        )
+    ]
+    chunks = service._chunk_extracted_files(
+        extracted_files,
+        rag_mode=True,
+        rag_config=service._parse_rag_config(
+            {
+                "chunking_mode": "code_aware",
+                "retrieval_mode": "hybrid",
+                "embedding_profile_id": "local:default",
+            }
+        ),
+    )
+
+    assert chunks
+    assert any(chunk.get("symbol") for chunk in chunks)
+    assert all(chunk.get("language") == "python" for chunk in chunks)
+    assert all("last_modified" in chunk for chunk in chunks)
+
+
 @pytest.mark.asyncio
 async def test_run_rag_index_dry_run_and_missing_store_paths(tmp_path: Path):
     service = SelfLearningService(
@@ -574,6 +707,8 @@ async def test_run_rag_index_dry_run_and_missing_store_paths(tmp_path: Path):
     )
     service._run_rag_index(run, chunks=[{"text": "x"}], extracted_files=[])
     assert run.progress.indexed_vectors == 1
+    assert isinstance(run.artifacts.get("knowledge_freshness"), dict)
+    assert run.artifacts.get("knowledge_freshness", {}).get("mode") == "dry_run"
 
     run.dry_run = False
     with pytest.raises(Exception, match="VectorStore is not available"):
@@ -587,3 +722,55 @@ def test_run_dir_rejects_invalid_identifier(tmp_path: Path):
     )
     with pytest.raises(ValueError, match="Invalid run_id"):
         service._run_dir("not-a-uuid")
+
+
+def test_resolve_repo_commit_sha_returns_none_outside_git(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True)
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+    )
+    assert service._resolve_repo_commit_sha() is None
+
+
+@pytest.mark.asyncio
+async def test_rag_index_run_writes_proxy_evaluation_artifact(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "guide.md").write_text("Venom knowledge.\n" * 80, encoding="utf-8")
+
+    class EmbeddingServiceStub:
+        service_type = "local"
+        local_model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        embedding_dimension = 384
+        _local_fallback_mode = False
+
+    class VectorStoreStub:
+        embedding_service = EmbeddingServiceStub()
+
+        def upsert(self, **_kwargs):
+            return {"chunks_count": 1}
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+        vector_store=VectorStoreStub(),
+    )
+    run_id = service.start_run(
+        mode="rag_index",
+        sources=["docs"],
+        rag_config={
+            "embedding_profile_id": "local:default",
+            "chunking_mode": "code_aware",
+            "retrieval_mode": "hybrid",
+        },
+        dry_run=False,
+    )
+    status = await _wait_terminal(service, run_id)
+    assert status["status"] in {"completed", "completed_with_warnings"}
+    evaluation = status["artifacts"].get("evaluation")
+    assert isinstance(evaluation, dict)
+    assert evaluation.get("mode") == "rag_index"
+    assert evaluation.get("kind") == "proxy_eval"

@@ -127,7 +127,13 @@ describe("SelfLearningConfigurator", () => {
       dry_run: boolean;
       limits: { max_file_size_kb: number; max_files: number; max_total_size_mb: number };
       sources: string[];
-      llm_config: { base_model: string } | null;
+      llm_config:
+        | {
+            base_model: string;
+            dataset_strategy?: string;
+            task_mix_preset?: string;
+          }
+        | null;
     };
     assert.equal(payload.mode, "llm_finetune");
     assert.equal(payload.dry_run, true);
@@ -136,6 +142,47 @@ describe("SelfLearningConfigurator", () => {
     assert.equal(payload.limits.max_total_size_mb, 42);
     assert.deepEqual(payload.sources, ["docs", "docs_dev", "code"]);
     assert.equal(payload.llm_config?.base_model, "qwen2.5-coder:3b");
+    assert.equal(payload.llm_config?.dataset_strategy, "reconstruct");
+    assert.equal(payload.llm_config?.task_mix_preset, "balanced");
+  });
+
+  it("submits selected dataset strategy and task mix for llm mode", async () => {
+    const onStart = mock.fn(async () => {});
+    renderWithLanguage(
+      <SelfLearningConfigurator
+        loading={false}
+        trainableModels={[
+          {
+            model_id: "qwen2.5-coder:3b",
+            label: "qwen2.5-coder:3b",
+            provider: "ollama",
+            recommended: true,
+            runtime_compatibility: { ollama: true },
+            recommended_runtime: "ollama",
+          },
+        ]}
+        embeddingProfiles={[]}
+        onStart={onStart}
+      />
+    );
+
+    fireEvent.click(screen.getByText(/LLM Fine-tune/i));
+    fireEvent.change(screen.getByLabelText(/Dataset strategy/i), {
+      target: { value: "repo_tasks_basic" },
+    });
+    fireEvent.change(screen.getByLabelText(/Task mix preset/i), {
+      target: { value: "repair-heavy" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Start Self-Learning/i }));
+    });
+
+    const payload = onStart.mock.calls[0]?.arguments[0] as {
+      llm_config?: { dataset_strategy?: string; task_mix_preset?: string } | null;
+    };
+    assert.equal(payload.llm_config?.dataset_strategy, "repo_tasks_basic");
+    assert.equal(payload.llm_config?.task_mix_preset, "repair-heavy");
   });
 
   it("blocks rag start in strict policy when embedding fallback is active", async () => {
@@ -167,6 +214,45 @@ describe("SelfLearningConfigurator", () => {
     });
 
     assert.equal((startButton as HTMLButtonElement).disabled, false);
+  });
+
+  it("submits rag chunking and retrieval modes", async () => {
+    const onStart = mock.fn(async () => {});
+    renderWithLanguage(
+      <SelfLearningConfigurator
+        loading={false}
+        trainableModels={[]}
+        embeddingProfiles={[
+          {
+            profile_id: "local:default",
+            provider: "local",
+            model: "sentence-transformers/all-MiniLM-L6-v2",
+            dimension: 384,
+            healthy: true,
+            fallback_active: false,
+            details: {},
+          },
+        ]}
+        onStart={onStart}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/RAG chunking mode/i), {
+      target: { value: "code_aware" },
+    });
+    fireEvent.change(screen.getByLabelText(/RAG retrieval mode/i), {
+      target: { value: "hybrid" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Start Self-Learning/i }));
+    });
+
+    const payload = onStart.mock.calls[0]?.arguments[0] as {
+      rag_config?: { chunking_mode?: string; retrieval_mode?: string } | null;
+    };
+    assert.equal(payload.rag_config?.chunking_mode, "code_aware");
+    assert.equal(payload.rag_config?.retrieval_mode, "hybrid");
   });
 });
 
@@ -214,6 +300,19 @@ describe("SelfLearningHistory", () => {
       run_id: "cccccccc-0000-0000-0000-000000000000",
       status: "completed_with_warnings",
       progress: { files_discovered: 8, files_processed: 8, chunks_created: 16, records_created: 16, indexed_vectors: 14 },
+      artifacts: {
+        repo_commit_sha: "0123456789abcdef0123456789abcdef01234567",
+        knowledge_snapshot_at: "2026-03-04T10:00:00+00:00",
+        knowledge_freshness: {
+          indexed_at: "2026-03-04T10:05:00+00:00",
+          mode: "indexed",
+        },
+        evaluation: {
+          kind: "proxy_eval",
+          score: 0.7421,
+          decision: "promote",
+        },
+      },
       error_message: "Skipped binary files",
     });
 
@@ -236,6 +335,13 @@ describe("SelfLearningHistory", () => {
     assert.ok(screen.getByText(run.run_id));
     assert.ok(screen.getByText(/Completed with warnings/i));
     assert.ok(screen.getByText(/Skipped binary files/i));
+    assert.ok(screen.getByText(/Knowledge commit/i));
+    assert.ok(screen.getByText(/0123456789ab/i));
+    assert.ok(screen.getByText(/Index freshness/i));
+    assert.ok(screen.getByText(/Eval score/i));
+    assert.ok(screen.getByText(/0.7421/i));
+    assert.ok(screen.getByText(/Promotion decision/i));
+    assert.ok(screen.getByText(/promote/i));
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Delete run/i }));

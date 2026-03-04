@@ -79,6 +79,14 @@ Wymagania:
   - konflikt `.next/dev/lock` oznacza aktywną inną instancję `next dev`,
   - komunikaty o module resolution/unsupported bundler wskazują na zachowania webpack-only.
 
+### 0.3.3 Wrappery Makefile (uruchamianie stacku)
+Z poziomu roota repo możesz użyć:
+- `make start` / `make stop` / `make status` (cykl życia pełnego stacku).
+- `make api-dev` (tylko backend).
+- `make web-dev` (tylko frontend, webpack).
+- `make web-dev-turbo` / `make web-dev-turbo-debug` (tylko frontend, turbopack).
+- `make test-web-turbo-smoke-clean` (smoke regresyjny turbopack).
+
 ### 0.3.1 Modularizacja słowników i18n (stan bieżący)
 - Główne locale (`web-next/lib/i18n/locales/pl.ts`, `en.ts`, `de.ts`) składają moduły domenowe.
 - Zrealizowane grupy modułów:

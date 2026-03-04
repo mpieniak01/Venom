@@ -79,6 +79,14 @@ Requirements:
   - `.next/dev/lock` conflict means another `next dev` process is active.
   - module resolution / unsupported bundler hints point to webpack-only behaviors.
 
+### 0.3.3 Makefile wrappers (stack launch)
+From repository root, you can use:
+- `make start` / `make stop` / `make status` (full stack lifecycle).
+- `make api-dev` (backend only).
+- `make web-dev` (frontend only, webpack).
+- `make web-dev-turbo` / `make web-dev-turbo-debug` (frontend only, turbopack).
+- `make test-web-turbo-smoke-clean` (turbopack regression smoke).
+
 ### 0.3.1 i18n dictionary modularization (current state)
 - Locale roots (`web-next/lib/i18n/locales/pl.ts`, `en.ts`, `de.ts`) aggregate domain modules.
 - Completed module groups:

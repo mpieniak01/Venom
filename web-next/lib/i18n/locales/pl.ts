@@ -220,7 +220,7 @@ export const pl = {
         runHistory: "Pełna historia runów",
         noSelectedRun: "Wybierz run z historii, aby zobaczyć szczegóły i wykresy.",
         queueFinished: "Kolejka zakończona",
-        queueNotFinished: "Kolejka nie zakończona",
+        queueNotFinished: "Kolejka niezakończona",
         noHistory: "Brak historii coding benchmarków.",
         clearAll: "Wyczyść wszystko",
         refresh: "Odśwież",

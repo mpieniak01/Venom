@@ -6,7 +6,6 @@ import asyncio
 import importlib.util
 import time
 from datetime import datetime
-from threading import Lock
 from typing import Any, Optional
 from uuid import UUID
 
@@ -73,9 +72,9 @@ LLM_SERVER_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas przełączania aktywnego serwera"},
 }
 
-_runtime_options_catalog_cache_lock = Lock()
+_runtime_options_catalog_cache_lock = remote_models_service.Lock()
 _runtime_options_catalog_cache: dict[str, dict[str, Any]] = {}
-_runtime_options_probe_cache_lock = Lock()
+_runtime_options_probe_cache_lock = remote_models_service.Lock()
 _runtime_options_probe_cache: dict[str, dict[str, Any]] = {}
 
 

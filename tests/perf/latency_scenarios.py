@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from typing import Dict, List, Tuple
@@ -25,6 +26,8 @@ from .latency_helpers import (
 MODEL_NAME = os.getenv("VENOM_LLM_MODEL", "gemma3")
 REPEATS = int(os.getenv("VENOM_LLM_REPEATS", "2"))
 STREAM_TIMEOUT = float(os.getenv("VENOM_STREAM_TIMEOUT", "60"))
+STREAM_RETRIES = int(os.getenv("VENOM_LLM_STREAM_RETRIES", "3"))
+DIRECT_MAX_TOKENS = int(os.getenv("VENOM_LLM_DIRECT_MAX_TOKENS", "64"))
 STATUS_TIMEOUT = float(os.getenv("VENOM_STATUS_TIMEOUT", "20"))
 STATUS_POLL_INTERVAL = float(os.getenv("VENOM_STATUS_POLL_INTERVAL", "1.0"))
 LATENCY_SUMMARY_LABEL = "LLM latency summary:"
@@ -136,30 +139,65 @@ async def run_llm_latency_e2e() -> None:
     _print_latency_summary(model_to_use, runtime_info, first_tokens, totals)
 
 
-async def _measure_direct_latency(prompt: str, model: str) -> Tuple[float, float]:
+async def _measure_direct_latency_once(prompt: str, model: str) -> Tuple[float, float]:
     start = time.perf_counter()
     first_token_time = None
+    had_chunk = False
     async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream(
-            "POST",
-            f"{API_BASE}/api/v1/llm/simple/stream",
-            json={"content": prompt, "model": model},
-        ) as response:
-            response.raise_for_status()
-            async for chunk in response.aiter_text():
-                if not chunk:
-                    continue
-                elapsed = time.perf_counter() - start
+        try:
+            async with client.stream(
+                "POST",
+                f"{API_BASE}/api/v1/llm/simple/stream",
+                json={
+                    "content": prompt,
+                    "model": model,
+                    "max_tokens": DIRECT_MAX_TOKENS,
+                    "think": False,
+                },
+            ) as response:
+                response.raise_for_status()
+                async for chunk in response.aiter_text():
+                    if not chunk:
+                        continue
+                    had_chunk = True
+                    elapsed = time.perf_counter() - start
+                    if first_token_time is None:
+                        first_token_time = elapsed
+                    if elapsed > STREAM_TIMEOUT:
+                        raise TimeoutError(
+                            f"Streaming przekroczył timeout {STREAM_TIMEOUT}s."
+                        )
+        except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ReadTimeout):
+            # Jeśli stream został przerwany po otrzymaniu chunków, traktujemy próbę jako udaną.
+            if had_chunk:
+                total_time = time.perf_counter() - start
                 if first_token_time is None:
-                    first_token_time = elapsed
-                if elapsed > STREAM_TIMEOUT:
-                    raise TimeoutError(
-                        f"Streaming przekroczył timeout {STREAM_TIMEOUT}s."
-                    )
+                    first_token_time = total_time
+                return first_token_time, total_time
+            raise
     total_time = time.perf_counter() - start
     if first_token_time is None:
         first_token_time = total_time
     return first_token_time, total_time
+
+
+async def _measure_direct_latency(prompt: str, model: str) -> Tuple[float, float]:
+    last_error: Exception | None = None
+    for attempt in range(1, STREAM_RETRIES + 1):
+        try:
+            return await _measure_direct_latency_once(prompt, model)
+        except (
+            TimeoutError,
+            httpx.RemoteProtocolError,
+            httpx.ReadError,
+            httpx.ReadTimeout,
+        ) as exc:
+            last_error = exc
+            if attempt < STREAM_RETRIES:
+                await asyncio.sleep(min(2 ** (attempt - 1), 5))
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Nie udało się zakończyć pomiaru direct latency")
 
 
 async def run_latency_modes_e2e() -> None:

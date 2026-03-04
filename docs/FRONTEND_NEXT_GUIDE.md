@@ -51,12 +51,16 @@ web-next/
 | Command                               | Purpose                                                                               |
 |---------------------------------------|---------------------------------------------------------------------------------------|
 | `npm --prefix web-next install`       | Install dependencies                                                                 |
-| `npm --prefix web-next run dev`       | Dev server (Next 16) with automatic meta generation (`predev → generate-meta.mjs`)   |
+| `npm --prefix web-next run dev`       | Stable dev server on webpack (`next dev --webpack`) with automatic meta generation    |
+| `npm --prefix web-next run dev:turbo` | Optional Turbopack dev mode (`next dev --turbo`)                                     |
+| `npm --prefix web-next run dev:turbo:debug` | Turbopack dev with extended debug logs (`NEXT_DEBUG`, `--trace-warnings`)      |
 | `npm --prefix web-next run build`     | Prod build, generates `public/meta.json` and standalone `.next/standalone`           |
 | `npm --prefix web-next run test:e2e`  | Playwright smoke in prod mode (15 Cockpit + bars scenarios)                          |
 | `npm --prefix web-next run test:unit` | Node test runner for frontend unit suites (`tests/*.test.ts`)                        |
 | `npm --prefix web-next run test:unit:components` | Component tests (`tsx` + `jsdom`) for React UI modules                  |
 | `npm --prefix web-next run test:unit:ci-lite` | CI-lite frontend lane (`test:unit` + `test:unit:components`)             |
+| `npm --prefix web-next run test:dev:turbo:smoke` | Starts dedicated `dev:turbo` instance and checks `/`, `/academy`, `/benchmark` |
+| `npm --prefix web-next run test:dev:turbo:smoke:clean` | Same as above + clears `.next` before start                          |
 | `npm --prefix web-next run lint`      | Next lint (ESLint 9)                                                                 |
 | `npm --prefix web-next run lint:locales` | Validate i18n dictionary consistency (`scripts/check-locales.ts`)                  |
 
@@ -77,6 +81,25 @@ Requirements:
   - `web-next/tests/topbar-i18n-keys.test.ts`
   - `web-next/tests/navigation-i18n-keys.test.ts`
   - `web-next/tests/operations-i18n-keys.test.ts`
+
+### 0.3.2 Turbopack stability workflow (PR 193)
+- Keep `dev` as default daily mode (`webpack`), and use `dev:turbo` as opt-in.
+- Before reporting Turbopack instability, run:
+  - `npm --prefix web-next run test:dev:turbo:smoke:clean`
+- CI automation available in:
+  - `.github/workflows/web-next-turbopack-smoke.yml` (nightly + `workflow_dispatch` + `push` on `main` for `web-next/**`)
+- If smoke fails, inspect hints from `web-next/scripts/check-dev-turbo.mjs`:
+  - `.next/dev/lock` conflict means another `next dev` process is active.
+  - module resolution / unsupported bundler hints point to webpack-only behaviors.
+
+### 0.3.3 Makefile wrappers (stack launch)
+From repository root, you can use:
+- `make start` / `make stop` / `make status` (full stack lifecycle).
+- `make start2` (full stack lifecycle with Turbopack frontend).
+- `make api-dev` (backend only).
+- `make web-dev` (frontend only, webpack).
+- `make web-dev-turbo` / `make web-dev-turbo-debug` (frontend only, turbopack).
+- `make test-web-turbo-smoke-clean` (turbopack regression smoke).
 
 ### 0.4 Configuration and proxy
 - Backend FastAPI listens on port 8000 by default – frontend connects via Next *rewrites* (see `next.config.mjs`) or via variables:

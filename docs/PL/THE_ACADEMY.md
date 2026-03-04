@@ -397,8 +397,10 @@ Domyślne zabezpieczenia:
 ### Stabilność dev (`web-next`)
 1. Domyślny lokalny dev dla UI działa na webpack:
    - `npm --prefix web-next run dev` -> `next dev --webpack`
-   - `npm --prefix web-next run dev:turbo` -> opcjonalny tryb Turbopack
-2. Zalecenie operacyjne:
+   - `npm --prefix web-next run dev:turbo` -> opcjonalny tryb Turbopack (`next dev --turbo`)
+2. Smoke regresyjny Turbopack:
+   - `npm --prefix web-next run test:dev:turbo:smoke:clean`
+3. Zalecenie operacyjne:
    - utrzymuj tylko jedną instancję `next dev`, aby uniknąć konfliktów `.next/dev/lock`.
 
 ## Roadmap

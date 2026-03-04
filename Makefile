@@ -299,6 +299,8 @@ architecture-drift-check:
 	@$(PYTHON_BIN) scripts/check_architecture_contracts.py \
 		--contracts config/architecture/contracts.yaml \
 		--source-root venom_core
+	@$(PYTHON_BIN) scripts/validate_sonar_architecture.py \
+		--config config/architecture/sonar-architecture.yaml
 
 optional-modules-contracts-check:
 	@$(PYTHON_BIN) scripts/check_optional_modules_contracts.py --repo-root .

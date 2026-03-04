@@ -211,6 +211,7 @@ class SelfLearningService:
         self.trainable_models_loader = trainable_models_loader
         self.is_model_trainable_fn = is_model_trainable_fn
         self._runs: dict[str, SelfLearningRun] = {}
+        self._pipeline_tasks: dict[str, asyncio.Task[None]] = {}
         self._lock = threading.Lock()
         self._snapshot_lock = threading.Lock()
         self._manifest_lock = threading.Lock()
@@ -272,7 +273,12 @@ class SelfLearningService:
         with self._lock:
             self._runs[run_id] = run
         self._append_run_snapshot(run)
-        asyncio.create_task(self._run_pipeline(run_id))
+        pipeline_task = asyncio.create_task(self._run_pipeline(run_id))
+        with self._lock:
+            self._pipeline_tasks[run_id] = pipeline_task
+        pipeline_task.add_done_callback(
+            lambda _: self._clear_pipeline_task_reference(run_id)
+        )
         return run_id
 
     def get_status(self, run_id: str) -> dict[str, Any] | None:
@@ -293,24 +299,38 @@ class SelfLearningService:
     def delete_run(self, run_id: str) -> bool:
         if not _is_valid_uuid(run_id):
             return False
+        task_to_cancel: asyncio.Task[None] | None = None
         with self._lock:
             run = self._runs.pop(run_id, None)
+            task_to_cancel = self._pipeline_tasks.pop(run_id, None)
         if run is None:
             return False
+        if task_to_cancel is not None and not task_to_cancel.done():
+            task_to_cancel.cancel()
         run_dir = self._run_dir(run_id)
         if run_dir.exists():
             shutil.rmtree(run_dir, ignore_errors=True)
         return True
 
     def clear_all_runs(self) -> int:
+        tasks_to_cancel: list[asyncio.Task[None]] = []
         with self._lock:
             run_ids = list(self._runs.keys())
             self._runs.clear()
+            tasks_to_cancel = list(self._pipeline_tasks.values())
+            self._pipeline_tasks.clear()
+        for task in tasks_to_cancel:
+            if not task.done():
+                task.cancel()
         for run_id in run_ids:
             run_dir = self._run_dir(run_id)
             if run_dir.exists():
                 shutil.rmtree(run_dir, ignore_errors=True)
         return len(run_ids)
+
+    def _clear_pipeline_task_reference(self, run_id: str) -> None:
+        with self._lock:
+            self._pipeline_tasks.pop(run_id, None)
 
     def _validate_sources(self, sources: list[str]) -> None:
         if not sources:

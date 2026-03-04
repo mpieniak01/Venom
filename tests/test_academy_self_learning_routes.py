@@ -241,3 +241,36 @@ def test_service_unavailable_returns_503(mock_service: MagicMock):
         },
     )
     assert response.status_code == 503
+
+
+def test_service_unavailable_returns_503_for_other_endpoints():
+    app = FastAPI()
+    routes.set_dependencies(self_learning_service=None)
+    app.include_router(routes.router)
+    client = TestClient(app)
+
+    status_response = client.get(
+        "/api/v1/academy/self-learning/6de0cc81-77db-4bbf-a598-b66c7a8d45e8/status"
+    )
+    list_response = client.get("/api/v1/academy/self-learning/list?limit=20")
+    caps_response = client.get("/api/v1/academy/self-learning/capabilities")
+    delete_response = client.delete(
+        "/api/v1/academy/self-learning/6de0cc81-77db-4bbf-a598-b66c7a8d45e8"
+    )
+    clear_response = client.delete("/api/v1/academy/self-learning/all")
+
+    assert status_response.status_code == 503
+    assert list_response.status_code == 503
+    assert caps_response.status_code == 503
+    assert delete_response.status_code == 503
+    assert clear_response.status_code == 503
+
+
+def test_delete_self_learning_run_not_found(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.delete_run.return_value = False
+    response = client.delete(
+        "/api/v1/academy/self-learning/6de0cc81-77db-4bbf-a598-b66c7a8d45e8"
+    )
+    assert response.status_code == 404

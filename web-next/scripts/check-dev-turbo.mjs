@@ -25,6 +25,23 @@ const CLEAN_NEXT = process.env.TURBO_SMOKE_CLEAN_NEXT === "1";
 
 const REQUIRED_ROUTES = ["/", "/academy", "/benchmark"];
 const RECENT_LOG_LINES = 120;
+const FAILURE_HINTS = [
+  {
+    pattern: /\.next[\\/]+dev[\\/]+lock/i,
+    hint:
+      "Detected `.next/dev/lock` conflict. Stop other Next dev instances and rerun. Example: `pkill -f \"next dev\"`.",
+  },
+  {
+    pattern: /module not found|can't resolve/i,
+    hint:
+      "Detected module resolution error. Verify import paths and `npm --prefix web-next ci` state.",
+  },
+  {
+    pattern: /unsupported|not implemented|webpack/i,
+    hint:
+      "Detected potential Webpack-only behavior. Check `next.config.ts` and webpack-specific imports/loaders.",
+  },
+];
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -41,20 +58,43 @@ async function fetchWithTimeout(url, timeoutMs) {
   }
 }
 
-async function waitForServerReady(baseUrl, timeoutMs) {
+function detectFailureHints(buffer) {
+  const recent = buildRecentLogs(buffer);
+  return FAILURE_HINTS.filter(({ pattern }) => pattern.test(recent)).map(
+    ({ hint }) => hint,
+  );
+}
+
+function buildFailureReport(reason, buffer) {
+  const hints = detectFailureHints(buffer);
+  const hintsBlock =
+    hints.length > 0 ? `\n\nHints:\n- ${hints.join("\n- ")}` : "";
+  return `${reason}\n\nRecent logs:\n${buildRecentLogs(buffer)}${hintsBlock}`;
+}
+
+async function waitForServerReady(baseUrl, timeoutMs, proc) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
+    if (proc.exitCode !== null) {
+      return {
+        ready: false,
+        reason: `dev:turbo exited early with code=${proc.exitCode}`,
+      };
+    }
     try {
       const res = await fetchWithTimeout(baseUrl, REQUEST_TIMEOUT_MS);
       if (res.status < 500) {
-        return true;
+        return { ready: true, reason: null };
       }
     } catch {
       // retry
     }
     await sleep(1000);
   }
-  return false;
+  return {
+    ready: false,
+    reason: `dev:turbo not reachable within ${timeoutMs}ms`,
+  };
 }
 
 function buildRecentLogs(buffer) {
@@ -89,6 +129,18 @@ async function terminateProcess(proc) {
   }
 }
 
+function installSignalHandlers(proc) {
+  const stopAndExit = (code) => {
+    terminateProcess(proc)
+      .catch(() => null)
+      .finally(() => {
+        process.exit(code);
+      });
+  };
+  process.once("SIGINT", () => stopAndExit(130));
+  process.once("SIGTERM", () => stopAndExit(143));
+}
+
 async function main() {
   const webRoot = process.cwd();
   const nextDir = path.join(webRoot, ".next");
@@ -117,6 +169,7 @@ async function main() {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  installSignalHandlers(proc);
 
   proc.stdout.on("data", (chunk) => {
     const text = String(chunk);
@@ -136,11 +189,13 @@ async function main() {
   });
 
   try {
-    const ready = await waitForServerReady(BASE_URL, START_TIMEOUT_MS);
-    if (!ready) {
+    const readyResult = await waitForServerReady(BASE_URL, START_TIMEOUT_MS, proc);
+    if (!readyResult.ready) {
       throw new Error(
-        "dev:turbo did not become reachable before timeout. Recent logs:\n" +
-          buildRecentLogs(outputLines),
+        buildFailureReport(
+          readyResult.reason ?? "dev:turbo startup failed",
+          outputLines,
+        ),
       );
     }
 
@@ -149,8 +204,10 @@ async function main() {
       const res = await fetchWithTimeout(url, REQUEST_TIMEOUT_MS);
       if (res.status >= 500) {
         throw new Error(
-          `Route check failed for ${route}: status=${res.status}\n` +
-            buildRecentLogs(outputLines),
+          buildFailureReport(
+            `Route check failed for ${route}: status=${res.status}`,
+            outputLines,
+          ),
         );
       }
       console.log(`✅ ${route} status=${res.status}`);

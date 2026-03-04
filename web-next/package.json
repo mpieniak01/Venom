@@ -9,7 +9,8 @@
   "scripts": {
     "predev": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
     "dev": "next dev --webpack",
-    "dev:turbo": "next dev",
+    "dev:turbo": "next dev --turbo",
+    "dev:turbo:debug": "NEXT_TELEMETRY_DISABLED=1 NEXT_DEBUG=true NODE_OPTIONS=--trace-warnings next dev --turbo",
     "prebuild": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
     "build": "next build",
     "postbuild": "node scripts/prepare-standalone.mjs",

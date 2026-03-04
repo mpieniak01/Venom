@@ -18,6 +18,7 @@ Szczegółowe źródła danych, testy i zasady SCC znajdziesz również w `docs/
 ```bash
 npm --prefix web-next install          # jednorazowo
 npm --prefix web-next run dev          # http://localhost:3000 (proxy do API)
+npm --prefix web-next run dev:turbo    # opcjonalny tryb Turbopack
 ```
 
 Najważniejsze zmienne środowiskowe frontu:
@@ -34,6 +35,7 @@ API_PROXY_TARGET=http://localhost:8000              # cel rewritera Next (dev)
 |-------------------------------------|-------------------------------------------------------|
 | Build produkcyjny                   | `npm --prefix web-next run build`                     |
 | Serwowanie buildu (`next start`)    | `npm --prefix web-next run start`                     |
+| Smoke regresyjny Turbopack          | `npm --prefix web-next run test:dev:turbo:smoke:clean` |
 | Playwright smoke (15 testów)        | `npm --prefix web-next run test:e2e`                  |
 | Lint + typy                         | `npm --prefix web-next run lint`                      |
 | Walidacja tłumaczeń                 | `npm --prefix web-next run lint:locales`              |

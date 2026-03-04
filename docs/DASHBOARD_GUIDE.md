@@ -18,6 +18,7 @@ Detailed data sources, tests and SCC rules will be documented in the dedicated F
 ```bash
 npm --prefix web-next install          # one-time
 npm --prefix web-next run dev          # http://localhost:3000 (proxy to API)
+npm --prefix web-next run dev:turbo    # optional Turbopack mode
 ```
 
 Most important frontend environment variables:
@@ -34,6 +35,7 @@ API_PROXY_TARGET=http://localhost:8000              # Next rewriter target (dev)
 |--------------------------------------|------------------------------------------------------|
 | Production build                     | `npm --prefix web-next run build`                    |
 | Serve build (`next start`)           | `npm --prefix web-next run start`                    |
+| Turbopack smoke regression           | `npm --prefix web-next run test:dev:turbo:smoke:clean` |
 | Playwright smoke (15 tests)          | `npm --prefix web-next run test:e2e`                 |
 | Lint + types                         | `npm --prefix web-next run lint`                     |
 | Translation validation               | `npm --prefix web-next run lint:locales`             |

@@ -51,12 +51,16 @@ web-next/
 | Komenda                               | Cel                                                                                   |
 |---------------------------------------|----------------------------------------------------------------------------------------|
 | `npm --prefix web-next install`       | Instalacja zależności                                                                |
-| `npm --prefix web-next run dev`       | Dev server (Next 16) z automatyczną generacją meta (`predev → generate-meta.mjs`)     |
+| `npm --prefix web-next run dev`       | Stabilny dev server na webpack (`next dev --webpack`) z automatyczną generacją meta  |
+| `npm --prefix web-next run dev:turbo` | Opcjonalny tryb Turbopack (`next dev --turbo`)                                       |
+| `npm --prefix web-next run dev:turbo:debug` | Turbopack z rozszerzonym logowaniem (`NEXT_DEBUG`, `--trace-warnings`)       |
 | `npm --prefix web-next run build`     | Build prod, generuje `public/meta.json` i standalone `.next/standalone`               |
 | `npm --prefix web-next run test:e2e`  | Playwright smoke w trybie prod (15 scenariuszy Cockpit + belki)                       |
 | `npm --prefix web-next run test:unit` | Testy jednostkowe frontendu (`tests/*.test.ts`)                                        |
 | `npm --prefix web-next run test:unit:components` | Testy komponentowe (`tsx` + `jsdom`) modułów React UI                    |
 | `npm --prefix web-next run test:unit:ci-lite` | Frontendowy lane CI-lite (`test:unit` + `test:unit:components`)          |
+| `npm --prefix web-next run test:dev:turbo:smoke` | Start dedykowanej instancji `dev:turbo` i check `/`, `/academy`, `/benchmark` |
+| `npm --prefix web-next run test:dev:turbo:smoke:clean` | Jak wyżej + czyszczenie `.next` przed startem                    |
 | `npm --prefix web-next run lint`      | Next lint (ESLint 9)                                                                  |
 | `npm --prefix web-next run lint:locales` | Walidacja spójności słowników i18n (`scripts/check-locales.ts`)                     |
 
@@ -64,6 +68,14 @@ Wymagania:
 - Node.js `>=20.9.0`
 - npm `>=10.0.0`
 - Zalecenie: użyć `nvm use` w katalogu `web-next/` (`.nvmrc`)
+
+### 0.3.2 Workflow stabilności Turbopack (PR 193)
+- Trzymaj `dev` jako codzienny tryb domyślny (`webpack`), a `dev:turbo` traktuj jako opt-in.
+- Przed zgłoszeniem niestabilności Turbopack uruchom:
+  - `npm --prefix web-next run test:dev:turbo:smoke:clean`
+- Gdy smoke failuje, sprawdź podpowiedzi ze skryptu `web-next/scripts/check-dev-turbo.mjs`:
+  - konflikt `.next/dev/lock` oznacza aktywną inną instancję `next dev`,
+  - komunikaty o module resolution/unsupported bundler wskazują na zachowania webpack-only.
 
 ### 0.3.1 Modularizacja słowników i18n (stan bieżący)
 - Główne locale (`web-next/lib/i18n/locales/pl.ts`, `en.ts`, `de.ts`) składają moduły domenowe.

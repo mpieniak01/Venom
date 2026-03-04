@@ -54,7 +54,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
 		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke help \
-		modules-status modules-pull modules-branches modules-exec architecture-drift-check optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
+		modules-status modules-pull modules-branches modules-exec architecture-drift-check architecture-sonar-export optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
 
 lint:
 	pre-commit run --all-files
@@ -299,6 +299,13 @@ architecture-drift-check:
 	@$(PYTHON_BIN) scripts/check_architecture_contracts.py \
 		--contracts config/architecture/contracts.yaml \
 		--source-root venom_core
+	@$(PYTHON_BIN) scripts/validate_sonar_architecture.py \
+		--config config/architecture/sonar-architecture.yaml
+
+architecture-sonar-export:
+	@$(PYTHON_BIN) scripts/export_sonar_intended_architecture_payload.py \
+		--config config/architecture/sonar-architecture.yaml \
+		--output test-results/sonar/architecture-summary.json
 
 optional-modules-contracts-check:
 	@$(PYTHON_BIN) scripts/check_optional_modules_contracts.py --repo-root .

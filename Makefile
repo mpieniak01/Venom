@@ -302,6 +302,11 @@ architecture-drift-check:
 	@$(PYTHON_BIN) scripts/validate_sonar_architecture.py \
 		--config config/architecture/sonar-architecture.yaml
 
+architecture-sonar-export:
+	@$(PYTHON_BIN) scripts/export_sonar_intended_architecture_payload.py \
+		--config config/architecture/sonar-architecture.yaml \
+		--output test-results/sonar/architecture-summary.json
+
 optional-modules-contracts-check:
 	@$(PYTHON_BIN) scripts/check_optional_modules_contracts.py --repo-root .
 

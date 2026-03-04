@@ -29,6 +29,15 @@ Komenda sprawdza:
 1. kontrakty importów (`venom_core`),
 2. strukturę pliku architektury Sonar.
 
+Opcjonalny eksport podsumowania do ręcznej synchronizacji UI Sonar:
+
+```bash
+make architecture-sonar-export
+```
+
+Wynik:
+1. `test-results/sonar/architecture-summary.json`
+
 ## Integracja z Sonar
 
 Venom przekazuje ścieżkę pliku architektury przez:

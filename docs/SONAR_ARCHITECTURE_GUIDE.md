@@ -29,6 +29,15 @@ It validates both:
 1. Python import contracts (`venom_core`),
 2. Sonar architecture config structure.
 
+Optional summary export for manual Sonar UI sync:
+
+```bash
+make architecture-sonar-export
+```
+
+Output:
+1. `test-results/sonar/architecture-summary.json`
+
 ## Sonar Integration
 
 Venom passes Sonar architecture file path through:

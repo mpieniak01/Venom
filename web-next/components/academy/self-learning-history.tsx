@@ -15,6 +15,49 @@ interface Props {
   readonly onClearAll: () => Promise<void> | void;
 }
 
+interface SelfLearningRunListProps {
+  readonly runs: readonly SelfLearningRunStatus[];
+  readonly selectedRunId: string | null;
+  readonly onSelectRun: (runId: string) => void;
+  readonly onRefresh: () => Promise<void> | void;
+  readonly onClearAll: () => Promise<void> | void;
+  readonly language: string;
+}
+
+interface SelfLearningRunDetailsProps {
+  readonly selectedRun: SelfLearningRunStatus | null;
+  readonly onDeleteRun: (runId: string) => Promise<void> | void;
+  readonly language: string;
+}
+
+interface SelfLearningMetricsTableProps {
+  readonly selectedRun: SelfLearningRunStatus;
+  readonly language: string;
+  readonly selectedCommitSha: string | null;
+  readonly selectedSnapshotAt: string | null;
+  readonly selectedKnowledgeFreshness: {
+    readonly indexedAt: string | null;
+    readonly mode: string | null;
+  };
+  readonly selectedEvaluation: {
+    readonly score: number | null;
+    readonly decision: string | null;
+  };
+}
+
+interface RunArtifactsSummary {
+  readonly selectedCommitSha: string | null;
+  readonly selectedSnapshotAt: string | null;
+  readonly selectedKnowledgeFreshness: {
+    readonly indexedAt: string | null;
+    readonly mode: string | null;
+  };
+  readonly selectedEvaluation: {
+    readonly score: number | null;
+    readonly decision: string | null;
+  };
+}
+
 const STATUS_CLASS: Record<SelfLearningStatus, string> = {
   pending: "text-amber-300",
   running: "text-blue-300",
@@ -61,6 +104,19 @@ function readEvaluationSummary(
   return { score: null, decision: null };
 }
 
+function hasScore(value: number | null): value is number {
+  return typeof value === "number";
+}
+
+function readRunArtifacts(run: SelfLearningRunStatus): RunArtifactsSummary {
+  return {
+    selectedCommitSha: readArtifactString(run.artifacts, "repo_commit_sha"),
+    selectedSnapshotAt: readArtifactString(run.artifacts, "knowledge_snapshot_at"),
+    selectedKnowledgeFreshness: readKnowledgeFreshness(run.artifacts),
+    selectedEvaluation: readEvaluationSummary(run.artifacts),
+  };
+}
+
 function SelfLearningRunList({
   runs,
   selectedRunId,
@@ -68,9 +124,7 @@ function SelfLearningRunList({
   onRefresh,
   onClearAll,
   language,
-}: Pick<Props, "runs" | "selectedRunId" | "onSelectRun" | "onRefresh" | "onClearAll"> & {
-  language: string;
-}) {
+}: SelfLearningRunListProps) {
   const t = useTranslation();
   return (
     <div className="space-y-3 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
@@ -131,140 +185,152 @@ function SelfLearningRunDetails({
   selectedRun,
   onDeleteRun,
   language,
-}: {
-  selectedRun: SelfLearningRunStatus | null;
-  onDeleteRun: Props["onDeleteRun"];
-  language: string;
-}) {
+}: SelfLearningRunDetailsProps) {
   const t = useTranslation();
-  const selectedCommitSha = selectedRun
-    ? readArtifactString(selectedRun.artifacts, "repo_commit_sha")
-    : null;
-  const selectedSnapshotAt = selectedRun
-    ? readArtifactString(selectedRun.artifacts, "knowledge_snapshot_at")
-    : null;
-  const selectedKnowledgeFreshness = selectedRun
-    ? readKnowledgeFreshness(selectedRun.artifacts)
-    : { indexedAt: null, mode: null };
-  const selectedEvaluation = selectedRun
-    ? readEvaluationSummary(selectedRun.artifacts)
-    : { score: null, decision: null };
-
-  return (
+  if (selectedRun === null) {
+    return (
       <div className="space-y-3 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
         <h3 className="text-sm font-semibold text-[color:var(--text-heading)]">
           {t("academy.selfLearning.history.details")}
         </h3>
-
-        {selectedRun ? (
-          <>
-            <div className="grid gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3 text-xs text-[color:var(--text-secondary)] md:grid-cols-2">
-              <div>
-                <p className="font-semibold text-[color:var(--text-heading)]">{selectedRun.run_id}</p>
-                <p>{t(`academy.selfLearning.modes.${selectedRun.mode}`)}</p>
-              </div>
-              <div>
-                <p>{t("academy.selfLearning.history.sources")}: {selectedRun.sources.join(", ")}</p>
-                <p>{t("academy.selfLearning.history.progress")}: {selectedRun.progress.files_processed}/{selectedRun.progress.files_discovered}</p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto rounded-lg border border-[color:var(--ui-border)]">
-              <table className="w-full text-left text-xs">
-                <tbody>
-                  <tr className="border-b border-[color:var(--ui-border)]">
-                    <th className="px-3 py-2 text-[color:var(--text-secondary)]">{t("academy.selfLearning.history.metrics.files")}</th>
-                    <td className="px-3 py-2">{selectedRun.progress.files_processed}</td>
-                  </tr>
-                  <tr className="border-b border-[color:var(--ui-border)]">
-                    <th className="px-3 py-2 text-[color:var(--text-secondary)]">{t("academy.selfLearning.history.metrics.chunks")}</th>
-                    <td className="px-3 py-2">{selectedRun.progress.chunks_created}</td>
-                  </tr>
-                  <tr className="border-b border-[color:var(--ui-border)]">
-                    <th className="px-3 py-2 text-[color:var(--text-secondary)]">{t("academy.selfLearning.history.metrics.records")}</th>
-                    <td className="px-3 py-2">{selectedRun.progress.records_created}</td>
-                  </tr>
-                  <tr>
-                    <th className="px-3 py-2 text-[color:var(--text-secondary)]">{t("academy.selfLearning.history.metrics.vectors")}</th>
-                    <td className="px-3 py-2">{selectedRun.progress.indexed_vectors}</td>
-                  </tr>
-                  {selectedCommitSha ? (
-                    <tr className="border-t border-[color:var(--ui-border)]">
-                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
-                        {t("academy.selfLearning.history.metrics.commit")}
-                      </th>
-                      <td className="px-3 py-2 font-mono">{selectedCommitSha.slice(0, 12)}</td>
-                    </tr>
-                  ) : null}
-                  {selectedSnapshotAt ? (
-                    <tr>
-                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
-                        {t("academy.selfLearning.history.metrics.snapshot")}
-                      </th>
-                      <td className="px-3 py-2">
-                        {new Date(selectedSnapshotAt).toLocaleString(language)}
-                      </td>
-                    </tr>
-                  ) : null}
-                  {selectedKnowledgeFreshness.indexedAt ? (
-                    <tr>
-                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
-                        {t("academy.selfLearning.history.metrics.freshness")}
-                      </th>
-                      <td className="px-3 py-2">
-                        {new Date(selectedKnowledgeFreshness.indexedAt).toLocaleString(language)}
-                        {selectedKnowledgeFreshness.mode
-                          ? ` (${selectedKnowledgeFreshness.mode})`
-                          : ""}
-                      </td>
-                    </tr>
-                  ) : null}
-                  {selectedEvaluation.score !== null ? (
-                    <tr>
-                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
-                        {t("academy.selfLearning.history.metrics.evalScore")}
-                      </th>
-                      <td className="px-3 py-2">{selectedEvaluation.score.toFixed(4)}</td>
-                    </tr>
-                  ) : null}
-                  {selectedEvaluation.decision ? (
-                    <tr>
-                      <th className="px-3 py-2 text-[color:var(--text-secondary)]">
-                        {t("academy.selfLearning.history.metrics.evalDecision")}
-                      </th>
-                      <td className="px-3 py-2">
-                        {t(
-                          `academy.selfLearning.history.metrics.evalDecisionValues.${selectedEvaluation.decision}`
-                        )}
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-
-            {selectedRun.error_message ? (
-              <p className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                {selectedRun.error_message}
-              </p>
-            ) : null}
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-2 border-red-500/40 text-red-200 hover:bg-red-500/10"
-                onClick={() => onDeleteRun(selectedRun.run_id)}
-              >
-                <Trash2 className="h-4 w-4" />
-                {t("academy.selfLearning.history.delete")}
-              </Button>
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-hint">{t("academy.selfLearning.history.noSelection")}</p>
-        )}
+        <p className="text-sm text-hint">{t("academy.selfLearning.history.noSelection")}</p>
       </div>
+    );
+  }
+  const {
+    selectedCommitSha,
+    selectedSnapshotAt,
+    selectedKnowledgeFreshness,
+    selectedEvaluation,
+  } = readRunArtifacts(selectedRun);
+
+  return (
+    <div className="space-y-3 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
+      <h3 className="text-sm font-semibold text-[color:var(--text-heading)]">
+        {t("academy.selfLearning.history.details")}
+      </h3>
+      <div className="grid gap-2 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3 text-xs text-[color:var(--text-secondary)] md:grid-cols-2">
+        <div>
+          <p className="font-semibold text-[color:var(--text-heading)]">{selectedRun.run_id}</p>
+          <p>{t(`academy.selfLearning.modes.${selectedRun.mode}`)}</p>
+        </div>
+        <div>
+          <p>{t("academy.selfLearning.history.sources")}: {selectedRun.sources.join(", ")}</p>
+          <p>{t("academy.selfLearning.history.progress")}: {selectedRun.progress.files_processed}/{selectedRun.progress.files_discovered}</p>
+        </div>
+      </div>
+
+      <SelfLearningMetricsTable
+        selectedRun={selectedRun}
+        language={language}
+        selectedCommitSha={selectedCommitSha}
+        selectedSnapshotAt={selectedSnapshotAt}
+        selectedKnowledgeFreshness={selectedKnowledgeFreshness}
+        selectedEvaluation={selectedEvaluation}
+      />
+
+      {selectedRun.error_message ? (
+        <p className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          {selectedRun.error_message}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-2 border-red-500/40 text-red-200 hover:bg-red-500/10"
+          onClick={() => onDeleteRun(selectedRun.run_id)}
+        >
+          <Trash2 className="h-4 w-4" />
+          {t("academy.selfLearning.history.delete")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SelfLearningMetricsTable({
+  selectedRun,
+  language,
+  selectedCommitSha,
+  selectedSnapshotAt,
+  selectedKnowledgeFreshness,
+  selectedEvaluation,
+}: SelfLearningMetricsTableProps) {
+  const t = useTranslation();
+  return (
+    <div className="overflow-x-auto rounded-lg border border-[color:var(--ui-border)]">
+      <table className="w-full text-left text-xs">
+        <tbody>
+          <tr className="border-b border-[color:var(--ui-border)]">
+            <th className="px-3 py-2 text-[color:var(--text-secondary)]">{t("academy.selfLearning.history.metrics.files")}</th>
+            <td className="px-3 py-2">{selectedRun.progress.files_processed}</td>
+          </tr>
+          <tr className="border-b border-[color:var(--ui-border)]">
+            <th className="px-3 py-2 text-[color:var(--text-secondary)]">{t("academy.selfLearning.history.metrics.chunks")}</th>
+            <td className="px-3 py-2">{selectedRun.progress.chunks_created}</td>
+          </tr>
+          <tr className="border-b border-[color:var(--ui-border)]">
+            <th className="px-3 py-2 text-[color:var(--text-secondary)]">{t("academy.selfLearning.history.metrics.records")}</th>
+            <td className="px-3 py-2">{selectedRun.progress.records_created}</td>
+          </tr>
+          <tr>
+            <th className="px-3 py-2 text-[color:var(--text-secondary)]">{t("academy.selfLearning.history.metrics.vectors")}</th>
+            <td className="px-3 py-2">{selectedRun.progress.indexed_vectors}</td>
+          </tr>
+          {selectedCommitSha ? (
+            <tr className="border-t border-[color:var(--ui-border)]">
+              <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                {t("academy.selfLearning.history.metrics.commit")}
+              </th>
+              <td className="px-3 py-2 font-mono">{selectedCommitSha.slice(0, 12)}</td>
+            </tr>
+          ) : null}
+          {selectedSnapshotAt ? (
+            <tr>
+              <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                {t("academy.selfLearning.history.metrics.snapshot")}
+              </th>
+              <td className="px-3 py-2">
+                {new Date(selectedSnapshotAt).toLocaleString(language)}
+              </td>
+            </tr>
+          ) : null}
+          {selectedKnowledgeFreshness.indexedAt ? (
+            <tr>
+              <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                {t("academy.selfLearning.history.metrics.freshness")}
+              </th>
+              <td className="px-3 py-2">
+                {new Date(selectedKnowledgeFreshness.indexedAt).toLocaleString(language)}
+                {selectedKnowledgeFreshness.mode ? ` (${selectedKnowledgeFreshness.mode})` : ""}
+              </td>
+            </tr>
+          ) : null}
+          {hasScore(selectedEvaluation.score) ? (
+            <tr>
+              <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                {t("academy.selfLearning.history.metrics.evalScore")}
+              </th>
+              <td className="px-3 py-2">{selectedEvaluation.score.toFixed(4)}</td>
+            </tr>
+          ) : null}
+          {selectedEvaluation.decision ? (
+            <tr>
+              <th className="px-3 py-2 text-[color:var(--text-secondary)]">
+                {t("academy.selfLearning.history.metrics.evalDecision")}
+              </th>
+              <td className="px-3 py-2">
+                {t(
+                  `academy.selfLearning.history.metrics.evalDecisionValues.${selectedEvaluation.decision}`
+                )}
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -158,6 +158,7 @@ Inference tuning and Academy training are connected but separate:
    - `GET /api/v1/system/llm-runtime/options`
 3. Adapter activation can include runtime validation:
    - `POST /api/v1/academy/adapters/activate` with optional `runtime_id`
+   - optional `deploy_to_chat_runtime=true` to deploy active adapter to Chat runtime
 
 Important Academy contract fields:
 - `source_type`: where training runs (`local` or `cloud`), not model-origin distribution.
@@ -169,6 +170,11 @@ Practical sequence:
 2. Train adapter.
 3. In Chat, switch to runtime compatible with that base/adapter.
 4. Activate adapter (optionally with `runtime_id`) to enforce compatibility check.
+5. If `deploy_to_chat_runtime=true`, Academy can auto-switch Chat runtime model for Ollama adapters.
+
+Current limitation:
+1. Automatic adapter deploy/rollback to Chat runtime is currently implemented for `ollama`.
+2. `vllm` and `onnx` deploy/rollback are tracked as follow-up work.
 
 ## Usage
 

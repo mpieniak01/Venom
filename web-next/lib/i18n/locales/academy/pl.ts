@@ -294,6 +294,10 @@ export const academy = {
         freshness: "Świeżość indeksu",
         evalScore: "Wynik ewaluacji",
         evalDecision: "Decyzja promocji",
+        evalDecisionValues: {
+          promote: "Promuj",
+          reject: "Odrzuć",
+        },
       },
     },
     status: {

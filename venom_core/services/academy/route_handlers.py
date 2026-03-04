@@ -434,9 +434,18 @@ def deactivate_adapter_handler(*, req: Request, academy: Any) -> Dict[str, Any]:
                 status_code=503,
                 detail="ModelManager not available for adapter deactivation",
             )
+        deploy_to_chat_runtime_raw = (
+            str(req.query_params.get("deploy_to_chat_runtime", "true")).strip().lower()
+        )
+        deploy_to_chat_runtime = deploy_to_chat_runtime_raw not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
         return academy.academy_models.deactivate_adapter(
             mgr=manager,
-            deploy_to_chat_runtime=True,
+            deploy_to_chat_runtime=deploy_to_chat_runtime,
         )
 
     except academy.AcademyRouteError as e:

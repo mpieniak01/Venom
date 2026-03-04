@@ -235,3 +235,31 @@ def test_conversion_listing_download_and_stream_helpers() -> None:
         job_id="job-1", academy=academy
     )
     assert isinstance(stream_resp, StreamingResponse)
+
+
+def test_deactivate_adapter_handler_respects_query_flag_false() -> None:
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    manager = object()
+    academy._get_model_manager = lambda: manager
+    academy.academy_models = SimpleNamespace(
+        deactivate_adapter=lambda **kwargs: kwargs,
+    )
+    req = SimpleNamespace(query_params={"deploy_to_chat_runtime": "false"})
+    payload = route_handlers.deactivate_adapter_handler(req=req, academy=academy)
+    assert payload["mgr"] is manager
+    assert payload["deploy_to_chat_runtime"] is False
+
+
+def test_deactivate_adapter_handler_defaults_query_flag_to_true() -> None:
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    manager = object()
+    academy._get_model_manager = lambda: manager
+    academy.academy_models = SimpleNamespace(
+        deactivate_adapter=lambda **kwargs: kwargs,
+    )
+    req = SimpleNamespace(query_params={})
+    payload = route_handlers.deactivate_adapter_handler(req=req, academy=academy)
+    assert payload["mgr"] is manager
+    assert payload["deploy_to_chat_runtime"] is True

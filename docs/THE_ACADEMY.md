@@ -550,7 +550,9 @@ Activate a LoRA adapter (hot-swap).
 ```json
 {
   "adapter_id": "training_20240101_120000",
-  "adapter_path": "./data/models/training_20240101_120000/adapter"
+  "adapter_path": "./data/models/training_20240101_120000/adapter",
+  "runtime_id": "ollama",
+  "deploy_to_chat_runtime": true
 }
 ```
 
@@ -558,19 +560,33 @@ Activate a LoRA adapter (hot-swap).
 ```json
 {
   "success": true,
-  "message": "Adapter activated successfully",
-  "adapter_id": "training_20240101_120000"
+  "message": "Adapter activated and deployed to chat runtime (ollama:venom-adapter-training_20240101_120000)",
+  "adapter_id": "training_20240101_120000",
+  "deployed": true,
+  "runtime_id": "ollama",
+  "chat_model": "venom-adapter-training_20240101_120000"
 }
 ```
+
+Notes:
+1. `deploy_to_chat_runtime` is optional (defaults to `false`).
+2. Runtime auto-deploy/rollback is currently implemented for `ollama`.
+3. For unsupported runtimes (`vllm`, `onnx`, cloud), activation still succeeds but deploy returns a `reason` in payload.
 
 #### **POST /api/v1/academy/adapters/deactivate**
 Deactivate current adapter (rollback to base model).
 
+Optional query parameter:
+1. `deploy_to_chat_runtime=true|false` (default `true`)
+
 **Response:**
 ```json
 {
   "success": true,
-  "message": "Adapter deactivated successfully - using base model"
+  "message": "Adapter deactivated and chat runtime rolled back to phi3:latest",
+  "rolled_back": true,
+  "runtime_id": "ollama",
+  "chat_model": "phi3:latest"
 }
 ```
 

@@ -22,6 +22,7 @@ const buildApiUrl = (path: string): string => `${resolveApiRoot()}${path}`;
 /** Map raw API status string to hook CodingBenchmarkStatus, or null if unchanged. */
 export function resolvePollStatus(apiStatus: string): CodingBenchmarkStatus | null {
   if (apiStatus === "completed") return "completed";
+  if (apiStatus === "completed_with_failures") return "completed_with_failures";
   if (apiStatus === "failed") return "failed";
   if (apiStatus === "running") return "running";
   return null;
@@ -112,6 +113,20 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
             rate: rate.toFixed(1),
           }),
           "info",
+        );
+      } else if (data.status === "completed_with_failures") {
+        stopPolling();
+        setStatus("completed_with_failures");
+        const completed = data.summary?.completed ?? 0;
+        const failed = data.summary?.failed ?? 0;
+        const total = data.summary?.total_jobs ?? 0;
+        addLog(
+          t("benchmark.coding.logs.completedWithFailures", {
+            completed,
+            failed,
+            total,
+          }),
+          "warning",
         );
       } else if (data.status === "failed") {
         stopPolling();

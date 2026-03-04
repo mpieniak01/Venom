@@ -8,7 +8,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from venom_core.services.benchmark_coding import (
+    CodingBenchmarkRun,
     CodingBenchmarkService,
+    CodingJobState,
+    CodingRunConfig,
     _enrich_job_dict,
     _is_valid_run_id,
     _parse_scheduler_state,
@@ -313,6 +316,101 @@ def test_scheduler_thread_failure(service):
     assert run.error_message is not None
 
 
+def test_scheduler_thread_marks_completed_with_failures_when_queue_finished(service):
+    """Run z domkniętą kolejką i błędnymi jobami powinien być częściowo udany."""
+    with patch.object(service, "_run_scheduler_thread"):
+        run_id = service.start_run(models=["m1", "m2"], tasks=["python_sanity"])
+
+    state = {
+        "meta": {},
+        "jobs": [
+            {
+                "id": "job-0001",
+                "model": "m1",
+                "mode": "single",
+                "task": "python_sanity",
+                "role": "main",
+                "status": "completed",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "started_at": "2024-01-01T00:00:01+00:00",
+                "finished_at": "2024-01-01T00:00:10+00:00",
+                "rc": 0,
+                "artifact": None,
+                "output": None,
+            },
+            {
+                "id": "job-0002",
+                "model": "m2",
+                "mode": "single",
+                "task": "python_sanity",
+                "role": "main",
+                "status": "failed",
+                "created_at": "2024-01-01T00:00:10+00:00",
+                "started_at": "2024-01-01T00:00:11+00:00",
+                "finished_at": "2024-01-01T00:00:20+00:00",
+                "rc": 2,
+                "artifact": None,
+                "output": "boom",
+            },
+        ],
+    }
+    service._state_file(run_id).write_text(json.dumps(state), encoding="utf-8")
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 2
+    mock_proc.communicate.return_value = ("", "failed job")
+
+    with patch("subprocess.Popen", return_value=mock_proc):
+        service._run_scheduler_thread(run_id)
+
+    run = service._runs[run_id]
+    status = service.get_run_status(run_id)
+    assert run.status == "completed_with_failures"
+    assert status is not None
+    assert status["summary"]["queue_finished"] is True
+    assert status["summary"]["failed"] == 1
+
+
+def test_scheduler_thread_keeps_failed_when_queue_not_finished(service):
+    """Run z niedomkniętą kolejką pozostaje failed dla błędu krytycznego."""
+    with patch.object(service, "_run_scheduler_thread"):
+        run_id = service.start_run(models=["m1"], tasks=["python_sanity"])
+
+    state = {
+        "meta": {},
+        "jobs": [
+            {
+                "id": "job-0001",
+                "model": "m1",
+                "mode": "single",
+                "task": "python_sanity",
+                "role": "main",
+                "status": "running",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "started_at": "2024-01-01T00:00:01+00:00",
+                "finished_at": None,
+                "rc": None,
+                "artifact": None,
+                "output": None,
+            }
+        ],
+    }
+    service._state_file(run_id).write_text(json.dumps(state), encoding="utf-8")
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 2
+    mock_proc.communicate.return_value = ("", "scheduler interrupted")
+
+    with patch("subprocess.Popen", return_value=mock_proc):
+        service._run_scheduler_thread(run_id)
+
+    run = service._runs[run_id]
+    status = service.get_run_status(run_id)
+    assert run.status == "failed"
+    assert status is not None
+    assert status["summary"]["queue_finished"] is False
+
+
 def test_delete_run_stops_active_process(service):
     """Test że delete_run kończy aktywny proces benchmarku."""
     with patch.object(service, "_run_scheduler_thread"):
@@ -424,3 +522,116 @@ def test_run_dir_raises_for_path_traversal(service, tmp_path):
     with patch.object(Path, "resolve", patched_resolve):
         with pytest.raises(ValueError, match="escapes storage directory"):
             service._run_dir(valid_looking_id)
+
+
+def _make_run_with_jobs(
+    *, status: str, jobs: list[CodingJobState]
+) -> CodingBenchmarkRun:
+    cfg = CodingRunConfig(
+        models=["m1"],
+        tasks=["python_sanity"],
+        loop_task="",
+        first_sieve_task="",
+        timeout=180,
+        max_rounds=1,
+        endpoint="http://127.0.0.1:11434",
+        stop_on_failure=False,
+        options={},
+        model_timeout_overrides={},
+    )
+    return CodingBenchmarkRun(
+        run_id="95a79713-1d83-439b-b307-5bef744950d0",
+        config=cfg,
+        status=status,
+        jobs=jobs,
+        created_at="2024-01-01T00:00:00+00:00",
+    )
+
+
+def test_normalize_loaded_run_status_handles_invalid_status(service):
+    """Nieznany status po restarcie powinien zostać zmapowany na failed."""
+    run = _make_run_with_jobs(status="unknown", jobs=[])
+    service._normalize_loaded_run_status(run)
+    assert run.status == "failed"
+    assert run.error_message == "Nieznany status run po restarcie serwisu."
+
+
+def test_normalize_loaded_run_status_running_queue_finished_becomes_completed(service):
+    """Run 'running' z domkniętą kolejką powinien zostać domknięty do completed."""
+    run = _make_run_with_jobs(
+        status="running",
+        jobs=[
+            CodingJobState(
+                id="job-1",
+                model="m1",
+                mode="single",
+                task="python_sanity",
+                status="completed",
+            )
+        ],
+    )
+    service._normalize_loaded_run_status(run)
+    assert run.status == "completed"
+
+
+def test_normalize_loaded_run_status_running_open_queue_becomes_failed(service):
+    """Run 'running' z niedomkniętą kolejką po restarcie powinien być failed."""
+    run = _make_run_with_jobs(
+        status="running",
+        jobs=[
+            CodingJobState(
+                id="job-1",
+                model="m1",
+                mode="single",
+                task="python_sanity",
+                status="running",
+            )
+        ],
+    )
+    service._normalize_loaded_run_status(run)
+    assert run.status == "failed"
+    assert run.error_message is not None
+    assert "running po restarcie serwisu" in run.error_message
+
+
+def test_finalize_run_status_rc_zero_with_failed_jobs_sets_partial_success(service):
+    """rc=0 i błędy jobów => completed_with_failures z opisem błędów."""
+    run = _make_run_with_jobs(
+        status="running",
+        jobs=[
+            CodingJobState(
+                id="job-1",
+                model="m1",
+                mode="single",
+                task="python_sanity",
+                status="failed",
+            )
+        ],
+    )
+    service._finalize_run_status(run, returncode=0, stderr_raw=None)
+    assert run.status == "completed_with_failures"
+    assert run.error_message is not None
+    assert "failed=1" in run.error_message
+
+
+def test_finalize_run_status_nonzero_finished_queue_without_failures_sets_completed(
+    service,
+):
+    """rc!=0, kolejka domknięta i brak błędów jobów => defensive completed."""
+    run = _make_run_with_jobs(
+        status="running",
+        jobs=[
+            CodingJobState(
+                id="job-1",
+                model="m1",
+                mode="single",
+                task="python_sanity",
+                status="completed",
+            )
+        ],
+    )
+    service._finalize_run_status(run, returncode=2, stderr_raw="")
+    assert run.status == "completed"
+    assert (
+        run.error_message == "Scheduler rc=2 mimo kompletnej kolejki bez błędów jobów."
+    )

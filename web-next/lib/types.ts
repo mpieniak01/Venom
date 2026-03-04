@@ -686,7 +686,13 @@ export interface ContextUsed {
 }
 
 // Coding Benchmark types
-export type CodingBenchmarkStatus = "idle" | "pending" | "running" | "completed" | "failed";
+export type CodingBenchmarkStatus =
+  | "idle"
+  | "pending"
+  | "running"
+  | "completed"
+  | "completed_with_failures"
+  | "failed";
 export type CodingBenchmarkRunStatus = Exclude<CodingBenchmarkStatus, "idle">;
 
 export interface CodingBenchmarkConfig {
@@ -738,7 +744,9 @@ export interface CodingBenchmarkSummary {
   completed: number;
   failed: number;
   pending: number;
+  running: number;
   skipped: number;
+  queue_finished: boolean;
   success_rate: number;
 }
 

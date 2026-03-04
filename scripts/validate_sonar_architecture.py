@@ -2,10 +2,19 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
+try:
+    import yaml
+except ImportError as exc:
+    print(
+        "ERROR: PyYAML is required to run scripts/validate_sonar_architecture.py.\n"
+        "Install it with 'pip install PyYAML' and rerun.",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from exc
 
 ALLOWED_RELATIONS = {"deny", "exclusive-allow"}
 ALLOWED_EXTENSIONS = {".json", ".yaml", ".yml"}
@@ -77,9 +86,16 @@ def _validate_group(
         errors.append(f"{name}.label: duplicate group path '{group_path}'.")
     seen_paths.add(group_path)
 
-    _validate_pattern_list(f"{name}.patterns", node.get("patterns"), errors)
+    patterns = node.get("patterns")
+    children = node.get("groups")
 
-    children = node.get("groups", [])
+    if patterns is not None:
+        _validate_pattern_list(f"{name}.patterns", patterns, errors)
+    elif children is None:
+        errors.append(
+            f"{name}: group must define at least one of 'patterns' or 'groups'."
+        )
+
     if children is None:
         children = []
     if not isinstance(children, list):

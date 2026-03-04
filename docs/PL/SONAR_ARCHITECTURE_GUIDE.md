@@ -50,17 +50,24 @@ Właściwość jest ustawiona w `sonar-project.properties`.
 
 ### Opcjonalne tryby uruchomień Sonar
 
+To repo używa `sonar-scanner`/GitHub Actions (a nie Maven). Przykłady lokalne:
+
 Jawne wskazanie pliku:
 
 ```bash
-mvn clean verify sonar:sonar -Dsonar.architecture.configpath=./config/architecture/sonar-architecture.yaml
+sonar-scanner -Dsonar.architecture.configpath=./config/architecture/sonar-architecture.yaml
 ```
 
 Uruchomienie bez pliku (porównanie/diagnostyka):
 
 ```bash
-mvn clean verify sonar:sonar -Dsonar.architecture.noconfig
+sonar-scanner -Dsonar.architecture.noconfig=true
 ```
+
+Ścieżka CI:
+
+1. `.github/workflows/ci.yml` uruchamia `SonarSource/sonarqube-scan-action`.
+2. `sonar-project.properties` przechowuje domyślne `sonar.architecture.configpath`.
 
 ## Workflow aktualizacji
 

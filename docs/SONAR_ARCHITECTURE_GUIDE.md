@@ -50,17 +50,24 @@ The property is configured in `sonar-project.properties`.
 
 ### Optional Sonar run modes
 
+This repository uses `sonar-scanner`/GitHub Actions (not Maven). Local examples:
+
 Explicit config path:
 
 ```bash
-mvn clean verify sonar:sonar -Dsonar.architecture.configpath=./config/architecture/sonar-architecture.yaml
+sonar-scanner -Dsonar.architecture.configpath=./config/architecture/sonar-architecture.yaml
 ```
 
 No config (comparison/debug):
 
 ```bash
-mvn clean verify sonar:sonar -Dsonar.architecture.noconfig
+sonar-scanner -Dsonar.architecture.noconfig=true
 ```
+
+CI path:
+
+1. `.github/workflows/ci.yml` runs `SonarSource/sonarqube-scan-action`.
+2. `sonar-project.properties` keeps the default `sonar.architecture.configpath`.
 
 ## Update Workflow
 

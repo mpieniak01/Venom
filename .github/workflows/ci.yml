@@ -65,6 +65,17 @@ jobs:
         run: |
           make architecture-drift-check
 
+      - name: Export Sonar architecture summary
+        run: |
+          make architecture-sonar-export
+
+      - name: Upload architecture summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-architecture-summary
+          path: test-results/sonar/architecture-summary.json
+          if-no-files-found: error
+
   backend-lite:
     name: Backend lite (pytest)
     runs-on: ubuntu-latest

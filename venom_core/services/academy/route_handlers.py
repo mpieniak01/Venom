@@ -400,6 +400,10 @@ async def activate_adapter_handler(
         return academy.academy_models.activate_adapter(
             mgr=manager,
             adapter_id=request.adapter_id,
+            runtime_id=runtime_id or None,
+            deploy_to_chat_runtime=bool(
+                getattr(request, "deploy_to_chat_runtime", False)
+            ),
         )
 
     except academy.AcademyRouteError as e:
@@ -430,7 +434,10 @@ def deactivate_adapter_handler(*, req: Request, academy: Any) -> Dict[str, Any]:
                 status_code=503,
                 detail="ModelManager not available for adapter deactivation",
             )
-        return academy.academy_models.deactivate_adapter(mgr=manager)
+        return academy.academy_models.deactivate_adapter(
+            mgr=manager,
+            deploy_to_chat_runtime=True,
+        )
 
     except academy.AcademyRouteError as e:
         raise academy._to_http_exception(e) from e

@@ -109,7 +109,6 @@ function buildEntries() {
 
 function renderFile(entries) {
   const importLines = [
-    'import type { ComponentType } from "react";',
     'import type { LucideIcon } from "lucide-react";',
     'import { Settings } from "lucide-react";',
   ];
@@ -132,13 +131,6 @@ function renderFile(entries) {
       de: "${entry.navLabels.de.replace(/"/g, '\\"')}",
     },
   }`;
-    })
-    .join(",\n");
-
-  const componentPathMapBody = mappedEntries
-    .map((entry) => {
-      if (!entry.componentImport) return `  "${entry.moduleId}": null`;
-      return `  "${entry.moduleId}": "${entry.componentImport}"`;
     })
     .join(",\n");
 
@@ -185,10 +177,6 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
 ${listBody}
 ];
 
-const OPTIONAL_MODULE_COMPONENT_PATHS: Record<string, string | null> = {
-${componentPathMapBody}
-};
-
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
 ${flagMapBody}
 };
@@ -229,24 +217,6 @@ export function resolveOptionalModuleBySlug(slug: string): OptionalModuleManifes
     }
   }
   return null;
-}
-
-export async function getOptionalModuleComponent(moduleId: string): Promise<ComponentType | null> {
-  const importPath = OPTIONAL_MODULE_COMPONENT_PATHS[moduleId];
-  if (!importPath) {
-    return null;
-  }
-  try {
-    // Keep import path dynamic to avoid bundler-time hard failure when optional module files
-    // are not present in current checkout (e.g. CI sparse contexts).
-    const dynamicImport = new Function("path", "return import(path)") as (
-      path: string,
-    ) => Promise<{ default?: ComponentType }>;
-    const loaded = await dynamicImport(importPath);
-    return loaded?.default ?? null;
-  } catch {
-    return null;
-  }
 }
 `;
 }

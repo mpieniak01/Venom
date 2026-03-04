@@ -19,6 +19,10 @@ describe("resolvePollStatus", () => {
     assert.strictEqual(resolvePollStatus("failed"), "failed");
   });
 
+  it("returns completed_with_failures for partial-success status", () => {
+    assert.strictEqual(resolvePollStatus("completed_with_failures"), "completed_with_failures");
+  });
+
   it("returns running for running status", () => {
     assert.strictEqual(resolvePollStatus("running"), "running");
   });

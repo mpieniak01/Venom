@@ -83,7 +83,9 @@ class CodingBenchmarkSummary(BaseModel):
     completed: int = 0
     failed: int = 0
     pending: int = 0
+    running: int = 0
     skipped: int = 0
+    queue_finished: bool = False
     success_rate: float = 0.0
 
 
@@ -111,7 +113,7 @@ class CodingBenchmarkStatusResponse(BaseModel):
     """Status i wyniki coding benchmarku."""
 
     run_id: str
-    status: str  # pending | running | completed | failed
+    status: str  # pending | running | completed | completed_with_failures | failed
     config: CodingBenchmarkRunConfig
     jobs: list[CodingJobResponse] = Field(default_factory=list)
     summary: Optional[CodingBenchmarkSummary] = None
@@ -125,7 +127,7 @@ class CodingBenchmarkListItem(BaseModel):
     """Skrócony widok coding benchmarku na liście."""
 
     run_id: str
-    status: str
+    status: str  # pending | running | completed | completed_with_failures | failed
     config: CodingBenchmarkRunConfig
     summary: Optional[CodingBenchmarkSummary] = None
     created_at: str

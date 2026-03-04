@@ -28,7 +28,9 @@ _SCHEDULER_SCRIPT = "scripts/ollama_bench/scheduler.py"
 _VALID_TASKS = frozenset(
     {"python_sanity", "python_simple", "python_complex", "python_complex_bugfix"}
 )
-_VALID_STATUS = frozenset({"pending", "running", "completed", "failed"})
+_VALID_STATUS = frozenset(
+    {"pending", "running", "completed", "completed_with_failures", "failed"}
+)
 
 
 def _utc_now_iso() -> str:
@@ -121,14 +123,18 @@ class CodingBenchmarkRun:
         completed = sum(1 for j in self.jobs if j.status == "completed")
         failed = sum(1 for j in self.jobs if j.status == "failed")
         pending = sum(1 for j in self.jobs if j.status == "pending")
+        running = sum(1 for j in self.jobs if j.status == "running")
         skipped = sum(1 for j in self.jobs if j.status == "skipped")
         success_rate = round((completed / total) * 100.0, 2) if total else 0.0
+        queue_finished = total > 0 and pending == 0 and running == 0
         return {
             "total_jobs": total,
             "completed": completed,
             "failed": failed,
             "pending": pending,
+            "running": running,
             "skipped": skipped,
+            "queue_finished": queue_finished,
             "success_rate": success_rate,
         }
 
@@ -282,13 +288,6 @@ class CodingBenchmarkService:
                     finished_at=data.get("finished_at"),
                     error_message=data.get("error_message"),
                 )
-                if run.status == "running":
-                    run.status = "failed"
-                    if not run.error_message:
-                        run.error_message = (
-                            "Run oznaczony jako running po restarcie serwisu; "
-                            "oznaczono jako failed."
-                        )
                 # Odczytaj stan jobów z scheduler_state.json
                 state_file = self._state_file(run_id)
                 if state_file.exists():
@@ -298,10 +297,40 @@ class CodingBenchmarkService:
                         CodingJobState(**j) if isinstance(j, dict) else j
                         for j in data.get("jobs", [])
                     ]
+                self._normalize_loaded_run_status(run)
                 with self._lock:
                     self._runs[run_id] = run
             except Exception as exc:
                 logger.warning(f"Nie można załadować run {meta_file}: {exc}")
+
+    def _normalize_loaded_run_status(self, run: CodingBenchmarkRun) -> None:
+        """Normalizuje status run po restarcie serwisu na podstawie stanu jobów."""
+        if run.status not in _VALID_STATUS:
+            run.status = "failed"
+            if not run.error_message:
+                run.error_message = "Nieznany status run po restarcie serwisu."
+            return
+
+        summary = run.to_summary_dict()
+        queue_finished = bool(summary["queue_finished"])
+        has_failures = (summary["failed"] + summary["skipped"]) > 0
+        has_jobs = summary["total_jobs"] > 0
+
+        if run.status == "running":
+            if queue_finished and has_jobs:
+                run.status = "completed_with_failures" if has_failures else "completed"
+                return
+            run.status = "failed"
+            if not run.error_message:
+                run.error_message = (
+                    "Run oznaczony jako running po restarcie serwisu; "
+                    "oznaczono jako failed."
+                )
+            return
+
+        # Migracja starych danych: queue domknięta i są błędy jobów -> status częściowo udany.
+        if run.status == "failed" and queue_finished and has_jobs and has_failures:
+            run.status = "completed_with_failures"
 
     def _validate_start_request(self, models: list[str], tasks: list[str]) -> None:
         if not models:
@@ -427,16 +456,7 @@ class CodingBenchmarkService:
                 run.jobs = _parse_scheduler_state(state_file)
 
             run.finished_at = _utc_now_iso()
-            if proc.returncode == 0:
-                run.status = "completed"
-            else:
-                run.status = "failed"
-                stderr = (stderr or "").strip()
-                run.error_message = (
-                    f"Scheduler rc={proc.returncode}: {stderr[:500]}"
-                    if stderr
-                    else f"Scheduler rc={proc.returncode}"
-                )
+            self._finalize_run_status(run, proc.returncode, stderr)
         except Exception as exc:
             logger.exception(f"Błąd schedulera dla run {run_id}")
             run.status = "failed"
@@ -450,6 +470,48 @@ class CodingBenchmarkService:
             is_still_registered = self._runs.get(run_id) is run
         if is_still_registered:
             self._persist_meta(run)
+
+    def _finalize_run_status(
+        self, run: CodingBenchmarkRun, returncode: int, stderr_raw: str | None
+    ) -> None:
+        """Wyznacza końcowy status runu na podstawie rc schedulera i stanu kolejki."""
+        summary = run.to_summary_dict()
+        queue_finished = bool(summary["queue_finished"])
+        has_failures = (summary["failed"] + summary["skipped"]) > 0
+        has_jobs = summary["total_jobs"] > 0
+        stderr = (stderr_raw or "").strip()
+
+        if returncode == 0:
+            if has_failures:
+                run.status = "completed_with_failures"
+                run.error_message = f"Run zakończony z błędami: failed={summary['failed']}, skipped={summary['skipped']}."
+            else:
+                run.status = "completed"
+            return
+
+        if queue_finished and has_jobs:
+            if has_failures:
+                run.status = "completed_with_failures"
+                details = f"failed={summary['failed']}, skipped={summary['skipped']}"
+                run.error_message = (
+                    f"Scheduler rc={returncode} po domknięciu kolejki ({details}): {stderr[:500]}"
+                    if stderr
+                    else f"Scheduler rc={returncode} po domknięciu kolejki ({details})."
+                )
+                return
+            # Defensive fallback: nie ma błędów jobów, ale scheduler zwrócił rc != 0.
+            run.status = "completed"
+            run.error_message = (
+                f"Scheduler rc={returncode} mimo kompletnej kolejki bez błędów jobów."
+            )
+            return
+
+        run.status = "failed"
+        run.error_message = (
+            f"Scheduler rc={returncode}: {stderr[:500]}"
+            if stderr
+            else f"Scheduler rc={returncode}"
+        )
 
     def _stop_active_process(self, run_id: str) -> None:
         """Kończy aktywny proces schedulera dla run, jeśli istnieje."""

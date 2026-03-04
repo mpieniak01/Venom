@@ -61,6 +61,8 @@ def test_get_gpu_info_docker_success(monkeypatch):
 
 def test_get_gpu_info_docker_api_error(monkeypatch):
     """Test get_gpu_info handling Docker APIException."""
+    # Make the mock deterministic across docker SDK versions.
+    monkeypatch.setattr(gpu_habitat_mod, "APIError", RuntimeError)
 
     class MockContainers:
         def run(self, *args, **kwargs):

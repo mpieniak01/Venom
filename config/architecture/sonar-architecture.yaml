@@ -1,0 +1,101 @@
+perspectives:
+  - label: "Venom Codebase"
+    description: "High-level architecture view for backend, frontend and optional modules."
+    groups:
+      - label: "Backend"
+        patterns:
+          - "venom_core/**"
+        groups:
+          - label: "API"
+            patterns:
+              - "venom_core/api/**"
+          - label: "Core"
+            patterns:
+              - "venom_core/core/**"
+          - label: "Services"
+            patterns:
+              - "venom_core/services/**"
+          - label: "Execution"
+            patterns:
+              - "venom_core/execution/**"
+          - label: "Memory"
+            patterns:
+              - "venom_core/memory/**"
+          - label: "Infrastructure"
+            patterns:
+              - "venom_core/infrastructure/**"
+          - label: "Learning"
+            patterns:
+              - "venom_core/learning/**"
+          - label: "Utils"
+            patterns:
+              - "venom_core/utils/**"
+      - label: "Frontend"
+        patterns:
+          - "web-next/**"
+        groups:
+          - label: "App"
+            patterns:
+              - "web-next/app/**"
+          - label: "Components"
+            patterns:
+              - "web-next/components/**"
+          - label: "Lib"
+            patterns:
+              - "web-next/lib/**"
+          - label: "Hooks"
+            patterns:
+              - "web-next/hooks/**"
+      - label: "Optional Modules"
+        patterns:
+          - "modules/**"
+  - label: "Runtime and Tests"
+    description: "Separation of production runtime code and test code."
+    groups:
+      - label: "Runtime"
+        patterns:
+          - "venom_core/**"
+          - "web-next/app/**"
+          - "web-next/components/**"
+          - "web-next/lib/**"
+          - "web-next/hooks/**"
+          - "modules/*/venom_module_*/**"
+          - "modules/*/web-next/**"
+      - label: "Tests"
+        patterns:
+          - "tests/**"
+          - "web-next/tests/**"
+          - "modules/*/tests/**"
+
+constraints:
+  - from:
+      - "venom_core/**"
+      - "web-next/app/**"
+      - "web-next/components/**"
+      - "web-next/lib/**"
+      - "web-next/hooks/**"
+      - "modules/*/venom_module_*/**"
+      - "modules/*/web-next/**"
+    to:
+      - "tests/**"
+      - "web-next/tests/**"
+      - "modules/*/tests/**"
+    relation: "deny"
+    message: "Runtime code must not depend directly on test code."
+  - from:
+      - "venom_core/**"
+      - "modules/*/venom_module_*/**"
+    to:
+      - "web-next/**"
+    relation: "deny"
+    message: "Backend/runtime Python code must not depend on frontend code."
+  - from:
+      - "web-next/app/**"
+      - "web-next/components/**"
+      - "web-next/lib/**"
+      - "web-next/hooks/**"
+    to:
+      - "venom_core/**"
+      - "modules/*/venom_module_*/**"
+    relation: "deny"
+    message: "Frontend code must communicate with backend via HTTP/API contracts, not direct imports."

@@ -30,6 +30,7 @@ data/learning/
 data/benchmarks/
 data/vector_store/
 data/models_test/
+data/modules/
 
 # Chronos timelines and snapshots
 data/timelines/

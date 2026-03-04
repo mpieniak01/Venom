@@ -69,6 +69,19 @@ Wymagania:
 - npm `>=10.0.0`
 - Zalecenie: użyć `nvm use` w katalogu `web-next/` (`.nvmrc`)
 
+### 0.3.1 Modularizacja słowników i18n (stan bieżący)
+- Główne locale (`web-next/lib/i18n/locales/pl.ts`, `en.ts`, `de.ts`) składają moduły domenowe.
+- Zrealizowane grupy modułów:
+  - `workflow-control/*`
+  - `top-bar/*`, `sidebar/*`, `module-host/*`, `system-status/*`, `mobile-nav/*`
+  - `command-palette/*`, `command-center/*`, `quick-actions/*`
+  - `academy/*`, `models/*`
+- Testy guard pilnujące parity kluczy (`pl/en/de`) i kluczy wymaganych:
+  - `web-next/tests/workflow-i18n-keys.test.ts`
+  - `web-next/tests/topbar-i18n-keys.test.ts`
+  - `web-next/tests/navigation-i18n-keys.test.ts`
+  - `web-next/tests/operations-i18n-keys.test.ts`
+
 ### 0.3.2 Workflow stabilności Turbopack (PR 193)
 - Trzymaj `dev` jako codzienny tryb domyślny (`webpack`), a `dev:turbo` traktuj jako opt-in.
 - Przed zgłoszeniem niestabilności Turbopack uruchom:
@@ -87,19 +100,6 @@ Z poziomu roota repo możesz użyć:
 - `make web-dev` (tylko frontend, webpack).
 - `make web-dev-turbo` / `make web-dev-turbo-debug` (tylko frontend, turbopack).
 - `make test-web-turbo-smoke-clean` (smoke regresyjny turbopack).
-
-### 0.3.1 Modularizacja słowników i18n (stan bieżący)
-- Główne locale (`web-next/lib/i18n/locales/pl.ts`, `en.ts`, `de.ts`) składają moduły domenowe.
-- Zrealizowane grupy modułów:
-  - `workflow-control/*`
-  - `top-bar/*`, `sidebar/*`, `module-host/*`, `system-status/*`, `mobile-nav/*`
-  - `command-palette/*`, `command-center/*`, `quick-actions/*`
-  - `academy/*`, `models/*`
-- Testy guard pilnujące parity kluczy (`pl/en/de`) i kluczy wymaganych:
-  - `web-next/tests/workflow-i18n-keys.test.ts`
-  - `web-next/tests/topbar-i18n-keys.test.ts`
-  - `web-next/tests/navigation-i18n-keys.test.ts`
-  - `web-next/tests/operations-i18n-keys.test.ts`
 
 ### 0.4 Konfiguracja i proxy
 - backend FastAPI domyślnie nasłuchuje na porcie 8000 – front łączy się poprzez *rewrites* Next (patrz `next.config.mjs`) lub poprzez zmienne:

@@ -69,6 +69,19 @@ Requirements:
 - npm `>=10.0.0`
 - Recommended: use `nvm use` in `web-next/` (`.nvmrc` pinned)
 
+### 0.3.1 i18n dictionary modularization (current state)
+- Locale roots (`web-next/lib/i18n/locales/pl.ts`, `en.ts`, `de.ts`) aggregate domain modules.
+- Completed module groups:
+  - `workflow-control/*`
+  - `top-bar/*`, `sidebar/*`, `module-host/*`, `system-status/*`, `mobile-nav/*`
+  - `command-palette/*`, `command-center/*`, `quick-actions/*`
+  - `academy/*`, `models/*`
+- Guard tests ensure key parity (`pl/en/de`) and required keys:
+  - `web-next/tests/workflow-i18n-keys.test.ts`
+  - `web-next/tests/topbar-i18n-keys.test.ts`
+  - `web-next/tests/navigation-i18n-keys.test.ts`
+  - `web-next/tests/operations-i18n-keys.test.ts`
+
 ### 0.3.2 Turbopack stability workflow (PR 193)
 - Keep `dev` as default daily mode (`webpack`), and use `dev:turbo` as opt-in.
 - Before reporting Turbopack instability, run:
@@ -87,19 +100,6 @@ From repository root, you can use:
 - `make web-dev` (frontend only, webpack).
 - `make web-dev-turbo` / `make web-dev-turbo-debug` (frontend only, turbopack).
 - `make test-web-turbo-smoke-clean` (turbopack regression smoke).
-
-### 0.3.1 i18n dictionary modularization (current state)
-- Locale roots (`web-next/lib/i18n/locales/pl.ts`, `en.ts`, `de.ts`) aggregate domain modules.
-- Completed module groups:
-  - `workflow-control/*`
-  - `top-bar/*`, `sidebar/*`, `module-host/*`, `system-status/*`, `mobile-nav/*`
-  - `command-palette/*`, `command-center/*`, `quick-actions/*`
-  - `academy/*`, `models/*`
-- Guard tests ensure key parity (`pl/en/de`) and required keys:
-  - `web-next/tests/workflow-i18n-keys.test.ts`
-  - `web-next/tests/topbar-i18n-keys.test.ts`
-  - `web-next/tests/navigation-i18n-keys.test.ts`
-  - `web-next/tests/operations-i18n-keys.test.ts`
 
 ### 0.4 Configuration and proxy
 - Backend FastAPI listens on port 8000 by default – frontend connects via Next *rewrites* (see `next.config.mjs`) or via variables:

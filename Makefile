@@ -72,14 +72,7 @@ test:
 	@set +e; \
 	VENOM_TEST_ARTIFACT_MODE=clean VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
-	if [ $$rc -eq 5 ]; then \
-		echo ""; \
-		echo "⚠️  make test: pytest zakończył się kodem 5 (brak zebranych testów)."; \
-		echo "   Sprawdź grupy testowe i katalog testów:"; \
-		echo "   - make test-groups-check"; \
-		echo "   - make test-catalog-check"; \
-		exit $$rc; \
-	fi; \
+	$(call handle_pytest_no_tests,test) \
 	if [ $$rc -ne 0 ]; then \
 		echo ""; \
 		echo "❌ make test: testy nie przeszły (exit=$$rc)."; \
@@ -92,14 +85,7 @@ test-data:
 	@set +e; \
 	VENOM_TEST_ARTIFACT_MODE=preserve VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
-	if [ $$rc -eq 5 ]; then \
-		echo ""; \
-		echo "⚠️  make test-data: pytest zakończył się kodem 5 (brak zebranych testów)."; \
-		echo "   Sprawdź grupy testowe i katalog testów:"; \
-		echo "   - make test-groups-check"; \
-		echo "   - make test-catalog-check"; \
-		exit $$rc; \
-	fi; \
+	$(call handle_pytest_no_tests,test-data) \
 	if [ $$rc -ne 0 ]; then \
 		echo ""; \
 		echo "❌ make test-data: testy nie przeszły (exit=$$rc)."; \
@@ -266,14 +252,7 @@ pytest:
 	@set +e; \
 	VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
-	if [ $$rc -eq 5 ]; then \
-		echo ""; \
-		echo "⚠️  make pytest: pytest zakończył się kodem 5 (brak zebranych testów)."; \
-		echo "   Sprawdź grupy testowe i katalog testów:"; \
-		echo "   - make test-groups-check"; \
-		echo "   - make test-catalog-check"; \
-		exit $$rc; \
-	fi; \
+	$(call handle_pytest_no_tests,pytest) \
 	if [ $$rc -ne 0 ]; then \
 		echo ""; \
 		echo "❌ make pytest: testy nie przeszły (exit=$$rc)."; \
@@ -432,6 +411,29 @@ define ensure_process_not_running
 			rm -f $(2); \
 		fi; \
 	fi
+endef
+
+define handle_pytest_no_tests
+	if [ $$rc -eq 5 ]; then \
+		echo ""; \
+		echo "⚠️  make $(1): pytest zakończył się kodem 5 (brak zebranych testów)."; \
+		echo "   Sprawdź grupy testowe i katalog testów:"; \
+		echo "   - make test-groups-check"; \
+		echo "   - make test-catalog-check"; \
+		exit $$rc; \
+	fi;
+endef
+
+define start_web_turbo_target
+	@mkdir -p logs
+	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
+	: > $(WEB_LOG)
+	@echo "▶️  Uruchamiam UI ($(1), host $(WEB_HOST), port $(WEB_PORT))"
+	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(4) setsid $(NPM) --prefix $(WEB_DIR) run $(2) -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	echo $$! > $(WEB_PID_FILE)
+	@echo "✅ UI ($(1)) wystartował z PID $$(cat $(WEB_PID_FILE))"
+	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
+	@echo "$(3)"
 endef
 
 start: start-dev
@@ -906,26 +908,10 @@ web-dev:
 	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
 
 web-dev-turbo:
-	@mkdir -p logs
-	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
-	: > $(WEB_LOG)
-	@echo "▶️  Uruchamiam UI (Next.js dev:turbo, host $(WEB_HOST), port $(WEB_PORT))"
-	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
-	echo $$! > $(WEB_PID_FILE)
-	@echo "✅ UI (Next.js dev:turbo) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
-	@echo "⚡ Turbopack: aktywny (opt-in)"
+	$(call start_web_turbo_target,Next.js dev:turbo,dev:turbo,⚡ Turbopack: aktywny (opt-in),NEXT_TELEMETRY_DISABLED=1)
 
 web-dev-turbo-debug:
-	@mkdir -p logs
-	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
-	: > $(WEB_LOG)
-	@echo "▶️  Uruchamiam UI (Next.js dev:turbo:debug, host $(WEB_HOST), port $(WEB_PORT))"
-	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo:debug -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
-	echo $$! > $(WEB_PID_FILE)
-	@echo "✅ UI (Next.js dev:turbo:debug) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
-	@echo "🧪 Debug turbo: NEXT_DEBUG + --trace-warnings"
+	$(call start_web_turbo_target,Next.js dev:turbo:debug,dev:turbo:debug,🧪 Debug turbo: NEXT_DEBUG + --trace-warnings,)
 
 web-preprod:
 	$(PREPROD_ENV_READONLY) \

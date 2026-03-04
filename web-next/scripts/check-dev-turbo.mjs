@@ -6,6 +6,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -25,6 +26,7 @@ const CLEAN_NEXT = process.env.TURBO_SMOKE_CLEAN_NEXT === "1";
 
 const REQUIRED_ROUTES = ["/", "/academy", "/benchmark"];
 const RECENT_LOG_LINES = 120;
+const MAX_LOG_BUFFER_LINES = RECENT_LOG_LINES * 4;
 const FAILURE_HINTS = [
   {
     pattern: /\.next[\\/]+dev[\\/]+lock/i,
@@ -45,6 +47,16 @@ const FAILURE_HINTS = [
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function appendOutputLine(buffer, line) {
+  if (!line.trim()) {
+    return;
+  }
+  buffer.push(line);
+  if (buffer.length > MAX_LOG_BUFFER_LINES) {
+    buffer.splice(0, buffer.length - MAX_LOG_BUFFER_LINES);
+  }
 }
 
 async function fetchWithTimeout(url, timeoutMs) {
@@ -144,14 +156,21 @@ function installSignalHandlers(proc) {
 async function main() {
   const webRoot = process.cwd();
   const nextDir = path.join(webRoot, ".next");
+  const lockFile = path.join(nextDir, "dev", "lock");
   const env = {
     ...process.env,
     NEXT_TELEMETRY_DISABLED: "1",
     NEXT_DEBUG: process.env.NEXT_DEBUG ?? "true",
   };
   const outputLines = [];
+  let spawnFailureReason = null;
 
   if (CLEAN_NEXT) {
+    if (existsSync(lockFile)) {
+      throw new Error(
+        `Refusing to remove ${nextDir}: lock file exists (${lockFile}). Stop active Next dev process first.`,
+      );
+    }
     await rm(nextDir, { recursive: true, force: true });
     console.log(`🧹 Removed ${nextDir}`);
   }
@@ -170,26 +189,35 @@ async function main() {
     },
   );
   installSignalHandlers(proc);
+  proc.on("error", (err) => {
+    spawnFailureReason =
+      err instanceof Error
+        ? `Failed to spawn npm dev:turbo: ${err.message}`
+        : "Failed to spawn npm dev:turbo";
+    appendOutputLine(outputLines, `[spawn-error] ${spawnFailureReason}`);
+  });
 
   proc.stdout.on("data", (chunk) => {
     const text = String(chunk);
     for (const line of text.split("\n")) {
-      if (line.trim()) {
-        outputLines.push(`[stdout] ${line}`);
-      }
+      appendOutputLine(outputLines, `[stdout] ${line}`);
     }
   });
   proc.stderr.on("data", (chunk) => {
     const text = String(chunk);
     for (const line of text.split("\n")) {
-      if (line.trim()) {
-        outputLines.push(`[stderr] ${line}`);
-      }
+      appendOutputLine(outputLines, `[stderr] ${line}`);
     }
   });
 
   try {
+    if (spawnFailureReason) {
+      throw new Error(buildFailureReport(spawnFailureReason, outputLines));
+    }
     const readyResult = await waitForServerReady(BASE_URL, START_TIMEOUT_MS, proc);
+    if (spawnFailureReason) {
+      throw new Error(buildFailureReport(spawnFailureReason, outputLines));
+    }
     if (!readyResult.ready) {
       throw new Error(
         buildFailureReport(
@@ -202,7 +230,7 @@ async function main() {
     for (const route of REQUIRED_ROUTES) {
       const url = `${BASE_URL}${route}`;
       const res = await fetchWithTimeout(url, REQUEST_TIMEOUT_MS);
-      if (res.status >= 500) {
+      if (res.status >= 400) {
         throw new Error(
           buildFailureReport(
             `Route check failed for ${route}: status=${res.status}`,

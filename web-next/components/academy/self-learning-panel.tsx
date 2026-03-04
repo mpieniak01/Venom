@@ -10,8 +10,6 @@ import {
   listSelfLearningRuns,
   startSelfLearning,
   type SelfLearningEmbeddingProfile,
-  type SelfLearningLlmConfig,
-  type SelfLearningRagConfig,
   type SelfLearningRunStatus,
   type SelfLearningStartRequest,
   type SelfLearningStatus,
@@ -108,15 +106,23 @@ export function SelfLearningPanel() {
     (runId: string) => {
       stopPolling();
       pollingRef.current = setInterval(() => {
-        void pollRun(runId);
+        pollRun(runId).catch((error) => {
+          console.error("Failed to poll self-learning status", error);
+          stopPolling();
+        });
       }, POLL_INTERVAL_MS);
     },
     [pollRun, stopPolling]
   );
 
   useEffect(() => {
-    void loadHistory();
-    void loadCapabilities();
+    const initialize = async () => {
+      await loadHistory();
+      await loadCapabilities();
+    };
+    initialize().catch((error) => {
+      console.error("Failed to initialize self-learning panel", error);
+    });
     return () => stopPolling();
   }, [loadCapabilities, loadHistory, stopPolling]);
 
@@ -142,8 +148,8 @@ export function SelfLearningPanel() {
           sources: config.sources,
           limits: config.limits,
           dry_run: config.dry_run,
-          llm_config: config.llm_config as SelfLearningLlmConfig | null,
-          rag_config: config.rag_config as SelfLearningRagConfig | null,
+          llm_config: config.llm_config,
+          rag_config: config.rag_config,
         };
         const response = await startSelfLearning(payload);
         pushToast(response.message, "success");

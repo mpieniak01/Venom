@@ -565,12 +565,12 @@ async def test_run_rag_index_dry_run_and_missing_store_paths(tmp_path: Path):
             },
         }
     )
-    await service._run_rag_index(run, chunks=[{"text": "x"}], extracted_files=[])
+    service._run_rag_index(run, chunks=[{"text": "x"}], extracted_files=[])
     assert run.progress.indexed_vectors == 1
 
     run.dry_run = False
     with pytest.raises(Exception, match="VectorStore is not available"):
-        await service._run_rag_index(run, chunks=[{"text": "x"}], extracted_files=[])
+        service._run_rag_index(run, chunks=[{"text": "x"}], extracted_files=[])
 
 
 def test_run_dir_rejects_invalid_identifier(tmp_path: Path):

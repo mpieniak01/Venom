@@ -35,7 +35,6 @@ def set_dependencies(*, self_learning_service: Any | None = None) -> None:
 
 @router.post(
     "/start",
-    response_model=SelfLearningStartResponse,
     responses={
         400: {"description": "Invalid request payload."},
         500: {"description": INTERNAL_ERROR_DETAIL},
@@ -69,7 +68,6 @@ async def start_self_learning(
 
 @router.get(
     "/capabilities",
-    response_model=SelfLearningCapabilitiesResponse,
     responses={
         500: {"description": INTERNAL_ERROR_DETAIL},
         503: {"description": SERVICE_UNAVAILABLE_DETAIL},
@@ -88,7 +86,6 @@ async def get_self_learning_capabilities() -> SelfLearningCapabilitiesResponse:
 
 @router.get(
     "/{run_id}/status",
-    response_model=SelfLearningRunStatusResponse,
     responses={
         404: {"description": "Self-learning run not found."},
         500: {"description": INTERNAL_ERROR_DETAIL},
@@ -112,7 +109,6 @@ def get_self_learning_status(run_id: str) -> SelfLearningRunStatusResponse:
 
 @router.get(
     "/list",
-    response_model=SelfLearningListResponse,
     responses={
         500: {"description": INTERNAL_ERROR_DETAIL},
         503: {"description": SERVICE_UNAVAILABLE_DETAIL},
@@ -134,7 +130,6 @@ def list_self_learning_runs(
 
 @router.delete(
     "/all",
-    response_model=SelfLearningDeleteResponse,
     responses={
         500: {"description": INTERNAL_ERROR_DETAIL},
         503: {"description": SERVICE_UNAVAILABLE_DETAIL},
@@ -156,7 +151,6 @@ def clear_all_self_learning_runs() -> SelfLearningDeleteResponse:
 
 @router.delete(
     "/{run_id}",
-    response_model=SelfLearningDeleteResponse,
     responses={
         404: {"description": "Self-learning run not found."},
         500: {"description": INTERNAL_ERROR_DETAIL},

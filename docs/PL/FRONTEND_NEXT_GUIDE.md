@@ -82,6 +82,7 @@ Wymagania:
 ### 0.3.3 Wrappery Makefile (uruchamianie stacku)
 Z poziomu roota repo możesz użyć:
 - `make start` / `make stop` / `make status` (cykl życia pełnego stacku).
+- `make start2` (cykl życia pełnego stacku z frontendem Turbopack).
 - `make api-dev` (tylko backend).
 - `make web-dev` (tylko frontend, webpack).
 - `make web-dev-turbo` / `make web-dev-turbo-debug` (tylko frontend, turbopack).

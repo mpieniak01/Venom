@@ -82,6 +82,7 @@ Requirements:
 ### 0.3.3 Makefile wrappers (stack launch)
 From repository root, you can use:
 - `make start` / `make stop` / `make status` (full stack lifecycle).
+- `make start2` (full stack lifecycle with Turbopack frontend).
 - `make api-dev` (backend only).
 - `make web-dev` (frontend only, webpack).
 - `make web-dev-turbo` / `make web-dev-turbo-debug` (frontend only, turbopack).

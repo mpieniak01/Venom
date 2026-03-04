@@ -613,6 +613,27 @@ Cancel a running training job.
 
 **Note:** Cancelling a job automatically stops and removes the Docker container.
 
+#### **PR 191: Self-Learning API (`/api/v1/academy/self-learning/*`)**
+Self-learning extends Academy with autonomous ingestion from repository sources (`docs`, `docs_dev`, `code`) in two modes:
+- `llm_finetune` - prepare dataset and start LoRA/QLoRA-compatible training flow
+- `rag_index` - chunk and index content into vector store
+
+Available endpoints:
+- `POST /api/v1/academy/self-learning/start`
+- `GET /api/v1/academy/self-learning/capabilities`
+- `GET /api/v1/academy/self-learning/{run_id}/status`
+- `GET /api/v1/academy/self-learning/list?limit=...`
+- `DELETE /api/v1/academy/self-learning/{run_id}`
+- `DELETE /api/v1/academy/self-learning/all`
+
+Status model:
+- `pending | running | completed | completed_with_warnings | failed`
+
+Safety defaults:
+- allowlisted roots (`docs/`, `docs_dev/`, `venom_core/`, `web-next/`, `scripts/`)
+- blocked paths (`.git/`, `.venv/`, `node_modules/`, `data/`, `test-results/`, `dist/`, `build/`)
+- extension, file-size, file-count and total-size limits.
+
 ## Web UI
 
 Academy dashboard is available at **http://localhost:3000/academy**
@@ -652,6 +673,18 @@ Academy dashboard is available at **http://localhost:3000/academy**
    - Activate adapters (hot-swap without backend restart)
    - Deactivate/rollback to base model
    - Active adapter indicator
+
+5. **Self-Learning Panel (PR 191)**
+   - Mode switch: `LLM fine-tune` / `RAG index`
+   - Source selector: `docs`, `docs_dev`, `code`
+   - Live run status + logs + history
+   - Preflight-aware embedding/runtime checks for RAG mode
+
+### Dev Stability Note (web-next)
+- Default local dev runtime uses webpack:
+  - `npm --prefix web-next run dev` -> `next dev --webpack`
+  - `npm --prefix web-next run dev:turbo` -> optional Turbopack mode
+- Keep one active dev instance to avoid `.next/dev/lock` conflicts.
 
 ## Roadmap
 

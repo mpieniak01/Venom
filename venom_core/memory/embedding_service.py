@@ -1,6 +1,7 @@
 """Moduł: embedding_service - Serwis do generowania embeddingów tekstowych."""
 
 import hashlib
+import os
 from functools import lru_cache
 from typing import Any, List, Optional
 
@@ -9,6 +10,11 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 LOCAL_EMBEDDING_DIMENSION = 384
+DEFAULT_LOCAL_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+_KNOWN_LOCAL_EMBEDDING_DIMS = {
+    "sentence-transformers/all-MiniLM-L6-v2": 384,
+    "intfloat/multilingual-e5-base": 768,
+}
 
 
 class EmbeddingService:
@@ -32,6 +38,14 @@ class EmbeddingService:
         self._model: Optional[Any] = None
         self._client: Optional[Any] = None
         self._local_fallback_mode = False
+        self._local_model_name = (
+            os.getenv("EMBEDDING_MODEL")
+            or getattr(SETTINGS, "EMBEDDING_MODEL", "")
+            or SETTINGS.INTENT_EMBED_MODEL_NAME
+            or DEFAULT_LOCAL_EMBEDDING_MODEL
+        ).strip()
+        if not self._local_model_name:
+            self._local_model_name = DEFAULT_LOCAL_EMBEDDING_MODEL
         logger.info(f"EmbeddingService inicjalizowany z typem: {self.service_type}")
         # Zachowaj kompatybilność z testami: expose cached getter z cache_info/cache_clear.
         self._get_embedding_cached = lru_cache(maxsize=1000)(
@@ -47,7 +61,7 @@ class EmbeddingService:
             try:
                 from sentence_transformers import SentenceTransformer
 
-                model_name = "sentence-transformers/all-MiniLM-L6-v2"
+                model_name = self._local_model_name
                 logger.info(f"Ładowanie lokalnego modelu embeddingów: {model_name}")
                 self._model = SentenceTransformer(model_name)
                 logger.info("Model embeddingów załadowany pomyślnie")
@@ -209,13 +223,19 @@ class EmbeddingService:
             Liczba wymiarów embeddingu
         """
         if self.service_type == "local":
-            # all-MiniLM-L6-v2 ma stały wymiar 384.
-            # Zwracamy go bez ładowania modelu, aby uniknąć zależności od sieci.
+            # Zwracamy znany wymiar bez ładowania modelu, aby uniknąć zależności od sieci.
             if self._model is None:
-                return LOCAL_EMBEDDING_DIMENSION
+                return _KNOWN_LOCAL_EMBEDDING_DIMS.get(
+                    self._local_model_name, LOCAL_EMBEDDING_DIMENSION
+                )
             return self._model.get_sentence_embedding_dimension()
         elif self.service_type == "openai":
             # text-embedding-3-small ma 1536 wymiarów
             return 1536
         self._ensure_model_loaded()
         raise ValueError(f"Nieobsługiwany typ serwisu: {self.service_type}")
+
+    @property
+    def local_model_name(self) -> str:
+        """Nazwa lokalnego modelu embeddingów skonfigurowanego dla trybu `local`."""
+        return self._local_model_name

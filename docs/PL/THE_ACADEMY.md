@@ -362,6 +362,45 @@ scheduler.add_interval_job(
   - Sprawdź jakość datasetu (czy są błędy?)
   - Użyj większego `learning_rate` (np. 3e-4)
 
+## PR 191 — Samokształcenie (`/academy/self-learning`)
+
+### Zakres funkcjonalny
+Zakładka **Samokształcenie** rozszerza Academy o dwa tryby uczenia na danych repo (`docs`, `docs_dev`, `code`):
+1. `llm_finetune` — przygotowanie datasetu i uruchomienie ścieżki treningowej LoRA/QLoRA.
+2. `rag_index` — chunking i indeksacja do vector store (RAG).
+
+### API Self-Learning
+Dostępne endpointy:
+1. `POST /api/v1/academy/self-learning/start`
+2. `GET /api/v1/academy/self-learning/capabilities`
+3. `GET /api/v1/academy/self-learning/{run_id}/status`
+4. `GET /api/v1/academy/self-learning/list?limit=...`
+5. `DELETE /api/v1/academy/self-learning/{run_id}`
+6. `DELETE /api/v1/academy/self-learning/all`
+
+Status runu:
+- `pending | running | completed | completed_with_warnings | failed`
+
+### UI `/academy`
+Wdrożony panel Self-Learning zapewnia:
+1. wybór trybu (`LLM fine-tune` / `RAG index`),
+2. wybór źródeł (`docs`, `docs_dev`, `code`),
+3. logi live, status i historię runów,
+4. preflight embedding/runtime dla trybu RAG.
+
+### Bezpieczeństwo
+Domyślne zabezpieczenia:
+1. whitelist rootów (`docs/`, `docs_dev/`, `venom_core/`, `web-next/`, `scripts/`),
+2. blokada ścieżek (`.git/`, `.venv/`, `node_modules/`, `data/`, `test-results/`, `dist/`, `build/`),
+3. limity rozszerzeń, rozmiaru pliku, liczby plików i sumarycznego rozmiaru.
+
+### Stabilność dev (`web-next`)
+1. Domyślny lokalny dev dla UI działa na webpack:
+   - `npm --prefix web-next run dev` -> `next dev --webpack`
+   - `npm --prefix web-next run dev:turbo` -> opcjonalny tryb Turbopack
+2. Zalecenie operacyjne:
+   - utrzymuj tylko jedną instancję `next dev`, aby uniknąć konfliktów `.next/dev/lock`.
+
 ## Roadmap
 
 - [ ] Pełna implementacja Arena (automated evaluation)

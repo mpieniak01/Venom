@@ -796,10 +796,18 @@ class SelfLearningService:
             getattr(embedding_service, "_local_fallback_mode", False)
         )
         model_name_map = {
-            "local": "sentence-transformers/all-MiniLM-L6-v2",
             "openai": "text-embedding-3-small",
         }
-        model_name = model_name_map.get(service_type, f"{service_type}:default")
+        if service_type == "local":
+            model_name = str(
+                getattr(
+                    embedding_service,
+                    "local_model_name",
+                    "sentence-transformers/all-MiniLM-L6-v2",
+                )
+            )
+        else:
+            model_name = model_name_map.get(service_type, f"{service_type}:default")
         profile_id = f"{service_type}:default"
         try:
             dimension = int(getattr(embedding_service, "embedding_dimension"))

@@ -8,7 +8,8 @@
   },
   "scripts": {
     "predev": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
-    "dev": "next dev",
+    "dev": "next dev --webpack",
+    "dev:turbo": "next dev",
     "prebuild": "node scripts/prepare-optional-module-node-paths.mjs && node scripts/generate-meta.mjs",
     "build": "next build",
     "postbuild": "node scripts/prepare-standalone.mjs",

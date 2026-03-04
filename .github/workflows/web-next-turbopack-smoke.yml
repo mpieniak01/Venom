@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   turbopack-smoke:
-    name: Turbopack smoke (/ /academy /benchmark)
+    name: Web Next Turbopack Smoke
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

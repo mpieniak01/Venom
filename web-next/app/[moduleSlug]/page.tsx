@@ -1,10 +1,8 @@
 import { notFound } from "next/navigation";
 
 import { ModuleHostFallback } from "@/components/modules/module-host-fallback";
-import {
-  getOptionalModuleComponent,
-  resolveOptionalModuleBySlug,
-} from "@/lib/generated/optional-modules.generated";
+import { resolveOptionalModuleBySlug } from "@/lib/generated/optional-modules.generated";
+import { getOptionalModuleComponent } from "@/lib/optional-module-components.server";
 
 type OptionalModulePageProps = {
   params: Promise<{

@@ -164,6 +164,10 @@ async function main() {
   };
   const outputLines = [];
   let spawnFailureReason = null;
+  let resolveSpawnError;
+  const spawnErrorPromise = new Promise((resolve) => {
+    resolveSpawnError = resolve;
+  });
 
   if (CLEAN_NEXT) {
     if (existsSync(lockFile)) {
@@ -195,6 +199,10 @@ async function main() {
         ? `Failed to spawn npm dev:turbo: ${err.message}`
         : "Failed to spawn npm dev:turbo";
     appendOutputLine(outputLines, `[spawn-error] ${spawnFailureReason}`);
+    resolveSpawnError({
+      ready: false,
+      reason: spawnFailureReason,
+    });
   });
 
   proc.stdout.on("data", (chunk) => {
@@ -214,7 +222,10 @@ async function main() {
     if (spawnFailureReason) {
       throw new Error(buildFailureReport(spawnFailureReason, outputLines));
     }
-    const readyResult = await waitForServerReady(BASE_URL, START_TIMEOUT_MS, proc);
+    const readyResult = await Promise.race([
+      waitForServerReady(BASE_URL, START_TIMEOUT_MS, proc),
+      spawnErrorPromise,
+    ]);
     if (spawnFailureReason) {
       throw new Error(buildFailureReport(spawnFailureReason, outputLines));
     }

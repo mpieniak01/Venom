@@ -833,7 +833,7 @@ _start:
 				echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
 				kill -TERM -$$WPID 2>/dev/null || kill $$WPID 2>/dev/null || true; \
 				rm -f $(WEB_PID_FILE); \
-			# zatrzymaj backend, aby nie zostawiać pół-startu \
+				# zatrzymaj backend, aby nie zostawiać pół-startu
 			if [ -f $(PID_FILE) ]; then \
 				BPID=$$(cat $(PID_FILE)); \
 				kill $$BPID 2>/dev/null || true; \

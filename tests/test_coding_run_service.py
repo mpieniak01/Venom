@@ -8,7 +8,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from venom_core.services.benchmark_coding import (
+    CodingBenchmarkRun,
     CodingBenchmarkService,
+    CodingJobState,
+    CodingRunConfig,
     _enrich_job_dict,
     _is_valid_run_id,
     _parse_scheduler_state,
@@ -519,3 +522,116 @@ def test_run_dir_raises_for_path_traversal(service, tmp_path):
     with patch.object(Path, "resolve", patched_resolve):
         with pytest.raises(ValueError, match="escapes storage directory"):
             service._run_dir(valid_looking_id)
+
+
+def _make_run_with_jobs(
+    *, status: str, jobs: list[CodingJobState]
+) -> CodingBenchmarkRun:
+    cfg = CodingRunConfig(
+        models=["m1"],
+        tasks=["python_sanity"],
+        loop_task="",
+        first_sieve_task="",
+        timeout=180,
+        max_rounds=1,
+        endpoint="http://127.0.0.1:11434",
+        stop_on_failure=False,
+        options={},
+        model_timeout_overrides={},
+    )
+    return CodingBenchmarkRun(
+        run_id="95a79713-1d83-439b-b307-5bef744950d0",
+        config=cfg,
+        status=status,
+        jobs=jobs,
+        created_at="2024-01-01T00:00:00+00:00",
+    )
+
+
+def test_normalize_loaded_run_status_handles_invalid_status(service):
+    """Nieznany status po restarcie powinien zostać zmapowany na failed."""
+    run = _make_run_with_jobs(status="unknown", jobs=[])
+    service._normalize_loaded_run_status(run)
+    assert run.status == "failed"
+    assert run.error_message == "Nieznany status run po restarcie serwisu."
+
+
+def test_normalize_loaded_run_status_running_queue_finished_becomes_completed(service):
+    """Run 'running' z domkniętą kolejką powinien zostać domknięty do completed."""
+    run = _make_run_with_jobs(
+        status="running",
+        jobs=[
+            CodingJobState(
+                id="job-1",
+                model="m1",
+                mode="single",
+                task="python_sanity",
+                status="completed",
+            )
+        ],
+    )
+    service._normalize_loaded_run_status(run)
+    assert run.status == "completed"
+
+
+def test_normalize_loaded_run_status_running_open_queue_becomes_failed(service):
+    """Run 'running' z niedomkniętą kolejką po restarcie powinien być failed."""
+    run = _make_run_with_jobs(
+        status="running",
+        jobs=[
+            CodingJobState(
+                id="job-1",
+                model="m1",
+                mode="single",
+                task="python_sanity",
+                status="running",
+            )
+        ],
+    )
+    service._normalize_loaded_run_status(run)
+    assert run.status == "failed"
+    assert run.error_message is not None
+    assert "running po restarcie serwisu" in run.error_message
+
+
+def test_finalize_run_status_rc_zero_with_failed_jobs_sets_partial_success(service):
+    """rc=0 i błędy jobów => completed_with_failures z opisem błędów."""
+    run = _make_run_with_jobs(
+        status="running",
+        jobs=[
+            CodingJobState(
+                id="job-1",
+                model="m1",
+                mode="single",
+                task="python_sanity",
+                status="failed",
+            )
+        ],
+    )
+    service._finalize_run_status(run, returncode=0, stderr_raw=None)
+    assert run.status == "completed_with_failures"
+    assert run.error_message is not None
+    assert "failed=1" in run.error_message
+
+
+def test_finalize_run_status_nonzero_finished_queue_without_failures_sets_completed(
+    service,
+):
+    """rc!=0, kolejka domknięta i brak błędów jobów => defensive completed."""
+    run = _make_run_with_jobs(
+        status="running",
+        jobs=[
+            CodingJobState(
+                id="job-1",
+                model="m1",
+                mode="single",
+                task="python_sanity",
+                status="completed",
+            )
+        ],
+    )
+    service._finalize_run_status(run, returncode=2, stderr_raw="")
+    assert run.status == "completed"
+    assert (
+        run.error_message == "Scheduler rc=2 mimo kompletnej kolejki bez błędów jobów."
+    )

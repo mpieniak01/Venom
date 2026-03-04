@@ -68,6 +68,9 @@ sonar-scanner -Dsonar.architecture.noconfig=true
 
 1. `.github/workflows/ci.yml` uruchamia `SonarSource/sonarqube-scan-action`.
 2. `sonar-project.properties` przechowuje domyślne `sonar.architecture.configpath`.
+3. Manualny tryb porównawczy jest dostępny w `workflow_dispatch`:
+   - input `sonar_architecture_mode=configpath` (domyślnie),
+   - input `sonar_architecture_mode=noconfig` (uruchamia skaner z `-Dsonar.architecture.noconfig=true`).
 
 ## Workflow aktualizacji
 

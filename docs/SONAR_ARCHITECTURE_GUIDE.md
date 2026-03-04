@@ -68,6 +68,9 @@ CI path:
 
 1. `.github/workflows/ci.yml` runs `SonarSource/sonarqube-scan-action`.
 2. `sonar-project.properties` keeps the default `sonar.architecture.configpath`.
+3. Manual CI comparison mode is available in `workflow_dispatch`:
+   - input `sonar_architecture_mode=configpath` (default),
+   - input `sonar_architecture_mode=noconfig` (runs scanner with `-Dsonar.architecture.noconfig=true`).
 
 ## Update Workflow
 

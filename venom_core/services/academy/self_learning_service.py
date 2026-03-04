@@ -764,6 +764,54 @@ class SelfLearningService:
                 return runtime
         return None
 
+    @staticmethod
+    def _build_local_embedding_profile(
+        *,
+        model_name: str,
+        dimension: int | None,
+        is_active: bool,
+        healthy: bool,
+        fallback_active: bool,
+    ) -> dict[str, Any]:
+        if is_active:
+            return {
+                "profile_id": "local:default",
+                "provider": "local",
+                "model": model_name,
+                "dimension": dimension,
+                "healthy": healthy,
+                "fallback_active": fallback_active,
+                "details": {},
+            }
+
+        return {
+            "profile_id": f"local/{model_name}",
+            "provider": "local",
+            "model": model_name,
+            "dimension": dimension,
+            "healthy": False,
+            "fallback_active": False,
+            "details": {"reason": "not_active_runtime_model"},
+        }
+
+    @staticmethod
+    def _build_missing_active_embedding_profile(
+        *,
+        active_model: str,
+        active_dimension: int | None,
+        healthy: bool,
+        fallback_active: bool,
+    ) -> dict[str, Any]:
+        return {
+            "profile_id": "local:default",
+            "provider": "local",
+            "model": active_model or "unknown",
+            "dimension": active_dimension,
+            "healthy": healthy,
+            "fallback_active": fallback_active,
+            "details": {"reason": "active_model_not_in_catalog"},
+        }
+
     def _embedding_profiles(self) -> list[dict[str, Any]]:
         state = self._embedding_runtime_state()
         if state["profile_id"] is None:
@@ -774,39 +822,31 @@ class SelfLearningService:
             return [state]
 
         active_model = str(state.get("model") or "")
+        healthy = bool(state.get("healthy"))
         fallback_active = bool(state.get("fallback_active"))
         active_dimension = state.get("dimension")
         result: list[dict[str, Any]] = []
         for model_name, dimension in _LOCAL_EMBEDDING_PROFILES:
             is_active = model_name == active_model
             result.append(
-                {
-                    "profile_id": "local:default"
-                    if is_active
-                    else f"local/{model_name}",
-                    "provider": "local",
-                    "model": model_name,
-                    "dimension": active_dimension if is_active else dimension,
-                    "healthy": bool(state.get("healthy")) if is_active else False,
-                    "fallback_active": fallback_active if is_active else False,
-                    "details": {}
-                    if is_active
-                    else {"reason": "not_active_runtime_model"},
-                }
+                self._build_local_embedding_profile(
+                    model_name=model_name,
+                    dimension=active_dimension if is_active else dimension,
+                    is_active=is_active,
+                    healthy=healthy,
+                    fallback_active=fallback_active,
+                )
             )
 
         if not any(item["model"] == active_model for item in result):
             result.insert(
                 0,
-                {
-                    "profile_id": "local:default",
-                    "provider": "local",
-                    "model": active_model or "unknown",
-                    "dimension": active_dimension,
-                    "healthy": bool(state.get("healthy")),
-                    "fallback_active": fallback_active,
-                    "details": {"reason": "active_model_not_in_catalog"},
-                },
+                self._build_missing_active_embedding_profile(
+                    active_model=active_model,
+                    active_dimension=active_dimension,
+                    healthy=healthy,
+                    fallback_active=fallback_active,
+                ),
             )
         return result
 

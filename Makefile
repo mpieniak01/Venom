@@ -438,33 +438,27 @@ endef
 
 start: start-dev
 
-start-dev: START_MODE=dev
-start-dev: START_WEB_MODE=webpack
 start-dev:
 	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory _start
+	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=webpack _start
 
 start2: start-dev-turbo
 
-start-dev-turbo: START_MODE=dev
-start-dev-turbo: START_WEB_MODE=turbo
 start-dev-turbo:
 	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory _start
+	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=turbo _start
 
-start-prod: START_MODE=prod
 start-prod:
 	@echo "⚠️  OSTRZEŻENIE: tryb 'prod' nie jest jeszcze oficjalnie zwalidowany/rekomendowany operacyjnie."
 	@echo "⚠️  Zalecane środowiska: 'dev' (testy/prace) oraz 'preprod' (UAT + smoke read-only)."
 	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory _start
+	$(MAKE) --no-print-directory START_MODE=prod _start
 
-start-preprod: START_MODE=prod
 start-preprod:
 	$(PREPROD_ENV_READONLY) \
 		$(MAKE) --no-print-directory ensure-env-file
 	$(PREPROD_ENV_READONLY) \
-		$(MAKE) --no-print-directory _start
+		$(MAKE) --no-print-directory START_MODE=prod _start
 
 # Preprod aliases (short commands)
 startpre: start-preprod
@@ -547,7 +541,6 @@ _start:
 		exit 1; \
 	fi
 	@mkdir -p logs
-	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
 	@active_server=""; \
 	if [ -f "$(ENV_FILE)" ]; then \
 		active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' "$(ENV_FILE)" 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true); \
@@ -647,6 +640,18 @@ _start:
 			PID=$$(cat "$(PID_FILE)"); \
 			if ! kill -0 $$PID 2>/dev/null; then rm -f "$(PID_FILE)"; fi; \
 		fi; \
+	elif [ -f "$(PID_FILE)" ]; then \
+		PID=$$(cat "$(PID_FILE)"); \
+		if kill -0 $$PID 2>/dev/null; then \
+			echo "⚠️  Backend PID $$PID istnieje, ale /system/status jest niedostępny. Restartuję backend."; \
+			kill $$PID 2>/dev/null || true; \
+			for attempt in {1..30}; do \
+				if kill -0 $$PID 2>/dev/null; then sleep 0.2; else break; fi; \
+			done; \
+			rm -f "$(PID_FILE)"; \
+		else \
+			rm -f "$(PID_FILE)"; \
+		fi; \
 	fi; \
 	if [ -z "$$backend_reused" ]; then \
 		if [ -f "$(PID_FILE)" ]; then \
@@ -704,11 +709,81 @@ _start:
 		echo "✅ Backend gotowy (używam już działającej instancji)"; \
 	fi
 	@ui_skip=""; \
+	if [ ! -f $(WEB_PID_FILE) ]; then \
+		EXT_UI_PIDS=""; \
+		if command -v lsof >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
+		fi; \
+		if [ -z "$$EXT_UI_PIDS" ] && command -v fuser >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
+		fi; \
+		if [ -z "$$EXT_UI_PIDS" ] && command -v ss >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
+		fi; \
+		if [ -n "$$EXT_UI_PIDS" ]; then \
+			echo "⚠️  Port $(WEB_PORT) zajęty przez niezarządzany proces UI ($$EXT_UI_PIDS). Czyszczę."; \
+			kill $$EXT_UI_PIDS 2>/dev/null || true; \
+			for attempt in {1..30}; do \
+				EXT_STILL=""; \
+				if command -v lsof >/dev/null 2>&1; then \
+					EXT_STILL=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
+				fi; \
+				if [ -z "$$EXT_STILL" ] && command -v fuser >/dev/null 2>&1; then \
+					EXT_STILL=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
+				fi; \
+				if [ -z "$$EXT_STILL" ] && command -v ss >/dev/null 2>&1; then \
+					EXT_STILL=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
+				fi; \
+				if [ -z "$$EXT_STILL" ]; then break; fi; \
+				sleep 0.2; \
+			done; \
+			EXT_STILL=""; \
+			if command -v lsof >/dev/null 2>&1; then \
+				EXT_STILL=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
+			fi; \
+			if [ -z "$$EXT_STILL" ] && command -v fuser >/dev/null 2>&1; then \
+				EXT_STILL=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
+			fi; \
+			if [ -z "$$EXT_STILL" ] && command -v ss >/dev/null 2>&1; then \
+				EXT_STILL=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
+			fi; \
+			if [ -n "$$EXT_STILL" ]; then \
+				echo "❌ Nie udało się zwolnić portu $(WEB_PORT) (PID: $$EXT_STILL). Użyj: make web-stop"; \
+				exit 1; \
+			fi; \
+		fi; \
+	fi; \
 	if [ -f $(WEB_PID_FILE) ]; then \
 		WPID=$$(cat $(WEB_PID_FILE)); \
 		if kill -0 $$WPID 2>/dev/null; then \
-			echo "⚠️  UI (Next.js) już działa (PID $$WPID). Pomijam start UI."; \
-			ui_skip="yes"; \
+			if [ "$(START_MODE)" = "dev" ]; then \
+				cmdline=$$(tr '\0' ' ' < /proc/$$WPID/cmdline 2>/dev/null || true); \
+				want=""; \
+				if [ "$(START_WEB_MODE)" = "turbo" ]; then \
+					want="dev:turbo"; \
+				elif [ "$(START_WEB_MODE)" = "turbo-debug" ]; then \
+					want="dev:turbo:debug"; \
+				else \
+					want="dev --"; \
+				fi; \
+					if printf '%s' "$$cmdline" | grep -Fq "$$want"; then \
+						echo "⚠️  UI (Next.js) już działa w trybie $(START_WEB_MODE) (PID $$WPID). Pomijam start UI."; \
+						ui_skip="yes"; \
+					else \
+						echo "🔁 UI (Next.js) działa w innym trybie. Restartuję do trybu $(START_WEB_MODE)."; \
+						kill -TERM -$$WPID 2>/dev/null || kill $$WPID 2>/dev/null || true; \
+						for attempt in {1..20}; do \
+							if kill -0 $$WPID 2>/dev/null; then sleep 0.2; else break; fi; \
+						done; \
+						if kill -0 $$WPID 2>/dev/null; then \
+							kill -KILL -$$WPID 2>/dev/null || kill -KILL $$WPID 2>/dev/null || true; \
+						fi; \
+						rm -f $(WEB_PID_FILE); \
+					fi; \
+				else \
+				echo "⚠️  UI (Next.js) już działa (PID $$WPID). Pomijam start UI."; \
+				ui_skip="yes"; \
+			fi; \
 		else \
 			rm -f $(WEB_PID_FILE); \
 		fi; \
@@ -754,10 +829,10 @@ _start:
 			fi; \
 			sleep 1; \
 		done; \
-		if [ -z "$$ui_ready" ]; then \
-			echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
-			kill $$WPID 2>/dev/null || true; \
-			rm -f $(WEB_PID_FILE); \
+			if [ -z "$$ui_ready" ]; then \
+				echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
+				kill -TERM -$$WPID 2>/dev/null || kill $$WPID 2>/dev/null || true; \
+				rm -f $(WEB_PID_FILE); \
 			# zatrzymaj backend, aby nie zostawiać pół-startu \
 			if [ -f $(PID_FILE) ]; then \
 				BPID=$$(cat $(PID_FILE)); \
@@ -765,11 +840,35 @@ _start:
 				rm -f $(PID_FILE); \
 			fi; \
 			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
-			$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
-			exit 1; \
-		fi; \
-		echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"; \
-	fi
+				$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+				exit 1; \
+			fi; \
+			if [ "$(START_MODE)" = "dev" ]; then \
+				expected_bundler=""; \
+				if [ "$(START_WEB_MODE)" = "webpack" ]; then \
+					expected_bundler="webpack"; \
+				else \
+					expected_bundler="turbopack"; \
+				fi; \
+				bundler_line_ok=""; \
+				for attempt in {1..15}; do \
+					if [ -f "$(WEB_LOG)" ] && grep -Eiq "Next\\.js .+\\($$expected_bundler\\)" "$(WEB_LOG)"; then \
+						bundler_line_ok="yes"; \
+						break; \
+					fi; \
+					sleep 1; \
+				done; \
+				if [ -z "$$bundler_line_ok" ]; then \
+					echo "❌ UI nie potwierdził oczekiwanego bundlera '$$expected_bundler' w logach."; \
+					echo "ℹ️  Ostatnie logi UI:"; \
+					tail -n 60 "$(WEB_LOG)" || true; \
+					kill $$WPID 2>/dev/null || true; \
+					rm -f $(WEB_PID_FILE); \
+					exit 1; \
+				fi; \
+			fi; \
+			echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"; \
+		fi
 	@echo "🚀 Gotowe: backend http://$(HOST_DISPLAY):$(PORT), dashboard http://$(WEB_DISPLAY):$(WEB_PORT)"
 
 stop:
@@ -796,7 +895,22 @@ status:
 			echo "⚠️  WEB_PID_FILE istnieje, ale proces $$WPID nie żyje"; \
 		fi; \
 	else \
-		echo "ℹ️  UI (Next.js) nie jest uruchomione"; \
+		EXT_UI_PIDS=""; \
+		if command -v lsof >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
+		fi; \
+		if [ -z "$$EXT_UI_PIDS" ] && command -v fuser >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
+		fi; \
+		if [ -z "$$EXT_UI_PIDS" ] && command -v ss >/dev/null 2>&1; then \
+			EXT_UI_PIDS=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
+		fi; \
+		if [ -n "$$EXT_UI_PIDS" ]; then \
+			echo "⚠️  UI zajmuje port $(WEB_PORT), ale bez $(WEB_PID_FILE) (PID: $$EXT_UI_PIDS)"; \
+			echo "    Użyj: make web-stop"; \
+		else \
+			echo "ℹ️  UI (Next.js) nie jest uruchomione"; \
+		fi; \
 	fi
 
 clean-ports:

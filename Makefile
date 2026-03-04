@@ -44,13 +44,14 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		pytest e2e test-optimal test-ci-light test-fast-coverage test-light-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap \
 		test-intelligence-report \
-		api api-dev api-preprod api-stop web web-dev web-preprod web-stop \
+		api api-dev api-preprod api-stop web web-dev web-dev-turbo web-dev-turbo-debug web-preprod web-stop \
+		test-web-turbo-smoke test-web-turbo-smoke-clean \
 		startpre stoppre restartpre statuspre apipre webpre testpre ensurepreenv \
 		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check prebackup prerestore preverify preaudit predrill prereadiness \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
-		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke \
+		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke help \
 		modules-status modules-pull modules-branches modules-exec architecture-drift-check optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
 
 lint:
@@ -70,6 +71,14 @@ test:
 	@set +e; \
 	VENOM_TEST_ARTIFACT_MODE=clean VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
+	if [ $$rc -eq 5 ]; then \
+		echo ""; \
+		echo "⚠️  make test: pytest zakończył się kodem 5 (brak zebranych testów)."; \
+		echo "   Sprawdź grupy testowe i katalog testów:"; \
+		echo "   - make test-groups-check"; \
+		echo "   - make test-catalog-check"; \
+		exit $$rc; \
+	fi; \
 	if [ $$rc -ne 0 ]; then \
 		echo ""; \
 		echo "❌ make test: testy nie przeszły (exit=$$rc)."; \
@@ -82,6 +91,14 @@ test-data:
 	@set +e; \
 	VENOM_TEST_ARTIFACT_MODE=preserve VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
+	if [ $$rc -eq 5 ]; then \
+		echo ""; \
+		echo "⚠️  make test-data: pytest zakończył się kodem 5 (brak zebranych testów)."; \
+		echo "   Sprawdź grupy testowe i katalog testów:"; \
+		echo "   - make test-groups-check"; \
+		echo "   - make test-catalog-check"; \
+		exit $$rc; \
+	fi; \
 	if [ $$rc -ne 0 ]; then \
 		echo ""; \
 		echo "❌ make test-data: testy nie przeszły (exit=$$rc)."; \
@@ -119,6 +136,12 @@ test-web-unit:
 
 test-web-e2e:
 	$(NPM) --prefix $(WEB_DIR) run test:e2e
+
+test-web-turbo-smoke:
+	$(NPM) --prefix $(WEB_DIR) run test:dev:turbo:smoke
+
+test-web-turbo-smoke-clean:
+	$(NPM) --prefix $(WEB_DIR) run test:dev:turbo:smoke:clean
 
 test-all: test test-web-unit test-web-e2e
 
@@ -242,6 +265,14 @@ pytest:
 	@set +e; \
 	VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
+	if [ $$rc -eq 5 ]; then \
+		echo ""; \
+		echo "⚠️  make pytest: pytest zakończył się kodem 5 (brak zebranych testów)."; \
+		echo "   Sprawdź grupy testowe i katalog testów:"; \
+		echo "   - make test-groups-check"; \
+		echo "   - make test-catalog-check"; \
+		exit $$rc; \
+	fi; \
 	if [ $$rc -ne 0 ]; then \
 		echo ""; \
 		echo "❌ make pytest: testy nie przeszły (exit=$$rc)."; \
@@ -850,6 +881,28 @@ web-dev:
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
 	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
 
+web-dev-turbo:
+	@mkdir -p logs
+	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
+	: > $(WEB_LOG)
+	@echo "▶️  Uruchamiam UI (Next.js dev:turbo, host $(WEB_HOST), port $(WEB_PORT))"
+	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	echo $$! > $(WEB_PID_FILE)
+	@echo "✅ UI (Next.js dev:turbo) wystartował z PID $$(cat $(WEB_PID_FILE))"
+	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
+	@echo "⚡ Turbopack: aktywny (opt-in)"
+
+web-dev-turbo-debug:
+	@mkdir -p logs
+	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
+	: > $(WEB_LOG)
+	@echo "▶️  Uruchamiam UI (Next.js dev:turbo:debug, host $(WEB_HOST), port $(WEB_PORT))"
+	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo:debug -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	echo $$! > $(WEB_PID_FILE)
+	@echo "✅ UI (Next.js dev:turbo:debug) wystartował z PID $$(cat $(WEB_PID_FILE))"
+	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
+	@echo "🧪 Debug turbo: NEXT_DEBUG + --trace-warnings"
+
 web-preprod:
 	$(PREPROD_ENV_READONLY) \
 		$(MAKE) --no-print-directory web
@@ -961,3 +1014,27 @@ mcp-status:
 	@ls -1 venom_core/skills/mcp/_repos 2>/dev/null || echo "Brak."
 	@echo "📝 Wygenerowane wrappery (.py):"
 	@ls -1 venom_core/skills/custom/mcp_*.py 2>/dev/null || echo "Brak."
+
+help:
+	@echo "Venom Makefile - najczęściej używane komendy"
+	@echo ""
+	@echo "Start/Stop:"
+	@echo "  make start                    - start backend + frontend + runtime LLM"
+	@echo "  make stop                     - stop backend + frontend + runtime LLM"
+	@echo "  make status                   - status procesów"
+	@echo "  make web-dev                  - frontend dev (webpack, stabilny)"
+	@echo "  make web-dev-turbo            - frontend dev (turbopack, opt-in)"
+	@echo "  make web-dev-turbo-debug      - frontend dev turbopack + debug logi"
+	@echo ""
+	@echo "Testy:"
+	@echo "  make test                     - backend testy (clean artifacts)"
+	@echo "  make test-data                - backend testy (preserve artifacts)"
+	@echo "  make test-web-unit            - frontend unit"
+	@echo "  make test-web-e2e             - frontend e2e"
+	@echo "  make test-web-turbo-smoke     - smoke dev:turbo"
+	@echo "  make test-web-turbo-smoke-clean - smoke dev:turbo + clean .next"
+	@echo ""
+	@echo "Jakość:"
+	@echo "  make pr-fast                  - hard gate (wymagane przed zakończeniem)"
+	@echo "  make test-groups-check        - weryfikacja grup testów"
+	@echo "  make test-catalog-check       - weryfikacja katalogu testów"

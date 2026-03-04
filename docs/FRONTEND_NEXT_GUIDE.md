@@ -73,6 +73,8 @@ Requirements:
 - Keep `dev` as default daily mode (`webpack`), and use `dev:turbo` as opt-in.
 - Before reporting Turbopack instability, run:
   - `npm --prefix web-next run test:dev:turbo:smoke:clean`
+- CI automation available in:
+  - `.github/workflows/web-next-turbopack-smoke.yml` (nightly + `workflow_dispatch` + `push` on `main` for `web-next/**`)
 - If smoke fails, inspect hints from `web-next/scripts/check-dev-turbo.mjs`:
   - `.next/dev/lock` conflict means another `next dev` process is active.
   - module resolution / unsupported bundler hints point to webpack-only behaviors.

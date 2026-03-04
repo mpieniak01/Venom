@@ -10,13 +10,25 @@ fi
 source .venv/bin/activate
 
 FAST_GROUP_FILE="config/pytest-groups/fast.txt"
+HEAVY_GROUP_FILE="config/pytest-groups/heavy.txt"
+LONG_GROUP_FILE="config/pytest-groups/long.txt"
+
+# make test should be deterministic and not inherit external marker filters
+# that can accidentally deselect whole groups (e.g. performance/smoke).
+unset PYTEST_ADDOPTS
+unset PYTEST_MARKEXPR
+
+read_group_tests() {
+  local file="$1"
+  grep -vE '^\s*(#|$)' "$file"
+}
 
 # Full pytest suite using environment-optimized worker counts (sequential).
 echo "▶️  Pytest group: heavy"
-pytest -n 1 $(cat config/pytest-groups/heavy.txt)
+pytest -n 1 $(read_group_tests "${HEAVY_GROUP_FILE}")
 
 echo "▶️  Pytest group: long"
-pytest -n 2 $(cat config/pytest-groups/long.txt)
+pytest -n 2 $(read_group_tests "${LONG_GROUP_FILE}")
 
 echo "▶️  Pytest group: fast"
-pytest -n 6 $(cat "${FAST_GROUP_FILE}")
+pytest -n 6 $(read_group_tests "${FAST_GROUP_FILE}")

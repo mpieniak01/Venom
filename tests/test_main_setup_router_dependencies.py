@@ -308,6 +308,54 @@ def test_setup_router_dependencies_retries_professor_init_handles_exception(
     assert main_module.professor is None
 
 
+def test_initialize_academy_self_learning_init_error_sets_none(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", True, raising=False)
+    monkeypatch.setattr(main_module, "vector_store", object())
+    monkeypatch.setattr(main_module, "model_manager", object())
+    monkeypatch.setattr(main_module, "lessons_store", object())
+    monkeypatch.setattr(
+        main_module,
+        "initialize_academy",
+        lambda **_kwargs: (object(), object(), object()),
+    )
+
+    failing_module = ModuleType("venom_core.services.academy.self_learning_service")
+
+    class FailingSelfLearningService:
+        def __init__(self, **_kwargs):
+            raise RuntimeError("init failed")
+
+    failing_module.SelfLearningService = FailingSelfLearningService
+    monkeypatch.setitem(
+        sys.modules,
+        "venom_core.services.academy.self_learning_service",
+        failing_module,
+    )
+
+    main_module._initialize_academy()
+    assert main_module.self_learning_service is None
+
+
+def test_setup_router_dependencies_ignores_self_learning_refresh_error(monkeypatch):
+    _patch_setup_routes(monkeypatch)
+    _patch_setup_runtime_globals(monkeypatch)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", False, raising=False)
+    monkeypatch.setattr(main_module, "professor", None)
+    monkeypatch.setattr(main_module, "dataset_curator", None)
+    monkeypatch.setattr(main_module, "gpu_habitat", None)
+    monkeypatch.setattr(main_module, "lessons_store", None)
+    monkeypatch.setattr(main_module, "orchestrator", None)
+    monkeypatch.setattr(
+        main_module,
+        "self_learning_service",
+        SimpleNamespace(
+            set_runtime_dependencies=MagicMock(side_effect=RuntimeError("boom"))
+        ),
+    )
+
+    main_module.setup_router_dependencies()
+
+
 async def _done_task() -> None:
     return None
 
@@ -343,7 +391,7 @@ def test_initialize_background_scheduler_retention_recent_no_startup_task(monkey
     monkeypatch.setattr(main_module, "request_tracer", None)
     monkeypatch.setattr(main_module, "vector_store", None)
     monkeypatch.setattr(main_module, "event_broadcaster", object())
-    main_module.startup_runtime_retention_task = None
+    monkeypatch.setattr(main_module, "startup_runtime_retention_task", None)
 
     import asyncio
 
@@ -358,7 +406,7 @@ def test_shutdown_runtime_components_clears_startup_retention_task(monkeypatch):
 
     async def _runner() -> None:
         task = asyncio.create_task(_done_task())
-        main_module.startup_runtime_retention_task = task
+        monkeypatch.setattr(main_module, "startup_runtime_retention_task", task)
 
         monkeypatch.setattr(
             main_module.llm_simple_routes,
@@ -370,15 +418,19 @@ def test_shutdown_runtime_components_clears_startup_retention_task(monkeypatch):
             "release_onnx_task_runtime",
             MagicMock(side_effect=RuntimeError("boom")),
         )
-        main_module.request_tracer = None
-        main_module.desktop_sensor = None
-        main_module.shadow_agent = None
-        main_module.node_manager = None
-        main_module.background_scheduler = None
-        main_module.file_watcher = None
-        main_module.gardener_agent = None
-        main_module.hardware_bridge = None
-        main_module.state_manager = SimpleNamespace(shutdown=AsyncMock())
+        monkeypatch.setattr(main_module, "request_tracer", None)
+        monkeypatch.setattr(main_module, "desktop_sensor", None)
+        monkeypatch.setattr(main_module, "shadow_agent", None)
+        monkeypatch.setattr(main_module, "node_manager", None)
+        monkeypatch.setattr(main_module, "background_scheduler", None)
+        monkeypatch.setattr(main_module, "file_watcher", None)
+        monkeypatch.setattr(main_module, "gardener_agent", None)
+        monkeypatch.setattr(main_module, "hardware_bridge", None)
+        monkeypatch.setattr(
+            main_module,
+            "state_manager",
+            SimpleNamespace(shutdown=AsyncMock()),
+        )
 
         await main_module._shutdown_runtime_components()
         assert main_module.startup_runtime_retention_task is None
@@ -386,8 +438,8 @@ def test_shutdown_runtime_components_clears_startup_retention_task(monkeypatch):
     asyncio.run(_runner())
 
 
-def test_clear_startup_runtime_retention_task_sets_none():
-    main_module.startup_runtime_retention_task = object()
+def test_clear_startup_runtime_retention_task_sets_none(monkeypatch):
+    monkeypatch.setattr(main_module, "startup_runtime_retention_task", object())
     main_module._clear_startup_runtime_retention_task()
     assert main_module.startup_runtime_retention_task is None
 
@@ -398,7 +450,7 @@ def test_shutdown_runtime_components_stops_all_components_when_set(monkeypatch):
     async def _runner() -> None:
         done_task = asyncio.create_task(_done_task())
         await done_task
-        main_module.startup_runtime_retention_task = done_task
+        monkeypatch.setattr(main_module, "startup_runtime_retention_task", done_task)
 
         monkeypatch.setattr(
             main_module.llm_simple_routes,
@@ -411,15 +463,41 @@ def test_shutdown_runtime_components_stops_all_components_when_set(monkeypatch):
             MagicMock(return_value=None),
         )
 
-        main_module.request_tracer = SimpleNamespace(stop_watchdog=AsyncMock())
-        main_module.desktop_sensor = SimpleNamespace(stop=AsyncMock())
-        main_module.shadow_agent = SimpleNamespace(stop=AsyncMock())
-        main_module.node_manager = SimpleNamespace(stop=AsyncMock())
-        main_module.background_scheduler = SimpleNamespace(stop=AsyncMock())
-        main_module.file_watcher = SimpleNamespace(stop=AsyncMock())
-        main_module.gardener_agent = SimpleNamespace(stop=AsyncMock())
-        main_module.hardware_bridge = SimpleNamespace(disconnect=AsyncMock())
-        main_module.state_manager = SimpleNamespace(shutdown=AsyncMock())
+        monkeypatch.setattr(
+            main_module,
+            "request_tracer",
+            SimpleNamespace(stop_watchdog=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            main_module, "desktop_sensor", SimpleNamespace(stop=AsyncMock())
+        )
+        monkeypatch.setattr(
+            main_module, "shadow_agent", SimpleNamespace(stop=AsyncMock())
+        )
+        monkeypatch.setattr(
+            main_module, "node_manager", SimpleNamespace(stop=AsyncMock())
+        )
+        monkeypatch.setattr(
+            main_module,
+            "background_scheduler",
+            SimpleNamespace(stop=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            main_module, "file_watcher", SimpleNamespace(stop=AsyncMock())
+        )
+        monkeypatch.setattr(
+            main_module, "gardener_agent", SimpleNamespace(stop=AsyncMock())
+        )
+        monkeypatch.setattr(
+            main_module,
+            "hardware_bridge",
+            SimpleNamespace(disconnect=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            main_module,
+            "state_manager",
+            SimpleNamespace(shutdown=AsyncMock()),
+        )
 
         await main_module._shutdown_runtime_components()
 

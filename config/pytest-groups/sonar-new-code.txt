@@ -13,6 +13,8 @@ tests/test_academy_file_resolution_service.py
 tests/test_academy_models_module.py
 tests/test_academy_route_handlers_extra.py
 tests/test_academy_route_helpers_modules.py
+tests/test_academy_self_learning_routes.py
+tests/test_academy_self_learning_service.py
 tests/test_admin_audit.py
 tests/test_agents_release_integration_contracts.py
 tests/test_agents_skill_manager_paths.py

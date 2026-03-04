@@ -16,6 +16,8 @@ from venom_core.api.middleware.traffic_control import TrafficControlMiddleware
 
 # Import routers
 from venom_core.api.routes import academy as academy_routes
+from venom_core.api.routes import academy_models as academy_models_routes
+from venom_core.api.routes import academy_self_learning as academy_self_learning_routes
 from venom_core.api.routes import agents as agents_routes
 from venom_core.api.routes import audit_stream as audit_stream_routes
 from venom_core.api.routes import benchmark as benchmark_routes
@@ -191,6 +193,7 @@ google_calendar_skill = None
 professor = None
 dataset_curator = None
 gpu_habitat = None
+self_learning_service = None
 
 # Inicjalizacja TokenEconomist (Token Usage & Cost Tracking)
 token_economist = None
@@ -467,7 +470,7 @@ def _initialize_calendar_skill() -> None:
 
 def _initialize_academy() -> None:
     """Inicjalizacja komponentów THE_ACADEMY (trenowanie modeli)."""
-    global professor, dataset_curator, gpu_habitat
+    global professor, dataset_curator, gpu_habitat, self_learning_service
 
     professor, dataset_curator, gpu_habitat = initialize_academy(
         settings=SETTINGS,
@@ -476,6 +479,27 @@ def _initialize_academy() -> None:
         model_manager=model_manager,
         get_orchestrator_kernel=_get_orchestrator_kernel,
     )
+    if not SETTINGS.ENABLE_ACADEMY:
+        self_learning_service = None
+        return
+    try:
+        from venom_core.services.academy.self_learning_service import (
+            SelfLearningService,
+        )
+
+        storage_dir = str(Path(SETTINGS.STORAGE_PREFIX) / "data/academy/self_learning")
+        self_learning_service = SelfLearningService(
+            storage_dir=storage_dir,
+            vector_store=vector_store,
+            gpu_habitat=gpu_habitat,
+            model_manager=model_manager,
+            trainable_models_loader=academy_models_routes.list_trainable_models,
+            is_model_trainable_fn=academy_models_routes.is_model_trainable,
+        )
+        logger.info("SelfLearningService zainicjalizowany")
+    except Exception as exc:
+        logger.warning("Nie udało się zainicjalizować SelfLearningService: %s", exc)
+        self_learning_service = None
 
 
 def _initialize_token_economist() -> None:
@@ -926,7 +950,7 @@ async def audit_http_requests(request: Request, call_next):
 # Funkcja do ustawienia zależności routerów - wywoływana po inicjalizacji w lifespan
 def setup_router_dependencies():
     """Konfiguracja zależności routerów po inicjalizacji."""
-    global professor
+    global professor, self_learning_service
 
     logger.info(
         f"Setting system dependencies. Orchestrator: {orchestrator is not None}"
@@ -977,6 +1001,7 @@ def setup_router_dependencies():
             calendar_routes=calendar_routes,
             memory_projection_routes=memory_projection_routes,
             academy_routes=academy_routes,
+            academy_self_learning_routes=academy_self_learning_routes,
         ),
         runtime=RuntimeDependencies(
             orchestrator=orchestrator,
@@ -1006,8 +1031,22 @@ def setup_router_dependencies():
             professor=professor,
             dataset_curator=dataset_curator,
             gpu_habitat=gpu_habitat,
+            self_learning_service=self_learning_service,
         ),
     )
+    if self_learning_service is not None:
+        try:
+            self_learning_service.set_runtime_dependencies(
+                vector_store=vector_store,
+                gpu_habitat=gpu_habitat,
+                model_manager=model_manager,
+                trainable_models_loader=academy_models_routes.list_trainable_models,
+                is_model_trainable_fn=academy_models_routes.is_model_trainable,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Nie udało się odświeżyć zależności SelfLearningService: %s", exc
+            )
 
 
 # W trybie testowym (np. httpx ASGITransport bez lifespan) preinicjalizujemy
@@ -1050,6 +1089,7 @@ app.include_router(git_routes.router)
 app.include_router(feedback_routes.router)
 app.include_router(learning_routes.router)
 app.include_router(academy_routes.router)
+app.include_router(academy_self_learning_routes.router)
 app.include_router(llm_simple_routes.router)
 app.include_router(knowledge_routes.router)
 app.include_router(agents_routes.router)

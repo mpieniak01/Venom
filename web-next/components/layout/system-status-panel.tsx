@@ -9,7 +9,7 @@ type StatusTone = "success" | "warning" | "danger" | "neutral";
 type StatusRow = {
   id: string;
   label: string;
-  hint: string;
+  hint?: string;
   tone: StatusTone;
 };
 
@@ -44,21 +44,17 @@ export function SystemStatusPanel() {
         server: llmActive?.active_server ?? t("systemStatus.hints.unknown"),
         model: llmActive?.active_model ?? t("systemStatus.hints.unknown"),
       })
-      : llmError ?? t("systemStatus.hints.llmNone");
+      : "";
 
     return [
       {
         id: "api",
         label: t("systemStatus.api"),
-        hint: hasQueue ? "/api/v1/*" : queueError ?? t("systemStatus.hints.waiting"),
         tone: apiTone,
       },
       {
         id: "queue",
         label: t("systemStatus.queue"),
-        hint: hasQueue
-          ? t("systemStatus.hints.queueDetails", { active: queue?.active ?? 0, pending: queue?.pending ?? 0 })
-          : t("systemStatus.hints.queueEmpty"),
         tone: queueTone,
       },
       {
@@ -88,7 +84,7 @@ export function SystemStatusPanel() {
           >
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide">{status.label}</p>
-              <p className="text-hint">{status.hint}</p>
+              {status.hint ? <p className="text-hint">{status.hint}</p> : null}
             </div>
             <span
               className={[

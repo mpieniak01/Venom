@@ -19,6 +19,7 @@ class RouterModules:
     calendar_routes: Any
     memory_projection_routes: Any
     academy_routes: Any
+    academy_self_learning_routes: Any
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ class RuntimeDependencies:
     professor: Any
     dataset_curator: Any
     gpu_habitat: Any
+    self_learning_service: Any
 
 
 def apply_router_dependencies(
@@ -135,4 +137,7 @@ def apply_router_dependencies(
         gpu_habitat=runtime.gpu_habitat,
         lessons_store=runtime.lessons_store,
         model_manager=runtime.model_manager,
+    )
+    routes.academy_self_learning_routes.set_dependencies(
+        self_learning_service=runtime.self_learning_service,
     )

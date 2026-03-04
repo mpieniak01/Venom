@@ -5,7 +5,10 @@ export const systemStatus = {
   llm: "LLM",
   hints: {
     waiting: "Waiting for response...",
+    apiReady: "API available",
     queueDetails: "Active {{active}} • Pending {{pending}}",
+    queueReady: "Queue ready",
+    queuePaused: "Queue paused",
     queueEmpty: "No queue data",
     unknown: "unknown",
     llmDetails: "{{server}} • {{model}}",

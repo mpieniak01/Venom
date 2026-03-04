@@ -19,6 +19,8 @@ tests/test_academy_history_module.py
 tests/test_academy_models_module.py
 tests/test_academy_route_handlers_extra.py
 tests/test_academy_route_helpers_modules.py
+tests/test_academy_self_learning_routes.py
+tests/test_academy_self_learning_service.py
 tests/test_academy_training_service.py
 tests/test_admin_audit.py
 tests/test_agent_improvements.py

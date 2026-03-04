@@ -8,6 +8,7 @@ import {
   Server,
   Play,
   ArrowRightLeft,
+  BrainCircuit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
@@ -18,13 +19,14 @@ import { DatasetPanel } from "./dataset-panel";
 import { DatasetConversionPanel } from "./dataset-conversion-panel";
 import { TrainingPanel } from "./training-panel";
 import { AdaptersPanel } from "./adapters-panel";
+import { SelfLearningPanel } from "./self-learning-panel";
 import { getAcademyStatus, type AcademyStatus } from "@/lib/academy-api";
 import { useTranslation } from "@/lib/i18n";
 
 export function AcademyDashboard() {
   const t = useTranslation();
   const [activeTab, setActiveTab] = useState<
-    "overview" | "dataset" | "conversion" | "training" | "adapters"
+    "overview" | "dataset" | "conversion" | "training" | "adapters" | "selfLearning"
   >("overview");
   const [status, setStatus] = useState<AcademyStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,6 +154,15 @@ export function AcademyDashboard() {
           {t("academy.dashboard.tabs.training")}
         </Button>
         <Button
+          onClick={() => setActiveTab("selfLearning")}
+          variant="ghost"
+          size="sm"
+          className={cn(getThemeTabClass(activeTab === "selfLearning"))}
+        >
+          <BrainCircuit className="h-4 w-4" />
+          {t("academy.dashboard.tabs.selfLearning")}
+        </Button>
+        <Button
           onClick={() => setActiveTab("adapters")}
           variant="ghost"
           size="sm"
@@ -179,6 +190,7 @@ export function AcademyDashboard() {
         {!loading && status && activeTab === "conversion" && <DatasetConversionPanel />}
         {!loading && status && activeTab === "dataset" && <DatasetPanel />}
         {!loading && status && activeTab === "training" && <TrainingPanel />}
+        {!loading && status && activeTab === "selfLearning" && <SelfLearningPanel />}
         {!loading && status && activeTab === "adapters" && <AdaptersPanel />}
       </div>
     </div>

@@ -80,6 +80,24 @@ async function fillPromptForTarget(page: Page, target: TargetConfig, prompt: str
   }
 }
 
+async function ensureChatRuntimeReady(page: Page, target: TargetConfig): Promise<boolean> {
+  const modelButton = page.getByRole("button", { name: /Wybierz model LLM \(czat\)|Wybierz model LLM/i });
+  if ((await modelButton.count()) === 0) {
+    return true;
+  }
+  const label = ((await modelButton.first().textContent()) ?? "").trim();
+  const isDisabled = await modelButton.first().isDisabled();
+  const isUnavailable = /Brak modeli|Wybierz model/i.test(label);
+  if (isDisabled || isUnavailable) {
+    test.skip(
+      true,
+      `${target.name} pominięty: brak aktywnego modelu czatu (label="${label || "n/a"}", disabled=${String(isDisabled)})`,
+    );
+    return false;
+  }
+  return true;
+}
+
 async function waitForResponseLatency(
   page: Page,
   responseLocator: Locator,
@@ -100,7 +118,10 @@ async function waitForResponseLatency(
     }
     await page.waitForTimeout(200);
   }
-  throw new Error(`${targetName}: brak nowej odpowiedzi w strumieniu`);
+  const latestText = ((await responseLocator.last().textContent().catch(() => "")) ?? "").trim();
+  throw new Error(
+    `${targetName}: brak nowej odpowiedzi w strumieniu (assistant_count=${baseline}, latest_assistant="${latestText.slice(0, 120)}")`,
+  );
 }
 
 async function measureLatency(page: Page, target: TargetConfig) {
@@ -126,6 +147,9 @@ async function measureLatency(page: Page, target: TargetConfig) {
   const prompt = `Benchmark latency ${Date.now()}`;
   const responseLocator = page.locator(target.responseSelector);
   const initialResponses = await responseLocator.count();
+
+  const runtimeReady = await ensureChatRuntimeReady(page, target);
+  if (!runtimeReady) return;
 
   const promptFilled = await fillPromptForTarget(page, target, prompt);
   if (!promptFilled) return;

@@ -518,11 +518,18 @@ class Settings(BaseSettings):
     # ===== MODULE EXAMPLE (Modular Extension) =====
     # Publiczny przykład modułu z możliwością podłączenia rozszerzenia przez optional import.
     FEATURE_MODULE_EXAMPLE: bool = False
+    FEATURE_GOOGLE_HOME_BRIDGE: bool = False
+    GOOGLE_HOME_BRIDGE_ENABLED: bool = False
+    GOOGLE_HOME_BRIDGE_MODE: str = "mock"
+    GOOGLE_HOME_BRIDGE_DEVICE_ID: str = ""
+    GOOGLE_HOME_BRIDGE_ALLOWED_USERS: str = ""  # CSV, puste = brak ograniczeń
+    GOOGLE_HOME_BRIDGE_REQUIRE_CONFIRM_FOR_HIGH_RISK: bool = True
+    GOOGLE_HOME_BRIDGE_DATA_ROOT: str = ""
     MODULE_EXAMPLE_MODE: str = "disabled"  # disabled|stub|extension
     MODULE_EXAMPLE_EXTENSION_MODULE: str = ""
     MODULE_EXAMPLE_ALLOWED_USERS: str = ""  # CSV, puste = brak ograniczeń
     MODULE_EXAMPLE_TARGET: str = ""  # Opcjonalny cel demonstracyjny modułu
-    API_OPTIONAL_MODULES: str = ""  # CSV: module_id|module.path:router|FEATURE_FLAG|MODULE_API_VERSION|MIN_CORE_VERSION
+    API_OPTIONAL_MODULES: str = ""  # CSV: manifest:/abs/path/module.json
     CORE_RUNTIME_VERSION: str = "1.5.0"
     CORE_MODULE_API_VERSION: str = "1.0.0"
 

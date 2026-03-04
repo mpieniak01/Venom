@@ -10,6 +10,8 @@ const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<
 > = {
   brand_studio: async () =>
     (await import("../../modules/venom-module-brand-studio/web-next/page")).default ?? null,
+  google_home_bridge: async () =>
+    (await import("../../modules/venom-module-google-home/web-next/page")).default ?? null,
   module_example: async () =>
     (await import("../../modules/venom-module-example/web-next/page")).default ?? null,
 };

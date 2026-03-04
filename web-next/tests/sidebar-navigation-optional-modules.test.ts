@@ -2,13 +2,20 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
 const originalFlag = process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE;
+const originalGoogleHomeFlag = process.env.NEXT_PUBLIC_FEATURE_GOOGLE_HOME_BRIDGE;
 
 afterEach(() => {
   if (originalFlag === undefined) {
     delete process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE;
+  } else {
+    process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE = originalFlag;
+  }
+
+  if (originalGoogleHomeFlag === undefined) {
+    delete process.env.NEXT_PUBLIC_FEATURE_GOOGLE_HOME_BRIDGE;
     return;
   }
-  process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE = originalFlag;
+  process.env.NEXT_PUBLIC_FEATURE_GOOGLE_HOME_BRIDGE = originalGoogleHomeFlag;
 });
 
 async function loadNavigationItems() {
@@ -27,5 +34,11 @@ describe("sidebar optional modules", () => {
     process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE = "true";
     const items = await loadNavigationItems();
     assert.equal(items.some((item) => item.href === "/module-example"), true);
+  });
+
+  it("includes google-home when feature flag is enabled", async () => {
+    process.env.NEXT_PUBLIC_FEATURE_GOOGLE_HOME_BRIDGE = "true";
+    const items = await loadNavigationItems();
+    assert.equal(items.some((item) => item.href === "/google-home"), true);
   });
 });

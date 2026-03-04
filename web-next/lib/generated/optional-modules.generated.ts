@@ -45,6 +45,19 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
   },
   {
     schemaVersion: 1,
+    moduleId: "google_home_bridge",
+    displayName: "Google Home",
+    routePath: "/google-home",
+    featureFlagEnv: "NEXT_PUBLIC_FEATURE_GOOGLE_HOME_BRIDGE",
+    navLabel: "Google Home",
+    navLabels: {
+      pl: "Google Home",
+      en: "Google Home",
+      de: "Google Home",
+    },
+  },
+  {
+    schemaVersion: 1,
     moduleId: "module_example",
     displayName: "Module Example",
     routePath: "/module-example",
@@ -60,6 +73,7 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
   "brand_studio": () => process.env.NEXT_PUBLIC_FEATURE_BRAND_STUDIO ?? "",
+  "google_home_bridge": () => process.env.NEXT_PUBLIC_FEATURE_GOOGLE_HOME_BRIDGE ?? "",
   "module_example": () => process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE ?? ""
 };
 

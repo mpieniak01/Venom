@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -430,3 +431,152 @@ def test_delete_run_rejects_invalid_identifier(tmp_path: Path):
         storage_dir=str(tmp_path / "storage"), repo_root=str(tmp_path)
     )
     assert service.delete_run("../../etc/passwd") is False
+
+
+def test_set_runtime_dependencies_updates_runtime_fields(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    vector_store = object()
+    gpu_habitat = object()
+    model_manager = object()
+    loader = lambda *_: []  # noqa: E731
+    trainable = lambda _model_id: True  # noqa: E731
+
+    service.set_runtime_dependencies(
+        vector_store=vector_store,
+        gpu_habitat=gpu_habitat,
+        model_manager=model_manager,
+        trainable_models_loader=loader,
+        is_model_trainable_fn=trainable,
+    )
+
+    assert service.vector_store is vector_store
+    assert service.gpu_habitat is gpu_habitat
+    assert service.model_manager is model_manager
+    assert service.trainable_models_loader is loader
+    assert service.is_model_trainable_fn is trainable
+
+
+def test_delete_and_clear_runs_cancel_active_pipeline_tasks(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run_id_1 = "11111111-1111-1111-1111-111111111111"
+    run_id_2 = "22222222-2222-2222-2222-222222222222"
+
+    service._runs[run_id_1] = service._run_from_payload(
+        {
+            "run_id": run_id_1,
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-04T10:00:00+00:00",
+        }
+    )
+    service._runs[run_id_2] = service._run_from_payload(
+        {
+            "run_id": run_id_2,
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-04T10:00:00+00:00",
+        }
+    )
+
+    task_1 = MagicMock()
+    task_1.done.return_value = False
+    task_2 = MagicMock()
+    task_2.done.return_value = False
+    service._pipeline_tasks[run_id_1] = task_1
+    service._pipeline_tasks[run_id_2] = task_2
+
+    assert service.delete_run(run_id_1) is True
+    task_1.cancel.assert_called_once()
+
+    cleared = service.clear_all_runs()
+    assert cleared == 1
+    task_2.cancel.assert_called_once()
+
+
+def test_parse_rag_config_normalizes_policy_and_profile(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    cfg = service._parse_rag_config(
+        {
+            "collection": "  custom  ",
+            "category": "  cat  ",
+            "chunk_text": 1,
+            "embedding_profile_id": "  local:default  ",
+            "embedding_policy": "unsupported",
+        }
+    )
+    assert cfg.collection == "custom"
+    assert cfg.category == "cat"
+    assert cfg.chunk_text is True
+    assert cfg.embedding_profile_id == "local:default"
+    assert cfg.embedding_policy == "strict"
+
+
+def test_extract_file_text_handles_read_error_and_empty_content(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True)
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "33333333-3333-3333-3333-333333333333",
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-04T10:00:00+00:00",
+        }
+    )
+
+    assert service._extract_file_text(run, repo_root / "missing.md") is None
+    empty_file = repo_root / "empty.md"
+    empty_file.write_text("   ", encoding="utf-8")
+    assert service._extract_file_text(run, empty_file) is None
+
+
+@pytest.mark.asyncio
+async def test_run_rag_index_dry_run_and_missing_store_paths(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path / "repo"),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "44444444-4444-4444-4444-444444444444",
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-04T10:00:00+00:00",
+            "dry_run": True,
+            "rag_config": {
+                "embedding_profile_id": "local:default",
+                "embedding_policy": "strict",
+            },
+        }
+    )
+    await service._run_rag_index(run, chunks=[{"text": "x"}], extracted_files=[])
+    assert run.progress.indexed_vectors == 1
+
+    run.dry_run = False
+    with pytest.raises(Exception, match="VectorStore is not available"):
+        await service._run_rag_index(run, chunks=[{"text": "x"}], extracted_files=[])
+
+
+def test_run_dir_rejects_invalid_identifier(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    with pytest.raises(ValueError, match="Invalid run_id"):
+        service._run_dir("not-a-uuid")

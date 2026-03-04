@@ -308,6 +308,54 @@ def test_setup_router_dependencies_retries_professor_init_handles_exception(
     assert main_module.professor is None
 
 
+def test_initialize_academy_self_learning_init_error_sets_none(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", True, raising=False)
+    monkeypatch.setattr(main_module, "vector_store", object())
+    monkeypatch.setattr(main_module, "model_manager", object())
+    monkeypatch.setattr(main_module, "lessons_store", object())
+    monkeypatch.setattr(
+        main_module,
+        "initialize_academy",
+        lambda **_kwargs: (object(), object(), object()),
+    )
+
+    failing_module = ModuleType("venom_core.services.academy.self_learning_service")
+
+    class FailingSelfLearningService:
+        def __init__(self, **_kwargs):
+            raise RuntimeError("init failed")
+
+    failing_module.SelfLearningService = FailingSelfLearningService
+    monkeypatch.setitem(
+        sys.modules,
+        "venom_core.services.academy.self_learning_service",
+        failing_module,
+    )
+
+    main_module._initialize_academy()
+    assert main_module.self_learning_service is None
+
+
+def test_setup_router_dependencies_ignores_self_learning_refresh_error(monkeypatch):
+    _patch_setup_routes(monkeypatch)
+    _patch_setup_runtime_globals(monkeypatch)
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_ACADEMY", False, raising=False)
+    monkeypatch.setattr(main_module, "professor", None)
+    monkeypatch.setattr(main_module, "dataset_curator", None)
+    monkeypatch.setattr(main_module, "gpu_habitat", None)
+    monkeypatch.setattr(main_module, "lessons_store", None)
+    monkeypatch.setattr(main_module, "orchestrator", None)
+    monkeypatch.setattr(
+        main_module,
+        "self_learning_service",
+        SimpleNamespace(
+            set_runtime_dependencies=MagicMock(side_effect=RuntimeError("boom"))
+        ),
+    )
+
+    main_module.setup_router_dependencies()
+
+
 async def _done_task() -> None:
     return None
 

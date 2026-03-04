@@ -83,7 +83,7 @@ Wymagania:
   - `web-next/tests/operations-i18n-keys.test.ts`
 
 ### 0.3.2 Workflow stabilności Turbopack (PR 193)
-- Trzymaj `dev` jako codzienny tryb domyślny (`webpack`), a `dev:turbo` traktuj jako opt-in.
+- Dla launcherów stacku traktuj Turbopack jako codzienny tryb domyślny (`make start`), a webpack jako fallback (`make start2` / `make web-dev`).
 - Przed zgłoszeniem niestabilności Turbopack uruchom:
   - `npm --prefix web-next run test:dev:turbo:smoke:clean`
 - Automatyzacja CI jest dostępna w:
@@ -95,10 +95,10 @@ Wymagania:
 ### 0.3.3 Wrappery Makefile (uruchamianie stacku)
 Z poziomu roota repo możesz użyć:
 - `make start` / `make stop` / `make status` (cykl życia pełnego stacku).
-- `make start2` (cykl życia pełnego stacku z frontendem Turbopack).
+- `make start2` (cykl życia pełnego stacku z frontendem webpack fallback).
 - `make api-dev` (tylko backend).
-- `make web-dev` (tylko frontend, webpack).
-- `make web-dev-turbo` / `make web-dev-turbo-debug` (tylko frontend, turbopack).
+- `make web-dev` (tylko frontend, webpack fallback).
+- `make web-dev-turbo` / `make web-dev-turbo-debug` (tylko frontend, turbopack jako ścieżka primary).
 - `make test-web-turbo-smoke-clean` (smoke regresyjny turbopack).
 
 ### 0.4 Konfiguracja i proxy

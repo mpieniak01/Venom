@@ -341,7 +341,7 @@ describe("SelfLearningHistory", () => {
     assert.ok(screen.getByText(/Eval score/i));
     assert.ok(screen.getByText(/0.7421/i));
     assert.ok(screen.getByText(/Promotion decision/i));
-    assert.ok(screen.getByText(/promote/i));
+    assert.ok(screen.getByText(/Promote/i));
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Delete run/i }));

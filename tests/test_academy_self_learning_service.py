@@ -734,6 +734,46 @@ def test_resolve_repo_commit_sha_returns_none_outside_git(tmp_path: Path):
     assert service._resolve_repo_commit_sha() is None
 
 
+def test_evaluate_llm_run_handles_non_dict_task_distribution(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path / "repo"),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "11111111-1111-4111-8111-111111111111",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "llm_config": {
+                "dataset_strategy": "repo_tasks_basic",
+                "task_mix_preset": "balanced",
+            },
+            "rag_config": {},
+            "progress": {"chunks_created": 10},
+            "artifacts": {},
+            "status": "running",
+            "created_at": "2026-03-04T00:00:00+00:00",
+            "logs": [],
+        }
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        service,
+        "_read_dataset_report",
+        lambda _run: {
+            "accepted_records": 5,
+            "task_distribution": ["bad-shape"],
+        },
+    )
+    try:
+        payload = service._evaluate_llm_run(run)
+    finally:
+        monkeypatch.undo()
+
+    assert payload["kind"] == "proxy_eval"
+    assert payload["metrics"]["fix_success_rate"] >= 0.0
+
+
 @pytest.mark.asyncio
 async def test_rag_index_run_writes_proxy_evaluation_artifact(tmp_path: Path):
     repo_root = tmp_path / "repo"

@@ -158,6 +158,7 @@ Strojenie inferencji i trening Academy są powiązane, ale to osobne kontrakty:
    - `GET /api/v1/system/llm-runtime/options`
 3. Aktywacja adaptera może zawierać walidację runtime:
    - `POST /api/v1/academy/adapters/activate` z opcjonalnym `runtime_id`
+   - opcjonalne `deploy_to_chat_runtime=true`, aby wdrożyć aktywny adapter do runtime Chat
 
 Kluczowe pola kontraktu Academy:
 - `source_type`: gdzie wykonywany jest trening (`local` lub `cloud`), nie skąd pochodzi model.
@@ -169,6 +170,11 @@ Praktyczna sekwencja:
 2. Wytrenuj adapter.
 3. W Chat przełącz runtime kompatybilny z tym modelem/adapterem.
 4. Aktywuj adapter (opcjonalnie z `runtime_id`), żeby wymusić walidację kompatybilności.
+5. Gdy `deploy_to_chat_runtime=true`, Academy może automatycznie przełączyć model Chat dla adapterów Ollama.
+
+Aktualne ograniczenie:
+1. Automatyczny deploy/rollback adaptera do runtime Chat jest obecnie zaimplementowany dla `ollama`.
+2. Deploy/rollback dla `vllm` i `onnx` jest zaplanowany jako follow-up.
 
 ## Użycie
 

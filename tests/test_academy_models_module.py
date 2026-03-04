@@ -392,7 +392,7 @@ def test_activate_adapter_with_chat_runtime_deploy_ollama(
     assert payload["deployed"] is True
     assert payload["runtime_id"] == "ollama"
     assert payload["chat_model"] == "venom-adapter-ok-adapter"
-    assert mock_config_manager.update_config.call_count >= 2
+    assert mock_config_manager.update_config.call_count >= 1
 
 
 @patch("venom_core.api.routes.academy_models.config_manager")
@@ -415,7 +415,7 @@ def test_deactivate_adapter_with_chat_runtime_rollback_ollama(
     assert payload["rolled_back"] is True
     assert payload["runtime_id"] == "ollama"
     assert payload["chat_model"] == "phi3:latest"
-    assert mock_config_manager.update_config.call_count >= 2
+    assert mock_config_manager.update_config.call_count >= 1
 
 
 @pytest.mark.asyncio

@@ -1150,8 +1150,9 @@ class SelfLearningService:
 
         task_distribution = dataset_report.get("task_distribution") or {}
         bugfix_ratio = 0.0
-        total_tasks = max(1, sum(int(v) for v in task_distribution.values()))
+        total_tasks = 1
         if isinstance(task_distribution, dict):
+            total_tasks = max(1, sum(int(v) for v in task_distribution.values()))
             bugfix_ratio = float(task_distribution.get("bugfix_hint", 0)) / float(
                 total_tasks
             )
@@ -1853,34 +1854,46 @@ class SelfLearningService:
         if not lines:
             return []
 
-        symbol_markers: list[tuple[int, str]] = []
-        symbol_patterns = (
-            re.compile(r"^\s*async\s+def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),
-            re.compile(r"^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),
-            re.compile(r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\b"),
-            re.compile(
-                r"^\s*export\s+(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("
-            ),
-            re.compile(r"^\s*function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),
-            re.compile(r"^\s*export\s+class\s+([A-Za-z_][A-Za-z0-9_]*)\b"),
-            re.compile(
-                r"^\s*(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?\("
-            ),
-        )
-
-        for idx, line in enumerate(lines):
-            symbol_name: str | None = None
-            for pattern in symbol_patterns:
-                matched = pattern.match(line)
-                if matched:
-                    symbol_name = matched.group(1)
-                    break
-            if symbol_name:
-                symbol_markers.append((idx, symbol_name))
+        symbol_markers = SelfLearningService._scan_symbol_markers(lines)
 
         if not symbol_markers:
             return []
 
+        return SelfLearningService._build_symbol_blocks(lines, symbol_markers)
+
+    @staticmethod
+    def _symbol_patterns() -> tuple[re.Pattern[str], ...]:
+        return (
+            re.compile(r"^\s*async\s+def\s+([A-Za-z_]\w*)\s*\(", re.ASCII),
+            re.compile(r"^\s*def\s+([A-Za-z_]\w*)\s*\(", re.ASCII),
+            re.compile(r"^\s*class\s+([A-Za-z_]\w*)\b", re.ASCII),
+            re.compile(
+                r"^\s*export\s+(?:async\s+)?function\s+([A-Za-z_]\w*)\s*\(", re.ASCII
+            ),
+            re.compile(r"^\s*function\s+([A-Za-z_]\w*)\s*\(", re.ASCII),
+            re.compile(r"^\s*export\s+class\s+([A-Za-z_]\w*)\b", re.ASCII),
+            re.compile(
+                r"^\s*(?:export\s+)?const\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?\(",
+                re.ASCII,
+            ),
+        )
+
+    @staticmethod
+    def _scan_symbol_markers(lines: list[str]) -> list[tuple[int, str]]:
+        symbol_markers: list[tuple[int, str]] = []
+        patterns = SelfLearningService._symbol_patterns()
+        for idx, line in enumerate(lines):
+            for pattern in patterns:
+                matched = pattern.match(line)
+                if matched:
+                    symbol_markers.append((idx, matched.group(1)))
+                    break
+        return symbol_markers
+
+    @staticmethod
+    def _build_symbol_blocks(
+        lines: list[str], symbol_markers: list[tuple[int, str]]
+    ) -> list[tuple[str | None, str]]:
         blocks: list[tuple[str | None, str]] = []
         first_symbol_line = symbol_markers[0][0]
         if first_symbol_line > 0:
@@ -2017,58 +2030,8 @@ class SelfLearningService:
                 max_files=_safe_int(limits.get("max_files"), 1500),
                 max_total_size_mb=_safe_int(limits.get("max_total_size_mb"), 200),
             ),
-            llm_config=LlmConfig(
-                base_model=llm_cfg.get("base_model"),
-                dataset_strategy=cast(
-                    SelfLearningDatasetStrategy,
-                    str(llm_cfg.get("dataset_strategy") or "reconstruct").strip()
-                    if str(llm_cfg.get("dataset_strategy") or "reconstruct").strip()
-                    in _VALID_DATASET_STRATEGIES
-                    else "reconstruct",
-                ),
-                task_mix_preset=cast(
-                    SelfLearningTaskMixPreset,
-                    str(llm_cfg.get("task_mix_preset") or "balanced").strip()
-                    if str(llm_cfg.get("task_mix_preset") or "balanced").strip()
-                    in _VALID_TASK_MIX_PRESETS
-                    else "balanced",
-                ),
-                lora_rank=_safe_int(llm_cfg.get("lora_rank"), 16),
-                learning_rate=float(llm_cfg.get("learning_rate", 2e-4)),
-                num_epochs=_safe_int(llm_cfg.get("num_epochs"), 3),
-                batch_size=_safe_int(llm_cfg.get("batch_size"), 4),
-                max_seq_length=_safe_int(llm_cfg.get("max_seq_length"), 2048),
-            ),
-            rag_config=RagConfig(
-                collection=str(rag_cfg.get("collection") or "default"),
-                category=str(rag_cfg.get("category") or "academy_self_learning"),
-                chunk_text=bool(rag_cfg.get("chunk_text", False)),
-                chunking_mode=cast(
-                    SelfLearningRagChunkingMode,
-                    str(rag_cfg.get("chunking_mode") or "plain").strip()
-                    if str(rag_cfg.get("chunking_mode") or "plain").strip()
-                    in _VALID_RAG_CHUNKING_MODES
-                    else "plain",
-                ),
-                retrieval_mode=cast(
-                    SelfLearningRagRetrievalMode,
-                    str(rag_cfg.get("retrieval_mode") or "vector").strip()
-                    if str(rag_cfg.get("retrieval_mode") or "vector").strip()
-                    in _VALID_RAG_RETRIEVAL_MODES
-                    else "vector",
-                ),
-                embedding_profile_id=(
-                    str(rag_cfg.get("embedding_profile_id")).strip()[:128]
-                    if rag_cfg.get("embedding_profile_id")
-                    else None
-                ),
-                embedding_policy=(
-                    "allow_fallback"
-                    if str(rag_cfg.get("embedding_policy") or "strict").strip().lower()
-                    == "allow_fallback"
-                    else "strict"
-                ),
-            ),
+            llm_config=self._llm_config_from_payload(llm_cfg),
+            rag_config=self._rag_config_from_payload(rag_cfg),
             dry_run=bool(payload.get("dry_run", False)),
             status=self._coerce_status(payload.get("status")),
             created_at=str(payload.get("created_at", "")),
@@ -2084,6 +2047,77 @@ class SelfLearningService:
             artifacts=dict(payload.get("artifacts") or {}),
             logs=list(payload.get("logs") or []),
             error_message=payload.get("error_message"),
+        )
+
+    @staticmethod
+    def _coerce_choice(value: Any, valid_values: set[str], default: str) -> str:
+        candidate = str(value or default).strip()
+        return candidate if candidate in valid_values else default
+
+    def _llm_config_from_payload(self, llm_cfg: dict[str, Any]) -> LlmConfig:
+        dataset_strategy = cast(
+            SelfLearningDatasetStrategy,
+            self._coerce_choice(
+                llm_cfg.get("dataset_strategy"),
+                _VALID_DATASET_STRATEGIES,
+                "reconstruct",
+            ),
+        )
+        task_mix_preset = cast(
+            SelfLearningTaskMixPreset,
+            self._coerce_choice(
+                llm_cfg.get("task_mix_preset"),
+                _VALID_TASK_MIX_PRESETS,
+                "balanced",
+            ),
+        )
+        return LlmConfig(
+            base_model=llm_cfg.get("base_model"),
+            dataset_strategy=dataset_strategy,
+            task_mix_preset=task_mix_preset,
+            lora_rank=_safe_int(llm_cfg.get("lora_rank"), 16),
+            learning_rate=float(llm_cfg.get("learning_rate", 2e-4)),
+            num_epochs=_safe_int(llm_cfg.get("num_epochs"), 3),
+            batch_size=_safe_int(llm_cfg.get("batch_size"), 4),
+            max_seq_length=_safe_int(llm_cfg.get("max_seq_length"), 2048),
+        )
+
+    def _rag_config_from_payload(self, rag_cfg: dict[str, Any]) -> RagConfig:
+        chunking_mode = cast(
+            SelfLearningRagChunkingMode,
+            self._coerce_choice(
+                rag_cfg.get("chunking_mode"),
+                _VALID_RAG_CHUNKING_MODES,
+                "plain",
+            ),
+        )
+        retrieval_mode = cast(
+            SelfLearningRagRetrievalMode,
+            self._coerce_choice(
+                rag_cfg.get("retrieval_mode"),
+                _VALID_RAG_RETRIEVAL_MODES,
+                "vector",
+            ),
+        )
+        embedding_profile_id = rag_cfg.get("embedding_profile_id")
+        embedding_policy = (
+            "allow_fallback"
+            if str(rag_cfg.get("embedding_policy") or "strict").strip().lower()
+            == "allow_fallback"
+            else "strict"
+        )
+        return RagConfig(
+            collection=str(rag_cfg.get("collection") or "default"),
+            category=str(rag_cfg.get("category") or "academy_self_learning"),
+            chunk_text=bool(rag_cfg.get("chunk_text", False)),
+            chunking_mode=chunking_mode,
+            retrieval_mode=retrieval_mode,
+            embedding_profile_id=(
+                str(embedding_profile_id).strip()[:128]
+                if embedding_profile_id
+                else None
+            ),
+            embedding_policy=embedding_policy,
         )
 
     @staticmethod

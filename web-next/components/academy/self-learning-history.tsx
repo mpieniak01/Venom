@@ -28,51 +28,115 @@ function readArtifactString(
   key: string
 ): string | null {
   const value = artifacts[key];
-  if (typeof value !== "string") {
-    return null;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
   }
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
+  return null;
 }
 
 function readKnowledgeFreshness(
   artifacts: Record<string, unknown>
 ): { indexedAt: string | null; mode: string | null } {
   const payload = artifacts["knowledge_freshness"];
-  if (!payload || typeof payload !== "object") {
-    return { indexedAt: null, mode: null };
+  if (payload && typeof payload === "object") {
+    const typed = payload as Record<string, unknown>;
+    const indexedAt = typeof typed.indexed_at === "string" ? typed.indexed_at : null;
+    const mode = typeof typed.mode === "string" ? typed.mode : null;
+    return { indexedAt, mode };
   }
-  const typed = payload as Record<string, unknown>;
-  const indexedAt = typeof typed.indexed_at === "string" ? typed.indexed_at : null;
-  const mode = typeof typed.mode === "string" ? typed.mode : null;
-  return { indexedAt, mode };
+  return { indexedAt: null, mode: null };
 }
 
 function readEvaluationSummary(
   artifacts: Record<string, unknown>
 ): { score: number | null; decision: string | null } {
   const payload = artifacts["evaluation"];
-  if (!payload || typeof payload !== "object") {
-    return { score: null, decision: null };
+  if (payload && typeof payload === "object") {
+    const typed = payload as Record<string, unknown>;
+    const score = typeof typed.score === "number" ? typed.score : null;
+    const decision = typeof typed.decision === "string" ? typed.decision : null;
+    return { score, decision };
   }
-  const typed = payload as Record<string, unknown>;
-  const score = typeof typed.score === "number" ? typed.score : null;
-  const decision = typeof typed.decision === "string" ? typed.decision : null;
-  return { score, decision };
+  return { score: null, decision: null };
 }
 
-export function SelfLearningHistory({
+function SelfLearningRunList({
   runs,
   selectedRunId,
   onSelectRun,
   onRefresh,
-  onDeleteRun,
   onClearAll,
-}: Props) {
+  language,
+}: Pick<Props, "runs" | "selectedRunId" | "onSelectRun" | "onRefresh" | "onClearAll"> & {
+  language: string;
+}) {
   const t = useTranslation();
-  const { language } = useLanguage();
+  return (
+    <div className="space-y-3 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-[color:var(--text-heading)]">
+          {t("academy.selfLearning.history.title")}
+        </h3>
+        <div className="flex items-center gap-1">
+          <Button onClick={onRefresh} variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={t("academy.common.refresh")}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={onClearAll}
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 text-red-300 hover:text-red-200"
+            aria-label={t("academy.selfLearning.history.clearAll")}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
 
-  const selectedRun = runs.find((run) => run.run_id === selectedRunId) ?? null;
+      <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+        {runs.length === 0 ? (
+          <p className="text-sm text-hint">{t("academy.selfLearning.history.empty")}</p>
+        ) : (
+          runs.map((run) => {
+            const isSelected = run.run_id === selectedRunId;
+            return (
+              <button
+                type="button"
+                key={run.run_id}
+                onClick={() => onSelectRun(run.run_id)}
+                className={`w-full rounded-lg border p-3 text-left transition ${
+                  isSelected
+                    ? "border-violet-500/50 bg-violet-500/10"
+                    : "border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] hover:border-[color:var(--ui-border-strong)]"
+                }`}
+              >
+                <p className="font-mono text-xs text-[color:var(--text-heading)]">{run.run_id.slice(0, 8)}</p>
+                <p className={`mt-1 text-xs font-semibold ${STATUS_CLASS[run.status]}`}>
+                  {t(`academy.selfLearning.status.${run.status === "completed_with_warnings" ? "completedWithWarnings" : run.status}`)}
+                </p>
+                <p className="mt-1 text-xs text-hint">
+                  {new Date(run.created_at).toLocaleString(language)}
+                </p>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SelfLearningRunDetails({
+  selectedRun,
+  onDeleteRun,
+  language,
+}: {
+  selectedRun: SelfLearningRunStatus | null;
+  onDeleteRun: Props["onDeleteRun"];
+  language: string;
+}) {
+  const t = useTranslation();
   const selectedCommitSha = selectedRun
     ? readArtifactString(selectedRun.artifacts, "repo_commit_sha")
     : null;
@@ -87,59 +151,6 @@ export function SelfLearningHistory({
     : { score: null, decision: null };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(260px,340px)_1fr]">
-      <div className="space-y-3 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-[color:var(--text-heading)]">
-            {t("academy.selfLearning.history.title")}
-          </h3>
-          <div className="flex items-center gap-1">
-            <Button onClick={onRefresh} variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={t("academy.common.refresh")}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button
-              onClick={onClearAll}
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 text-red-300 hover:text-red-200"
-              aria-label={t("academy.selfLearning.history.clearAll")}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
-          {runs.length === 0 ? (
-            <p className="text-sm text-hint">{t("academy.selfLearning.history.empty")}</p>
-          ) : (
-            runs.map((run) => {
-              const isSelected = run.run_id === selectedRunId;
-              return (
-                <button
-                  type="button"
-                  key={run.run_id}
-                  onClick={() => onSelectRun(run.run_id)}
-                  className={`w-full rounded-lg border p-3 text-left transition ${
-                    isSelected
-                      ? "border-violet-500/50 bg-violet-500/10"
-                      : "border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] hover:border-[color:var(--ui-border-strong)]"
-                  }`}
-                >
-                  <p className="font-mono text-xs text-[color:var(--text-heading)]">{run.run_id.slice(0, 8)}</p>
-                  <p className={`mt-1 text-xs font-semibold ${STATUS_CLASS[run.status]}`}>
-                    {t(`academy.selfLearning.status.${run.status === "completed_with_warnings" ? "completedWithWarnings" : run.status}`)}
-                  </p>
-                  <p className="mt-1 text-xs text-hint">
-                    {new Date(run.created_at).toLocaleString(language)}
-                  </p>
-                </button>
-              );
-            })
-          )}
-        </div>
-      </div>
-
       <div className="space-y-3 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
         <h3 className="text-sm font-semibold text-[color:var(--text-heading)]">
           {t("academy.selfLearning.history.details")}
@@ -221,7 +232,11 @@ export function SelfLearningHistory({
                       <th className="px-3 py-2 text-[color:var(--text-secondary)]">
                         {t("academy.selfLearning.history.metrics.evalDecision")}
                       </th>
-                      <td className="px-3 py-2">{selectedEvaluation.decision}</td>
+                      <td className="px-3 py-2">
+                        {t(
+                          `academy.selfLearning.history.metrics.evalDecisionValues.${selectedEvaluation.decision}`
+                        )}
+                      </td>
                     </tr>
                   ) : null}
                 </tbody>
@@ -250,6 +265,35 @@ export function SelfLearningHistory({
           <p className="text-sm text-hint">{t("academy.selfLearning.history.noSelection")}</p>
         )}
       </div>
+  );
+}
+
+export function SelfLearningHistory({
+  runs,
+  selectedRunId,
+  onSelectRun,
+  onRefresh,
+  onDeleteRun,
+  onClearAll,
+}: Props) {
+  const { language } = useLanguage();
+  const selectedRun = runs.find((run) => run.run_id === selectedRunId) ?? null;
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(260px,340px)_1fr]">
+      <SelfLearningRunList
+        runs={runs}
+        selectedRunId={selectedRunId}
+        onSelectRun={onSelectRun}
+        onRefresh={onRefresh}
+        onClearAll={onClearAll}
+        language={language}
+      />
+      <SelfLearningRunDetails
+        selectedRun={selectedRun}
+        onDeleteRun={onDeleteRun}
+        language={language}
+      />
     </div>
   );
 }

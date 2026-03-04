@@ -695,11 +695,10 @@ def _deploy_adapter_to_chat_runtime(
     }
     if previous_model and previous_model != selected_model:
         updates[previous_model_key] = previous_model
-    config_manager.update_config(updates)
-
     endpoint = _runtime_endpoint_for_hash(runtime_local_id)
     config_hash = compute_llm_config_hash(runtime_local_id, endpoint, selected_model)
-    config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
+    updates["LLM_CONFIG_HASH"] = config_hash
+    config_manager.update_config(updates)
     try:
         SETTINGS.ACTIVE_LLM_SERVER = runtime_local_id
         SETTINGS.LLM_MODEL_NAME = selected_model
@@ -756,10 +755,10 @@ def _rollback_chat_runtime_after_adapter_deactivation() -> Dict[str, Any]:
         "LAST_MODEL_OLLAMA": fallback_model,
         previous_key: "",
     }
-    config_manager.update_config(updates)
     endpoint = _runtime_endpoint_for_hash(runtime_local_id)
     config_hash = compute_llm_config_hash(runtime_local_id, endpoint, fallback_model)
-    config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
+    updates["LLM_CONFIG_HASH"] = config_hash
+    config_manager.update_config(updates)
     try:
         SETTINGS.ACTIVE_LLM_SERVER = runtime_local_id
         SETTINGS.LLM_MODEL_NAME = fallback_model

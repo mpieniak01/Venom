@@ -1,0 +1,246 @@
+import assert from "node:assert/strict";
+import { afterEach, describe, it, mock } from "node:test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+
+import type { SelfLearningRunStatus } from "../lib/academy-api";
+import { LanguageProvider } from "../lib/i18n";
+import { SelfLearningConfigurator } from "../components/academy/self-learning-configurator";
+import { SelfLearningHistory } from "../components/academy/self-learning-history";
+
+afterEach(() => {
+  cleanup();
+});
+
+function renderWithLanguage(children: ReactNode) {
+  return render(<LanguageProvider>{children}</LanguageProvider>);
+}
+
+function makeRun(overrides: Partial<SelfLearningRunStatus>): SelfLearningRunStatus {
+  return {
+    run_id: "aaaaaaaa-0000-0000-0000-000000000000",
+    status: "running",
+    mode: "rag_index",
+    sources: ["docs"],
+    created_at: "2026-03-04T10:00:00+00:00",
+    started_at: "2026-03-04T10:00:01+00:00",
+    finished_at: null,
+    progress: {
+      files_discovered: 10,
+      files_processed: 3,
+      chunks_created: 12,
+      records_created: 12,
+      indexed_vectors: 6,
+    },
+    artifacts: {},
+    logs: [],
+    error_message: null,
+    ...overrides,
+  };
+}
+
+describe("SelfLearningConfigurator", () => {
+  it("disables start button when no source is selected", async () => {
+    const onStart = mock.fn(async () => {});
+    renderWithLanguage(
+      <SelfLearningConfigurator
+        loading={false}
+        trainableModels={[
+          {
+            model_id: "qwen2.5-coder:3b",
+            label: "qwen2.5-coder:3b",
+            provider: "ollama",
+            recommended: true,
+            runtime_compatibility: { ollama: true },
+            recommended_runtime: "ollama",
+          },
+        ]}
+        embeddingProfiles={[
+          {
+            profile_id: "local:default",
+            provider: "local",
+            model: "sentence-transformers/all-MiniLM-L6-v2",
+            dimension: 384,
+            healthy: true,
+            fallback_active: false,
+            details: {},
+          },
+        ]}
+        onStart={onStart}
+      />
+    );
+
+    const startButton = screen.getByRole("button", { name: /Start Self-Learning/i });
+    assert.equal((startButton as HTMLButtonElement).disabled, false);
+
+    fireEvent.click(screen.getByText(/Repository docs/i));
+    fireEvent.click(screen.getByText(/Developer docs/i));
+    fireEvent.click(screen.getByText(/Source code/i));
+
+    assert.equal((startButton as HTMLButtonElement).disabled, true);
+  });
+
+  it("submits selected mode, dry-run and limits", async () => {
+    const onStart = mock.fn(async () => {});
+    renderWithLanguage(
+      <SelfLearningConfigurator
+        loading={false}
+        trainableModels={[
+          {
+            model_id: "qwen2.5-coder:3b",
+            label: "qwen2.5-coder:3b",
+            provider: "ollama",
+            recommended: true,
+            runtime_compatibility: { ollama: true },
+            recommended_runtime: "ollama",
+          },
+        ]}
+        embeddingProfiles={[
+          {
+            profile_id: "local:default",
+            provider: "local",
+            model: "sentence-transformers/all-MiniLM-L6-v2",
+            dimension: 384,
+            healthy: true,
+            fallback_active: false,
+            details: {},
+          },
+        ]}
+        onStart={onStart}
+      />
+    );
+
+    fireEvent.click(screen.getByText(/LLM Fine-tune/i));
+    fireEvent.click(screen.getByText(/Dry run/i));
+
+    fireEvent.change(screen.getByLabelText(/Max file size/i), { target: { value: "512" } });
+    fireEvent.change(screen.getByLabelText(/Max files/i), { target: { value: "123" } });
+    fireEvent.change(screen.getByLabelText(/Max total size/i), { target: { value: "42" } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Start Self-Learning/i }));
+    });
+
+    assert.equal(onStart.mock.callCount(), 1);
+    const payload = onStart.mock.calls[0]?.arguments[0] as {
+      mode: string;
+      dry_run: boolean;
+      limits: { max_file_size_kb: number; max_files: number; max_total_size_mb: number };
+      sources: string[];
+      llm_config: { base_model: string } | null;
+    };
+    assert.equal(payload.mode, "llm_finetune");
+    assert.equal(payload.dry_run, true);
+    assert.equal(payload.limits.max_file_size_kb, 512);
+    assert.equal(payload.limits.max_files, 123);
+    assert.equal(payload.limits.max_total_size_mb, 42);
+    assert.deepEqual(payload.sources, ["docs", "docs_dev", "code"]);
+    assert.equal(payload.llm_config?.base_model, "qwen2.5-coder:3b");
+  });
+
+  it("blocks rag start in strict policy when embedding fallback is active", async () => {
+    const onStart = mock.fn(async () => {});
+    renderWithLanguage(
+      <SelfLearningConfigurator
+        loading={false}
+        trainableModels={[]}
+        embeddingProfiles={[
+          {
+            profile_id: "local:default",
+            provider: "local",
+            model: "sentence-transformers/all-MiniLM-L6-v2",
+            dimension: 384,
+            healthy: true,
+            fallback_active: true,
+            details: {},
+          },
+        ]}
+        onStart={onStart}
+      />
+    );
+
+    const startButton = screen.getByRole("button", { name: /Start Self-Learning/i });
+    assert.equal((startButton as HTMLButtonElement).disabled, true);
+
+    fireEvent.change(screen.getByLabelText(/Embedding policy/i), {
+      target: { value: "allow_fallback" },
+    });
+
+    assert.equal((startButton as HTMLButtonElement).disabled, false);
+  });
+});
+
+describe("SelfLearningHistory", () => {
+  it("selects run from history list and triggers callback", async () => {
+    const runA = makeRun({
+      run_id: "aaaaaaaa-0000-0000-0000-000000000000",
+      progress: { files_discovered: 2, files_processed: 2, chunks_created: 4, records_created: 4, indexed_vectors: 4 },
+      status: "completed",
+      finished_at: "2026-03-04T10:01:00+00:00",
+    });
+    const runB = makeRun({
+      run_id: "bbbbbbbb-0000-0000-0000-000000000000",
+      status: "failed",
+      progress: { files_discovered: 2, files_processed: 1, chunks_created: 2, records_created: 2, indexed_vectors: 0 },
+      error_message: "Parsing failed",
+    });
+
+    const onSelectRun = mock.fn(() => {});
+    const onRefresh = mock.fn(async () => {});
+    const onDeleteRun = mock.fn(async () => {});
+    const onClearAll = mock.fn(async () => {});
+
+    renderWithLanguage(
+      <SelfLearningHistory
+        runs={[runA, runB]}
+        selectedRunId={runA.run_id}
+        onSelectRun={onSelectRun}
+        onRefresh={onRefresh}
+        onDeleteRun={onDeleteRun}
+        onClearAll={onClearAll}
+      />,
+    );
+
+    const runBButton = screen.getByRole("button", { name: /bbbbbbbb/i });
+    await act(async () => {
+      fireEvent.click(runBButton);
+    });
+    assert.equal(onSelectRun.mock.callCount(), 1);
+    assert.equal(onSelectRun.mock.calls[0]?.arguments[0], runB.run_id);
+  });
+
+  it("renders selected run details and allows deleting selected run", async () => {
+    const run = makeRun({
+      run_id: "cccccccc-0000-0000-0000-000000000000",
+      status: "completed_with_warnings",
+      progress: { files_discovered: 8, files_processed: 8, chunks_created: 16, records_created: 16, indexed_vectors: 14 },
+      error_message: "Skipped binary files",
+    });
+
+    const onSelectRun = mock.fn(() => {});
+    const onRefresh = mock.fn(async () => {});
+    const onDeleteRun = mock.fn(async () => {});
+    const onClearAll = mock.fn(async () => {});
+
+    renderWithLanguage(
+      <SelfLearningHistory
+        runs={[run]}
+        selectedRunId={run.run_id}
+        onSelectRun={onSelectRun}
+        onRefresh={onRefresh}
+        onDeleteRun={onDeleteRun}
+        onClearAll={onClearAll}
+      />,
+    );
+
+    assert.ok(screen.getByText(run.run_id));
+    assert.ok(screen.getByText(/Completed with warnings/i));
+    assert.ok(screen.getByText(/Skipped binary files/i));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Delete run/i }));
+    });
+    assert.equal(onDeleteRun.mock.callCount(), 1);
+    assert.equal(onDeleteRun.mock.calls[0]?.arguments[0], run.run_id);
+  });
+});

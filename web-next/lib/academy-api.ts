@@ -532,3 +532,149 @@ export async function setDatasetConversionTrainingSelection(params: {
     }
   );
 }
+
+// ==================== Academy v3: Self-Learning ====================
+
+export type SelfLearningMode = "llm_finetune" | "rag_index";
+export type SelfLearningSource = "docs" | "docs_dev" | "code";
+export type SelfLearningEmbeddingPolicy = "strict" | "allow_fallback";
+export type SelfLearningStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "completed_with_warnings"
+  | "failed";
+
+export interface SelfLearningLimits {
+  max_file_size_kb: number;
+  max_files: number;
+  max_total_size_mb: number;
+}
+
+export interface SelfLearningLlmConfig {
+  base_model?: string | null;
+  lora_rank: number;
+  learning_rate: number;
+  num_epochs: number;
+  batch_size: number;
+  max_seq_length: number;
+}
+
+export interface SelfLearningRagConfig {
+  collection: string;
+  category: string;
+  chunk_text: boolean;
+  embedding_profile_id?: string | null;
+  embedding_policy?: SelfLearningEmbeddingPolicy;
+}
+
+export interface SelfLearningTrainableModelInfo {
+  model_id: string;
+  label: string;
+  provider: string;
+  recommended: boolean;
+  runtime_compatibility: Record<string, boolean>;
+  recommended_runtime?: string | null;
+}
+
+export interface SelfLearningEmbeddingProfile {
+  profile_id: string;
+  provider: string;
+  model: string;
+  dimension?: number | null;
+  healthy: boolean;
+  fallback_active: boolean;
+  details: Record<string, unknown>;
+}
+
+export interface SelfLearningCapabilitiesResponse {
+  trainable_models: SelfLearningTrainableModelInfo[];
+  embedding_profiles: SelfLearningEmbeddingProfile[];
+  default_base_model?: string | null;
+  default_embedding_profile_id?: string | null;
+}
+
+export interface SelfLearningStartRequest {
+  mode: SelfLearningMode;
+  sources: SelfLearningSource[];
+  limits: SelfLearningLimits;
+  llm_config?: SelfLearningLlmConfig | null;
+  rag_config?: SelfLearningRagConfig | null;
+  dry_run: boolean;
+}
+
+export interface SelfLearningProgress {
+  files_discovered: number;
+  files_processed: number;
+  chunks_created: number;
+  records_created: number;
+  indexed_vectors: number;
+}
+
+export interface SelfLearningRunStatus {
+  run_id: string;
+  status: SelfLearningStatus;
+  mode: SelfLearningMode;
+  sources: SelfLearningSource[];
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  progress: SelfLearningProgress;
+  artifacts: Record<string, unknown>;
+  logs: string[];
+  error_message?: string | null;
+}
+
+export interface SelfLearningStartResponse {
+  run_id: string;
+  message: string;
+}
+
+export interface SelfLearningListResponse {
+  runs: SelfLearningRunStatus[];
+  count: number;
+}
+
+export interface SelfLearningDeleteResponse {
+  message: string;
+  count?: number;
+}
+
+export async function startSelfLearning(
+  payload: SelfLearningStartRequest
+): Promise<SelfLearningStartResponse> {
+  return apiFetch<SelfLearningStartResponse>("/api/v1/academy/self-learning/start", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getSelfLearningRunStatus(
+  runId: string
+): Promise<SelfLearningRunStatus> {
+  return apiFetch<SelfLearningRunStatus>(`/api/v1/academy/self-learning/${runId}/status`);
+}
+
+export async function listSelfLearningRuns(
+  limit = 20
+): Promise<SelfLearningListResponse> {
+  return apiFetch<SelfLearningListResponse>(`/api/v1/academy/self-learning/list?limit=${limit}`);
+}
+
+export async function deleteSelfLearningRun(
+  runId: string
+): Promise<SelfLearningDeleteResponse> {
+  return apiFetch<SelfLearningDeleteResponse>(`/api/v1/academy/self-learning/${runId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function clearAllSelfLearningRuns(): Promise<SelfLearningDeleteResponse> {
+  return apiFetch<SelfLearningDeleteResponse>("/api/v1/academy/self-learning/all", {
+    method: "DELETE",
+  });
+}
+
+export async function getSelfLearningCapabilities(): Promise<SelfLearningCapabilitiesResponse> {
+  return apiFetch<SelfLearningCapabilitiesResponse>("/api/v1/academy/self-learning/capabilities");
+}

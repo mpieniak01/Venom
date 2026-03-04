@@ -94,6 +94,10 @@ _DEFAULT_TRAINABLE_MODELS: tuple[tuple[str, str, str], ...] = (
     ("Qwen/Qwen2.5-Coder-7B-Instruct", "Qwen2.5 Coder 7B (HuggingFace)", "huggingface"),
     ("google/gemma-3-4b-it", "Gemma 3 4B Instruct (HuggingFace)", "huggingface"),
 )
+_LOCAL_EMBEDDING_PROFILES: tuple[tuple[str, int], ...] = (
+    ("sentence-transformers/all-MiniLM-L6-v2", 384),
+    ("intfloat/multilingual-e5-base", 768),
+)
 
 
 class SelfLearningError(Exception):
@@ -468,8 +472,9 @@ class SelfLearningService:
             ),
             trainable_models[0]["model_id"] if trainable_models else None,
         )
-        default_embedding_profile_id = (
-            embedding_profiles[0]["profile_id"] if embedding_profiles else None
+        default_embedding_profile_id = next(
+            (item["profile_id"] for item in embedding_profiles if item.get("healthy")),
+            embedding_profiles[0]["profile_id"] if embedding_profiles else None,
         )
         return {
             "trainable_models": trainable_models,
@@ -763,7 +768,47 @@ class SelfLearningService:
         state = self._embedding_runtime_state()
         if state["profile_id"] is None:
             return []
-        return [state]
+
+        provider = str(state.get("provider") or "unknown")
+        if provider != "local":
+            return [state]
+
+        active_model = str(state.get("model") or "")
+        fallback_active = bool(state.get("fallback_active"))
+        active_dimension = state.get("dimension")
+        result: list[dict[str, Any]] = []
+        for model_name, dimension in _LOCAL_EMBEDDING_PROFILES:
+            is_active = model_name == active_model
+            result.append(
+                {
+                    "profile_id": "local:default"
+                    if is_active
+                    else f"local/{model_name}",
+                    "provider": "local",
+                    "model": model_name,
+                    "dimension": active_dimension if is_active else dimension,
+                    "healthy": bool(state.get("healthy")) if is_active else False,
+                    "fallback_active": fallback_active if is_active else False,
+                    "details": {}
+                    if is_active
+                    else {"reason": "not_active_runtime_model"},
+                }
+            )
+
+        if not any(item["model"] == active_model for item in result):
+            result.insert(
+                0,
+                {
+                    "profile_id": "local:default",
+                    "provider": "local",
+                    "model": active_model or "unknown",
+                    "dimension": active_dimension,
+                    "healthy": bool(state.get("healthy")),
+                    "fallback_active": fallback_active,
+                    "details": {"reason": "active_model_not_in_catalog"},
+                },
+            )
+        return result
 
     def _embedding_runtime_state(self) -> dict[str, Any]:
         if self.vector_store is None:
@@ -956,14 +1001,22 @@ class SelfLearningService:
         if self.vector_store is None:
             raise SelfLearningError("VectorStore is not available for RAG indexing")
 
-        embedding_state = self._embedding_runtime_state()
+        embedding_profiles = self._embedding_profiles()
         selected_profile = run.rag_config.embedding_profile_id or ""
-        if selected_profile != embedding_state.get("profile_id"):
+        selected_profile_state = next(
+            (
+                item
+                for item in embedding_profiles
+                if item.get("profile_id") == selected_profile
+            ),
+            None,
+        )
+        if selected_profile_state is None:
             raise SelfLearningError(f"Unknown embedding profile: {selected_profile}")
-        if not bool(embedding_state.get("healthy")):
+        if not bool(selected_profile_state.get("healthy")):
             raise SelfLearningError("Embedding runtime is unhealthy")
         if run.rag_config.embedding_policy == "strict" and bool(
-            embedding_state.get("fallback_active")
+            selected_profile_state.get("fallback_active")
         ):
             raise SelfLearningError(
                 "Embedding runtime uses fallback mode and strict policy is enabled"
@@ -971,10 +1024,10 @@ class SelfLearningService:
 
         run.artifacts["embedding_profile"] = {
             "profile_id": selected_profile,
-            "provider": embedding_state.get("provider"),
-            "model": embedding_state.get("model"),
-            "dimension": embedding_state.get("dimension"),
-            "fallback_active": embedding_state.get("fallback_active"),
+            "provider": selected_profile_state.get("provider"),
+            "model": selected_profile_state.get("model"),
+            "dimension": selected_profile_state.get("dimension"),
+            "fallback_active": selected_profile_state.get("fallback_active"),
             "policy": run.rag_config.embedding_policy,
         }
 

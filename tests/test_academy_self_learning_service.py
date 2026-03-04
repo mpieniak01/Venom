@@ -234,6 +234,13 @@ async def test_capabilities_exposes_trainable_models_and_embedding_profiles(
     assert payload["default_base_model"] == "qwen2.5-coder:3b"
     assert payload["default_embedding_profile_id"] == "local:default"
     assert payload["embedding_profiles"][0]["healthy"] is True
+    models = {item["model"] for item in payload["embedding_profiles"]}
+    assert "sentence-transformers/all-MiniLM-L6-v2" in models
+    assert "intfloat/multilingual-e5-base" in models
+    assert any(
+        item["model"] == "intfloat/multilingual-e5-base" and item["healthy"] is False
+        for item in payload["embedding_profiles"]
+    )
 
 
 @pytest.mark.asyncio

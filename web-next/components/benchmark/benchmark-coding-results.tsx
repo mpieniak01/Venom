@@ -165,11 +165,7 @@ export function BenchmarkCodingResults({
             )}
           </div>
 
-          {!selectedRun ? (
-            <div className="text-sm text-[color:var(--ui-muted)] py-6 text-center">
-              {t("benchmark.coding.results.noSelectedRun")}
-            </div>
-          ) : (
+          {selectedRun ? (
             <>
               <div className="rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--terminal)] p-3 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
@@ -206,6 +202,10 @@ export function BenchmarkCodingResults({
 
               <JobsTable jobs={selectedRun.jobs} t={t} />
             </>
+          ) : (
+            <div className="text-sm text-[color:var(--ui-muted)] py-6 text-center">
+              {t("benchmark.coding.results.noSelectedRun")}
+            </div>
           )}
         </div>
 

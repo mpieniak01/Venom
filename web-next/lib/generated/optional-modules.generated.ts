@@ -59,9 +59,9 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
   }
 ];
 
-const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<string, () => Promise<ComponentType | null>> = {
-  "brand_studio": async () => (await import("../../../modules/venom-module-brand-studio/web-next/page")).default ?? null,
-  "module_example": async () => (await import("../../../modules/venom-module-example/web-next/page")).default ?? null
+const OPTIONAL_MODULE_COMPONENT_PATHS: Record<string, string | null> = {
+  "brand_studio": "../../../modules/venom-module-brand-studio/web-next/page",
+  "module_example": "../../../modules/venom-module-example/web-next/page"
 };
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
@@ -108,9 +108,19 @@ export function resolveOptionalModuleBySlug(slug: string): OptionalModuleManifes
 }
 
 export async function getOptionalModuleComponent(moduleId: string): Promise<ComponentType | null> {
-  const loader = OPTIONAL_MODULE_COMPONENT_LOADERS[moduleId];
-  if (!loader) {
+  const importPath = OPTIONAL_MODULE_COMPONENT_PATHS[moduleId];
+  if (!importPath) {
     return null;
   }
-  return loader();
+  try {
+    // Keep import path dynamic to avoid bundler-time hard failure when optional module files
+    // are not present in current checkout (e.g. CI sparse contexts).
+    const dynamicImport = new Function("path", "return import(path)") as (
+      path: string,
+    ) => Promise<{ default?: ComponentType }>;
+    const loaded = await dynamicImport(importPath);
+    return loaded?.default ?? null;
+  } catch {
+    return null;
+  }
 }

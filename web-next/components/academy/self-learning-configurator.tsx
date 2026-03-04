@@ -35,6 +35,8 @@ interface Props {
   readonly onStart: (config: SelfLearningConfig) => Promise<void> | void;
 }
 
+type TranslateFn = ReturnType<typeof useTranslation>;
+
 function computeCanStart(params: {
   sourcesCount: number;
   loading: boolean;
@@ -106,6 +108,133 @@ function buildSelfLearningConfig(params: {
     llm_config: llmConfig,
     rag_config: ragConfig,
   };
+}
+
+interface ModeSectionProps {
+  readonly mode: SelfLearningMode;
+  readonly t: TranslateFn;
+  readonly trainableModels: readonly SelfLearningTrainableModelInfo[];
+  readonly embeddingProfiles: readonly SelfLearningEmbeddingProfile[];
+  readonly effectiveBaseModel: string;
+  readonly effectiveEmbeddingProfile: string;
+  readonly embeddingPolicy: SelfLearningEmbeddingPolicy;
+  readonly selectedEmbeddingProfileState: SelfLearningEmbeddingProfile | null;
+  readonly onBaseModelChange: (value: string) => void;
+  readonly onEmbeddingProfileChange: (value: string) => void;
+  readonly onEmbeddingPolicyChange: (value: SelfLearningEmbeddingPolicy) => void;
+}
+
+function ModeSection({
+  mode,
+  t,
+  trainableModels,
+  embeddingProfiles,
+  effectiveBaseModel,
+  effectiveEmbeddingProfile,
+  embeddingPolicy,
+  selectedEmbeddingProfileState,
+  onBaseModelChange,
+  onEmbeddingProfileChange,
+  onEmbeddingPolicyChange,
+}: ModeSectionProps) {
+  if (mode === "llm_finetune") {
+    return (
+      <div className="space-y-1">
+        <label htmlFor="self-learning-base-model" className="text-xs text-[color:var(--text-secondary)]">
+          {t("academy.selfLearning.config.baseModel")}
+        </label>
+        <select
+          id="self-learning-base-model"
+          value={effectiveBaseModel}
+          onChange={(event) => onBaseModelChange(event.target.value)}
+          className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+        >
+          {trainableModels.length === 0 ? (
+            <option value="">{t("academy.selfLearning.config.noTrainableModels")}</option>
+          ) : (
+            trainableModels.map((model) => (
+              <option key={model.model_id} value={model.model_id}>
+                {model.model_id}
+              </option>
+            ))
+          )}
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="space-y-1">
+          <label htmlFor="self-learning-embedding-profile" className="text-xs text-[color:var(--text-secondary)]">
+            {t("academy.selfLearning.config.embeddingProfile")}
+          </label>
+          <select
+            id="self-learning-embedding-profile"
+            value={effectiveEmbeddingProfile}
+            onChange={(event) => onEmbeddingProfileChange(event.target.value)}
+            className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+          >
+            {embeddingProfiles.length === 0 ? (
+              <option value="">{t("academy.selfLearning.config.noEmbeddingProfiles")}</option>
+            ) : (
+              embeddingProfiles.map((profile) => (
+                <option key={profile.profile_id} value={profile.profile_id}>
+                  {profile.provider}/{profile.model}
+                </option>
+              ))
+            )}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="self-learning-embedding-policy" className="text-xs text-[color:var(--text-secondary)]">
+            {t("academy.selfLearning.config.embeddingPolicy")}
+          </label>
+          <select
+            id="self-learning-embedding-policy"
+            value={embeddingPolicy}
+            onChange={(event) => onEmbeddingPolicyChange(event.target.value as SelfLearningEmbeddingPolicy)}
+            className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+          >
+            <option value="strict">{t("academy.selfLearning.config.embeddingPolicyStrict")}</option>
+            <option value="allow_fallback">{t("academy.selfLearning.config.embeddingPolicyAllowFallback")}</option>
+          </select>
+        </div>
+      </div>
+      <div className="space-y-1 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
+        <p className="font-semibold text-[color:var(--text-heading)]">
+          {t("academy.selfLearning.config.preflightTitle")}
+        </p>
+        {selectedEmbeddingProfileState ? (
+          <>
+            <p className={selectedEmbeddingProfileState.healthy ? "text-emerald-300" : "text-red-300"}>
+              {selectedEmbeddingProfileState.healthy
+                ? t("academy.selfLearning.config.preflightHealthy")
+                : t("academy.selfLearning.config.preflightUnhealthy")}
+            </p>
+            <p>
+              {t("academy.selfLearning.config.preflightProvider")}: {selectedEmbeddingProfileState.provider}
+            </p>
+            <p>
+              {t("academy.selfLearning.config.preflightModel")}: {selectedEmbeddingProfileState.model}
+            </p>
+            <p>
+              {t("academy.selfLearning.config.preflightDimension")}: {selectedEmbeddingProfileState.dimension ?? "-"}
+            </p>
+            <p>
+              {t("academy.selfLearning.config.preflightFallback")}:{" "}
+              {selectedEmbeddingProfileState.fallback_active
+                ? t("academy.selfLearning.config.preflightFallbackActive")
+                : t("academy.selfLearning.config.preflightFallbackInactive")}
+            </p>
+          </>
+        ) : (
+          <p>{t("academy.selfLearning.config.preflightNoProfile")}</p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function SelfLearningConfigurator({
@@ -180,6 +309,12 @@ export function SelfLearningConfigurator({
     );
   };
 
+  const sourceItems: ReadonlyArray<{ source: SelfLearningSource; labelKey: string }> = [
+    { source: "docs", labelKey: "academy.selfLearning.config.sources.docs" },
+    { source: "docs_dev", labelKey: "academy.selfLearning.config.sources.docsDev" },
+    { source: "code", labelKey: "academy.selfLearning.config.sources.code" },
+  ];
+
   return (
     <div className="space-y-6 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6">
       <div>
@@ -223,121 +358,31 @@ export function SelfLearningConfigurator({
         </div>
       </div>
 
-      {mode === "llm_finetune" ? (
-        <div className="space-y-1">
-          <label htmlFor="self-learning-base-model" className="text-xs text-[color:var(--text-secondary)]">
-            {t("academy.selfLearning.config.baseModel")}
-          </label>
-          <select
-            id="self-learning-base-model"
-            value={effectiveBaseModel}
-            onChange={(event) => setSelectedBaseModel(event.target.value)}
-            className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
-          >
-            {trainableModels.length === 0 ? (
-              <option value="">{t("academy.selfLearning.config.noTrainableModels")}</option>
-            ) : (
-              trainableModels.map((model) => (
-                <option key={model.model_id} value={model.model_id}>
-                  {model.model_id}
-                </option>
-              ))
-            )}
-          </select>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1">
-              <label htmlFor="self-learning-embedding-profile" className="text-xs text-[color:var(--text-secondary)]">
-                {t("academy.selfLearning.config.embeddingProfile")}
-              </label>
-              <select
-                id="self-learning-embedding-profile"
-                value={effectiveEmbeddingProfile}
-                onChange={(event) => setSelectedEmbeddingProfile(event.target.value)}
-                className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
-              >
-                {embeddingProfiles.length === 0 ? (
-                  <option value="">{t("academy.selfLearning.config.noEmbeddingProfiles")}</option>
-                ) : (
-                  embeddingProfiles.map((profile) => (
-                    <option key={profile.profile_id} value={profile.profile_id}>
-                      {profile.provider}/{profile.model}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="self-learning-embedding-policy" className="text-xs text-[color:var(--text-secondary)]">
-                {t("academy.selfLearning.config.embeddingPolicy")}
-              </label>
-              <select
-                id="self-learning-embedding-policy"
-                value={embeddingPolicy}
-                onChange={(event) => setEmbeddingPolicy(event.target.value as SelfLearningEmbeddingPolicy)}
-                className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
-              >
-                <option value="strict">{t("academy.selfLearning.config.embeddingPolicyStrict")}</option>
-                <option value="allow_fallback">{t("academy.selfLearning.config.embeddingPolicyAllowFallback")}</option>
-              </select>
-            </div>
-          </div>
-          <div className="space-y-1 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
-            <p className="font-semibold text-[color:var(--text-heading)]">
-              {t("academy.selfLearning.config.preflightTitle")}
-            </p>
-            {selectedEmbeddingProfileState ? (
-              <>
-                <p className={selectedEmbeddingProfileState.healthy ? "text-emerald-300" : "text-red-300"}>
-                  {selectedEmbeddingProfileState.healthy
-                    ? t("academy.selfLearning.config.preflightHealthy")
-                    : t("academy.selfLearning.config.preflightUnhealthy")}
-                </p>
-                <p>
-                  {t("academy.selfLearning.config.preflightProvider")}: {selectedEmbeddingProfileState.provider}
-                </p>
-                <p>
-                  {t("academy.selfLearning.config.preflightModel")}: {selectedEmbeddingProfileState.model}
-                </p>
-                <p>
-                  {t("academy.selfLearning.config.preflightDimension")}: {selectedEmbeddingProfileState.dimension ?? "-"}
-                </p>
-                <p>
-                  {t("academy.selfLearning.config.preflightFallback")}:{" "}
-                  {selectedEmbeddingProfileState.fallback_active
-                    ? t("academy.selfLearning.config.preflightFallbackActive")
-                    : t("academy.selfLearning.config.preflightFallbackInactive")}
-                </p>
-              </>
-            ) : (
-              <p>{t("academy.selfLearning.config.preflightNoProfile")}</p>
-            )}
-          </div>
-        </div>
-      )}
+      <ModeSection
+        mode={mode}
+        t={t}
+        trainableModels={trainableModels}
+        embeddingProfiles={embeddingProfiles}
+        effectiveBaseModel={effectiveBaseModel}
+        effectiveEmbeddingProfile={effectiveEmbeddingProfile}
+        embeddingPolicy={embeddingPolicy}
+        selectedEmbeddingProfileState={selectedEmbeddingProfileState}
+        onBaseModelChange={setSelectedBaseModel}
+        onEmbeddingProfileChange={setSelectedEmbeddingProfile}
+        onEmbeddingPolicyChange={setEmbeddingPolicy}
+      />
 
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-wide text-[color:var(--text-secondary)]">
           {t("academy.selfLearning.config.sourcesLabel")}
         </p>
         <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3">
-          <label className="flex items-center gap-3 text-sm text-[color:var(--text-primary)]">
-            <Checkbox checked={sources.includes("docs")} onCheckedChange={() => toggleSource("docs")} />
-            {t("academy.selfLearning.config.sources.docs")}
-          </label>
-          <label className="flex items-center gap-3 text-sm text-[color:var(--text-primary)]">
-            <Checkbox
-              checked={sources.includes("docs_dev")}
-              onCheckedChange={() => toggleSource("docs_dev")}
-            />
-            {t("academy.selfLearning.config.sources.docsDev")}
-          </label>
-          <label className="flex items-center gap-3 text-sm text-[color:var(--text-primary)]">
-            <Checkbox checked={sources.includes("code")} onCheckedChange={() => toggleSource("code")} />
-            {t("academy.selfLearning.config.sources.code")}
-          </label>
+          {sourceItems.map((item) => (
+            <label key={item.source} className="flex items-center gap-3 text-sm text-[color:var(--text-primary)]">
+              <Checkbox checked={sources.includes(item.source)} onCheckedChange={() => toggleSource(item.source)} />
+              {t(item.labelKey)}
+            </label>
+          ))}
         </div>
       </div>
 

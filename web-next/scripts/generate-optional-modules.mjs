@@ -135,10 +135,10 @@ function renderFile(entries) {
     })
     .join(",\n");
 
-  const componentLoaderMapBody = mappedEntries
+  const componentPathMapBody = mappedEntries
     .map((entry) => {
-      if (!entry.componentImport) return `  "${entry.moduleId}": async () => null`;
-      return `  "${entry.moduleId}": async () => (await import("${entry.componentImport}")).default ?? null`;
+      if (!entry.componentImport) return `  "${entry.moduleId}": null`;
+      return `  "${entry.moduleId}": "${entry.componentImport}"`;
     })
     .join(",\n");
 
@@ -185,8 +185,8 @@ const OPTIONAL_MODULES: OptionalModuleManifest[] = [
 ${listBody}
 ];
 
-const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<string, () => Promise<ComponentType | null>> = {
-${componentLoaderMapBody}
+const OPTIONAL_MODULE_COMPONENT_PATHS: Record<string, string | null> = {
+${componentPathMapBody}
 };
 
 const OPTIONAL_MODULE_FLAG_GETTERS: Record<string, () => string> = {
@@ -232,11 +232,21 @@ export function resolveOptionalModuleBySlug(slug: string): OptionalModuleManifes
 }
 
 export async function getOptionalModuleComponent(moduleId: string): Promise<ComponentType | null> {
-  const loader = OPTIONAL_MODULE_COMPONENT_LOADERS[moduleId];
-  if (!loader) {
+  const importPath = OPTIONAL_MODULE_COMPONENT_PATHS[moduleId];
+  if (!importPath) {
     return null;
   }
-  return loader();
+  try {
+    // Keep import path dynamic to avoid bundler-time hard failure when optional module files
+    // are not present in current checkout (e.g. CI sparse contexts).
+    const dynamicImport = new Function("path", "return import(path)") as (
+      path: string,
+    ) => Promise<{ default?: ComponentType }>;
+    const loaded = await dynamicImport(importPath);
+    return loaded?.default ?? null;
+  } catch {
+    return null;
+  }
 }
 `;
 }

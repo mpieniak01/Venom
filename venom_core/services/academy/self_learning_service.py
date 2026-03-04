@@ -833,6 +833,7 @@ class SelfLearningService:
         }
 
     async def _run_pipeline(self, run_id: str) -> None:
+        await asyncio.sleep(0)
         run = self._get_run(run_id)
         if run is None:
             return

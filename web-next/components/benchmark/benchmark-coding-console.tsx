@@ -44,8 +44,9 @@ export function BenchmarkCodingConsole({
 
   const summary = run?.summary ?? null;
   const totalJobs = summary?.total_jobs ?? 0;
-  const completedJobs = summary?.completed ?? 0;
-  const progressPct = totalJobs > 0 ? Math.round((completedJobs / totalJobs) * 100) : 0;
+  const finishedJobs =
+    (summary?.completed ?? 0) + (summary?.failed ?? 0) + (summary?.skipped ?? 0);
+  const progressPct = totalJobs > 0 ? Math.round((finishedJobs / totalJobs) * 100) : 0;
 
   return (
     <div className="space-y-3">
@@ -65,7 +66,7 @@ export function BenchmarkCodingConsole({
           <div className="flex justify-between text-xs text-[color:var(--ui-muted)]">
             <span>
               {t("benchmark.coding.console.progressLabel", {
-                completed: completedJobs,
+                completed: finishedJobs,
                 total: totalJobs,
               })}
             </span>

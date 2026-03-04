@@ -195,7 +195,7 @@ def get_coding_benchmark_status(run_id: str):
     """
     Zwraca status i wyniki coding benchmarku.
 
-    Status może być: pending | running | completed | failed
+    Status może być: pending | running | completed | completed_with_failures | failed
 
     Args:
         run_id: ID uruchomienia benchmarku

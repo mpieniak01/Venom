@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { MutableRefObject, ReactNode } from "react";
 import type { CodingJob } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
@@ -32,8 +32,13 @@ async function renderBarChart(
 ): Promise<void> {
   const { Chart } = await import("chart.js/auto");
   if (!isActive()) return;
-  chartRef.current?.destroy();
-  chartRef.current = new Chart(canvas, config);
+  if (!chartRef.current) {
+    chartRef.current = new Chart(canvas, config);
+    return;
+  }
+  chartRef.current.data = config.data;
+  chartRef.current.options = config.options ?? {};
+  chartRef.current.update("none");
 }
 
 function destroyChart(chartRef: MutableRefObject<ChartInstance | null>) {
@@ -89,8 +94,16 @@ interface BenchmarkCodingChartsProps {
 export function BenchmarkCodingCharts({ jobs }: BenchmarkCodingChartsProps) {
   const t = useTranslation();
 
-  const passRates = computePassRates(jobs);
-  const timings = computeTimings(jobs);
+  const passRates = useMemo(() => computePassRates(jobs), [jobs]);
+  const timings = useMemo(() => computeTimings(jobs), [jobs]);
+  const timingLabels = useMemo(
+    () => ({
+      warmup: t("benchmark.coding.charts.warmup"),
+      coding: t("benchmark.coding.charts.coding"),
+      request: t("benchmark.coding.charts.request"),
+    }),
+    [t],
+  );
 
   if (jobs.length === 0) {
     return (
@@ -106,11 +119,7 @@ export function BenchmarkCodingCharts({ jobs }: BenchmarkCodingChartsProps) {
       <TimingChart
         timings={timings}
         title={t("benchmark.coding.charts.timing")}
-        labels={{
-          warmup: t("benchmark.coding.charts.warmup"),
-          coding: t("benchmark.coding.charts.coding"),
-          request: t("benchmark.coding.charts.request"),
-        }}
+        labels={timingLabels}
       />
     </div>
   );
@@ -253,7 +262,7 @@ function TimingChart({ timings, title, labels }: TimingChartProps) {
       active = false;
       destroyChart(chartRef);
     };
-  }, [timings, title, labels]);
+  }, [timings, title, labels.warmup, labels.coding, labels.request]);
 
   return (
     <ChartPanel title={title}>
@@ -271,7 +280,7 @@ function ChartPanel({
       <p className="text-xs font-medium text-[color:var(--text-secondary)] uppercase tracking-wider">
         {title}
       </p>
-      <div className="relative h-48 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3">
+      <div className="relative h-[292px] rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3">
         {children}
       </div>
     </div>

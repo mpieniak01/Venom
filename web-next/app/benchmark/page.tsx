@@ -11,7 +11,6 @@ import { BenchmarkResults } from "@/components/benchmark/benchmark-results";
 import { BenchmarkCodingConfigurator } from "@/components/benchmark/benchmark-coding-configurator";
 import { BenchmarkCodingConsole } from "@/components/benchmark/benchmark-coding-console";
 import { BenchmarkCodingResults } from "@/components/benchmark/benchmark-coding-results";
-import { BenchmarkCodingCharts } from "@/components/benchmark/benchmark-coding-charts";
 import { useModels } from "@/hooks/use-api";
 import { useBenchmark } from "@/hooks/use-benchmark";
 import { useCodingBenchmark } from "@/hooks/use-coding-benchmark";
@@ -176,33 +175,18 @@ export default function BenchmarkPage() {
 
       {/* Tab 3: Code Results — history + table + charts */}
       {activeTab === "codeResults" && (
-        <>
-          <Panel
-            eyebrow={t("benchmark.coding.results.eyebrow")}
-            title={t("benchmark.coding.results.title")}
-            description={t("benchmark.coding.results.description")}
-          >
-            <BenchmarkCodingResults
-              currentRun={codingRun}
-              onDelete={deleteRun}
-              onClearAll={clearAllRuns}
-            />
-          </Panel>
-
-          {codingRun?.jobs && codingRun.jobs.length > 0 && (
-            <Panel
-              eyebrow={t("benchmark.coding.charts.passRate")}
-              title={t("benchmark.coding.charts.timing")}
-              description=""
-            >
-              <BenchmarkCodingCharts jobs={codingRun.jobs} />
-            </Panel>
-          )}
-        </>
+        <Panel
+          eyebrow={t("benchmark.coding.results.eyebrow")}
+          title={t("benchmark.coding.results.title")}
+          description={t("benchmark.coding.results.description")}
+        >
+          <BenchmarkCodingResults
+            currentRun={codingRun}
+            onDelete={deleteRun}
+            onClearAll={clearAllRuns}
+          />
+        </Panel>
       )}
     </div>
   );
 }
-
-
-

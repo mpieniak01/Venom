@@ -22,9 +22,6 @@ import {
   activateAdapter,
   deactivateAdapter,
   getUnifiedModelCatalog,
-  listAdapters,
-  type AdapterInfo,
-  type TrainableModelInfo,
 } from "@/lib/academy-api";
 import { Settings, ThumbsDown, ThumbsUp } from "lucide-react";
 
@@ -68,6 +65,7 @@ type ChatComposerProps = Readonly<{
   setSelectedLlmServer: (value: string) => void;
   selectedLlmModel: string;
   llmModelOptions: SelectMenuOption[];
+  llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>;
   setSelectedLlmModel: (value: string) => void;
   onActivateModel?: (value: string) => Promise<boolean> | boolean;
   hasModels: boolean;
@@ -92,6 +90,7 @@ export const ChatComposer = memo(
       setSelectedLlmServer,
       selectedLlmModel,
       llmModelOptions,
+      llmModelMetadata,
       setSelectedLlmModel,
       onActivateModel,
       hasModels,
@@ -108,9 +107,17 @@ export const ChatComposer = memo(
     const [draft, setDraft] = useState("");
     const [adapterSelectLoading, setAdapterSelectLoading] = useState(false);
     const [adapterMutationPending, setAdapterMutationPending] = useState(false);
-    const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
+    const [adapters, setAdapters] = useState<
+      Array<{
+        adapter_id: string;
+        adapter_path: string;
+        base_model: string;
+        canonical_base_model_id?: string;
+        is_active: boolean;
+        compatible_runtimes?: string[];
+      }>
+    >([]);
     const [selectedAdapter, setSelectedAdapter] = useState(BASE_MODEL_ADAPTER_VALUE);
-    const [trainableByModelId, setTrainableByModelId] = useState<Record<string, TrainableModelInfo>>({});
     const [slashSuggestions, setSlashSuggestions] = useState<SlashCommand[]>([]);
     const [slashIndex, setSlashIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -124,46 +131,6 @@ export const ChatComposer = memo(
       [selectedLlmServer],
     );
 
-    const resolveAdapterCompatibility = useCallback(
-      (adapter: AdapterInfo): { compatible: boolean; reason: string | null } => {
-        if (!selectedRuntimeId) {
-          return { compatible: true, reason: null };
-        }
-        const trainableInfo = trainableByModelId[adapter.base_model.toLowerCase()];
-        if (
-          !trainableInfo?.runtime_compatibility ||
-          Object.keys(trainableInfo.runtime_compatibility).length === 0
-        ) {
-          return { compatible: true, reason: null };
-        }
-        const compatible = Boolean(
-          trainableInfo.runtime_compatibility[selectedRuntimeId],
-        );
-        if (compatible) {
-          return { compatible: true, reason: null };
-        }
-        return {
-          compatible: false,
-          reason: t("cockpit.models.adapterIncompatible", { runtime: selectedLlmServer }),
-        };
-      },
-      [selectedRuntimeId, selectedLlmServer, t, trainableByModelId],
-    );
-
-    const loadTrainableCatalog = useCallback(async () => {
-      try {
-        const catalog = await getUnifiedModelCatalog();
-        const trainable = catalog.trainable_models;
-        const indexed = trainable.reduce<Record<string, TrainableModelInfo>>((acc, model) => {
-          acc[model.model_id.toLowerCase()] = model;
-          return acc;
-        }, {});
-        setTrainableByModelId(indexed);
-      } catch (error) {
-        console.error("Failed to load Academy trainable catalog for adapter compatibility:", error);
-      }
-    }, []);
-
     const adapterOptions = useMemo<SelectMenuOption[]>(() => {
       const baseOption: SelectMenuOption = {
         value: BASE_MODEL_ADAPTER_VALUE,
@@ -172,24 +139,35 @@ export const ChatComposer = memo(
       if (!adapterDeploySupported) {
         return [baseOption];
       }
-      const dynamicOptions = adapters.map((adapter) => {
-        const compatibility = resolveAdapterCompatibility(adapter);
-        if (!compatibility.compatible) {
-          return null;
-        }
-        return {
+      return [
+        baseOption,
+        ...adapters.map((adapter) => ({
           value: adapter.adapter_id,
           label: adapter.adapter_id,
           description: adapter.base_model,
-        };
-      });
-      return [baseOption, ...dynamicOptions.filter((entry) => entry !== null)];
-    }, [adapterDeploySupported, adapters, resolveAdapterCompatibility, t]);
+        })),
+      ];
+    }, [adapterDeploySupported, adapters, t]);
 
     const loadAdapters = useCallback(async () => {
       try {
         setAdapterSelectLoading(true);
-        const next = await listAdapters();
+        const catalog = await getUnifiedModelCatalog();
+        const selectedModelMeta = llmModelMetadata?.[selectedLlmModel];
+        const selectedCanonical = String(
+          selectedModelMeta?.canonical_model_id || selectedLlmModel || "",
+        )
+          .trim()
+          .toLowerCase();
+        const byRuntimeModel = catalog.adapter_catalog.by_runtime_model || {};
+        const byRuntime = catalog.adapter_catalog.by_runtime || {};
+        const scopedByModel =
+          (selectedRuntimeId && selectedCanonical
+            ? byRuntimeModel?.[selectedRuntimeId]?.[selectedCanonical]
+            : []) || [];
+        const scopedByRuntime =
+          (selectedRuntimeId ? byRuntime?.[selectedRuntimeId] : []) || [];
+        const next = (scopedByModel.length > 0 ? scopedByModel : scopedByRuntime) || [];
         setAdapters(next);
         const active = next.find((adapter) => adapter.is_active);
         setSelectedAdapter(active?.adapter_id ?? BASE_MODEL_ADAPTER_VALUE);
@@ -198,17 +176,16 @@ export const ChatComposer = memo(
       } finally {
         setAdapterSelectLoading(false);
       }
-    }, []);
+    }, [llmModelMetadata, selectedLlmModel, selectedRuntimeId]);
 
     useEffect(() => {
       async function loadAdapterDependencies() {
-        await loadTrainableCatalog();
         await loadAdapters();
       }
       loadAdapterDependencies().catch((error) => {
         console.error("Failed to initialize adapter selector dependencies:", error);
       });
-    }, [loadAdapters, loadTrainableCatalog]);
+    }, [loadAdapters]);
 
     useEffect(() => {
       if (!adapterDeploySupported && selectedAdapter !== BASE_MODEL_ADAPTER_VALUE) {

@@ -34,6 +34,9 @@ export interface SelfLearningConfig {
 
 interface Props {
   readonly loading: boolean;
+  readonly runtimeOptions: ReadonlyArray<{ id: string; label: string }>;
+  readonly selectedRuntime: string;
+  readonly onRuntimeChange: (runtimeId: string) => void;
   readonly trainableModels: readonly SelfLearningTrainableModelInfo[];
   readonly embeddingProfiles: readonly SelfLearningEmbeddingProfile[];
   readonly defaultBaseModel?: string | null;
@@ -153,11 +156,11 @@ function buildSelfLearningConfig(params: {
           base_model: params.effectiveBaseModel,
           dataset_strategy: params.datasetStrategy,
           task_mix_preset: params.taskMixPreset,
-          lora_rank: 16,
+          lora_rank: 8,
           learning_rate: 0.0002,
-          num_epochs: 3,
-          batch_size: 4,
-          max_seq_length: 2048,
+          num_epochs: 2,
+          batch_size: 1,
+          max_seq_length: 1024,
         }
       : null;
   const ragConfig: SelfLearningRagConfig | null =
@@ -190,6 +193,9 @@ function buildSelfLearningConfig(params: {
 interface ModeSectionProps {
   readonly mode: SelfLearningMode;
   readonly t: TranslateFn;
+  readonly runtimeOptions: ReadonlyArray<{ id: string; label: string }>;
+  readonly selectedRuntime: string;
+  readonly onRuntimeChange: (runtimeId: string) => void;
   readonly trainableModels: readonly SelfLearningTrainableModelInfo[];
   readonly embeddingProfiles: readonly SelfLearningEmbeddingProfile[];
   readonly effectiveBaseModel: string;
@@ -212,6 +218,9 @@ interface ModeSectionProps {
 function ModeSection({
   mode,
   t,
+  runtimeOptions,
+  selectedRuntime,
+  onRuntimeChange,
   trainableModels,
   embeddingProfiles,
   effectiveBaseModel,
@@ -241,6 +250,27 @@ function ModeSection({
 
     return (
       <div className="space-y-3">
+        <div className="space-y-1">
+          <label htmlFor="self-learning-runtime" className={FIELD_LABEL_CLASS}>
+            {t("cockpit.models.server")}
+          </label>
+          <select
+            id="self-learning-runtime"
+            value={selectedRuntime}
+            onChange={(event) => onRuntimeChange(event.target.value)}
+            className={FIELD_SELECT_CLASS}
+          >
+            {runtimeOptions.length === 0 ? (
+              <option value="">{t("cockpit.models.chooseServer")}</option>
+            ) : (
+              runtimeOptions.map((runtime) => (
+                <option key={runtime.id} value={runtime.id}>
+                  {runtime.label}
+                </option>
+              ))
+            )}
+          </select>
+        </div>
         <div className="space-y-1">
           <label htmlFor="self-learning-base-model" className={FIELD_LABEL_CLASS}>
             {t("academy.selfLearning.config.baseModel")}
@@ -425,6 +455,9 @@ function ModeSection({
 
 export function SelfLearningConfigurator({
   loading,
+  runtimeOptions,
+  selectedRuntime,
+  onRuntimeChange,
   trainableModels,
   embeddingProfiles,
   defaultBaseModel: defaultBaseModelProp,
@@ -433,15 +466,11 @@ export function SelfLearningConfigurator({
 }: Props) {
   const t = useTranslation();
   const [mode, setMode] = useState<SelfLearningMode>("rag_index");
-  const [sources, setSources] = useState<SelfLearningSource[]>([
-    "docs",
-    "docs_dev",
-    "code",
-  ]);
+  const [sources, setSources] = useState<SelfLearningSource[]>(["docs"]);
   const [dryRun, setDryRun] = useState(false);
-  const [maxFileSizeKb, setMaxFileSizeKb] = useState(256);
-  const [maxFiles, setMaxFiles] = useState(1500);
-  const [maxTotalSizeMb, setMaxTotalSizeMb] = useState(200);
+  const [maxFileSizeKb, setMaxFileSizeKb] = useState(128);
+  const [maxFiles, setMaxFiles] = useState(300);
+  const [maxTotalSizeMb, setMaxTotalSizeMb] = useState(32);
   const [selectedBaseModel, setSelectedBaseModel] = useState<string>("");
   const [datasetStrategy, setDatasetStrategy] = useState<SelfLearningDatasetStrategy>("reconstruct");
   const [taskMixPreset, setTaskMixPreset] = useState<SelfLearningTaskMixPreset>("balanced");
@@ -539,8 +568,14 @@ export function SelfLearningConfigurator({
     );
   };
 
-  const sourceItems: ReadonlyArray<{ source: SelfLearningSource; labelKey: string }> = [
+  const sourceItems: ReadonlyArray<{
+    source: SelfLearningSource;
+    labelKey: string;
+    nested?: boolean;
+  }> = [
     { source: "docs", labelKey: "academy.selfLearning.config.sources.docs" },
+    { source: "docs_en", labelKey: "academy.selfLearning.config.sources.docsEn", nested: true },
+    { source: "docs_pl", labelKey: "academy.selfLearning.config.sources.docsPl", nested: true },
     { source: "docs_dev", labelKey: "academy.selfLearning.config.sources.docsDev" },
     { source: "code", labelKey: "academy.selfLearning.config.sources.code" },
   ];
@@ -588,10 +623,13 @@ export function SelfLearningConfigurator({
         </div>
       </div>
 
-      <ModeSection
-        mode={mode}
-        t={t}
-        trainableModels={trainableModels}
+        <ModeSection
+          mode={mode}
+          t={t}
+          runtimeOptions={runtimeOptions}
+          selectedRuntime={selectedRuntime}
+          onRuntimeChange={onRuntimeChange}
+          trainableModels={trainableModels}
         embeddingProfiles={embeddingProfiles}
         effectiveBaseModel={effectiveBaseModel}
         datasetStrategy={datasetStrategy}
@@ -616,7 +654,13 @@ export function SelfLearningConfigurator({
         </p>
         <div className="space-y-2 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] p-3">
           {sourceItems.map((item) => (
-            <label key={item.source} className="flex items-center gap-3 text-sm text-[color:var(--text-primary)]">
+            <label
+              key={item.source}
+              className={cn(
+                "flex items-center gap-3 text-sm text-[color:var(--text-primary)]",
+                item.nested ? "pl-6 text-xs text-[color:var(--text-secondary)]" : ""
+              )}
+            >
               <Checkbox checked={sources.includes(item.source)} onCheckedChange={() => toggleSource(item.source)} />
               {t(item.labelKey)}
             </label>

@@ -84,12 +84,14 @@ export function TrainingPanel() {
   const t = useTranslation();
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
-  const [loraRank, setLoraRank] = useState(16);
+  const [loraRank, setLoraRank] = useState(8);
   const [learningRate, setLearningRate] = useState(0.0002);
-  const [numEpochs, setNumEpochs] = useState(3);
-  const [batchSize, setBatchSize] = useState(4);
+  const [numEpochs, setNumEpochs] = useState(2);
+  const [batchSize, setBatchSize] = useState(1);
   const [viewingLogs, setViewingLogs] = useState<string | null>(null);
   const [trainableModels, setTrainableModels] = useState<TrainableModelInfo[]>([]);
+  const [runtimeOptions, setRuntimeOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedRuntime, setSelectedRuntime] = useState("");
   const [selectedBaseModel, setSelectedBaseModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
 
@@ -118,11 +120,36 @@ export function TrainingPanel() {
     }
   }
 
-  async function loadTrainableModels() {
+  async function loadTrainableModels(runtimeOverride?: string) {
     try {
       setModelsLoading(true);
       const catalog = await getUnifiedModelCatalog();
-      const trainable = catalog.trainable_models.filter((model) => model.trainable);
+      const availableRuntimes = (catalog.runtimes ?? [])
+        .filter(
+          (runtime) =>
+            runtime.source_type === "local-runtime" &&
+            runtime.configured &&
+            runtime.available,
+        )
+        .map((runtime) => ({
+          id: runtime.runtime_id,
+          label: getRuntimeDisplayName(runtime.runtime_id),
+        }));
+      setRuntimeOptions(availableRuntimes);
+      const preferredRuntime =
+        runtimeOverride ||
+        selectedRuntime ||
+        availableRuntimes[0]?.id ||
+        "";
+      if (preferredRuntime && preferredRuntime !== selectedRuntime) {
+        setSelectedRuntime(preferredRuntime);
+      }
+      const trainable = catalog.trainable_models.filter(
+        (model) =>
+          model.trainable &&
+          (!preferredRuntime ||
+            Boolean(model.runtime_compatibility?.[preferredRuntime])),
+      );
       setTrainableModels(trainable);
       setSelectedBaseModel((current) => {
         if (current && trainable.some((model) => model.model_id === current)) {
@@ -134,6 +161,8 @@ export function TrainingPanel() {
     } catch (err) {
       console.error("Failed to load trainable models:", err);
       setTrainableModels([]);
+      setRuntimeOptions([]);
+      setSelectedRuntime("");
       setSelectedBaseModel("");
     } finally {
       setModelsLoading(false);
@@ -260,6 +289,31 @@ export function TrainingPanel() {
       <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6">
         <h3 className="mb-4 text-sm font-medium text-[color:var(--text-secondary)]">{t("academy.training.paramsTitle")}</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="sm:col-span-2 xl:col-span-5">
+            <p className="text-sm font-medium text-[color:var(--text-secondary)]">
+              {t("cockpit.models.server")}
+            </p>
+            <div className="mt-2">
+              <SelectMenu
+                value={selectedRuntime}
+                options={runtimeOptions.map((runtime) => ({
+                  value: runtime.id,
+                  label: runtime.label,
+                }))}
+                onChange={(value) => {
+                  setSelectedRuntime(value);
+                  setSelectedBaseModel("");
+                  loadTrainableModels(value);
+                }}
+                placeholder={t("cockpit.models.chooseServer")}
+                ariaLabel={t("cockpit.actions.selectServer")}
+                disabled={modelsLoading || runtimeOptions.length === 0}
+                buttonClassName="mt-0 h-11 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
+                menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
+                optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
+              />
+            </div>
+          </div>
           <div className="sm:col-span-2 xl:col-span-5">
             <p className="text-sm font-medium text-[color:var(--text-secondary)]">
               {t("academy.training.baseModel")}

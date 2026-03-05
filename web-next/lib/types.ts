@@ -140,6 +140,8 @@ export interface LlmRuntimeTargetOption {
   active: boolean;
   latency_ms?: number | null;
   models: LlmRuntimeModelOption[];
+  adapter_deploy_supported?: boolean;
+  adapter_deploy_mode?: string;
 }
 
 export interface LlmRuntimeOptionsResponse {
@@ -178,6 +180,45 @@ export interface LlmRuntimeOptionsResponse {
       coding_eligible?: boolean;
     }>;
   };
+  adapter_catalog?: {
+    all_adapters?: Array<{
+      adapter_id: string;
+      adapter_path: string;
+      base_model: string;
+      canonical_base_model_id?: string;
+      is_active: boolean;
+      created_at?: string | null;
+      compatible_runtimes?: string[];
+    }>;
+    by_runtime?: Record<
+      string,
+      Array<{
+        adapter_id: string;
+        adapter_path: string;
+        base_model: string;
+        canonical_base_model_id?: string;
+        is_active: boolean;
+        created_at?: string | null;
+        compatible_runtimes?: string[];
+      }>
+    >;
+    by_runtime_model?: Record<
+      string,
+      Record<
+        string,
+        Array<{
+          adapter_id: string;
+          adapter_path: string;
+          base_model: string;
+          canonical_base_model_id?: string;
+          is_active: boolean;
+          created_at?: string | null;
+          compatible_runtimes?: string[];
+        }>
+      >
+    >;
+  };
+  selector_flow?: string[];
   feedback_loop?: {
     requested_alias?: string;
     primary?: string;
@@ -186,6 +227,13 @@ export interface LlmRuntimeOptionsResponse {
     active_ready?: boolean;
     active_resolved_model_id?: string | null;
   };
+  auto_heal?: {
+    healed: boolean;
+    runtime_id: string;
+    selected_model: string;
+    selected_path?: string;
+    reason?: string | null;
+  } | null;
 }
 
 export interface ActiveLlmServerResponse {

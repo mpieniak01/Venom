@@ -303,10 +303,60 @@ export interface RuntimeCatalogModelInfo {
 }
 
 export interface UnifiedModelCatalogResponse {
+  runtimes: Array<{
+    runtime_id: string;
+    source_type: "local-runtime" | "cloud-api";
+    configured: boolean;
+    available: boolean;
+    status: string;
+    reason?: string | null;
+    active: boolean;
+    adapter_deploy_supported?: boolean;
+    adapter_deploy_mode?: string;
+  }>;
   all_models: RuntimeCatalogModelInfo[];
   chat_models: RuntimeCatalogModelInfo[];
   coding_models: RuntimeCatalogModelInfo[];
   trainable_models: TrainableModelInfo[];
+  adapter_catalog: {
+    all_adapters: Array<{
+      adapter_id: string;
+      adapter_path: string;
+      base_model: string;
+      canonical_base_model_id?: string;
+      is_active: boolean;
+      created_at?: string | null;
+      compatible_runtimes?: string[];
+    }>;
+    by_runtime: Record<
+      string,
+      Array<{
+        adapter_id: string;
+        adapter_path: string;
+        base_model: string;
+        canonical_base_model_id?: string;
+        is_active: boolean;
+        created_at?: string | null;
+        compatible_runtimes?: string[];
+      }>
+    >;
+    by_runtime_model: Record<
+      string,
+      Record<
+        string,
+        Array<{
+          adapter_id: string;
+          adapter_path: string;
+          base_model: string;
+          canonical_base_model_id?: string;
+          is_active: boolean;
+          created_at?: string | null;
+          compatible_runtimes?: string[];
+        }>
+      >
+    >;
+  };
+  selector_flow: string[];
 }
 
 export interface DatasetConversionFileInfo {
@@ -505,18 +555,32 @@ export async function curateDatasetV2(
 
 export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogResponse> {
   type RuntimeOptionsPayload = {
+    runtimes?: Array<{
+      runtime_id: string;
+      source_type: "local-runtime" | "cloud-api";
+      configured: boolean;
+      available: boolean;
+      status: string;
+      reason?: string | null;
+      active: boolean;
+      adapter_deploy_supported?: boolean;
+      adapter_deploy_mode?: string;
+    }>;
     model_catalog?: {
       all_models?: RuntimeCatalogModelInfo[];
       chat_models?: RuntimeCatalogModelInfo[];
       coding_models?: RuntimeCatalogModelInfo[];
       trainable_models?: TrainableModelInfo[];
     };
+    adapter_catalog?: UnifiedModelCatalogResponse["adapter_catalog"];
+    selector_flow?: string[];
   };
   const payload = await apiFetch<RuntimeOptionsPayload>(
     "/api/v1/system/llm-runtime/options",
   );
   const catalog = payload?.model_catalog;
   return {
+    runtimes: Array.isArray(payload?.runtimes) ? payload.runtimes : [],
     all_models: Array.isArray(catalog?.all_models) ? catalog.all_models : [],
     chat_models: Array.isArray(catalog?.chat_models) ? catalog.chat_models : [],
     coding_models: Array.isArray(catalog?.coding_models)
@@ -525,6 +589,24 @@ export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogRespo
     trainable_models: Array.isArray(catalog?.trainable_models)
       ? catalog.trainable_models
       : [],
+    adapter_catalog: {
+      all_adapters: Array.isArray(payload?.adapter_catalog?.all_adapters)
+        ? payload.adapter_catalog.all_adapters
+        : [],
+      by_runtime:
+        payload?.adapter_catalog?.by_runtime &&
+        typeof payload.adapter_catalog.by_runtime === "object"
+          ? payload.adapter_catalog.by_runtime
+          : {},
+      by_runtime_model:
+        payload?.adapter_catalog?.by_runtime_model &&
+        typeof payload.adapter_catalog.by_runtime_model === "object"
+          ? payload.adapter_catalog.by_runtime_model
+          : {},
+    },
+    selector_flow: Array.isArray(payload?.selector_flow)
+      ? payload.selector_flow
+      : ["server", "model", "adapter"],
   };
 }
 
@@ -604,7 +686,7 @@ export async function setDatasetConversionTrainingSelection(params: {
 // ==================== Academy v3: Self-Learning ====================
 
 export type SelfLearningMode = "llm_finetune" | "rag_index";
-export type SelfLearningSource = "docs" | "docs_dev" | "code";
+export type SelfLearningSource = "docs" | "docs_en" | "docs_pl" | "docs_dev" | "code";
 export type SelfLearningEmbeddingPolicy = "strict" | "allow_fallback";
 export type SelfLearningRagChunkingMode = "plain" | "code_aware";
 export type SelfLearningRagRetrievalMode = "vector" | "hybrid";

@@ -84,4 +84,25 @@ describe("academy training model picker options", () => {
     assert.ok(cloudFreeSectionIndex > localModelIndex);
     assert.ok(cloudOtherSectionIndex > cloudFreeSectionIndex);
   });
+
+  it("treats non-installed local-source catalog entries as non-local section", () => {
+    const models: TrainableModelInfo[] = [
+      {
+        model_id: "unsloth/Phi-3-mini-4k-instruct",
+        label: "phi mini",
+        provider: "unsloth",
+        trainable: true,
+        recommended: false,
+        installed_local: false,
+        source_type: "local",
+        cost_tier: "free",
+        priority_bucket: 1,
+        runtime_compatibility: { vllm: true },
+        recommended_runtime: "vllm",
+      },
+    ];
+    const options = buildTrainingModelPickerOptions(models, t);
+    const sectionOption = options.find((option) => option.kind === "section");
+    assert.equal(sectionOption?.sectionKey, "cloudFree");
+  });
 });

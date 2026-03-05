@@ -22,6 +22,7 @@ tests/test_agents_strategy_ux_contracts.py
 tests/test_analyst_agent.py
 tests/test_api_contracts_stability.py
 tests/test_api_routes_contract_matrix.py
+tests/test_api_routes_import_guard.py
 tests/test_architect_agent.py
 tests/test_architecture_contracts_guard.py
 tests/test_assistant_skill.py
@@ -49,6 +50,7 @@ tests/test_contracts_init.py
 tests/test_control_plane_audit.py
 tests/test_control_plane_compatibility.py
 tests/test_control_plane_service_edges.py
+tests/test_core_nervous_system.py
 tests/test_core_skill.py
 tests/test_creative_director_agent.py
 tests/test_critic_agent.py
@@ -96,6 +98,7 @@ tests/test_lessons_manager.py
 tests/test_llm_runtime_activation_api.py
 tests/test_llm_runtime_options_api.py
 tests/test_llm_runtime_utils.py
+tests/test_llm_server_controller.py
 tests/test_llm_server_selection.py
 tests/test_llm_simple_payload_service.py
 tests/test_logger_utils.py
@@ -124,6 +127,7 @@ tests/test_model_router.py
 tests/test_model_services.py
 tests/test_model_validators.py
 tests/test_models_install_feedback_loop.py
+tests/test_models_registry_ops_onnx.py
 tests/test_models_remote_api.py
 tests/test_models_remote_contracts.py
 tests/test_module_data_policy.py
@@ -136,6 +140,7 @@ tests/test_nodes_utility_contracts.py
 tests/test_notifier.py
 tests/test_ollama_tuning.py
 tests/test_onnx_llm_client.py
+tests/test_onnx_runtime_cleanup.py
 tests/test_operator_agent.py
 tests/test_optional_modules_contracts_guard.py
 tests/test_oracle_agent.py

@@ -181,6 +181,7 @@ export async function activateAdapter(params: {
   adapter_id: string;
   adapter_path: string;
   runtime_id?: string;
+  model_id?: string;
   deploy_to_chat_runtime?: boolean;
 }): Promise<{
   success: boolean;
@@ -300,13 +301,83 @@ export interface RuntimeCatalogModelInfo {
   canonical_model_id?: string | null;
   aliases?: string[];
   coding_eligible?: boolean;
+  owned_by_runtime?: string | null;
+  ownership_status?: "native" | "foreign" | "unknown";
+  compatible_runtimes?: string[];
 }
 
 export interface UnifiedModelCatalogResponse {
+  active?: {
+    runtime_id?: string | null;
+    active_server?: string | null;
+    active_model?: string | null;
+  };
+  runtimes: Array<{
+    runtime_id: string;
+    source_type: "local-runtime" | "cloud-api";
+    configured: boolean;
+    available: boolean;
+    status: string;
+    reason?: string | null;
+    active: boolean;
+    adapter_deploy_supported?: boolean;
+    adapter_deploy_mode?: string;
+  }>;
   all_models: RuntimeCatalogModelInfo[];
   chat_models: RuntimeCatalogModelInfo[];
   coding_models: RuntimeCatalogModelInfo[];
+  runtime_servable_models: RuntimeCatalogModelInfo[];
+  trainable_base_models: TrainableModelInfo[];
+  inference_only_artifacts: RuntimeCatalogModelInfo[];
   trainable_models: TrainableModelInfo[];
+  adapter_catalog: {
+    all_adapters: Array<{
+      adapter_id: string;
+      adapter_path: string;
+      base_model: string;
+      canonical_base_model_id?: string;
+      is_active: boolean;
+      created_at?: string | null;
+      compatible_runtimes?: string[];
+    }>;
+    by_runtime: Record<
+      string,
+      Array<{
+        adapter_id: string;
+        adapter_path: string;
+        base_model: string;
+        canonical_base_model_id?: string;
+        is_active: boolean;
+        created_at?: string | null;
+        compatible_runtimes?: string[];
+      }>
+    >;
+    by_runtime_model: Record<
+      string,
+      Record<
+        string,
+        Array<{
+          adapter_id: string;
+          adapter_path: string;
+          base_model: string;
+          canonical_base_model_id?: string;
+          is_active: boolean;
+          created_at?: string | null;
+          compatible_runtimes?: string[];
+        }>
+      >
+    >;
+  };
+  selector_flow: string[];
+  model_audit?: {
+    issues_count?: number;
+    issues?: Array<{
+      name?: string;
+      path?: string;
+      source?: string | null;
+      reason?: string;
+    }>;
+  };
 }
 
 export interface DatasetConversionFileInfo {
@@ -503,28 +574,113 @@ export async function curateDatasetV2(
   return curateDataset(params);
 }
 
-export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogResponse> {
-  type RuntimeOptionsPayload = {
-    model_catalog?: {
-      all_models?: RuntimeCatalogModelInfo[];
-      chat_models?: RuntimeCatalogModelInfo[];
-      coding_models?: RuntimeCatalogModelInfo[];
-      trainable_models?: TrainableModelInfo[];
-    };
+function asArray<T>(value: T[] | undefined | null): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function resolveRuntimeServableModels(catalog: RuntimeOptionsPayload["model_catalog"]) {
+  const runtimeServableModels = asArray(catalog?.runtime_servable_models);
+  if (runtimeServableModels.length > 0) {
+    return runtimeServableModels;
+  }
+  return asArray(catalog?.chat_models);
+}
+
+function resolveTrainableBaseModels(catalog: RuntimeOptionsPayload["model_catalog"]) {
+  const trainableBaseModels = asArray(catalog?.trainable_base_models);
+  if (trainableBaseModels.length > 0) {
+    return trainableBaseModels;
+  }
+  return asArray(catalog?.trainable_models);
+}
+
+function resolveTrainableModels(catalog: RuntimeOptionsPayload["model_catalog"]) {
+  const trainableModels = asArray(catalog?.trainable_models);
+  if (trainableModels.length > 0) {
+    return trainableModels;
+  }
+  return asArray(catalog?.trainable_base_models);
+}
+
+function resolveAdapterCatalog(
+  payload: RuntimeOptionsPayload,
+): UnifiedModelCatalogResponse["adapter_catalog"] {
+  return {
+    all_adapters: asArray(payload?.adapter_catalog?.all_adapters),
+    by_runtime:
+      payload?.adapter_catalog?.by_runtime &&
+      typeof payload.adapter_catalog.by_runtime === "object"
+        ? payload.adapter_catalog.by_runtime
+        : {},
+    by_runtime_model:
+      payload?.adapter_catalog?.by_runtime_model &&
+      typeof payload.adapter_catalog.by_runtime_model === "object"
+        ? payload.adapter_catalog.by_runtime_model
+        : {},
   };
+}
+
+function resolveSelectorFlow(payload: RuntimeOptionsPayload): string[] {
+  return asArray(payload?.selector_flow).length > 0
+    ? asArray(payload?.selector_flow)
+    : ["server", "model", "adapter"];
+}
+
+type RuntimeOptionsPayload = {
+  active?: {
+    runtime_id?: string | null;
+    active_server?: string | null;
+    active_model?: string | null;
+  };
+  runtimes?: Array<{
+    runtime_id: string;
+    source_type: "local-runtime" | "cloud-api";
+    configured: boolean;
+    available: boolean;
+    status: string;
+    reason?: string | null;
+    active: boolean;
+    adapter_deploy_supported?: boolean;
+    adapter_deploy_mode?: string;
+  }>;
+  model_catalog?: {
+    all_models?: RuntimeCatalogModelInfo[];
+    chat_models?: RuntimeCatalogModelInfo[];
+    coding_models?: RuntimeCatalogModelInfo[];
+    runtime_servable_models?: RuntimeCatalogModelInfo[];
+    trainable_base_models?: TrainableModelInfo[];
+    inference_only_artifacts?: RuntimeCatalogModelInfo[];
+    trainable_models?: TrainableModelInfo[];
+  };
+  adapter_catalog?: UnifiedModelCatalogResponse["adapter_catalog"];
+  selector_flow?: string[];
+  model_audit?: UnifiedModelCatalogResponse["model_audit"];
+};
+
+export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogResponse> {
   const payload = await apiFetch<RuntimeOptionsPayload>(
     "/api/v1/system/llm-runtime/options",
   );
   const catalog = payload?.model_catalog;
   return {
-    all_models: Array.isArray(catalog?.all_models) ? catalog.all_models : [],
-    chat_models: Array.isArray(catalog?.chat_models) ? catalog.chat_models : [],
-    coding_models: Array.isArray(catalog?.coding_models)
-      ? catalog.coding_models
-      : [],
-    trainable_models: Array.isArray(catalog?.trainable_models)
-      ? catalog.trainable_models
-      : [],
+    active:
+      payload?.active && typeof payload.active === "object"
+        ? payload.active
+        : undefined,
+    runtimes: Array.isArray(payload?.runtimes) ? payload.runtimes : [],
+    all_models: asArray(catalog?.all_models),
+    chat_models: asArray(catalog?.chat_models),
+    coding_models: asArray(catalog?.coding_models),
+    runtime_servable_models: resolveRuntimeServableModels(catalog),
+    trainable_base_models: resolveTrainableBaseModels(catalog),
+    inference_only_artifacts: asArray(catalog?.inference_only_artifacts),
+    trainable_models: resolveTrainableModels(catalog),
+    adapter_catalog: resolveAdapterCatalog(payload),
+    selector_flow: resolveSelectorFlow(payload),
+    model_audit:
+      payload?.model_audit && typeof payload.model_audit === "object"
+        ? payload.model_audit
+        : undefined,
   };
 }
 
@@ -604,7 +760,7 @@ export async function setDatasetConversionTrainingSelection(params: {
 // ==================== Academy v3: Self-Learning ====================
 
 export type SelfLearningMode = "llm_finetune" | "rag_index";
-export type SelfLearningSource = "docs" | "docs_dev" | "code";
+export type SelfLearningSource = "docs" | "docs_en" | "docs_pl" | "docs_dev" | "code";
 export type SelfLearningEmbeddingPolicy = "strict" | "allow_fallback";
 export type SelfLearningRagChunkingMode = "plain" | "code_aware";
 export type SelfLearningRagRetrievalMode = "vector" | "hybrid";
@@ -628,6 +784,7 @@ export interface SelfLearningLimits {
 
 export interface SelfLearningLlmConfig {
   base_model?: string | null;
+  runtime_id?: string | null;
   dataset_strategy?: SelfLearningDatasetStrategy;
   task_mix_preset?: SelfLearningTaskMixPreset;
   lora_rank: number;

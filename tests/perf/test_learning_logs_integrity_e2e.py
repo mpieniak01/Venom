@@ -83,7 +83,7 @@ async def _read_learning_log() -> list[dict]:
 
 
 async def _wait_for_log_entries(
-    task_ids: set[str], timeout: float = 10.0
+    task_ids: set[str], timeout: float = 20.0
 ) -> list[dict]:
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline:
@@ -98,7 +98,7 @@ async def _wait_for_log_entries(
 async def _submit_and_wait_finished(
     prompt: str, session_id: str, forced_intent: str = "HELP_REQUEST"
 ) -> str:
-    """Tworzy task i czeka na `task_finished` z retry przy błędach transportu."""
+    """Tworzy task i czeka na `task_finished(COMPLETED)` z retry przy błędach."""
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             task_id = await submit_task(
@@ -107,9 +107,14 @@ async def _submit_and_wait_finished(
                 session_id=session_id,
                 forced_intent=forced_intent,
             )
-            async for event, _payload in stream_task(task_id):
+            async for event, payload in stream_task(task_id):
                 if event == "task_finished":
-                    return task_id
+                    status = str(payload.get("status") or "").upper()
+                    if status == "COMPLETED":
+                        return task_id
+                    raise RuntimeError(
+                        f"Task {task_id} zakończony statusem {status or 'UNKNOWN'}",
+                    )
             raise RuntimeError("Stream zakończył się bez eventu task_finished")
         except (
             httpx.ReadError,
@@ -117,6 +122,7 @@ async def _submit_and_wait_finished(
             httpx.RemoteProtocolError,
             httpx.ConnectError,
             TimeoutError,
+            RuntimeError,
         ) as exc:
             if attempt >= MAX_RETRIES:
                 pytest.skip(

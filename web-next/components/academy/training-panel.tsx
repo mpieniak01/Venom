@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Play, Loader2, RefreshCw, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +44,7 @@ export const MODEL_SECTION_ORDER: ModelSectionKey[] = [
 ];
 
 export function getTrainingModelSectionKey(model: TrainableModelInfo): ModelSectionKey {
-  if (model.source_type === "local") return "localFirst";
+  if (model.installed_local) return "localFirst";
   if (model.cost_tier === "free") return "cloudFree";
   return "cloudOther";
 }
@@ -84,19 +84,115 @@ export function TrainingPanel() {
   const t = useTranslation();
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
-  const [loraRank, setLoraRank] = useState(16);
+  const [loraRank, setLoraRank] = useState(8);
   const [learningRate, setLearningRate] = useState(0.0002);
-  const [numEpochs, setNumEpochs] = useState(3);
-  const [batchSize, setBatchSize] = useState(4);
+  const [numEpochs, setNumEpochs] = useState(2);
+  const [batchSize, setBatchSize] = useState(1);
   const [viewingLogs, setViewingLogs] = useState<string | null>(null);
   const [trainableModels, setTrainableModels] = useState<TrainableModelInfo[]>([]);
+  const [runtimeOptions, setRuntimeOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedRuntime, setSelectedRuntime] = useState("");
   const [selectedBaseModel, setSelectedBaseModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
+
+  const resolveEngineKey = (provider: string): SupportedEngine => {
+    const normalized = provider.trim().toLowerCase();
+    if (
+      normalized === "unsloth" ||
+      normalized === "huggingface" ||
+      normalized === "onnx" ||
+      normalized === "vllm" ||
+      normalized === "ollama" ||
+      normalized === "openai" ||
+      normalized === "google" ||
+      normalized === "config"
+    ) {
+      return normalized;
+    }
+    return "unknown";
+  };
+
+  const getRuntimeDisplayName = useCallback((runtimeId: string): string => {
+    const engineKey = resolveEngineKey(runtimeId);
+    if (engineKey === "unknown") {
+      return runtimeId;
+    }
+    return t(`academy.training.engineNames.${engineKey}`);
+  }, [t]);
+
+  const loadJobs = useCallback(async () => {
+    try {
+      const data = await listJobs({ limit: 50 });
+      setJobs(data.jobs);
+    } catch (err) {
+      console.error("Failed to load jobs:", err);
+    }
+  }, []);
+
+  const loadTrainableModels = useCallback(async (runtimeOverride?: string) => {
+    try {
+      setModelsLoading(true);
+      const catalog = await getUnifiedModelCatalog();
+      const availableRuntimes = (catalog.runtimes ?? [])
+        .filter(
+          (runtime) =>
+            runtime.source_type === "local-runtime" &&
+            runtime.configured &&
+            runtime.available,
+        )
+        .map((runtime) => ({
+          id: runtime.runtime_id,
+          label: getRuntimeDisplayName(runtime.runtime_id),
+        }));
+      setRuntimeOptions(availableRuntimes);
+      const activeRuntimeId =
+        String(catalog.active?.runtime_id || catalog.active?.active_server || "").trim();
+      const preferredRuntime =
+        runtimeOverride ||
+        selectedRuntime ||
+        activeRuntimeId ||
+        availableRuntimes[0]?.id ||
+        "";
+      if (preferredRuntime && preferredRuntime !== selectedRuntime) {
+        setSelectedRuntime(preferredRuntime);
+      }
+      const trainableCandidates =
+        catalog.trainable_base_models.length > 0
+          ? catalog.trainable_base_models
+          : catalog.trainable_models;
+      const trainable = trainableCandidates.filter(
+        (model) =>
+          model.trainable &&
+          (!preferredRuntime ||
+            Boolean(model.runtime_compatibility?.[preferredRuntime])),
+      );
+      setTrainableModels(trainable);
+      setSelectedBaseModel((current) => {
+        if (current && trainable.some((model) => model.model_id === current)) {
+          return current;
+        }
+        const activeModelId = String(catalog.active?.active_model || "").trim();
+        if (activeModelId && trainable.some((model) => model.model_id === activeModelId)) {
+          return activeModelId;
+        }
+        const recommended = trainable.find((model) => model.recommended);
+        return recommended?.model_id ?? trainable[0]?.model_id ?? "";
+      });
+    } catch (err) {
+      console.error("Failed to load trainable models:", err);
+      setTrainableModels([]);
+      setRuntimeOptions([]);
+      setSelectedRuntime("");
+      setSelectedBaseModel("");
+    } finally {
+      setModelsLoading(false);
+    }
+  }, [getRuntimeDisplayName, selectedRuntime]);
 
   useEffect(() => {
     loadJobs();
     loadTrainableModels();
-  }, []);
+  }, [loadJobs, loadTrainableModels]);
 
   useEffect(() => {
     // Auto-refresh co 10s tylko gdy są joby running
@@ -107,38 +203,7 @@ export function TrainingPanel() {
       loadJobs();
     }, 10000);
     return () => clearInterval(interval);
-  }, [jobs]);
-
-  async function loadJobs() {
-    try {
-      const data = await listJobs({ limit: 50 });
-      setJobs(data.jobs);
-    } catch (err) {
-      console.error("Failed to load jobs:", err);
-    }
-  }
-
-  async function loadTrainableModels() {
-    try {
-      setModelsLoading(true);
-      const catalog = await getUnifiedModelCatalog();
-      const trainable = catalog.trainable_models.filter((model) => model.trainable);
-      setTrainableModels(trainable);
-      setSelectedBaseModel((current) => {
-        if (current && trainable.some((model) => model.model_id === current)) {
-          return current;
-        }
-        const recommended = trainable.find((model) => model.recommended);
-        return recommended?.model_id ?? trainable[0]?.model_id ?? "";
-      });
-    } catch (err) {
-      console.error("Failed to load trainable models:", err);
-      setTrainableModels([]);
-      setSelectedBaseModel("");
-    } finally {
-      setModelsLoading(false);
-    }
-  }
+  }, [jobs, loadJobs]);
 
   async function handleStartTraining() {
     if (!selectedBaseModel) return;
@@ -190,31 +255,6 @@ export function TrainingPanel() {
     return labels[status];
   };
 
-  const resolveEngineKey = (provider: string): SupportedEngine => {
-    const normalized = provider.trim().toLowerCase();
-    if (
-      normalized === "unsloth" ||
-      normalized === "huggingface" ||
-      normalized === "onnx" ||
-      normalized === "vllm" ||
-      normalized === "ollama" ||
-      normalized === "openai" ||
-      normalized === "google" ||
-      normalized === "config"
-    ) {
-      return normalized;
-    }
-    return "unknown";
-  };
-
-  const getRuntimeDisplayName = (runtimeId: string): string => {
-    const engineKey = resolveEngineKey(runtimeId);
-    if (engineKey === "unknown") {
-      return runtimeId;
-    }
-    return t(`academy.training.engineNames.${engineKey}`);
-  };
-
   const getModelCompatibility = (model: TrainableModelInfo): string[] => {
     const entries = Object.entries(model.runtime_compatibility ?? {})
       .filter(([, isCompatible]) => Boolean(isCompatible))
@@ -262,6 +302,31 @@ export function TrainingPanel() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <div className="sm:col-span-2 xl:col-span-5">
             <p className="text-sm font-medium text-[color:var(--text-secondary)]">
+              {t("cockpit.models.server")}
+            </p>
+            <div className="mt-2">
+              <SelectMenu
+                value={selectedRuntime}
+                options={runtimeOptions.map((runtime) => ({
+                  value: runtime.id,
+                  label: runtime.label,
+                }))}
+                onChange={(value) => {
+                  setSelectedRuntime(value);
+                  setSelectedBaseModel("");
+                  loadTrainableModels(value);
+                }}
+                placeholder={t("cockpit.models.chooseServer")}
+                ariaLabel={t("cockpit.actions.selectServer")}
+                disabled={modelsLoading || runtimeOptions.length === 0}
+                buttonClassName="mt-0 h-11 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
+                menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
+                optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
+              />
+            </div>
+          </div>
+          <div className="sm:col-span-2 xl:col-span-5">
+            <p className="text-sm font-medium text-[color:var(--text-secondary)]">
               {t("academy.training.baseModel")}
             </p>
             <div className="mt-2">
@@ -290,6 +355,9 @@ export function TrainingPanel() {
                       .map((runtime) => getRuntimeDisplayName(runtime))
                       .join(" • ")
                     : t("academy.training.runtimeUnknown");
+                  const installStateLabel = selectedOption.model.installed_local
+                    ? t("academy.training.installState.localInstalled")
+                    : t("academy.training.installState.catalogDownload");
                   return (
                     <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -298,6 +366,9 @@ export function TrainingPanel() {
                         </p>
                         <p className="truncate text-left text-[11px] text-hint">
                           {t("academy.training.compatibilityLabel")}: {compatibilityLabel}
+                        </p>
+                        <p className="truncate text-left text-[11px] text-hint/80">
+                          {installStateLabel}
                         </p>
                       </div>
                       <span className="shrink-0 text-xs text-[color:var(--ui-muted)]">
@@ -331,6 +402,11 @@ export function TrainingPanel() {
                       <div className="min-w-0">
                         <p className={`truncate text-sm ${active ? "text-[color:var(--primary)]" : "text-[color:var(--text-primary)]"}`}>
                           {model.model_id}
+                        </p>
+                        <p className="mt-0.5 truncate text-[11px] text-hint/80">
+                          {model.installed_local
+                            ? t("academy.training.installState.localInstalled")
+                            : t("academy.training.installState.catalogDownload")}
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           {compatibilityBadges.length > 0 ? (

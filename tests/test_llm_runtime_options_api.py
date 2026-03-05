@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -15,6 +17,31 @@ def _client() -> TestClient:
     app = FastAPI()
     app.include_router(system_llm.router)
     return TestClient(app)
+
+
+def _runtime_vllm_dir(tmp_path: Path, name: str) -> Path:
+    model_dir = tmp_path / name
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_text("x", encoding="utf-8")
+    return model_dir
+
+
+def _local_model_entry(
+    *,
+    name: str,
+    provider: str,
+    path: Path,
+    source: str,
+    chat_compatible: bool = True,
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "provider": provider,
+        "path": str(path),
+        "source": source,
+        "chat_compatible": chat_compatible,
+    }
 
 
 def test_runtime_options_endpoint_returns_contract_snapshot() -> None:
@@ -75,6 +102,7 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
             {"name": "ollama", "status": "offline"},
         ]
     )
+    service_monitor = SimpleNamespace(get_all_services=lambda: [])
     local_targets = [
         {
             "runtime_id": "vllm",
@@ -94,12 +122,15 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
             system_llm.system_deps, "get_llm_controller", return_value=llm_controller
         ),
         patch.object(
+            system_llm.system_deps, "get_service_monitor", return_value=service_monitor
+        ),
+        patch.object(
             system_llm.system_deps, "get_model_manager", return_value=object()
         ),
         patch.object(
             system_llm,
             "_local_models_by_runtime",
-            new=AsyncMock(return_value={"vllm": [], "ollama": [], "onnx": []}),
+            new=AsyncMock(return_value=({"vllm": [], "ollama": [], "onnx": []}, [])),
         ),
         patch.object(system_llm, "_local_runtime_targets", return_value=local_targets),
         patch.object(
@@ -155,6 +186,7 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
     assert runtimes["google"]["configured"] is False
     assert runtimes["google"]["reason"] == "GOOGLE_API_KEY not configured"
     assert "model_catalog" in payload
+    assert payload["model_audit"]["issues_count"] == 0
     assert "trainable_models" in payload["model_catalog"]
     assert "coding_models" in payload["model_catalog"]
     assert payload["model_catalog"]["trainable_models"][0]["model_id"] == (
@@ -212,3 +244,175 @@ def test_runtime_model_payload_contains_alias_and_canonical_for_gemma() -> None:
     assert payload["canonical_model_id"] == "gemma-3-4b-it"
     assert "gemma3:latest" in payload["aliases"]
     assert "gemma-3-4b-it" in payload["aliases"]
+    assert payload["ownership_status"] == "unknown"
+    assert payload["compatible_runtimes"] == []
+
+
+def test_build_model_catalog_enriches_compatible_runtimes() -> None:
+    runtime_targets = [
+        {
+            "runtime_id": "vllm",
+            "models": [
+                {
+                    "name": "unsloth/Phi-3-mini-4k-instruct",
+                    "chat_compatible": True,
+                }
+            ],
+        }
+    ]
+    trainable_models = [
+        {
+            "model_id": "unsloth/Phi-3-mini-4k-instruct",
+            "canonical_model_id": "unsloth/Phi-3-mini-4k-instruct",
+            "runtime_compatibility": {"vllm": True, "ollama": False},
+        }
+    ]
+
+    catalog = system_llm._build_model_catalog(  # noqa: SLF001
+        runtime_targets=runtime_targets,
+        trainable_models=trainable_models,
+    )
+    assert catalog["all_models"][0]["compatible_runtimes"] == ["vllm"]
+
+
+def test_runtime_target_payload_contains_adapter_deploy_capability() -> None:
+    active_runtime = SimpleNamespace(provider="vllm")
+    payload = system_llm._runtime_target_payload(  # noqa: SLF001
+        runtime_id="vllm",
+        source_type="local-runtime",
+        configured=True,
+        available=True,
+        status="online",
+        reason=None,
+        models=[],
+        active_runtime=active_runtime,
+    )
+    assert payload["adapter_deploy_supported"] is True
+    assert payload["adapter_deploy_mode"] == "vllm_exported_runtime_model"
+
+
+def test_apply_vllm_runtime_autofix_updates_invalid_config(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime-vllm"
+    runtime_dir.mkdir(parents=True)
+    (runtime_dir / "config.json").write_text("{}", encoding="utf-8")
+    (runtime_dir / "model.safetensors").write_text("x", encoding="utf-8")
+    settings = SimpleNamespace(
+        REPO_ROOT=str(tmp_path),
+        VLLM_ENDPOINT="http://127.0.0.1:8000/v1",
+        LLM_SERVICE_TYPE="local",
+        ACTIVE_LLM_SERVER="vllm",
+        LLM_MODEL_NAME="broken-model",
+        HYBRID_LOCAL_MODEL="broken-model",
+        LAST_MODEL_VLLM="broken-model",
+        VLLM_MODEL_PATH="/tmp/missing",
+        VLLM_SERVED_MODEL_NAME="broken-model",
+        LLM_CONFIG_HASH=None,
+    )
+    local_models = [
+        {
+            "name": "good-model",
+            "provider": "vllm",
+            "path": str(runtime_dir),
+            "chat_compatible": True,
+        }
+    ]
+    active_runtime = SimpleNamespace(provider="vllm", model_name="broken-model")
+    config = {
+        "ACTIVE_LLM_SERVER": "vllm",
+        "LLM_MODEL_NAME": "broken-model",
+        "LAST_MODEL_VLLM": "good-model",
+        "VLLM_MODEL_PATH": "/tmp/missing",
+    }
+
+    with (
+        patch.object(system_llm, "SETTINGS", settings),
+        patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
+        patch.object(system_llm.config_manager, "get_config", return_value=config),
+        patch.object(system_llm.config_manager, "update_config") as update_cfg,
+        patch.object(system_llm, "compute_llm_config_hash", return_value="cfg-healed"),
+    ):
+        result = system_llm._apply_vllm_runtime_autofix(local_models=local_models)  # noqa: SLF001
+
+    assert result is not None
+    assert result["healed"] is True
+    assert result["selected_model"] == "good-model"
+    update_cfg.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_local_models_by_runtime_skips_non_runtime_vllm_entries(
+    tmp_path: Path,
+) -> None:
+    valid_runtime_dir = _runtime_vllm_dir(tmp_path, "runtime-vllm")
+    plain_dir = tmp_path / "plain-folder"
+    plain_dir.mkdir(parents=True)
+
+    settings = SimpleNamespace(REPO_ROOT=str(tmp_path))
+    active_runtime = SimpleNamespace(provider="vllm", model_name="good-model")
+    local_models = [
+        _local_model_entry(
+            name="good-model",
+            provider="vllm",
+            path=valid_runtime_dir,
+            source="vllm",
+        ),
+        _local_model_entry(
+            name="plain-folder",
+            provider="vllm",
+            path=plain_dir,
+            source="models",
+        ),
+    ]
+
+    with (
+        patch.object(system_llm, "SETTINGS", settings),
+        patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
+    ):
+        grouped, audit = await system_llm._local_models_by_runtime(  # noqa: SLF001
+            model_manager=object(),
+            local_models=local_models,
+        )
+
+    assert [model["name"] for model in grouped["vllm"]] == ["good-model"]
+    assert any(
+        item.get("name") == "plain-folder"
+        and item.get("reason") == "not_runtime_loadable_for_vllm"
+        for item in audit
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_models_by_runtime_reports_unknown_provider_issue(
+    tmp_path: Path,
+) -> None:
+    weird_dir = tmp_path / "weird-model"
+    weird_dir.mkdir(parents=True)
+    settings = SimpleNamespace(REPO_ROOT=str(tmp_path))
+    active_runtime = SimpleNamespace(provider="vllm", model_name="")
+    local_models = [
+        _local_model_entry(
+            name="mystery-model",
+            provider="custom-provider",
+            path=weird_dir,
+            source="custom-source",
+        )
+    ]
+
+    with (
+        patch.object(system_llm, "SETTINGS", settings),
+        patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
+    ):
+        grouped, audit = await system_llm._local_models_by_runtime(  # noqa: SLF001
+            model_manager=object(),
+            local_models=local_models,
+        )
+
+    assert grouped == {"ollama": [], "vllm": [], "onnx": []}
+    assert audit == [
+        {
+            "name": "mystery-model",
+            "path": str(weird_dir),
+            "source": "custom-source",
+            "reason": "provider_unknown",
+        }
+    ]

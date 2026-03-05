@@ -4,6 +4,7 @@ import importlib
 import os
 import signal
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -305,6 +306,7 @@ class GPUHabitat(DockerHabitat):
             enable_gpu=self.enable_gpu,
             training_containers=self.training_containers,
             check_local_dependencies_fn=self._check_local_dependencies,
+            python_bin=sys.executable or "python3",
             logger=logger,
         )
 
@@ -454,7 +456,7 @@ import json
 from unsloth import FastLanguageModel
 from trl import SFTTrainer
 from transformers import TrainingArguments
-from datasets import Dataset
+from datasets import load_dataset
 
 # Konfiguracja
 BASE_MODEL = "{base_model}"
@@ -504,13 +506,8 @@ model = FastLanguageModel.get_peft_model(
 
 # Ładuj dataset
 print("\\n[3/5] Ładowanie datasetu...")
-examples = []
-with open(DATASET_PATH, "r", encoding="utf-8") as f:
-    for line in f:
-        examples.append(json.loads(line))
-
-dataset = Dataset.from_list(examples)
-print(f"Załadowano {{len(examples)}} przykładów")
+dataset = load_dataset("json", data_files=DATASET_PATH, split="train")
+print(f"Załadowano {{len(dataset)}} przykładów")
 
 # Formatowanie promptu
 def formatting_func(example):
@@ -520,29 +517,48 @@ def formatting_func(example):
     text += f"### Response:\\n{{example['output']}}"
     return {{"text": text}}
 
-dataset = dataset.map(formatting_func)
+dataset = dataset.map(formatting_func, remove_columns=dataset.column_names)
 
 # Konfiguracja treningu
 print("\\n[4/5] Konfiguracja treningu...")
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    max_seq_length=MAX_SEQ_LENGTH,
-    args=TrainingArguments(
-        per_device_train_batch_size=BATCH_SIZE,
-        gradient_accumulation_steps=4,
-        warmup_steps=10,
-        num_train_epochs=NUM_EPOCHS,
-        learning_rate=LEARNING_RATE,
-        fp16=True,
-        logging_steps=1,
-        output_dir=OUTPUT_DIR,
-        optim="adamw_8bit",
-        save_strategy="epoch",
-    ),
+training_args = TrainingArguments(
+    per_device_train_batch_size=BATCH_SIZE,
+    gradient_accumulation_steps=4,
+    warmup_steps=10,
+    num_train_epochs=NUM_EPOCHS,
+    learning_rate=LEARNING_RATE,
+    fp16=True,
+    logging_steps=1,
+    output_dir=OUTPUT_DIR,
+    optim="adamw_8bit",
+    save_strategy="epoch",
 )
+
+trainer_kwargs = dict(
+    model=model,
+    train_dataset=dataset,
+    args=training_args,
+)
+
+try:
+    trainer = SFTTrainer(
+        tokenizer=tokenizer,
+        dataset_text_field="text",
+        max_seq_length=MAX_SEQ_LENGTH,
+        **trainer_kwargs,
+    )
+except TypeError as exc:
+    print(f"Compatibility fallback for SFTTrainer(tokenizer=...): {{exc}}")
+    try:
+        trainer = SFTTrainer(
+            processing_class=tokenizer,
+            dataset_text_field="text",
+            max_seq_length=MAX_SEQ_LENGTH,
+            **trainer_kwargs,
+        )
+    except TypeError as exc2:
+        print(f"Compatibility fallback for SFTTrainer(processing_class=...): {{exc2}}")
+        trainer = SFTTrainer(**trainer_kwargs)
 
 # Trenuj
 print("\\n[5/5] Rozpoczynam trening...")
@@ -571,11 +587,11 @@ print("=" * 60)
         max_seq_length: int,
         batch_size: int,
     ) -> str:
-        """Generuje skrypt dla standardowego HuggingFace Transformers (CPU/Fallback)."""
+        """Generuje skrypt dla standardowego HuggingFace Transformers (GPU if available)."""
         script = f'''#!/usr/bin/env python3
 """
-Skrypt treningowy Venom - CPU Fallback (HuggingFace Transformers).
-Używany gdy Unsloth/GPU nie jest dostępne.
+Skrypt treningowy Venom - HuggingFace Transformers fallback.
+Używany gdy Unsloth nie jest dostępne; używa GPU, jeśli torch.cuda.is_available().
 """
 
 import json
@@ -583,7 +599,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
 from peft import LoraConfig, get_peft_model, TaskType
 from trl import SFTTrainer
-from datasets import Dataset
+from datasets import load_dataset
 
 # Konfiguracja
 BASE_MODEL = "{base_model}"
@@ -596,13 +612,20 @@ MAX_SEQ_LENGTH = {max_seq_length}
 BATCH_SIZE = {batch_size}
 
 print("=" * 60)
-print("VENOM CPU TRAINING JOB (Standard Transformers)")
+print("VENOM TRAINING JOB (Standard Transformers Fallback)")
 print("=" * 60)
+CUDA_AVAILABLE = torch.cuda.is_available()
+print(f"CUDA available: {{CUDA_AVAILABLE}}")
 
 # Ładuj model
-print("\\n[1/5] Ładowanie modelu (CPU mode)...")
+print("\\n[1/5] Ładowanie modelu...")
 tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
-model = AutoModelForCausalLM.from_pretrained(BASE_MODEL)
+model = AutoModelForCausalLM.from_pretrained(
+    BASE_MODEL,
+    torch_dtype=torch.float16 if CUDA_AVAILABLE else None,
+)
+if CUDA_AVAILABLE:
+    model = model.to("cuda")
 
 # Dodaj adapter LoRA
 print("\\n[2/5] Dodawanie adaptera LoRA...")
@@ -619,12 +642,7 @@ model.print_trainable_parameters()
 
 # Ładuj dataset
 print("\\n[3/5] Ładowanie datasetu...")
-examples = []
-with open(DATASET_PATH, "r", encoding="utf-8") as f:
-    for line in f:
-        examples.append(json.loads(line))
-
-dataset = Dataset.from_list(examples)
+dataset = load_dataset("json", data_files=DATASET_PATH, split="train")
 
 # Formatowanie promptu
 def formatting_func(example):
@@ -634,7 +652,7 @@ def formatting_func(example):
     text += f"### Response:\\n{{example['output']}}"
     return {{"text": text}}
 
-dataset = dataset.map(formatting_func)
+dataset = dataset.map(formatting_func, remove_columns=dataset.column_names)
 
 # Konfiguracja treningu
 print("\\n[4/5] Konfiguracja treningu...")
@@ -646,18 +664,38 @@ training_args = TrainingArguments(
     num_train_epochs=NUM_EPOCHS,
     logging_steps=1,
     save_strategy="epoch",
-    use_cpu=True, # Wymuś CPU
-    no_cuda=True,
+    fp16=CUDA_AVAILABLE,
+    use_cpu=(not CUDA_AVAILABLE),
+    no_cuda=(not CUDA_AVAILABLE),
 )
 
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    max_seq_length=MAX_SEQ_LENGTH,
-    args=training_args,
-)
+try:
+    trainer = SFTTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=dataset,
+        dataset_text_field="text",
+        max_seq_length=MAX_SEQ_LENGTH,
+        args=training_args,
+    )
+except TypeError as exc:
+    print(f"Compatibility fallback for SFTTrainer(tokenizer=...): {{exc}}")
+    try:
+        trainer = SFTTrainer(
+            model=model,
+            processing_class=tokenizer,
+            train_dataset=dataset,
+            dataset_text_field="text",
+            max_seq_length=MAX_SEQ_LENGTH,
+            args=training_args,
+        )
+    except TypeError as exc2:
+        print(f"Compatibility fallback for SFTTrainer(processing_class=...): {{exc2}}")
+        trainer = SFTTrainer(
+            model=model,
+            train_dataset=dataset,
+            args=training_args,
+        )
 
 # Trenuj
 print("\\n[5/5] Rozpoczynam trening...")

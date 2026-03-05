@@ -90,6 +90,7 @@ def test_generate_training_script(monkeypatch):
     assert "model-x" in script
     assert 'DATASET_PATH = "/data.jsonl"' in script
     assert "LORA_RANK = 8" in script
+    assert "processing_class=tokenizer" in script
 
 
 def test_run_training_job_rejects_missing_dataset(tmp_path, monkeypatch):

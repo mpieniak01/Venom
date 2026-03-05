@@ -170,11 +170,14 @@ Practical sequence:
 2. Train adapter.
 3. In Chat, switch to runtime compatible with that base/adapter.
 4. Activate adapter (optionally with `runtime_id`) to enforce compatibility check.
-5. If `deploy_to_chat_runtime=true`, Academy can auto-switch Chat runtime model for Ollama adapters.
+5. If `deploy_to_chat_runtime=true`, Academy can auto-switch Chat runtime model for Ollama/vLLM adapters.
 
-Current limitation:
-1. Automatic adapter deploy/rollback to Chat runtime is currently implemented for `ollama`.
-2. `vllm` and `onnx` deploy/rollback are tracked as follow-up work.
+Current runtime scope:
+1. Automatic adapter deploy/rollback to Chat runtime is implemented for `ollama` and `vllm`.
+2. `onnx` is guardrails-only for adapter deploy and returns `runtime_not_supported`.
+3. Chat should treat model and adapter as separate layers:
+   - `Model` -> runtime-servable model
+   - `Adapter` -> Academy overlay deployed conditionally by runtime capability
 
 ## Usage
 

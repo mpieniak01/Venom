@@ -59,7 +59,12 @@ echo "🧠 Zwalniam zasoby LLM..."
 bash scripts/llm/vllm_service.sh stop >/dev/null 2>&1 || true
 bash scripts/llm/ollama_service.sh stop >/dev/null 2>&1 || true
 
-# 4. Agresywne czyszczenie zombi (GPU/VRAM)
+# 4. Academy training jobs (local runtime)
+echo "🧪 Zatrzymuję lokalne joby treningowe Academy..."
+pkill -f "/data/models/self_learning_.*/train_script.py" 2>/dev/null || true
+pkill -f "self_learning_.*train_script.py" 2>/dev/null || true
+
+# 5. Agresywne czyszczenie zombi (GPU/VRAM)
 pkill -9 -f "vllm serve" 2>/dev/null || true
 pkill -9 -f "VLLM::EngineCore" 2>/dev/null || true
 pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
@@ -67,7 +72,7 @@ pkill -9 -f "ray::" 2>/dev/null || true
 pkill -9 -f "${VENV_PY} -c from multiprocessing.spawn import spawn_main" 2>/dev/null || true
 pkill -9 -f "${VENV_PY} -c from multiprocessing.resource_tracker import main" 2>/dev/null || true
 
-# 5. Czyszczenie portów
+# 6. Czyszczenie portów
 PORTS_TO_CLEAN="8000 3000 11434 8001"
 if command -v lsof >/dev/null 2>&1; then
     for port in $PORTS_TO_CLEAN; do

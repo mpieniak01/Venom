@@ -54,7 +54,7 @@ export const academy = {
     baseModelHint: "Only models from the trainable list can be used for Academy training.",
     loadingModels: "Loading trainable models...",
     noTrainableModels: "No trainable models available",
-    engineLabel: "engine",
+    engineLabel: "model provider",
     locationLabel: "training",
     locationLocal: "local",
     locationCloud: "cloud API",
@@ -65,19 +65,23 @@ export const academy = {
       unknown: "unknown",
     },
     modelSections: {
-      localFirst: "Local (recommended)",
-      cloudFree: "Cloud free-tier",
-      cloudOther: "Cloud (paid/unknown cost)",
+      localFirst: "Locally installed",
+      cloudFree: "Base catalog (free)",
+      cloudOther: "Base catalog (paid/unknown)",
     },
     modelSectionMeta: {
-      localFirst: "training: local • cost: free",
-      cloudFree: "training: cloud API • cost: free",
-      cloudOther: "training: cloud API • cost: paid/unknown",
+      localFirst: "available locally • ready to use immediately",
+      cloudFree: "catalog models • fetched for training runs",
+      cloudOther: "catalog models • paid or unknown cost profile",
     },
     orderingHint:
-      "Order policy: local models first, then free cloud models, then cloud models with unknown or paid cost.",
-    compatibilityLabel: "compatibility",
-    runtimeUnknown: "no confirmed runtime compatibility",
+      "Order policy: locally installed models first, then free catalog models, then catalog models with unknown or paid cost.",
+    installState: {
+      localInstalled: "locally installed",
+      catalogDownload: "catalog model (downloaded for training)",
+    },
+    compatibilityLabel: "post-training inference runtime",
+    runtimeUnknown: "no confirmed post-training inference runtime compatibility",
     engineNames: {
       unsloth: "Unsloth",
       huggingface: "HuggingFace",
@@ -204,6 +208,8 @@ export const academy = {
     title: "Self-Learning",
     subtitle:
       "Teach Venom from internal repository knowledge sources (docs, docs_dev, code) using LLM fine-tuning or RAG indexing.",
+    runtimeModelAuditWarning:
+      "Runtime catalog filtered {{count}} local model(s) because they are not loadable by selected runtime contracts.",
     config: {
       title: "Self-Learning Configuration",
       description: "Choose mode, sources and safety limits before run start.",
@@ -221,6 +227,8 @@ export const academy = {
       },
       sources: {
         docs: "Repository docs (/docs)",
+        docsEn: "English docs only (/docs without /docs/PL)",
+        docsPl: "Polish docs only (/docs/PL)",
         docsDev: "Developer docs (/docs_dev)",
         code: "Source code (venom_core, web-next, scripts)",
       },

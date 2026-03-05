@@ -128,6 +128,9 @@ export interface LlmRuntimeModelOption {
   canonical_model_id?: string | null;
   aliases?: string[];
   coding_eligible?: boolean;
+  owned_by_runtime?: string | null;
+  ownership_status?: "native" | "foreign" | "unknown";
+  compatible_runtimes?: string[];
 }
 
 export interface LlmRuntimeTargetOption {
@@ -140,6 +143,8 @@ export interface LlmRuntimeTargetOption {
   active: boolean;
   latency_ms?: number | null;
   models: LlmRuntimeModelOption[];
+  adapter_deploy_supported?: boolean;
+  adapter_deploy_mode?: string;
 }
 
 export interface LlmRuntimeOptionsResponse {
@@ -160,6 +165,25 @@ export interface LlmRuntimeOptionsResponse {
     all_models?: LlmRuntimeModelOption[];
     chat_models?: LlmRuntimeModelOption[];
     coding_models?: LlmRuntimeModelOption[];
+    runtime_servable_models?: LlmRuntimeModelOption[];
+    trainable_base_models?: Array<{
+      model_id: string;
+      label: string;
+      provider: string;
+      trainable: boolean;
+      reason_if_not_trainable?: string | null;
+      recommended: boolean;
+      installed_local: boolean;
+      source_type: "local" | "cloud";
+      cost_tier: "free" | "paid" | "unknown";
+      priority_bucket: number;
+      runtime_compatibility: Record<string, boolean>;
+      recommended_runtime?: string | null;
+      canonical_model_id?: string | null;
+      aliases?: string[];
+      coding_eligible?: boolean;
+    }>;
+    inference_only_artifacts?: LlmRuntimeModelOption[];
     trainable_models?: Array<{
       model_id: string;
       label: string;
@@ -178,6 +202,54 @@ export interface LlmRuntimeOptionsResponse {
       coding_eligible?: boolean;
     }>;
   };
+  adapter_catalog?: {
+    all_adapters?: Array<{
+      adapter_id: string;
+      adapter_path: string;
+      base_model: string;
+      canonical_base_model_id?: string;
+      is_active: boolean;
+      created_at?: string | null;
+      compatible_runtimes?: string[];
+    }>;
+    by_runtime?: Record<
+      string,
+      Array<{
+        adapter_id: string;
+        adapter_path: string;
+        base_model: string;
+        canonical_base_model_id?: string;
+        is_active: boolean;
+        created_at?: string | null;
+        compatible_runtimes?: string[];
+      }>
+    >;
+    by_runtime_model?: Record<
+      string,
+      Record<
+        string,
+        Array<{
+          adapter_id: string;
+          adapter_path: string;
+          base_model: string;
+          canonical_base_model_id?: string;
+          is_active: boolean;
+          created_at?: string | null;
+          compatible_runtimes?: string[];
+        }>
+      >
+    >;
+  };
+  selector_flow?: string[];
+  model_audit?: {
+    issues_count?: number;
+    issues?: Array<{
+      name?: string;
+      path?: string;
+      source?: string | null;
+      reason?: string;
+    }>;
+  };
   feedback_loop?: {
     requested_alias?: string;
     primary?: string;
@@ -186,6 +258,13 @@ export interface LlmRuntimeOptionsResponse {
     active_ready?: boolean;
     active_resolved_model_id?: string | null;
   };
+  auto_heal?: {
+    healed: boolean;
+    runtime_id: string;
+    selected_model: string;
+    selected_path?: string;
+    reason?: string | null;
+  } | null;
 }
 
 export interface ActiveLlmServerResponse {

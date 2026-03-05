@@ -97,6 +97,8 @@ class ModelManagerDiscoveryMixin:
         model_path: Path,
         source: str,
         provider: str = "vllm",
+        model_name: str | None = None,
+        model_key: str | None = None,
     ) -> None:
         size_bytes = self._calculate_model_size_bytes(model_path)
         onnx_metadata = self._load_onnx_metadata(model_path)
@@ -113,8 +115,11 @@ class ModelManagerDiscoveryMixin:
             inferred = self._default_onnx_metadata_for_path(model_path)
             onnx_payload = {**inferred, **onnx_metadata}
 
-        models[model_path.name] = {
-            "name": model_path.name,
+        resolved_name = str(model_name or model_path.name).strip() or model_path.name
+        resolved_key = str(model_key or resolved_name).strip() or resolved_name
+
+        models[resolved_key] = {
+            "name": resolved_name,
             "size_gb": size_bytes / (1024**3) if size_bytes else None,
             "type": model_type,
             "quantization": "unknown",
@@ -148,7 +153,14 @@ class ModelManagerDiscoveryMixin:
             return "onnx", "onnx"
         if model_path.is_dir():
             resolved_provider = (
-                "onnx" if "onnx" in model_path.name.lower() else provider
+                "onnx"
+                if (
+                    "onnx" in model_path.name.lower()
+                    or (model_path / ONNX_METADATA_FILENAME).exists()
+                    or (model_path / "genai_config.json").exists()
+                    or any(model_path.glob("*.onnx"))
+                )
+                else provider
             )
             return "folder", resolved_provider
         return "folder", provider
@@ -160,6 +172,69 @@ class ModelManagerDiscoveryMixin:
             search_dirs.append(default_models_dir)
         return search_dirs
 
+    @staticmethod
+    def _looks_like_onnx_runtime_dir(model_path: Path) -> bool:
+        if not model_path.is_dir():
+            return False
+        if (model_path / ONNX_METADATA_FILENAME).exists():
+            return True
+        if (model_path / "genai_config.json").exists():
+            return True
+        if (model_path / "model.onnx").exists():
+            return True
+        return any(model_path.glob("*.onnx"))
+
+    @staticmethod
+    def _looks_like_hf_runtime_dir(model_path: Path) -> bool:
+        if not model_path.is_dir():
+            return False
+        if not (model_path / "config.json").exists():
+            return False
+        if any(model_path.glob("*.safetensors")):
+            return True
+        if any(model_path.glob("pytorch_model*.bin")):
+            return True
+        if any(model_path.glob("model*.bin")):
+            return True
+        return False
+
+    @staticmethod
+    def _is_academy_artifact_dir(model_path: Path) -> bool:
+        name = model_path.name.lower()
+        if name.startswith("self_learning_"):
+            return True
+        if name.startswith("checkpoint-"):
+            return True
+        if (model_path / "adapter").exists() and (
+            model_path / "train_script.py"
+        ).exists():
+            return True
+        if (model_path / "training.log").exists() and not (
+            model_path / "config.json"
+        ).exists():
+            return True
+        return False
+
+    def _register_academy_runtime_vllm_entries(
+        self,
+        models: Dict[str, Dict[str, Any]],
+        base_dir: Path,
+    ) -> None:
+        for adapter_dir in base_dir.iterdir():
+            if not adapter_dir.is_dir():
+                continue
+            runtime_dir = adapter_dir / "runtime_vllm"
+            if not self._looks_like_hf_runtime_dir(runtime_dir):
+                continue
+            runtime_model_name = f"venom-adapter-{adapter_dir.name}"
+            self._try_register_local_entry(
+                models,
+                runtime_dir,
+                source_name=base_dir.name,
+                model_name=runtime_model_name,
+                model_key=f"academy-runtime-vllm::{runtime_model_name}",
+            )
+
     def _scan_local_dirs(
         self,
         search_dirs: List[Path],
@@ -169,22 +244,48 @@ class ModelManagerDiscoveryMixin:
         for base_dir in search_dirs:
             if not base_dir.exists():
                 continue
+            self._register_academy_runtime_vllm_entries(models, base_dir)
+            allow_workspace_fallback = base_dir.name == "models"
             for model_path in base_dir.iterdir():
-                if not self._is_local_model_candidate(model_path, skip_dirs):
+                if not self._is_local_model_candidate(
+                    model_path,
+                    skip_dirs,
+                    allow_workspace_fallback=allow_workspace_fallback,
+                ):
                     continue
                 self._try_register_local_entry(models, model_path, base_dir.name)
 
     @staticmethod
-    def _is_local_model_candidate(model_path: Path, skip_dirs: set[str]) -> bool:
+    def _is_local_model_candidate(
+        model_path: Path,
+        skip_dirs: set[str],
+        *,
+        allow_workspace_fallback: bool = False,
+    ) -> bool:
         if model_path.name in skip_dirs:
             return False
-        return model_path.is_dir() or model_path.suffix in {".onnx", ".gguf", ".bin"}
+        if model_path.suffix in {".onnx", ".gguf", ".bin"}:
+            return True
+        if not model_path.is_dir():
+            return False
+        if ModelManagerDiscoveryMixin._is_academy_artifact_dir(model_path):
+            return False
+        if ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(model_path):
+            return True
+        if ModelManagerDiscoveryMixin._looks_like_hf_runtime_dir(model_path):
+            return True
+        if allow_workspace_fallback:
+            return True
+        return False
 
     def _try_register_local_entry(
         self,
         models: Dict[str, Dict[str, Any]],
         model_path: Path,
         source_name: str,
+        *,
+        model_name: str | None = None,
+        model_key: str | None = None,
     ) -> None:
         try:
             self._register_local_entry(
@@ -192,6 +293,8 @@ class ModelManagerDiscoveryMixin:
                 model_path,
                 source=source_name,
                 provider="vllm",
+                model_name=model_name,
+                model_key=model_key,
             )
         except Exception as exc:
             logger.warning("Nie udało się odczytać modelu %s: %s", model_path, exc)
@@ -353,6 +456,9 @@ class ModelManagerDiscoveryMixin:
 
         search_dirs = self._build_search_dirs()
         self._scan_local_dirs(search_dirs, models)
+        # Keep Ollama model visibility even when daemon is offline.
+        self._load_ollama_cache(models)
+        self._register_manifest_fallbacks(search_dirs, models)
 
         try:
             async with TrafficControlledHttpClient(
@@ -385,6 +491,11 @@ class ModelManagerDiscoveryMixin:
         except ValueError as exc:
             logger.error(
                 "Błędna odpowiedź JSON podczas pobierania modeli z Ollama: %s", exc
+            )
+        except Exception as exc:
+            logger.warning(
+                "Nie udało się pobrać modeli z Ollama (fallback do lokalnego skanu): %s",
+                exc,
             )
 
         return list(models.values())

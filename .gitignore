@@ -127,5 +127,8 @@ docs_dev/
 data/benchmarks/
 .mypy_cache/
 data/training/
+
+# Academy self-learning runtime artifacts
+data/academy/self_learning/
 MagicMock*/
 <MagicMock*/

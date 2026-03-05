@@ -139,6 +139,9 @@ export const cockpitLocale = {
       loadingAdapters: "Loading adapters",
       adapterBase: "Base model (no adapter)",
       adapterIncompatible: "incompatible with runtime {{runtime}}",
+      adapterRuntimeNotSupported: "chat adapter deploy is not supported for runtime {{runtime}}",
+      runtimeModelAuditWarning:
+        "Runtime catalog filtered {{count}} local model(s) that are not loadable by the selected runtime.",
       noModels: "No models",
       feedbackLoopPrimaryBadge: "feedback-loop: recommended",
       feedbackLoopFallbackBadge: "feedback-loop: fallback",

@@ -50,7 +50,8 @@ type CockpitChatUiParams = {
     config_hash?: string | null;
     runtime_id?: string | null;
   }>;
-  setActiveLlmServer: (server: string) => Promise<{ status?: string; active_model?: string | null }>;
+  setActiveLlmServer: (server: string, model?: string) => Promise<{ status?: string; active_model?: string | null }>;
+  ensureModelActive?: (model: string) => Promise<boolean>;
   sendSimpleChatStream: (payload: {
     content: string;
     model: string | null;
@@ -142,6 +143,7 @@ export function useCockpitChatUi({
   refreshActiveServer,
   setActiveLlmRuntime,
   setActiveLlmServer,
+  ensureModelActive,
   sendSimpleChatStream,
   sendTask,
   ingestMemoryEntry,
@@ -312,6 +314,7 @@ export function useCockpitChatUi({
     refreshActiveServer,
     setActiveLlmRuntime,
     setActiveLlmServer,
+    ensureModelActive,
     sendSimpleChatStream,
     sendTask,
     ingestMemoryEntry,

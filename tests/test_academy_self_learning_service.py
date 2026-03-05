@@ -51,6 +51,16 @@ class DummyModelManager:
         return self._models
 
 
+class DummyModelManagerWithUnload(DummyModelManager):
+    def __init__(self, models):
+        super().__init__(models)
+        self.unload_calls = 0
+
+    async def unload_all(self):
+        self.unload_calls += 1
+        return True
+
+
 async def _wait_terminal(
     service: SelfLearningService,
     run_id: str,
@@ -150,6 +160,64 @@ async def test_llm_finetune_dry_run_creates_dataset_artifact(tmp_path: Path):
     eval_report_path = status["artifacts"].get("evaluation_report_path")
     assert isinstance(eval_report_path, str)
     assert Path(eval_report_path).exists()
+
+
+@pytest.mark.asyncio
+async def test_rag_index_docs_en_excludes_docs_pl_subtree(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_pl_dir = docs_dir / "PL"
+    docs_pl_dir.mkdir(parents=True)
+    (docs_dir / "intro.md").write_text("English docs content", encoding="utf-8")
+    (docs_pl_dir / "wstep.md").write_text("Polska dokumentacja", encoding="utf-8")
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+    )
+
+    run_id = service.start_run(
+        mode="rag_index",
+        sources=["docs_en"],
+        rag_config={
+            "embedding_profile_id": "local:default",
+            "embedding_policy": "strict",
+        },
+        dry_run=True,
+    )
+    status = await _wait_terminal(service, run_id)
+
+    assert status["status"] == "completed"
+    assert status["progress"]["files_discovered"] == 1
+
+
+@pytest.mark.asyncio
+async def test_rag_index_deduplicates_overlapping_docs_sources(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_pl_dir = docs_dir / "PL"
+    docs_pl_dir.mkdir(parents=True)
+    (docs_dir / "intro.md").write_text("English docs content", encoding="utf-8")
+    (docs_pl_dir / "wstep.md").write_text("Polska dokumentacja", encoding="utf-8")
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+    )
+
+    run_id = service.start_run(
+        mode="rag_index",
+        sources=["docs", "docs_pl"],
+        rag_config={
+            "embedding_profile_id": "local:default",
+            "embedding_policy": "strict",
+        },
+        dry_run=True,
+    )
+    status = await _wait_terminal(service, run_id)
+
+    assert status["status"] == "completed"
+    assert status["progress"]["files_discovered"] == 2
 
 
 @pytest.mark.asyncio
@@ -386,6 +454,22 @@ def test_start_run_rejects_rag_without_embedding_profile(tmp_path: Path):
         service.start_run(mode="rag_index", sources=["docs"], dry_run=True)
 
 
+def test_start_run_rejects_incompatible_runtime_for_base_model(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"), repo_root=str(tmp_path)
+    )
+    with pytest.raises(ValueError, match="incompatible with runtime 'ollama'"):
+        service.start_run(
+            mode="llm_finetune",
+            sources=["docs"],
+            llm_config={
+                "base_model": "unsloth/Phi-3-mini-4k-instruct",
+                "runtime_id": "ollama",
+            },
+            dry_run=True,
+        )
+
+
 @pytest.mark.asyncio
 async def test_start_run_uses_default_embedding_profile_for_rag(tmp_path: Path):
     service = SelfLearningService(
@@ -439,6 +523,47 @@ async def test_capabilities_exposes_trainable_models_and_embedding_profiles(
         item["model"] == "intfloat/multilingual-e5-base" and item["healthy"] is False
         for item in payload["embedding_profiles"]
     )
+
+
+@pytest.mark.asyncio
+async def test_capabilities_prefers_model_compatible_with_active_runtime(
+    tmp_path: Path,
+):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        vector_store=DummyVectorStore(),
+    )
+
+    async def _mock_models() -> list[dict[str, object]]:
+        return [
+            {
+                "model_id": "unsloth/Phi-3-mini-4k-instruct",
+                "label": "phi",
+                "provider": "unsloth",
+                "recommended": True,
+                "runtime_compatibility": {"vllm": True, "ollama": False},
+                "recommended_runtime": "vllm",
+            },
+            {
+                "model_id": "qwen2.5-coder:3b",
+                "label": "qwen",
+                "provider": "ollama",
+                "recommended": False,
+                "runtime_compatibility": {"vllm": False, "ollama": True},
+                "recommended_runtime": "ollama",
+            },
+        ]
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(service, "_load_trainable_models", _mock_models)
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
+    try:
+        payload = await service.get_capabilities()
+    finally:
+        monkeypatch.undo()
+
+    assert payload["default_base_model"] == "qwen2.5-coder:3b"
 
 
 @pytest.mark.asyncio
@@ -599,6 +724,82 @@ def test_add_log_trims_to_limit(tmp_path: Path):
 
     assert len(run.logs) == 500
     assert run.logs[0] == "log-20"
+
+
+def test_add_log_debounces_snapshot_writes(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run_id = "123e4567-e89b-42d3-a456-426614174000"
+    run = service._run_from_payload(
+        {
+            "run_id": run_id,
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+        }
+    )
+    snapshot_calls: list[str] = []
+    monkeypatch = pytest.MonkeyPatch()
+    monotonic_iter = iter([10.0, 10.2, 11.5])
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service.time.monotonic",
+        lambda: next(monotonic_iter),
+    )
+    monkeypatch.setattr(
+        service,
+        "_append_run_snapshot",
+        lambda current_run: snapshot_calls.append(current_run.logs[-1]),
+    )
+    try:
+        service._add_log(run, "step-1")
+        service._add_log(run, "step-2")
+        service._add_log(run, "step-3")
+    finally:
+        monkeypatch.undo()
+
+    assert snapshot_calls == ["step-1", "step-3"]
+
+
+def test_get_status_recovers_orphaned_running_llm_run_with_live_logs(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run_id = "77777777-7777-7777-7777-777777777777"
+    run = service._run_from_payload(
+        {
+            "run_id": run_id,
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {},
+            "llm_config": {"base_model": "unsloth/Phi-3-mini-4k-instruct"},
+            "rag_config": {},
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "started_at": "2026-03-05T00:00:01+00:00",
+            "logs": [],
+            "artifacts": {},
+            "progress": {},
+            "error_message": None,
+        }
+    )
+    service._runs[run_id] = run
+
+    class HabitatStub:
+        @staticmethod
+        def get_training_status(_job_name: str):
+            return {"status": "running", "logs": "epoch=1\nloss=0.4567"}
+
+    service.gpu_habitat = HabitatStub()
+    payload = service.get_status(run_id)
+
+    assert payload is not None
+    assert payload["status"] == "running"
+    assert any("[train:running] loss=0.4567" in line for line in payload["logs"])
 
 
 @pytest.mark.asyncio
@@ -944,3 +1145,506 @@ async def test_rag_index_run_writes_proxy_evaluation_artifact(tmp_path: Path):
     assert isinstance(evaluation, dict)
     assert evaluation.get("mode") == "rag_index"
     assert evaluation.get("kind") == "proxy_eval"
+
+
+@pytest.mark.asyncio
+async def test_llm_finetune_waits_for_finished_job_and_adapter(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "train.md").write_text(
+        "Venom self learning sample.\n" * 120, encoding="utf-8"
+    )
+
+    class HabitatStub:
+        use_local_runtime = False
+
+        def __init__(self) -> None:
+            self.training_containers: dict[str, dict[str, str]] = {}
+            self._poll_count = 0
+
+        def run_training_job(self, *, output_dir: str, job_name: str, **_kwargs):
+            adapter_dir = Path(output_dir) / "adapter"
+            adapter_dir.mkdir(parents=True, exist_ok=True)
+            (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+            self.training_containers[job_name] = {"status": "running"}
+            return {"job_name": job_name, "status": "running"}
+
+        def get_training_status(self, job_name: str):
+            self._poll_count += 1
+            if self._poll_count < 2:
+                return {"status": "running", "logs": "still running"}
+            self.training_containers[job_name] = {"status": "finished"}
+            return {"status": "finished", "logs": "ok"}
+
+    habitat = HabitatStub()
+    model_manager = DummyModelManagerWithUnload([])
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+        gpu_habitat=habitat,
+        model_manager=model_manager,
+        is_model_trainable_fn=lambda _model_id: True,
+    )
+
+    run_id = service.start_run(
+        mode="llm_finetune",
+        sources=["docs"],
+        llm_config={"base_model": "unsloth/Phi-3-mini-4k-instruct"},
+        dry_run=False,
+    )
+    status = await _wait_terminal(service, run_id)
+
+    assert status["status"] == "completed"
+    assert model_manager.unload_calls == 1
+    adapter_path = status["artifacts"].get("adapter_path")
+    assert isinstance(adapter_path, str)
+    assert Path(adapter_path, "adapter_config.json").exists()
+
+
+def test_ensure_no_active_training_jobs_blocks_running_jobs(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+
+    class HabitatStub:
+        training_containers = {"job-a": {}}
+
+        @staticmethod
+        def get_training_status(_job_name: str):
+            return {"status": "running"}
+
+    with pytest.raises(Exception, match="Aktywny trening już trwa"):
+        service._ensure_no_active_training_jobs(habitat=HabitatStub())
+
+
+@pytest.mark.asyncio
+async def test_release_runtime_models_logs_for_false_and_exception(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "33333333-3333-3333-3333-333333333333",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {},
+            "llm_config": {"base_model": "unsloth/Phi-3-mini-4k-instruct"},
+            "rag_config": {},
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+            "artifacts": {},
+            "progress": {},
+        }
+    )
+
+    class ModelManagerFalse:
+        async def unload_all(self):
+            return False
+
+    class ModelManagerError:
+        async def unload_all(self):
+            raise RuntimeError("boom")
+
+    service.model_manager = ModelManagerFalse()
+    await service._release_runtime_models(run)
+    assert any("unload returned false" in line for line in run.logs)
+
+    service.model_manager = ModelManagerError()
+    await service._release_runtime_models(run)
+    assert any("runtime unload failed" in line for line in run.logs)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_training_completion_handles_failed_timeout_and_missing_adapter(
+    tmp_path: Path,
+):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "44444444-4444-4444-4444-444444444444",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {},
+            "llm_config": {
+                "base_model": "unsloth/Phi-3-mini-4k-instruct",
+                "num_epochs": 1,
+            },
+            "rag_config": {},
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+            "artifacts": {},
+            "progress": {},
+        }
+    )
+    output_dir = tmp_path / "models"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    class FailedHabitat:
+        @staticmethod
+        def get_training_status(_job_name: str):
+            return {"status": "failed", "logs": "training crashed"}
+
+    with pytest.raises(Exception, match="Błąd podczas treningu modelu"):
+        await service._wait_for_training_completion(
+            run=run,
+            habitat=FailedHabitat(),
+            training_job_id="job-failed",
+            output_dir=output_dir,
+        )
+
+    class RunningHabitat:
+        @staticmethod
+        def get_training_status(_job_name: str):
+            return {"status": "running", "logs": "still running"}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service._TRAINING_TIMEOUT_MIN_SECONDS",
+        0,
+    )
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service._TRAINING_TIMEOUT_MAX_SECONDS",
+        0,
+    )
+    try:
+        with pytest.raises(Exception, match="przekroczył limit czasu"):
+            await service._wait_for_training_completion(
+                run=run,
+                habitat=RunningHabitat(),
+                training_job_id="job-timeout",
+                output_dir=output_dir,
+            )
+    finally:
+        monkeypatch.undo()
+
+    class FinishedNoAdapterHabitat:
+        @staticmethod
+        def get_training_status(_job_name: str):
+            return {"status": "finished", "logs": "finished without adapter"}
+
+    with pytest.raises(Exception, match="bez zapisu adaptera"):
+        await service._wait_for_training_completion(
+            run=run,
+            habitat=FinishedNoAdapterHabitat(),
+            training_job_id="job-no-adapter",
+            output_dir=output_dir,
+        )
+
+
+@pytest.mark.asyncio
+async def test_wait_for_training_completion_appends_live_progress_logs(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "66666666-6666-6666-6666-666666666666",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {},
+            "llm_config": {
+                "base_model": "unsloth/Phi-3-mini-4k-instruct",
+                "num_epochs": 1,
+            },
+            "rag_config": {},
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+            "artifacts": {},
+            "progress": {},
+        }
+    )
+    output_dir = tmp_path / "models"
+    adapter_dir = output_dir / "adapter"
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+
+    class RunningThenFinishedHabitat:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def get_training_status(self, _job_name: str):
+            self.calls += 1
+            if self.calls == 1:
+                return {"status": "running", "logs": "step 1"}
+            if self.calls == 2:
+                return {"status": "running", "logs": "step 1\nstep 2"}
+            return {"status": "finished", "logs": "step 1\nstep 2\ndone"}
+
+    payload = await service._wait_for_training_completion(
+        run=run,
+        habitat=RunningThenFinishedHabitat(),
+        training_job_id="job-live-logs",
+        output_dir=output_dir,
+    )
+
+    assert payload.get("status") == "finished"
+    assert any("Training status: running" in line for line in run.logs)
+    assert any("[train:running] step 2" in line for line in run.logs)
+
+
+def test_apply_resource_optimizations_reduces_training_footprint(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "11111111-1111-1111-1111-111111111111",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {},
+            "llm_config": {
+                "base_model": "unsloth/Phi-3-mini-4k-instruct",
+                "lora_rank": 16,
+                "num_epochs": 4,
+                "batch_size": 4,
+                "max_seq_length": 2048,
+            },
+            "rag_config": {},
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+            "artifacts": {},
+            "progress": {},
+        }
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service.psutil.virtual_memory",
+        lambda: MagicMock(total=16 * 1024**3, available=6 * 1024**3, percent=62.0),
+    )
+    try:
+        service._apply_resource_optimizations(run)
+    finally:
+        monkeypatch.undo()
+
+    assert run.llm_config.batch_size == 1
+    assert run.llm_config.max_seq_length == 1024
+    assert run.llm_config.lora_rank == 8
+    assert run.llm_config.num_epochs == 2
+
+
+def test_apply_resource_optimizations_switches_to_ultra_safe_mode_on_critical_ram(
+    tmp_path: Path,
+):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "22222222-2222-2222-2222-222222222222",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {},
+            "llm_config": {"base_model": "unsloth/Phi-3-mini-4k-instruct"},
+            "rag_config": {},
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+            "artifacts": {},
+            "progress": {},
+        }
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service.psutil.virtual_memory",
+        lambda: MagicMock(total=16 * 1024**3, available=1 * 1024**3, percent=95.0),
+    )
+    try:
+        service._apply_resource_optimizations(run)
+    finally:
+        monkeypatch.undo()
+    assert run.llm_config.batch_size == 1
+    assert run.llm_config.max_seq_length == 512
+    assert run.llm_config.lora_rank == 4
+    assert run.llm_config.num_epochs == 1
+    assert "resource_optimizations_critical" in run.artifacts
+    assert any("Critical low-RAM mode enabled" in line for line in run.logs)
+
+
+def test_list_runs_refreshes_live_state_and_sorts_desc(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run_a = service._run_from_payload(
+        {
+            "run_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+        }
+    )
+    run_b = service._run_from_payload(
+        {
+            "run_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "pending",
+            "created_at": "2026-03-05T00:00:10+00:00",
+        }
+    )
+    service._runs[run_a.run_id] = run_a
+    service._runs[run_b.run_id] = run_b
+
+    refreshed: list[str] = []
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        service,
+        "_refresh_live_run_state",
+        lambda run: refreshed.append(run.run_id),
+    )
+    try:
+        payload = service.list_runs(limit=5)
+    finally:
+        monkeypatch.undo()
+
+    assert run_a.run_id in refreshed and run_b.run_id in refreshed
+    assert payload[0]["run_id"] == run_b.run_id
+
+
+def test_recover_orphaned_run_non_llm_marks_failed(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+        }
+    )
+
+    service._recover_orphaned_run(run)
+    assert run.status == "failed"
+    assert run.finished_at is not None
+    assert run.error_message is not None
+    assert any("monitor task lost" in line for line in run.logs)
+
+
+def test_build_orphan_status_payload_from_files_and_process_detection(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    output_dir = tmp_path / "models" / "self_learning_run"
+    output_dir.mkdir(parents=True)
+    log_file = output_dir / "training.log"
+    log_file.write_text("line\n" * 3000, encoding="utf-8")
+    run = service._run_from_payload(
+        {
+            "run_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "artifacts": {"training_output_dir": str(output_dir)},
+        }
+    )
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(service, "_is_local_training_process_alive", lambda _rid: True)
+    try:
+        payload = service._build_orphan_status_payload_from_files(run)
+    finally:
+        monkeypatch.undo()
+    assert payload is not None
+    assert payload["status"] == "running"
+    assert isinstance(payload["logs"], str)
+
+    (output_dir / "adapter" / "adapter_config.json").parent.mkdir(parents=True)
+    (output_dir / "adapter" / "adapter_config.json").write_text("{}", encoding="utf-8")
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(service, "_is_local_training_process_alive", lambda _rid: False)
+    try:
+        payload_finished = service._build_orphan_status_payload_from_files(run)
+    finally:
+        monkeypatch.undo()
+    assert payload_finished is not None
+    assert payload_finished["status"] == "finished"
+
+    (output_dir / "adapter" / "adapter_config.json").unlink()
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(service, "_is_local_training_process_alive", lambda _rid: False)
+    try:
+        payload_failed = service._build_orphan_status_payload_from_files(run)
+    finally:
+        monkeypatch.undo()
+    assert payload_failed is not None
+    assert payload_failed["status"] == "failed"
+
+
+def test_is_local_training_process_alive_and_add_log_dedup(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+
+    class _Proc:
+        def __init__(self, cmdline):
+            self.info = {"cmdline": cmdline}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service.psutil.process_iter",
+        lambda attrs=None: iter(
+            [
+                _Proc(["python", "worker.py"]),
+                _Proc(["python", "train_script.py", f"self_learning_{run_id}"]),
+            ]
+        ),
+    )
+    try:
+        assert service._is_local_training_process_alive(run_id) is True
+    finally:
+        monkeypatch.undo()
+
+    run = service._run_from_payload(
+        {
+            "run_id": run_id,
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+        }
+    )
+    service._add_log(run, "same")
+    service._add_log(run, "same")
+    assert run.logs == ["same"]
+
+
+def test_is_path_allowed_for_docs_pl_and_docs_en(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_pl = docs_dir / "PL"
+    docs_pl.mkdir(parents=True)
+    en_file = docs_dir / "intro.md"
+    pl_file = docs_pl / "wstep.md"
+    en_file.write_text("en", encoding="utf-8")
+    pl_file.write_text("pl", encoding="utf-8")
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+    )
+    assert service._is_path_allowed_for_source(source="docs_en", path=en_file) is True
+    assert service._is_path_allowed_for_source(source="docs_en", path=pl_file) is False
+    assert service._is_path_allowed_for_source(source="docs_pl", path=pl_file) is True

@@ -91,6 +91,43 @@ async def test_activate_adapter_handler_returns_503_when_manager_missing() -> No
 
 
 @pytest.mark.asyncio
+async def test_activate_adapter_handler_passes_model_id_to_compatibility_validation() -> (
+    None
+):
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    manager = object()
+    academy._get_model_manager = lambda: manager
+    validate_mock = AsyncMock(return_value=None)
+
+    def activate_mock(**_kwargs: Any) -> dict[str, bool]:
+        return {"success": True}
+
+    academy.academy_models = SimpleNamespace(
+        validate_adapter_runtime_compatibility=validate_mock,
+        activate_adapter=activate_mock,
+    )
+
+    await route_handlers.activate_adapter_handler(
+        request=SimpleNamespace(
+            adapter_id="a1",
+            runtime_id="vllm",
+            model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+            deploy_to_chat_runtime=False,
+        ),
+        req=SimpleNamespace(),
+        academy=academy,
+    )
+
+    validate_mock.assert_awaited_once_with(
+        mgr=manager,
+        adapter_id="a1",
+        runtime_id="vllm",
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+    )
+
+
+@pytest.mark.asyncio
 async def test_academy_status_handler_gpu_info_fallback_on_error() -> None:
     academy = _build_academy_base()
     academy._get_lessons_store = lambda: SimpleNamespace(

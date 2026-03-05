@@ -570,8 +570,9 @@ Activate a LoRA adapter (hot-swap).
 
 Notes:
 1. `deploy_to_chat_runtime` is optional (defaults to `false`).
-2. Runtime auto-deploy/rollback is currently implemented for `ollama`.
-3. For unsupported runtimes (`vllm`, `onnx`, cloud), activation still succeeds but deploy returns a `reason` in payload.
+2. Runtime auto-deploy is implemented for `ollama` and `vllm`.
+3. `onnx` remains guardrails-only for adapter deploy and returns `runtime_not_supported:onnx`.
+4. Cloud runtimes are not valid targets for Academy adapter deploy.
 
 #### **POST /api/v1/academy/adapters/deactivate**
 Deactivate current adapter (rollback to base model).
@@ -589,6 +590,13 @@ Optional query parameter:
   "chat_model": "phi3:latest"
 }
 ```
+
+Model/adapter contract in Chat:
+1. `Model` selector = runtime-servable model (from `/api/v1/system/llm-runtime/options`).
+2. `Adapter` selector = Academy adapter overlay (optional deploy depending on runtime capability).
+3. Runtime capability is exposed in runtime options as:
+   - `adapter_deploy_supported`
+   - `adapter_deploy_mode`
 
 #### **GET /api/v1/academy/train/{job_id}/logs/stream**
 Stream training logs in real-time (SSE).

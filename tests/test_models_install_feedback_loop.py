@@ -40,6 +40,10 @@ def _client() -> TestClient:
 
 def test_models_install_feedback_loop_alias_resolves_to_installed_primary(monkeypatch):
     monkeypatch.setattr(models_install, "get_model_manager", lambda: DummyManager())
+    async def _allow_primary(_manager):
+        return True
+
+    monkeypatch.setattr(models_install, "_feedback_loop_primary_allowed", _allow_primary)
 
     response = _client().post(
         "/api/v1/models/install",

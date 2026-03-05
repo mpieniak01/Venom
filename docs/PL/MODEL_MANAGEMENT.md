@@ -355,14 +355,13 @@ Uwagi:
 
 ### Kontrakt modeli treningowych Academy (local-first)
 
-Academy używa dedykowanego kontraktu:
+Academy korzysta z ujednoliconego katalogu runtime:
 
 ```bash
-GET /api/v1/academy/models/trainable
+GET /api/v1/system/llm-runtime/options
 ```
 
-Odpowiedź jest oparta o metadane (nie o same nazwy modeli) i zwraca tylko pozycje
-realnie treningowalne.
+Użyj pola `model_catalog.trainable_models`. Odpowiedź jest oparta o metadane (nie o same nazwy modeli) i zwraca tylko pozycje realnie treningowalne.
 Kluczowe pola:
 - `model_id`: identyfikator modelu bazowego.
 - `provider`: nazwa dystrybucji/providera modelu (np. `huggingface`, `unsloth`, `vllm`, `ollama`).

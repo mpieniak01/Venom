@@ -25,10 +25,10 @@ Canonical runtime discovery for UI/automation:
 
 Academy training/inference compatibility contract:
 
-- `GET /api/v1/academy/models/trainable`
-  - returns only trainable models,
-  - includes `runtime_compatibility` and `recommended_runtime` derived from available local stack,
-  - includes `source_type`, `cost_tier`, `priority_bucket` for local-first ordering.
+- `GET /api/v1/system/llm-runtime/options`
+  - returns unified `model_catalog` including `trainable_models`,
+  - `trainable_models` include `runtime_compatibility` and `recommended_runtime` derived from available local stack,
+  - `trainable_models` include `source_type`, `cost_tier`, `priority_bucket` for local-first ordering.
 - `POST /api/v1/academy/adapters/activate`
   - accepts optional `runtime_id`,
   - rejects incompatible `base_model + adapter + runtime` combinations with `400`.

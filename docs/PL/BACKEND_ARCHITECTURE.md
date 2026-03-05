@@ -67,9 +67,9 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
   - retry + timeout dla `ollama pull`,
   - plan kandydatow zalezny od guardow (`primary` lub fallback chain).
 
-### Kontrakt modeli treningowych Academy (PR 186)
-- Kanoniczny kontrakt selectora Academy: `GET /api/v1/academy/models/trainable`.
-- Kazda pozycja trainable zawiera:
+### Ujednolicony kontrakt katalogu modeli (PR 191C)
+- Kanoniczny kontrakt selektorów runtime/model: `GET /api/v1/system/llm-runtime/options`.
+- `model_catalog.trainable_models` zawiera:
   - miejsce wykonywania treningu: `source_type` (`local` | `cloud`),
   - klasyfikacje kosztu: `cost_tier` (`free` | `paid` | `unknown`),
   - stabilny klucz kolejnosci backendu: `priority_bucket`,

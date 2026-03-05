@@ -475,9 +475,18 @@ export function useLlmRuntimeOptions(intervalMs = 0) {
     "llm-runtime-options",
     async () => {
       const data = await apiFetch<LlmRuntimeOptionsResponse>("/api/v1/system/llm-runtime/options");
+      const catalog = data?.model_catalog;
       return {
         ...data,
         runtimes: Array.isArray(data?.runtimes) ? data.runtimes : [],
+        model_catalog: {
+          all_models: Array.isArray(catalog?.all_models) ? catalog.all_models : [],
+          chat_models: Array.isArray(catalog?.chat_models) ? catalog.chat_models : [],
+          coding_models: Array.isArray(catalog?.coding_models) ? catalog.coding_models : [],
+          trainable_models: Array.isArray(catalog?.trainable_models)
+            ? catalog.trainable_models
+            : [],
+        },
       };
     },
     intervalMs,

@@ -290,6 +290,35 @@ async def test_list_trainable_models_sorts_local_before_cloud_free(
 
 @pytest.mark.asyncio
 @patch("venom_core.config.SETTINGS")
+async def test_list_trainable_models_uses_prefetched_local_models(mock_settings):
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock()
+    prefetched = [
+        {
+            "name": "Qwen/Qwen2.5-Coder-3B-Instruct",
+            "provider": "vllm",
+            "runtime": "vllm",
+            "source": "models",
+        }
+    ]
+
+    models = await academy_models.list_trainable_models(
+        mgr=mgr,
+        local_models=prefetched,
+    )
+
+    mgr.list_local_models.assert_not_called()
+    model_ids = {item.model_id for item in models}
+    assert "Qwen/Qwen2.5-Coder-3B-Instruct" in model_ids
+    qwen = next(
+        item for item in models if item.model_id == "Qwen/Qwen2.5-Coder-3B-Instruct"
+    )
+    assert qwen.runtime_compatibility.get("vllm") is True
+
+
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
 async def test_list_adapters_returns_empty_when_models_dir_missing(
     mock_settings, tmp_path
 ):

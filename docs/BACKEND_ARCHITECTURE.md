@@ -86,9 +86,9 @@ Architecture guard tests:
   - retry + timeout aware pull orchestration,
   - guard-aware candidate plan (`primary` or fallback chain).
 
-### Academy trainable-model contract (PR 186)
-- Canonical Academy picker contract: `GET /api/v1/academy/models/trainable`.
-- Each trainable entry carries:
+### Unified model catalog contract (PR 191C)
+- Canonical contract for runtime/model selectors: `GET /api/v1/system/llm-runtime/options`.
+- `model_catalog.trainable_models` carries:
   - training execution location: `source_type` (`local` | `cloud`),
   - cost classification: `cost_tier` (`free` | `paid` | `unknown`),
   - stable backend ordering key: `priority_bucket`,

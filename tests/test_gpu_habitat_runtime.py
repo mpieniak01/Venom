@@ -70,6 +70,75 @@ def test_get_local_job_status_process_and_pid_fallback(tmp_path: Path) -> None:
     assert fallback["status"] == "running"
 
 
+def test_dataset_path_resolution_and_allowed_roots_helpers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    training_dir = tmp_path / "training"
+    training_dir.mkdir()
+    existing_rel = tmp_path / "nested" / "dataset.jsonl"
+    existing_rel.parent.mkdir(parents=True, exist_ok=True)
+    existing_rel.write_text("{}", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    resolved_existing = runtime._resolve_dataset_path_for_request(
+        dataset_path="nested/dataset.jsonl",
+        training_base_dir=training_dir,
+    )
+    assert resolved_existing == existing_rel.resolve()
+
+    resolved_missing = runtime._resolve_dataset_path_for_request(
+        dataset_path="missing/sub/path.jsonl",
+        training_base_dir=training_dir,
+    )
+    assert resolved_missing == (training_dir / "path.jsonl").resolve()
+
+    settings = SimpleNamespace(STORAGE_PREFIX=str(tmp_path / "storage"))
+    roots = runtime._allowed_dataset_roots(settings, training_dir)
+    assert roots[0] == training_dir
+    assert roots[1] == (
+        (tmp_path / "storage").resolve() / "data" / "academy" / "self_learning"
+    )
+
+
+def test_run_training_job_rejects_dataset_outside_allowed_roots(tmp_path: Path) -> None:
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    outside_dataset = tmp_path / "outside.jsonl"
+    outside_dataset.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="poza dozwolonymi katalogami"):
+        runtime.run_training_job(
+            manager=SimpleNamespace(
+                _is_path_within_base=lambda _path, _base: False,
+            ),
+            request=runtime.TrainingJobRequest(
+                dataset_path=str(outside_dataset),
+                base_model="phi",
+                output_dir="out",
+                lora_rank=8,
+                learning_rate=0.0002,
+                num_epochs=1,
+                max_seq_length=512,
+                batch_size=1,
+                job_name="job-outside",
+            ),
+            deps=runtime.TrainingJobDeps(
+                settings=SimpleNamespace(
+                    ACADEMY_TRAINING_DIR=str(training_dir),
+                    ACADEMY_MODELS_DIR=str(models_dir),
+                    STORAGE_PREFIX="",
+                ),
+                logger=_Logger(),
+                docker_module=SimpleNamespace(
+                    types=SimpleNamespace(DeviceRequest=object)
+                ),
+                image_not_found_error=RuntimeError,
+            ),
+        )
+
+
 def test_terminate_local_process_timeout_kills() -> None:
     events: list[str] = []
 
@@ -245,6 +314,61 @@ def test_run_training_job_local_runtime_and_validation(tmp_path: Path) -> None:
                 image_not_found_error=RuntimeError,
             ),
         )
+
+
+def test_run_training_job_accepts_self_learning_storage_dataset(tmp_path: Path) -> None:
+    storage_prefix = tmp_path / "storage"
+    training_dir = storage_prefix / "data" / "training"
+    models_dir = storage_prefix / "data" / "models"
+    self_learning_dir = storage_prefix / "data" / "academy" / "self_learning" / "run-1"
+    training_dir.mkdir(parents=True)
+    models_dir.mkdir(parents=True)
+    self_learning_dir.mkdir(parents=True)
+    dataset = self_learning_dir / "dataset.jsonl"
+    dataset.write_text("{}", encoding="utf-8")
+    settings = SimpleNamespace(
+        STORAGE_PREFIX=str(storage_prefix),
+        ACADEMY_TRAINING_DIR=str(training_dir),
+        ACADEMY_MODELS_DIR=str(models_dir),
+    )
+    logger = _Logger()
+
+    manager = SimpleNamespace(
+        use_local_runtime=True,
+        enable_gpu=False,
+        _has_unsloth=True,
+        _is_path_within_base=lambda path, base: path.is_relative_to(base),
+        _generate_training_script=lambda **_kwargs: "print('ok')",
+        _run_local_training_job=lambda *_args: {
+            "container_id": "local-2",
+            "job_name": "job-self-learning",
+            "status": "running",
+            "adapter_path": "x/adapter",
+        },
+    )
+
+    result = runtime.run_training_job(
+        manager=manager,
+        request=runtime.TrainingJobRequest(
+            dataset_path=str(dataset),
+            base_model="phi",
+            output_dir="out-self-learning",
+            lora_rank=8,
+            learning_rate=0.0002,
+            num_epochs=1,
+            max_seq_length=512,
+            batch_size=1,
+            job_name="job-self-learning",
+        ),
+        deps=runtime.TrainingJobDeps(
+            settings=settings,
+            logger=logger,
+            docker_module=SimpleNamespace(types=SimpleNamespace(DeviceRequest=object)),
+            image_not_found_error=RuntimeError,
+        ),
+    )
+
+    assert result["job_name"] == "job-self-learning"
 
 
 def test_run_training_job_docker_runtime_paths(tmp_path: Path) -> None:

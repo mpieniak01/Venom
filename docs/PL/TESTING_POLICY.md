@@ -105,7 +105,7 @@ Minimalny kontrakt testów dla runtime selection (Chat + Models):
 Minimalny kontrakt testów dla Academy trainable models (PR 186):
 
 - backend: `tests/test_academy_models_module.py` (klasyfikacja `source_type/cost_tier`, sortowanie `priority_bucket`, dynamiczna `runtime_compatibility`),
-- backend: `tests/test_academy_api_dataset_routes.py` + `tests/test_academy_api_edges_contract.py` (kontrakt `/api/v1/academy/models/trainable`),
+- backend: `tests/test_llm_runtime_options_api.py` (kontrakt `model_catalog.trainable_models` w `/api/v1/system/llm-runtime/options`),
 - backend: `tests/test_academy_api_contracts.py` (guard aktywacji adaptera przy niekompatybilnym runtime),
 - frontend: `web-next/tests/academy-training-picker.test.ts` (sekcje i kolejnosc pseudo-selecta: local -> cloud free -> cloud other),
 - frontend: `web-next/tests/cockpit-i18n-and-inspector-utils.test.ts` + testy chat selectora (regresja komunikatow i blokad adapter/runtime).

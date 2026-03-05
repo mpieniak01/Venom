@@ -104,6 +104,20 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
         patch.object(system_llm, "_local_runtime_targets", return_value=local_targets),
         patch.object(
             system_llm,
+            "_load_trainable_model_catalog",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "model_id": "unsloth/Phi-3-mini-4k-instruct",
+                        "canonical_model_id": "unsloth/Phi-3-mini-4k-instruct",
+                        "coding_eligible": False,
+                        "trainable": True,
+                    }
+                ]
+            ),
+        ),
+        patch.object(
+            system_llm,
             "_cloud_runtime_target",
             new=AsyncMock(
                 side_effect=[
@@ -140,6 +154,12 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
     assert runtimes["openai"]["configured"] is True
     assert runtimes["google"]["configured"] is False
     assert runtimes["google"]["reason"] == "GOOGLE_API_KEY not configured"
+    assert "model_catalog" in payload
+    assert "trainable_models" in payload["model_catalog"]
+    assert "coding_models" in payload["model_catalog"]
+    assert payload["model_catalog"]["trainable_models"][0]["model_id"] == (
+        "unsloth/Phi-3-mini-4k-instruct"
+    )
     assert (
         payload["feedback_loop"]["requested_alias"] == "OpenCodeInterpreter-Qwen2.5-7B"
     )
@@ -178,3 +198,17 @@ def test_runtime_model_payload_contains_feedback_loop_metadata() -> None:
     )
     assert payload["feedback_loop_ready"] is True
     assert payload["feedback_loop_tier"] == "primary"
+
+
+def test_runtime_model_payload_contains_alias_and_canonical_for_gemma() -> None:
+    payload = system_llm._runtime_model_payload(  # noqa: SLF001
+        runtime_id="ollama",
+        model_id="gemma3:latest",
+        name="gemma3:latest",
+        provider="ollama",
+        active=False,
+        source_type="local-runtime",
+    )
+    assert payload["canonical_model_id"] == "gemma-3-4b-it"
+    assert "gemma3:latest" in payload["aliases"]
+    assert "gemma-3-4b-it" in payload["aliases"]

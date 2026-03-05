@@ -105,29 +105,54 @@ test.describe("Academy smoke", () => {
       });
     });
 
-    await page.route("**/api/v1/academy/models/trainable", async (route) => {
+    await page.route("**/api/v1/system/llm-runtime/options", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([
-          {
-            model_id: "unsloth/Phi-3-mini-4k-instruct",
-            label: "Phi-3 Mini 4K (Unsloth)",
-            provider: "unsloth",
-            trainable: true,
-            recommended: true,
-            installed_local: true,
-            source_type: "local",
-            cost_tier: "free",
-            priority_bucket: 0,
-            runtime_compatibility: {
-              vllm: true,
-              ollama: false,
-              onnx: false,
-            },
-            recommended_runtime: "vllm",
+        body: JSON.stringify({
+          status: "success",
+          active: {
+            runtime_id: "ollama",
+            active_server: "ollama",
+            active_model: "gemma3:latest",
+            active_endpoint: "http://127.0.0.1:11434/v1",
+            config_hash: "test-hash",
+            source_type: "local-runtime",
           },
-        ]),
+          runtimes: [],
+          model_catalog: {
+            all_models: [],
+            chat_models: [],
+            coding_models: [],
+            trainable_models: [
+              {
+                model_id: "unsloth/Phi-3-mini-4k-instruct",
+                label: "Phi-3 Mini 4K (Unsloth)",
+                provider: "unsloth",
+                trainable: true,
+                recommended: true,
+                installed_local: true,
+                source_type: "local",
+                cost_tier: "free",
+                priority_bucket: 0,
+                runtime_compatibility: {
+                  vllm: true,
+                  ollama: false,
+                  onnx: false,
+                },
+                recommended_runtime: "vllm",
+              },
+            ],
+          },
+          feedback_loop: {
+            requested_alias: "OpenCodeInterpreter-Qwen2.5-7B",
+            primary: "qwen2.5-coder:7b",
+            fallbacks: ["qwen2.5-coder:3b", "codestral:latest"],
+            active_tier: "fallback",
+            active_ready: true,
+            active_resolved_model_id: "qwen2.5-coder:3b",
+          },
+        }),
       });
     });
 

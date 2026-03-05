@@ -31,6 +31,28 @@ class TrainingJobDeps:
     image_not_found_error: type[BaseException]
 
 
+def _resolve_dataset_path_for_request(
+    *,
+    dataset_path: str,
+    training_base_dir: Path,
+) -> Path:
+    requested = Path(dataset_path).expanduser()
+    if requested.is_absolute():
+        return requested.resolve()
+    requested_resolved = requested.resolve()
+    if requested_resolved.exists():
+        return requested_resolved
+    return (training_base_dir / requested.name).resolve()
+
+
+def _allowed_dataset_roots(settings: Any, training_base_dir: Path) -> list[Path]:
+    roots = [training_base_dir]
+    storage_prefix = str(getattr(settings, "STORAGE_PREFIX", "") or "").strip()
+    if storage_prefix:
+        roots.append((Path(storage_prefix).resolve() / "data/academy/self_learning"))
+    return roots
+
+
 def run_training_job(
     *,
     manager: Any,
@@ -38,12 +60,19 @@ def run_training_job(
     deps: TrainingJobDeps,
 ) -> Dict[str, str]:
     training_base_dir = Path(deps.settings.ACADEMY_TRAINING_DIR).resolve()
-    dataset_path_obj = (training_base_dir / Path(request.dataset_path).name).resolve()
+    dataset_path_obj = _resolve_dataset_path_for_request(
+        dataset_path=request.dataset_path,
+        training_base_dir=training_base_dir,
+    )
     if not dataset_path_obj.exists():
         raise ValueError("Dataset nie istnieje")
 
-    if not manager._is_path_within_base(dataset_path_obj, training_base_dir):
-        raise ValueError("Dataset path jest poza katalogiem Academy training")
+    allowed_roots = _allowed_dataset_roots(deps.settings, training_base_dir)
+    if not any(
+        manager._is_path_within_base(dataset_path_obj, allowed_root)
+        for allowed_root in allowed_roots
+    ):
+        raise ValueError("Dataset path jest poza dozwolonymi katalogami Academy")
 
     models_base_dir = Path(deps.settings.ACADEMY_MODELS_DIR).resolve()
     output_dir_obj = (models_base_dir / Path(request.output_dir).name).resolve()

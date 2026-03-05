@@ -501,10 +501,10 @@ export function useActiveLlmServer(intervalMs = 0) {
   );
 }
 
-export async function setActiveLlmServer(serverName: string) {
+export async function setActiveLlmServer(serverName: string, model?: string) {
   return apiFetch<ActiveLlmServerResponse>("/api/v1/system/llm-servers/active", {
     method: "POST",
-    body: JSON.stringify({ server_name: serverName }),
+    body: JSON.stringify({ server_name: serverName, model }),
   });
 }
 

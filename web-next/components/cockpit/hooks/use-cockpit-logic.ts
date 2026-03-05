@@ -45,7 +45,6 @@ import {
     emergencyStop,
     setActiveLlmRuntime,
     setActiveLlmServer,
-    switchModel,
     useSessionHistory,
     useHiddenPrompts,
     useActiveHiddenPrompts,
@@ -318,6 +317,44 @@ export function useCockpitLogic({
         interactive.setters
     ]);
 
+    useEffect(() => {
+        const runtimeTargets = data.llmRuntimeOptions?.runtimes ?? [];
+        const activeServer = (data.activeServerInfo?.active_server || "").trim();
+        const effectiveServer = (interactive.state.selectedLlmServer || activeServer).trim();
+        if (!effectiveServer) {
+            return;
+        }
+        const runtime = runtimeTargets.find((item) => item.runtime_id === effectiveServer);
+        const runtimeModels = (runtime?.models ?? [])
+            .filter((model) => model.chat_compatible !== false)
+            .map((model) => model.name);
+        if (runtimeModels.length === 0) {
+            return;
+        }
+        const selectedModel = (interactive.state.selectedLlmModel || "").trim();
+        if (selectedModel && runtimeModels.includes(selectedModel)) {
+            return;
+        }
+        const activeModel =
+            effectiveServer === activeServer
+                ? (data.activeServerInfo?.active_model || "").trim()
+                : "";
+        const nextModel =
+            activeModel && runtimeModels.includes(activeModel)
+                ? activeModel
+                : runtimeModels[0] || "";
+        if (nextModel && nextModel !== selectedModel) {
+            interactive.setters.setSelectedLlmModel(nextModel);
+        }
+    }, [
+        data.activeServerInfo?.active_model,
+        data.activeServerInfo?.active_server,
+        data.llmRuntimeOptions?.runtimes,
+        interactive.state.selectedLlmModel,
+        interactive.state.selectedLlmServer,
+        interactive.setters,
+    ]);
+
     const historyMessages = useMemo(() => {
         if (pendingResetSessionRef.current) {
             if (sessionId && pendingResetSessionRef.current === sessionId) {
@@ -353,6 +390,19 @@ export function useCockpitLogic({
         });
     }, [data.refresh]);
 
+    const { handleActivateModel } = useCockpitModelActivation({
+        selectedLlmServer: interactive.state.selectedLlmServer,
+        selectedLlmModel: interactive.state.selectedLlmModel,
+        activeServer: data.activeServerInfo?.active_server || "",
+        models: data.models?.models,
+        setSelectedLlmModel: interactive.setters.setSelectedLlmModel,
+        setActiveLlmRuntimeFn: setActiveLlmRuntime,
+        setActiveLlmServerFn: setActiveLlmServer,
+        refreshActiveServer: refreshActiveServerSafe,
+        pushToast,
+        t,
+    });
+
     const chatUi = useCockpitChatUi({
         chatMessages: historyMessages, // Use computed
         chatScrollRef,
@@ -377,6 +427,7 @@ export function useCockpitLogic({
         refreshActiveServer: refreshActiveServerSafe,
         setActiveLlmRuntime: setActiveLlmRuntime,
         setActiveLlmServer: setActiveLlmServer,
+        ensureModelActive: handleActivateModel,
         sendSimpleChatStream,
         sendTask: sendTask, // No cast
         ingestMemoryEntry,
@@ -444,19 +495,6 @@ export function useCockpitLogic({
             console.error("Failed to set active hidden prompt:", e);
         }
     }, [refreshActiveHiddenPrompts]);
-
-    const { handleActivateModel } = useCockpitModelActivation({
-        selectedLlmServer: interactive.state.selectedLlmServer,
-        activeServer: data.activeServerInfo?.active_server || "",
-        models: data.models?.models,
-        setSelectedLlmModel: interactive.setters.setSelectedLlmModel,
-        setActiveLlmRuntimeFn: setActiveLlmRuntime,
-        setActiveLlmServerFn: setActiveLlmServer,
-        switchModelFn: switchModel,
-        refreshActiveServer: refreshActiveServerSafe,
-        pushToast,
-        t,
-    });
 
     return {
         sessionId,

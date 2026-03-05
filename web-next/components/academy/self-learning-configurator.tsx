@@ -36,6 +36,8 @@ interface Props {
   readonly loading: boolean;
   readonly trainableModels: readonly SelfLearningTrainableModelInfo[];
   readonly embeddingProfiles: readonly SelfLearningEmbeddingProfile[];
+  readonly defaultBaseModel?: string | null;
+  readonly defaultEmbeddingProfileId?: string | null;
   readonly onStart: (config: SelfLearningConfig) => Promise<void> | void;
 }
 
@@ -46,6 +48,7 @@ function computeCanStart(params: {
   loading: boolean;
   mode: SelfLearningMode;
   effectiveBaseModel: string;
+  effectiveEmbeddingProfile: string;
   selectedEmbeddingProfileState: SelfLearningEmbeddingProfile | null;
   embeddingPolicy: SelfLearningEmbeddingPolicy;
 }): boolean {
@@ -54,6 +57,9 @@ function computeCanStart(params: {
   }
   if (params.mode === "llm_finetune") {
     return params.effectiveBaseModel.length > 0;
+  }
+  if (params.effectiveEmbeddingProfile.length === 0) {
+    return false;
   }
   if (!params.selectedEmbeddingProfileState?.healthy) {
     return false;
@@ -342,6 +348,8 @@ export function SelfLearningConfigurator({
   loading,
   trainableModels,
   embeddingProfiles,
+  defaultBaseModel: defaultBaseModelProp,
+  defaultEmbeddingProfileId: defaultEmbeddingProfileIdProp,
   onStart,
 }: Props) {
   const t = useTranslation();
@@ -363,16 +371,41 @@ export function SelfLearningConfigurator({
   const [ragChunkingMode, setRagChunkingMode] = useState<SelfLearningRagChunkingMode>("plain");
   const [ragRetrievalMode, setRagRetrievalMode] = useState<SelfLearningRagRetrievalMode>("vector");
 
-  const defaultBaseModel = useMemo(
-    () => trainableModels.find((item) => item.recommended)?.model_id ?? trainableModels[0]?.model_id ?? "",
+  const trainableModelIds = useMemo(
+    () => new Set(trainableModels.map((item) => item.model_id)),
     [trainableModels],
   );
-  const defaultEmbeddingProfile = useMemo(
-    () => embeddingProfiles[0]?.profile_id ?? "",
+  const embeddingProfileIds = useMemo(
+    () => new Set(embeddingProfiles.map((item) => item.profile_id)),
     [embeddingProfiles],
   );
-  const effectiveBaseModel = selectedBaseModel || defaultBaseModel;
-  const effectiveEmbeddingProfile = selectedEmbeddingProfile || defaultEmbeddingProfile;
+  const defaultBaseModel = useMemo(
+    () =>
+      (defaultBaseModelProp && trainableModelIds.has(defaultBaseModelProp)
+        ? defaultBaseModelProp
+        : trainableModels.find((item) => item.recommended)?.model_id) ??
+      trainableModels[0]?.model_id ??
+      "",
+    [defaultBaseModelProp, trainableModelIds, trainableModels],
+  );
+  const defaultEmbeddingProfile = useMemo(
+    () =>
+      (defaultEmbeddingProfileIdProp &&
+      embeddingProfileIds.has(defaultEmbeddingProfileIdProp)
+        ? defaultEmbeddingProfileIdProp
+        : embeddingProfiles.find((item) => item.healthy)?.profile_id) ??
+      embeddingProfiles[0]?.profile_id ??
+      "",
+    [defaultEmbeddingProfileIdProp, embeddingProfileIds, embeddingProfiles],
+  );
+  const effectiveBaseModel =
+    selectedBaseModel && trainableModelIds.has(selectedBaseModel)
+      ? selectedBaseModel
+      : defaultBaseModel;
+  const effectiveEmbeddingProfile =
+    selectedEmbeddingProfile && embeddingProfileIds.has(selectedEmbeddingProfile)
+      ? selectedEmbeddingProfile
+      : defaultEmbeddingProfile;
   const selectedEmbeddingProfileState = useMemo(
     () => embeddingProfiles.find((profile) => profile.profile_id === effectiveEmbeddingProfile) ?? null,
     [embeddingProfiles, effectiveEmbeddingProfile],
@@ -385,10 +418,19 @@ export function SelfLearningConfigurator({
         loading,
         mode,
         effectiveBaseModel,
+        effectiveEmbeddingProfile,
         selectedEmbeddingProfileState,
         embeddingPolicy,
       }),
-    [sources.length, loading, mode, effectiveBaseModel, selectedEmbeddingProfileState, embeddingPolicy],
+    [
+      sources.length,
+      loading,
+      mode,
+      effectiveBaseModel,
+      effectiveEmbeddingProfile,
+      selectedEmbeddingProfileState,
+      embeddingPolicy,
+    ],
   );
 
   const toggleSource = (source: SelfLearningSource) => {

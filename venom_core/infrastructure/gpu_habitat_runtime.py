@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, Optional
@@ -199,6 +200,7 @@ def run_local_training_job(
     enable_gpu: bool,
     training_containers: dict[str, Any],
     check_local_dependencies_fn: Callable[[], None],
+    python_bin: str | None,
     logger: Any,
 ) -> Dict[str, str]:
     check_local_dependencies_fn()
@@ -208,9 +210,11 @@ def run_local_training_job(
     if enable_gpu:
         env["CUDA_VISIBLE_DEVICES"] = "0"
 
+    executable = (python_bin or "").strip() or sys.executable or "python3"
+
     with open(log_file, "w") as stdout_handle:
         process = subprocess.Popen(
-            ["python3", str(script_path)],
+            [executable, str(script_path)],
             stdout=stdout_handle,
             stderr=subprocess.STDOUT,
             env=env,

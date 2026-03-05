@@ -4,6 +4,7 @@ import importlib
 import os
 import signal
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -305,6 +306,7 @@ class GPUHabitat(DockerHabitat):
             enable_gpu=self.enable_gpu,
             training_containers=self.training_containers,
             check_local_dependencies_fn=self._check_local_dependencies,
+            python_bin=sys.executable or "python3",
             logger=logger,
         )
 

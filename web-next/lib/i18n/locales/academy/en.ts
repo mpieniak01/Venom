@@ -65,17 +65,21 @@ export const academy = {
       unknown: "unknown",
     },
     modelSections: {
-      localFirst: "Local (recommended)",
-      cloudFree: "Cloud free-tier",
-      cloudOther: "Cloud (paid/unknown cost)",
+      localFirst: "Locally installed",
+      cloudFree: "Base catalog (free)",
+      cloudOther: "Base catalog (paid/unknown)",
     },
     modelSectionMeta: {
-      localFirst: "training: local • cost: free",
-      cloudFree: "training: cloud API • cost: free",
-      cloudOther: "training: cloud API • cost: paid/unknown",
+      localFirst: "available locally • ready to use immediately",
+      cloudFree: "catalog models • fetched for training runs",
+      cloudOther: "catalog models • paid or unknown cost profile",
     },
     orderingHint:
-      "Order policy: local models first, then free cloud models, then cloud models with unknown or paid cost.",
+      "Order policy: locally installed models first, then free catalog models, then catalog models with unknown or paid cost.",
+    installState: {
+      localInstalled: "locally installed",
+      catalogDownload: "catalog model (downloaded for training)",
+    },
     compatibilityLabel: "post-training inference runtime",
     runtimeUnknown: "no confirmed post-training inference runtime compatibility",
     engineNames: {

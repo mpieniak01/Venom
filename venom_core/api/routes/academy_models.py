@@ -98,6 +98,12 @@ def _non_trainable_reason_from_local_artifacts(
     provider_lc: str,
     model_metadata: Dict[str, Any],
 ) -> Optional[str]:
+    if model_id.strip().lower().startswith("venom-adapter-"):
+        return (
+            "Runtime adapter exports are inference-only artifacts; "
+            "select a base HuggingFace/Unsloth model for Academy training"
+        )
+
     model_type = str(model_metadata.get("type") or "").lower()
     runtime = str(model_metadata.get("runtime") or "").lower()
     source = str(model_metadata.get("source") or "").lower()

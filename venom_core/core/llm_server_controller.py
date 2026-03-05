@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from venom_core.config import Settings
@@ -52,13 +53,27 @@ class LlmServerController:
 
         cfg = self.settings
 
-        def _normalize(command: Optional[str]) -> str:
-            return (command or "").strip()
+        repo_root = Path(__file__).resolve().parents[2]
+
+        def _normalize(command: Optional[str], fallback: str) -> str:
+            normalized = (command or "").strip()
+            if normalized:
+                return normalized
+            return fallback
 
         # Komendy dla vLLM (puste = akcja niedostępna)
-        vllm_start_cmd = _normalize(cfg.VLLM_START_COMMAND)
-        vllm_stop_cmd = _normalize(cfg.VLLM_STOP_COMMAND)
-        vllm_restart_cmd = _normalize(cfg.VLLM_RESTART_COMMAND)
+        vllm_start_cmd = _normalize(
+            cfg.VLLM_START_COMMAND,
+            f"bash {repo_root / 'scripts/llm/vllm_service.sh'} start",
+        )
+        vllm_stop_cmd = _normalize(
+            cfg.VLLM_STOP_COMMAND,
+            f"bash {repo_root / 'scripts/llm/vllm_service.sh'} stop",
+        )
+        vllm_restart_cmd = _normalize(
+            cfg.VLLM_RESTART_COMMAND,
+            f"bash {repo_root / 'scripts/llm/vllm_service.sh'} restart",
+        )
 
         servers["vllm"] = LlmServerConfig(
             name="vllm",
@@ -75,9 +90,18 @@ class LlmServerController:
         )
 
         # Komendy dla Ollama (puste = brak akcji)
-        ollama_start_cmd = _normalize(cfg.OLLAMA_START_COMMAND)
-        ollama_stop_cmd = _normalize(cfg.OLLAMA_STOP_COMMAND)
-        ollama_restart_cmd = _normalize(cfg.OLLAMA_RESTART_COMMAND)
+        ollama_start_cmd = _normalize(
+            cfg.OLLAMA_START_COMMAND,
+            f"bash {repo_root / 'scripts/llm/ollama_service.sh'} start",
+        )
+        ollama_stop_cmd = _normalize(
+            cfg.OLLAMA_STOP_COMMAND,
+            f"bash {repo_root / 'scripts/llm/ollama_service.sh'} stop",
+        )
+        ollama_restart_cmd = _normalize(
+            cfg.OLLAMA_RESTART_COMMAND,
+            f"bash {repo_root / 'scripts/llm/ollama_service.sh'} restart",
+        )
 
         servers["ollama"] = LlmServerConfig(
             name="ollama",

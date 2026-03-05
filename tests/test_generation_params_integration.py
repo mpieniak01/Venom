@@ -16,14 +16,29 @@ def _local_llm_available() -> bool:
     if SETTINGS.AI_MODE != "LOCAL" or not SETTINGS.LLM_LOCAL_ENDPOINT:
         return False
     endpoint = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
+    probe_paths = ("/v1/models", "/models", "/api/tags")
     try:
-        response = httpx.get(f"{endpoint}/models", timeout=1.0)
-        return response.status_code < 500
+        for path in probe_paths:
+            response = httpx.get(f"{endpoint}{path}", timeout=1.0)
+            if response.status_code == 200:
+                return True
+        return False
     except httpx.HTTPError:
         return False
 
 
 LOCAL_LLM_AVAILABLE = _local_llm_available()
+
+
+def _is_runtime_connectivity_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    markers = (
+        "connection error",
+        "all connection attempts failed",
+        "service failed to complete the prompt",
+        "connecterror",
+    )
+    return any(marker in text for marker in markers)
 
 
 class TestGenerationParamsIntegration:
@@ -75,9 +90,16 @@ class TestGenerationParamsIntegration:
             chat_history.add_message(
                 ChatMessageContent(role=AuthorRole.USER, content=prompt)
             )
-            response = await chat_service_low.get_chat_message_content(
-                chat_history=chat_history, settings=settings_low
-            )
+            try:
+                response = await chat_service_low.get_chat_message_content(
+                    chat_history=chat_history, settings=settings_low
+                )
+            except Exception as exc:
+                if _is_runtime_connectivity_error(exc):
+                    pytest.skip(
+                        f"Lokalny runtime niedostępny podczas testu integracyjnego: {exc}"
+                    )
+                raise
             responses_low.append(str(response).strip())
 
         # Z temperaturą 0.0, odpowiedzi powinny być identyczne lub bardzo podobne
@@ -123,9 +145,16 @@ class TestGenerationParamsIntegration:
         chat_history.add_message(
             ChatMessageContent(role=AuthorRole.USER, content=prompt)
         )
-        response_short = await chat_service.get_chat_message_content(
-            chat_history=chat_history, settings=settings_short
-        )
+        try:
+            response_short = await chat_service.get_chat_message_content(
+                chat_history=chat_history, settings=settings_short
+            )
+        except Exception as exc:
+            if _is_runtime_connectivity_error(exc):
+                pytest.skip(
+                    f"Lokalny runtime niedostępny podczas testu integracyjnego: {exc}"
+                )
+            raise
         response_short_text = str(response_short).strip()
 
         # Parametry z większym max_tokens
@@ -139,9 +168,16 @@ class TestGenerationParamsIntegration:
         chat_history.add_message(
             ChatMessageContent(role=AuthorRole.USER, content=prompt)
         )
-        response_long = await chat_service.get_chat_message_content(
-            chat_history=chat_history, settings=settings_long
-        )
+        try:
+            response_long = await chat_service.get_chat_message_content(
+                chat_history=chat_history, settings=settings_long
+            )
+        except Exception as exc:
+            if _is_runtime_connectivity_error(exc):
+                pytest.skip(
+                    f"Lokalny runtime niedostępny podczas testu integracyjnego: {exc}"
+                )
+            raise
         response_long_text = str(response_long).strip()
 
         # W praktyce backendy OpenAI-compatible mogą:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -587,6 +588,24 @@ def test_check_local_dependencies_sets_unsloth_flag(monkeypatch):
     habitat._check_local_dependencies()
     assert habitat._has_unsloth is True
     assert imported["unsloth"] is True
+
+
+def test_check_local_dependencies_missing_core_packages_message_contains_interpreter(
+    monkeypatch,
+):
+    habitat = gpu_habitat_mod.GPUHabitat.__new__(gpu_habitat_mod.GPUHabitat)
+    habitat.enable_gpu = True
+
+    def _fake_import(name):
+        if name in {"transformers", "peft", "trl", "datasets", "accelerate"}:
+            raise ImportError(f"missing: {name}")
+        return object()
+
+    monkeypatch.setattr(gpu_habitat_mod.importlib, "import_module", _fake_import)
+    with pytest.raises(RuntimeError, match="Zainstaluj je w aktywnym interpreterze") as exc_info:
+        habitat._check_local_dependencies()
+    assert sys.executable in str(exc_info.value)
+    assert " -m pip install " in str(exc_info.value)
 
 
 def test_cleanup_docker_job_handles_legacy_stop_remove(monkeypatch):

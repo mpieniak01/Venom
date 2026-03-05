@@ -59,6 +59,7 @@ from venom_core.core.model_manager_versions import get_version as get_version_im
 from venom_core.core.model_manager_versions import (
     register_version as register_version_impl,
 )
+from venom_core.services.onnx_runtime_cleanup import release_onnx_runtime_best_effort
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -780,23 +781,46 @@ PARAMETER top_k 40
         try:
             logger.warning("🚨 PANIC BUTTON: Zwalnianie wszystkich zasobów modeli...")
 
-            # Próba zatrzymania i ponownego uruchomienia Ollama
-            # To spowoduje zwolnienie pamięci VRAM/RAM
+            released_targets: list[str] = []
+
             try:
                 await asyncio.to_thread(
                     subprocess.run,
-                    ["pkill", "-x", "ollama"],  # -x dla dokładnego dopasowania nazwy
+                    ["pkill", "-x", "ollama"],
                     capture_output=True,
                     timeout=5,
                 )
+                released_targets.append("ollama")
                 logger.info("Zatrzymano proces Ollama")
             except Exception as e:
                 logger.warning(f"Nie udało się zatrzymać Ollama: {e}")
 
+            try:
+                await asyncio.to_thread(
+                    subprocess.run,
+                    ["pkill", "-f", "vllm serve"],
+                    capture_output=True,
+                    timeout=5,
+                )
+                released_targets.append("vllm")
+                logger.info("Zatrzymano proces vLLM")
+            except Exception as e:
+                logger.warning(f"Nie udało się zatrzymać vLLM: {e}")
+
+            try:
+                if release_onnx_runtime_best_effort(wait=False):
+                    released_targets.append("onnx")
+                    logger.info("Zwolniono cache/runtime ONNX")
+            except Exception as e:
+                logger.warning(f"Nie udało się zwolnić runtime ONNX: {e}")
+
             # Wyczyść informacje o aktywnej wersji
             self.active_version = None
 
-            logger.info("✅ Zasoby zwolnione")
+            logger.info(
+                "✅ Zasoby zwolnione (targets=%s)",
+                ",".join(released_targets) or "none",
+            )
             return True
 
         except Exception as e:

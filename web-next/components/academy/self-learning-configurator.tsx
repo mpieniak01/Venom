@@ -105,6 +105,15 @@ function getModelCompatibility(model: SelfLearningTrainableModelInfo): string[] 
   });
 }
 
+function getInstallStateLabel(
+  model: SelfLearningTrainableModelInfo,
+  t: TranslateFn,
+): string {
+  return model.installed_local
+    ? t("academy.training.installState.localInstalled")
+    : t("academy.training.installState.catalogDownload");
+}
+
 function computeCanStart(params: {
   sourcesCount: number;
   loading: boolean;
@@ -288,7 +297,7 @@ function ModeSection({
             ) : (
               trainableModels.map((model) => (
                 <option key={model.model_id} value={model.model_id}>
-                  {model.model_id}
+                  {`${model.model_id} • ${getInstallStateLabel(model, t)}`}
                 </option>
               ))
             )}
@@ -302,6 +311,7 @@ function ModeSection({
                 {t("academy.training.engineLabel")}:{" "}
                 {t(`academy.training.engineNames.${resolveEngineKey(selectedModel.provider)}`)}
               </p>
+              <p>{getInstallStateLabel(selectedModel, t)}</p>
               <p className="text-hint/80">{t("academy.selfLearning.config.chatDeployHint")}</p>
             </div>
           ) : null}

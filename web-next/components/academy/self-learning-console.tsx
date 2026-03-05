@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { SelfLearningStatus } from "@/lib/academy-api";
 import { useTranslation } from "@/lib/i18n";
@@ -20,6 +20,7 @@ const STATUS_BADGE_CLASS: Record<SelfLearningStatus, string> = {
 
 export function SelfLearningConsole({ logs, status }: Props) {
   const t = useTranslation();
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const statusLabel = useMemo(() => {
     const map: Record<SelfLearningStatus, string> = {
@@ -31,6 +32,13 @@ export function SelfLearningConsole({ logs, status }: Props) {
     };
     return map[status];
   }, [status, t]);
+
+  useEffect(() => {
+    if (!scrollContainerRef.current) {
+      return;
+    }
+    scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+  }, [logs]);
 
   return (
     <div className="space-y-3 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6">
@@ -48,11 +56,14 @@ export function SelfLearningConsole({ logs, status }: Props) {
         </span>
       </div>
 
-      <div className="max-h-80 overflow-y-auto rounded-lg border border-[color:var(--ui-border)] bg-black/30 p-3 font-mono text-xs text-zinc-200">
+      <div
+        ref={scrollContainerRef}
+        className="h-[8.5rem] overflow-y-auto rounded-lg border border-[color:var(--ui-border)] bg-black/30 p-3 font-mono text-xs leading-6 text-zinc-200"
+      >
         {logs.length === 0 ? (
           <p className="text-zinc-400">{t("academy.selfLearning.console.empty")}</p>
         ) : (
-          <ul className="space-y-1">
+          <ul className="space-y-0">
             {logs.map((line, index) => (
               <li key={`${index}-${line.slice(0, 24)}`} className="whitespace-pre-wrap break-words">
                 {line}

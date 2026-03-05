@@ -46,7 +46,7 @@ async def test_run_action_executes_command():
 
 
 @pytest.mark.asyncio
-async def test_run_action_missing_command():
+async def test_run_action_unknown_action():
     controller = LlmServerController(_dummy_settings(VLLM_START_COMMAND=""))
     with pytest.raises(ValueError):
-        await controller.run_action("vllm", "start")
+        await controller.run_action("vllm", "unknown")

@@ -65,17 +65,21 @@ export const academy = {
       unknown: "nieznany",
     },
     modelSections: {
-      localFirst: "Lokalne (zalecane)",
-      cloudFree: "Chmurowe bezpłatne",
-      cloudOther: "Chmurowe (koszt niepewny/płatne)",
+      localFirst: "Zainstalowane lokalnie",
+      cloudFree: "Katalog bazowy (bezpłatne)",
+      cloudOther: "Katalog bazowy (koszt niepewny/płatne)",
     },
     modelSectionMeta: {
-      localFirst: "trening: lokalny • koszt: bezpłatny",
-      cloudFree: "trening: chmurowy API • koszt: bezpłatny",
-      cloudOther: "trening: chmurowy API • koszt: płatny/nieznany",
+      localFirst: "modele dostępne lokalnie • gotowe do użycia od razu",
+      cloudFree: "modele katalogowe • pobierane na potrzeby treningu",
+      cloudOther: "modele katalogowe • możliwy koszt lub nieznany status",
     },
     orderingHint:
-      "Kolejność: lokalne najpierw, potem chmurowe bezpłatne, na końcu chmurowe z kosztem niepewnym lub płatnym.",
+      "Kolejność: najpierw modele zainstalowane lokalnie, potem modele katalogowe bezpłatne, na końcu katalogowe z kosztem niepewnym lub płatnym.",
+    installState: {
+      localInstalled: "zainstalowany lokalnie",
+      catalogDownload: "model katalogowy (pobierany na potrzeby treningu)",
+    },
     compatibilityLabel: "runtime inferencji po treningu",
     runtimeUnknown: "brak potwierdzonej kompatybilności runtime inferencji",
     engineNames: {

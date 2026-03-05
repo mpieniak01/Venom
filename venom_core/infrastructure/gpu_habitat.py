@@ -521,25 +521,44 @@ dataset = dataset.map(formatting_func, remove_columns=dataset.column_names)
 
 # Konfiguracja treningu
 print("\\n[4/5] Konfiguracja treningu...")
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    max_seq_length=MAX_SEQ_LENGTH,
-    args=TrainingArguments(
-        per_device_train_batch_size=BATCH_SIZE,
-        gradient_accumulation_steps=4,
-        warmup_steps=10,
-        num_train_epochs=NUM_EPOCHS,
-        learning_rate=LEARNING_RATE,
-        fp16=True,
-        logging_steps=1,
-        output_dir=OUTPUT_DIR,
-        optim="adamw_8bit",
-        save_strategy="epoch",
-    ),
+training_args = TrainingArguments(
+    per_device_train_batch_size=BATCH_SIZE,
+    gradient_accumulation_steps=4,
+    warmup_steps=10,
+    num_train_epochs=NUM_EPOCHS,
+    learning_rate=LEARNING_RATE,
+    fp16=True,
+    logging_steps=1,
+    output_dir=OUTPUT_DIR,
+    optim="adamw_8bit",
+    save_strategy="epoch",
 )
+
+trainer_kwargs = dict(
+    model=model,
+    train_dataset=dataset,
+    args=training_args,
+)
+
+try:
+    trainer = SFTTrainer(
+        tokenizer=tokenizer,
+        dataset_text_field="text",
+        max_seq_length=MAX_SEQ_LENGTH,
+        **trainer_kwargs,
+    )
+except TypeError as exc:
+    print(f"Compatibility fallback for SFTTrainer(tokenizer=...): {{exc}}")
+    try:
+        trainer = SFTTrainer(
+            processing_class=tokenizer,
+            dataset_text_field="text",
+            max_seq_length=MAX_SEQ_LENGTH,
+            **trainer_kwargs,
+        )
+    except TypeError as exc2:
+        print(f"Compatibility fallback for SFTTrainer(processing_class=...): {{exc2}}")
+        trainer = SFTTrainer(**trainer_kwargs)
 
 # Trenuj
 print("\\n[5/5] Rozpoczynam trening...")
@@ -568,11 +587,11 @@ print("=" * 60)
         max_seq_length: int,
         batch_size: int,
     ) -> str:
-        """Generuje skrypt dla standardowego HuggingFace Transformers (CPU/Fallback)."""
+        """Generuje skrypt dla standardowego HuggingFace Transformers (GPU if available)."""
         script = f'''#!/usr/bin/env python3
 """
-Skrypt treningowy Venom - CPU Fallback (HuggingFace Transformers).
-Używany gdy Unsloth/GPU nie jest dostępne.
+Skrypt treningowy Venom - HuggingFace Transformers fallback.
+Używany gdy Unsloth nie jest dostępne; używa GPU, jeśli torch.cuda.is_available().
 """
 
 import json
@@ -593,13 +612,20 @@ MAX_SEQ_LENGTH = {max_seq_length}
 BATCH_SIZE = {batch_size}
 
 print("=" * 60)
-print("VENOM CPU TRAINING JOB (Standard Transformers)")
+print("VENOM TRAINING JOB (Standard Transformers Fallback)")
 print("=" * 60)
+CUDA_AVAILABLE = torch.cuda.is_available()
+print(f"CUDA available: {{CUDA_AVAILABLE}}")
 
 # Ładuj model
-print("\\n[1/5] Ładowanie modelu (CPU mode)...")
+print("\\n[1/5] Ładowanie modelu...")
 tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
-model = AutoModelForCausalLM.from_pretrained(BASE_MODEL)
+model = AutoModelForCausalLM.from_pretrained(
+    BASE_MODEL,
+    torch_dtype=torch.float16 if CUDA_AVAILABLE else None,
+)
+if CUDA_AVAILABLE:
+    model = model.to("cuda")
 
 # Dodaj adapter LoRA
 print("\\n[2/5] Dodawanie adaptera LoRA...")
@@ -638,18 +664,38 @@ training_args = TrainingArguments(
     num_train_epochs=NUM_EPOCHS,
     logging_steps=1,
     save_strategy="epoch",
-    use_cpu=True, # Wymuś CPU
-    no_cuda=True,
+    fp16=CUDA_AVAILABLE,
+    use_cpu=(not CUDA_AVAILABLE),
+    no_cuda=(not CUDA_AVAILABLE),
 )
 
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    max_seq_length=MAX_SEQ_LENGTH,
-    args=training_args,
-)
+try:
+    trainer = SFTTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=dataset,
+        dataset_text_field="text",
+        max_seq_length=MAX_SEQ_LENGTH,
+        args=training_args,
+    )
+except TypeError as exc:
+    print(f"Compatibility fallback for SFTTrainer(tokenizer=...): {{exc}}")
+    try:
+        trainer = SFTTrainer(
+            model=model,
+            processing_class=tokenizer,
+            train_dataset=dataset,
+            dataset_text_field="text",
+            max_seq_length=MAX_SEQ_LENGTH,
+            args=training_args,
+        )
+    except TypeError as exc2:
+        print(f"Compatibility fallback for SFTTrainer(processing_class=...): {{exc2}}")
+        trainer = SFTTrainer(
+            model=model,
+            train_dataset=dataset,
+            args=training_args,
+        )
 
 # Trenuj
 print("\\n[5/5] Rozpoczynam trening...")

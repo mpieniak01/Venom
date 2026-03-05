@@ -6,6 +6,7 @@ import {
     useTasks,
     useQueueStatus,
     useServiceStatus,
+    useLlmServers,
     useLlmRuntimeOptions,
     useActiveLlmServer,
     useGraphSummary,
@@ -47,11 +48,16 @@ export function useCockpitData(initialData: CockpitInitialData) {
 
     // LLM Servers
     const {
-        data: liveRuntimeOptions,
-        loading: llmServersLoading,
+        data: liveLlmServers,
+        loading: llmServersPollingLoading,
         refresh: refreshLlmServers,
+    } = useLlmServers(30000);
+    const {
+        data: liveRuntimeOptions,
+        loading: llmRuntimeOptionsLoading,
     } = useLlmRuntimeOptions();
     const llmServers =
+        liveLlmServers ??
         liveRuntimeOptions?.runtimes.map((runtime) => ({
             name: runtime.runtime_id,
             display_name: runtime.runtime_id.toUpperCase(),
@@ -62,7 +68,8 @@ export function useCockpitData(initialData: CockpitInitialData) {
                 runtime.source_type === "local-runtime"
                     ? { start: true, stop: true, restart: true }
                     : { start: false, stop: false, restart: false },
-        })) ?? [];
+        })) ??
+        [];
 
     const { data: liveActiveServer, refresh: refreshActiveServer } =
         useActiveLlmServer(30000);
@@ -149,7 +156,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
         loading: {
             metrics: metricsLoading,
             queue: queueLoading,
-            llmServers: llmServersLoading,
+            llmServers: llmServersPollingLoading || llmRuntimeOptionsLoading,
             tokenMetrics: tokenMetricsLoading,
             history: historyLoading,
             learning: learningLoading,

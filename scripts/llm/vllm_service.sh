@@ -88,8 +88,25 @@ start() {
     fi
   fi
 
-  if [[ ! -d "$MODEL_PATH" ]]; then
-    echo "Brak katalogu modelu: $MODEL_PATH" >&2
+  if [[ ! -e "$MODEL_PATH" ]]; then
+    echo "Brak ścieżki modelu: $MODEL_PATH" >&2
+    exit 1
+  fi
+
+  if [[ -d "$MODEL_PATH" ]]; then
+    if [[ ! -f "$MODEL_PATH/config.json" && ! -f "$MODEL_PATH/params.json" ]] && ! compgen -G "$MODEL_PATH/*.gguf" >/dev/null; then
+      echo "Nieprawidłowy katalog modelu vLLM: $MODEL_PATH" >&2
+      echo "Wymagane: config.json lub params.json (albo plik *.gguf)." >&2
+      exit 1
+    fi
+  elif [[ -f "$MODEL_PATH" ]]; then
+    if [[ "$MODEL_PATH" != *.gguf ]]; then
+      echo "Nieprawidłowy plik modelu vLLM: $MODEL_PATH" >&2
+      echo "Obsługiwany pojedynczy plik tylko dla GGUF (*.gguf)." >&2
+      exit 1
+    fi
+  else
+    echo "Nieprawidłowa ścieżka modelu vLLM: $MODEL_PATH" >&2
     exit 1
   fi
 
@@ -118,7 +135,18 @@ start() {
   fi
   nohup "${cmd[@]}" >>"$LOG_FILE" 2>&1 &
   echo $! >"$PID_FILE"
-  echo "vLLM start - PID $(cat "$PID_FILE"), log: $LOG_FILE"
+  local pid
+  pid="$(cat "$PID_FILE")"
+  # Quick liveness check to fail fast on immediate startup errors.
+  sleep 1
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "vLLM zakończył się zaraz po starcie (PID $pid)." >&2
+    echo "Ostatnie logi vLLM:" >&2
+    tail -n 40 "$LOG_FILE" >&2 || true
+    rm -f "$PID_FILE"
+    exit 1
+  fi
+  echo "vLLM start - PID $pid, log: $LOG_FILE"
   return 0
 }
 

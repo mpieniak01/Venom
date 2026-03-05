@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Zap, RefreshCw, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
 import {
   listAdapters,
   activateAdapter,
   deactivateAdapter,
+  getUnifiedModelCatalog,
   type AdapterInfo,
 } from "@/lib/academy-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
@@ -18,22 +20,93 @@ export function AdaptersPanel() {
   const [loading, setLoading] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);
   const [deactivating, setDeactivating] = useState(false);
+  const [runtimeOptions, setRuntimeOptions] = useState<SelectMenuOption[]>([]);
+  const [modelOptions, setModelOptions] = useState<SelectMenuOption[]>([]);
+  const [selectedRuntime, setSelectedRuntime] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [adapterDeploySupported, setAdapterDeploySupported] = useState(false);
 
-  useEffect(() => {
-    loadAdapters();
-  }, []);
+  const loadRuntimeModels = useCallback(async (runtimeOverride?: string) => {
+    const catalog = await getUnifiedModelCatalog();
+    const runtimes = (catalog.runtimes ?? []).filter(
+      (runtime) =>
+        runtime.source_type === "local-runtime" &&
+        runtime.configured &&
+        runtime.available,
+    );
+    const runtimeSelectOptions = runtimes.map((runtime) => ({
+      value: runtime.runtime_id,
+      label: runtime.runtime_id.toUpperCase(),
+    }));
+    setRuntimeOptions(runtimeSelectOptions);
+    const activeRuntimeId = String(
+      catalog.active?.runtime_id || catalog.active?.active_server || "",
+    ).trim();
+    const resolvedRuntime =
+      runtimeOverride ||
+      selectedRuntime ||
+      activeRuntimeId ||
+      runtimeSelectOptions[0]?.value ||
+      "";
+    if (resolvedRuntime !== selectedRuntime) {
+      setSelectedRuntime(resolvedRuntime);
+    }
+    const selectedRuntimeMeta = runtimes.find(
+      (runtime) => runtime.runtime_id === resolvedRuntime,
+    );
+    setAdapterDeploySupported(Boolean(selectedRuntimeMeta?.adapter_deploy_supported));
+    const models = (catalog.chat_models ?? []).filter(
+      (model) => model.runtime_id === resolvedRuntime,
+    );
+    const modelSelectOptions = models.map((model) => ({
+      value: model.name,
+      label: model.name,
+    }));
+    setModelOptions(modelSelectOptions);
+    const activeModelId = String(catalog.active?.active_model || "").trim();
+    setSelectedModel((current) => {
+      if (current && modelSelectOptions.some((option) => option.value === current)) {
+        return current;
+      }
+      if (
+        activeModelId &&
+        modelSelectOptions.some((option) => option.value === activeModelId)
+      ) {
+        return activeModelId;
+      }
+      return modelSelectOptions[0]?.value || "";
+    });
+  }, [selectedRuntime]);
 
-  async function loadAdapters() {
+  const loadAdapters = useCallback(async () => {
     try {
       setLoading(true);
       const data = await listAdapters();
       setAdapters(data);
+      await loadRuntimeModels();
     } catch (err) {
       console.error("Failed to load adapters:", err);
     } finally {
       setLoading(false);
     }
-  }
+  }, [loadRuntimeModels]);
+
+  useEffect(() => {
+    loadAdapters();
+  }, [loadAdapters]);
+
+  useEffect(() => {
+    if (!selectedRuntime) {
+      setModelOptions([]);
+      setSelectedModel("");
+      return;
+    }
+    loadRuntimeModels(selectedRuntime).catch((error) => {
+      console.error("Failed to load runtime models for adapter selector:", error);
+      setModelOptions([]);
+      setSelectedModel("");
+    });
+  }, [selectedRuntime, loadRuntimeModels]);
 
   async function handleActivate(adapter: AdapterInfo) {
     try {
@@ -41,6 +114,8 @@ export function AdaptersPanel() {
       await activateAdapter({
         adapter_id: adapter.adapter_id,
         adapter_path: adapter.adapter_path,
+        runtime_id: selectedRuntime || undefined,
+        model_id: selectedModel || undefined,
         deploy_to_chat_runtime: true,
       });
       await loadAdapters();
@@ -133,6 +208,43 @@ export function AdaptersPanel() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[color:var(--text-secondary)]">
+            {t("cockpit.models.server")}
+          </p>
+          <SelectMenu
+            value={selectedRuntime}
+            options={runtimeOptions}
+            onChange={(value) => {
+              setSelectedRuntime(value);
+            }}
+            placeholder={t("cockpit.models.chooseServer")}
+            ariaLabel={t("cockpit.actions.selectServer")}
+          />
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[color:var(--text-secondary)]">
+            {t("cockpit.models.model")}
+          </p>
+          <SelectMenu
+            value={selectedModel}
+            options={modelOptions}
+            onChange={setSelectedModel}
+            placeholder={t("cockpit.models.chooseModel")}
+            ariaLabel={t("cockpit.actions.selectModel")}
+            disabled={!selectedRuntime || modelOptions.length === 0}
+          />
+        </div>
+      </div>
+      {!adapterDeploySupported && selectedRuntime ? (
+        <p className="text-xs text-amber-300">
+          {t("cockpit.models.adapterRuntimeNotSupported", {
+            runtime: selectedRuntime,
+          })}
+        </p>
+      ) : null}
+
       {/* Lista adapterów */}
       <div className="space-y-3">
         {adapters.length === 0 ? (
@@ -203,7 +315,13 @@ export function AdaptersPanel() {
 
                 <Button
                   onClick={() => handleActivate(adapter)}
-                  disabled={adapter.is_active || activating === adapter.adapter_id}
+                  disabled={
+                    adapter.is_active ||
+                    activating === adapter.adapter_id ||
+                    !selectedRuntime ||
+                    !selectedModel ||
+                    !adapterDeploySupported
+                  }
                   variant={adapter.is_active ? "outline" : "primary"}
                   size="sm"
                   className="ml-4 gap-2"

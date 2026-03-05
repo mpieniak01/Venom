@@ -163,13 +163,17 @@ export const ChatComposer = memo(
           .toLowerCase();
         const byRuntimeModel = catalog.adapter_catalog.by_runtime_model || {};
         const byRuntime = catalog.adapter_catalog.by_runtime || {};
-        const scopedByModel =
-          (selectedRuntimeId && selectedCanonical
-            ? byRuntimeModel?.[selectedRuntimeId]?.[selectedCanonical]
-            : []) || [];
+        const scopedByModel = selectedRuntimeId
+          ? byRuntimeModel?.[selectedRuntimeId]?.[selectedCanonical]
+          : undefined;
         const scopedByRuntime =
           (selectedRuntimeId ? byRuntime?.[selectedRuntimeId] : []) || [];
-        const next = (scopedByModel.length > 0 ? scopedByModel : scopedByRuntime) || [];
+        const next =
+          selectedCanonical.length > 0
+            ? Array.isArray(scopedByModel)
+              ? scopedByModel
+              : []
+            : scopedByRuntime;
         setAdapters(next);
         const active = next.find((adapter) => adapter.is_active);
         setSelectedAdapter(active?.adapter_id ?? BASE_MODEL_ADAPTER_VALUE);
@@ -233,7 +237,7 @@ export const ChatComposer = memo(
           setAdapterMutationPending(false);
         }
       },
-      [adapterOptions, adapters, loadAdapters, selectedRuntimeId],
+      [adapterOptions, adapters, loadAdapters, selectedLlmModel, selectedRuntimeId],
     );
 
     useImperativeHandle(ref, () => ({

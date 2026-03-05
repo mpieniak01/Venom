@@ -429,7 +429,11 @@ def _merge_monitor_status_into_servers(servers: list[dict], service_monitor) -> 
     }
     for server in servers:
         status = None
-        for key in (server["name"].lower(), server["display_name"].lower()):
+        name_key = str(server.get("name") or "").lower()
+        display_key = str(server.get("display_name") or "").lower()
+        for key in (name_key, display_key):
+            if not key:
+                continue
             status = status_lookup.get(key)
             if status:
                 break
@@ -934,7 +938,7 @@ def _build_model_catalog(
     *,
     runtime_targets: list[dict[str, Any]],
     trainable_models: list[dict[str, Any]],
-) -> dict[str, list[dict[str, Any]]]:
+) -> dict[str, Any]:
     compatibility_by_canonical: dict[str, list[str]] = {}
     for model in trainable_models:
         canonical = _canonical_model_id(
@@ -961,10 +965,19 @@ def _build_model_catalog(
     coding_models = [
         model for model in chat_models if bool(model.get("coding_eligible"))
     ]
+    inference_only_artifacts = [
+        model
+        for model in all_models
+        if str(model.get("name") or "").strip().lower().startswith("venom-adapter-")
+    ]
     return {
         "all_models": all_models,
         "chat_models": chat_models,
         "coding_models": coding_models,
+        "runtime_servable_models": chat_models,
+        "trainable_base_models": trainable_models,
+        "inference_only_artifacts": inference_only_artifacts,
+        # Backward-compatible aliases (kept intentionally during 191E rollout).
         "trainable_models": trainable_models,
     }
 
@@ -1305,6 +1318,8 @@ def _local_runtime_targets(
         elif runtime_id not in installed:
             status = "offline"
             reason = "runtime_not_installed"
+        elif str(info.get("error_message") or "").strip():
+            reason = str(info.get("error_message")).strip()
         targets.append(
             _runtime_target_payload(
                 runtime_id=runtime_id,
@@ -1378,21 +1393,11 @@ async def _cloud_runtime_target(
 
 async def _resolve_runtime_options_payload() -> dict[str, Any]:
     active_runtime = get_active_llm_runtime()
-    llm_controller = _get_llm_controller_or_503()
+    _get_llm_controller_or_503()
     model_manager = system_deps.get_model_manager()
     if model_manager is None:
         raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
-    server_status: dict[str, dict[str, Any]] = {}
-    for server in llm_controller.list_servers():
-        name = str(server.get("name") or "").strip().lower()
-        if not name:
-            continue
-        server_status[name] = {
-            "status": server.get("status"),
-            "endpoint": server.get("endpoint"),
-        }
-    if "onnx" in _installed_local_servers():
-        server_status.setdefault("onnx", _build_onnx_server_payload())
+    server_status = await _runtime_server_status_snapshot()
 
     try:
         local_models = await model_manager.list_local_models()
@@ -1538,6 +1543,38 @@ def _dedupe_servers_by_name(
     servers: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     return system_llm_service.dedupe_servers_by_name(servers)
+
+
+async def _runtime_server_status_snapshot() -> dict[str, dict[str, Any]]:
+    llm_controller = _get_llm_controller_or_503()
+    service_monitor = system_deps.get_service_monitor()
+    allowed_servers = _allowed_local_servers()
+    installed_servers = _installed_local_servers()
+    visible_servers = allowed_servers & installed_servers
+
+    servers = [
+        server
+        for server in llm_controller.list_servers()
+        if server.get("name") in visible_servers
+    ]
+    if "onnx" in visible_servers:
+        servers = [server for server in servers if server.get("name") != "onnx"]
+        servers.append(_build_onnx_server_payload())
+    servers = _dedupe_servers_by_name(servers)
+    _merge_monitor_status_into_servers(servers, service_monitor)
+    await _probe_servers(servers)
+
+    status_map: dict[str, dict[str, Any]] = {}
+    for server in servers:
+        name = str(server.get("name") or "").strip().lower()
+        if not name:
+            continue
+        status_map[name] = {
+            "status": server.get("status"),
+            "endpoint": server.get("endpoint"),
+            "error_message": server.get("error_message"),
+        }
+    return status_map
 
 
 @router.get("/system/llm-servers", responses=LLM_SERVERS_RESPONSES)

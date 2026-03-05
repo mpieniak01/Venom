@@ -15,6 +15,7 @@ import { PROMPT_PRESETS } from "@/components/cockpit/cockpit-prompts";
 import { useTranslation } from "@/lib/i18n";
 import { useCockpitContext } from "@/components/cockpit/cockpit-context";
 import { mapTelemetryTone, type TelemetryFeedEntry } from "@/components/cockpit/cockpit-utils";
+import { setActiveLlmServer } from "@/hooks/use-api";
 
 
 
@@ -206,10 +207,37 @@ export function useCockpitSectionProps() {
   const activeServerName = data.activeServerInfo?.active_server || "unknown";
 
   const onActivateServer = useCallback(() => {
-    if (interactive.state.selectedLlmModel) {
-      handleActivateModel(interactive.state.selectedLlmModel);
+    const selectedServer = interactive.state.selectedLlmServer;
+    const selectedModel = interactive.state.selectedLlmModel;
+    if (!selectedServer) return;
+
+    if (selectedModel) {
+      void handleActivateModel(selectedModel);
+      return;
     }
-  }, [interactive.state.selectedLlmModel, handleActivateModel]);
+
+    void (async () => {
+      try {
+        interactive.setters.setLlmActionPending(`activate:${selectedServer}`);
+        await setActiveLlmServer(selectedServer);
+        interactive.setters.setMessage(`Aktywowano serwer ${selectedServer}.`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Nie udało się aktywować serwera.";
+        interactive.setters.setMessage(message);
+      } finally {
+        interactive.setters.setLlmActionPending(null);
+        data.refresh.llmServers();
+        data.refresh.activeServer();
+        data.refresh.models();
+      }
+    })();
+  }, [
+    data.refresh,
+    handleActivateModel,
+    interactive.state.selectedLlmModel,
+    interactive.state.selectedLlmServer,
+    interactive.setters,
+  ]);
 
   const connected = logic.telemetry.connected;
 

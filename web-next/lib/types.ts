@@ -165,6 +165,25 @@ export interface LlmRuntimeOptionsResponse {
     all_models?: LlmRuntimeModelOption[];
     chat_models?: LlmRuntimeModelOption[];
     coding_models?: LlmRuntimeModelOption[];
+    runtime_servable_models?: LlmRuntimeModelOption[];
+    trainable_base_models?: Array<{
+      model_id: string;
+      label: string;
+      provider: string;
+      trainable: boolean;
+      reason_if_not_trainable?: string | null;
+      recommended: boolean;
+      installed_local: boolean;
+      source_type: "local" | "cloud";
+      cost_tier: "free" | "paid" | "unknown";
+      priority_bucket: number;
+      runtime_compatibility: Record<string, boolean>;
+      recommended_runtime?: string | null;
+      canonical_model_id?: string | null;
+      aliases?: string[];
+      coding_eligible?: boolean;
+    }>;
+    inference_only_artifacts?: LlmRuntimeModelOption[];
     trainable_models?: Array<{
       model_id: string;
       label: string;

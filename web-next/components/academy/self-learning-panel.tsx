@@ -78,7 +78,10 @@ export function SelfLearningPanel() {
       try {
         const catalog = await getUnifiedModelCatalog();
         // Unified catalog is the source of truth, including an empty list.
-        trainable = catalog.trainable_models ?? [];
+        trainable =
+          catalog.trainable_base_models.length > 0
+            ? catalog.trainable_base_models
+            : (catalog.trainable_models ?? []);
         setRuntimeModelAuditIssuesCount(
           Number(catalog.model_audit?.issues_count ?? 0),
         );
@@ -91,7 +94,21 @@ export function SelfLearningPanel() {
           )
           .map((runtime) => ({ id: runtime.runtime_id, label: runtime.runtime_id }));
         setRuntimeOptions(availableRuntimes);
-        setSelectedRuntime((prev) => prev || availableRuntimes[0]?.id || "");
+        const activeRuntimeId = String(
+          catalog.active?.runtime_id || catalog.active?.active_server || "",
+        ).trim();
+        setSelectedRuntime((prev) => {
+          if (prev && availableRuntimes.some((runtime) => runtime.id === prev)) {
+            return prev;
+          }
+          if (
+            activeRuntimeId &&
+            availableRuntimes.some((runtime) => runtime.id === activeRuntimeId)
+          ) {
+            return activeRuntimeId;
+          }
+          return availableRuntimes[0]?.id || "";
+        });
       } catch (catalogError) {
         console.warn(
           "Failed to load unified model catalog for self-learning; falling back to capabilities payload:",

@@ -102,6 +102,7 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
             {"name": "ollama", "status": "offline"},
         ]
     )
+    service_monitor = SimpleNamespace(get_all_services=lambda: [])
     local_targets = [
         {
             "runtime_id": "vllm",
@@ -119,6 +120,9 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
         patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
         patch.object(
             system_llm.system_deps, "get_llm_controller", return_value=llm_controller
+        ),
+        patch.object(
+            system_llm.system_deps, "get_service_monitor", return_value=service_monitor
         ),
         patch.object(
             system_llm.system_deps, "get_model_manager", return_value=object()

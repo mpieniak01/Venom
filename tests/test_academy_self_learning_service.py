@@ -243,8 +243,32 @@ def test_start_run_rejects_llm_without_base_model(tmp_path: Path):
     service = SelfLearningService(
         storage_dir=str(tmp_path / "storage"), repo_root=str(tmp_path)
     )
-    with pytest.raises(ValueError, match="base_model"):
-        service.start_run(mode="llm_finetune", sources=["docs"], dry_run=True)
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")
+    try:
+        with pytest.raises(ValueError, match="base_model"):
+            service.start_run(mode="llm_finetune", sources=["docs"], dry_run=True)
+    finally:
+        monkeypatch.undo()
+
+
+@pytest.mark.asyncio
+async def test_start_run_uses_default_base_model_when_missing(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        is_model_trainable_fn=lambda _model_id: True,
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "custom/model")
+    try:
+        run_id = service.start_run(mode="llm_finetune", sources=["docs"], dry_run=True)
+        status = service.get_status(run_id)
+    finally:
+        monkeypatch.undo()
+    assert status is not None
+    assert status["llm_config"]["base_model"] == "custom/model"
+    service.clear_all_runs()
 
 
 def test_start_run_uses_shared_trainable_model_validator(tmp_path: Path):
@@ -268,6 +292,20 @@ def test_start_run_rejects_rag_without_embedding_profile(tmp_path: Path):
     )
     with pytest.raises(ValueError, match="embedding_profile_id"):
         service.start_run(mode="rag_index", sources=["docs"], dry_run=True)
+
+
+@pytest.mark.asyncio
+async def test_start_run_uses_default_embedding_profile_for_rag(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        vector_store=DummyVectorStore(),
+    )
+    run_id = service.start_run(mode="rag_index", sources=["docs"], dry_run=True)
+    status = service.get_status(run_id)
+    assert status is not None
+    assert status["rag_config"]["embedding_profile_id"] == "local:default"
+    service.clear_all_runs()
 
 
 @pytest.mark.asyncio

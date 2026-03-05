@@ -24,7 +24,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 SelfLearningMode = Literal["llm_finetune", "rag_index"]
-SelfLearningSource = Literal["docs", "docs_dev", "code"]
+SelfLearningSource = Literal["docs", "docs_en", "docs_pl", "docs_dev", "code"]
 SelfLearningDatasetStrategy = Literal[
     "reconstruct",
     "qa_from_docs",
@@ -86,6 +86,8 @@ def _clamp01(value: float) -> float:
 
 _SOURCE_PATHS: dict[SelfLearningSource, tuple[str, ...]] = {
     "docs": ("docs",),
+    "docs_en": ("docs",),
+    "docs_pl": ("docs/PL",),
     "docs_dev": ("docs_dev",),
     "code": ("venom_core", "web-next", "scripts"),
 }
@@ -149,9 +151,9 @@ class SelfLearningError(Exception):
 
 @dataclass
 class RunLimits:
-    max_file_size_kb: int = 256
-    max_files: int = 1500
-    max_total_size_mb: int = 200
+    max_file_size_kb: int = 128
+    max_files: int = 300
+    max_total_size_mb: int = 32
 
     @property
     def max_file_size_bytes(self) -> int:
@@ -165,13 +167,14 @@ class RunLimits:
 @dataclass
 class LlmConfig:
     base_model: Optional[str] = None
+    runtime_id: Optional[str] = None
     dataset_strategy: SelfLearningDatasetStrategy = "reconstruct"
     task_mix_preset: SelfLearningTaskMixPreset = "balanced"
-    lora_rank: int = 16
+    lora_rank: int = 8
     learning_rate: float = 2e-4
-    num_epochs: int = 3
-    batch_size: int = 4
-    max_seq_length: int = 2048
+    num_epochs: int = 2
+    batch_size: int = 1
+    max_seq_length: int = 1024
 
 
 @dataclass
@@ -275,6 +278,7 @@ class SelfLearningService:
         self._lock = threading.Lock()
         self._snapshot_lock = threading.Lock()
         self._manifest_lock = threading.Lock()
+        self._runtime_log_cache: dict[str, list[str]] = {}
         self._runs_log_file = self.storage_dir / "runs.jsonl"
         self._index_manifest_file = self.storage_dir / "index_manifest.json"
         self._index_manifest = self._load_index_manifest()
@@ -357,13 +361,122 @@ class SelfLearningService:
             run = self._runs.get(run_id)
             if run is None:
                 return None
-            return run.to_dict()
+        self._refresh_live_run_state(run)
+        return run.to_dict()
 
     def list_runs(self, limit: int = 20) -> list[dict[str, Any]]:
         with self._lock:
             runs = list(self._runs.values())
+        for run in runs:
+            self._refresh_live_run_state(run)
         runs.sort(key=lambda item: item.created_at, reverse=True)
         return [run.to_dict() for run in runs[:limit]]
+
+    def _refresh_live_run_state(self, run: SelfLearningRun) -> None:
+        if run.status not in {"pending", "running"}:
+            return
+        with self._lock:
+            task = self._pipeline_tasks.get(run.run_id)
+            if task is not None and not task.done():
+                return
+        self._recover_orphaned_run(run)
+
+    def _recover_orphaned_run(self, run: SelfLearningRun) -> None:
+        if run.mode != "llm_finetune":
+            if run.status != "failed":
+                run.status = "failed"
+                run.finished_at = _utc_now_iso()
+                run.error_message = "Run monitor task was lost before completion. Restart self-learning run."
+                self._add_log(run, "Run monitor task lost; marking run as failed.")
+            return
+        habitat = self.gpu_habitat
+        if habitat is None:
+            return
+        training_job_id = str(
+            run.artifacts.get("training_job_id") or f"self_learning_{run.run_id}"
+        )
+        try:
+            payload = habitat.get_training_status(training_job_id)
+        except Exception:
+            payload = self._build_orphan_status_payload_from_files(run)
+            if payload is None:
+                return
+
+        changed = False
+        status = str(payload.get("status") or "").strip().lower()
+        if status in {"running", "preparing", "queued", "finished", "failed", "error"}:
+            if status == "finished":
+                if run.status != "completed":
+                    run.status = "completed"
+                    run.finished_at = _utc_now_iso()
+                    changed = True
+            elif status in {"failed", "error"}:
+                if run.status != "failed":
+                    run.status = "failed"
+                    run.finished_at = _utc_now_iso()
+                    changed = True
+                error_message = str(payload.get("logs") or "").strip() or (
+                    "Training process reported failure"
+                )
+                if run.error_message != error_message:
+                    run.error_message = error_message
+                    changed = True
+            else:
+                if run.status != "running":
+                    run.status = "running"
+                    changed = True
+                if run.started_at is None:
+                    run.started_at = _utc_now_iso()
+                    changed = True
+            self._append_training_progress_logs(
+                run=run,
+                status=status or "unknown",
+                status_payload=payload if isinstance(payload, dict) else {},
+            )
+            if changed:
+                self._append_run_snapshot(run)
+
+    def _build_orphan_status_payload_from_files(
+        self, run: SelfLearningRun
+    ) -> dict[str, str] | None:
+        output_dir = Path(
+            run.artifacts.get("training_output_dir")
+            or (Path(SETTINGS.ACADEMY_MODELS_DIR) / f"self_learning_{run.run_id}")
+        ).resolve()
+        log_file = output_dir / "training.log"
+        if not log_file.exists():
+            return None
+        logs = ""
+        try:
+            file_size = log_file.stat().st_size
+            with log_file.open("r", encoding="utf-8", errors="ignore") as handle:
+                if file_size > 4000:
+                    handle.seek(file_size - 4000)
+                logs = handle.read()
+        except Exception:
+            logs = ""
+
+        adapter_config = output_dir / "adapter" / "adapter_config.json"
+        alive = self._is_local_training_process_alive(run.run_id)
+        if alive:
+            status = "running"
+        elif adapter_config.exists():
+            status = "finished"
+        else:
+            status = "failed"
+        return {"status": status, "logs": logs}
+
+    def _is_local_training_process_alive(self, run_id: str) -> bool:
+        run_marker = f"self_learning_{run_id}"
+        for process in psutil.process_iter(attrs=["cmdline"]):
+            try:
+                cmdline = process.info.get("cmdline") or []
+                joined = " ".join(str(part) for part in cmdline)
+            except Exception:
+                continue
+            if "train_script.py" in joined and run_marker in joined:
+                return True
+        return False
 
     def delete_run(self, run_id: str) -> bool:
         if not _is_valid_uuid(run_id):
@@ -374,6 +487,7 @@ class SelfLearningService:
             task_to_cancel = self._pipeline_tasks.pop(run_id, None)
         if run is None:
             return False
+        self._runtime_log_cache.pop(run_id, None)
         if task_to_cancel is not None and not task_to_cancel.done():
             task_to_cancel.cancel()
         run_dir = self._run_dir(run_id)
@@ -391,6 +505,7 @@ class SelfLearningService:
         for task in tasks_to_cancel:
             if not task.done():
                 task.cancel()
+        self._runtime_log_cache.clear()
         for run_id in run_ids:
             run_dir = self._run_dir(run_id)
             if run_dir.exists():
@@ -412,12 +527,12 @@ class SelfLearningService:
         data = payload or {}
         return RunLimits(
             max_file_size_kb=max(
-                16, min(4096, _safe_int(data.get("max_file_size_kb"), 256))
+                16, min(4096, _safe_int(data.get("max_file_size_kb"), 128))
             ),
-            max_files=max(1, min(10000, _safe_int(data.get("max_files"), 1500))),
+            max_files=max(1, min(10000, _safe_int(data.get("max_files"), 300))),
             max_total_size_mb=max(
                 1,
-                min(4096, _safe_int(data.get("max_total_size_mb"), 200)),
+                min(4096, _safe_int(data.get("max_total_size_mb"), 32)),
             ),
         )
 
@@ -433,19 +548,23 @@ class SelfLearningService:
         if task_mix_preset not in _VALID_TASK_MIX_PRESETS:
             task_mix_preset = "balanced"
 
+        runtime_raw = str(data.get("runtime_id") or "").strip().lower()
+        runtime_id = runtime_raw if runtime_raw in _LOCAL_RUNTIME_IDS else None
+
         return LlmConfig(
             base_model=(str(data.get("base_model")).strip() or None)
             if data.get("base_model")
             else None,
+            runtime_id=runtime_id,
             dataset_strategy=cast(SelfLearningDatasetStrategy, dataset_strategy),
             task_mix_preset=cast(SelfLearningTaskMixPreset, task_mix_preset),
-            lora_rank=max(4, min(64, _safe_int(data.get("lora_rank"), 16))),
+            lora_rank=max(4, min(64, _safe_int(data.get("lora_rank"), 8))),
             learning_rate=float(data.get("learning_rate", 2e-4)),
-            num_epochs=max(1, min(20, _safe_int(data.get("num_epochs"), 3))),
-            batch_size=max(1, min(32, _safe_int(data.get("batch_size"), 4))),
+            num_epochs=max(1, min(20, _safe_int(data.get("num_epochs"), 2))),
+            batch_size=max(1, min(32, _safe_int(data.get("batch_size"), 1))),
             max_seq_length=max(
                 256,
-                min(8192, _safe_int(data.get("max_seq_length"), 2048)),
+                min(8192, _safe_int(data.get("max_seq_length"), 1024)),
             ),
         )
 
@@ -498,10 +617,53 @@ class SelfLearningService:
                 raise ValueError(
                     f"Model '{llm_config.base_model}' is not trainable in Academy"
                 )
+            if llm_config.runtime_id:
+                self._validate_runtime_compatibility_for_base_model(
+                    base_model=llm_config.base_model,
+                    runtime_id=llm_config.runtime_id,
+                )
         if mode == "rag_index" and not rag_config.embedding_profile_id:
             raise ValueError(
                 "rag_config.embedding_profile_id is required for rag_index mode"
             )
+
+    def _validate_runtime_compatibility_for_base_model(
+        self,
+        *,
+        base_model: str,
+        runtime_id: str,
+    ) -> None:
+        provider = self._infer_training_provider(base_model)
+        compatibility = self._resolve_runtime_compatibility(
+            provider=provider,
+            available_runtime_ids=[],
+            model_metadata={"name": base_model},
+        )
+        if compatibility.get(runtime_id):
+            return
+        available = [
+            runtime for runtime in _LOCAL_RUNTIME_IDS if compatibility.get(runtime)
+        ]
+        if available:
+            supported = ", ".join(available)
+            raise ValueError(
+                f"Model '{base_model}' is incompatible with runtime '{runtime_id}'. "
+                f"Supported runtimes: {supported}."
+            )
+        raise ValueError(
+            f"Model '{base_model}' does not expose compatible local runtime targets."
+        )
+
+    @staticmethod
+    def _infer_training_provider(model_id: str) -> str:
+        normalized = model_id.strip().lower()
+        if ":" in normalized:
+            return "ollama"
+        if normalized.startswith("unsloth/"):
+            return "unsloth"
+        if "/" in normalized:
+            return "huggingface"
+        return "unknown"
 
     def _validate_llm_finetune_runtime_preflight(self, *, dry_run: bool) -> None:
         if dry_run:
@@ -592,14 +754,38 @@ class SelfLearningService:
     async def get_capabilities(self) -> dict[str, Any]:
         trainable_models = await self._load_trainable_models()
         embedding_profiles = self._embedding_profiles()
+        preferred_runtime = self._resolve_preferred_runtime_for_capabilities()
         default_base_model = next(
             (
                 item["model_id"]
                 for item in trainable_models
-                if bool(item.get("recommended"))
+                if preferred_runtime
+                and bool(item.get("runtime_compatibility", {}).get(preferred_runtime))
+                and bool(item.get("recommended"))
             ),
-            trainable_models[0]["model_id"] if trainable_models else None,
+            None,
         )
+        if default_base_model is None:
+            default_base_model = next(
+                (
+                    item["model_id"]
+                    for item in trainable_models
+                    if preferred_runtime
+                    and bool(
+                        item.get("runtime_compatibility", {}).get(preferred_runtime)
+                    )
+                ),
+                None,
+            )
+        if default_base_model is None:
+            default_base_model = next(
+                (
+                    item["model_id"]
+                    for item in trainable_models
+                    if bool(item.get("recommended"))
+                ),
+                trainable_models[0]["model_id"] if trainable_models else None,
+            )
         default_embedding_profile_id = next(
             (item["profile_id"] for item in embedding_profiles if item.get("healthy")),
             embedding_profiles[0]["profile_id"] if embedding_profiles else None,
@@ -610,6 +796,14 @@ class SelfLearningService:
             "default_base_model": default_base_model,
             "default_embedding_profile_id": default_embedding_profile_id,
         }
+
+    def _resolve_preferred_runtime_for_capabilities(self) -> str | None:
+        active_runtime = (
+            str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+        )
+        if active_runtime in _LOCAL_RUNTIME_IDS:
+            return active_runtime
+        return None
 
     async def _load_trainable_models(self) -> list[dict[str, Any]]:
         from_loader = await self._load_trainable_models_from_loader()
@@ -1084,7 +1278,13 @@ class SelfLearningService:
             self._add_log(run, f"Chunks created: {len(chunks)}")
 
             if run.mode == "llm_finetune":
-                await self._prepare_runtime_for_llm_training(run)
+                if not run.dry_run:
+                    await self._prepare_runtime_for_llm_training(run)
+                else:
+                    self._add_log(
+                        run,
+                        "Dry run enabled; runtime preparation checks skipped.",
+                    )
                 await self._run_llm_finetune(run, chunks)
             elif run.mode == "rag_index":
                 self._run_rag_index(run, chunks, extracted_files)
@@ -1185,9 +1385,40 @@ class SelfLearningService:
             output_dir=output_dir,
         )
         run.artifacts["adapter_path"] = str(output_dir / "adapter")
+        self._write_adapter_metadata(
+            output_dir=output_dir,
+            base_model=base_model,
+            run=run,
+        )
         self._add_log(
             run,
             f"Training job finished with status={status_payload.get('status', 'unknown')}",
+        )
+
+    def _write_adapter_metadata(
+        self,
+        *,
+        output_dir: Path,
+        base_model: str,
+        run: SelfLearningRun,
+    ) -> None:
+        metadata_payload = {
+            "base_model": base_model,
+            "created_at": run.finished_at or _utc_now_iso(),
+            "parameters": {
+                "lora_rank": run.llm_config.lora_rank,
+                "learning_rate": run.llm_config.learning_rate,
+                "num_epochs": run.llm_config.num_epochs,
+                "batch_size": run.llm_config.batch_size,
+                "max_seq_length": run.llm_config.max_seq_length,
+                "dataset_strategy": run.llm_config.dataset_strategy,
+                "task_mix_preset": run.llm_config.task_mix_preset,
+            },
+        }
+        metadata_file = output_dir / "metadata.json"
+        metadata_file.write_text(
+            json.dumps(metadata_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
 
     async def _prepare_runtime_for_llm_training(self, run: SelfLearningRun) -> None:
@@ -1249,11 +1480,27 @@ class SelfLearningService:
         }
         if (
             available_gb < _CRITICAL_RAM_AVAILABLE_GB
-            or float(memory.percent) >= _CRITICAL_RAM_USAGE_PERCENT
+            and float(memory.percent) >= _CRITICAL_RAM_USAGE_PERCENT
         ):
-            raise SelfLearningError(
-                "Niewystarczające zasoby RAM do treningu. "
-                f"Dostępne RAM={available_gb:.2f} GB, użycie={float(memory.percent):.1f}%."
+            ultra_safe_changes: list[str] = []
+            if run.llm_config.batch_size > 1:
+                run.llm_config.batch_size = 1
+                ultra_safe_changes.append("batch_size=1")
+            if run.llm_config.max_seq_length > 512:
+                run.llm_config.max_seq_length = 512
+                ultra_safe_changes.append("max_seq_length=512")
+            if run.llm_config.lora_rank > 4:
+                run.llm_config.lora_rank = 4
+                ultra_safe_changes.append("lora_rank=4")
+            if run.llm_config.num_epochs > 1:
+                run.llm_config.num_epochs = 1
+                ultra_safe_changes.append("num_epochs=1")
+            if ultra_safe_changes:
+                run.artifacts["resource_optimizations_critical"] = ultra_safe_changes
+            self._add_log(
+                run,
+                "Critical low-RAM mode enabled; applying ultra-safe training parameters "
+                f"(available={available_gb:.2f} GB, usage={float(memory.percent):.1f}%).",
             )
         optimizations: list[str] = []
         if available_gb < _LOW_RAM_AVAILABLE_GB:
@@ -1294,10 +1541,19 @@ class SelfLearningService:
         )
         deadline = asyncio.get_event_loop().time() + float(timeout_seconds)
         latest_payload: dict[str, Any] = {}
+        previous_status = ""
         while asyncio.get_event_loop().time() < deadline:
             status_payload = habitat.get_training_status(training_job_id)
             latest_payload = status_payload if isinstance(status_payload, dict) else {}
             status = str(latest_payload.get("status") or "").strip().lower()
+            if status and status != previous_status:
+                self._add_log(run, f"Training status: {status}")
+                previous_status = status
+            self._append_training_progress_logs(
+                run=run,
+                status=status or "unknown",
+                status_payload=latest_payload,
+            )
             if status == "finished":
                 break
             if status in {"failed", "error"}:
@@ -1321,6 +1577,37 @@ class SelfLearningService:
                 + (logs[-800:] if logs else "Brak adapter_config.json.")
             )
         return latest_payload
+
+    def _append_training_progress_logs(
+        self,
+        *,
+        run: SelfLearningRun,
+        status: str,
+        status_payload: dict[str, Any],
+    ) -> None:
+        raw_logs = str(status_payload.get("logs") or "").strip()
+        if not raw_logs:
+            return
+        current_lines = [line.strip() for line in raw_logs.splitlines() if line.strip()]
+        if not current_lines:
+            return
+        seen_lines = self._runtime_log_cache.get(run.run_id, [])
+
+        new_lines: list[str]
+        if (
+            seen_lines
+            and len(current_lines) >= len(seen_lines)
+            and current_lines[: len(seen_lines)] == seen_lines
+        ):
+            new_lines = current_lines[len(seen_lines) :]
+        else:
+            # Fallback for rotated/truncated runtime logs: keep recent tail only.
+            new_lines = current_lines[-5:]
+
+        for line in new_lines[-5:]:
+            self._add_log(run, f"[train:{status}] {line}")
+
+        self._runtime_log_cache[run.run_id] = current_lines
 
     def _run_eval_harness(self, run: SelfLearningRun) -> None:
         """
@@ -1845,14 +2132,19 @@ class SelfLearningService:
         max_total_size = run.limits.max_total_size_bytes
         total_size = 0
         collected: list[tuple[Path, SelfLearningSource]] = []
+        seen_paths: set[Path] = set()
 
         for source, root in allowed_roots:
             for path in self._iter_candidate_paths(root):
+                resolved_path = path.resolve()
+                if resolved_path in seen_paths:
+                    continue
                 if len(collected) >= max_files:
                     self._add_log(run, "Reached max_files limit.")
                     return collected
                 decision, size = self._evaluate_candidate_path(
                     run=run,
+                    source=source,
                     path=path,
                     max_file_size=max_file_size,
                     max_total_size=max_total_size,
@@ -1860,7 +2152,8 @@ class SelfLearningService:
                 )
                 if decision == "collect":
                     total_size += size
-                    collected.append((path.resolve(), source))
+                    seen_paths.add(resolved_path)
+                    collected.append((resolved_path, source))
                 if decision == "limit_total":
                     return collected
         return collected
@@ -1877,6 +2170,7 @@ class SelfLearningService:
         self,
         *,
         run: SelfLearningRun,
+        source: SelfLearningSource,
         path: Path,
         max_file_size: int,
         max_total_size: int,
@@ -1886,6 +2180,8 @@ class SelfLearningService:
             return "skip", 0
         if not self._is_path_within_repo(path):
             self._add_log(run, f"Skipped outside repo path: {path}")
+            return "skip", 0
+        if not self._is_path_allowed_for_source(source=source, path=path):
             return "skip", 0
         if self._contains_blocked_part(path):
             return "skip", 0
@@ -2197,9 +2493,13 @@ class SelfLearningService:
         self._append_run_snapshot(run)
 
     def _add_log(self, run: SelfLearningRun, message: str) -> None:
+        if run.logs and run.logs[-1] == message:
+            return
         run.logs.append(message)
         if len(run.logs) > _RUN_LOG_LIMIT:
             run.logs[:] = run.logs[-_RUN_LOG_LIMIT:]
+        if isinstance(run, SelfLearningRun) and _is_valid_uuid(run.run_id):
+            self._append_run_snapshot(run)
 
     def _append_run_snapshot(self, run: SelfLearningRun) -> None:
         snapshot = run.to_dict()
@@ -2237,9 +2537,9 @@ class SelfLearningService:
             mode=self._coerce_mode(payload.get("mode")),
             sources=self._coerce_sources(payload.get("sources")),
             limits=RunLimits(
-                max_file_size_kb=_safe_int(limits.get("max_file_size_kb"), 256),
-                max_files=_safe_int(limits.get("max_files"), 1500),
-                max_total_size_mb=_safe_int(limits.get("max_total_size_mb"), 200),
+                max_file_size_kb=_safe_int(limits.get("max_file_size_kb"), 128),
+                max_files=_safe_int(limits.get("max_files"), 300),
+                max_total_size_mb=_safe_int(limits.get("max_total_size_mb"), 32),
             ),
             llm_config=self._llm_config_from_payload(llm_cfg),
             rag_config=self._rag_config_from_payload(rag_cfg),
@@ -2284,13 +2584,19 @@ class SelfLearningService:
         )
         return LlmConfig(
             base_model=llm_cfg.get("base_model"),
+            runtime_id=(
+                str(llm_cfg.get("runtime_id") or "").strip().lower()
+                if str(llm_cfg.get("runtime_id") or "").strip().lower()
+                in _LOCAL_RUNTIME_IDS
+                else None
+            ),
             dataset_strategy=dataset_strategy,
             task_mix_preset=task_mix_preset,
-            lora_rank=_safe_int(llm_cfg.get("lora_rank"), 16),
+            lora_rank=_safe_int(llm_cfg.get("lora_rank"), 8),
             learning_rate=float(llm_cfg.get("learning_rate", 2e-4)),
-            num_epochs=_safe_int(llm_cfg.get("num_epochs"), 3),
-            batch_size=_safe_int(llm_cfg.get("batch_size"), 4),
-            max_seq_length=_safe_int(llm_cfg.get("max_seq_length"), 2048),
+            num_epochs=_safe_int(llm_cfg.get("num_epochs"), 2),
+            batch_size=_safe_int(llm_cfg.get("batch_size"), 1),
+            max_seq_length=_safe_int(llm_cfg.get("max_seq_length"), 1024),
         )
 
     def _rag_config_from_payload(self, rag_cfg: dict[str, Any]) -> RagConfig:
@@ -2377,6 +2683,32 @@ class SelfLearningService:
     def _is_path_within_repo(self, path: Path) -> bool:
         try:
             path.resolve().relative_to(self.repo_root)
+            return True
+        except ValueError:
+            return False
+
+    def _is_path_allowed_for_source(
+        self,
+        *,
+        source: SelfLearningSource,
+        path: Path,
+    ) -> bool:
+        resolved = path.resolve()
+        docs_root = (self.repo_root / "docs").resolve()
+        docs_pl_root = (docs_root / "PL").resolve()
+
+        if source == "docs_en":
+            return self._is_path_relative_to(
+                resolved, docs_root
+            ) and not self._is_path_relative_to(resolved, docs_pl_root)
+        if source == "docs_pl":
+            return self._is_path_relative_to(resolved, docs_pl_root)
+        return True
+
+    @staticmethod
+    def _is_path_relative_to(path: Path, root: Path) -> bool:
+        try:
+            path.relative_to(root)
             return True
         except ValueError:
             return False

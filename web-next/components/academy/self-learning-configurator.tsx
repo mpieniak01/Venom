@@ -137,6 +137,7 @@ function computeCanStart(params: {
 
 function buildSelfLearningConfig(params: {
   mode: SelfLearningMode;
+  selectedRuntime: string;
   sources: SelfLearningSource[];
   dryRun: boolean;
   maxFileSizeKb: number;
@@ -154,6 +155,7 @@ function buildSelfLearningConfig(params: {
     params.mode === "llm_finetune"
       ? {
           base_model: params.effectiveBaseModel,
+          runtime_id: params.selectedRuntime || null,
           dataset_strategy: params.datasetStrategy,
           task_mix_preset: params.taskMixPreset,
           lora_rank: 8,
@@ -552,6 +554,7 @@ export function SelfLearningConfigurator({
     await onStart(
       buildSelfLearningConfig({
         mode,
+        selectedRuntime,
         sources,
         dryRun,
         maxFileSizeKb,

@@ -7,7 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 SelfLearningMode = Literal["llm_finetune", "rag_index"]
-SelfLearningSource = Literal["docs", "docs_dev", "code"]
+SelfLearningSource = Literal["docs", "docs_en", "docs_pl", "docs_dev", "code"]
 SelfLearningDatasetStrategy = Literal[
     "reconstruct",
     "qa_from_docs",
@@ -33,22 +33,23 @@ def _default_sources() -> list[SelfLearningSource]:
 class SelfLearningLimits(BaseModel):
     """Safety limits for source discovery and parsing."""
 
-    max_file_size_kb: int = Field(default=256, ge=16, le=4096)
-    max_files: int = Field(default=1500, ge=1, le=10000)
-    max_total_size_mb: int = Field(default=200, ge=1, le=4096)
+    max_file_size_kb: int = Field(default=128, ge=16, le=4096)
+    max_files: int = Field(default=300, ge=1, le=10000)
+    max_total_size_mb: int = Field(default=32, ge=1, le=4096)
 
 
 class SelfLearningLlmConfig(BaseModel):
     """Optional overrides for LLM fine-tuning mode."""
 
     base_model: str | None = None
+    runtime_id: str | None = Field(default=None, min_length=1, max_length=32)
     dataset_strategy: SelfLearningDatasetStrategy = "reconstruct"
     task_mix_preset: SelfLearningTaskMixPreset = "balanced"
-    lora_rank: int = Field(default=16, ge=4, le=64)
+    lora_rank: int = Field(default=8, ge=4, le=64)
     learning_rate: float = Field(default=2e-4, gt=0, le=1e-2)
-    num_epochs: int = Field(default=3, ge=1, le=20)
-    batch_size: int = Field(default=4, ge=1, le=32)
-    max_seq_length: int = Field(default=2048, ge=256, le=8192)
+    num_epochs: int = Field(default=2, ge=1, le=20)
+    batch_size: int = Field(default=1, ge=1, le=32)
+    max_seq_length: int = Field(default=1024, ge=256, le=8192)
 
 
 class SelfLearningRagConfig(BaseModel):

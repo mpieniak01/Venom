@@ -710,6 +710,7 @@ export interface SelfLearningLimits {
 
 export interface SelfLearningLlmConfig {
   base_model?: string | null;
+  runtime_id?: string | null;
   dataset_strategy?: SelfLearningDatasetStrategy;
   task_mix_preset?: SelfLearningTaskMixPreset;
   lora_rank: number;

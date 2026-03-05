@@ -500,13 +500,6 @@ export async function curateDatasetV2(
   return curateDataset(params);
 }
 
-/**
- * Get list of trainable models
- */
-export async function getTrainableModels(): Promise<TrainableModelInfo[]> {
-  return apiFetch<TrainableModelInfo[]>("/api/v1/academy/models/trainable");
-}
-
 export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogResponse> {
   type RuntimeOptionsPayload = {
     model_catalog?: {

@@ -115,17 +115,6 @@ async def test_academy_status_handler_gpu_info_fallback_on_error() -> None:
     assert payload["jobs"]["failed"] == 1
 
 
-@pytest.mark.asyncio
-async def test_get_trainable_models_handler_delegates_to_service() -> None:
-    academy = _build_academy_base()
-    academy._get_model_manager = lambda: object()
-    academy.academy_models = SimpleNamespace(
-        list_trainable_models=AsyncMock(return_value=[{"id": "m1"}])
-    )
-    result = await route_handlers.get_trainable_models_handler(academy=academy)
-    assert result == [{"id": "m1"}]
-
-
 def test_list_dataset_uploads_and_delete_upload_paths() -> None:
     academy = _build_academy_base()
     academy._load_uploads_metadata = lambda: [

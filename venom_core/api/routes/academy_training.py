@@ -46,7 +46,8 @@ def ensure_trainable_base_model(
                 "error": "MODEL_NOT_TRAINABLE",
                 "message": (
                     f"Model '{base_model}' is not trainable. "
-                    "Use /api/v1/academy/models/trainable to see supported models."
+                    "Use /api/v1/system/llm-runtime/options "
+                    "(model_catalog.trainable_models) to see supported models."
                 ),
                 "reason_code": "MODEL_NOT_TRAINABLE",
             },

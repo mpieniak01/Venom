@@ -456,7 +456,7 @@ import json
 from unsloth import FastLanguageModel
 from trl import SFTTrainer
 from transformers import TrainingArguments
-from datasets import Dataset
+from datasets import load_dataset
 
 # Konfiguracja
 BASE_MODEL = "{base_model}"
@@ -506,13 +506,8 @@ model = FastLanguageModel.get_peft_model(
 
 # Ładuj dataset
 print("\\n[3/5] Ładowanie datasetu...")
-examples = []
-with open(DATASET_PATH, "r", encoding="utf-8") as f:
-    for line in f:
-        examples.append(json.loads(line))
-
-dataset = Dataset.from_list(examples)
-print(f"Załadowano {{len(examples)}} przykładów")
+dataset = load_dataset("json", data_files=DATASET_PATH, split="train")
+print(f"Załadowano {{len(dataset)}} przykładów")
 
 # Formatowanie promptu
 def formatting_func(example):
@@ -522,7 +517,7 @@ def formatting_func(example):
     text += f"### Response:\\n{{example['output']}}"
     return {{"text": text}}
 
-dataset = dataset.map(formatting_func)
+dataset = dataset.map(formatting_func, remove_columns=dataset.column_names)
 
 # Konfiguracja treningu
 print("\\n[4/5] Konfiguracja treningu...")
@@ -585,7 +580,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
 from peft import LoraConfig, get_peft_model, TaskType
 from trl import SFTTrainer
-from datasets import Dataset
+from datasets import load_dataset
 
 # Konfiguracja
 BASE_MODEL = "{base_model}"
@@ -621,12 +616,7 @@ model.print_trainable_parameters()
 
 # Ładuj dataset
 print("\\n[3/5] Ładowanie datasetu...")
-examples = []
-with open(DATASET_PATH, "r", encoding="utf-8") as f:
-    for line in f:
-        examples.append(json.loads(line))
-
-dataset = Dataset.from_list(examples)
+dataset = load_dataset("json", data_files=DATASET_PATH, split="train")
 
 # Formatowanie promptu
 def formatting_func(example):
@@ -636,7 +626,7 @@ def formatting_func(example):
     text += f"### Response:\\n{{example['output']}}"
     return {{"text": text}}
 
-dataset = dataset.map(formatting_func)
+dataset = dataset.map(formatting_func, remove_columns=dataset.column_names)
 
 # Konfiguracja treningu
 print("\\n[4/5] Konfiguracja treningu...")

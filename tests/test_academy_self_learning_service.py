@@ -51,6 +51,16 @@ class DummyModelManager:
         return self._models
 
 
+class DummyModelManagerWithUnload(DummyModelManager):
+    def __init__(self, models):
+        super().__init__(models)
+        self.unload_calls = 0
+
+    async def unload_all(self):
+        self.unload_calls += 1
+        return True
+
+
 async def _wait_terminal(
     service: SelfLearningService,
     run_id: str,
@@ -944,3 +954,132 @@ async def test_rag_index_run_writes_proxy_evaluation_artifact(tmp_path: Path):
     assert isinstance(evaluation, dict)
     assert evaluation.get("mode") == "rag_index"
     assert evaluation.get("kind") == "proxy_eval"
+
+
+@pytest.mark.asyncio
+async def test_llm_finetune_waits_for_finished_job_and_adapter(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "train.md").write_text(
+        "Venom self learning sample.\n" * 120, encoding="utf-8"
+    )
+
+    class HabitatStub:
+        use_local_runtime = False
+
+        def __init__(self) -> None:
+            self.training_containers: dict[str, dict[str, str]] = {}
+            self._poll_count = 0
+
+        def run_training_job(self, *, output_dir: str, job_name: str, **_kwargs):
+            adapter_dir = Path(output_dir) / "adapter"
+            adapter_dir.mkdir(parents=True, exist_ok=True)
+            (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+            self.training_containers[job_name] = {"status": "running"}
+            return {"job_name": job_name, "status": "running"}
+
+        def get_training_status(self, job_name: str):
+            self._poll_count += 1
+            if self._poll_count < 2:
+                return {"status": "running", "logs": "still running"}
+            self.training_containers[job_name] = {"status": "finished"}
+            return {"status": "finished", "logs": "ok"}
+
+    habitat = HabitatStub()
+    model_manager = DummyModelManagerWithUnload([])
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+        gpu_habitat=habitat,
+        model_manager=model_manager,
+        is_model_trainable_fn=lambda _model_id: True,
+    )
+
+    run_id = service.start_run(
+        mode="llm_finetune",
+        sources=["docs"],
+        llm_config={"base_model": "unsloth/Phi-3-mini-4k-instruct"},
+        dry_run=False,
+    )
+    status = await _wait_terminal(service, run_id)
+
+    assert status["status"] == "completed"
+    assert model_manager.unload_calls == 1
+    adapter_path = status["artifacts"].get("adapter_path")
+    assert isinstance(adapter_path, str)
+    assert Path(adapter_path, "adapter_config.json").exists()
+
+
+def test_apply_resource_optimizations_reduces_training_footprint(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "11111111-1111-1111-1111-111111111111",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {},
+            "llm_config": {
+                "base_model": "unsloth/Phi-3-mini-4k-instruct",
+                "lora_rank": 16,
+                "num_epochs": 4,
+                "batch_size": 4,
+                "max_seq_length": 2048,
+            },
+            "rag_config": {},
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+            "artifacts": {},
+            "progress": {},
+        }
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service.psutil.virtual_memory",
+        lambda: MagicMock(total=16 * 1024**3, available=6 * 1024**3, percent=62.0),
+    )
+    try:
+        service._apply_resource_optimizations(run)
+    finally:
+        monkeypatch.undo()
+
+    assert run.llm_config.batch_size == 1
+    assert run.llm_config.max_seq_length == 1024
+    assert run.llm_config.lora_rank == 8
+    assert run.llm_config.num_epochs == 2
+
+
+def test_apply_resource_optimizations_fails_on_critical_ram(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "22222222-2222-2222-2222-222222222222",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {},
+            "llm_config": {"base_model": "unsloth/Phi-3-mini-4k-instruct"},
+            "rag_config": {},
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+            "artifacts": {},
+            "progress": {},
+        }
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service.psutil.virtual_memory",
+        lambda: MagicMock(total=16 * 1024**3, available=1 * 1024**3, percent=95.0),
+    )
+    try:
+        with pytest.raises(Exception, match="Niewystarczające zasoby RAM"):
+            service._apply_resource_optimizations(run)
+    finally:
+        monkeypatch.undo()

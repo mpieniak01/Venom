@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable, Literal, Optional, cast
 
+import psutil
+
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
@@ -70,6 +72,12 @@ _CHUNK_SPLIT_THRESHOLD_RATIO = 0.6
 _MIN_DATASET_RECORDS = 3
 _MIN_RECORD_INPUT_CHARS = 20
 _MIN_RECORD_OUTPUT_CHARS = 24
+_TRAINING_STATUS_POLL_INTERVAL_SECONDS = 1.0
+_TRAINING_TIMEOUT_MIN_SECONDS = 300
+_TRAINING_TIMEOUT_MAX_SECONDS = 7200
+_LOW_RAM_AVAILABLE_GB = 8.0
+_CRITICAL_RAM_AVAILABLE_GB = 2.0
+_CRITICAL_RAM_USAGE_PERCENT = 92.0
 
 
 def _clamp01(value: float) -> float:
@@ -1076,7 +1084,8 @@ class SelfLearningService:
             self._add_log(run, f"Chunks created: {len(chunks)}")
 
             if run.mode == "llm_finetune":
-                self._run_llm_finetune(run, chunks)
+                await self._prepare_runtime_for_llm_training(run)
+                await self._run_llm_finetune(run, chunks)
             elif run.mode == "rag_index":
                 self._run_rag_index(run, chunks, extracted_files)
             else:
@@ -1097,7 +1106,7 @@ class SelfLearningService:
             self._add_log(run, f"Run failed: {exc}")
             self._append_run_snapshot(run)
 
-    def _run_llm_finetune(
+    async def _run_llm_finetune(
         self,
         run: SelfLearningRun,
         chunks: list[dict[str, Any]],
@@ -1169,6 +1178,149 @@ class SelfLearningService:
         run.artifacts["training_job_id"] = training_job_id
         run.artifacts["training_output_dir"] = str(output_dir)
         self._add_log(run, f"Training job started: {training_job_id}")
+        status_payload = await self._wait_for_training_completion(
+            run=run,
+            habitat=habitat,
+            training_job_id=training_job_id,
+            output_dir=output_dir,
+        )
+        run.artifacts["adapter_path"] = str(output_dir / "adapter")
+        self._add_log(
+            run,
+            f"Training job finished with status={status_payload.get('status', 'unknown')}",
+        )
+
+    async def _prepare_runtime_for_llm_training(self, run: SelfLearningRun) -> None:
+        habitat = self.gpu_habitat
+        if habitat is None:
+            return
+        self._ensure_no_active_training_jobs(habitat=habitat)
+        await self._release_runtime_models(run)
+        self._apply_resource_optimizations(run)
+
+    def _ensure_no_active_training_jobs(self, *, habitat: Any) -> None:
+        training_jobs = getattr(habitat, "training_containers", {})
+        if not isinstance(training_jobs, dict) or not training_jobs:
+            return
+        active_jobs: list[str] = []
+        for job_name in list(training_jobs.keys()):
+            try:
+                payload = habitat.get_training_status(job_name)
+            except Exception:
+                continue
+            status = str(payload.get("status") or "").strip().lower()
+            if status in {"running", "preparing", "queued"}:
+                active_jobs.append(job_name)
+        if active_jobs:
+            raise SelfLearningError(
+                "Aktywny trening już trwa; zatrzymaj poprzedni run przed uruchomieniem nowego."
+            )
+
+    async def _release_runtime_models(self, run: SelfLearningRun) -> None:
+        manager = self.model_manager
+        if manager is None or not hasattr(manager, "unload_all"):
+            return
+        try:
+            released = await manager.unload_all()
+            if released:
+                self._add_log(
+                    run,
+                    "Inference runtime unloaded before training to free RAM/VRAM.",
+                )
+            else:
+                self._add_log(
+                    run,
+                    "Warning: runtime unload returned false; continuing with safeguards.",
+                )
+        except Exception as exc:
+            logger.warning("Failed to unload runtime models before training: %s", exc)
+            self._add_log(
+                run,
+                f"Warning: runtime unload failed ({exc}); continuing with safeguards.",
+            )
+
+    def _apply_resource_optimizations(self, run: SelfLearningRun) -> None:
+        memory = psutil.virtual_memory()
+        available_gb = float(memory.available) / float(1024**3)
+        run.artifacts["resource_snapshot"] = {
+            "ram_total_gb": round(float(memory.total) / float(1024**3), 2),
+            "ram_available_gb": round(available_gb, 2),
+            "ram_usage_percent": round(float(memory.percent), 2),
+        }
+        if (
+            available_gb < _CRITICAL_RAM_AVAILABLE_GB
+            or float(memory.percent) >= _CRITICAL_RAM_USAGE_PERCENT
+        ):
+            raise SelfLearningError(
+                "Niewystarczające zasoby RAM do treningu. "
+                f"Dostępne RAM={available_gb:.2f} GB, użycie={float(memory.percent):.1f}%."
+            )
+        optimizations: list[str] = []
+        if available_gb < _LOW_RAM_AVAILABLE_GB:
+            if run.llm_config.batch_size > 1:
+                run.llm_config.batch_size = 1
+                optimizations.append("batch_size=1")
+            if run.llm_config.max_seq_length > 1024:
+                run.llm_config.max_seq_length = 1024
+                optimizations.append("max_seq_length=1024")
+            if run.llm_config.lora_rank > 8:
+                run.llm_config.lora_rank = 8
+                optimizations.append("lora_rank=8")
+            if run.llm_config.num_epochs > 2:
+                run.llm_config.num_epochs = 2
+                optimizations.append("num_epochs=2")
+        if optimizations:
+            run.artifacts["resource_optimizations"] = optimizations
+            self._add_log(
+                run,
+                "Applied low-resource training optimizations: "
+                + ", ".join(optimizations),
+            )
+
+    async def _wait_for_training_completion(
+        self,
+        *,
+        run: SelfLearningRun,
+        habitat: Any,
+        training_job_id: str,
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        timeout_seconds = max(
+            _TRAINING_TIMEOUT_MIN_SECONDS,
+            min(
+                _TRAINING_TIMEOUT_MAX_SECONDS,
+                run.llm_config.num_epochs * 1200,
+            ),
+        )
+        deadline = asyncio.get_event_loop().time() + float(timeout_seconds)
+        latest_payload: dict[str, Any] = {}
+        while asyncio.get_event_loop().time() < deadline:
+            status_payload = habitat.get_training_status(training_job_id)
+            latest_payload = status_payload if isinstance(status_payload, dict) else {}
+            status = str(latest_payload.get("status") or "").strip().lower()
+            if status == "finished":
+                break
+            if status in {"failed", "error"}:
+                logs = str(latest_payload.get("logs") or "").strip()
+                raise SelfLearningError(
+                    "Błąd podczas treningu modelu. "
+                    + (logs[-800:] if logs else "Sprawdź training.log.")
+                )
+            await asyncio.sleep(_TRAINING_STATUS_POLL_INTERVAL_SECONDS)
+        else:
+            raise SelfLearningError(
+                f"Trening przekroczył limit czasu ({timeout_seconds}s) i został przerwany."
+            )
+
+        adapter_dir = output_dir / "adapter"
+        adapter_config = adapter_dir / "adapter_config.json"
+        if not adapter_config.exists():
+            logs = str(latest_payload.get("logs") or "").strip()
+            raise SelfLearningError(
+                "Trening zakończył się bez zapisu adaptera. "
+                + (logs[-800:] if logs else "Brak adapter_config.json.")
+            )
+        return latest_payload
 
     def _run_eval_harness(self, run: SelfLearningRun) -> None:
         """

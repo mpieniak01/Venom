@@ -46,11 +46,19 @@ def _resolve_dataset_path_for_request(
 
 
 def _allowed_dataset_roots(settings: Any, training_base_dir: Path) -> list[Path]:
-    roots = [training_base_dir]
+    roots = [training_base_dir.resolve()]
+    repo_root = Path(getattr(settings, "REPO_ROOT", ".")).expanduser().resolve()
+    roots.append(repo_root / "data" / "academy" / "self_learning")
     storage_prefix = str(getattr(settings, "STORAGE_PREFIX", "") or "").strip()
     if storage_prefix:
-        roots.append((Path(storage_prefix).resolve() / "data/academy/self_learning"))
-    return roots
+        roots.append(
+            (Path(storage_prefix).resolve() / "data" / "academy" / "self_learning")
+        )
+    unique_roots: list[Path] = []
+    for root in roots:
+        if root not in unique_roots:
+            unique_roots.append(root)
+    return unique_roots
 
 
 def run_training_job(

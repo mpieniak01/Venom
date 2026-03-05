@@ -92,10 +92,13 @@ def test_dataset_path_resolution_and_allowed_roots_helpers(
     )
     assert resolved_missing == (training_dir / "path.jsonl").resolve()
 
-    settings = SimpleNamespace(STORAGE_PREFIX=str(tmp_path / "storage"))
+    settings = SimpleNamespace(
+        REPO_ROOT=str(tmp_path), STORAGE_PREFIX=str(tmp_path / "storage")
+    )
     roots = runtime._allowed_dataset_roots(settings, training_dir)
     assert roots[0] == training_dir
-    assert roots[1] == (
+    assert roots[1] == (tmp_path.resolve() / "data" / "academy" / "self_learning")
+    assert roots[2] == (
         (tmp_path / "storage").resolve() / "data" / "academy" / "self_learning"
     )
 
@@ -327,6 +330,7 @@ def test_run_training_job_accepts_self_learning_storage_dataset(tmp_path: Path) 
     dataset = self_learning_dir / "dataset.jsonl"
     dataset.write_text("{}", encoding="utf-8")
     settings = SimpleNamespace(
+        REPO_ROOT=str(tmp_path),
         STORAGE_PREFIX=str(storage_prefix),
         ACADEMY_TRAINING_DIR=str(training_dir),
         ACADEMY_MODELS_DIR=str(models_dir),
@@ -369,6 +373,63 @@ def test_run_training_job_accepts_self_learning_storage_dataset(tmp_path: Path) 
     )
 
     assert result["job_name"] == "job-self-learning"
+
+
+def test_run_training_job_accepts_self_learning_dataset_without_storage_prefix(
+    tmp_path: Path,
+) -> None:
+    training_dir = tmp_path / "data" / "training"
+    models_dir = tmp_path / "data" / "models"
+    self_learning_dir = tmp_path / "data" / "academy" / "self_learning" / "run-1"
+    training_dir.mkdir(parents=True)
+    models_dir.mkdir(parents=True)
+    self_learning_dir.mkdir(parents=True)
+    dataset = self_learning_dir / "dataset.jsonl"
+    dataset.write_text("{}", encoding="utf-8")
+    settings = SimpleNamespace(
+        REPO_ROOT=str(tmp_path),
+        STORAGE_PREFIX="",
+        ACADEMY_TRAINING_DIR=str(training_dir),
+        ACADEMY_MODELS_DIR=str(models_dir),
+    )
+    logger = _Logger()
+
+    manager = SimpleNamespace(
+        use_local_runtime=True,
+        enable_gpu=False,
+        _has_unsloth=True,
+        _is_path_within_base=lambda path, base: path.is_relative_to(base),
+        _generate_training_script=lambda **_kwargs: "print('ok')",
+        _run_local_training_job=lambda *_args: {
+            "container_id": "local-3",
+            "job_name": "job-self-learning-no-prefix",
+            "status": "running",
+            "adapter_path": "x/adapter",
+        },
+    )
+
+    result = runtime.run_training_job(
+        manager=manager,
+        request=runtime.TrainingJobRequest(
+            dataset_path=str(dataset),
+            base_model="phi",
+            output_dir="out-self-learning-no-prefix",
+            lora_rank=8,
+            learning_rate=0.0002,
+            num_epochs=1,
+            max_seq_length=512,
+            batch_size=1,
+            job_name="job-self-learning-no-prefix",
+        ),
+        deps=runtime.TrainingJobDeps(
+            settings=settings,
+            logger=logger,
+            docker_module=SimpleNamespace(types=SimpleNamespace(DeviceRequest=object)),
+            image_not_found_error=RuntimeError,
+        ),
+    )
+
+    assert result["job_name"] == "job-self-learning-no-prefix"
 
 
 def test_run_training_job_docker_runtime_paths(tmp_path: Path) -> None:

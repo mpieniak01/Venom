@@ -7,7 +7,7 @@ import importlib.util
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 from uuid import UUID
 
 import httpx
@@ -870,25 +870,45 @@ def _runtime_model_payload(
 
 def _flatten_runtime_models(runtimes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     deduped: dict[tuple[str, str], dict[str, Any]] = {}
+    for key, candidate, canonical in _iter_runtime_model_candidates(runtimes):
+        existing = deduped.get(key)
+        if existing is None or _prefer_runtime_model_candidate(
+            candidate=candidate,
+            existing=existing,
+            canonical=canonical,
+        ):
+            deduped[key] = candidate
+    return list(deduped.values())
+
+
+def _iter_runtime_model_candidates(
+    runtimes: list[dict[str, Any]],
+) -> Iterable[tuple[tuple[str, str], dict[str, Any], str]]:
     for runtime in runtimes:
         runtime_id = str(runtime.get("runtime_id") or "").strip().lower()
         for model in runtime.get("models") or []:
-            if not isinstance(model, dict):
+            candidate = _runtime_model_candidate(model)
+            if candidate is None:
                 continue
-            model_name = str(model.get("name") or "").strip()
-            if not model_name:
-                continue
-            canonical = (
-                _canonical_model_id(model_name).strip().lower() or model_name.lower()
-            )
-            key = (runtime_id, canonical)
-            candidate = dict(model)
-            existing = deduped.get(key)
-            if existing is None or _prefer_runtime_model_candidate(
-                candidate=candidate, existing=existing, canonical=canonical
-            ):
-                deduped[key] = candidate
-    return list(deduped.values())
+            model_name, dumped = candidate
+            canonical = _canonical_runtime_model_name(model_name)
+            yield (runtime_id, canonical), dumped, canonical
+
+
+def _runtime_model_candidate(model: Any) -> tuple[str, dict[str, Any]] | None:
+    if not isinstance(model, dict):
+        return None
+    model_name = str(model.get("name") or "").strip()
+    if not model_name:
+        return None
+    return model_name, dict(model)
+
+
+def _canonical_runtime_model_name(model_name: str) -> str:
+    canonical = _canonical_model_id(model_name).strip().lower()
+    if canonical:
+        return canonical
+    return model_name.lower()
 
 
 def _prefer_runtime_model_candidate(
@@ -1316,6 +1336,50 @@ def _is_vllm_runtime_model_entry(model: dict[str, Any]) -> bool:
 def _apply_vllm_runtime_autofix(
     *, local_models: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
+    context = _build_vllm_runtime_autofix_context(local_models=local_models)
+    if context is None:
+        return None
+
+    fallback_name, fallback_path = _resolve_vllm_runtime_autofix_fallback(
+        context=context
+    )
+    if not fallback_name or not fallback_path:
+        return None
+
+    updates = _vllm_autofix_updates(
+        fallback_name=fallback_name,
+        fallback_path=fallback_path,
+        endpoint=str(getattr(SETTINGS, "VLLM_ENDPOINT", "") or "").strip() or None,
+    )
+    config_manager.update_config(updates)
+    try:
+        _apply_vllm_autofix_settings(
+            fallback_name=fallback_name,
+            fallback_path=fallback_path,
+            config_hash=str(updates["LLM_CONFIG_HASH"]),
+        )
+    except Exception:
+        logger.warning("Failed to update SETTINGS during vLLM auto-heal.")
+
+    logger.warning(
+        "vLLM runtime auto-heal applied: model='%s' path='%s' (previous model='%s', previous path='%s')",
+        fallback_name,
+        fallback_path,
+        context["active_model"],
+        context["configured_model_path"],
+    )
+    return {
+        "healed": True,
+        "runtime_id": "vllm",
+        "selected_model": fallback_name,
+        "selected_path": fallback_path,
+        "reason": "invalid_active_model_or_path",
+    }
+
+
+def _build_vllm_runtime_autofix_context(
+    *, local_models: list[dict[str, Any]]
+) -> dict[str, Any] | None:
     config = config_manager.get_config(mask_secrets=False)
     active_runtime = get_active_llm_runtime()
     active_provider = str(getattr(active_runtime, "provider", "") or "").strip().lower()
@@ -1341,47 +1405,27 @@ def _apply_vllm_runtime_autofix(
     if active_valid and path_valid:
         return None
 
-    fallback_entry = _pick_vllm_fallback_entry(
-        valid_models=valid_models,
-        valid_by_name=valid_by_name,
-        active_model=active_model,
-        preferred_model=str(config.get("LAST_MODEL_VLLM") or "").strip(),
-    )
+    return {
+        "config": config,
+        "valid_models": valid_models,
+        "valid_by_name": valid_by_name,
+        "active_model": active_model,
+        "configured_model_path": configured_model_path,
+    }
 
+
+def _resolve_vllm_runtime_autofix_fallback(
+    *, context: dict[str, Any]
+) -> tuple[str, str]:
+    fallback_entry = _pick_vllm_fallback_entry(
+        valid_models=context["valid_models"],
+        valid_by_name=context["valid_by_name"],
+        active_model=context["active_model"],
+        preferred_model=str(context["config"].get("LAST_MODEL_VLLM") or "").strip(),
+    )
     fallback_name = str(fallback_entry.get("name") or "").strip()
     fallback_path = str(fallback_entry.get("path") or "").strip()
-    if not fallback_name or not fallback_path:
-        return None
-
-    updates = _vllm_autofix_updates(
-        fallback_name=fallback_name,
-        fallback_path=fallback_path,
-        endpoint=str(getattr(SETTINGS, "VLLM_ENDPOINT", "") or "").strip() or None,
-    )
-    config_manager.update_config(updates)
-    try:
-        _apply_vllm_autofix_settings(
-            fallback_name=fallback_name,
-            fallback_path=fallback_path,
-            config_hash=str(updates["LLM_CONFIG_HASH"]),
-        )
-    except Exception:
-        logger.warning("Failed to update SETTINGS during vLLM auto-heal.")
-
-    logger.warning(
-        "vLLM runtime auto-heal applied: model='%s' path='%s' (previous model='%s', previous path='%s')",
-        fallback_name,
-        fallback_path,
-        active_model,
-        configured_model_path,
-    )
-    return {
-        "healed": True,
-        "runtime_id": "vllm",
-        "selected_model": fallback_name,
-        "selected_path": fallback_path,
-        "reason": "invalid_active_model_or_path",
-    }
+    return fallback_name, fallback_path
 
 
 def _pick_vllm_fallback_entry(

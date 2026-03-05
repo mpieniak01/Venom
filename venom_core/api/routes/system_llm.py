@@ -944,6 +944,106 @@ def _build_model_catalog(
     }
 
 
+def _runtime_model_index(
+    runtime_targets: list[dict[str, Any]],
+) -> dict[str, dict[str, list[str]]]:
+    index: dict[str, dict[str, list[str]]] = {}
+    for target in runtime_targets:
+        runtime_id = str(target.get("runtime_id") or "").strip().lower()
+        if not runtime_id:
+            continue
+        runtime_entry = index.setdefault(runtime_id, {})
+        for model in target.get("models") or []:
+            model_name = str(model.get("name") or "").strip()
+            if not model_name:
+                continue
+            canonical = _canonical_model_id(model_name).strip().lower() or model_name.lower()
+            names = runtime_entry.setdefault(canonical, [])
+            if model_name not in names:
+                names.append(model_name)
+    return index
+
+
+async def _build_adapter_catalog(
+    *,
+    model_manager: Any,
+    trainable_models: list[dict[str, Any]],
+    runtime_targets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    from venom_core.api.routes import academy_models
+
+    try:
+        adapters_raw = await academy_models.list_adapters(model_manager)
+    except Exception as exc:
+        logger.warning("Failed to load adapter catalog for runtime options: %s", exc)
+        return {
+            "all_adapters": [],
+            "by_runtime": {},
+            "by_runtime_model": {},
+        }
+
+    compatibility_by_canonical: dict[str, dict[str, bool]] = {}
+    for model in trainable_models:
+        canonical = _canonical_model_id(
+            str(
+                model.get("canonical_model_id")
+                or model.get("model_id")
+                or ""
+            ).strip()
+        ).lower()
+        if not canonical:
+            continue
+        compatibility = model.get("runtime_compatibility")
+        compatibility_by_canonical[canonical] = (
+            dict(compatibility) if isinstance(compatibility, dict) else {}
+        )
+
+    runtime_index = _runtime_model_index(runtime_targets)
+    all_adapters: list[dict[str, Any]] = []
+    by_runtime: dict[str, list[dict[str, Any]]] = {}
+    by_runtime_model: dict[str, dict[str, list[dict[str, Any]]]] = {}
+
+    for adapter in adapters_raw:
+        payload = adapter.model_dump() if hasattr(adapter, "model_dump") else dict(adapter)
+        adapter_id = str(payload.get("adapter_id") or "").strip()
+        base_model = str(payload.get("base_model") or "").strip()
+        if not adapter_id or not base_model:
+            continue
+        canonical_base = _canonical_model_id(base_model).strip().lower() or base_model.lower()
+        runtime_compatibility = compatibility_by_canonical.get(canonical_base, {})
+        compatible_runtimes = sorted(
+            runtime
+            for runtime, allowed in runtime_compatibility.items()
+            if bool(allowed)
+        )
+        entry = {
+            "adapter_id": adapter_id,
+            "adapter_path": str(payload.get("adapter_path") or ""),
+            "base_model": base_model,
+            "canonical_base_model_id": canonical_base,
+            "is_active": bool(payload.get("is_active")),
+            "created_at": payload.get("created_at"),
+            "compatible_runtimes": compatible_runtimes,
+        }
+        all_adapters.append(entry)
+        for runtime_id in compatible_runtimes:
+            by_runtime.setdefault(runtime_id, []).append(entry)
+            runtime_models = runtime_index.get(runtime_id, {})
+            for canonical_model_id in runtime_models.keys():
+                if canonical_model_id != canonical_base:
+                    continue
+                by_runtime_model.setdefault(runtime_id, {}).setdefault(
+                    canonical_model_id,
+                    [],
+                ).append(entry)
+
+    return {
+        "all_adapters": all_adapters,
+        "by_runtime": by_runtime,
+        "by_runtime_model": by_runtime_model,
+    }
+
+
 async def _local_models_by_runtime(
     model_manager: Any,
     *,
@@ -1264,6 +1364,11 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         runtime_targets=runtime_targets,
         trainable_models=trainable_models,
     )
+    adapter_catalog = await _build_adapter_catalog(
+        model_manager=model_manager,
+        trainable_models=trainable_models,
+        runtime_targets=runtime_targets,
+    )
 
     active_feedback_resolution = _feedback_loop_resolution_defaults(
         active_runtime.model_name
@@ -1286,6 +1391,8 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         },
         "runtimes": runtime_targets,
         "model_catalog": model_catalog,
+        "adapter_catalog": adapter_catalog,
+        "selector_flow": ["server", "model", "adapter"],
         "feedback_loop": {
             "requested_alias": FEEDBACK_LOOP_REQUESTED_ALIAS,
             "primary": feedback_policy.primary,

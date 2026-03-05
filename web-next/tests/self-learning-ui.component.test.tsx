@@ -45,6 +45,9 @@ describe("SelfLearningConfigurator", () => {
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
+        runtimeOptions={[{ id: "vllm", label: "vllm" }]}
+        selectedRuntime="vllm"
+        onRuntimeChange={() => {}}
         trainableModels={[
           {
             model_id: "qwen2.5-coder:3b",
@@ -74,8 +77,6 @@ describe("SelfLearningConfigurator", () => {
     assert.equal((startButton as HTMLButtonElement).disabled, false);
 
     fireEvent.click(screen.getByText(/Repository docs/i));
-    fireEvent.click(screen.getByText(/Developer docs/i));
-    fireEvent.click(screen.getByText(/Source code/i));
 
     assert.equal((startButton as HTMLButtonElement).disabled, true);
   });
@@ -85,6 +86,9 @@ describe("SelfLearningConfigurator", () => {
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
+        runtimeOptions={[{ id: "vllm", label: "vllm" }]}
+        selectedRuntime="vllm"
+        onRuntimeChange={() => {}}
         trainableModels={[
           {
             model_id: "qwen2.5-coder:3b",
@@ -140,7 +144,7 @@ describe("SelfLearningConfigurator", () => {
     assert.equal(payload.limits.max_file_size_kb, 512);
     assert.equal(payload.limits.max_files, 123);
     assert.equal(payload.limits.max_total_size_mb, 42);
-    assert.deepEqual(payload.sources, ["docs", "docs_dev", "code"]);
+    assert.deepEqual(payload.sources, ["docs"]);
     assert.equal(payload.llm_config?.base_model, "qwen2.5-coder:3b");
     assert.equal(payload.llm_config?.dataset_strategy, "reconstruct");
     assert.equal(payload.llm_config?.task_mix_preset, "balanced");
@@ -151,6 +155,9 @@ describe("SelfLearningConfigurator", () => {
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
+        runtimeOptions={[{ id: "vllm", label: "vllm" }]}
+        selectedRuntime="vllm"
+        onRuntimeChange={() => {}}
         trainableModels={[
           {
             model_id: "qwen2.5-coder:3b",
@@ -190,6 +197,9 @@ describe("SelfLearningConfigurator", () => {
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
+        runtimeOptions={[{ id: "vllm", label: "vllm" }]}
+        selectedRuntime="vllm"
+        onRuntimeChange={() => {}}
         trainableModels={[]}
         embeddingProfiles={[
           {
@@ -221,6 +231,9 @@ describe("SelfLearningConfigurator", () => {
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
+        runtimeOptions={[{ id: "vllm", label: "vllm" }]}
+        selectedRuntime="vllm"
+        onRuntimeChange={() => {}}
         trainableModels={[]}
         embeddingProfiles={[
           {

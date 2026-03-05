@@ -46,11 +46,14 @@ export function SelfLearningPanel() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [currentRun, setCurrentRun] = useState<SelfLearningRunStatus | null>(null);
   const [trainableModels, setTrainableModels] = useState<SelfLearningTrainableModelInfo[]>([]);
+  const [runtimeOptions, setRuntimeOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedRuntime, setSelectedRuntime] = useState("");
   const [embeddingProfiles, setEmbeddingProfiles] = useState<SelfLearningEmbeddingProfile[]>([]);
   const [defaultBaseModel, setDefaultBaseModel] = useState<string | null>(null);
   const [defaultEmbeddingProfileId, setDefaultEmbeddingProfileId] = useState<string | null>(null);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollFailuresRef = useRef(0);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -75,6 +78,16 @@ export function SelfLearningPanel() {
         const catalog = await getUnifiedModelCatalog();
         // Unified catalog is the source of truth, including an empty list.
         trainable = catalog.trainable_models ?? [];
+        const availableRuntimes = (catalog.runtimes ?? [])
+          .filter(
+            (runtime) =>
+              runtime.source_type === "local-runtime" &&
+              runtime.configured &&
+              runtime.available,
+          )
+          .map((runtime) => ({ id: runtime.runtime_id, label: runtime.runtime_id }));
+        setRuntimeOptions(availableRuntimes);
+        setSelectedRuntime((prev) => prev || availableRuntimes[0]?.id || "");
       } catch (catalogError) {
         console.warn(
           "Failed to load unified model catalog for self-learning; falling back to capabilities payload:",
@@ -127,12 +140,14 @@ export function SelfLearningPanel() {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    pollFailuresRef.current = 0;
   }, []);
 
   const pollRun = useCallback(
     async (runId: string) => {
       try {
         const run = await getSelfLearningRunStatus(runId);
+        pollFailuresRef.current = 0;
         setCurrentRun(run);
         setRuns((prev) => {
           const next = prev.filter((item) => item.run_id !== run.run_id);
@@ -145,6 +160,12 @@ export function SelfLearningPanel() {
         }
       } catch (error) {
         console.error("Failed to poll self-learning status", error);
+        if (error instanceof ApiError && error.status >= 500) {
+          pollFailuresRef.current += 1;
+          if (pollFailuresRef.current < 3) {
+            return;
+          }
+        }
         stopPolling();
       }
     },
@@ -263,7 +284,14 @@ export function SelfLearningPanel() {
 
       <SelfLearningConfigurator
         loading={starting}
-        trainableModels={trainableModels}
+        trainableModels={trainableModels.filter(
+          (model) =>
+            !selectedRuntime ||
+            Boolean(model.runtime_compatibility?.[selectedRuntime]),
+        )}
+        runtimeOptions={runtimeOptions}
+        selectedRuntime={selectedRuntime}
+        onRuntimeChange={setSelectedRuntime}
         embeddingProfiles={embeddingProfiles}
         defaultBaseModel={defaultBaseModel}
         defaultEmbeddingProfileId={defaultEmbeddingProfileId}

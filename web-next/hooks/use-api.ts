@@ -487,6 +487,24 @@ export function useLlmRuntimeOptions(intervalMs = 0) {
             ? catalog.trainable_models
             : [],
         },
+        adapter_catalog: {
+          all_adapters: Array.isArray(data?.adapter_catalog?.all_adapters)
+            ? data.adapter_catalog.all_adapters
+            : [],
+          by_runtime:
+            data?.adapter_catalog?.by_runtime &&
+            typeof data.adapter_catalog.by_runtime === "object"
+              ? data.adapter_catalog.by_runtime
+              : {},
+          by_runtime_model:
+            data?.adapter_catalog?.by_runtime_model &&
+            typeof data.adapter_catalog.by_runtime_model === "object"
+              ? data.adapter_catalog.by_runtime_model
+              : {},
+        },
+        selector_flow: Array.isArray(data?.selector_flow)
+          ? data.selector_flow
+          : ["server", "model", "adapter"],
       };
     },
     intervalMs,

@@ -115,7 +115,10 @@ export function useCockpitSectionProps() {
 
   const composerRef = logic.chatUi.composerRef;
   const onSend = useCallback(async (txt: string) => { logic.chatUi.handleSend(txt); return true; }, [logic.chatUi]);
-  const onActivateModel = useCallback((model: string) => handleActivateModel(model), [handleActivateModel]);
+  const onActivateModel = useCallback(
+    async (model: string) => handleActivateModel(model),
+    [handleActivateModel],
+  );
 
   const runtimeTargets = useMemo(
     () => data.llmRuntimeOptions?.runtimes ?? [],
@@ -131,6 +134,14 @@ export function useCockpitSectionProps() {
     const target = runtimeTargets.find((runtime) => runtime.runtime_id === resolvedServerId);
     return (target?.models ?? []).filter((model) => model.chat_compatible !== false);
   }, [resolvedServerId, runtimeTargets]);
+  const selectedRuntimeTarget = useMemo(
+    () => runtimeTargets.find((runtime) => runtime.runtime_id === resolvedServerId) ?? null,
+    [resolvedServerId, runtimeTargets],
+  );
+  const adapterDeploySupported = Boolean(selectedRuntimeTarget?.adapter_deploy_supported);
+  const adapterDeployReason = adapterDeploySupported
+    ? null
+    : t("cockpit.models.adapterRuntimeNotSupported", { runtime: resolvedServerId || "unknown" });
   const llmModelOptions = useMemo(
     () =>
       selectedRuntimeModels.map((model) => ({
@@ -138,6 +149,17 @@ export function useCockpitSectionProps() {
         value: model.name,
       })),
     [selectedRuntimeModels, t],
+  );
+  const llmModelMetadata = useMemo(
+    () =>
+      selectedRuntimeModels.reduce<Record<string, { canonical_model_id?: string | null }>>(
+        (acc, model) => {
+          acc[model.name] = { canonical_model_id: model.canonical_model_id ?? null };
+          return acc;
+        },
+        {},
+      ),
+    [selectedRuntimeModels],
   );
   const hasModels = useMemo(
     () => llmModelOptions.length > 0,
@@ -376,19 +398,25 @@ export function useCockpitSectionProps() {
     setSelectedLlmServer,
     selectedLlmModel,
     llmModelOptions,
+    llmModelMetadata,
     setSelectedLlmModel,
     onActivateModel,
     hasModels,
     onOpenTuning,
     tuningLabel,
+    adapterDeploySupported,
+    adapterDeployReason,
     compactControls: chatFullscreen,
   }), [
+    adapterDeployReason,
+    adapterDeploySupported,
     chatFullscreen,
     chatMode,
     composerRef,
     hasModels,
     labMode,
     llmModelOptions,
+    llmModelMetadata,
     llmServerOptions,
     onActivateModel,
     onOpenTuning,

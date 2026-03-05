@@ -206,7 +206,9 @@ export function SelfLearningPanel() {
         await pollRun(response.run_id);
         beginPolling(response.run_id);
       } catch (error) {
-        console.error("Failed to start self-learning", error);
+        if (!(error instanceof ApiError && error.status === 400)) {
+          console.error("Failed to start self-learning", error);
+        }
         pushToast(resolveSelfLearningStartError(error), "error");
       } finally {
         setStarting(false);

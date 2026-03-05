@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from typing import Any, Callable
 
 
@@ -30,9 +31,11 @@ def check_local_dependencies(
             missing.append(package)
 
     if missing:
+        python_bin = sys.executable or "python3"
         raise RuntimeError(
             f"Brak wymaganych bibliotek do treningu: {', '.join(missing)}. "
-            f"Zainstaluj je komendą: pip install {' '.join(missing)}"
+            f"Zainstaluj je w aktywnym interpreterze ({python_bin}) komendą: "
+            f"{python_bin} -m pip install {' '.join(missing)}"
         )
 
     try:

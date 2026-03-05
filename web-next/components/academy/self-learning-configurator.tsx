@@ -53,18 +53,23 @@ type SupportedEngine =
   | "config"
   | "unknown";
 
+const FIELD_LABEL_CLASS = "text-xs text-[color:var(--text-secondary)]";
+const FIELD_SELECT_CLASS =
+  "flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500";
+const SUPPORTED_ENGINES: ReadonlySet<SupportedEngine> = new Set([
+  "unsloth",
+  "huggingface",
+  "onnx",
+  "vllm",
+  "ollama",
+  "openai",
+  "google",
+  "config",
+]);
+
 function resolveEngineKey(provider: string): SupportedEngine {
-  const normalized = provider.trim().toLowerCase();
-  if (
-    normalized === "unsloth" ||
-    normalized === "huggingface" ||
-    normalized === "onnx" ||
-    normalized === "vllm" ||
-    normalized === "ollama" ||
-    normalized === "openai" ||
-    normalized === "google" ||
-    normalized === "config"
-  ) {
+  const normalized = provider.trim().toLowerCase() as SupportedEngine;
+  if (SUPPORTED_ENGINES.has(normalized)) {
     return normalized;
   }
   return "unknown";
@@ -237,14 +242,14 @@ function ModeSection({
     return (
       <div className="space-y-3">
         <div className="space-y-1">
-          <label htmlFor="self-learning-base-model" className="text-xs text-[color:var(--text-secondary)]">
+          <label htmlFor="self-learning-base-model" className={FIELD_LABEL_CLASS}>
             {t("academy.selfLearning.config.baseModel")}
           </label>
           <select
             id="self-learning-base-model"
             value={effectiveBaseModel}
             onChange={(event) => onBaseModelChange(event.target.value)}
-            className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+            className={FIELD_SELECT_CLASS}
           >
             {trainableModels.length === 0 ? (
               <option value="">{t("academy.selfLearning.config.noTrainableModels")}</option>
@@ -271,7 +276,7 @@ function ModeSection({
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            <label htmlFor="self-learning-dataset-strategy" className="text-xs text-[color:var(--text-secondary)]">
+            <label htmlFor="self-learning-dataset-strategy" className={FIELD_LABEL_CLASS}>
               {t("academy.selfLearning.config.datasetStrategy")}
             </label>
             <select
@@ -280,7 +285,7 @@ function ModeSection({
               onChange={(event) =>
                 onDatasetStrategyChange(event.target.value as SelfLearningDatasetStrategy)
               }
-              className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+              className={FIELD_SELECT_CLASS}
             >
               <option value="reconstruct">
                 {t("academy.selfLearning.config.datasetStrategies.reconstruct")}
@@ -294,14 +299,14 @@ function ModeSection({
             </select>
           </div>
           <div className="space-y-1">
-            <label htmlFor="self-learning-task-mix" className="text-xs text-[color:var(--text-secondary)]">
+            <label htmlFor="self-learning-task-mix" className={FIELD_LABEL_CLASS}>
               {t("academy.selfLearning.config.taskMixPreset")}
             </label>
             <select
               id="self-learning-task-mix"
               value={taskMixPreset}
               onChange={(event) => onTaskMixPresetChange(event.target.value as SelfLearningTaskMixPreset)}
-              className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+              className={FIELD_SELECT_CLASS}
               disabled={datasetStrategy === "reconstruct"}
             >
               <option value="balanced">{t("academy.selfLearning.config.taskMixPresets.balanced")}</option>
@@ -318,14 +323,14 @@ function ModeSection({
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1">
-          <label htmlFor="self-learning-embedding-profile" className="text-xs text-[color:var(--text-secondary)]">
+          <label htmlFor="self-learning-embedding-profile" className={FIELD_LABEL_CLASS}>
             {t("academy.selfLearning.config.embeddingProfile")}
           </label>
           <select
             id="self-learning-embedding-profile"
             value={effectiveEmbeddingProfile}
             onChange={(event) => onEmbeddingProfileChange(event.target.value)}
-            className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+            className={FIELD_SELECT_CLASS}
           >
             {embeddingProfiles.length === 0 ? (
               <option value="">{t("academy.selfLearning.config.noEmbeddingProfiles")}</option>
@@ -339,14 +344,14 @@ function ModeSection({
           </select>
         </div>
         <div className="space-y-1">
-          <label htmlFor="self-learning-embedding-policy" className="text-xs text-[color:var(--text-secondary)]">
-            {t("academy.selfLearning.config.embeddingPolicy")}
-          </label>
+            <label htmlFor="self-learning-embedding-policy" className={FIELD_LABEL_CLASS}>
+              {t("academy.selfLearning.config.embeddingPolicy")}
+            </label>
           <select
             id="self-learning-embedding-policy"
             value={embeddingPolicy}
             onChange={(event) => onEmbeddingPolicyChange(event.target.value as SelfLearningEmbeddingPolicy)}
-            className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+              className={FIELD_SELECT_CLASS}
           >
             <option value="strict">{t("academy.selfLearning.config.embeddingPolicyStrict")}</option>
             <option value="allow_fallback">{t("academy.selfLearning.config.embeddingPolicyAllowFallback")}</option>
@@ -355,28 +360,28 @@ function ModeSection({
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1">
-          <label htmlFor="self-learning-rag-chunking-mode" className="text-xs text-[color:var(--text-secondary)]">
-            {t("academy.selfLearning.config.ragChunkingMode")}
-          </label>
+            <label htmlFor="self-learning-rag-chunking-mode" className={FIELD_LABEL_CLASS}>
+              {t("academy.selfLearning.config.ragChunkingMode")}
+            </label>
           <select
             id="self-learning-rag-chunking-mode"
             value={ragChunkingMode}
             onChange={(event) => onRagChunkingModeChange(event.target.value as SelfLearningRagChunkingMode)}
-            className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+              className={FIELD_SELECT_CLASS}
           >
             <option value="plain">{t("academy.selfLearning.config.ragChunkingModes.plain")}</option>
             <option value="code_aware">{t("academy.selfLearning.config.ragChunkingModes.codeAware")}</option>
           </select>
         </div>
         <div className="space-y-1">
-          <label htmlFor="self-learning-rag-retrieval-mode" className="text-xs text-[color:var(--text-secondary)]">
-            {t("academy.selfLearning.config.ragRetrievalMode")}
-          </label>
+            <label htmlFor="self-learning-rag-retrieval-mode" className={FIELD_LABEL_CLASS}>
+              {t("academy.selfLearning.config.ragRetrievalMode")}
+            </label>
           <select
             id="self-learning-rag-retrieval-mode"
             value={ragRetrievalMode}
             onChange={(event) => onRagRetrievalModeChange(event.target.value as SelfLearningRagRetrievalMode)}
-            className="flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+              className={FIELD_SELECT_CLASS}
           >
             <option value="vector">{t("academy.selfLearning.config.ragRetrievalModes.vector")}</option>
             <option value="hybrid">{t("academy.selfLearning.config.ragRetrievalModes.hybrid")}</option>

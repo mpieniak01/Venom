@@ -282,6 +282,9 @@ export interface TrainableModelInfo {
   priority_bucket: number;
   runtime_compatibility: Record<string, boolean>;
   recommended_runtime?: string | null;
+  canonical_model_id?: string | null;
+  aliases?: string[];
+  coding_eligible?: boolean;
 }
 
 export interface RuntimeCatalogModelInfo {

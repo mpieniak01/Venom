@@ -81,6 +81,10 @@ _MODEL_ALIAS_TO_CANONICAL: dict[str, str] = {
     "gemma3:4b": "gemma-3-4b-it",
     "gemma3:1b": "gemma-3-1b-it",
 }
+_CANONICAL_TO_ALIASES: dict[str, set[str]] = {
+    "gemma-3-4b-it": {"gemma3:latest", "gemma3:4b"},
+    "gemma-3-1b-it": {"gemma3:1b"},
+}
 _CODING_MODEL_MARKERS: tuple[str, ...] = (
     "coder",
     "codestral",
@@ -131,10 +135,7 @@ def _model_aliases(model_id: str | None) -> list[str]:
     canonical = _canonical_model_id(candidate)
     aliases = {candidate, canonical}
     canonical_lower = canonical.lower()
-    if canonical_lower == "gemma-3-4b-it":
-        aliases.update({"gemma3:latest", "gemma3:4b"})
-    if canonical_lower == "gemma-3-1b-it":
-        aliases.add("gemma3:1b")
+    aliases.update(_CANONICAL_TO_ALIASES.get(canonical_lower, set()))
     return sorted(alias for alias in aliases if alias)
 
 
@@ -862,13 +863,20 @@ def _flatten_runtime_models(runtimes: list[dict[str, Any]]) -> list[dict[str, An
     return list(deduped.values())
 
 
-async def _load_trainable_model_catalog(model_manager: Any) -> list[dict[str, Any]]:
+async def _load_trainable_model_catalog(
+    model_manager: Any,
+    *,
+    local_models: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     from venom_core.api.routes import academy_models
 
     try:
-        models = await academy_models.list_trainable_models(mgr=model_manager)
+        models = await academy_models.list_trainable_models(
+            mgr=model_manager,
+            local_models=local_models,
+        )
     except Exception as exc:
-        logger.warning("Nie udało się pobrać katalogu modeli trenowalnych: %s", exc)
+        logger.warning("Failed to load trainable model catalog: %s", exc)
         return []
 
     normalized: list[dict[str, Any]] = []
@@ -907,13 +915,16 @@ def _build_model_catalog(
 
 async def _local_models_by_runtime(
     model_manager: Any,
+    *,
+    local_models: list[dict[str, Any]] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {"ollama": [], "vllm": [], "onnx": []}
-    try:
-        local_models = await model_manager.list_local_models()
-    except Exception:
-        logger.warning("Nie udało się pobrać listy modeli lokalnych.")
-        return grouped
+    if local_models is None:
+        try:
+            local_models = await model_manager.list_local_models()
+        except Exception:
+            logger.warning("Nie udało się pobrać listy modeli lokalnych.")
+            return grouped
 
     active_runtime = get_active_llm_runtime()
     active_provider = (active_runtime.provider or "").lower()
@@ -1069,9 +1080,18 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
     if "onnx" in _installed_local_servers():
         server_status.setdefault("onnx", _build_onnx_server_payload())
 
-    local_models = await _local_models_by_runtime(model_manager)
-    local_targets = _local_runtime_targets(
+    try:
+        local_models = await model_manager.list_local_models()
+    except Exception:
+        logger.warning("Nie udało się pobrać listy modeli lokalnych.")
+        local_models = []
+
+    runtime_local_models = await _local_models_by_runtime(
+        model_manager,
         local_models=local_models,
+    )
+    local_targets = _local_runtime_targets(
+        local_models=runtime_local_models,
         server_status=server_status,
         active_runtime=active_runtime,
     )
@@ -1080,7 +1100,10 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         _cloud_runtime_target(provider="google", active_runtime=active_runtime),
     )
     runtime_targets = [*local_targets, *cloud_targets]
-    trainable_models = await _load_trainable_model_catalog(model_manager)
+    trainable_models = await _load_trainable_model_catalog(
+        model_manager,
+        local_models=local_models,
+    )
     model_catalog = _build_model_catalog(
         runtime_targets=runtime_targets,
         trainable_models=trainable_models,

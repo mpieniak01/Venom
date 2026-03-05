@@ -70,20 +70,18 @@ export function SelfLearningPanel() {
   const loadCapabilities = useCallback(async () => {
     try {
       const response = await getSelfLearningCapabilities();
-      let unifiedTrainable = response.trainable_models ?? [];
+      let trainable = response.trainable_models ?? [];
       try {
         const catalog = await getUnifiedModelCatalog();
-        if ((catalog.trainable_models ?? []).length > 0) {
-          unifiedTrainable = catalog.trainable_models;
-        }
+        // Unified catalog is the source of truth, including an empty list.
+        trainable = catalog.trainable_models ?? [];
       } catch (catalogError) {
-        console.warn("Failed to load unified model catalog for self-learning:", catalogError);
+        console.warn(
+          "Failed to load unified model catalog for self-learning; falling back to capabilities payload:",
+          catalogError,
+        );
       }
-      setTrainableModels(
-        unifiedTrainable.length > 0
-          ? unifiedTrainable
-          : (response.trainable_models ?? []),
-      );
+      setTrainableModels(trainable);
       setEmbeddingProfiles(response.embedding_profiles ?? []);
       setDefaultBaseModel(response.default_base_model ?? null);
       setDefaultEmbeddingProfileId(response.default_embedding_profile_id ?? null);

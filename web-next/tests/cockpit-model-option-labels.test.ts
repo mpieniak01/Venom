@@ -46,7 +46,12 @@ describe("cockpit runtime model labels", () => {
 
   it("shows canonical alias for gemma3 ollama tag", () => {
     const label = formatRuntimeModelOptionLabel(
-      { name: "gemma3:latest", feedback_loop_tier: "not_recommended", runtime_id: "ollama" },
+      {
+        name: "gemma3:latest",
+        canonical_model_id: "gemma-3-4b-it",
+        feedback_loop_tier: "not_recommended",
+        runtime_id: "ollama",
+      },
       t,
     );
     assert.equal(label, "gemma3:latest <-> gemma-3-4b-it [ollama]");

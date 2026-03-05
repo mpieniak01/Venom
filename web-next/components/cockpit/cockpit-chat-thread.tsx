@@ -168,12 +168,10 @@ export const ChatComposer = memo(
           : undefined;
         const scopedByRuntime =
           (selectedRuntimeId ? byRuntime?.[selectedRuntimeId] : []) || [];
-        const next =
-          selectedCanonical.length > 0
-            ? Array.isArray(scopedByModel)
-              ? scopedByModel
-              : []
-            : scopedByRuntime;
+        let next = scopedByRuntime;
+        if (selectedCanonical.length > 0) {
+          next = Array.isArray(scopedByModel) ? scopedByModel : [];
+        }
         setAdapters(next);
         const active = next.find((adapter) => adapter.is_active);
         setSelectedAdapter(active?.adapter_id ?? BASE_MODEL_ADAPTER_VALUE);
@@ -331,6 +329,8 @@ export const ChatComposer = memo(
       ? "ml-auto flex flex-wrap items-center gap-2"
       : "ml-auto flex flex-wrap items-center justify-end gap-2";
 
+    const adapterDeployUnsupported = adapterDeploySupported === false;
+
     return (
       <div className="mt-3 shrink-0 border-t border-[color:var(--ui-border)] pt-3">
         <div className="relative">
@@ -418,19 +418,21 @@ export const ChatComposer = memo(
                 buttonTestId="chat-adapter-select"
                 placeholder={t("cockpit.models.loadingAdapters")}
                 disabled={
-                  adapterSelectLoading || adapterMutationPending || !adapterDeploySupported
+                  adapterSelectLoading ||
+                  adapterMutationPending ||
+                  adapterDeployUnsupported
                 }
                 buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />
-              {!adapterDeploySupported ? (
+              {adapterDeployUnsupported && (
                 <p className="text-[11px] text-hint">
                   {adapterDeployReason ||
                     t("cockpit.models.adapterRuntimeNotSupported", {
                       runtime: selectedLlmServer,
                     })}
                 </p>
-              ) : null}
+              )}
             </div>
             <div className={controlStackClassName}>
               <label className={labelClassName}>{t("cockpit.modes.mode")}</label>

@@ -490,7 +490,7 @@ def test_activate_adapter_with_chat_runtime_deploy_vllm(mock_settings, tmp_path)
     assert payload["success"] is True
     assert payload["deployed"] is True
     assert payload["runtime_id"] == "vllm"
-    deploy_vllm.assert_called_once_with(mgr=mgr, adapter_id="ok-adapter")
+    deploy_vllm.assert_called_once_with(adapter_id="ok-adapter")
 
 
 @patch("venom_core.config.SETTINGS")
@@ -951,7 +951,6 @@ def test_deploy_adapter_to_vllm_runtime_updates_config_and_settings(
         return_value=runtime_dir,
     ):
         payload = academy_models._deploy_adapter_to_vllm_runtime(
-            mgr=MagicMock(),
             adapter_id="adapter-1",
         )
 
@@ -1110,6 +1109,5 @@ def test_deploy_adapter_to_vllm_runtime_rejects_empty_base_model(
 
     with pytest.raises(RuntimeError, match="Adapter base model is empty"):
         academy_models._deploy_adapter_to_vllm_runtime(
-            mgr=MagicMock(),
             adapter_id="adapter-empty",
         )

@@ -337,22 +337,22 @@ export function useCockpitLogic({
         }
         const lastModels = data.activeServerInfo?.last_models ?? {};
         const runtimeKey = effectiveServer.toLowerCase();
-        const preferredFromRuntime =
-            runtimeKey === "ollama"
-                ? String(lastModels.ollama || "").trim()
-                : runtimeKey === "vllm"
-                    ? String(lastModels.vllm || "").trim()
-                    : "";
+        let preferredFromRuntime = "";
+        if (runtimeKey === "ollama") {
+            preferredFromRuntime = String(lastModels.ollama || "").trim();
+        } else if (runtimeKey === "vllm") {
+            preferredFromRuntime = String(lastModels.vllm || "").trim();
+        }
         const activeModel =
             effectiveServer === activeServer
                 ? (data.activeServerInfo?.active_model || "").trim()
                 : "";
-        const nextModel =
-            preferredFromRuntime && runtimeModels.includes(preferredFromRuntime)
-                ? preferredFromRuntime
-                : activeModel && runtimeModels.includes(activeModel)
-                    ? activeModel
-                    : runtimeModels[0] || "";
+        let nextModel = runtimeModels[0] || "";
+        if (preferredFromRuntime && runtimeModels.includes(preferredFromRuntime)) {
+            nextModel = preferredFromRuntime;
+        } else if (activeModel && runtimeModels.includes(activeModel)) {
+            nextModel = activeModel;
+        }
         if (nextModel && nextModel !== selectedModel) {
             interactive.setters.setSelectedLlmModel(nextModel);
         }

@@ -97,6 +97,8 @@ class ModelManagerDiscoveryMixin:
         model_path: Path,
         source: str,
         provider: str = "vllm",
+        model_name: str | None = None,
+        model_key: str | None = None,
     ) -> None:
         size_bytes = self._calculate_model_size_bytes(model_path)
         onnx_metadata = self._load_onnx_metadata(model_path)
@@ -113,8 +115,11 @@ class ModelManagerDiscoveryMixin:
             inferred = self._default_onnx_metadata_for_path(model_path)
             onnx_payload = {**inferred, **onnx_metadata}
 
-        models[model_path.name] = {
-            "name": model_path.name,
+        resolved_name = str(model_name or model_path.name).strip() or model_path.name
+        resolved_key = str(model_key or resolved_name).strip() or resolved_name
+
+        models[resolved_key] = {
+            "name": resolved_name,
             "size_gb": size_bytes / (1024**3) if size_bytes else None,
             "type": model_type,
             "quantization": "unknown",
@@ -210,6 +215,26 @@ class ModelManagerDiscoveryMixin:
             return True
         return False
 
+    def _register_academy_runtime_vllm_entries(
+        self,
+        models: Dict[str, Dict[str, Any]],
+        base_dir: Path,
+    ) -> None:
+        for adapter_dir in base_dir.iterdir():
+            if not adapter_dir.is_dir():
+                continue
+            runtime_dir = adapter_dir / "runtime_vllm"
+            if not self._looks_like_hf_runtime_dir(runtime_dir):
+                continue
+            runtime_model_name = f"venom-adapter-{adapter_dir.name}"
+            self._try_register_local_entry(
+                models,
+                runtime_dir,
+                source_name=base_dir.name,
+                model_name=runtime_model_name,
+                model_key=f"academy-runtime-vllm::{runtime_model_name}",
+            )
+
     def _scan_local_dirs(
         self,
         search_dirs: List[Path],
@@ -219,6 +244,7 @@ class ModelManagerDiscoveryMixin:
         for base_dir in search_dirs:
             if not base_dir.exists():
                 continue
+            self._register_academy_runtime_vllm_entries(models, base_dir)
             for model_path in base_dir.iterdir():
                 if not self._is_local_model_candidate(
                     model_path,
@@ -255,6 +281,9 @@ class ModelManagerDiscoveryMixin:
         models: Dict[str, Dict[str, Any]],
         model_path: Path,
         source_name: str,
+        *,
+        model_name: str | None = None,
+        model_key: str | None = None,
     ) -> None:
         try:
             self._register_local_entry(
@@ -262,6 +291,8 @@ class ModelManagerDiscoveryMixin:
                 model_path,
                 source=source_name,
                 provider="vllm",
+                model_name=model_name,
+                model_key=model_key,
             )
         except Exception as exc:
             logger.warning("Nie udało się odczytać modelu %s: %s", model_path, exc)

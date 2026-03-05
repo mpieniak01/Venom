@@ -185,6 +185,43 @@ def test_manifest_helpers_and_cache_failures(tmp_path: Path) -> None:
     assert models == {}
 
 
+def test_local_model_candidate_filters_academy_artifacts(tmp_path: Path) -> None:
+    academy_dir = tmp_path / "self_learning_abc"
+    academy_dir.mkdir()
+    (academy_dir / "adapter").mkdir()
+    (academy_dir / "train_script.py").write_text("print(1)", encoding="utf-8")
+
+    assert (
+        discovery.ModelManagerDiscoveryMixin._is_local_model_candidate(
+            academy_dir,
+            set(),
+        )
+        is False
+    )
+
+
+def test_local_model_candidate_workspace_fallback(tmp_path: Path) -> None:
+    plain_dir = tmp_path / "gemma-3"
+    plain_dir.mkdir()
+
+    assert (
+        discovery.ModelManagerDiscoveryMixin._is_local_model_candidate(
+            plain_dir,
+            set(),
+            allow_workspace_fallback=False,
+        )
+        is False
+    )
+    assert (
+        discovery.ModelManagerDiscoveryMixin._is_local_model_candidate(
+            plain_dir,
+            set(),
+            allow_workspace_fallback=True,
+        )
+        is True
+    )
+
+
 @pytest.mark.asyncio
 async def test_list_local_models_registers_local_and_ollama(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -216,6 +253,34 @@ async def test_list_local_models_registers_local_and_ollama(
     names = {m["name"] for m in models}
     assert "tiny.gguf" in names
     assert "llama3:latest" in names
+
+
+@pytest.mark.asyncio
+async def test_list_local_models_registers_vllm_runtime_from_academy_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mgr = _Discovery(tmp_path)
+    runtime_dir = mgr.models_dir / "self_learning_run-123" / "runtime_vllm"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    (runtime_dir / "config.json").write_text("{}", encoding="utf-8")
+    (runtime_dir / "model.safetensors").write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(
+        discovery,
+        "TrafficControlledHttpClient",
+        lambda **_: _Client(_Response(500, {"models": []})),
+    )
+
+    models = await mgr.list_local_models()
+    model_names = {model["name"] for model in models}
+    assert "venom-adapter-self_learning_run-123" in model_names
+    runtime_model = next(
+        model
+        for model in models
+        if model["name"] == "venom-adapter-self_learning_run-123"
+    )
+    assert runtime_model["provider"] == "vllm"
+    assert runtime_model["path"] == str(runtime_dir)
 
 
 @pytest.mark.asyncio

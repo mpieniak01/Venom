@@ -245,10 +245,12 @@ class ModelManagerDiscoveryMixin:
             if not base_dir.exists():
                 continue
             self._register_academy_runtime_vllm_entries(models, base_dir)
+            allow_workspace_fallback = base_dir.name == "models"
             for model_path in base_dir.iterdir():
                 if not self._is_local_model_candidate(
                     model_path,
                     skip_dirs,
+                    allow_workspace_fallback=allow_workspace_fallback,
                 ):
                     continue
                 self._try_register_local_entry(models, model_path, base_dir.name)

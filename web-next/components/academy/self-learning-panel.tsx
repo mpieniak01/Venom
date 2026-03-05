@@ -15,6 +15,7 @@ import {
   type SelfLearningStatus,
   type SelfLearningTrainableModelInfo,
 } from "@/lib/academy-api";
+import { ApiError } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toast";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -45,6 +46,8 @@ export function SelfLearningPanel() {
   const [currentRun, setCurrentRun] = useState<SelfLearningRunStatus | null>(null);
   const [trainableModels, setTrainableModels] = useState<SelfLearningTrainableModelInfo[]>([]);
   const [embeddingProfiles, setEmbeddingProfiles] = useState<SelfLearningEmbeddingProfile[]>([]);
+  const [defaultBaseModel, setDefaultBaseModel] = useState<string | null>(null);
+  const [defaultEmbeddingProfileId, setDefaultEmbeddingProfileId] = useState<string | null>(null);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -68,10 +71,28 @@ export function SelfLearningPanel() {
       const response = await getSelfLearningCapabilities();
       setTrainableModels(response.trainable_models ?? []);
       setEmbeddingProfiles(response.embedding_profiles ?? []);
+      setDefaultBaseModel(response.default_base_model ?? null);
+      setDefaultEmbeddingProfileId(response.default_embedding_profile_id ?? null);
     } catch (error) {
       console.error("Failed to load self-learning capabilities", error);
     }
   }, []);
+
+  const resolveSelfLearningStartError = useCallback(
+    (error: unknown): string => {
+      if (error instanceof ApiError && error.data && typeof error.data === "object") {
+        const detail = (error.data as { detail?: unknown }).detail;
+        if (typeof detail === "string" && detail.trim().length > 0) {
+          return detail;
+        }
+      }
+      if (error instanceof Error && error.message.trim().length > 0) {
+        return error.message;
+      }
+      return t("academy.common.unknownError");
+    },
+    [t]
+  );
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -158,12 +179,12 @@ export function SelfLearningPanel() {
         beginPolling(response.run_id);
       } catch (error) {
         console.error("Failed to start self-learning", error);
-        pushToast(error instanceof Error ? error.message : t("academy.common.unknownError"), "error");
+        pushToast(resolveSelfLearningStartError(error), "error");
       } finally {
         setStarting(false);
       }
     },
-    [beginPolling, pollRun, pushToast, t]
+    [beginPolling, pollRun, pushToast, resolveSelfLearningStartError]
   );
 
   const handleDeleteRun = useCallback(
@@ -214,6 +235,8 @@ export function SelfLearningPanel() {
         loading={starting}
         trainableModels={trainableModels}
         embeddingProfiles={embeddingProfiles}
+        defaultBaseModel={defaultBaseModel}
+        defaultEmbeddingProfileId={defaultEmbeddingProfileId}
         onStart={handleStart}
       />
 

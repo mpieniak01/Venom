@@ -43,6 +43,63 @@ function shouldUseSimpleMode(
   );
 }
 
+async function syncTargetServerIfNeeded(params: {
+  selectedLlmServer: string;
+  selectedLlmModel: string;
+  activeServerInfo: ChatSendParams["activeServerInfo"];
+  setActiveLlmRuntime: ChatSendParams["setActiveLlmRuntime"];
+  setActiveLlmServer: ChatSendParams["setActiveLlmServer"];
+  refreshActiveServer: ChatSendParams["refreshActiveServer"];
+  setMessage: ChatSendParams["setMessage"];
+  t: (key: string) => string;
+}): Promise<boolean> {
+  const targetServer = (params.selectedLlmServer || "").toLowerCase().trim();
+  const activeServer = (params.activeServerInfo?.active_server || "").toLowerCase().trim();
+  if (!targetServer || !activeServer || targetServer === activeServer) return true;
+  try {
+    if (isCloudRuntimeServer(targetServer)) {
+      await params.setActiveLlmRuntime(targetServer, params.selectedLlmModel);
+    } else {
+      await params.setActiveLlmServer(targetServer, params.selectedLlmModel);
+    }
+    params.refreshActiveServer();
+    return true;
+  } catch (err) {
+    params.setMessage(getServerSwitchErrorMessage(err, params.t("cockpit.chatMessages.serverSwitchError")));
+    return false;
+  }
+}
+
+async function ensureSelectedModelIsActive(params: {
+  activeServerInfo: ChatSendParams["activeServerInfo"];
+  selectedLlmModel: string;
+  ensureModelActive: ChatSendParams["ensureModelActive"];
+  setMessage: ChatSendParams["setMessage"];
+  t: (key: string) => string;
+}): Promise<boolean> {
+  const activeModel = (params.activeServerInfo?.active_model || "").trim().toLowerCase();
+  const selectedModel = (params.selectedLlmModel || "").trim().toLowerCase();
+  if (!selectedModel || selectedModel === activeModel || !params.ensureModelActive) {
+    return true;
+  }
+  const activated = await params.ensureModelActive(params.selectedLlmModel);
+  if (activated) return true;
+  params.setMessage(params.t("cockpit.chatMessages.serverSwitchError"));
+  return false;
+}
+
+async function executeSendFlow(params: {
+  shouldUseSimple: boolean;
+  taskParams: Parameters<typeof handleSimpleTaskSend>[0];
+  standardParams: Parameters<typeof handleStandardTaskSend>[0];
+}) {
+  if (params.shouldUseSimple) {
+    await handleSimpleTaskSend(params.taskParams);
+    return;
+  }
+  await handleStandardTaskSend(params.standardParams);
+}
+
 export function useChatSend(params: ChatSendParams) {
   const {
     labMode,
@@ -112,30 +169,25 @@ export function useChatSend(params: ChatSendParams) {
       return false;
     }
 
-    const targetServer = (selectedLlmServer || "").toLowerCase().trim();
-    const activeServer = (activeServerInfo?.active_server || "").toLowerCase().trim();
-    if (targetServer && activeServer && targetServer !== activeServer) {
-      try {
-        if (isCloudRuntimeServer(targetServer)) {
-          await setActiveLlmRuntime(targetServer, selectedLlmModel);
-        } else {
-          await setActiveLlmServer(targetServer, selectedLlmModel);
-        }
-        refreshActiveServer();
-      } catch (err) {
-        setMessage(getServerSwitchErrorMessage(err, t("cockpit.chatMessages.serverSwitchError")));
-        return false;
-      }
-    }
-    const activeModel = (activeServerInfo?.active_model || "").trim().toLowerCase();
-    const selectedModel = (selectedLlmModel || "").trim().toLowerCase();
-    if (selectedModel && selectedModel !== activeModel && ensureModelActive) {
-      const activated = await ensureModelActive(selectedLlmModel);
-      if (!activated) {
-        setMessage(t("cockpit.chatMessages.serverSwitchError"));
-        return false;
-      }
-    }
+    const serverOk = await syncTargetServerIfNeeded({
+      selectedLlmServer,
+      selectedLlmModel,
+      activeServerInfo,
+      setActiveLlmRuntime,
+      setActiveLlmServer,
+      refreshActiveServer,
+      setMessage,
+      t,
+    });
+    if (!serverOk) return false;
+    const modelOk = await ensureSelectedModelIsActive({
+      activeServerInfo,
+      selectedLlmModel,
+      ensureModelActive,
+      setMessage,
+      t,
+    });
+    if (!modelOk) return false;
 
     autoScrollEnabledRef.current = true;
     scrollChatToBottom();
@@ -175,49 +227,50 @@ export function useChatSend(params: ChatSendParams) {
       }
     }
 
-    void (async () => {
-      const taskParams = {
-        clientId,
-        trimmed,
-        resolvedSession,
-        generationParams,
-        selectedLlmModel,
-        activeServerInfo,
-        sendSimpleChatStream,
-        linkOptimisticRequest,
-        setLocalSessionHistory,
-        updateSimpleStream,
-        recordUiTiming,
-        uiTimingsRef,
-        setSimpleRequestDetails,
-        ingestMemoryEntry,
-        setLastResponseDurationMs,
-        setResponseDurations,
-        dropOptimisticRequest,
-        clearSimpleStream,
-        setMessage,
-        setSending,
-      };
-
-      if (shouldUseSimple) {
-        await handleSimpleTaskSend(taskParams);
-      } else {
-        await handleStandardTaskSend({
-          ...taskParams,
-          labMode,
-          runtimeOverride,
-          parsed,
-          forcedIntent,
-          language,
-          sendTask,
-          refreshTasks,
-          refreshQueue,
-          refreshHistory,
-          refreshSessionHistory,
-          t,
-        });
-      }
-    })();
+    const taskParams = {
+      clientId,
+      trimmed,
+      resolvedSession,
+      generationParams,
+      selectedLlmModel,
+      activeServerInfo,
+      sendSimpleChatStream,
+      linkOptimisticRequest,
+      setLocalSessionHistory,
+      updateSimpleStream,
+      recordUiTiming,
+      uiTimingsRef,
+      setSimpleRequestDetails,
+      ingestMemoryEntry,
+      setLastResponseDurationMs,
+      setResponseDurations,
+      dropOptimisticRequest,
+      clearSimpleStream,
+      setMessage,
+      setSending,
+    };
+    executeSendFlow({
+      shouldUseSimple,
+      taskParams,
+      standardParams: {
+        ...taskParams,
+        labMode,
+        runtimeOverride,
+        parsed,
+        forcedIntent,
+        language,
+        sendTask,
+        refreshTasks,
+        refreshQueue,
+        refreshHistory,
+        refreshSessionHistory,
+        t,
+      },
+    }).catch((error) => {
+      const message = error instanceof Error ? error.message : t("cockpit.chatMessages.serverSwitchError");
+      setMessage(message);
+      setSending(false);
+    });
 
     return true;
   }, [

@@ -574,37 +574,84 @@ export async function curateDatasetV2(
   return curateDataset(params);
 }
 
-export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogResponse> {
-  type RuntimeOptionsPayload = {
-    active?: {
-      runtime_id?: string | null;
-      active_server?: string | null;
-      active_model?: string | null;
-    };
-    runtimes?: Array<{
-      runtime_id: string;
-      source_type: "local-runtime" | "cloud-api";
-      configured: boolean;
-      available: boolean;
-      status: string;
-      reason?: string | null;
-      active: boolean;
-      adapter_deploy_supported?: boolean;
-      adapter_deploy_mode?: string;
-    }>;
-    model_catalog?: {
-      all_models?: RuntimeCatalogModelInfo[];
-      chat_models?: RuntimeCatalogModelInfo[];
-      coding_models?: RuntimeCatalogModelInfo[];
-      runtime_servable_models?: RuntimeCatalogModelInfo[];
-      trainable_base_models?: TrainableModelInfo[];
-      inference_only_artifacts?: RuntimeCatalogModelInfo[];
-      trainable_models?: TrainableModelInfo[];
-    };
-    adapter_catalog?: UnifiedModelCatalogResponse["adapter_catalog"];
-    selector_flow?: string[];
-    model_audit?: UnifiedModelCatalogResponse["model_audit"];
+function asArray<T>(value: T[] | undefined | null): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function resolveRuntimeServableModels(catalog: RuntimeOptionsPayload["model_catalog"]) {
+  return asArray(catalog?.runtime_servable_models).length > 0
+    ? asArray(catalog?.runtime_servable_models)
+    : asArray(catalog?.chat_models);
+}
+
+function resolveTrainableBaseModels(catalog: RuntimeOptionsPayload["model_catalog"]) {
+  return asArray(catalog?.trainable_base_models).length > 0
+    ? asArray(catalog?.trainable_base_models)
+    : asArray(catalog?.trainable_models);
+}
+
+function resolveTrainableModels(catalog: RuntimeOptionsPayload["model_catalog"]) {
+  return asArray(catalog?.trainable_models).length > 0
+    ? asArray(catalog?.trainable_models)
+    : asArray(catalog?.trainable_base_models);
+}
+
+function resolveAdapterCatalog(
+  payload: RuntimeOptionsPayload,
+): UnifiedModelCatalogResponse["adapter_catalog"] {
+  return {
+    all_adapters: asArray(payload?.adapter_catalog?.all_adapters),
+    by_runtime:
+      payload?.adapter_catalog?.by_runtime &&
+      typeof payload.adapter_catalog.by_runtime === "object"
+        ? payload.adapter_catalog.by_runtime
+        : {},
+    by_runtime_model:
+      payload?.adapter_catalog?.by_runtime_model &&
+      typeof payload.adapter_catalog.by_runtime_model === "object"
+        ? payload.adapter_catalog.by_runtime_model
+        : {},
   };
+}
+
+function resolveSelectorFlow(payload: RuntimeOptionsPayload): string[] {
+  return asArray(payload?.selector_flow).length > 0
+    ? asArray(payload?.selector_flow)
+    : ["server", "model", "adapter"];
+}
+
+type RuntimeOptionsPayload = {
+  active?: {
+    runtime_id?: string | null;
+    active_server?: string | null;
+    active_model?: string | null;
+  };
+  runtimes?: Array<{
+    runtime_id: string;
+    source_type: "local-runtime" | "cloud-api";
+    configured: boolean;
+    available: boolean;
+    status: string;
+    reason?: string | null;
+    active: boolean;
+    adapter_deploy_supported?: boolean;
+    adapter_deploy_mode?: string;
+  }>;
+  model_catalog?: {
+    all_models?: RuntimeCatalogModelInfo[];
+    chat_models?: RuntimeCatalogModelInfo[];
+    coding_models?: RuntimeCatalogModelInfo[];
+    runtime_servable_models?: RuntimeCatalogModelInfo[];
+    trainable_base_models?: TrainableModelInfo[];
+    inference_only_artifacts?: RuntimeCatalogModelInfo[];
+    trainable_models?: TrainableModelInfo[];
+  };
+  adapter_catalog?: UnifiedModelCatalogResponse["adapter_catalog"];
+  selector_flow?: string[];
+  model_audit?: UnifiedModelCatalogResponse["model_audit"];
+};
+
+export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogResponse> {
   const payload = await apiFetch<RuntimeOptionsPayload>(
     "/api/v1/system/llm-runtime/options",
   );
@@ -615,47 +662,15 @@ export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogRespo
         ? payload.active
         : undefined,
     runtimes: Array.isArray(payload?.runtimes) ? payload.runtimes : [],
-    all_models: Array.isArray(catalog?.all_models) ? catalog.all_models : [],
-    chat_models: Array.isArray(catalog?.chat_models) ? catalog.chat_models : [],
-    coding_models: Array.isArray(catalog?.coding_models)
-      ? catalog.coding_models
-      : [],
-    runtime_servable_models: Array.isArray(catalog?.runtime_servable_models)
-      ? catalog.runtime_servable_models
-      : Array.isArray(catalog?.chat_models)
-        ? catalog.chat_models
-        : [],
-    trainable_base_models: Array.isArray(catalog?.trainable_base_models)
-      ? catalog.trainable_base_models
-      : Array.isArray(catalog?.trainable_models)
-        ? catalog.trainable_models
-        : [],
-    inference_only_artifacts: Array.isArray(catalog?.inference_only_artifacts)
-      ? catalog.inference_only_artifacts
-      : [],
-    trainable_models: Array.isArray(catalog?.trainable_models)
-      ? catalog.trainable_models
-      : Array.isArray(catalog?.trainable_base_models)
-        ? catalog.trainable_base_models
-      : [],
-    adapter_catalog: {
-      all_adapters: Array.isArray(payload?.adapter_catalog?.all_adapters)
-        ? payload.adapter_catalog.all_adapters
-        : [],
-      by_runtime:
-        payload?.adapter_catalog?.by_runtime &&
-        typeof payload.adapter_catalog.by_runtime === "object"
-          ? payload.adapter_catalog.by_runtime
-          : {},
-      by_runtime_model:
-        payload?.adapter_catalog?.by_runtime_model &&
-        typeof payload.adapter_catalog.by_runtime_model === "object"
-          ? payload.adapter_catalog.by_runtime_model
-          : {},
-    },
-    selector_flow: Array.isArray(payload?.selector_flow)
-      ? payload.selector_flow
-      : ["server", "model", "adapter"],
+    all_models: asArray(catalog?.all_models),
+    chat_models: asArray(catalog?.chat_models),
+    coding_models: asArray(catalog?.coding_models),
+    runtime_servable_models: resolveRuntimeServableModels(catalog),
+    trainable_base_models: resolveTrainableBaseModels(catalog),
+    inference_only_artifacts: asArray(catalog?.inference_only_artifacts),
+    trainable_models: resolveTrainableModels(catalog),
+    adapter_catalog: resolveAdapterCatalog(payload),
+    selector_flow: resolveSelectorFlow(payload),
     model_audit:
       payload?.model_audit && typeof payload.model_audit === "object"
         ? payload.model_audit

@@ -395,11 +395,7 @@ class SelfLearningService:
 
     def _recover_orphaned_run(self, run: SelfLearningRun) -> None:
         if run.mode != "llm_finetune":
-            if run.status != "failed":
-                run.status = "failed"
-                run.finished_at = _utc_now_iso()
-                run.error_message = "Run monitor task was lost before completion. Restart self-learning run."
-                self._add_log(run, "Run monitor task lost; marking run as failed.")
+            self._mark_non_llm_orphan_as_failed(run)
             return
         habitat = self.gpu_habitat
         if habitat is None:
@@ -414,39 +410,87 @@ class SelfLearningService:
             if payload is None:
                 return
 
-        changed = False
         status = str(payload.get("status") or "").strip().lower()
-        if status in {"running", "preparing", "queued", "finished", "failed", "error"}:
-            if status == "finished":
-                if run.status != "completed":
-                    run.status = "completed"
-                    run.finished_at = _utc_now_iso()
-                    changed = True
-            elif status in {"failed", "error"}:
-                if run.status != "failed":
-                    run.status = "failed"
-                    run.finished_at = _utc_now_iso()
-                    changed = True
-                error_message = str(payload.get("logs") or "").strip() or (
-                    "Training process reported failure"
-                )
-                if run.error_message != error_message:
-                    run.error_message = error_message
-                    changed = True
-            else:
-                if run.status != "running":
-                    run.status = "running"
-                    changed = True
-                if run.started_at is None:
-                    run.started_at = _utc_now_iso()
-                    changed = True
-            self._append_training_progress_logs(
-                run=run,
-                status=status or "unknown",
-                status_payload=payload if isinstance(payload, dict) else {},
-            )
-            if changed:
-                self._append_run_snapshot(run)
+        if status not in {
+            "running",
+            "preparing",
+            "queued",
+            "finished",
+            "failed",
+            "error",
+        }:
+            return
+        changed = self._apply_orphan_training_status(
+            run=run,
+            status=status,
+            payload=payload if isinstance(payload, dict) else {},
+        )
+        self._append_training_progress_logs(
+            run=run,
+            status=status or "unknown",
+            status_payload=payload if isinstance(payload, dict) else {},
+        )
+        if changed:
+            self._append_run_snapshot(run)
+
+    def _mark_non_llm_orphan_as_failed(self, run: SelfLearningRun) -> None:
+        if run.status == "failed":
+            return
+        run.status = "failed"
+        run.finished_at = _utc_now_iso()
+        run.error_message = (
+            "Run monitor task was lost before completion. Restart self-learning run."
+        )
+        self._add_log(run, "Run monitor task lost; marking run as failed.")
+
+    def _apply_orphan_training_status(
+        self,
+        *,
+        run: SelfLearningRun,
+        status: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        if status == "finished":
+            return self._mark_run_completed_if_needed(run)
+        if status in {"failed", "error"}:
+            return self._mark_run_failed_if_needed(run, payload=payload)
+        return self._mark_run_running_if_needed(run)
+
+    @staticmethod
+    def _mark_run_completed_if_needed(run: SelfLearningRun) -> bool:
+        if run.status == "completed":
+            return False
+        run.status = "completed"
+        run.finished_at = _utc_now_iso()
+        return True
+
+    @staticmethod
+    def _mark_run_failed_if_needed(
+        run: SelfLearningRun, *, payload: dict[str, Any]
+    ) -> bool:
+        changed = False
+        if run.status != "failed":
+            run.status = "failed"
+            run.finished_at = _utc_now_iso()
+            changed = True
+        error_message = str(payload.get("logs") or "").strip() or (
+            "Training process reported failure"
+        )
+        if run.error_message != error_message:
+            run.error_message = error_message
+            changed = True
+        return changed
+
+    @staticmethod
+    def _mark_run_running_if_needed(run: SelfLearningRun) -> bool:
+        changed = False
+        if run.status != "running":
+            run.status = "running"
+            changed = True
+        if run.started_at is None:
+            run.started_at = _utc_now_iso()
+            changed = True
+        return changed
 
     def _build_orphan_status_payload_from_files(
         self, run: SelfLearningRun
@@ -1492,23 +1536,10 @@ class SelfLearningService:
             "ram_available_gb": round(available_gb, 2),
             "ram_usage_percent": round(float(memory.percent), 2),
         }
-        if (
-            available_gb < _CRITICAL_RAM_AVAILABLE_GB
-            and float(memory.percent) >= _CRITICAL_RAM_USAGE_PERCENT
+        if self._is_critical_low_ram(
+            available_gb=available_gb, memory_percent=memory.percent
         ):
-            ultra_safe_changes: list[str] = []
-            if run.llm_config.batch_size > 1:
-                run.llm_config.batch_size = 1
-                ultra_safe_changes.append("batch_size=1")
-            if run.llm_config.max_seq_length > 512:
-                run.llm_config.max_seq_length = 512
-                ultra_safe_changes.append("max_seq_length=512")
-            if run.llm_config.lora_rank > 4:
-                run.llm_config.lora_rank = 4
-                ultra_safe_changes.append("lora_rank=4")
-            if run.llm_config.num_epochs > 1:
-                run.llm_config.num_epochs = 1
-                ultra_safe_changes.append("num_epochs=1")
+            ultra_safe_changes = self._apply_critical_resource_optimizations(run)
             if ultra_safe_changes:
                 run.artifacts["resource_optimizations_critical"] = ultra_safe_changes
             self._add_log(
@@ -1516,20 +1547,11 @@ class SelfLearningService:
                 "Critical low-RAM mode enabled; applying ultra-safe training parameters "
                 f"(available={available_gb:.2f} GB, usage={float(memory.percent):.1f}%).",
             )
-        optimizations: list[str] = []
-        if available_gb < _LOW_RAM_AVAILABLE_GB:
-            if run.llm_config.batch_size > 1:
-                run.llm_config.batch_size = 1
-                optimizations.append("batch_size=1")
-            if run.llm_config.max_seq_length > 1024:
-                run.llm_config.max_seq_length = 1024
-                optimizations.append("max_seq_length=1024")
-            if run.llm_config.lora_rank > 8:
-                run.llm_config.lora_rank = 8
-                optimizations.append("lora_rank=8")
-            if run.llm_config.num_epochs > 2:
-                run.llm_config.num_epochs = 2
-                optimizations.append("num_epochs=2")
+        optimizations = (
+            self._apply_low_resource_optimizations(run)
+            if available_gb < _LOW_RAM_AVAILABLE_GB
+            else []
+        )
         if optimizations:
             run.artifacts["resource_optimizations"] = optimizations
             self._add_log(
@@ -1537,6 +1559,47 @@ class SelfLearningService:
                 "Applied low-resource training optimizations: "
                 + ", ".join(optimizations),
             )
+
+    @staticmethod
+    def _is_critical_low_ram(*, available_gb: float, memory_percent: float) -> bool:
+        return (
+            available_gb < _CRITICAL_RAM_AVAILABLE_GB
+            and float(memory_percent) >= _CRITICAL_RAM_USAGE_PERCENT
+        )
+
+    @staticmethod
+    def _apply_critical_resource_optimizations(run: SelfLearningRun) -> list[str]:
+        changes: list[str] = []
+        if run.llm_config.batch_size > 1:
+            run.llm_config.batch_size = 1
+            changes.append("batch_size=1")
+        if run.llm_config.max_seq_length > 512:
+            run.llm_config.max_seq_length = 512
+            changes.append("max_seq_length=512")
+        if run.llm_config.lora_rank > 4:
+            run.llm_config.lora_rank = 4
+            changes.append("lora_rank=4")
+        if run.llm_config.num_epochs > 1:
+            run.llm_config.num_epochs = 1
+            changes.append("num_epochs=1")
+        return changes
+
+    @staticmethod
+    def _apply_low_resource_optimizations(run: SelfLearningRun) -> list[str]:
+        changes: list[str] = []
+        if run.llm_config.batch_size > 1:
+            run.llm_config.batch_size = 1
+            changes.append("batch_size=1")
+        if run.llm_config.max_seq_length > 1024:
+            run.llm_config.max_seq_length = 1024
+            changes.append("max_seq_length=1024")
+        if run.llm_config.lora_rank > 8:
+            run.llm_config.lora_rank = 8
+            changes.append("lora_rank=8")
+        if run.llm_config.num_epochs > 2:
+            run.llm_config.num_epochs = 2
+            changes.append("num_epochs=2")
+        return changes
 
     async def _wait_for_training_completion(
         self,
@@ -1546,51 +1609,88 @@ class SelfLearningService:
         training_job_id: str,
         output_dir: Path,
     ) -> dict[str, Any]:
-        timeout_seconds = max(
-            _TRAINING_TIMEOUT_MIN_SECONDS,
-            min(
-                _TRAINING_TIMEOUT_MAX_SECONDS,
-                run.llm_config.num_epochs * 1200,
-            ),
-        )
-        deadline = asyncio.get_event_loop().time() + float(timeout_seconds)
+        timeout_seconds = self._training_timeout_seconds(run)
+        deadline = asyncio.get_event_loop().time() + timeout_seconds
         latest_payload: dict[str, Any] = {}
         previous_status = ""
         while asyncio.get_event_loop().time() < deadline:
             status_payload = habitat.get_training_status(training_job_id)
             latest_payload = status_payload if isinstance(status_payload, dict) else {}
             status = str(latest_payload.get("status") or "").strip().lower()
-            if status and status != previous_status:
-                self._add_log(run, f"Training status: {status}")
-                previous_status = status
+            previous_status = self._log_training_status_transition(
+                run=run,
+                status=status,
+                previous_status=previous_status,
+            )
             self._append_training_progress_logs(
                 run=run,
                 status=status or "unknown",
                 status_payload=latest_payload,
             )
-            if status == "finished":
+            if self._is_training_status_terminal(status):
+                if status in {"failed", "error"}:
+                    self._raise_training_error_from_payload(latest_payload)
                 break
-            if status in {"failed", "error"}:
-                logs = str(latest_payload.get("logs") or "").strip()
-                raise SelfLearningError(
-                    "Błąd podczas treningu modelu. "
-                    + (logs[-800:] if logs else "Sprawdź training.log.")
-                )
             await asyncio.sleep(_TRAINING_STATUS_POLL_INTERVAL_SECONDS)
         else:
             raise SelfLearningError(
                 f"Trening przekroczył limit czasu ({timeout_seconds}s) i został przerwany."
             )
 
+        self._ensure_training_adapter_exists(
+            output_dir=output_dir, payload=latest_payload
+        )
+        return latest_payload
+
+    @staticmethod
+    def _training_timeout_seconds(run: SelfLearningRun) -> float:
+        return float(
+            max(
+                _TRAINING_TIMEOUT_MIN_SECONDS,
+                min(
+                    _TRAINING_TIMEOUT_MAX_SECONDS,
+                    run.llm_config.num_epochs * 1200,
+                ),
+            )
+        )
+
+    def _log_training_status_transition(
+        self,
+        *,
+        run: SelfLearningRun,
+        status: str,
+        previous_status: str,
+    ) -> str:
+        if status and status != previous_status:
+            self._add_log(run, f"Training status: {status}")
+            return status
+        return previous_status
+
+    @staticmethod
+    def _is_training_status_terminal(status: str) -> bool:
+        return status in {"finished", "failed", "error"}
+
+    @staticmethod
+    def _raise_training_error_from_payload(payload: dict[str, Any]) -> None:
+        logs = str(payload.get("logs") or "").strip()
+        raise SelfLearningError(
+            "Błąd podczas treningu modelu. "
+            + (logs[-800:] if logs else "Sprawdź training.log.")
+        )
+
+    @staticmethod
+    def _ensure_training_adapter_exists(
+        *, output_dir: Path, payload: dict[str, Any]
+    ) -> None:
         adapter_dir = output_dir / "adapter"
         adapter_config = adapter_dir / "adapter_config.json"
-        if not adapter_config.exists():
-            logs = str(latest_payload.get("logs") or "").strip()
-            raise SelfLearningError(
-                "Trening zakończył się bez zapisu adaptera. "
-                + (logs[-800:] if logs else "Brak adapter_config.json.")
-            )
-        return latest_payload
+        if adapter_config.exists():
+            return
+        logs = str(payload.get("logs") or "").strip()
+        raise SelfLearningError(
+            "Trening zakończył się bez zapisu adaptera. "
+            + (logs[-800:] if logs else "Brak adapter_config.json.")
+        )
 
     def _append_training_progress_logs(
         self,
@@ -2150,27 +2250,53 @@ class SelfLearningService:
 
         for source, root in allowed_roots:
             for path in self._iter_candidate_paths(root):
-                resolved_path = path.resolve()
-                if resolved_path in seen_paths:
-                    continue
-                if len(collected) >= max_files:
-                    self._add_log(run, "Reached max_files limit.")
-                    return collected
-                decision, size = self._evaluate_candidate_path(
+                total_size, should_stop = self._process_candidate_for_discovery(
                     run=run,
                     source=source,
                     path=path,
+                    collected=collected,
+                    seen_paths=seen_paths,
+                    total_size=total_size,
+                    max_files=max_files,
                     max_file_size=max_file_size,
                     max_total_size=max_total_size,
-                    current_total_size=total_size,
                 )
-                if decision == "collect":
-                    total_size += size
-                    seen_paths.add(resolved_path)
-                    collected.append((resolved_path, source))
-                if decision == "limit_total":
+                if should_stop:
                     return collected
         return collected
+
+    def _process_candidate_for_discovery(
+        self,
+        *,
+        run: SelfLearningRun,
+        source: SelfLearningSource,
+        path: Path,
+        collected: list[tuple[Path, SelfLearningSource]],
+        seen_paths: set[Path],
+        total_size: int,
+        max_files: int,
+        max_file_size: int,
+        max_total_size: int,
+    ) -> tuple[int, bool]:
+        resolved_path = path.resolve()
+        if resolved_path in seen_paths:
+            return total_size, False
+        if len(collected) >= max_files:
+            self._add_log(run, "Reached max_files limit.")
+            return total_size, True
+        decision, size = self._evaluate_candidate_path(
+            run=run,
+            source=source,
+            path=path,
+            max_file_size=max_file_size,
+            max_total_size=max_total_size,
+            current_total_size=total_size,
+        )
+        if decision == "collect":
+            seen_paths.add(resolved_path)
+            collected.append((resolved_path, source))
+            return total_size + size, False
+        return total_size, decision == "limit_total"
 
     def _iter_candidate_paths(self, root: Path) -> Iterable[Path]:
         for current_root, dirs, files in os.walk(root):

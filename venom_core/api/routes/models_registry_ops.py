@@ -147,6 +147,7 @@ async def remove_model_registry(model_name: str):
     "/models/activate",
     responses={
         503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
+        400: {"description": "Model nie jest serwowalny dla wskazanego runtime"},
         500: {"description": "Błąd serwera podczas aktywacji modelu"},
     },
 )

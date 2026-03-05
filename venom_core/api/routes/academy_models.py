@@ -774,6 +774,114 @@ def _runtime_endpoint_for_hash(runtime_id: str) -> str | None:
     return build_http_url("localhost", 11434, "/v1")
 
 
+def _first_runtime_with_previous_model(
+    *, config: Dict[str, Any], candidates: tuple[str, ...]
+) -> tuple[str | None, str]:
+    for candidate_runtime in candidates:
+        prev_value = str(
+            config.get(previous_model_key_for_server(candidate_runtime)) or ""
+        ).strip()
+        if prev_value:
+            return candidate_runtime, prev_value
+    return None, ""
+
+
+def _resolve_runtime_for_rollback(
+    *,
+    active_runtime: Any,
+    config: Dict[str, Any],
+) -> tuple[str, str]:
+    runtime_candidate = (
+        str(getattr(active_runtime, "provider", "") or "").strip().lower()
+    )
+    runtime_candidate = (
+        runtime_candidate
+        or str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+    )
+    runtime_local_id = _resolve_local_runtime_id(runtime_candidate)
+    if runtime_local_id is None:
+        inferred_runtime, _ = _first_runtime_with_previous_model(
+            config=config,
+            candidates=("ollama", "vllm"),
+        )
+        runtime_local_id = inferred_runtime
+    return runtime_local_id or "ollama", runtime_candidate
+
+
+def _resolve_fallback_model_for_rollback(
+    *,
+    config: Dict[str, Any],
+    runtime_local_id: str,
+) -> tuple[str, str, str]:
+    previous_key = previous_model_key_for_server(runtime_local_id)
+    fallback_model = str(config.get(previous_key) or "").strip()
+    if fallback_model:
+        return runtime_local_id, previous_key, fallback_model
+    inferred_runtime, inferred_model = _first_runtime_with_previous_model(
+        config=config,
+        candidates=("ollama", "vllm"),
+    )
+    if not inferred_runtime:
+        return runtime_local_id, previous_key, ""
+    return (
+        inferred_runtime,
+        previous_model_key_for_server(inferred_runtime),
+        inferred_model,
+    )
+
+
+def _build_runtime_rollback_updates(
+    *,
+    mgr: Any,
+    runtime_local_id: str,
+    previous_key: str,
+    fallback_model: str,
+) -> Dict[str, Any]:
+    updates: Dict[str, Any] = {
+        "ACTIVE_LLM_SERVER": runtime_local_id,
+        "LLM_MODEL_NAME": fallback_model,
+        "HYBRID_LOCAL_MODEL": fallback_model,
+        previous_key: "",
+    }
+    if runtime_local_id == "ollama":
+        updates["LAST_MODEL_OLLAMA"] = fallback_model
+        return updates
+    if runtime_local_id != "vllm":
+        return updates
+    updates["LAST_MODEL_VLLM"] = fallback_model
+    fallback_path = _resolve_local_runtime_model_path_by_name(
+        mgr=mgr,
+        model_name=fallback_model,
+    )
+    if not fallback_path:
+        return updates
+    updates["VLLM_MODEL_PATH"] = fallback_path
+    updates["VLLM_SERVED_MODEL_NAME"] = fallback_model
+    template_path = Path(fallback_path) / "chat_template.jinja"
+    updates["VLLM_CHAT_TEMPLATE"] = str(template_path) if template_path.exists() else ""
+    return updates
+
+
+def _apply_runtime_rollback_settings(
+    *,
+    runtime_local_id: str,
+    fallback_model: str,
+    config_hash: str,
+    updates: Dict[str, Any],
+) -> None:
+    SETTINGS.ACTIVE_LLM_SERVER = runtime_local_id
+    SETTINGS.LLM_MODEL_NAME = fallback_model
+    SETTINGS.HYBRID_LOCAL_MODEL = fallback_model
+    SETTINGS.LLM_CONFIG_HASH = config_hash
+    if runtime_local_id != "vllm":
+        return
+    if "VLLM_MODEL_PATH" in updates:
+        SETTINGS.VLLM_MODEL_PATH = str(updates["VLLM_MODEL_PATH"])
+    SETTINGS.VLLM_SERVED_MODEL_NAME = fallback_model
+    SETTINGS.LAST_MODEL_VLLM = fallback_model
+    _restart_vllm_runtime()
+
+
 def _is_runtime_model_dir(path: Path) -> bool:
     if not path.exists() or not path.is_dir():
         return False
@@ -1048,29 +1156,10 @@ def _deploy_adapter_to_chat_runtime(
 def _rollback_chat_runtime_after_adapter_deactivation(*, mgr: Any) -> Dict[str, Any]:
     active_runtime = get_active_llm_runtime()
     config = config_manager.get_config(mask_secrets=False)
-    runtime_candidate = (
-        str(getattr(active_runtime, "provider", "") or "").strip().lower()
+    runtime_local_id, runtime_candidate = _resolve_runtime_for_rollback(
+        active_runtime=active_runtime,
+        config=config,
     )
-    runtime_candidate = (
-        runtime_candidate
-        or str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
-    )
-    runtime_local_id = _resolve_local_runtime_id(runtime_candidate)
-    if runtime_local_id is None:
-        for candidate_runtime in ("ollama", "vllm"):
-            prev_value = str(
-                config.get(previous_model_key_for_server(candidate_runtime)) or ""
-            ).strip()
-            if prev_value:
-                runtime_local_id = candidate_runtime
-                break
-    if runtime_local_id is None:
-        runtime_local_id = "ollama"
-    if runtime_local_id is None:
-        return {
-            "rolled_back": False,
-            "reason": f"runtime_not_local:{runtime_candidate or 'unknown'}",
-        }
 
     if runtime_local_id == "onnx":
         return {
@@ -1079,17 +1168,12 @@ def _rollback_chat_runtime_after_adapter_deactivation(*, mgr: Any) -> Dict[str, 
             "runtime_id": runtime_local_id,
         }
 
-    previous_key = previous_model_key_for_server(runtime_local_id)
-    fallback_model = str(config.get(previous_key) or "").strip()
-    if not fallback_model:
-        for candidate_runtime in ("ollama", "vllm"):
-            candidate_key = previous_model_key_for_server(candidate_runtime)
-            candidate_model = str(config.get(candidate_key) or "").strip()
-            if candidate_model:
-                runtime_local_id = candidate_runtime
-                previous_key = candidate_key
-                fallback_model = candidate_model
-                break
+    runtime_local_id, previous_key, fallback_model = (
+        _resolve_fallback_model_for_rollback(
+            config=config,
+            runtime_local_id=runtime_local_id,
+        )
+    )
     if not fallback_model:
         return {
             "rolled_back": False,
@@ -1097,42 +1181,23 @@ def _rollback_chat_runtime_after_adapter_deactivation(*, mgr: Any) -> Dict[str, 
             "runtime_id": runtime_local_id,
         }
 
-    updates: Dict[str, Any] = {
-        "ACTIVE_LLM_SERVER": runtime_local_id,
-        "LLM_MODEL_NAME": fallback_model,
-        "HYBRID_LOCAL_MODEL": fallback_model,
-        previous_key: "",
-    }
-    if runtime_local_id == "ollama":
-        updates["LAST_MODEL_OLLAMA"] = fallback_model
-    elif runtime_local_id == "vllm":
-        updates["LAST_MODEL_VLLM"] = fallback_model
-        fallback_path = _resolve_local_runtime_model_path_by_name(
-            mgr=mgr,
-            model_name=fallback_model,
-        )
-        if fallback_path:
-            updates["VLLM_MODEL_PATH"] = fallback_path
-            updates["VLLM_SERVED_MODEL_NAME"] = fallback_model
-            template_path = Path(fallback_path) / "chat_template.jinja"
-            updates["VLLM_CHAT_TEMPLATE"] = (
-                str(template_path) if template_path.exists() else ""
-            )
+    updates = _build_runtime_rollback_updates(
+        mgr=mgr,
+        runtime_local_id=runtime_local_id,
+        previous_key=previous_key,
+        fallback_model=fallback_model,
+    )
     endpoint = _runtime_endpoint_for_hash(runtime_local_id)
     config_hash = compute_llm_config_hash(runtime_local_id, endpoint, fallback_model)
     updates["LLM_CONFIG_HASH"] = config_hash
     config_manager.update_config(updates)
     try:
-        SETTINGS.ACTIVE_LLM_SERVER = runtime_local_id
-        SETTINGS.LLM_MODEL_NAME = fallback_model
-        SETTINGS.HYBRID_LOCAL_MODEL = fallback_model
-        SETTINGS.LLM_CONFIG_HASH = config_hash
-        if runtime_local_id == "vllm":
-            if "VLLM_MODEL_PATH" in updates:
-                SETTINGS.VLLM_MODEL_PATH = str(updates["VLLM_MODEL_PATH"])
-            SETTINGS.VLLM_SERVED_MODEL_NAME = fallback_model
-            SETTINGS.LAST_MODEL_VLLM = fallback_model
-            _restart_vllm_runtime()
+        _apply_runtime_rollback_settings(
+            runtime_local_id=runtime_local_id,
+            fallback_model=fallback_model,
+            config_hash=config_hash,
+            updates=updates,
+        )
     except Exception:
         logger.warning("Failed to update SETTINGS during adapter chat rollback.")
 
@@ -1166,10 +1231,9 @@ async def validate_adapter_runtime_compatibility(
     """Validate that adapter base model can run on selected inference runtime."""
     from venom_core.config import SETTINGS
 
-    runtime_normalized = runtime_id.strip().lower()
-    if not runtime_normalized:
+    runtime_local_id = _resolve_local_runtime_id(runtime_id.strip().lower())
+    if not runtime_id.strip():
         return
-    runtime_local_id = _resolve_local_runtime_id(runtime_normalized)
     if runtime_local_id is None:
         raise ValueError(
             "Academy adapter supports only local runtimes (ollama/vllm/onnx); "
@@ -1191,13 +1255,12 @@ async def validate_adapter_runtime_compatibility(
     if trainable_info is None:
         return
 
-    runtime_compatibility = trainable_info.runtime_compatibility or {}
+    runtime_compatibility = dict(trainable_info.runtime_compatibility or {})
     if not runtime_compatibility:
         return
+
     if runtime_compatibility.get(runtime_local_id):
-        if not model_id:
-            return
-        selected_model = model_id.strip()
+        selected_model = str(model_id or "").strip()
         if not selected_model:
             return
         await _assert_runtime_model_available(
@@ -1205,10 +1268,10 @@ async def validate_adapter_runtime_compatibility(
             runtime_id=runtime_local_id,
             model_id=selected_model,
         )
-        adapter_runtime_model = f"venom-adapter-{adapter_id}"
+        adapter_runtime_model = f"venom-adapter-{adapter_id}".lower()
         selected_canonical = _canonical_runtime_model_id(selected_model)
         base_canonical = _canonical_runtime_model_id(base_model)
-        if selected_model.strip().lower() == adapter_runtime_model.lower():
+        if selected_model.lower() == adapter_runtime_model:
             return
         if selected_canonical == base_canonical:
             return

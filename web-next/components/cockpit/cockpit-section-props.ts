@@ -212,11 +212,15 @@ export function useCockpitSectionProps() {
     if (!selectedServer) return;
 
     if (selectedModel) {
-      void handleActivateModel(selectedModel);
+      handleActivateModel(selectedModel).catch((error) => {
+        const message =
+          error instanceof Error ? error.message : "Nie udało się aktywować modelu.";
+        interactive.setters.setMessage(message);
+      });
       return;
     }
 
-    void (async () => {
+    const activateServerOnly = async () => {
       try {
         interactive.setters.setLlmActionPending(`activate:${selectedServer}`);
         await setActiveLlmServer(selectedServer);
@@ -230,7 +234,12 @@ export function useCockpitSectionProps() {
         data.refresh.activeServer();
         data.refresh.models();
       }
-    })();
+    };
+    activateServerOnly().catch((error) => {
+      const message =
+        error instanceof Error ? error.message : "Nie udało się aktywować serwera.";
+      interactive.setters.setMessage(message);
+    });
   }, [
     data.refresh,
     handleActivateModel,

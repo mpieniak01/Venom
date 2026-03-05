@@ -286,6 +286,35 @@ def test_start_run_uses_shared_trainable_model_validator(tmp_path: Path):
         )
 
 
+def test_is_trainable_model_handles_blank_and_validator_exception(tmp_path: Path):
+    def _raiser(_model_id: str) -> bool:
+        raise RuntimeError("validator failed")
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        is_model_trainable_fn=_raiser,
+    )
+
+    assert service._is_trainable_model("   ") is False
+    assert service._is_trainable_model("unsloth/Phi-3-mini-4k-instruct") is True
+
+
+def test_resolve_default_embedding_profile_id_falls_back_to_first_profile(
+    tmp_path: Path,
+):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    service._embedding_profiles = lambda: [  # type: ignore[method-assign]
+        {"profile_id": "profile-a", "healthy": False},
+        {"profile_id": "profile-b", "healthy": False},
+    ]
+
+    assert service._resolve_default_embedding_profile_id() == "profile-a"
+
+
 def test_start_run_rejects_rag_without_embedding_profile(tmp_path: Path):
     service = SelfLearningService(
         storage_dir=str(tmp_path / "storage"), repo_root=str(tmp_path)

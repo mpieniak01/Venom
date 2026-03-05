@@ -70,6 +70,75 @@ def test_get_local_job_status_process_and_pid_fallback(tmp_path: Path) -> None:
     assert fallback["status"] == "running"
 
 
+def test_dataset_path_resolution_and_allowed_roots_helpers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    training_dir = tmp_path / "training"
+    training_dir.mkdir()
+    existing_rel = tmp_path / "nested" / "dataset.jsonl"
+    existing_rel.parent.mkdir(parents=True, exist_ok=True)
+    existing_rel.write_text("{}", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    resolved_existing = runtime._resolve_dataset_path_for_request(
+        dataset_path="nested/dataset.jsonl",
+        training_base_dir=training_dir,
+    )
+    assert resolved_existing == existing_rel.resolve()
+
+    resolved_missing = runtime._resolve_dataset_path_for_request(
+        dataset_path="missing/sub/path.jsonl",
+        training_base_dir=training_dir,
+    )
+    assert resolved_missing == (training_dir / "path.jsonl").resolve()
+
+    settings = SimpleNamespace(STORAGE_PREFIX=str(tmp_path / "storage"))
+    roots = runtime._allowed_dataset_roots(settings, training_dir)
+    assert roots[0] == training_dir
+    assert roots[1] == (
+        (tmp_path / "storage").resolve() / "data" / "academy" / "self_learning"
+    )
+
+
+def test_run_training_job_rejects_dataset_outside_allowed_roots(tmp_path: Path) -> None:
+    training_dir = tmp_path / "training"
+    models_dir = tmp_path / "models"
+    training_dir.mkdir()
+    models_dir.mkdir()
+    outside_dataset = tmp_path / "outside.jsonl"
+    outside_dataset.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="poza dozwolonymi katalogami"):
+        runtime.run_training_job(
+            manager=SimpleNamespace(
+                _is_path_within_base=lambda _path, _base: False,
+            ),
+            request=runtime.TrainingJobRequest(
+                dataset_path=str(outside_dataset),
+                base_model="phi",
+                output_dir="out",
+                lora_rank=8,
+                learning_rate=0.0002,
+                num_epochs=1,
+                max_seq_length=512,
+                batch_size=1,
+                job_name="job-outside",
+            ),
+            deps=runtime.TrainingJobDeps(
+                settings=SimpleNamespace(
+                    ACADEMY_TRAINING_DIR=str(training_dir),
+                    ACADEMY_MODELS_DIR=str(models_dir),
+                    STORAGE_PREFIX="",
+                ),
+                logger=_Logger(),
+                docker_module=SimpleNamespace(
+                    types=SimpleNamespace(DeviceRequest=object)
+                ),
+                image_not_found_error=RuntimeError,
+            ),
+        )
+
+
 def test_terminate_local_process_timeout_kills() -> None:
     events: list[str] = []
 

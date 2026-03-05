@@ -19,6 +19,31 @@ def _client() -> TestClient:
     return TestClient(app)
 
 
+def _runtime_vllm_dir(tmp_path: Path, name: str) -> Path:
+    model_dir = tmp_path / name
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_text("x", encoding="utf-8")
+    return model_dir
+
+
+def _local_model_entry(
+    *,
+    name: str,
+    provider: str,
+    path: Path,
+    source: str,
+    chat_compatible: bool = True,
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "provider": provider,
+        "path": str(path),
+        "source": source,
+        "chat_compatible": chat_compatible,
+    }
+
+
 def test_runtime_options_endpoint_returns_contract_snapshot() -> None:
     payload = {
         "status": "success",
@@ -314,30 +339,25 @@ def test_apply_vllm_runtime_autofix_updates_invalid_config(tmp_path: Path) -> No
 async def test_local_models_by_runtime_skips_non_runtime_vllm_entries(
     tmp_path: Path,
 ) -> None:
-    valid_runtime_dir = tmp_path / "runtime-vllm"
-    valid_runtime_dir.mkdir(parents=True)
-    (valid_runtime_dir / "config.json").write_text("{}", encoding="utf-8")
-    (valid_runtime_dir / "model.safetensors").write_text("x", encoding="utf-8")
+    valid_runtime_dir = _runtime_vllm_dir(tmp_path, "runtime-vllm")
     plain_dir = tmp_path / "plain-folder"
     plain_dir.mkdir(parents=True)
 
     settings = SimpleNamespace(REPO_ROOT=str(tmp_path))
     active_runtime = SimpleNamespace(provider="vllm", model_name="good-model")
     local_models = [
-        {
-            "name": "good-model",
-            "provider": "vllm",
-            "path": str(valid_runtime_dir),
-            "source": "vllm",
-            "chat_compatible": True,
-        },
-        {
-            "name": "plain-folder",
-            "provider": "vllm",
-            "path": str(plain_dir),
-            "source": "models",
-            "chat_compatible": True,
-        },
+        _local_model_entry(
+            name="good-model",
+            provider="vllm",
+            path=valid_runtime_dir,
+            source="vllm",
+        ),
+        _local_model_entry(
+            name="plain-folder",
+            provider="vllm",
+            path=plain_dir,
+            source="models",
+        ),
     ]
 
     with (
@@ -355,3 +375,40 @@ async def test_local_models_by_runtime_skips_non_runtime_vllm_entries(
         and item.get("reason") == "not_runtime_loadable_for_vllm"
         for item in audit
     )
+
+
+@pytest.mark.asyncio
+async def test_local_models_by_runtime_reports_unknown_provider_issue(
+    tmp_path: Path,
+) -> None:
+    weird_dir = tmp_path / "weird-model"
+    weird_dir.mkdir(parents=True)
+    settings = SimpleNamespace(REPO_ROOT=str(tmp_path))
+    active_runtime = SimpleNamespace(provider="vllm", model_name="")
+    local_models = [
+        _local_model_entry(
+            name="mystery-model",
+            provider="custom-provider",
+            path=weird_dir,
+            source="custom-source",
+        )
+    ]
+
+    with (
+        patch.object(system_llm, "SETTINGS", settings),
+        patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
+    ):
+        grouped, audit = await system_llm._local_models_by_runtime(  # noqa: SLF001
+            model_manager=object(),
+            local_models=local_models,
+        )
+
+    assert grouped == {"ollama": [], "vllm": [], "onnx": []}
+    assert audit == [
+        {
+            "name": "mystery-model",
+            "path": str(weird_dir),
+            "source": "custom-source",
+            "reason": "provider_unknown",
+        }
+    ]

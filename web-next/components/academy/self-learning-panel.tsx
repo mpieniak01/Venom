@@ -48,6 +48,7 @@ export function SelfLearningPanel() {
   const [trainableModels, setTrainableModels] = useState<SelfLearningTrainableModelInfo[]>([]);
   const [runtimeOptions, setRuntimeOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [selectedRuntime, setSelectedRuntime] = useState("");
+  const [runtimeModelAuditIssuesCount, setRuntimeModelAuditIssuesCount] = useState(0);
   const [embeddingProfiles, setEmbeddingProfiles] = useState<SelfLearningEmbeddingProfile[]>([]);
   const [defaultBaseModel, setDefaultBaseModel] = useState<string | null>(null);
   const [defaultEmbeddingProfileId, setDefaultEmbeddingProfileId] = useState<string | null>(null);
@@ -78,6 +79,9 @@ export function SelfLearningPanel() {
         const catalog = await getUnifiedModelCatalog();
         // Unified catalog is the source of truth, including an empty list.
         trainable = catalog.trainable_models ?? [];
+        setRuntimeModelAuditIssuesCount(
+          Number(catalog.model_audit?.issues_count ?? 0),
+        );
         const availableRuntimes = (catalog.runtimes ?? [])
           .filter(
             (runtime) =>
@@ -280,6 +284,13 @@ export function SelfLearningPanel() {
           {t("academy.selfLearning.title")}
         </h2>
         <p className="text-sm text-hint">{t("academy.selfLearning.subtitle")}</p>
+        {runtimeModelAuditIssuesCount > 0 ? (
+          <p className="mt-1 text-xs text-amber-300">
+            {t("academy.selfLearning.runtimeModelAuditWarning", {
+              count: String(runtimeModelAuditIssuesCount),
+            })}
+          </p>
+        ) : null}
       </div>
 
       <SelfLearningConfigurator

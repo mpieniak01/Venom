@@ -505,6 +505,10 @@ export function useLlmRuntimeOptions(intervalMs = 0) {
         selector_flow: Array.isArray(data?.selector_flow)
           ? data.selector_flow
           : ["server", "model", "adapter"],
+        model_audit:
+          data?.model_audit && typeof data.model_audit === "object"
+            ? data.model_audit
+            : undefined,
       };
     },
     intervalMs,

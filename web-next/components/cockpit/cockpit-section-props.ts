@@ -142,6 +142,9 @@ export function useCockpitSectionProps() {
   const adapterDeployReason = adapterDeploySupported
     ? null
     : t("cockpit.models.adapterRuntimeNotSupported", { runtime: resolvedServerId || "unknown" });
+  const modelAuditIssuesCount = Number(
+    data.llmRuntimeOptions?.model_audit?.issues_count ?? 0,
+  );
   const llmModelOptions = useMemo(
     () =>
       selectedRuntimeModels.map((model) => ({
@@ -406,10 +409,12 @@ export function useCockpitSectionProps() {
     tuningLabel,
     adapterDeploySupported,
     adapterDeployReason,
+    modelAuditIssuesCount,
     compactControls: chatFullscreen,
   }), [
     adapterDeployReason,
     adapterDeploySupported,
+    modelAuditIssuesCount,
     chatFullscreen,
     chatMode,
     composerRef,

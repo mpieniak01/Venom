@@ -73,6 +73,7 @@ type ChatComposerProps = Readonly<{
   tuningLabel: string;
   adapterDeploySupported: boolean;
   adapterDeployReason?: string | null;
+  modelAuditIssuesCount?: number;
   compactControls?: boolean;
 }>;
 
@@ -98,6 +99,7 @@ export const ChatComposer = memo(
       tuningLabel,
       adapterDeploySupported,
       adapterDeployReason,
+      modelAuditIssuesCount = 0,
       compactControls = false,
     },
     ref,
@@ -441,6 +443,13 @@ export const ChatComposer = memo(
             </div>
           </div>
           <div className={secondaryRowClassName}>
+            {modelAuditIssuesCount > 0 ? (
+              <p className="text-[11px] text-amber-300">
+                {t("cockpit.models.runtimeModelAuditWarning", {
+                  count: String(modelAuditIssuesCount),
+                })}
+              </p>
+            ) : null}
             <label className="flex items-center gap-1 text-xs text-zinc-400">
               <input
                 type="checkbox"

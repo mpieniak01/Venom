@@ -54,7 +54,7 @@ export const academy = {
     baseModelHint: "Nur Modelle aus der trainierbaren Liste können für Academy-Training genutzt werden.",
     loadingModels: "Trainierbare Modelle werden geladen...",
     noTrainableModels: "Keine trainierbaren Modelle verfügbar",
-    engineLabel: "Engine",
+    engineLabel: "Modellanbieter",
     locationLabel: "Training",
     locationLocal: "lokal",
     locationCloud: "Cloud-API",
@@ -76,8 +76,8 @@ export const academy = {
     },
     orderingHint:
       "Sortierung: zuerst lokale Modelle, dann kostenlose Cloud-Modelle, zuletzt Cloud-Modelle mit unklaren oder kostenpflichtigen Kosten.",
-    compatibilityLabel: "Kompatibilität",
-    runtimeUnknown: "keine bestätigte Runtime-Kompatibilität",
+    compatibilityLabel: "Inference-Runtime nach dem Training",
+    runtimeUnknown: "keine bestätigte Inference-Runtime-Kompatibilität nach dem Training",
     engineNames: {
       unsloth: "Unsloth",
       huggingface: "HuggingFace",
@@ -204,6 +204,8 @@ export const academy = {
     title: "Selbstlernen",
     subtitle:
       "Trainiere Venom mit internen Wissensquellen des Repositories (docs, docs_dev, Code) per LLM-Fine-Tuning oder RAG-Indizierung.",
+    runtimeModelAuditWarning:
+      "Der Runtime-Katalog hat {{count}} lokale(s) Modell(e) herausgefiltert, weil sie nicht zum Ladevertrag der gewählten Runtime passen.",
     config: {
       title: "Selbstlernen-Konfiguration",
       description: "Wähle Modus, Quellen und Sicherheitslimits vor dem Start.",
@@ -221,6 +223,8 @@ export const academy = {
       },
       sources: {
         docs: "Repository-Dokumentation (/docs)",
+        docsEn: "Nur englische Dokumentation (/docs ohne /docs/PL)",
+        docsPl: "Nur polnische Dokumentation (/docs/PL)",
         docsDev: "Entwickler-Dokumentation (/docs_dev)",
         code: "Quellcode (venom_core, web-next, scripts)",
       },

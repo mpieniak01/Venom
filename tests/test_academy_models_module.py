@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -458,6 +459,59 @@ def test_activate_adapter_with_chat_runtime_deploy_ollama(
     assert mock_config_manager.update_config.call_count >= 1
 
 
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_with_chat_runtime_deploy_vllm(mock_settings, tmp_path):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mgr = MagicMock()
+
+    adapter_dir = tmp_path / "ok-adapter" / "adapter"
+    adapter_dir.mkdir(parents=True)
+    mgr.activate_adapter.return_value = True
+
+    with patch(
+        "venom_core.api.routes.academy_models._deploy_adapter_to_vllm_runtime",
+        return_value={
+            "deployed": True,
+            "runtime_id": "vllm",
+            "chat_model": "venom-adapter-ok-adapter",
+        },
+    ) as deploy_vllm:
+        payload = academy_models.activate_adapter(
+            mgr=mgr,
+            adapter_id="ok-adapter",
+            runtime_id="vllm",
+            deploy_to_chat_runtime=True,
+        )
+
+    assert payload["success"] is True
+    assert payload["deployed"] is True
+    assert payload["runtime_id"] == "vllm"
+    deploy_vllm.assert_called_once_with(mgr=mgr, adapter_id="ok-adapter")
+
+
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_with_chat_runtime_deploy_onnx_skipped(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mgr = MagicMock()
+
+    adapter_dir = tmp_path / "ok-adapter" / "adapter"
+    adapter_dir.mkdir(parents=True)
+    mgr.activate_adapter.return_value = True
+
+    payload = academy_models.activate_adapter(
+        mgr=mgr,
+        adapter_id="ok-adapter",
+        runtime_id="onnx",
+        deploy_to_chat_runtime=True,
+    )
+
+    assert payload["success"] is True
+    assert payload["deployed"] is False
+    assert payload["reason"] == "runtime_not_supported:onnx"
+
+
 @patch("venom_core.api.routes.academy_models.config_manager")
 @patch("venom_core.config.SETTINGS")
 def test_deactivate_adapter_with_chat_runtime_rollback_ollama(
@@ -478,6 +532,46 @@ def test_deactivate_adapter_with_chat_runtime_rollback_ollama(
     assert payload["rolled_back"] is True
     assert payload["runtime_id"] == "ollama"
     assert payload["chat_model"] == "phi3:latest"
+    assert mock_config_manager.update_config.call_count >= 1
+
+
+@patch("venom_core.api.routes.academy_models.config_manager")
+@patch("venom_core.config.SETTINGS")
+def test_deactivate_adapter_with_chat_runtime_rollback_vllm(
+    mock_settings, mock_config_manager, tmp_path
+):
+    mock_settings.ACTIVE_LLM_SERVER = "vllm"
+    mgr = MagicMock()
+    mgr.deactivate_adapter.return_value = True
+    fallback_runtime_dir = tmp_path / "vllm-fallback"
+    fallback_runtime_dir.mkdir(parents=True)
+    mock_config_manager.get_config.return_value = {
+        "PREVIOUS_MODEL_VLLM": "qwen2.5-coder:7b",
+    }
+
+    with (
+        patch(
+            "venom_core.api.routes.academy_models.get_active_llm_runtime",
+            return_value=SimpleNamespace(provider="vllm"),
+        ),
+        patch(
+            "venom_core.api.routes.academy_models._resolve_local_runtime_model_path_by_name",
+            return_value=str(fallback_runtime_dir),
+        ),
+        patch(
+            "venom_core.api.routes.academy_models._restart_vllm_runtime",
+            return_value=None,
+        ),
+    ):
+        payload = academy_models.deactivate_adapter(
+            mgr,
+            deploy_to_chat_runtime=True,
+        )
+
+    assert payload["success"] is True
+    assert payload["rolled_back"] is True
+    assert payload["runtime_id"] == "vllm"
+    assert payload["chat_model"] == "qwen2.5-coder:7b"
     assert mock_config_manager.update_config.call_count >= 1
 
 
@@ -591,3 +685,108 @@ async def test_validate_adapter_runtime_compatibility_accepts_compatible_runtime
             adapter_id="adapter-1",
             runtime_id="vllm",
         )
+
+
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
+async def test_validate_adapter_runtime_compatibility_rejects_mismatched_model_id(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+    adapter_dir = tmp_path / "adapter-1"
+    adapter_dir.mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "Qwen/Qwen2.5-Coder-7B-Instruct",
+                "provider": "vllm",
+                "path": str(tmp_path / "qwen-vllm"),
+            },
+            {
+                "name": "gemma-3-4b-it",
+                "provider": "vllm",
+                "path": str(tmp_path / "gemma-vllm"),
+            },
+        ]
+    )
+    with patch(
+        "venom_core.api.routes.academy_models.list_trainable_models",
+        AsyncMock(
+            return_value=[
+                TrainableModelInfo(
+                    model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+                    label="Qwen 2.5 Coder 7B",
+                    provider="huggingface",
+                    trainable=True,
+                    runtime_compatibility={"vllm": True, "onnx": False},
+                )
+            ]
+        ),
+    ):
+        with pytest.raises(
+            ValueError, match="Adapter base model does not match selected runtime model"
+        ):
+            await academy_models.validate_adapter_runtime_compatibility(
+                mgr=mgr,
+                adapter_id="adapter-1",
+                runtime_id="vllm",
+                model_id="gemma-3-4b-it",
+            )
+
+
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
+async def test_validate_adapter_runtime_compatibility_rejects_missing_runtime_model(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+    adapter_dir = tmp_path / "adapter-1"
+    adapter_dir.mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "Qwen/Qwen2.5-Coder-7B-Instruct",
+                "provider": "vllm",
+                "path": str(tmp_path / "qwen-vllm"),
+            }
+        ]
+    )
+    with patch(
+        "venom_core.api.routes.academy_models.list_trainable_models",
+        AsyncMock(
+            return_value=[
+                TrainableModelInfo(
+                    model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+                    label="Qwen 2.5 Coder 7B",
+                    provider="huggingface",
+                    trainable=True,
+                    runtime_compatibility={"vllm": True, "onnx": False},
+                )
+            ]
+        ),
+    ):
+        with pytest.raises(
+            ValueError, match="Selected model is not available on runtime"
+        ):
+            await academy_models.validate_adapter_runtime_compatibility(
+                mgr=mgr,
+                adapter_id="adapter-1",
+                runtime_id="vllm",
+                model_id="non-existing-model",
+            )

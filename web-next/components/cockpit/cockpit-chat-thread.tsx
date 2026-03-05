@@ -222,6 +222,7 @@ export const ChatComposer = memo(
               adapter_id: adapter.adapter_id,
               adapter_path: adapter.adapter_path,
               runtime_id: selectedRuntimeId,
+              model_id: selectedLlmModel,
             });
           }
           await loadAdapters();

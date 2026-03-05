@@ -181,6 +181,7 @@ export async function activateAdapter(params: {
   adapter_id: string;
   adapter_path: string;
   runtime_id?: string;
+  model_id?: string;
   deploy_to_chat_runtime?: boolean;
 }): Promise<{
   success: boolean;

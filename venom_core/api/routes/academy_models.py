@@ -684,6 +684,70 @@ def _resolve_local_runtime_id(runtime_id: str) -> Optional[str]:
     return _canonical_local_runtime_id(runtime_id)
 
 
+def _canonical_runtime_model_id(model_id: str) -> str:
+    normalized = model_id.strip().lower()
+    if not normalized:
+        return ""
+    return _TRAINABLE_MODEL_ALIAS_TO_CANONICAL.get(normalized, normalized)
+
+
+def _infer_local_runtime_provider(model: Dict[str, Any]) -> str:
+    provider = str(model.get("provider") or "").strip().lower()
+    if provider in {"ollama", "vllm", "onnx"}:
+        return provider
+    source = str(model.get("source") or "").strip().lower()
+    if source in {"ollama", "vllm", "onnx"}:
+        return source
+    model_name = str(model.get("name") or "").strip().lower()
+    model_path = str(model.get("path") or "").strip().lower()
+    if "onnx" in model_name or "onnx" in model_path or model_path.endswith(".onnx"):
+        return "onnx"
+    if ":" in model_name:
+        return "ollama"
+    return "vllm"
+
+
+async def _assert_runtime_model_available(
+    *,
+    mgr: Any,
+    runtime_id: str,
+    model_id: str,
+) -> None:
+    candidate = model_id.strip()
+    if not candidate:
+        return
+    try:
+        local_models = await mgr.list_local_models()
+    except Exception as exc:  # pragma: no cover - defensive path
+        logger.warning(
+            "Failed to read local model catalog during adapter compatibility validation: %s",
+            exc,
+        )
+        return
+
+    runtime_models = {
+        str(model.get("name") or "").strip()
+        for model in local_models
+        if str(model.get("name") or "").strip()
+        and _infer_local_runtime_provider(model) == runtime_id
+    }
+    if candidate in runtime_models:
+        return
+
+    requested_canonical = _canonical_runtime_model_id(candidate)
+    if requested_canonical and any(
+        _canonical_runtime_model_id(name) == requested_canonical
+        for name in runtime_models
+    ):
+        return
+
+    available_hint = ", ".join(sorted(runtime_models)[:8]) or "none"
+    raise ValueError(
+        "Selected model is not available on runtime "
+        f"'{runtime_id}': '{candidate}'. Available: {available_hint}."
+    )
+
+
 def _resolve_runtime_for_adapter_deploy(runtime_id: str | None) -> str:
     requested = (runtime_id or "").strip().lower()
     if requested:
@@ -1091,6 +1155,7 @@ async def validate_adapter_runtime_compatibility(
     mgr: Any,
     adapter_id: str,
     runtime_id: str,
+    model_id: str | None = None,
 ) -> None:
     """Validate that adapter base model can run on selected inference runtime."""
     from venom_core.config import SETTINGS
@@ -1124,7 +1189,27 @@ async def validate_adapter_runtime_compatibility(
     if not runtime_compatibility:
         return
     if runtime_compatibility.get(runtime_local_id):
-        return
+        if not model_id:
+            return
+        selected_model = model_id.strip()
+        if not selected_model:
+            return
+        await _assert_runtime_model_available(
+            mgr=mgr,
+            runtime_id=runtime_local_id,
+            model_id=selected_model,
+        )
+        adapter_runtime_model = f"venom-adapter-{adapter_id}"
+        selected_canonical = _canonical_runtime_model_id(selected_model)
+        base_canonical = _canonical_runtime_model_id(base_model)
+        if selected_model.strip().lower() == adapter_runtime_model.lower():
+            return
+        if selected_canonical == base_canonical:
+            return
+        raise ValueError(
+            "Adapter base model does not match selected runtime model. "
+            f"Selected model: '{selected_model}', adapter base model: '{base_model}'."
+        )
 
     compatible_runtimes = sorted(
         runtime

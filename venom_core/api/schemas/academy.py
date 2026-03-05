@@ -28,11 +28,11 @@ class TrainingRequest(BaseModel):
 
     dataset_path: str | None = None
     base_model: str | None = None
-    lora_rank: int = Field(default=16, ge=4, le=64)
+    lora_rank: int = Field(default=8, ge=4, le=64)
     learning_rate: float = Field(default=2e-4, gt=0, le=1e-2)
-    num_epochs: int = Field(default=3, ge=1, le=20)
-    batch_size: int = Field(default=4, ge=1, le=32)
-    max_seq_length: int = Field(default=2048, ge=256, le=8192)
+    num_epochs: int = Field(default=2, ge=1, le=20)
+    batch_size: int = Field(default=1, ge=1, le=32)
+    max_seq_length: int = Field(default=1024, ge=256, le=8192)
 
     @field_validator("learning_rate")
     @classmethod
@@ -103,6 +103,7 @@ class ActivateAdapterRequest(BaseModel):
     adapter_id: str
     adapter_path: str
     runtime_id: str | None = None
+    model_id: str | None = None
     deploy_to_chat_runtime: bool = False
 
 

@@ -395,6 +395,7 @@ async def activate_adapter_handler(
                 mgr=manager,
                 adapter_id=request.adapter_id,
                 runtime_id=runtime_id,
+                model_id=str(getattr(request, "model_id", "") or "").strip() or None,
             )
         return academy.academy_models.activate_adapter(
             mgr=manager,

@@ -1,52 +1,24 @@
-function resolveLanguageFromStorage(): keyof typeof DATE_LOCALES {
-  if (globalThis.window === undefined) return "pl";
-  const stored = globalThis.window.localStorage.getItem("venom-language");
-  if (stored === "en" || stored === "de" || stored === "pl") {
-    return stored;
-  }
-  return "pl";
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
 }
 
-const RELATIVE_UNITS = [
-  { unit: "year", threshold: 12, step: 12 },
-  { unit: "month", threshold: 30, step: 30 },
-  { unit: "day", threshold: 24, step: 24 },
-  { unit: "hour", threshold: 60, step: 60 },
-  { unit: "minute", threshold: 60, step: 60 },
-] as const;
-
-function resolveRelativeAmount(absSeconds: number): {
-  unit: Intl.RelativeTimeFormatUnit;
-  amount: number;
-} {
-  let unit: Intl.RelativeTimeFormatUnit = "second";
-  let amount = absSeconds;
-
-  for (const entry of RELATIVE_UNITS) {
-    const nextAmount = Math.floor(amount / entry.step);
-    if (nextAmount < 1) break;
-    unit = entry.unit;
-    amount = nextAmount;
-    if (amount < entry.threshold) break;
-  }
-
-  return { unit, amount };
-}
-
-export function formatRelativeTime(value?: string | null): string {
+export function formatDateTimePrecise(value?: string | null): string {
   if (!value) return "—";
   const target = new Date(value);
   if (Number.isNaN(target.getTime())) return value;
 
-  const diffMs = Date.now() - target.getTime();
-  const absSeconds = Math.max(1, Math.floor(Math.abs(diffMs) / 1000));
-  const { unit, amount } = resolveRelativeAmount(absSeconds);
+  const year = target.getFullYear();
+  const month = pad2(target.getMonth() + 1);
+  const day = pad2(target.getDate());
+  const hour = pad2(target.getHours());
+  const minute = pad2(target.getMinutes());
+  const second = pad2(target.getSeconds());
+  const tenth = Math.floor(target.getMilliseconds() / 100);
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}.${tenth}`;
+}
 
-  const language = resolveLanguageFromStorage();
-  const locale = DATE_LOCALES[language] ?? DATE_LOCALES.en;
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  const signedAmount = diffMs >= 0 ? -amount : amount;
-  return rtf.format(signedAmount, unit);
+export function formatRelativeTime(value?: string | null): string {
+  return formatDateTimePrecise(value);
 }
 
 export type DateFormatKey = "compact" | "medium" | "news" | "date" | "time";

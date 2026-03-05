@@ -290,6 +290,40 @@ async def test_list_trainable_models_sorts_local_before_cloud_free(
 
 @pytest.mark.asyncio
 @patch("venom_core.config.SETTINGS")
+async def test_list_trainable_models_deduplicates_model_family_entries(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
+    model_dir = tmp_path / "gemma-3-4b-it"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_text("weights", encoding="utf-8")
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "gemma-3-4b-it",
+                "provider": "vllm",
+                "runtime": "vllm",
+                "source": "models",
+                "path": str(model_dir),
+                "type": "folder",
+            }
+        ]
+    )
+
+    models = await academy_models.list_trainable_models(mgr=mgr)
+    gemma_family = [
+        item for item in models if item.model_id.lower().endswith("gemma-3-4b-it")
+    ]
+
+    assert len(gemma_family) == 1
+    assert gemma_family[0].model_id == "gemma-3-4b-it"
+    assert gemma_family[0].installed_local is True
+
+
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
 async def test_list_trainable_models_uses_prefetched_local_models(mock_settings):
     mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
     mgr = MagicMock()

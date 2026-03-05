@@ -555,6 +555,26 @@ def ensure_default_model_visible(
     )
 
 
+def _trainable_model_family_key(model_id: str) -> str:
+    normalized = model_id.strip().lower()
+    if "/" in normalized:
+        normalized = normalized.split("/")[-1]
+    return normalized
+
+
+def _trainable_model_preference(
+    item: TrainableModelInfo,
+) -> tuple[int, int, int, int, str]:
+    # Prefer locally installed entries for the same model family, then stable ordering.
+    return (
+        0 if item.installed_local else 1,
+        0 if item.source_type == "local" else 1,
+        0 if item.recommended else 1,
+        item.model_id.count("/"),
+        item.model_id.lower(),
+    )
+
+
 async def list_trainable_models(
     mgr: Any,
     *,
@@ -613,6 +633,15 @@ async def list_trainable_models(
     )
     # API contract for Academy model picker: return only actually trainable options.
     result = [item for item in result if item.trainable]
+    deduped_by_family: dict[str, TrainableModelInfo] = {}
+    for item in result:
+        family_key = _trainable_model_family_key(item.model_id)
+        existing = deduped_by_family.get(family_key)
+        if existing is None or _trainable_model_preference(
+            item
+        ) < _trainable_model_preference(existing):
+            deduped_by_family[family_key] = item
+    result = list(deduped_by_family.values())
     result.sort(
         key=lambda item: (
             item.priority_bucket,

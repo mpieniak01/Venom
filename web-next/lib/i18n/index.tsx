@@ -16,9 +16,6 @@ import dayjs from "dayjs";
 import "dayjs/locale/pl";
 import "dayjs/locale/en";
 import "dayjs/locale/de";
-import relativeTime from "dayjs/plugin/relativeTime";
-
-dayjs.extend(relativeTime);
 
 const STORAGE_KEY = "venom-language";
 

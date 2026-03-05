@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Play, Loader2, RefreshCw, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +44,7 @@ export const MODEL_SECTION_ORDER: ModelSectionKey[] = [
 ];
 
 export function getTrainingModelSectionKey(model: TrainableModelInfo): ModelSectionKey {
-  if (model.source_type === "local") return "localFirst";
+  if (model.installed_local) return "localFirst";
   if (model.cost_tier === "free") return "cloudFree";
   return "cloudOther";
 }
@@ -95,32 +95,41 @@ export function TrainingPanel() {
   const [selectedBaseModel, setSelectedBaseModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
 
-  useEffect(() => {
-    loadJobs();
-    loadTrainableModels();
-  }, []);
-
-  useEffect(() => {
-    // Auto-refresh co 10s tylko gdy są joby running
-    if (!jobs.some((j) => j.status === "running")) {
-      return;
+  const resolveEngineKey = (provider: string): SupportedEngine => {
+    const normalized = provider.trim().toLowerCase();
+    if (
+      normalized === "unsloth" ||
+      normalized === "huggingface" ||
+      normalized === "onnx" ||
+      normalized === "vllm" ||
+      normalized === "ollama" ||
+      normalized === "openai" ||
+      normalized === "google" ||
+      normalized === "config"
+    ) {
+      return normalized;
     }
-    const interval = setInterval(() => {
-      loadJobs();
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [jobs]);
+    return "unknown";
+  };
 
-  async function loadJobs() {
+  const getRuntimeDisplayName = useCallback((runtimeId: string): string => {
+    const engineKey = resolveEngineKey(runtimeId);
+    if (engineKey === "unknown") {
+      return runtimeId;
+    }
+    return t(`academy.training.engineNames.${engineKey}`);
+  }, [t]);
+
+  const loadJobs = useCallback(async () => {
     try {
       const data = await listJobs({ limit: 50 });
       setJobs(data.jobs);
     } catch (err) {
       console.error("Failed to load jobs:", err);
     }
-  }
+  }, []);
 
-  async function loadTrainableModels(runtimeOverride?: string) {
+  const loadTrainableModels = useCallback(async (runtimeOverride?: string) => {
     try {
       setModelsLoading(true);
       const catalog = await getUnifiedModelCatalog();
@@ -136,15 +145,22 @@ export function TrainingPanel() {
           label: getRuntimeDisplayName(runtime.runtime_id),
         }));
       setRuntimeOptions(availableRuntimes);
+      const activeRuntimeId =
+        String(catalog.active?.runtime_id || catalog.active?.active_server || "").trim();
       const preferredRuntime =
         runtimeOverride ||
         selectedRuntime ||
+        activeRuntimeId ||
         availableRuntimes[0]?.id ||
         "";
       if (preferredRuntime && preferredRuntime !== selectedRuntime) {
         setSelectedRuntime(preferredRuntime);
       }
-      const trainable = catalog.trainable_models.filter(
+      const trainableCandidates =
+        catalog.trainable_base_models.length > 0
+          ? catalog.trainable_base_models
+          : catalog.trainable_models;
+      const trainable = trainableCandidates.filter(
         (model) =>
           model.trainable &&
           (!preferredRuntime ||
@@ -154,6 +170,10 @@ export function TrainingPanel() {
       setSelectedBaseModel((current) => {
         if (current && trainable.some((model) => model.model_id === current)) {
           return current;
+        }
+        const activeModelId = String(catalog.active?.active_model || "").trim();
+        if (activeModelId && trainable.some((model) => model.model_id === activeModelId)) {
+          return activeModelId;
         }
         const recommended = trainable.find((model) => model.recommended);
         return recommended?.model_id ?? trainable[0]?.model_id ?? "";
@@ -167,7 +187,23 @@ export function TrainingPanel() {
     } finally {
       setModelsLoading(false);
     }
-  }
+  }, [getRuntimeDisplayName, selectedRuntime]);
+
+  useEffect(() => {
+    loadJobs();
+    loadTrainableModels();
+  }, [loadJobs, loadTrainableModels]);
+
+  useEffect(() => {
+    // Auto-refresh co 10s tylko gdy są joby running
+    if (!jobs.some((j) => j.status === "running")) {
+      return;
+    }
+    const interval = setInterval(() => {
+      loadJobs();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [jobs, loadJobs]);
 
   async function handleStartTraining() {
     if (!selectedBaseModel) return;
@@ -217,31 +253,6 @@ export function TrainingPanel() {
       cancelled: t("academy.training.status.cancelled"),
     };
     return labels[status];
-  };
-
-  const resolveEngineKey = (provider: string): SupportedEngine => {
-    const normalized = provider.trim().toLowerCase();
-    if (
-      normalized === "unsloth" ||
-      normalized === "huggingface" ||
-      normalized === "onnx" ||
-      normalized === "vllm" ||
-      normalized === "ollama" ||
-      normalized === "openai" ||
-      normalized === "google" ||
-      normalized === "config"
-    ) {
-      return normalized;
-    }
-    return "unknown";
-  };
-
-  const getRuntimeDisplayName = (runtimeId: string): string => {
-    const engineKey = resolveEngineKey(runtimeId);
-    if (engineKey === "unknown") {
-      return runtimeId;
-    }
-    return t(`academy.training.engineNames.${engineKey}`);
   };
 
   const getModelCompatibility = (model: TrainableModelInfo): string[] => {
@@ -344,6 +355,9 @@ export function TrainingPanel() {
                       .map((runtime) => getRuntimeDisplayName(runtime))
                       .join(" • ")
                     : t("academy.training.runtimeUnknown");
+                  const installStateLabel = selectedOption.model.installed_local
+                    ? t("academy.training.installState.localInstalled")
+                    : t("academy.training.installState.catalogDownload");
                   return (
                     <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -352,6 +366,9 @@ export function TrainingPanel() {
                         </p>
                         <p className="truncate text-left text-[11px] text-hint">
                           {t("academy.training.compatibilityLabel")}: {compatibilityLabel}
+                        </p>
+                        <p className="truncate text-left text-[11px] text-hint/80">
+                          {installStateLabel}
                         </p>
                       </div>
                       <span className="shrink-0 text-xs text-[color:var(--ui-muted)]">
@@ -385,6 +402,11 @@ export function TrainingPanel() {
                       <div className="min-w-0">
                         <p className={`truncate text-sm ${active ? "text-[color:var(--primary)]" : "text-[color:var(--text-primary)]"}`}>
                           {model.model_id}
+                        </p>
+                        <p className="mt-0.5 truncate text-[11px] text-hint/80">
+                          {model.installed_local
+                            ? t("academy.training.installState.localInstalled")
+                            : t("academy.training.installState.catalogDownload")}
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           {compatibilityBadges.length > 0 ? (

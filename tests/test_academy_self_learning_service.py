@@ -1433,3 +1433,180 @@ def test_apply_resource_optimizations_switches_to_ultra_safe_mode_on_critical_ra
     assert run.llm_config.num_epochs == 1
     assert "resource_optimizations_critical" in run.artifacts
     assert any("Critical low-RAM mode enabled" in line for line in run.logs)
+
+
+def test_list_runs_refreshes_live_state_and_sorts_desc(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run_a = service._run_from_payload(
+        {
+            "run_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+        }
+    )
+    run_b = service._run_from_payload(
+        {
+            "run_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "pending",
+            "created_at": "2026-03-05T00:00:10+00:00",
+        }
+    )
+    service._runs[run_a.run_id] = run_a
+    service._runs[run_b.run_id] = run_b
+
+    refreshed: list[str] = []
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        service,
+        "_refresh_live_run_state",
+        lambda run: refreshed.append(run.run_id),
+    )
+    try:
+        payload = service.list_runs(limit=5)
+    finally:
+        monkeypatch.undo()
+
+    assert run_a.run_id in refreshed and run_b.run_id in refreshed
+    assert payload[0]["run_id"] == run_b.run_id
+
+
+def test_recover_orphaned_run_non_llm_marks_failed(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+        }
+    )
+
+    service._recover_orphaned_run(run)
+    assert run.status == "failed"
+    assert run.finished_at is not None
+    assert run.error_message is not None
+    assert any("monitor task lost" in line for line in run.logs)
+
+
+def test_build_orphan_status_payload_from_files_and_process_detection(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    output_dir = tmp_path / "models" / "self_learning_run"
+    output_dir.mkdir(parents=True)
+    log_file = output_dir / "training.log"
+    log_file.write_text("line\n" * 3000, encoding="utf-8")
+    run = service._run_from_payload(
+        {
+            "run_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "artifacts": {"training_output_dir": str(output_dir)},
+        }
+    )
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(service, "_is_local_training_process_alive", lambda _rid: True)
+    try:
+        payload = service._build_orphan_status_payload_from_files(run)
+    finally:
+        monkeypatch.undo()
+    assert payload is not None
+    assert payload["status"] == "running"
+    assert isinstance(payload["logs"], str)
+
+    (output_dir / "adapter" / "adapter_config.json").parent.mkdir(parents=True)
+    (output_dir / "adapter" / "adapter_config.json").write_text("{}", encoding="utf-8")
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(service, "_is_local_training_process_alive", lambda _rid: False)
+    try:
+        payload_finished = service._build_orphan_status_payload_from_files(run)
+    finally:
+        monkeypatch.undo()
+    assert payload_finished is not None
+    assert payload_finished["status"] == "finished"
+
+    (output_dir / "adapter" / "adapter_config.json").unlink()
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(service, "_is_local_training_process_alive", lambda _rid: False)
+    try:
+        payload_failed = service._build_orphan_status_payload_from_files(run)
+    finally:
+        monkeypatch.undo()
+    assert payload_failed is not None
+    assert payload_failed["status"] == "failed"
+
+
+def test_is_local_training_process_alive_and_add_log_dedup(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+
+    class _Proc:
+        def __init__(self, cmdline):
+            self.info = {"cmdline": cmdline}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service.psutil.process_iter",
+        lambda attrs=None: iter(
+            [
+                _Proc(["python", "worker.py"]),
+                _Proc(["python", "train_script.py", f"self_learning_{run_id}"]),
+            ]
+        ),
+    )
+    try:
+        assert service._is_local_training_process_alive(run_id) is True
+    finally:
+        monkeypatch.undo()
+
+    run = service._run_from_payload(
+        {
+            "run_id": run_id,
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+        }
+    )
+    service._add_log(run, "same")
+    service._add_log(run, "same")
+    assert run.logs == ["same"]
+
+
+def test_is_path_allowed_for_docs_pl_and_docs_en(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_pl = docs_dir / "PL"
+    docs_pl.mkdir(parents=True)
+    en_file = docs_dir / "intro.md"
+    pl_file = docs_pl / "wstep.md"
+    en_file.write_text("en", encoding="utf-8")
+    pl_file.write_text("pl", encoding="utf-8")
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+    )
+    assert service._is_path_allowed_for_source(source="docs_en", path=en_file) is True
+    assert service._is_path_allowed_for_source(source="docs_en", path=pl_file) is False
+    assert service._is_path_allowed_for_source(source="docs_pl", path=pl_file) is True

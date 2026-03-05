@@ -307,6 +307,11 @@ export interface RuntimeCatalogModelInfo {
 }
 
 export interface UnifiedModelCatalogResponse {
+  active?: {
+    runtime_id?: string | null;
+    active_server?: string | null;
+    active_model?: string | null;
+  };
   runtimes: Array<{
     runtime_id: string;
     source_type: "local-runtime" | "cloud-api";
@@ -321,6 +326,9 @@ export interface UnifiedModelCatalogResponse {
   all_models: RuntimeCatalogModelInfo[];
   chat_models: RuntimeCatalogModelInfo[];
   coding_models: RuntimeCatalogModelInfo[];
+  runtime_servable_models: RuntimeCatalogModelInfo[];
+  trainable_base_models: TrainableModelInfo[];
+  inference_only_artifacts: RuntimeCatalogModelInfo[];
   trainable_models: TrainableModelInfo[];
   adapter_catalog: {
     all_adapters: Array<{
@@ -568,6 +576,11 @@ export async function curateDatasetV2(
 
 export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogResponse> {
   type RuntimeOptionsPayload = {
+    active?: {
+      runtime_id?: string | null;
+      active_server?: string | null;
+      active_model?: string | null;
+    };
     runtimes?: Array<{
       runtime_id: string;
       source_type: "local-runtime" | "cloud-api";
@@ -583,6 +596,9 @@ export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogRespo
       all_models?: RuntimeCatalogModelInfo[];
       chat_models?: RuntimeCatalogModelInfo[];
       coding_models?: RuntimeCatalogModelInfo[];
+      runtime_servable_models?: RuntimeCatalogModelInfo[];
+      trainable_base_models?: TrainableModelInfo[];
+      inference_only_artifacts?: RuntimeCatalogModelInfo[];
       trainable_models?: TrainableModelInfo[];
     };
     adapter_catalog?: UnifiedModelCatalogResponse["adapter_catalog"];
@@ -594,14 +610,33 @@ export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogRespo
   );
   const catalog = payload?.model_catalog;
   return {
+    active:
+      payload?.active && typeof payload.active === "object"
+        ? payload.active
+        : undefined,
     runtimes: Array.isArray(payload?.runtimes) ? payload.runtimes : [],
     all_models: Array.isArray(catalog?.all_models) ? catalog.all_models : [],
     chat_models: Array.isArray(catalog?.chat_models) ? catalog.chat_models : [],
     coding_models: Array.isArray(catalog?.coding_models)
       ? catalog.coding_models
       : [],
+    runtime_servable_models: Array.isArray(catalog?.runtime_servable_models)
+      ? catalog.runtime_servable_models
+      : Array.isArray(catalog?.chat_models)
+        ? catalog.chat_models
+        : [],
+    trainable_base_models: Array.isArray(catalog?.trainable_base_models)
+      ? catalog.trainable_base_models
+      : Array.isArray(catalog?.trainable_models)
+        ? catalog.trainable_models
+        : [],
+    inference_only_artifacts: Array.isArray(catalog?.inference_only_artifacts)
+      ? catalog.inference_only_artifacts
+      : [],
     trainable_models: Array.isArray(catalog?.trainable_models)
       ? catalog.trainable_models
+      : Array.isArray(catalog?.trainable_base_models)
+        ? catalog.trainable_base_models
       : [],
     adapter_catalog: {
       all_adapters: Array.isArray(payload?.adapter_catalog?.all_adapters)

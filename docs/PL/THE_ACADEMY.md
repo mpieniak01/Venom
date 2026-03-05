@@ -388,6 +388,32 @@ Wdrożony panel Self-Learning zapewnia:
 3. logi live, status i historię runów,
 4. preflight embedding/runtime dla trybu RAG.
 
+## PR 190E — Granica `Model runtime` vs `Adapter Academy`
+
+### Kontrakt runtime
+1. Jedynym źródłem prawdy dla selektorów modeli jest:
+   - `GET /api/v1/system/llm-runtime/options`
+2. Odpowiedź zawiera:
+   - `model_catalog` (w tym `chat_models` i `trainable_models`),
+   - capability runtime:
+     - `adapter_deploy_supported`
+     - `adapter_deploy_mode`
+3. Discovery modeli runtime odfiltrowuje artefakty Academy (`self_learning_*`, checkpointy, katalogi treningowe adapterów).
+
+### Deploy adapterów do Chat
+1. `POST /api/v1/academy/adapters/activate`:
+   - `ollama`: deploy wspierany,
+   - `vllm`: deploy wspierany,
+   - `onnx`: `runtime_not_supported` (guardrails only).
+2. `POST /api/v1/academy/adapters/deactivate`:
+   - rollback do `PREVIOUS_MODEL_*` dla `ollama` i `vllm`,
+   - `onnx`: skip z powodem.
+
+### Semantyka UI (Cockpit Chat)
+1. `Model` = model serwowalny przez aktywny runtime.
+2. `Adapter` = nakładka Academy, wdrażana tylko gdy runtime wspiera deploy.
+3. Po błędzie aktywacji modelu UI robi rollback selekcji do poprzedniego aktywnego modelu.
+
 ### Bezpieczeństwo
 Domyślne zabezpieczenia:
 1. whitelist rootów (`docs/`, `docs_dev/`, `venom_core/`, `web-next/`, `scripts/`),

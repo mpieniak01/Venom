@@ -456,6 +456,9 @@ class ModelManagerDiscoveryMixin:
 
         search_dirs = self._build_search_dirs()
         self._scan_local_dirs(search_dirs, models)
+        # Keep Ollama model visibility even when daemon is offline.
+        self._load_ollama_cache(models)
+        self._register_manifest_fallbacks(search_dirs, models)
 
         try:
             async with TrafficControlledHttpClient(
@@ -488,6 +491,11 @@ class ModelManagerDiscoveryMixin:
         except ValueError as exc:
             logger.error(
                 "Błędna odpowiedź JSON podczas pobierania modeli z Ollama: %s", exc
+            )
+        except Exception as exc:
+            logger.warning(
+                "Nie udało się pobrać modeli z Ollama (fallback do lokalnego skanu): %s",
+                exc,
             )
 
         return list(models.values())

@@ -790,3 +790,231 @@ async def test_validate_adapter_runtime_compatibility_rejects_missing_runtime_mo
                 runtime_id="vllm",
                 model_id="non-existing-model",
             )
+
+
+def test_runtime_helper_alias_and_provider_inference():
+    assert academy_models._canonical_runtime_model_id("gemma3:latest") == "gemma-3-4b-it"
+    assert academy_models._canonical_runtime_model_id("  ") == ""
+
+    assert (
+        academy_models._infer_local_runtime_provider({"provider": "ollama"}) == "ollama"
+    )
+    assert academy_models._infer_local_runtime_provider({"source": "onnx"}) == "onnx"
+    assert (
+        academy_models._infer_local_runtime_provider(
+            {"name": "qwen2.5-coder:7b", "path": "/tmp/model"}
+        )
+        == "ollama"
+    )
+    assert (
+        academy_models._infer_local_runtime_provider(
+            {"name": "gemma-onnx", "path": "/tmp/weights/model.onnx"}
+        )
+        == "onnx"
+    )
+    assert (
+        academy_models._infer_local_runtime_provider(
+            {"name": "gemma-3-4b-it", "path": "/tmp/gemma"}
+        )
+        == "vllm"
+    )
+
+
+@pytest.mark.asyncio
+async def test_assert_runtime_model_available_handles_direct_alias_and_missing():
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock(
+        return_value=[
+            {"name": "gemma-3-4b-it", "provider": "vllm"},
+            {"name": "qwen2.5-coder:7b", "provider": "ollama"},
+        ]
+    )
+
+    await academy_models._assert_runtime_model_available(
+        mgr=mgr, runtime_id="vllm", model_id="gemma-3-4b-it"
+    )
+    await academy_models._assert_runtime_model_available(
+        mgr=mgr, runtime_id="vllm", model_id="gemma3:latest"
+    )
+
+    with pytest.raises(ValueError, match="Selected model is not available on runtime"):
+        await academy_models._assert_runtime_model_available(
+            mgr=mgr, runtime_id="vllm", model_id="missing-model"
+        )
+
+
+@pytest.mark.asyncio
+async def test_assert_runtime_model_available_ignores_loader_failure():
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock(side_effect=RuntimeError("boom"))
+    await academy_models._assert_runtime_model_available(
+        mgr=mgr, runtime_id="vllm", model_id="gemma-3-4b-it"
+    )
+
+
+def test_runtime_resolution_helpers_and_model_dir_detection(tmp_path):
+    with patch(
+        "venom_core.api.routes.academy_models.get_active_llm_runtime",
+        return_value=SimpleNamespace(provider="vllm"),
+    ):
+        assert academy_models._resolve_runtime_for_adapter_deploy(None) == "vllm"
+    assert academy_models._resolve_runtime_for_adapter_deploy("ollama") == "ollama"
+    assert academy_models._runtime_endpoint_for_hash("onnx") is None
+    assert academy_models._runtime_endpoint_for_hash("vllm")
+
+    runtime_dir = tmp_path / "runtime-model"
+    runtime_dir.mkdir(parents=True)
+    assert academy_models._is_runtime_model_dir(runtime_dir) is False
+    (runtime_dir / "config.json").write_text("{}", encoding="utf-8")
+    (runtime_dir / "model-00001.safetensors").write_text("x", encoding="utf-8")
+    assert academy_models._is_runtime_model_dir(runtime_dir) is True
+
+
+@patch("venom_core.api.routes.academy_models.SETTINGS")
+def test_resolve_local_runtime_model_path_by_name_search_paths(mock_settings, tmp_path):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "data-models")
+    mock_settings.REPO_ROOT = str(tmp_path)
+    (tmp_path / "data-models").mkdir(parents=True)
+    (tmp_path / "models").mkdir(parents=True)
+    (tmp_path / "data-models" / "from-academy").mkdir()
+    (tmp_path / "models" / "from-repo-models").mkdir()
+
+    mgr = SimpleNamespace(models_dir=tmp_path / "custom-models")
+    (tmp_path / "custom-models").mkdir()
+    (tmp_path / "custom-models" / "from-manager-dir").mkdir()
+
+    assert (
+        academy_models._resolve_local_runtime_model_path_by_name(
+            mgr=mgr, model_name="from-manager-dir"
+        )
+        == str((tmp_path / "custom-models" / "from-manager-dir"))
+    )
+    assert (
+        academy_models._resolve_local_runtime_model_path_by_name(
+            mgr=SimpleNamespace(models_dir="not-a-path"), model_name="from-academy"
+        )
+        == str((tmp_path / "data-models" / "from-academy"))
+    )
+    assert (
+        academy_models._resolve_local_runtime_model_path_by_name(
+            mgr=SimpleNamespace(models_dir="not-a-path"), model_name="from-repo-models"
+        )
+        == str((tmp_path / "models" / "from-repo-models"))
+    )
+
+
+@patch("venom_core.api.routes.academy_models._resolve_repo_root")
+def test_restart_vllm_runtime_errors_for_missing_and_non_zero(
+    mock_resolve_repo_root, tmp_path
+):
+    mock_resolve_repo_root.return_value = tmp_path
+    with pytest.raises(RuntimeError, match="service script not found"):
+        academy_models._restart_vllm_runtime()
+
+    script = tmp_path / "scripts" / "llm" / "vllm_service.sh"
+    script.parent.mkdir(parents=True)
+    script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    with patch("subprocess.run") as run_mock:
+        run_mock.return_value = SimpleNamespace(
+            returncode=1, stderr="restart failed", stdout=""
+        )
+        with pytest.raises(RuntimeError, match="Failed to restart vLLM runtime"):
+            academy_models._restart_vllm_runtime()
+
+
+@patch("venom_core.api.routes.academy_models._restart_vllm_runtime")
+@patch("venom_core.api.routes.academy_models.compute_llm_config_hash")
+@patch("venom_core.api.routes.academy_models.config_manager")
+@patch("venom_core.api.routes.academy_models.SETTINGS")
+def test_deploy_adapter_to_vllm_runtime_updates_config_and_settings(
+    mock_settings,
+    mock_config_manager,
+    mock_hash,
+    _mock_restart,
+    tmp_path,
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
+    mock_hash.return_value = "hash-vllm"
+    mock_config_manager.get_config.return_value = {
+        "LAST_MODEL_VLLM": "gemma-3-4b-it",
+        "LLM_MODEL_NAME": "gemma-3-4b-it",
+    }
+
+    adapter_dir = tmp_path / "adapter-1"
+    (adapter_dir / "adapter").mkdir(parents=True)
+    runtime_dir = adapter_dir / "runtime_vllm"
+    runtime_dir.mkdir(parents=True)
+    (runtime_dir / "config.json").write_text("{}", encoding="utf-8")
+    (runtime_dir / "model-00001.safetensors").write_text("x", encoding="utf-8")
+    (runtime_dir / "chat_template.jinja").write_text("{{message}}", encoding="utf-8")
+
+    with patch(
+        "venom_core.api.routes.academy_models._build_vllm_runtime_model_from_adapter",
+        return_value=runtime_dir,
+    ):
+        payload = academy_models._deploy_adapter_to_vllm_runtime(
+            mgr=MagicMock(),
+            adapter_id="adapter-1",
+        )
+
+    assert payload["deployed"] is True
+    assert payload["runtime_id"] == "vllm"
+    assert payload["chat_model"] == "venom-adapter-adapter-1"
+    updates = mock_config_manager.update_config.call_args[0][0]
+    assert updates["ACTIVE_LLM_SERVER"] == "vllm"
+    assert updates["LLM_CONFIG_HASH"] == "hash-vllm"
+    assert updates["VLLM_MODEL_PATH"] == str(runtime_dir)
+
+
+@patch("venom_core.api.routes.academy_models.config_manager")
+def test_rollback_chat_runtime_previous_model_missing(mock_config_manager):
+    mock_config_manager.get_config.return_value = {}
+    with patch(
+        "venom_core.api.routes.academy_models.get_active_llm_runtime",
+        return_value=SimpleNamespace(provider="unknown"),
+    ):
+        payload = academy_models._rollback_chat_runtime_after_adapter_deactivation(
+            mgr=MagicMock()
+        )
+    assert payload["rolled_back"] is False
+    assert payload["reason"] == "previous_model_missing"
+
+
+@patch("venom_core.api.routes.academy_models._restart_vllm_runtime")
+@patch("venom_core.api.routes.academy_models.compute_llm_config_hash")
+@patch("venom_core.api.routes.academy_models.config_manager")
+def test_rollback_chat_runtime_switches_to_vllm_when_prev_model_exists(
+    mock_config_manager,
+    mock_hash,
+    _mock_restart,
+    tmp_path,
+):
+    mock_hash.return_value = "hash-rollback"
+    mock_config_manager.get_config.return_value = {
+        "PREVIOUS_MODEL_VLLM": "gemma-3-4b-it"
+    }
+    fallback_dir = tmp_path / "gemma-3-4b-it"
+    fallback_dir.mkdir(parents=True)
+    (fallback_dir / "chat_template.jinja").write_text("{{message}}", encoding="utf-8")
+
+    with (
+        patch(
+            "venom_core.api.routes.academy_models.get_active_llm_runtime",
+            return_value=SimpleNamespace(provider="vllm"),
+        ),
+        patch(
+            "venom_core.api.routes.academy_models._resolve_local_runtime_model_path_by_name",
+            return_value=str(fallback_dir),
+        ),
+    ):
+        payload = academy_models._rollback_chat_runtime_after_adapter_deactivation(
+            mgr=MagicMock()
+        )
+
+    assert payload["rolled_back"] is True
+    assert payload["runtime_id"] == "vllm"
+    assert payload["chat_model"] == "gemma-3-4b-it"
+    updates = mock_config_manager.update_config.call_args[0][0]
+    assert updates["VLLM_MODEL_PATH"] == str(fallback_dir)
+    assert updates["LLM_CONFIG_HASH"] == "hash-rollback"

@@ -335,20 +335,31 @@ export function useCockpitLogic({
         if (selectedModel && runtimeModels.includes(selectedModel)) {
             return;
         }
+        const lastModels = data.activeServerInfo?.last_models ?? {};
+        const runtimeKey = effectiveServer.toLowerCase();
+        const preferredFromRuntime =
+            runtimeKey === "ollama"
+                ? String(lastModels.ollama || "").trim()
+                : runtimeKey === "vllm"
+                    ? String(lastModels.vllm || "").trim()
+                    : "";
         const activeModel =
             effectiveServer === activeServer
                 ? (data.activeServerInfo?.active_model || "").trim()
                 : "";
         const nextModel =
-            activeModel && runtimeModels.includes(activeModel)
-                ? activeModel
-                : runtimeModels[0] || "";
+            preferredFromRuntime && runtimeModels.includes(preferredFromRuntime)
+                ? preferredFromRuntime
+                : activeModel && runtimeModels.includes(activeModel)
+                    ? activeModel
+                    : runtimeModels[0] || "";
         if (nextModel && nextModel !== selectedModel) {
             interactive.setters.setSelectedLlmModel(nextModel);
         }
     }, [
         data.activeServerInfo?.active_model,
         data.activeServerInfo?.active_server,
+        data.activeServerInfo?.last_models,
         data.llmRuntimeOptions?.runtimes,
         interactive.state.selectedLlmModel,
         interactive.state.selectedLlmServer,

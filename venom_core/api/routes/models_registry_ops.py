@@ -13,6 +13,7 @@ from venom_core.api.routes.models_dependencies import (
     get_model_manager,
     get_model_registry,
 )
+from venom_core.api.routes.models_utils import infer_model_provider
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,6 +21,49 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["models"])
 MODEL_REGISTRY_UNAVAILABLE_DETAIL = "ModelRegistry nie jest dostępny"
 MODEL_MANAGER_UNAVAILABLE_DETAIL = "ModelManager nie jest dostępny"
+
+
+async def _ensure_runtime_model_is_servable(*, model_name: str, runtime: str) -> None:
+    runtime_id = runtime.strip().lower()
+    if runtime_id not in {"ollama", "vllm", "onnx"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported runtime: {runtime}")
+    manager = get_model_manager()
+    if manager is None:
+        raise HTTPException(status_code=503, detail=MODEL_MANAGER_UNAVAILABLE_DETAIL)
+    try:
+        local_models = await manager.list_local_models()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load local model catalog: {exc}",
+        ) from exc
+
+    matched = None
+    for model in local_models:
+        name = str(model.get("name") or "").strip()
+        if name.lower() != model_name.strip().lower():
+            continue
+        provider = infer_model_provider(model) or "vllm"
+        if provider != runtime_id:
+            continue
+        if model.get("chat_compatible", True) is False:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Model '{model_name}' is not chat-compatible for runtime '{runtime_id}'."
+                ),
+            )
+        matched = model
+        break
+
+    if matched is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Model '{model_name}' is not available for runtime '{runtime_id}'. "
+                "Refresh runtime options and select a servable model."
+            ),
+        )
 
 
 @router.post(
@@ -116,6 +160,10 @@ async def activate_model_endpoint(request: ModelActivateRequest):
 
     try:
         logger.info("Activate model: %s runtime=%s", request.name, request.runtime)
+        await _ensure_runtime_model_is_servable(
+            model_name=request.name,
+            runtime=request.runtime,
+        )
         success = await model_registry.activate_model(
             model_name=request.name, runtime=request.runtime
         )

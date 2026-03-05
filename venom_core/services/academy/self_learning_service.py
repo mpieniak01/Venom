@@ -14,7 +14,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Iterable, Literal, Optional, cast
+from typing import Any, Awaitable, Callable, Collection, Iterable, Literal, Optional, cast
 
 import psutil
 
@@ -2561,7 +2561,9 @@ class SelfLearningService:
         )
 
     @staticmethod
-    def _coerce_choice(value: Any, valid_values: set[str], default: str) -> str:
+    def _coerce_choice(
+        value: Any, valid_values: Collection[str], default: str
+    ) -> str:
         candidate = str(value or default).strip()
         return candidate if candidate in valid_values else default
 
@@ -2617,7 +2619,7 @@ class SelfLearningService:
             ),
         )
         embedding_profile_id = rag_cfg.get("embedding_profile_id")
-        embedding_policy = (
+        embedding_policy: SelfLearningEmbeddingPolicy = (
             "allow_fallback"
             if str(rag_cfg.get("embedding_policy") or "strict").strip().lower()
             == "allow_fallback"

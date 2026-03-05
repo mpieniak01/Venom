@@ -18,7 +18,8 @@ test.beforeEach(async ({ page }) => {
 test.describe("Venom Next Cockpit Smoke", () => {
   test("Agent mention @gpt potwierdza przelaczenie runtime i wysyla zadanie", async ({ page }) => {
     await page.route("**/api/v1/system/llm-servers/active", async (route) => {
-      if (route.request().method() === "GET") {
+      const method = route.request().method();
+      if (method === "GET") {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -32,11 +33,21 @@ test.describe("Venom Next Cockpit Smoke", () => {
         });
         return;
       }
-      await route.fulfill({
-        status: 405,
-        contentType: "application/json",
-        body: JSON.stringify({ detail: "Method not allowed" }),
-      });
+      if (method === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            active_server: "vllm",
+            active_model: "phi3",
+            config_hash: "hash-local-post",
+            runtime_id: "vllm@local",
+          }),
+        });
+        return;
+      }
+      await route.fallback();
     });
     await page.route("**/api/v1/system/llm-runtime/active", async (route) => {
       if (route.request().method() === "POST") {
@@ -88,16 +99,17 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const textarea = page.getByTestId("cockpit-prompt-input");
     await textarea.fill("@gpt Test zadania");
 
-    const [runtimeReq, taskReq] = await Promise.all([
-      page.waitForRequest((req) =>
+    const runtimeReqPromise = page.waitForRequest((req) =>
         req.url().includes("/api/v1/system/llm-runtime/active") &&
         req.method() === "POST",
-      ),
-      page.waitForRequest((req) =>
+      { timeout: 15000 },
+    );
+    const taskReqPromise = page.waitForRequest((req) =>
         req.url().includes("/api/v1/tasks") && req.method() === "POST",
-      ),
-      page.getByTestId("cockpit-send-button").click(),
-    ]);
+      { timeout: 15000 },
+    );
+    await page.getByTestId("cockpit-send-button").click();
+    const [runtimeReq, taskReq] = await Promise.all([runtimeReqPromise, taskReqPromise]);
 
     expect(runtimeReq.method()).toBe("POST");
     expect(["openai", "gpt"]).toContain(runtimeReq.postDataJSON().provider);

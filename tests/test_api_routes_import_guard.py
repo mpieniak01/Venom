@@ -12,6 +12,7 @@ FORBIDDEN_LAYER_PREFIXES = ("venom_core.core", "venom_core.infrastructure")
 # Current exceptions are explicit and bounded. Adding a new file here should be
 # a conscious architectural decision in review.
 ALLOWED_FORBIDDEN_IMPORTS: dict[str, set[str]] = {
+    "venom_core/api/routes/academy_models.py": {"subprocess"},
     "venom_core/api/routes/git.py": {"subprocess"},
     "venom_core/api/routes/system_storage.py": {"subprocess"},
     "venom_core/api/routes/providers.py": {"httpx"},

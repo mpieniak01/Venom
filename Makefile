@@ -591,12 +591,26 @@ _start:
 	start_vllm() { \
 		echo "▶️  Uruchamiam vLLM..."; \
 		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
-		$(MAKE) --no-print-directory vllm-start >/dev/null || true; \
+		if ! $(MAKE) --no-print-directory vllm-start; then \
+			echo "❌ Nie udało się uruchomić vLLM (sprawdź logi wyżej)."; \
+			return 1; \
+		fi; \
 		echo "⏳ Czekam na vLLM (/v1/models)..."; \
 		for attempt in $$(seq 1 $(VLLM_START_TIMEOUT_SEC)); do \
 			if curl -fsS "$(VLLM_ENDPOINT)/v1/models" >/dev/null 2>&1; then \
 				echo "✅ vLLM gotowy"; \
 				return 0; \
+			fi; \
+			if [ -f "logs/vllm.pid" ]; then \
+				VPID=$$(cat "logs/vllm.pid"); \
+				if ! kill -0 $$VPID 2>/dev/null; then \
+					echo "❌ vLLM proces $$VPID zakończył się przed gotowością endpointu."; \
+					if [ -f "logs/vllm.log" ]; then \
+						echo "ℹ️  Ostatnie logi vLLM:"; \
+						tail -n 40 "logs/vllm.log" || true; \
+					fi; \
+					return 1; \
+				fi; \
 			fi; \
 			sleep 1; \
 		done; \

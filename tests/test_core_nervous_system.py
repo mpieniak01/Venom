@@ -7,9 +7,10 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from venom_core.api import dependencies as api_deps
 from tests.helpers.url_fixtures import MOCK_HTTP, local_runtime_id
 from venom_core.config import SETTINGS
-from venom_core.main import app, state_manager
+import venom_core.main as main_app
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
 
 
@@ -43,16 +44,24 @@ def patch_runtime(mock_runtime_info):
 @pytest.fixture
 def client():
     """Fixture dla klienta testowego FastAPI (odpala lifespan)."""
-    with TestClient(app) as test_client:
+    main_app.app.dependency_overrides = {}
+    with TestClient(main_app.app) as test_client:
+        # Izolacja od innych testów, które podmieniają globalne dependencies.
+        api_deps.set_state_manager(main_app.state_manager)
+        if main_app.orchestrator is not None:
+            api_deps.set_orchestrator(main_app.orchestrator)
+        if main_app.request_tracer is not None:
+            api_deps.set_request_tracer(main_app.request_tracer)
         yield test_client
+    main_app.app.dependency_overrides = {}
 
 
 @pytest.fixture
 def clear_state():
     """Fixture czyszczący stan przed testem."""
-    state_manager._tasks.clear()
+    main_app.state_manager._tasks.clear()
     yield
-    state_manager._tasks.clear()
+    main_app.state_manager._tasks.clear()
 
 
 def test_healthz_endpoint(client):

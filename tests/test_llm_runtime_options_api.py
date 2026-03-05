@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -100,7 +101,7 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
         patch.object(
             system_llm,
             "_local_models_by_runtime",
-            new=AsyncMock(return_value={"vllm": [], "ollama": [], "onnx": []}),
+            new=AsyncMock(return_value=({"vllm": [], "ollama": [], "onnx": []}, [])),
         ),
         patch.object(system_llm, "_local_runtime_targets", return_value=local_targets),
         patch.object(
@@ -156,6 +157,7 @@ def test_resolve_runtime_options_payload_mixed_modes() -> None:
     assert runtimes["google"]["configured"] is False
     assert runtimes["google"]["reason"] == "GOOGLE_API_KEY not configured"
     assert "model_catalog" in payload
+    assert payload["model_audit"]["issues_count"] == 0
     assert "trainable_models" in payload["model_catalog"]
     assert "coding_models" in payload["model_catalog"]
     assert payload["model_catalog"]["trainable_models"][0]["model_id"] == (
@@ -306,3 +308,50 @@ def test_apply_vllm_runtime_autofix_updates_invalid_config(tmp_path: Path) -> No
     assert result["healed"] is True
     assert result["selected_model"] == "good-model"
     update_cfg.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_local_models_by_runtime_skips_non_runtime_vllm_entries(
+    tmp_path: Path,
+) -> None:
+    valid_runtime_dir = tmp_path / "runtime-vllm"
+    valid_runtime_dir.mkdir(parents=True)
+    (valid_runtime_dir / "config.json").write_text("{}", encoding="utf-8")
+    (valid_runtime_dir / "model.safetensors").write_text("x", encoding="utf-8")
+    plain_dir = tmp_path / "plain-folder"
+    plain_dir.mkdir(parents=True)
+
+    settings = SimpleNamespace(REPO_ROOT=str(tmp_path))
+    active_runtime = SimpleNamespace(provider="vllm", model_name="good-model")
+    local_models = [
+        {
+            "name": "good-model",
+            "provider": "vllm",
+            "path": str(valid_runtime_dir),
+            "source": "vllm",
+            "chat_compatible": True,
+        },
+        {
+            "name": "plain-folder",
+            "provider": "vllm",
+            "path": str(plain_dir),
+            "source": "models",
+            "chat_compatible": True,
+        },
+    ]
+
+    with (
+        patch.object(system_llm, "SETTINGS", settings),
+        patch.object(system_llm, "get_active_llm_runtime", return_value=active_runtime),
+    ):
+        grouped, audit = await system_llm._local_models_by_runtime(  # noqa: SLF001
+            model_manager=object(),
+            local_models=local_models,
+        )
+
+    assert [model["name"] for model in grouped["vllm"]] == ["good-model"]
+    assert any(
+        item.get("name") == "plain-folder"
+        and item.get("reason") == "not_runtime_loadable_for_vllm"
+        for item in audit
+    )

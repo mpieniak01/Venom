@@ -1075,25 +1075,50 @@ async def _local_models_by_runtime(
     model_manager: Any,
     *,
     local_models: list[dict[str, Any]] | None = None,
-) -> dict[str, list[dict[str, Any]]]:
+) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {"ollama": [], "vllm": [], "onnx": []}
+    audit_issues: list[dict[str, Any]] = []
     if local_models is None:
         try:
             local_models = await model_manager.list_local_models()
         except Exception:
             logger.warning("Nie udało się pobrać listy modeli lokalnych.")
-            return grouped
+            return grouped, audit_issues
 
     active_runtime = get_active_llm_runtime()
     active_provider = (active_runtime.provider or "").lower()
     active_model = (active_runtime.model_name or "").strip()
     for model in local_models:
         inferred = infer_model_provider(model) or "vllm"
-        runtime_id = inferred if inferred in grouped else "vllm"
+        runtime_id = inferred if inferred in grouped else ""
         name = str(model.get("name") or "").strip()
+        source = str(model.get("source") or "").strip().lower()
+        model_path = str(model.get("path") or "").strip()
         if not name:
             continue
-        owner = inferred if inferred in grouped else None
+        if not runtime_id:
+            audit_issues.append(
+                {
+                    "name": name,
+                    "path": model_path,
+                    "source": source or None,
+                    "reason": "provider_unknown",
+                }
+            )
+            continue
+        if runtime_id == "vllm" and not _looks_like_vllm_runtime_model_path(model_path):
+            audit_issues.append(
+                {
+                    "name": name,
+                    "path": model_path,
+                    "source": source or None,
+                    "reason": "not_runtime_loadable_for_vllm",
+                }
+            )
+            continue
+        owner = (
+            source if source in grouped else (inferred if inferred in grouped else None)
+        )
         ownership_status = (
             "native"
             if owner == runtime_id
@@ -1113,7 +1138,7 @@ async def _local_models_by_runtime(
                 compatible_runtimes=[runtime_id],
             )
         )
-    return grouped
+    return grouped, audit_issues
 
 
 def _runtime_target_payload(
@@ -1378,7 +1403,7 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
     if auto_heal:
         active_runtime = get_active_llm_runtime()
 
-    runtime_local_models = await _local_models_by_runtime(
+    runtime_local_models, local_model_audit_issues = await _local_models_by_runtime(
         model_manager,
         local_models=local_models,
     )
@@ -1429,6 +1454,10 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         "model_catalog": model_catalog,
         "adapter_catalog": adapter_catalog,
         "selector_flow": ["server", "model", "adapter"],
+        "model_audit": {
+            "issues": local_model_audit_issues,
+            "issues_count": len(local_model_audit_issues),
+        },
         "feedback_loop": {
             "requested_alias": FEEDBACK_LOOP_REQUESTED_ALIAS,
             "primary": feedback_policy.primary,

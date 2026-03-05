@@ -360,6 +360,15 @@ export interface UnifiedModelCatalogResponse {
     >;
   };
   selector_flow: string[];
+  model_audit?: {
+    issues_count?: number;
+    issues?: Array<{
+      name?: string;
+      path?: string;
+      source?: string | null;
+      reason?: string;
+    }>;
+  };
 }
 
 export interface DatasetConversionFileInfo {
@@ -577,6 +586,7 @@ export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogRespo
     };
     adapter_catalog?: UnifiedModelCatalogResponse["adapter_catalog"];
     selector_flow?: string[];
+    model_audit?: UnifiedModelCatalogResponse["model_audit"];
   };
   const payload = await apiFetch<RuntimeOptionsPayload>(
     "/api/v1/system/llm-runtime/options",
@@ -610,6 +620,10 @@ export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogRespo
     selector_flow: Array.isArray(payload?.selector_flow)
       ? payload.selector_flow
       : ["server", "model", "adapter"],
+    model_audit:
+      payload?.model_audit && typeof payload.model_audit === "object"
+        ? payload.model_audit
+        : undefined,
   };
 }
 

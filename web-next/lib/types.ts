@@ -222,6 +222,15 @@ export interface LlmRuntimeOptionsResponse {
     >;
   };
   selector_flow?: string[];
+  model_audit?: {
+    issues_count?: number;
+    issues?: Array<{
+      name?: string;
+      path?: string;
+      source?: string | null;
+      reason?: string;
+    }>;
+  };
   feedback_loop?: {
     requested_alias?: string;
     primary?: string;

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import sys
+import types
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -793,7 +797,9 @@ async def test_validate_adapter_runtime_compatibility_rejects_missing_runtime_mo
 
 
 def test_runtime_helper_alias_and_provider_inference():
-    assert academy_models._canonical_runtime_model_id("gemma3:latest") == "gemma-3-4b-it"
+    assert (
+        academy_models._canonical_runtime_model_id("gemma3:latest") == "gemma-3-4b-it"
+    )
     assert academy_models._canonical_runtime_model_id("  ") == ""
 
     assert (
@@ -883,24 +889,15 @@ def test_resolve_local_runtime_model_path_by_name_search_paths(mock_settings, tm
     (tmp_path / "custom-models").mkdir()
     (tmp_path / "custom-models" / "from-manager-dir").mkdir()
 
-    assert (
-        academy_models._resolve_local_runtime_model_path_by_name(
-            mgr=mgr, model_name="from-manager-dir"
-        )
-        == str((tmp_path / "custom-models" / "from-manager-dir"))
-    )
-    assert (
-        academy_models._resolve_local_runtime_model_path_by_name(
-            mgr=SimpleNamespace(models_dir="not-a-path"), model_name="from-academy"
-        )
-        == str((tmp_path / "data-models" / "from-academy"))
-    )
-    assert (
-        academy_models._resolve_local_runtime_model_path_by_name(
-            mgr=SimpleNamespace(models_dir="not-a-path"), model_name="from-repo-models"
-        )
-        == str((tmp_path / "models" / "from-repo-models"))
-    )
+    assert academy_models._resolve_local_runtime_model_path_by_name(
+        mgr=mgr, model_name="from-manager-dir"
+    ) == str((tmp_path / "custom-models" / "from-manager-dir"))
+    assert academy_models._resolve_local_runtime_model_path_by_name(
+        mgr=SimpleNamespace(models_dir="not-a-path"), model_name="from-academy"
+    ) == str((tmp_path / "data-models" / "from-academy"))
+    assert academy_models._resolve_local_runtime_model_path_by_name(
+        mgr=SimpleNamespace(models_dir="not-a-path"), model_name="from-repo-models"
+    ) == str((tmp_path / "models" / "from-repo-models"))
 
 
 @patch("venom_core.api.routes.academy_models._resolve_repo_root")
@@ -1018,3 +1015,101 @@ def test_rollback_chat_runtime_switches_to_vllm_when_prev_model_exists(
     updates = mock_config_manager.update_config.call_args[0][0]
     assert updates["VLLM_MODEL_PATH"] == str(fallback_dir)
     assert updates["LLM_CONFIG_HASH"] == "hash-rollback"
+
+
+def test_build_vllm_runtime_model_from_adapter_missing_adapter_path(tmp_path: Path):
+    adapter_dir = tmp_path / "adapter-missing"
+    adapter_dir.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError, match="Adapter path not found"):
+        academy_models._build_vllm_runtime_model_from_adapter(
+            adapter_dir=adapter_dir,
+            base_model="unsloth/Phi-3-mini-4k-instruct",
+        )
+
+
+def test_build_vllm_runtime_model_from_adapter_happy_path(tmp_path: Path):
+    adapter_dir = tmp_path / "adapter-ok"
+    adapter_path = adapter_dir / "adapter"
+    adapter_path.mkdir(parents=True)
+    (adapter_path / "tokenizer.json").write_text("{}", encoding="utf-8")
+
+    class _Cuda:
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+    fake_torch = types.SimpleNamespace(cuda=_Cuda(), float16="fp16", float32="fp32")
+
+    class _Merged:
+        @staticmethod
+        def save_pretrained(path: str, safe_serialization: bool = True) -> None:
+            path_obj = Path(path)
+            path_obj.mkdir(parents=True, exist_ok=True)
+            (path_obj / "config.json").write_text("{}", encoding="utf-8")
+            (path_obj / "model.safetensors").write_text("x", encoding="utf-8")
+
+    class _Peft:
+        @staticmethod
+        def from_pretrained(_base: object, _adapter: str):
+            return types.SimpleNamespace(merge_and_unload=lambda: _Merged())
+
+    class _AutoModel:
+        @staticmethod
+        def from_pretrained(_model: str, **_kwargs):
+            return object()
+
+    class _AutoTokenizer:
+        @staticmethod
+        def from_pretrained(_source: str):
+            return types.SimpleNamespace(
+                save_pretrained=lambda path: Path(path, "tokenizer.json").write_text(
+                    "{}",
+                    encoding="utf-8",
+                )
+            )
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "peft", types.SimpleNamespace(PeftModel=_Peft))
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(
+            AutoModelForCausalLM=_AutoModel,
+            AutoTokenizer=_AutoTokenizer,
+        ),
+    )
+    try:
+        runtime_dir = academy_models._build_vllm_runtime_model_from_adapter(
+            adapter_dir=adapter_dir,
+            base_model="unsloth/Phi-3-mini-4k-instruct",
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert runtime_dir == adapter_dir / "runtime_vllm"
+    runtime_payload = json.loads(
+        (runtime_dir / "venom_runtime_vllm.json").read_text(encoding="utf-8")
+    )
+    assert runtime_payload["runtime"] == "vllm"
+    assert runtime_payload["base_model"] == "unsloth/Phi-3-mini-4k-instruct"
+
+
+@patch("venom_core.api.routes.academy_models.SETTINGS")
+def test_deploy_adapter_to_vllm_runtime_rejects_empty_base_model(
+    mock_settings, tmp_path: Path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = ""
+    adapter_dir = tmp_path / "adapter-empty"
+    (adapter_dir / "adapter").mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        json.dumps({"base_model": ""}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="Adapter base model is empty"):
+        academy_models._deploy_adapter_to_vllm_runtime(
+            mgr=MagicMock(),
+            adapter_id="adapter-empty",
+        )

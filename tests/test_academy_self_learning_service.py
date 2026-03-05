@@ -726,6 +726,44 @@ def test_add_log_trims_to_limit(tmp_path: Path):
     assert run.logs[0] == "log-20"
 
 
+def test_add_log_debounces_snapshot_writes(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    run_id = "123e4567-e89b-42d3-a456-426614174000"
+    run = service._run_from_payload(
+        {
+            "run_id": run_id,
+            "mode": "rag_index",
+            "sources": ["docs"],
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+        }
+    )
+    snapshot_calls: list[str] = []
+    monkeypatch = pytest.MonkeyPatch()
+    monotonic_iter = iter([10.0, 10.2, 11.5])
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service.time.monotonic",
+        lambda: next(monotonic_iter),
+    )
+    monkeypatch.setattr(
+        service,
+        "_append_run_snapshot",
+        lambda current_run: snapshot_calls.append(current_run.logs[-1]),
+    )
+    try:
+        service._add_log(run, "step-1")
+        service._add_log(run, "step-2")
+        service._add_log(run, "step-3")
+    finally:
+        monkeypatch.undo()
+
+    assert snapshot_calls == ["step-1", "step-3"]
+
+
 def test_get_status_recovers_orphaned_running_llm_run_with_live_logs(tmp_path: Path):
     service = SelfLearningService(
         storage_dir=str(tmp_path / "storage"),

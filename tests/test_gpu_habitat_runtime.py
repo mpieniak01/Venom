@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import signal
 import subprocess
+import types
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 import pytest
 
 from venom_core.infrastructure import gpu_habitat_runtime as runtime
+from venom_core.services import onnx_runtime_cleanup
 
 
 class _Logger:
@@ -242,6 +244,92 @@ def test_cleanup_local_job_signals_pid_when_no_process() -> None:
         logger=_Logger(),
     )
     assert called == [signal.SIGTERM]
+
+
+def test_release_onnx_runtime_best_effort_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str, dict[str, object]]] = []
+
+    def _safe_call(module_name: str, function_name: str, **kwargs: object) -> bool:
+        calls.append((module_name, function_name, kwargs))
+        return function_name == "release_onnx_simple_client"
+
+    monkeypatch.setattr(onnx_runtime_cleanup, "_safe_call", _safe_call)
+
+    assert onnx_runtime_cleanup.release_onnx_runtime_best_effort(wait=True) is True
+    assert calls == [
+        (
+            "venom_core.api.routes.tasks",
+            "release_onnx_task_runtime",
+            {"wait": True},
+        ),
+        (
+            "venom_core.api.routes.llm_simple",
+            "release_onnx_simple_client",
+            {},
+        ),
+    ]
+
+    monkeypatch.setattr(
+        onnx_runtime_cleanup,
+        "_safe_call",
+        lambda *_args, **_kwargs: False,
+    )
+    assert onnx_runtime_cleanup.release_onnx_runtime_best_effort(wait=False) is False
+
+
+def test_onnx_safe_call_covers_success_and_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call_kwargs: list[dict[str, object]] = []
+    module_ok = types.SimpleNamespace(
+        release_onnx_task_runtime=lambda **kwargs: call_kwargs.append(kwargs)
+    )
+
+    monkeypatch.setattr(
+        "venom_core.services.onnx_runtime_cleanup.importlib.import_module",
+        lambda _name: module_ok,
+    )
+    assert (
+        onnx_runtime_cleanup._safe_call(
+            "venom_core.api.routes.tasks",
+            "release_onnx_task_runtime",
+            wait=True,
+        )
+        is True
+    )
+    assert call_kwargs == [{"wait": True}]
+
+    module_missing = types.SimpleNamespace(release_onnx_task_runtime="x")
+    monkeypatch.setattr(
+        "venom_core.services.onnx_runtime_cleanup.importlib.import_module",
+        lambda _name: module_missing,
+    )
+    assert (
+        onnx_runtime_cleanup._safe_call(
+            "venom_core.api.routes.tasks",
+            "release_onnx_task_runtime",
+            wait=False,
+        )
+        is False
+    )
+
+    def _raise(_name: str):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        "venom_core.services.onnx_runtime_cleanup.importlib.import_module",
+        _raise,
+    )
+    assert (
+        onnx_runtime_cleanup._safe_call(
+            "venom_core.api.routes.tasks",
+            "release_onnx_task_runtime",
+            wait=False,
+        )
+        is False
+    )
 
 
 def test_run_training_job_local_runtime_and_validation(tmp_path: Path) -> None:

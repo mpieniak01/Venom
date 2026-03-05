@@ -10,11 +10,21 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Collection, Iterable, Literal, Optional, cast
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Collection,
+    Iterable,
+    Literal,
+    Optional,
+    cast,
+)
 
 import psutil
 
@@ -68,6 +78,7 @@ _BLOCKED_PATH_PARTS = {
     ".next",
 }
 _RUN_LOG_LIMIT = 500
+_RUN_SNAPSHOT_LOG_DEBOUNCE_SECONDS = 1.0
 _CHUNK_SPLIT_THRESHOLD_RATIO = 0.6
 _MIN_DATASET_RECORDS = 3
 _MIN_RECORD_INPUT_CHARS = 20
@@ -279,6 +290,7 @@ class SelfLearningService:
         self._snapshot_lock = threading.Lock()
         self._manifest_lock = threading.Lock()
         self._runtime_log_cache: dict[str, list[str]] = {}
+        self._last_log_snapshot_at: dict[str, float] = {}
         self._runs_log_file = self.storage_dir / "runs.jsonl"
         self._index_manifest_file = self.storage_dir / "index_manifest.json"
         self._index_manifest = self._load_index_manifest()
@@ -488,6 +500,7 @@ class SelfLearningService:
         if run is None:
             return False
         self._runtime_log_cache.pop(run_id, None)
+        self._last_log_snapshot_at.pop(run_id, None)
         if task_to_cancel is not None and not task_to_cancel.done():
             task_to_cancel.cancel()
         run_dir = self._run_dir(run_id)
@@ -506,6 +519,7 @@ class SelfLearningService:
             if not task.done():
                 task.cancel()
         self._runtime_log_cache.clear()
+        self._last_log_snapshot_at.clear()
         for run_id in run_ids:
             run_dir = self._run_dir(run_id)
             if run_dir.exists():
@@ -2498,8 +2512,17 @@ class SelfLearningService:
         run.logs.append(message)
         if len(run.logs) > _RUN_LOG_LIMIT:
             run.logs[:] = run.logs[-_RUN_LOG_LIMIT:]
-        if isinstance(run, SelfLearningRun) and _is_valid_uuid(run.run_id):
-            self._append_run_snapshot(run)
+        self._maybe_append_log_snapshot(run)
+
+    def _maybe_append_log_snapshot(self, run: SelfLearningRun) -> None:
+        if not isinstance(run, SelfLearningRun) or not _is_valid_uuid(run.run_id):
+            return
+        now = time.monotonic()
+        previous = self._last_log_snapshot_at.get(run.run_id, 0.0)
+        if (now - previous) < _RUN_SNAPSHOT_LOG_DEBOUNCE_SECONDS:
+            return
+        self._last_log_snapshot_at[run.run_id] = now
+        self._append_run_snapshot(run)
 
     def _append_run_snapshot(self, run: SelfLearningRun) -> None:
         snapshot = run.to_dict()
@@ -2561,9 +2584,7 @@ class SelfLearningService:
         )
 
     @staticmethod
-    def _coerce_choice(
-        value: Any, valid_values: Collection[str], default: str
-    ) -> str:
+    def _coerce_choice(value: Any, valid_values: Collection[str], default: str) -> str:
         candidate = str(value or default).strip()
         return candidate if candidate in valid_values else default
 

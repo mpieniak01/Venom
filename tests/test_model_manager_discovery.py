@@ -222,6 +222,63 @@ def test_local_model_candidate_workspace_fallback(tmp_path: Path) -> None:
     )
 
 
+def test_looks_like_runtime_dir_helpers(tmp_path: Path) -> None:
+    onnx_by_metadata = tmp_path / "onnx-meta"
+    onnx_by_metadata.mkdir()
+    (onnx_by_metadata / discovery.ONNX_METADATA_FILENAME).write_text(
+        "{}",
+        encoding="utf-8",
+    )
+    assert discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
+        onnx_by_metadata
+    )
+
+    onnx_by_genai = tmp_path / "onnx-genai"
+    onnx_by_genai.mkdir()
+    (onnx_by_genai / "genai_config.json").write_text("{}", encoding="utf-8")
+    assert discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
+        onnx_by_genai
+    )
+
+    onnx_by_file = tmp_path / "onnx-file"
+    onnx_by_file.mkdir()
+    (onnx_by_file / "model.onnx").write_text("x", encoding="utf-8")
+    assert discovery.ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(
+        onnx_by_file
+    )
+
+    hf_by_safetensors = tmp_path / "hf-safe"
+    hf_by_safetensors.mkdir()
+    (hf_by_safetensors / "config.json").write_text("{}", encoding="utf-8")
+    (hf_by_safetensors / "model.safetensors").write_text("x", encoding="utf-8")
+    assert discovery.ModelManagerDiscoveryMixin._looks_like_hf_runtime_dir(
+        hf_by_safetensors
+    )
+
+    hf_by_bin = tmp_path / "hf-bin"
+    hf_by_bin.mkdir()
+    (hf_by_bin / "config.json").write_text("{}", encoding="utf-8")
+    (hf_by_bin / "pytorch_model-00001.bin").write_text("x", encoding="utf-8")
+    assert discovery.ModelManagerDiscoveryMixin._looks_like_hf_runtime_dir(hf_by_bin)
+
+
+def test_is_academy_artifact_dir_recognizes_training_outputs(tmp_path: Path) -> None:
+    run_dir = tmp_path / "self_learning_123"
+    run_dir.mkdir()
+    assert discovery.ModelManagerDiscoveryMixin._is_academy_artifact_dir(run_dir)
+
+    checkpoint_dir = tmp_path / "checkpoint-200"
+    checkpoint_dir.mkdir()
+    assert discovery.ModelManagerDiscoveryMixin._is_academy_artifact_dir(checkpoint_dir)
+
+    training_log_only = tmp_path / "train-output"
+    training_log_only.mkdir()
+    (training_log_only / "training.log").write_text("step", encoding="utf-8")
+    assert discovery.ModelManagerDiscoveryMixin._is_academy_artifact_dir(
+        training_log_only
+    )
+
+
 @pytest.mark.asyncio
 async def test_list_local_models_registers_local_and_ollama(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

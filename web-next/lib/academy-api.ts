@@ -300,6 +300,9 @@ export interface RuntimeCatalogModelInfo {
   canonical_model_id?: string | null;
   aliases?: string[];
   coding_eligible?: boolean;
+  owned_by_runtime?: string | null;
+  ownership_status?: "native" | "foreign" | "unknown";
+  compatible_runtimes?: string[];
 }
 
 export interface UnifiedModelCatalogResponse {

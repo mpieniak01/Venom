@@ -828,6 +828,9 @@ def _runtime_model_payload(
     chat_compatible: bool = True,
     feedback_loop_ready: bool | None = None,
     feedback_loop_tier: str | None = None,
+    owned_by_runtime: str | None = None,
+    ownership_status: str | None = None,
+    compatible_runtimes: list[str] | None = None,
 ) -> dict[str, Any]:
     model_feedback_tier = feedback_loop_tier or classify_feedback_loop_tier(model_id)
     model_feedback_ready = (
@@ -852,6 +855,9 @@ def _runtime_model_payload(
             _is_coding_model(canonical_model_id)
             or model_feedback_tier in {"primary", "fallback"}
         ),
+        "owned_by_runtime": owned_by_runtime,
+        "ownership_status": ownership_status or "unknown",
+        "compatible_runtimes": compatible_runtimes or [],
     }
     if capabilities:
         payload["capabilities"] = capabilities
@@ -929,7 +935,26 @@ def _build_model_catalog(
     runtime_targets: list[dict[str, Any]],
     trainable_models: list[dict[str, Any]],
 ) -> dict[str, list[dict[str, Any]]]:
+    compatibility_by_canonical: dict[str, list[str]] = {}
+    for model in trainable_models:
+        canonical = _canonical_model_id(
+            str(model.get("canonical_model_id") or model.get("model_id") or "").strip()
+        ).lower()
+        if not canonical:
+            continue
+        compatibility = model.get("runtime_compatibility")
+        if not isinstance(compatibility, dict):
+            continue
+        compatibility_by_canonical[canonical] = sorted(
+            runtime_id for runtime_id, allowed in compatibility.items() if bool(allowed)
+        )
+
     all_models = _flatten_runtime_models(runtime_targets)
+    for model in all_models:
+        canonical = _canonical_model_id(str(model.get("name") or "").strip()).lower()
+        if canonical and canonical in compatibility_by_canonical:
+            model["compatible_runtimes"] = compatibility_by_canonical[canonical]
+
     chat_models = [
         model for model in all_models if bool(model.get("chat_compatible", True))
     ]
@@ -957,7 +982,9 @@ def _runtime_model_index(
             model_name = str(model.get("name") or "").strip()
             if not model_name:
                 continue
-            canonical = _canonical_model_id(model_name).strip().lower() or model_name.lower()
+            canonical = (
+                _canonical_model_id(model_name).strip().lower() or model_name.lower()
+            )
             names = runtime_entry.setdefault(canonical, [])
             if model_name not in names:
                 names.append(model_name)
@@ -985,11 +1012,7 @@ async def _build_adapter_catalog(
     compatibility_by_canonical: dict[str, dict[str, bool]] = {}
     for model in trainable_models:
         canonical = _canonical_model_id(
-            str(
-                model.get("canonical_model_id")
-                or model.get("model_id")
-                or ""
-            ).strip()
+            str(model.get("canonical_model_id") or model.get("model_id") or "").strip()
         ).lower()
         if not canonical:
             continue
@@ -1004,12 +1027,16 @@ async def _build_adapter_catalog(
     by_runtime_model: dict[str, dict[str, list[dict[str, Any]]]] = {}
 
     for adapter in adapters_raw:
-        payload = adapter.model_dump() if hasattr(adapter, "model_dump") else dict(adapter)
+        payload = (
+            adapter.model_dump() if hasattr(adapter, "model_dump") else dict(adapter)
+        )
         adapter_id = str(payload.get("adapter_id") or "").strip()
         base_model = str(payload.get("base_model") or "").strip()
         if not adapter_id or not base_model:
             continue
-        canonical_base = _canonical_model_id(base_model).strip().lower() or base_model.lower()
+        canonical_base = (
+            _canonical_model_id(base_model).strip().lower() or base_model.lower()
+        )
         runtime_compatibility = compatibility_by_canonical.get(canonical_base, {})
         compatible_runtimes = sorted(
             runtime
@@ -1066,6 +1093,12 @@ async def _local_models_by_runtime(
         name = str(model.get("name") or "").strip()
         if not name:
             continue
+        owner = inferred if inferred in grouped else None
+        ownership_status = (
+            "native"
+            if owner == runtime_id
+            else ("foreign" if owner in grouped else "unknown")
+        )
         grouped[runtime_id].append(
             _runtime_model_payload(
                 runtime_id=runtime_id,
@@ -1075,6 +1108,9 @@ async def _local_models_by_runtime(
                 source_type="local-runtime",
                 active=(runtime_id == active_provider and name == active_model),
                 chat_compatible=bool(model.get("chat_compatible", True)),
+                owned_by_runtime=owner,
+                ownership_status=ownership_status,
+                compatible_runtimes=[runtime_id],
             )
         )
     return grouped

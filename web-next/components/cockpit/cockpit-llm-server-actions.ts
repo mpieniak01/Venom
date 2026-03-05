@@ -26,7 +26,7 @@ type CockpitLlmServerActionsParams = {
   serviceStatusMap: Map<string, ServiceStatus>;
   activateRegistryModel: (payload: { name: string; runtime: string }) => Promise<unknown>;
   switchModel: (model: string) => Promise<unknown>;
-  setActiveLlmServer: (server: string) => Promise<{ status?: string; active_model?: string | null }>;
+  setActiveLlmServer: (server: string, model?: string) => Promise<{ status?: string; active_model?: string | null }>;
 };
 
 const isRegistryRuntime = (server: string): boolean => server === "vllm" || server === "ollama";

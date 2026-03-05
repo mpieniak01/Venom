@@ -6,6 +6,7 @@ import asyncio
 import importlib.util
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
 
@@ -94,6 +95,15 @@ _CODING_MODEL_MARKERS: tuple[str, ...] = (
     "codeqwen",
     "opencoder",
 )
+
+
+def _runtime_adapter_deploy_capability(runtime_id: str) -> tuple[bool, str]:
+    runtime = runtime_id.strip().lower()
+    if runtime == "ollama":
+        return True, "ollama_modelfile"
+    if runtime == "vllm":
+        return True, "vllm_exported_runtime_model"
+    return False, "none"
 
 
 def _runtime_profile_name() -> str:
@@ -858,8 +868,29 @@ def _flatten_runtime_models(runtimes: list[dict[str, Any]]) -> list[dict[str, An
             model_name = str(model.get("name") or "").strip()
             if not model_name:
                 continue
-            key = (runtime_id, model_name.lower())
-            deduped[key] = dict(model)
+            canonical = (
+                _canonical_model_id(model_name).strip().lower() or model_name.lower()
+            )
+            key = (runtime_id, canonical)
+            candidate = dict(model)
+            existing = deduped.get(key)
+            if existing is None:
+                deduped[key] = candidate
+                continue
+            candidate_is_canonical = (
+                str(candidate.get("name") or "").strip().lower() == canonical
+            )
+            existing_is_canonical = (
+                str(existing.get("name") or "").strip().lower() == canonical
+            )
+            candidate_active = bool(candidate.get("active"))
+            existing_active = bool(existing.get("active"))
+            if candidate_active and not existing_active:
+                deduped[key] = candidate
+                continue
+            if candidate_is_canonical and not existing_is_canonical:
+                deduped[key] = candidate
+                continue
     return list(deduped.values())
 
 
@@ -960,6 +991,9 @@ def _runtime_target_payload(
     models: list[dict[str, Any]],
     active_runtime: Any,
 ) -> dict[str, Any]:
+    adapter_deploy_supported, adapter_deploy_mode = _runtime_adapter_deploy_capability(
+        runtime_id
+    )
     return {
         "runtime_id": runtime_id,
         "source_type": source_type,
@@ -969,6 +1003,125 @@ def _runtime_target_payload(
         "reason": reason,
         "active": (active_runtime.provider or "").lower() == runtime_id,
         "models": models,
+        "adapter_deploy_supported": adapter_deploy_supported,
+        "adapter_deploy_mode": adapter_deploy_mode,
+    }
+
+
+def _looks_like_vllm_runtime_model_path(path_raw: str | None) -> bool:
+    candidate = str(path_raw or "").strip()
+    if not candidate:
+        return False
+    path_obj = Path(candidate).expanduser()
+    if not path_obj.is_absolute():
+        path_obj = Path(getattr(SETTINGS, "REPO_ROOT", ".")) / path_obj
+    try:
+        path_obj = path_obj.resolve()
+    except Exception:
+        return False
+    if not path_obj.exists() or not path_obj.is_dir():
+        return False
+    if not (path_obj / "config.json").exists():
+        return False
+    if any(path_obj.glob("*.safetensors")):
+        return True
+    if any(path_obj.glob("pytorch_model*.bin")):
+        return True
+    if any(path_obj.glob("model*.bin")):
+        return True
+    return False
+
+
+def _is_vllm_runtime_model_entry(model: dict[str, Any]) -> bool:
+    inferred = infer_model_provider(model) or "vllm"
+    if inferred != "vllm":
+        return False
+    if model.get("chat_compatible", True) is False:
+        return False
+    name = str(model.get("name") or "").strip()
+    if not name:
+        return False
+    return True
+
+
+def _apply_vllm_runtime_autofix(
+    *, local_models: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    config = config_manager.get_config(mask_secrets=False)
+    active_runtime = get_active_llm_runtime()
+    active_provider = str(getattr(active_runtime, "provider", "") or "").strip().lower()
+    configured_runtime = str(config.get("ACTIVE_LLM_SERVER") or "").strip().lower()
+    if active_provider != "vllm" and configured_runtime != "vllm":
+        return None
+
+    valid_models = [
+        model for model in local_models if _is_vllm_runtime_model_entry(model)
+    ]
+    if not valid_models:
+        return None
+
+    valid_by_name = {
+        str(model.get("name") or "").strip().lower(): model for model in valid_models
+    }
+    active_model = str(
+        getattr(active_runtime, "model_name", "") or config.get("LLM_MODEL_NAME") or ""
+    ).strip()
+    configured_model_path = str(config.get("VLLM_MODEL_PATH") or "").strip()
+    active_valid = active_model.lower() in valid_by_name
+    path_valid = _looks_like_vllm_runtime_model_path(configured_model_path)
+    if active_valid and path_valid:
+        return None
+
+    preferred = str(config.get("LAST_MODEL_VLLM") or "").strip().lower()
+    fallback_entry = valid_by_name.get(preferred)
+    if fallback_entry is None:
+        fallback_entry = valid_by_name.get(active_model.lower())
+    if fallback_entry is None:
+        fallback_entry = valid_models[0]
+
+    fallback_name = str(fallback_entry.get("name") or "").strip()
+    fallback_path = str(fallback_entry.get("path") or "").strip()
+    if not fallback_name or not fallback_path:
+        return None
+
+    endpoint = str(getattr(SETTINGS, "VLLM_ENDPOINT", "") or "").strip() or None
+    config_hash = compute_llm_config_hash("vllm", endpoint, fallback_name)
+    updates = {
+        "LLM_SERVICE_TYPE": "local",
+        "ACTIVE_LLM_SERVER": "vllm",
+        "LLM_MODEL_NAME": fallback_name,
+        "HYBRID_LOCAL_MODEL": fallback_name,
+        "LAST_MODEL_VLLM": fallback_name,
+        "VLLM_MODEL_PATH": fallback_path,
+        "VLLM_SERVED_MODEL_NAME": fallback_name,
+        "LLM_CONFIG_HASH": config_hash,
+    }
+    config_manager.update_config(updates)
+    try:
+        SETTINGS.LLM_SERVICE_TYPE = "local"
+        SETTINGS.ACTIVE_LLM_SERVER = "vllm"
+        SETTINGS.LLM_MODEL_NAME = fallback_name
+        SETTINGS.HYBRID_LOCAL_MODEL = fallback_name
+        SETTINGS.LAST_MODEL_VLLM = fallback_name
+        SETTINGS.VLLM_MODEL_PATH = fallback_path
+        SETTINGS.VLLM_SERVED_MODEL_NAME = fallback_name
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+    except Exception:
+        logger.warning("Failed to update SETTINGS during vLLM auto-heal.")
+
+    logger.warning(
+        "vLLM runtime auto-heal applied: model='%s' path='%s' (previous model='%s', previous path='%s')",
+        fallback_name,
+        fallback_path,
+        active_model,
+        configured_model_path,
+    )
+    return {
+        "healed": True,
+        "runtime_id": "vllm",
+        "selected_model": fallback_name,
+        "selected_path": fallback_path,
+        "reason": "invalid_active_model_or_path",
     }
 
 
@@ -1085,6 +1238,9 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
     except Exception:
         logger.warning("Nie udało się pobrać listy modeli lokalnych.")
         local_models = []
+    auto_heal = _apply_vllm_runtime_autofix(local_models=local_models)
+    if auto_heal:
+        active_runtime = get_active_llm_runtime()
 
     runtime_local_models = await _local_models_by_runtime(
         model_manager,
@@ -1138,6 +1294,7 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
             "active_ready": active_feedback_resolution["feedback_loop_ready"],
             "active_resolved_model_id": active_feedback_resolution["resolved_model_id"],
         },
+        "auto_heal": auto_heal,
     }
 
 
@@ -1410,6 +1567,25 @@ def _resolve_selected_model_for_switch(
     config: dict[str, Any],
     models: list[dict[str, Any]],
 ) -> tuple[str, str]:
+    available_models = set(
+        _available_models_for_server(models=models, server_name=server_name)
+    )
+    requested_model = str(request.model or "").strip()
+    if requested_model:
+        resolved = _validate_requested_model_available(
+            requested_model=requested_model,
+            available_models=available_models,
+            server_name=server_name,
+        )
+        if resolved:
+            return resolved, (
+                "LAST_MODEL_OLLAMA"
+                if server_name == "ollama"
+                else "LAST_MODEL_ONNX"
+                if server_name == "onnx"
+                else "LAST_MODEL_VLLM"
+            )
+
     try:
         selected_model, last_model_key, _ = _select_model_for_server(
             server_name=server_name,

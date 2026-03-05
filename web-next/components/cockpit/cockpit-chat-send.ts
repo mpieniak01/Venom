@@ -57,6 +57,7 @@ export function useChatSend(params: ChatSendParams) {
     refreshActiveServer,
     setActiveLlmRuntime,
     setActiveLlmServer,
+    ensureModelActive,
     sendSimpleChatStream,
     sendTask,
     ingestMemoryEntry,
@@ -118,11 +119,20 @@ export function useChatSend(params: ChatSendParams) {
         if (isCloudRuntimeServer(targetServer)) {
           await setActiveLlmRuntime(targetServer, selectedLlmModel);
         } else {
-          await setActiveLlmServer(targetServer);
+          await setActiveLlmServer(targetServer, selectedLlmModel);
         }
         refreshActiveServer();
       } catch (err) {
         setMessage(getServerSwitchErrorMessage(err, t("cockpit.chatMessages.serverSwitchError")));
+        return false;
+      }
+    }
+    const activeModel = (activeServerInfo?.active_model || "").trim().toLowerCase();
+    const selectedModel = (selectedLlmModel || "").trim().toLowerCase();
+    if (selectedModel && selectedModel !== activeModel && ensureModelActive) {
+      const activated = await ensureModelActive(selectedLlmModel);
+      if (!activated) {
+        setMessage(t("cockpit.chatMessages.serverSwitchError"));
         return false;
       }
     }
@@ -244,6 +254,7 @@ export function useChatSend(params: ChatSendParams) {
     setSimpleRequestDetails,
     setActiveLlmRuntime,
     setActiveLlmServer,
+    ensureModelActive,
     uiTimingsRef,
     updateSimpleStream,
   ]);

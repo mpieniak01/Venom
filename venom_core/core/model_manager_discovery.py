@@ -148,7 +148,14 @@ class ModelManagerDiscoveryMixin:
             return "onnx", "onnx"
         if model_path.is_dir():
             resolved_provider = (
-                "onnx" if "onnx" in model_path.name.lower() else provider
+                "onnx"
+                if (
+                    "onnx" in model_path.name.lower()
+                    or (model_path / ONNX_METADATA_FILENAME).exists()
+                    or (model_path / "genai_config.json").exists()
+                    or any(model_path.glob("*.onnx"))
+                )
+                else provider
             )
             return "folder", resolved_provider
         return "folder", provider
@@ -160,6 +167,49 @@ class ModelManagerDiscoveryMixin:
             search_dirs.append(default_models_dir)
         return search_dirs
 
+    @staticmethod
+    def _looks_like_onnx_runtime_dir(model_path: Path) -> bool:
+        if not model_path.is_dir():
+            return False
+        if (model_path / ONNX_METADATA_FILENAME).exists():
+            return True
+        if (model_path / "genai_config.json").exists():
+            return True
+        if (model_path / "model.onnx").exists():
+            return True
+        return any(model_path.glob("*.onnx"))
+
+    @staticmethod
+    def _looks_like_hf_runtime_dir(model_path: Path) -> bool:
+        if not model_path.is_dir():
+            return False
+        if not (model_path / "config.json").exists():
+            return False
+        if any(model_path.glob("*.safetensors")):
+            return True
+        if any(model_path.glob("pytorch_model*.bin")):
+            return True
+        if any(model_path.glob("model*.bin")):
+            return True
+        return False
+
+    @staticmethod
+    def _is_academy_artifact_dir(model_path: Path) -> bool:
+        name = model_path.name.lower()
+        if name.startswith("self_learning_"):
+            return True
+        if name.startswith("checkpoint-"):
+            return True
+        if (model_path / "adapter").exists() and (
+            model_path / "train_script.py"
+        ).exists():
+            return True
+        if (model_path / "training.log").exists() and not (
+            model_path / "config.json"
+        ).exists():
+            return True
+        return False
+
     def _scan_local_dirs(
         self,
         search_dirs: List[Path],
@@ -170,15 +220,35 @@ class ModelManagerDiscoveryMixin:
             if not base_dir.exists():
                 continue
             for model_path in base_dir.iterdir():
-                if not self._is_local_model_candidate(model_path, skip_dirs):
+                if not self._is_local_model_candidate(
+                    model_path,
+                    skip_dirs,
+                ):
                     continue
                 self._try_register_local_entry(models, model_path, base_dir.name)
 
     @staticmethod
-    def _is_local_model_candidate(model_path: Path, skip_dirs: set[str]) -> bool:
+    def _is_local_model_candidate(
+        model_path: Path,
+        skip_dirs: set[str],
+        *,
+        allow_workspace_fallback: bool = False,
+    ) -> bool:
         if model_path.name in skip_dirs:
             return False
-        return model_path.is_dir() or model_path.suffix in {".onnx", ".gguf", ".bin"}
+        if model_path.suffix in {".onnx", ".gguf", ".bin"}:
+            return True
+        if not model_path.is_dir():
+            return False
+        if ModelManagerDiscoveryMixin._is_academy_artifact_dir(model_path):
+            return False
+        if ModelManagerDiscoveryMixin._looks_like_onnx_runtime_dir(model_path):
+            return True
+        if ModelManagerDiscoveryMixin._looks_like_hf_runtime_dir(model_path):
+            return True
+        if allow_workspace_fallback:
+            return True
+        return False
 
     def _try_register_local_entry(
         self,

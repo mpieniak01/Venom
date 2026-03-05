@@ -69,10 +69,12 @@ type ChatComposerProps = Readonly<{
   selectedLlmModel: string;
   llmModelOptions: SelectMenuOption[];
   setSelectedLlmModel: (value: string) => void;
-  onActivateModel?: (value: string) => void;
+  onActivateModel?: (value: string) => Promise<boolean> | boolean;
   hasModels: boolean;
   onOpenTuning: () => void;
   tuningLabel: string;
+  adapterDeploySupported: boolean;
+  adapterDeployReason?: string | null;
   compactControls?: boolean;
 }>;
 
@@ -95,6 +97,8 @@ export const ChatComposer = memo(
       hasModels,
       onOpenTuning,
       tuningLabel,
+      adapterDeploySupported,
+      adapterDeployReason,
       compactControls = false,
     },
     ref,
@@ -165,20 +169,22 @@ export const ChatComposer = memo(
         value: BASE_MODEL_ADAPTER_VALUE,
         label: t("cockpit.models.adapterBase"),
       };
+      if (!adapterDeploySupported) {
+        return [baseOption];
+      }
       const dynamicOptions = adapters.map((adapter) => {
         const compatibility = resolveAdapterCompatibility(adapter);
-        const description = compatibility.reason
-          ? `${adapter.base_model} • ${compatibility.reason}`
-          : adapter.base_model;
+        if (!compatibility.compatible) {
+          return null;
+        }
         return {
           value: adapter.adapter_id,
           label: adapter.adapter_id,
-          description,
-          disabled: !compatibility.compatible,
+          description: adapter.base_model,
         };
       });
-      return [baseOption, ...dynamicOptions];
-    }, [adapters, resolveAdapterCompatibility, t]);
+      return [baseOption, ...dynamicOptions.filter((entry) => entry !== null)];
+    }, [adapterDeploySupported, adapters, resolveAdapterCompatibility, t]);
 
     const loadAdapters = useCallback(async () => {
       try {
@@ -203,6 +209,19 @@ export const ChatComposer = memo(
         console.error("Failed to initialize adapter selector dependencies:", error);
       });
     }, [loadAdapters, loadTrainableCatalog]);
+
+    useEffect(() => {
+      if (!adapterDeploySupported && selectedAdapter !== BASE_MODEL_ADAPTER_VALUE) {
+        setSelectedAdapter(BASE_MODEL_ADAPTER_VALUE);
+      }
+    }, [adapterDeploySupported, selectedAdapter]);
+
+    useEffect(() => {
+      if (adapterOptions.some((option) => option.value === selectedAdapter)) {
+        return;
+      }
+      setSelectedAdapter(BASE_MODEL_ADAPTER_VALUE);
+    }, [adapterOptions, selectedAdapter]);
 
     const handleAdapterSelect = useCallback(
       async (value: string) => {
@@ -381,10 +400,16 @@ export const ChatComposer = memo(
                 value={selectedLlmModel}
                 options={llmModelOptions}
                 onChange={(value) => {
-                  setSelectedLlmModel(value);
-                  if (value && value !== selectedLlmModel) {
-                    onActivateModel?.(value);
+                  if (!value || value === selectedLlmModel) {
+                    return;
                   }
+                  if (!onActivateModel) {
+                    setSelectedLlmModel(value);
+                    return;
+                  }
+                  Promise.resolve(onActivateModel(value)).catch((error) => {
+                    console.error("Model activation action failed:", error);
+                  });
                 }}
                 ariaLabel={t("cockpit.actions.selectModel")}
                 buttonTestId="llm-model-select"
@@ -408,10 +433,20 @@ export const ChatComposer = memo(
                 ariaLabel={t("cockpit.actions.selectAdapter")}
                 buttonTestId="chat-adapter-select"
                 placeholder={t("cockpit.models.loadingAdapters")}
-                disabled={adapterSelectLoading || adapterMutationPending}
+                disabled={
+                  adapterSelectLoading || adapterMutationPending || !adapterDeploySupported
+                }
                 buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />
+              {!adapterDeploySupported ? (
+                <p className="text-[11px] text-hint">
+                  {adapterDeployReason ||
+                    t("cockpit.models.adapterRuntimeNotSupported", {
+                      runtime: selectedLlmServer,
+                    })}
+                </p>
+              ) : null}
             </div>
             <div className={controlStackClassName}>
               <label className={labelClassName}>{t("cockpit.modes.mode")}</label>

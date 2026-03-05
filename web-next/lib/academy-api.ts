@@ -284,6 +284,28 @@ export interface TrainableModelInfo {
   recommended_runtime?: string | null;
 }
 
+export interface RuntimeCatalogModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  runtime_id: string;
+  source_type: "local-runtime" | "cloud-api";
+  active: boolean;
+  chat_compatible?: boolean;
+  feedback_loop_ready?: boolean;
+  feedback_loop_tier?: "primary" | "fallback" | "not_recommended";
+  canonical_model_id?: string | null;
+  aliases?: string[];
+  coding_eligible?: boolean;
+}
+
+export interface UnifiedModelCatalogResponse {
+  all_models: RuntimeCatalogModelInfo[];
+  chat_models: RuntimeCatalogModelInfo[];
+  coding_models: RuntimeCatalogModelInfo[];
+  trainable_models: TrainableModelInfo[];
+}
+
 export interface DatasetConversionFileInfo {
   file_id: string;
   name: string;
@@ -483,6 +505,31 @@ export async function curateDatasetV2(
  */
 export async function getTrainableModels(): Promise<TrainableModelInfo[]> {
   return apiFetch<TrainableModelInfo[]>("/api/v1/academy/models/trainable");
+}
+
+export async function getUnifiedModelCatalog(): Promise<UnifiedModelCatalogResponse> {
+  type RuntimeOptionsPayload = {
+    model_catalog?: {
+      all_models?: RuntimeCatalogModelInfo[];
+      chat_models?: RuntimeCatalogModelInfo[];
+      coding_models?: RuntimeCatalogModelInfo[];
+      trainable_models?: TrainableModelInfo[];
+    };
+  };
+  const payload = await apiFetch<RuntimeOptionsPayload>(
+    "/api/v1/system/llm-runtime/options",
+  );
+  const catalog = payload?.model_catalog;
+  return {
+    all_models: Array.isArray(catalog?.all_models) ? catalog.all_models : [],
+    chat_models: Array.isArray(catalog?.chat_models) ? catalog.chat_models : [],
+    coding_models: Array.isArray(catalog?.coding_models)
+      ? catalog.coding_models
+      : [],
+    trainable_models: Array.isArray(catalog?.trainable_models)
+      ? catalog.trainable_models
+      : [],
+  };
 }
 
 export async function listDatasetConversionFiles(): Promise<DatasetConversionListResponse> {

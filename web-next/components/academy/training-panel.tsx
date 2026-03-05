@@ -10,7 +10,7 @@ import { LogViewer } from "./log-viewer";
 import {
   startTraining,
   listJobs,
-  getTrainableModels,
+  getUnifiedModelCatalog,
   type TrainingJob,
   type TrainingJobStatus,
   type TrainableModelInfo,
@@ -121,8 +121,8 @@ export function TrainingPanel() {
   async function loadTrainableModels() {
     try {
       setModelsLoading(true);
-      const models = await getTrainableModels();
-      const trainable = models.filter((model) => model.trainable);
+      const catalog = await getUnifiedModelCatalog();
+      const trainable = catalog.trainable_models.filter((model) => model.trainable);
       setTrainableModels(trainable);
       setSelectedBaseModel((current) => {
         if (current && trainable.some((model) => model.model_id === current)) {

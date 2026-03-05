@@ -21,7 +21,7 @@ import type { SlashCommand } from "@/lib/slash-commands";
 import {
   activateAdapter,
   deactivateAdapter,
-  getTrainableModels,
+  getUnifiedModelCatalog,
   listAdapters,
   type AdapterInfo,
   type TrainableModelInfo,
@@ -148,7 +148,8 @@ export const ChatComposer = memo(
 
     const loadTrainableCatalog = useCallback(async () => {
       try {
-        const trainable = await getTrainableModels();
+        const catalog = await getUnifiedModelCatalog();
+        const trainable = catalog.trainable_models;
         const indexed = trainable.reduce<Record<string, TrainableModelInfo>>((acc, model) => {
           acc[model.model_id.toLowerCase()] = model;
           return acc;

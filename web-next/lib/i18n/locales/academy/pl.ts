@@ -241,6 +241,8 @@ export const academy = {
         repairHeavy: "Repair heavy",
       },
       noTrainableModels: "Brak modeli trenowalnych",
+      chatDeployHint:
+        "Auto-deploy adaptera do czatu działa obecnie dla runtime Ollama; kompatybilność runtime opisuje, gdzie adapter może być użyty po treningu.",
       embeddingProfile: "Profil embeddingów",
       noEmbeddingProfiles: "Brak profili embeddingów",
       embeddingPolicy: "Polityka embeddingów",

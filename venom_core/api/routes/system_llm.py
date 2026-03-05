@@ -76,6 +76,20 @@ _runtime_options_catalog_cache_lock = remote_models_service.Lock()
 _runtime_options_catalog_cache: dict[str, dict[str, Any]] = {}
 _runtime_options_probe_cache_lock = remote_models_service.Lock()
 _runtime_options_probe_cache: dict[str, dict[str, Any]] = {}
+_MODEL_ALIAS_TO_CANONICAL: dict[str, str] = {
+    "gemma3:latest": "gemma-3-4b-it",
+    "gemma3:4b": "gemma-3-4b-it",
+    "gemma3:1b": "gemma-3-1b-it",
+}
+_CODING_MODEL_MARKERS: tuple[str, ...] = (
+    "coder",
+    "codestral",
+    "codegemma",
+    "starcoder",
+    "deepseek-coder",
+    "codeqwen",
+    "opencoder",
+)
 
 
 def _runtime_profile_name() -> str:
@@ -100,6 +114,33 @@ def _feedback_loop_resolution_defaults(model_name: str | None) -> dict[str, Any]
         "feedback_loop_ready": ready,
         "feedback_loop_tier": tier,
     }
+
+
+def _canonical_model_id(model_id: str | None) -> str:
+    candidate = str(model_id or "").strip()
+    if not candidate:
+        return ""
+    normalized = candidate.lower()
+    return _MODEL_ALIAS_TO_CANONICAL.get(normalized, candidate)
+
+
+def _model_aliases(model_id: str | None) -> list[str]:
+    candidate = str(model_id or "").strip()
+    if not candidate:
+        return []
+    canonical = _canonical_model_id(candidate)
+    aliases = {candidate, canonical}
+    canonical_lower = canonical.lower()
+    if canonical_lower == "gemma-3-4b-it":
+        aliases.update({"gemma3:latest", "gemma3:4b"})
+    if canonical_lower == "gemma-3-1b-it":
+        aliases.add("gemma3:1b")
+    return sorted(alias for alias in aliases if alias)
+
+
+def _is_coding_model(model_id: str | None) -> bool:
+    normalized = _canonical_model_id(model_id).lower()
+    return any(marker in normalized for marker in _CODING_MODEL_MARKERS)
 
 
 def _allowed_local_servers() -> set[str]:
@@ -783,6 +824,7 @@ def _runtime_model_payload(
         if feedback_loop_ready is not None
         else is_feedback_loop_ready(model_id)
     )
+    canonical_model_id = _canonical_model_id(model_id)
     payload: dict[str, Any] = {
         "id": model_id,
         "name": name,
@@ -793,10 +835,74 @@ def _runtime_model_payload(
         "chat_compatible": chat_compatible,
         "feedback_loop_ready": model_feedback_ready,
         "feedback_loop_tier": model_feedback_tier,
+        "canonical_model_id": canonical_model_id,
+        "aliases": _model_aliases(model_id),
+        "coding_eligible": (
+            _is_coding_model(canonical_model_id)
+            or model_feedback_tier in {"primary", "fallback"}
+        ),
     }
     if capabilities:
         payload["capabilities"] = capabilities
     return payload
+
+
+def _flatten_runtime_models(runtimes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[tuple[str, str], dict[str, Any]] = {}
+    for runtime in runtimes:
+        runtime_id = str(runtime.get("runtime_id") or "").strip().lower()
+        for model in runtime.get("models") or []:
+            if not isinstance(model, dict):
+                continue
+            model_name = str(model.get("name") or "").strip()
+            if not model_name:
+                continue
+            key = (runtime_id, model_name.lower())
+            deduped[key] = dict(model)
+    return list(deduped.values())
+
+
+async def _load_trainable_model_catalog(model_manager: Any) -> list[dict[str, Any]]:
+    from venom_core.api.routes import academy_models
+
+    try:
+        models = await academy_models.list_trainable_models(mgr=model_manager)
+    except Exception as exc:
+        logger.warning("Nie udało się pobrać katalogu modeli trenowalnych: %s", exc)
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for item in models:
+        dumped = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+        model_id = str(dumped.get("model_id") or "").strip()
+        if not model_id:
+            continue
+        canonical = _canonical_model_id(model_id)
+        dumped["canonical_model_id"] = canonical
+        dumped["aliases"] = _model_aliases(model_id)
+        dumped["coding_eligible"] = _is_coding_model(canonical)
+        normalized.append(dumped)
+    return normalized
+
+
+def _build_model_catalog(
+    *,
+    runtime_targets: list[dict[str, Any]],
+    trainable_models: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    all_models = _flatten_runtime_models(runtime_targets)
+    chat_models = [
+        model for model in all_models if bool(model.get("chat_compatible", True))
+    ]
+    coding_models = [
+        model for model in chat_models if bool(model.get("coding_eligible"))
+    ]
+    return {
+        "all_models": all_models,
+        "chat_models": chat_models,
+        "coding_models": coding_models,
+        "trainable_models": trainable_models,
+    }
 
 
 async def _local_models_by_runtime(
@@ -973,6 +1079,12 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         _cloud_runtime_target(provider="openai", active_runtime=active_runtime),
         _cloud_runtime_target(provider="google", active_runtime=active_runtime),
     )
+    runtime_targets = [*local_targets, *cloud_targets]
+    trainable_models = await _load_trainable_model_catalog(model_manager)
+    model_catalog = _build_model_catalog(
+        runtime_targets=runtime_targets,
+        trainable_models=trainable_models,
+    )
 
     active_feedback_resolution = _feedback_loop_resolution_defaults(
         active_runtime.model_name
@@ -993,7 +1105,8 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
             "resolved_model_id": active_feedback_resolution["resolved_model_id"],
             "resolution_reason": active_feedback_resolution["resolution_reason"],
         },
-        "runtimes": [*local_targets, *cloud_targets],
+        "runtimes": runtime_targets,
+        "model_catalog": model_catalog,
         "feedback_loop": {
             "requested_alias": FEEDBACK_LOOP_REQUESTED_ALIAS,
             "primary": feedback_policy.primary,

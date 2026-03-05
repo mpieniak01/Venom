@@ -345,7 +345,7 @@ export function ConversationBubble({
   return (
     <div
       data-testid={isUser ? "conversation-bubble-user" : "conversation-bubble-assistant"}
-      className={`w-full rounded-3xl border px-4 py-3 text-left text-sm shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/50 ${isUser
+      className={`w-full min-w-0 overflow-hidden rounded-3xl border px-4 py-3 text-left text-sm shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/50 ${isUser
         ? "ml-auto border-violet-500/40 bg-gradient-to-r from-violet-500/20 via-violet-500/10 to-transparent text-violet-50"
         : "border-white/10 bg-white/5 text-zinc-100"
         } ${isSelected ? "ring-2 ring-violet-400/60" : ""} ${pending ? "cursor-wait opacity-95" : ""}`}
@@ -354,7 +354,7 @@ export function ConversationBubble({
         <span>{isUser ? t("cockpit.chatLabels.user") : "Venom"}</span>
         <span>{timeLabel}</span>
       </div>
-      <div className="mt-3 text-[15px] leading-relaxed text-white">
+      <div className="mt-3 min-w-0 overflow-hidden text-[15px] leading-relaxed text-white">
         {showComputationLabel && (
           <p className="mb-2 text-xs uppercase tracking-[0.35em] text-emerald-200/80">
             {t("cockpit.chatLabels.computationResult")}

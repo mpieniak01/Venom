@@ -19,16 +19,28 @@ import { mapTelemetryTone, type TelemetryFeedEntry } from "@/components/cockpit/
 
 
 export function formatRuntimeModelOptionLabel(
-  model: Pick<LlmRuntimeModelOption, "name" | "feedback_loop_tier">,
+  model: Pick<
+    LlmRuntimeModelOption,
+    "name" | "feedback_loop_tier" | "canonical_model_id"
+  > & {
+    runtime_id?: string;
+  },
   t: (key: string) => string,
 ): string {
+  const runtimeLabel = model.runtime_id ? ` [${model.runtime_id}]` : "";
+  const canonicalAlias = model.canonical_model_id ?? null;
+  const aliasSuffix =
+    canonicalAlias && canonicalAlias.toLowerCase() !== model.name.toLowerCase()
+      ? ` <-> ${canonicalAlias}`
+      : "";
+  const baseLabel = `${model.name}${aliasSuffix}${runtimeLabel}`;
   if (model.feedback_loop_tier === "primary") {
-    return `${model.name} · ${t("cockpit.models.feedbackLoopPrimaryBadge")}`;
+    return `${baseLabel} · ${t("cockpit.models.feedbackLoopPrimaryBadge")}`;
   }
   if (model.feedback_loop_tier === "fallback") {
-    return `${model.name} · ${t("cockpit.models.feedbackLoopFallbackBadge")}`;
+    return `${baseLabel} · ${t("cockpit.models.feedbackLoopFallbackBadge")}`;
   }
-  return model.name;
+  return baseLabel;
 }
 
 

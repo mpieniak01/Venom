@@ -22,7 +22,6 @@ from venom_core.api.schemas.academy import (
     DatasetResponse,
     DatasetScopeRequest,
     JobStatusResponse,
-    TrainableModelInfo,
     TrainingRequest,
     TrainingResponse,
     UploadFileInfo,
@@ -956,14 +955,3 @@ def preview_dataset_handler(
             status_code=500,
             detail=f"Failed to preview dataset: {str(e)}",
         )
-
-
-async def get_trainable_models_handler(*, academy: Any) -> List[TrainableModelInfo]:
-    try:
-        academy._ensure_academy_enabled()
-    except academy.AcademyRouteError as e:
-        raise academy._to_http_exception(e) from e
-
-    return await academy.academy_models.list_trainable_models(
-        mgr=academy._get_model_manager()
-    )

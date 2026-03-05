@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -375,35 +375,3 @@ def test_curate_dataset_handles_unexpected_exception(mock_settings):
     payload = resp.json()
     assert payload["success"] is False
     assert "Failed to curate dataset" in payload["message"]
-
-
-@patch("venom_core.config.SETTINGS")
-def test_trainable_models_endpoint_returns_only_trainable(mock_settings):
-    mock_settings.ENABLE_ACADEMY = True
-    client = _make_client()
-    academy_routes._model_manager.list_local_models = AsyncMock(
-        return_value=[
-            {"name": "gemma3:latest", "provider": "ollama", "source": "ollama"},
-            {
-                "name": "unsloth/Phi-3-mini-4k-instruct",
-                "provider": "vllm",
-                "source": "models",
-            },
-        ]
-    )
-    resp = client.get("/api/v1/academy/models/trainable")
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert any(item["trainable"] for item in payload)
-    assert all(item["trainable"] for item in payload)
-    assert all(item["model_id"] != "gemma3:latest" for item in payload)
-    assert all(item["source_type"] in {"local", "cloud"} for item in payload)
-    assert all(item["cost_tier"] in {"free", "paid", "unknown"} for item in payload)
-    assert all(isinstance(item["runtime_compatibility"], dict) for item in payload)
-    assert all(
-        all(isinstance(v, bool) for v in item["runtime_compatibility"].values())
-        for item in payload
-    )
-    assert all(isinstance(item["recommended_runtime"], str | None) for item in payload)
-    buckets = [item["priority_bucket"] for item in payload]
-    assert buckets == sorted(buckets)

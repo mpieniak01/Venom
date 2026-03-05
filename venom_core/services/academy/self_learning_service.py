@@ -304,6 +304,11 @@ class SelfLearningService:
         run_limits = self._parse_limits(limits)
         run_llm_config = self._parse_llm_config(llm_config)
         run_rag_config = self._parse_rag_config(rag_config)
+        self._apply_mode_defaults(
+            mode=mode,
+            llm_config=run_llm_config,
+            rag_config=run_rag_config,
+        )
         self._validate_mode_config(
             mode=mode,
             llm_config=run_llm_config,
@@ -478,23 +483,7 @@ class SelfLearningService:
                 raise ValueError(
                     "llm_config.base_model is required for llm_finetune mode"
                 )
-            is_trainable: bool
-            if self.is_model_trainable_fn is not None:
-                try:
-                    is_trainable = bool(
-                        self.is_model_trainable_fn(llm_config.base_model)
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "is_model_trainable_fn failed for '%s': %s",
-                        llm_config.base_model,
-                        exc,
-                    )
-                    is_trainable = self._is_trainable_model_candidate(
-                        llm_config.base_model
-                    )
-            else:
-                is_trainable = self._is_trainable_model_candidate(llm_config.base_model)
+            is_trainable = self._is_trainable_model(llm_config.base_model)
             if not is_trainable:
                 raise ValueError(
                     f"Model '{llm_config.base_model}' is not trainable in Academy"
@@ -503,6 +492,58 @@ class SelfLearningService:
             raise ValueError(
                 "rag_config.embedding_profile_id is required for rag_index mode"
             )
+
+    def _apply_mode_defaults(
+        self,
+        *,
+        mode: SelfLearningMode,
+        llm_config: LlmConfig,
+        rag_config: RagConfig,
+    ) -> None:
+        if mode == "llm_finetune":
+            selected_model = (llm_config.base_model or "").strip()
+            if not selected_model or not self._is_trainable_model(selected_model):
+                fallback_model = self._resolve_fallback_base_model()
+                if fallback_model:
+                    llm_config.base_model = fallback_model
+        if mode == "rag_index" and not rag_config.embedding_profile_id:
+            fallback_profile_id = self._resolve_default_embedding_profile_id()
+            if fallback_profile_id:
+                rag_config.embedding_profile_id = fallback_profile_id
+
+    def _is_trainable_model(self, model_id: str) -> bool:
+        candidate = model_id.strip()
+        if not candidate:
+            return False
+        if self.is_model_trainable_fn is not None:
+            try:
+                return bool(self.is_model_trainable_fn(candidate))
+            except Exception as exc:
+                logger.warning(
+                    "is_model_trainable_fn failed for '%s': %s",
+                    candidate,
+                    exc,
+                )
+        return self._is_trainable_model_candidate(candidate)
+
+    def _resolve_fallback_base_model(self) -> str | None:
+        default_model = str(getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "") or "")
+        candidate = default_model.strip()
+        if candidate and self._is_trainable_model(candidate):
+            return candidate
+        return None
+
+    def _resolve_default_embedding_profile_id(self) -> str | None:
+        profiles = self._embedding_profiles()
+        for profile in profiles:
+            profile_id = str(profile.get("profile_id") or "").strip()
+            if profile_id and bool(profile.get("healthy")):
+                return profile_id
+        for profile in profiles:
+            profile_id = str(profile.get("profile_id") or "").strip()
+            if profile_id:
+                return profile_id
+        return None
 
     @staticmethod
     def _is_trainable_model_candidate(

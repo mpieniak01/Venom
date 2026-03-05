@@ -6,6 +6,7 @@ import {
   clearAllSelfLearningRuns,
   deleteSelfLearningRun,
   getSelfLearningCapabilities,
+  getUnifiedModelCatalog,
   getSelfLearningRunStatus,
   listSelfLearningRuns,
   startSelfLearning,
@@ -69,7 +70,18 @@ export function SelfLearningPanel() {
   const loadCapabilities = useCallback(async () => {
     try {
       const response = await getSelfLearningCapabilities();
-      setTrainableModels(response.trainable_models ?? []);
+      let trainable = response.trainable_models ?? [];
+      try {
+        const catalog = await getUnifiedModelCatalog();
+        // Unified catalog is the source of truth, including an empty list.
+        trainable = catalog.trainable_models ?? [];
+      } catch (catalogError) {
+        console.warn(
+          "Failed to load unified model catalog for self-learning; falling back to capabilities payload:",
+          catalogError,
+        );
+      }
+      setTrainableModels(trainable);
       setEmbeddingProfiles(response.embedding_profiles ?? []);
       setDefaultBaseModel(response.default_base_model ?? null);
       setDefaultEmbeddingProfileId(response.default_embedding_profile_id ?? null);
@@ -85,6 +97,22 @@ export function SelfLearningPanel() {
         if (typeof detail === "string" && detail.trim().length > 0) {
           return detail;
         }
+        if (Array.isArray(detail)) {
+          const messages = detail
+            .map((item) => {
+              if (typeof item === "string") return item;
+              if (!item || typeof item !== "object") return "";
+              const msg = (item as { msg?: unknown }).msg;
+              return typeof msg === "string" ? msg : "";
+            })
+            .filter((item) => item.trim().length > 0);
+          if (messages.length > 0) {
+            return messages.join("; ");
+          }
+        }
+      }
+      if (error instanceof ApiError && typeof error.data === "string" && error.data.trim().length > 0) {
+        return error.data;
       }
       if (error instanceof Error && error.message.trim().length > 0) {
         return error.message;

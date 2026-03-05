@@ -153,7 +153,7 @@ API Payload:
 Inference tuning and Academy training are connected but separate:
 
 1. Academy base-model picker uses:
-   - `GET /api/v1/academy/models/trainable`
+   - `GET /api/v1/system/llm-runtime/options` (`model_catalog.trainable_models`)
 2. Chat/runtime selection uses:
    - `GET /api/v1/system/llm-runtime/options`
 3. Adapter activation can include runtime validation:

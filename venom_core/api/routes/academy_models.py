@@ -555,7 +555,11 @@ def ensure_default_model_visible(
     )
 
 
-async def list_trainable_models(mgr: Any) -> List[TrainableModelInfo]:
+async def list_trainable_models(
+    mgr: Any,
+    *,
+    local_models: Optional[List[Dict[str, Any]]] = None,
+) -> List[TrainableModelInfo]:
     """Build sorted list of Academy trainable models."""
     from venom_core.config import SETTINGS
 
@@ -565,15 +569,28 @@ async def list_trainable_models(mgr: Any) -> List[TrainableModelInfo]:
     default_model = (
         default_model_raw.strip() if isinstance(default_model_raw, str) else ""
     )
-    local_models: List[Dict[str, Any]] = []
+    discovered_local_models: List[Dict[str, Any]] = local_models or []
     available_runtime_ids: List[str] = []
 
-    if mgr is not None:
+    if discovered_local_models:
+        available_runtime_ids = discover_available_runtime_targets(
+            discovered_local_models
+        )
+        collect_local_trainable_models(
+            local_models=discovered_local_models,
+            default_model=default_model,
+            available_runtime_ids=available_runtime_ids,
+            result=result,
+            seen=seen,
+        )
+    elif mgr is not None:
         try:
-            local_models = await mgr.list_local_models()
-            available_runtime_ids = discover_available_runtime_targets(local_models)
+            discovered_local_models = await mgr.list_local_models()
+            available_runtime_ids = discover_available_runtime_targets(
+                discovered_local_models
+            )
             collect_local_trainable_models(
-                local_models=local_models,
+                local_models=discovered_local_models,
                 default_model=default_model,
                 available_runtime_ids=available_runtime_ids,
                 result=result,

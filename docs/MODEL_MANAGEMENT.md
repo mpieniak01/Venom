@@ -381,13 +381,13 @@ Notes:
 
 ### Academy trainable-model contract (local-first)
 
-Academy training uses a dedicated contract:
+Academy training reads trainable entries from the unified runtime catalog:
 
 ```bash
-GET /api/v1/academy/models/trainable
+GET /api/v1/system/llm-runtime/options
 ```
 
-The response is metadata-driven (not name-based) and returns only trainable entries.
+Use `model_catalog.trainable_models`. The response is metadata-driven (not name-based) and returns only trainable entries.
 Key fields:
 - `model_id`: base model identifier.
 - `provider`: model distribution/provider name (for example `huggingface`, `unsloth`, `vllm`, `ollama`).

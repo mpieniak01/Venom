@@ -153,7 +153,7 @@ Payload do API:
 Strojenie inferencji i trening Academy są powiązane, ale to osobne kontrakty:
 
 1. Selektor modelu bazowego Academy używa:
-   - `GET /api/v1/academy/models/trainable`
+   - `GET /api/v1/system/llm-runtime/options` (`model_catalog.trainable_models`)
 2. Selekcja runtime/modelu w Chat używa:
    - `GET /api/v1/system/llm-runtime/options`
 3. Aktywacja adaptera może zawierać walidację runtime:

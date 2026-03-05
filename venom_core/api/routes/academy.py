@@ -33,7 +33,6 @@ from venom_core.api.schemas.academy import (
     DatasetResponse,
     DatasetScopeRequest,
     JobStatusResponse,
-    TrainableModelInfo,
     TrainingRequest,
     TrainingResponse,
     UploadFileInfo,
@@ -835,10 +834,3 @@ def _ingest_upload_file(curator, file_path: Path) -> int:
 
 def _validate_training_record(record: Dict[str, Any]) -> bool:
     return academy_uploads.validate_training_record(record)
-
-
-@router.get("/models/trainable")
-async def get_trainable_models() -> List[TrainableModelInfo]:
-    return await academy_route_handlers.get_trainable_models_handler(
-        academy=_academy_module()
-    )

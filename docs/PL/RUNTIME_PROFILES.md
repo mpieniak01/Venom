@@ -25,10 +25,10 @@ Kanoniczne wykrywanie runtime dla UI/automatyzacji:
 
 Kontrakt kompatybilności Academy (trening -> inferencja):
 
-- `GET /api/v1/academy/models/trainable`
-  - zwraca tylko modele faktycznie trenowalne,
-  - zawiera `runtime_compatibility` i `recommended_runtime` wyliczane z realnie dostępnego lokalnego stosu,
-  - zawiera `source_type`, `cost_tier`, `priority_bucket` dla porządku local-first.
+- `GET /api/v1/system/llm-runtime/options`
+  - zwraca ujednolicony `model_catalog`, w tym `trainable_models`,
+  - `trainable_models` zawiera `runtime_compatibility` i `recommended_runtime` wyliczane z realnie dostępnego lokalnego stosu,
+  - `trainable_models` zawiera `source_type`, `cost_tier`, `priority_bucket` dla porządku local-first.
 - `POST /api/v1/academy/adapters/activate`
   - przyjmuje opcjonalny `runtime_id`,
   - odrzuca niekompatybilne kombinacje `base_model + adapter + runtime` kodem `400`.

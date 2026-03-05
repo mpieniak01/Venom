@@ -314,6 +314,8 @@ class SelfLearningService:
             llm_config=run_llm_config,
             rag_config=run_rag_config,
         )
+        if mode == "llm_finetune":
+            self._validate_llm_finetune_runtime_preflight(dry_run=bool(dry_run))
 
         run_id = str(uuid.uuid4())
         run = SelfLearningRun(
@@ -492,6 +494,22 @@ class SelfLearningService:
             raise ValueError(
                 "rag_config.embedding_profile_id is required for rag_index mode"
             )
+
+    def _validate_llm_finetune_runtime_preflight(self, *, dry_run: bool) -> None:
+        if dry_run:
+            return
+        habitat = self.gpu_habitat
+        if habitat is None:
+            raise ValueError("GPUHabitat is not available for fine-tuning")
+        if not bool(getattr(habitat, "use_local_runtime", False)):
+            return
+        check_dependencies = getattr(habitat, "_check_local_dependencies", None)
+        if not callable(check_dependencies):
+            return
+        try:
+            check_dependencies()
+        except Exception as exc:
+            raise ValueError(str(exc)) from exc
 
     def _apply_mode_defaults(
         self,

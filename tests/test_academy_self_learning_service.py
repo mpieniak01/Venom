@@ -286,6 +286,69 @@ def test_start_run_uses_shared_trainable_model_validator(tmp_path: Path):
         )
 
 
+def test_start_run_rejects_llm_when_local_runtime_dependencies_missing(tmp_path: Path):
+    class _FailingLocalHabitat:
+        use_local_runtime = True
+
+        def _check_local_dependencies(self) -> None:
+            raise RuntimeError(
+                "Brak wymaganych bibliotek do treningu: peft, trl, datasets"
+            )
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        gpu_habitat=_FailingLocalHabitat(),
+        is_model_trainable_fn=lambda _model_id: True,
+    )
+
+    with pytest.raises(ValueError, match="Brak wymaganych bibliotek do treningu"):
+        service.start_run(
+            mode="llm_finetune",
+            sources=["docs"],
+            llm_config={"base_model": "unsloth/Phi-3-mini-4k-instruct"},
+            dry_run=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_start_run_allows_llm_dry_run_when_local_dependencies_missing(
+    tmp_path: Path,
+):
+    class _FailingLocalHabitat:
+        use_local_runtime = True
+
+        def _check_local_dependencies(self) -> None:
+            raise RuntimeError(
+                "Brak wymaganych bibliotek do treningu: peft, trl, datasets"
+            )
+
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "intro.md").write_text(
+        "Dry run sample with enough content for dataset quality checks.\n" * 80,
+        encoding="utf-8",
+    )
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+        gpu_habitat=_FailingLocalHabitat(),
+        is_model_trainable_fn=lambda _model_id: True,
+    )
+
+    run_id = service.start_run(
+        mode="llm_finetune",
+        sources=["docs"],
+        llm_config={"base_model": "unsloth/Phi-3-mini-4k-instruct"},
+        dry_run=True,
+    )
+    status = await _wait_terminal(service, run_id)
+    assert status["status"] in {"completed", "completed_with_warnings"}
+    service.clear_all_runs()
+
+
 def test_is_trainable_model_handles_blank_and_validator_exception(tmp_path: Path):
     def _raiser(_model_id: str) -> bool:
         raise RuntimeError("validator failed")

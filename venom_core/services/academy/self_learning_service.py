@@ -1492,7 +1492,7 @@ class SelfLearningService:
         if not isinstance(training_jobs, dict) or not training_jobs:
             return
         active_jobs: list[str] = []
-        for job_name in list(training_jobs.keys()):
+        for job_name in training_jobs:
             try:
                 payload = habitat.get_training_status(job_name)
             except Exception:

@@ -579,21 +579,27 @@ function asArray<T>(value: T[] | undefined | null): T[] {
 }
 
 function resolveRuntimeServableModels(catalog: RuntimeOptionsPayload["model_catalog"]) {
-  return asArray(catalog?.runtime_servable_models).length > 0
-    ? asArray(catalog?.runtime_servable_models)
-    : asArray(catalog?.chat_models);
+  const runtimeServableModels = asArray(catalog?.runtime_servable_models);
+  if (runtimeServableModels.length > 0) {
+    return runtimeServableModels;
+  }
+  return asArray(catalog?.chat_models);
 }
 
 function resolveTrainableBaseModels(catalog: RuntimeOptionsPayload["model_catalog"]) {
-  return asArray(catalog?.trainable_base_models).length > 0
-    ? asArray(catalog?.trainable_base_models)
-    : asArray(catalog?.trainable_models);
+  const trainableBaseModels = asArray(catalog?.trainable_base_models);
+  if (trainableBaseModels.length > 0) {
+    return trainableBaseModels;
+  }
+  return asArray(catalog?.trainable_models);
 }
 
 function resolveTrainableModels(catalog: RuntimeOptionsPayload["model_catalog"]) {
-  return asArray(catalog?.trainable_models).length > 0
-    ? asArray(catalog?.trainable_models)
-    : asArray(catalog?.trainable_base_models);
+  const trainableModels = asArray(catalog?.trainable_models);
+  if (trainableModels.length > 0) {
+    return trainableModels;
+  }
+  return asArray(catalog?.trainable_base_models);
 }
 
 function resolveAdapterCatalog(

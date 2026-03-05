@@ -1013,7 +1013,6 @@ def _build_vllm_runtime_model_from_adapter(
 
 def _deploy_adapter_to_vllm_runtime(
     *,
-    mgr: Any,
     adapter_id: str,
 ) -> Dict[str, Any]:
     models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
@@ -1106,7 +1105,6 @@ def _deploy_adapter_to_chat_runtime(
         }
     if runtime_local_id == "vllm":
         return _deploy_adapter_to_vllm_runtime(
-            mgr=mgr,
             adapter_id=adapter_id,
         )
 
@@ -1156,7 +1154,7 @@ def _deploy_adapter_to_chat_runtime(
 def _rollback_chat_runtime_after_adapter_deactivation(*, mgr: Any) -> Dict[str, Any]:
     active_runtime = get_active_llm_runtime()
     config = config_manager.get_config(mask_secrets=False)
-    runtime_local_id, runtime_candidate = _resolve_runtime_for_rollback(
+    runtime_local_id, _ = _resolve_runtime_for_rollback(
         active_runtime=active_runtime,
         config=config,
     )

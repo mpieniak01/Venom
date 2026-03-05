@@ -884,16 +884,10 @@ def _flatten_runtime_models(runtimes: list[dict[str, Any]]) -> list[dict[str, An
             key = (runtime_id, canonical)
             candidate = dict(model)
             existing = deduped.get(key)
-            if existing is None:
-                deduped[key] = candidate
-                continue
-            if _prefer_runtime_model_candidate(
-                candidate=candidate,
-                existing=existing,
-                canonical=canonical,
+            if existing is None or _prefer_runtime_model_candidate(
+                candidate=candidate, existing=existing, canonical=canonical
             ):
                 deduped[key] = candidate
-                continue
     return list(deduped.values())
 
 
@@ -1174,24 +1168,28 @@ def _runtime_payload_or_audit_issue(
     if not name:
         return None, None
     if not runtime_id:
-        return None, {
-            "name": name,
-            "path": model_path,
-            "source": source or None,
-            "reason": "provider_unknown",
-        }
+        return None, _runtime_model_audit_issue(
+            name=name,
+            path=model_path,
+            source=source,
+            reason="provider_unknown",
+        )
     if runtime_id == "vllm" and not _looks_like_vllm_runtime_model_path(model_path):
-        return None, {
-            "name": name,
-            "path": model_path,
-            "source": source or None,
-            "reason": "not_runtime_loadable_for_vllm",
-        }
-    owner = source if source in grouped else (inferred if inferred in grouped else None)
-    ownership_status = (
-        "native"
-        if owner == runtime_id
-        else ("foreign" if owner in grouped else "unknown")
+        return None, _runtime_model_audit_issue(
+            name=name,
+            path=model_path,
+            source=source,
+            reason="not_runtime_loadable_for_vllm",
+        )
+    owner = _resolve_runtime_model_owner(
+        source=source,
+        inferred=inferred,
+        grouped=grouped,
+    )
+    ownership_status = _resolve_runtime_model_ownership_status(
+        owner=owner,
+        runtime_id=runtime_id,
+        grouped=grouped,
     )
     return (
         _runtime_model_payload(
@@ -1208,6 +1206,47 @@ def _runtime_payload_or_audit_issue(
         ),
         None,
     )
+
+
+def _runtime_model_audit_issue(
+    *,
+    name: str,
+    path: str,
+    source: str,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "path": path,
+        "source": source or None,
+        "reason": reason,
+    }
+
+
+def _resolve_runtime_model_owner(
+    *,
+    source: str,
+    inferred: str,
+    grouped: dict[str, list[dict[str, Any]]],
+) -> str | None:
+    if source in grouped:
+        return source
+    if inferred in grouped:
+        return inferred
+    return None
+
+
+def _resolve_runtime_model_ownership_status(
+    *,
+    owner: str | None,
+    runtime_id: str,
+    grouped: dict[str, list[dict[str, Any]]],
+) -> str:
+    if owner == runtime_id:
+        return "native"
+    if owner in grouped:
+        return "foreign"
+    return "unknown"
 
 
 def _runtime_target_payload(

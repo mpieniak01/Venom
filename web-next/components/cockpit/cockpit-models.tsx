@@ -56,6 +56,13 @@ export function CockpitModels({
   llmActionPending,
   onActivateServer,
 }: CockpitModelsProps) {
+  let activateServerLabel = "Aktywuj serwer";
+  if (llmActionPending === `activate:${selectedLlmServer}`) {
+    activateServerLabel = "Aktywuję...";
+  } else if (selectedLlmModel) {
+    activateServerLabel = "Aktywuj model";
+  }
+
   return (
     <Panel
       title="Serwery LLM"
@@ -196,11 +203,7 @@ export function CockpitModels({
               !selectedLlmServer
             }
           >
-            {llmActionPending === `activate:${selectedLlmServer}`
-              ? "Aktywuję..."
-              : selectedLlmModel
-                ? "Aktywuj model"
-                : "Aktywuj serwer"}
+            {activateServerLabel}
           </Button>
         </div>
       </div>

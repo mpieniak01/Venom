@@ -42,6 +42,60 @@ interface Props {
 }
 
 type TranslateFn = ReturnType<typeof useTranslation>;
+type SupportedEngine =
+  | "unsloth"
+  | "huggingface"
+  | "onnx"
+  | "vllm"
+  | "ollama"
+  | "openai"
+  | "google"
+  | "config"
+  | "unknown";
+
+function resolveEngineKey(provider: string): SupportedEngine {
+  const normalized = provider.trim().toLowerCase();
+  if (
+    normalized === "unsloth" ||
+    normalized === "huggingface" ||
+    normalized === "onnx" ||
+    normalized === "vllm" ||
+    normalized === "ollama" ||
+    normalized === "openai" ||
+    normalized === "google" ||
+    normalized === "config"
+  ) {
+    return normalized;
+  }
+  return "unknown";
+}
+
+function getRuntimeDisplayName(runtimeId: string, t: TranslateFn): string {
+  const engineKey = resolveEngineKey(runtimeId);
+  if (engineKey === "unknown") {
+    return runtimeId;
+  }
+  return t(`academy.training.engineNames.${engineKey}`);
+}
+
+function getModelCompatibility(model: SelfLearningTrainableModelInfo): string[] {
+  const entries = Object.entries(model.runtime_compatibility ?? {})
+    .filter(([, isCompatible]) => Boolean(isCompatible))
+    .map(([runtimeId]) => runtimeId);
+  const runtimeOrder: Record<string, number> = {
+    vllm: 0,
+    ollama: 1,
+    onnx: 2,
+  };
+  return entries.sort((left, right) => {
+    const leftOrder = runtimeOrder[left] ?? 99;
+    const rightOrder = runtimeOrder[right] ?? 99;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.localeCompare(right);
+  });
+}
 
 function computeCanStart(params: {
   sourcesCount: number;
@@ -172,6 +226,14 @@ function ModeSection({
   onRagRetrievalModeChange,
 }: ModeSectionProps) {
   if (mode === "llm_finetune") {
+    const selectedModel =
+      trainableModels.find((model) => model.model_id === effectiveBaseModel) ?? null;
+    const compatibility = selectedModel ? getModelCompatibility(selectedModel) : [];
+    const compatibilityLabel =
+      compatibility.length > 0
+        ? compatibility.map((runtime) => getRuntimeDisplayName(runtime, t)).join(" • ")
+        : t("academy.training.runtimeUnknown");
+
     return (
       <div className="space-y-3">
         <div className="space-y-1">
@@ -194,6 +256,18 @@ function ModeSection({
               ))
             )}
           </select>
+          {selectedModel ? (
+            <div className="mt-1 space-y-0.5 text-[11px] text-hint">
+              <p>
+                {t("academy.training.compatibilityLabel")}: {compatibilityLabel}
+              </p>
+              <p>
+                {t("academy.training.engineLabel")}:{" "}
+                {t(`academy.training.engineNames.${resolveEngineKey(selectedModel.provider)}`)}
+              </p>
+              <p className="text-hint/80">{t("academy.selfLearning.config.chatDeployHint")}</p>
+            </div>
+          ) : null}
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">

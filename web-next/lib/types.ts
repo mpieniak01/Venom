@@ -125,6 +125,9 @@ export interface LlmRuntimeModelOption {
   chat_compatible?: boolean;
   feedback_loop_ready?: boolean;
   feedback_loop_tier?: "primary" | "fallback" | "not_recommended";
+  canonical_model_id?: string | null;
+  aliases?: string[];
+  coding_eligible?: boolean;
 }
 
 export interface LlmRuntimeTargetOption {
@@ -153,6 +156,28 @@ export interface LlmRuntimeOptionsResponse {
     resolution_reason?: "exact" | "fallback" | "resource_guard" | "not_found" | null;
   };
   runtimes: LlmRuntimeTargetOption[];
+  model_catalog?: {
+    all_models?: LlmRuntimeModelOption[];
+    chat_models?: LlmRuntimeModelOption[];
+    coding_models?: LlmRuntimeModelOption[];
+    trainable_models?: Array<{
+      model_id: string;
+      label: string;
+      provider: string;
+      trainable: boolean;
+      reason_if_not_trainable?: string | null;
+      recommended: boolean;
+      installed_local: boolean;
+      source_type: "local" | "cloud";
+      cost_tier: "free" | "paid" | "unknown";
+      priority_bucket: number;
+      runtime_compatibility: Record<string, boolean>;
+      recommended_runtime?: string | null;
+      canonical_model_id?: string | null;
+      aliases?: string[];
+      coding_eligible?: boolean;
+    }>;
+  };
   feedback_loop?: {
     requested_alias?: string;
     primary?: string;

@@ -241,6 +241,8 @@ export const academy = {
         repairHeavy: "Repair heavy",
       },
       noTrainableModels: "No trainable models available",
+      chatDeployHint:
+        "Auto-deploy of adapters to Chat is currently available for Ollama runtime; runtime compatibility indicates where the adapter can run after training.",
       embeddingProfile: "Embedding profile",
       noEmbeddingProfiles: "No embedding profiles available",
       embeddingPolicy: "Embedding policy",

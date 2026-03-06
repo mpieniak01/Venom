@@ -307,6 +307,19 @@ export function TrainingPanel() {
     baseModelPlaceholder = t("academy.training.noTrainableModels");
   }
   const selectedRuntimeCapabilities = runtimeCapabilities[selectedRuntime] ?? {};
+  const selectedModel = trainableModels.find((model) => model.model_id === selectedBaseModel) ?? null;
+  const selectedModelCompatibilityLabel = selectedModel
+    ? (() => {
+      const compatibility = getModelCompatibility(selectedModel);
+      if (compatibility.length === 0) return t("academy.training.runtimeUnknown");
+      return compatibility.map((runtime) => getRuntimeDisplayName(runtime)).join(" • ");
+    })()
+    : "";
+  const selectedModelInstallStateLabel = selectedModel
+    ? selectedModel.installed_local
+      ? t("academy.training.installState.localInstalled")
+      : t("academy.training.installState.catalogDownload")
+    : "";
 
   return (
     <div className="space-y-6">
@@ -371,7 +384,7 @@ export function TrainingPanel() {
                 placeholder={baseModelPlaceholder}
                 ariaLabel={t("academy.training.baseModel")}
                 disabled={modelsLoading || trainableModels.length === 0}
-                buttonClassName="mt-0 h-11 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
+                buttonClassName="mt-0 h-10 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
                 menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
                 optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
                 renderButton={(option) => {
@@ -383,29 +396,12 @@ export function TrainingPanel() {
                       </span>
                     );
                   }
-                  const compatibility = getModelCompatibility(selectedOption.model);
-                  const compatibilityLabel = compatibility.length > 0
-                    ? compatibility
-                      .map((runtime) => getRuntimeDisplayName(runtime))
-                      .join(" • ")
-                    : t("academy.training.runtimeUnknown");
-                  const installStateLabel = selectedOption.model.installed_local
-                    ? t("academy.training.installState.localInstalled")
-                    : t("academy.training.installState.catalogDownload");
                   return (
-                    <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-left text-sm text-[color:var(--text-primary)]">
-                          {selectedOption.model.model_id}
-                        </p>
-                        <p className="truncate text-left text-[11px] text-hint">
-                          {t("academy.training.compatibilityLabel")}: {compatibilityLabel}
-                        </p>
-                        <p className="truncate text-left text-[11px] text-hint/80">
-                          {installStateLabel}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-xs text-[color:var(--ui-muted)]">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-left text-sm text-[color:var(--text-primary)]">
+                        {selectedOption.model.model_id}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-[color:var(--ui-muted)]">
                         {t(`academy.training.engineNames.${resolveEngineKey(selectedOption.model.provider)}`)}
                       </span>
                     </div>
@@ -429,44 +425,38 @@ export function TrainingPanel() {
                   if (!model) {
                     return <span className="text-sm text-hint">{typedOption.label}</span>;
                   }
-                  const compatibility = getModelCompatibility(model);
-                  const compatibilityBadges = compatibility.length > 0 ? compatibility : [];
                   return (
-                    <div className="flex w-full items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className={`truncate text-sm ${active ? "text-[color:var(--primary)]" : "text-[color:var(--text-primary)]"}`}>
-                          {model.model_id}
-                        </p>
-                        <p className="mt-0.5 truncate text-[11px] text-hint/80">
-                          {model.installed_local
-                            ? t("academy.training.installState.localInstalled")
-                            : t("academy.training.installState.catalogDownload")}
-                        </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          {compatibilityBadges.length > 0 ? (
-                            compatibilityBadges.map((runtime) => (
-                              <span
-                                key={`${model.model_id}-${runtime}`}
-                                className="rounded-md border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--ui-muted)]"
-                              >
-                                {getRuntimeDisplayName(runtime)}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-[11px] text-hint">
-                              {t("academy.training.runtimeUnknown")}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <span className="shrink-0 text-xs text-[color:var(--ui-muted)]">
+                    <div className="flex w-full items-center gap-2">
+                      <span
+                        className={`min-w-0 flex-1 truncate text-sm ${
+                          active ? "text-[color:var(--primary)]" : "text-[color:var(--text-primary)]"
+                        }`}
+                      >
+                        {model.model_id}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-[color:var(--ui-muted)]">
                         {t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`)}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-hint/80">
+                        {model.installed_local
+                          ? t("academy.training.installState.localInstalled")
+                          : t("academy.training.installState.catalogDownload")}
                       </span>
                     </div>
                   );
                 }}
               />
             </div>
+            {selectedModel ? (
+              <div className="mt-2 rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-[11px] text-hint">
+                <p className="truncate">
+                  {t("academy.training.engineLabel")}:{" "}
+                  {t(`academy.training.engineNames.${resolveEngineKey(selectedModel.provider)}`)} •{" "}
+                  {t("academy.training.compatibilityLabel")}: {selectedModelCompatibilityLabel} •{" "}
+                  {selectedModelInstallStateLabel}
+                </p>
+              </div>
+            ) : null}
             <p className="mt-1 text-xs text-hint">{t("academy.training.baseModelHint")}</p>
             <p className="mt-1 text-xs text-hint/60">{t("academy.training.orderingHint")}</p>
           </div>

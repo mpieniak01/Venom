@@ -139,7 +139,7 @@ test-all:
 	run_phase() { \
 		local phase_name="$$1"; \
 		local phase_target="$$2"; \
-		local start_ts end_ts duration rc status; \
+		local start_ts end_ts duration duration_min rc status; \
 		echo ""; \
 		echo "▶️  Faza: $$phase_name"; \
 		start_ts=$$(date +%s); \
@@ -149,6 +149,7 @@ test-all:
 		set -e; \
 		end_ts=$$(date +%s); \
 		duration=$$((end_ts - start_ts)); \
+		duration_min=$$(awk "BEGIN {printf \"%.2f\", $$duration/60}"); \
 		if [ $$rc -eq 0 ]; then \
 			status="OK"; \
 		else \
@@ -156,13 +157,15 @@ test-all:
 			overall_rc=1; \
 		fi; \
 		phase_durations+=("$$duration"); \
+		phase_durations_min+=("$$duration_min"); \
 		phase_statuses+=("$$status"); \
-		echo "⏱️  $$phase_name: $${duration}s [$${status}]"; \
+		echo "⏱️  $$phase_name: $${duration}s ($${duration_min} min) [$${status}]"; \
 	}; \
 	\
 	phase_names=("Backend tests" "Web unit tests" "Web e2e tests"); \
 	phase_targets=("test" "test-web-unit" "test-web-e2e"); \
 	phase_durations=(); \
+	phase_durations_min=(); \
 	phase_statuses=(); \
 	\
 	for i in "$${!phase_names[@]}"; do \
@@ -171,15 +174,16 @@ test-all:
 	\
 	overall_end=$$(date +%s); \
 	overall_duration=$$((overall_end - overall_start)); \
+	overall_duration_min=$$(awk "BEGIN {printf \"%.2f\", $$overall_duration/60}"); \
 	echo ""; \
 	echo "========================================"; \
 	echo "📊 Podsumowanie make test-all"; \
 	echo "========================================"; \
 	for i in "$${!phase_names[@]}"; do \
-		printf " - %-18s : %6ss  [%s]\n" "$${phase_names[$$i]}" "$${phase_durations[$$i]}" "$${phase_statuses[$$i]}"; \
+		printf " - %-18s : %6ss (%6s min)  [%s]\n" "$${phase_names[$$i]}" "$${phase_durations[$$i]}" "$${phase_durations_min[$$i]}" "$${phase_statuses[$$i]}"; \
 	done; \
 	echo "----------------------------------------"; \
-	printf " Σ Czas całkowity      : %6ss\n" "$$overall_duration"; \
+	printf " Σ Czas całkowity      : %6ss (%6s min)\n" "$$overall_duration" "$$overall_duration_min"; \
 	if [ $$overall_rc -eq 0 ]; then \
 		echo "✅ Status końcowy: OK"; \
 	else \

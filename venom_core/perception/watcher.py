@@ -7,6 +7,7 @@ from typing import Any, Awaitable, Callable, Optional, Protocol, Set
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
@@ -176,6 +177,14 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
                 except Exception as e:
                     logger.error(f"Błąd w callback dla {file_path}: {e}")
 
+    def reset(self) -> None:
+        """Czyści stan debouncera przy zatrzymaniu watchera."""
+        self._pending_changes.clear()
+        if self._debounce_task is not None and not self._debounce_task.done():
+            self._debounce_task.cancel()
+        self._debounce_task = None
+        self._loop = None
+
 
 class FileWatcher:
     """
@@ -224,12 +233,9 @@ class FileWatcher:
             self.workspace_root.mkdir(parents=True, exist_ok=True)
 
         try:
-            # Utwórz i uruchom observer
+            # Utwórz i uruchom observer (preferowany: natywny/inotify)
             self.observer = Observer()
-            self.observer.schedule(
-                self.event_handler, str(self.workspace_root), recursive=True
-            )
-            self.observer.start()
+            self._start_observer(self.observer)
             self.is_running = True
 
             logger.info(f"[WATCHER] Uruchomiony, monitoruje: {self.workspace_root}")
@@ -240,9 +246,32 @@ class FileWatcher:
                     message=f"File Watcher started monitoring {self.workspace_root}",
                     data={"level": "INFO"},
                 )
+        except OSError as e:
+            # Linux CI może wyczerpać limit inotify; fallback na polling.
+            if e.errno != 24:
+                logger.error(f"[WATCHER] Błąd podczas uruchamiania: {e}")
+                self._cleanup_observer()
+                raise
 
+            logger.warning(
+                "[WATCHER] inotify instance limit reached; fallback to PollingObserver"
+            )
+            try:
+                self.observer = PollingObserver(timeout=1.0)
+                self._start_observer(self.observer)
+                self.is_running = True
+                logger.info(
+                    f"[WATCHER] Uruchomiony w trybie polling, monitoruje: {self.workspace_root}"
+                )
+            except Exception as fallback_err:
+                logger.error(
+                    f"[WATCHER] Błąd podczas uruchamiania fallback PollingObserver: {fallback_err}"
+                )
+                self._cleanup_observer()
+                raise
         except Exception as e:
             logger.error(f"[WATCHER] Błąd podczas uruchamiania: {e}")
+            self._cleanup_observer()
             raise
 
     async def stop(self) -> None:
@@ -257,6 +286,8 @@ class FileWatcher:
                 self.observer.join(timeout=5)
 
             self.is_running = False
+            self.observer = None
+            self.event_handler.reset()
             logger.info("[WATCHER] Zatrzymany")
 
             if self.event_broadcaster:
@@ -268,7 +299,25 @@ class FileWatcher:
 
         except Exception as e:
             logger.error(f"[WATCHER] Błąd podczas zatrzymywania: {e}")
+            self._cleanup_observer()
             raise
+
+    def _start_observer(self, observer: ObserverType) -> None:
+        """Konfiguruje i uruchamia przekazany observer."""
+        observer.schedule(self.event_handler, str(self.workspace_root), recursive=True)
+        observer.start()
+
+    def _cleanup_observer(self) -> None:
+        """Czyści zasoby observera po błędzie."""
+        if self.observer is not None:
+            try:
+                self.observer.stop()
+                self.observer.join(timeout=5)
+            except Exception:
+                pass
+        self.observer = None
+        self.is_running = False
+        self.event_handler.reset()
 
     async def _handle_file_change(self, file_path: str) -> None:
         """

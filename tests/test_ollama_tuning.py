@@ -18,7 +18,7 @@ def _settings(**kwargs):
         "OLLAMA_MAX_QUEUE": 0,
         "OLLAMA_FLASH_ATTENTION": True,
         "OLLAMA_KV_CACHE_TYPE": "",
-        "LLM_KEEP_ALIVE": "5m",
+        "LLM_KEEP_ALIVE": "-1",
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -31,7 +31,7 @@ def test_resolve_ollama_tuning_profile_uses_profile_defaults():
     assert resolved["num_parallel"] == 2
     assert resolved["max_queue"] == 256
     assert resolved["kv_cache_type"] == "q8_0"
-    assert resolved["keep_alive"] == "5m"
+    assert resolved["keep_alive"] == "-1"
 
 
 def test_resolve_ollama_tuning_profile_applies_env_overrides():

@@ -1265,25 +1265,14 @@ def _deploy_adapter_to_chat_runtime(
             "runtime_id": runtime_candidate,
         }
 
-    if runtime_local_id == "onnx":
-        return {
-            "deployed": False,
-            "reason": f"runtime_not_supported:{runtime_local_id}",
-            "runtime_id": runtime_local_id,
-        }
-    if runtime_local_id == "vllm":
-        return _deploy_adapter_to_vllm_runtime(
-            adapter_id=adapter_id,
-        )
+    non_ollama_payload = _handle_non_ollama_runtime_deploy(
+        runtime_local_id=runtime_local_id,
+        adapter_id=adapter_id,
+    )
+    if non_ollama_payload:
+        return non_ollama_payload
 
-    requested_model = str(model_id or "").strip()
-    if not requested_model:
-        config_snapshot = config_manager.get_config(mask_secrets=False)
-        requested_model = str(
-            config_snapshot.get("LAST_MODEL_OLLAMA")
-            or config_snapshot.get("LLM_MODEL_NAME")
-            or ""
-        ).strip()
+    requested_model = _resolve_requested_runtime_model(model_id)
 
     models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
@@ -1423,6 +1412,39 @@ def _resolve_adapter_dir(*, models_dir: Path, adapter_id: str) -> Path:
     return adapter_dir
 
 
+def _require_existing_adapter_artifact(*, adapter_dir: Path) -> Path:
+    adapter_path = (adapter_dir / "adapter").resolve()
+    if not adapter_path.exists():
+        raise FileNotFoundError("Adapter not found")
+    return adapter_path
+
+
+def _resolve_requested_runtime_model(model_id: str | None) -> str:
+    requested_model = str(model_id or "").strip()
+    if requested_model:
+        return requested_model
+    config_snapshot = config_manager.get_config(mask_secrets=False)
+    return str(
+        config_snapshot.get("LAST_MODEL_OLLAMA")
+        or config_snapshot.get("LLM_MODEL_NAME")
+        or ""
+    ).strip()
+
+
+def _handle_non_ollama_runtime_deploy(
+    *, runtime_local_id: str, adapter_id: str
+) -> Dict[str, Any]:
+    if runtime_local_id == "onnx":
+        return {
+            "deployed": False,
+            "reason": f"runtime_not_supported:{runtime_local_id}",
+            "runtime_id": runtime_local_id,
+        }
+    if runtime_local_id == "vllm":
+        return _deploy_adapter_to_vllm_runtime(adapter_id=adapter_id)
+    return {}
+
+
 async def validate_adapter_runtime_compatibility(
     *,
     mgr: Any,
@@ -1444,6 +1466,7 @@ async def validate_adapter_runtime_compatibility(
 
     models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
+    _require_existing_adapter_artifact(adapter_dir=adapter_dir)
     base_model = _require_trusted_adapter_base_model(
         adapter_dir=adapter_dir,
         default_model=str(getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
@@ -1498,7 +1521,95 @@ async def validate_adapter_runtime_compatibility(
     )
 
 
-async def audit_adapters(
+def _empty_adapters_audit_payload() -> Dict[str, Any]:
+    return {
+        "count": 0,
+        "adapters": [],
+        "summary": {
+            "compatible": 0,
+            "blocked_unknown_base": 0,
+            "blocked_mismatch": 0,
+        },
+    }
+
+
+def _resolve_active_adapter_id(mgr: Any) -> str:
+    if not mgr:
+        return ""
+    active_info = mgr.get_active_adapter_info()
+    if not isinstance(active_info, dict):
+        return ""
+    return str(active_info.get("adapter_id") or "").strip()
+
+
+def _evaluate_adapter_audit_status(
+    *,
+    assessment: Dict[str, Any],
+    base_model: str,
+    runtime_local_id: str | None,
+    selected_model: str,
+    selected_model_canonical: str,
+) -> tuple[str, str | None, str]:
+    reason_code = str(assessment.get("reason_code") or "").strip() or None
+    category = "compatible"
+    message = "Adapter metadata is consistent"
+
+    if not bool(assessment.get("trusted")):
+        if reason_code == ADAPTER_METADATA_INCONSISTENT:
+            return (
+                "blocked_mismatch",
+                reason_code,
+                str(assessment.get("reason") or "Inconsistent adapter metadata"),
+            )
+        return (
+            "blocked_unknown_base",
+            ADAPTER_BASE_MODEL_UNKNOWN,
+            str(assessment.get("reason") or "Reliable base_model metadata is missing"),
+        )
+
+    if runtime_local_id and selected_model_canonical:
+        base_canonical = _canonical_runtime_model_id(base_model)
+        if base_canonical and base_canonical != selected_model_canonical:
+            return (
+                "blocked_mismatch",
+                ADAPTER_BASE_MODEL_MISMATCH,
+                "Adapter base model does not match selected runtime model "
+                f"('{selected_model}')",
+            )
+    return category, reason_code, message
+
+
+def _build_adapter_audit_item(
+    *,
+    training_dir: Path,
+    adapter_path: Path,
+    assessment: Dict[str, Any],
+    base_model: str,
+    category: str,
+    reason_code: str | None,
+    message: str,
+    active_adapter_id: str,
+) -> Dict[str, Any]:
+    return {
+        "adapter_id": training_dir.name,
+        "adapter_path": str(adapter_path),
+        "base_model": base_model,
+        "canonical_base_model": str(assessment.get("canonical_base_model") or ""),
+        "trusted_metadata": bool(assessment.get("trusted")),
+        "category": category,
+        "reason_code": reason_code,
+        "message": message,
+        "is_active": training_dir.name == active_adapter_id,
+        "sources": list(assessment.get("sources") or []),
+        "manual_repair_hint": (
+            "Fill adapter metadata with a single consistent base_model and rerun audit"
+            if category != "compatible"
+            else None
+        ),
+    }
+
+
+def audit_adapters(
     *,
     mgr: Any,
     runtime_id: str | None = None,
@@ -1507,25 +1618,13 @@ async def audit_adapters(
     """Preflight audit for historical adapters metadata confidence and compatibility."""
     models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR)
     if not models_dir.exists():
-        return {
-            "count": 0,
-            "adapters": [],
-            "summary": {
-                "compatible": 0,
-                "blocked_unknown_base": 0,
-                "blocked_mismatch": 0,
-            },
-        }
+        return _empty_adapters_audit_payload()
 
     runtime_local_id = _resolve_local_runtime_id(str(runtime_id or "").strip().lower())
     selected_model = str(model_id or "").strip()
     selected_model_canonical = _canonical_runtime_model_id(selected_model)
 
-    active_adapter_id = ""
-    if mgr:
-        active_info = mgr.get_active_adapter_info()
-        if isinstance(active_info, dict):
-            active_adapter_id = str(active_info.get("adapter_id") or "").strip()
+    active_adapter_id = _resolve_active_adapter_id(mgr)
 
     items: List[Dict[str, Any]] = []
     for training_dir in sorted(models_dir.iterdir(), key=lambda p: p.name):
@@ -1542,53 +1641,25 @@ async def audit_adapters(
             ).strip(),
         )
         base_model = str(assessment.get("base_model") or "").strip()
-        reason_code = str(assessment.get("reason_code") or "").strip() or None
-        category = "compatible"
-        message = "Adapter metadata is consistent"
-
-        if not bool(assessment.get("trusted")):
-            if reason_code == ADAPTER_METADATA_INCONSISTENT:
-                category = "blocked_mismatch"
-                message = str(
-                    assessment.get("reason") or "Inconsistent adapter metadata"
-                )
-            else:
-                category = "blocked_unknown_base"
-                reason_code = ADAPTER_BASE_MODEL_UNKNOWN
-                message = str(
-                    assessment.get("reason")
-                    or "Reliable base_model metadata is missing"
-                )
-        elif runtime_local_id and selected_model_canonical:
-            base_canonical = _canonical_runtime_model_id(base_model)
-            if base_canonical and base_canonical != selected_model_canonical:
-                category = "blocked_mismatch"
-                reason_code = ADAPTER_BASE_MODEL_MISMATCH
-                message = (
-                    "Adapter base model does not match selected runtime model "
-                    f"('{selected_model}')"
-                )
+        category, reason_code, message = _evaluate_adapter_audit_status(
+            assessment=assessment,
+            base_model=base_model,
+            runtime_local_id=runtime_local_id,
+            selected_model=selected_model,
+            selected_model_canonical=selected_model_canonical,
+        )
 
         items.append(
-            {
-                "adapter_id": training_dir.name,
-                "adapter_path": str(adapter_path),
-                "base_model": base_model,
-                "canonical_base_model": str(
-                    assessment.get("canonical_base_model") or ""
-                ),
-                "trusted_metadata": bool(assessment.get("trusted")),
-                "category": category,
-                "reason_code": reason_code,
-                "message": message,
-                "is_active": training_dir.name == active_adapter_id,
-                "sources": list(assessment.get("sources") or []),
-                "manual_repair_hint": (
-                    "Fill adapter metadata with a single consistent base_model and rerun audit"
-                    if category != "compatible"
-                    else None
-                ),
-            }
+            _build_adapter_audit_item(
+                training_dir=training_dir,
+                adapter_path=adapter_path,
+                assessment=assessment,
+                base_model=base_model,
+                category=category,
+                reason_code=reason_code,
+                message=message,
+                active_adapter_id=active_adapter_id,
+            )
         )
 
     summary = {

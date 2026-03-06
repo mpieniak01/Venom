@@ -604,6 +604,7 @@ async def test_validate_adapter_runtime_compatibility_rejects_non_local_runtime(
 
     adapter_dir = tmp_path / "adapter-1"
     adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter").mkdir(parents=True)
     (adapter_dir / "metadata.json").write_text(
         '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
         encoding="utf-8",
@@ -635,6 +636,25 @@ async def test_validate_adapter_runtime_compatibility_rejects_path_traversal(
 
 @pytest.mark.asyncio
 @patch("venom_core.config.SETTINGS")
+async def test_validate_adapter_runtime_compatibility_raises_not_found_for_missing_adapter(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+    adapter_dir = tmp_path / "adapter-1"
+    adapter_dir.mkdir(parents=True)
+
+    with pytest.raises(FileNotFoundError, match="Adapter not found"):
+        await academy_models.validate_adapter_runtime_compatibility(
+            mgr=MagicMock(),
+            adapter_id="adapter-1",
+            runtime_id="vllm",
+        )
+
+
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
 async def test_validate_adapter_runtime_compatibility_rejects_incompatible_runtime(
     mock_settings, tmp_path
 ):
@@ -643,6 +663,7 @@ async def test_validate_adapter_runtime_compatibility_rejects_incompatible_runti
 
     adapter_dir = tmp_path / "adapter-1"
     adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter").mkdir(parents=True)
     (adapter_dir / "metadata.json").write_text(
         '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
         encoding="utf-8",
@@ -680,6 +701,7 @@ async def test_validate_adapter_runtime_compatibility_accepts_compatible_runtime
 
     adapter_dir = tmp_path / "adapter-1"
     adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter").mkdir(parents=True)
     (adapter_dir / "metadata.json").write_text(
         '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
         encoding="utf-8",
@@ -716,6 +738,7 @@ async def test_validate_adapter_runtime_compatibility_rejects_mismatched_model_i
 
     adapter_dir = tmp_path / "adapter-1"
     adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter").mkdir(parents=True)
     (adapter_dir / "metadata.json").write_text(
         '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
         encoding="utf-8",
@@ -771,6 +794,7 @@ async def test_validate_adapter_runtime_compatibility_rejects_missing_runtime_mo
 
     adapter_dir = tmp_path / "adapter-1"
     adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter").mkdir(parents=True)
     (adapter_dir / "metadata.json").write_text(
         '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
         encoding="utf-8",
@@ -983,7 +1007,7 @@ async def test_audit_adapters_categorizes_unknown_mismatch_and_compatible(
     mgr = MagicMock()
     mgr.get_active_adapter_info.return_value = {"adapter_id": "compatible-adapter"}
 
-    payload = await academy_models.audit_adapters(
+    payload = academy_models.audit_adapters(
         mgr=mgr,
         runtime_id="ollama",
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct",

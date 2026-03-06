@@ -132,7 +132,62 @@ test-web-turbo-smoke:
 test-web-turbo-smoke-clean:
 	$(NPM) --prefix $(WEB_DIR) run test:dev:turbo:smoke:clean
 
-test-all: test test-web-unit test-web-e2e
+test-all:
+	@overall_start=$$(date +%s); \
+	overall_rc=0; \
+	\
+	run_phase() { \
+		local phase_name="$$1"; \
+		local phase_target="$$2"; \
+		local start_ts end_ts duration rc status; \
+		echo ""; \
+		echo "▶️  Faza: $$phase_name"; \
+		start_ts=$$(date +%s); \
+		set +e; \
+		$(MAKE) --no-print-directory "$$phase_target"; \
+		rc=$$?; \
+		set -e; \
+		end_ts=$$(date +%s); \
+		duration=$$((end_ts - start_ts)); \
+		if [ $$rc -eq 0 ]; then \
+			status="OK"; \
+		else \
+			status="FAIL($$rc)"; \
+			overall_rc=1; \
+		fi; \
+		phase_durations+=("$$duration"); \
+		phase_statuses+=("$$status"); \
+		echo "⏱️  $$phase_name: $${duration}s [$${status}]"; \
+	}; \
+	\
+	phase_names=("Backend tests" "Web unit tests" "Web e2e tests"); \
+	phase_targets=("test" "test-web-unit" "test-web-e2e"); \
+	phase_durations=(); \
+	phase_statuses=(); \
+	\
+	for i in "$${!phase_names[@]}"; do \
+		run_phase "$${phase_names[$$i]}" "$${phase_targets[$$i]}"; \
+	done; \
+	\
+	overall_end=$$(date +%s); \
+	overall_duration=$$((overall_end - overall_start)); \
+	echo ""; \
+	echo "========================================"; \
+	echo "📊 Podsumowanie make test-all"; \
+	echo "========================================"; \
+	for i in "$${!phase_names[@]}"; do \
+		printf " - %-18s : %6ss  [%s]\n" "$${phase_names[$$i]}" "$${phase_durations[$$i]}" "$${phase_statuses[$$i]}"; \
+	done; \
+	echo "----------------------------------------"; \
+	printf " Σ Czas całkowity      : %6ss\n" "$$overall_duration"; \
+	if [ $$overall_rc -eq 0 ]; then \
+		echo "✅ Status końcowy: OK"; \
+	else \
+		echo "❌ Status końcowy: FAIL"; \
+	fi; \
+	echo "========================================"; \
+	\
+	exit $$overall_rc
 
 sonar-reports-backend:
 	@mkdir -p test-results/sonar

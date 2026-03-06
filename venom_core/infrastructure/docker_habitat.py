@@ -82,7 +82,7 @@ class DockerHabitat:
         """
         if workspace_path.resolve() == DEFAULT_WORKSPACE_ROOT:
             return self.CONTAINER_NAME
-        workspace_hash = hashlib.sha1(
+        workspace_hash = hashlib.sha256(
             str(workspace_path.resolve()).encode("utf-8")
         ).hexdigest()[:12]
         return f"{self.CONTAINER_NAME}-{workspace_hash}"

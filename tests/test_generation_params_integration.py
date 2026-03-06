@@ -5,6 +5,8 @@ Uwaga: Te testy wymagają działającego środowiska LLM (vLLM lub Ollama).
 Jeśli środowisko nie jest dostępne, testy będą pominięte (skip).
 """
 
+import re
+
 import httpx
 import pytest
 
@@ -104,6 +106,26 @@ class TestGenerationParamsIntegration:
 
         # Z temperaturą 0.0, odpowiedzi powinny być identyczne lub bardzo podobne
         # (niektóre modele mogą mieć minimalną losowość nawet przy temp=0)
+        def _extract_first_int_1_10(text: str) -> int | None:
+            for match in re.finditer(r"\b([1-9]|10)\b", text):
+                try:
+                    value = int(match.group(1))
+                except (TypeError, ValueError):
+                    continue
+                if 1 <= value <= 10:
+                    return value
+            return None
+
+        value_a = _extract_first_int_1_10(responses_low[0])
+        value_b = _extract_first_int_1_10(responses_low[1])
+
+        # Preferuj porównanie semantyczne: ten sam wybór liczby przy temp=0.
+        if value_a is not None and value_b is not None:
+            assert value_a == value_b, (
+                "Niska temperatura powinna dawać spójny wybór liczby 1-10"
+            )
+            return
+
         assert (
             responses_low[0] == responses_low[1]
             or responses_low[0][:10] == responses_low[1][:10]

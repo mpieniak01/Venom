@@ -58,6 +58,7 @@ tests/test_dataset_curator.py
 tests/test_designer_agent.py
 tests/test_devops_agent.py
 tests/test_dispatcher_audit_regression.py
+tests/test_docker_habitat.py
 tests/test_docker_habitat_contracts.py
 tests/test_docker_habitat_unit.py
 tests/test_docs_skill.py
@@ -190,6 +191,7 @@ tests/test_service_monitor_streaming.py
 tests/test_session_store.py
 tests/test_session_workflow_memory_contracts.py
 tests/test_shadow_agent.py
+tests/test_shell_skill.py
 tests/test_shell_skill_contracts.py
 tests/test_simulated_user.py
 tests/test_skill_manager.py

@@ -144,6 +144,19 @@ class DockerHabitat:
         workspace_path.mkdir(parents=True, exist_ok=True)
         return workspace_path
 
+    def _resolve_effective_workspace_path(
+        self, workspace_path: Path | None = None
+    ) -> Path:
+        """Zwraca obowiązującą ścieżkę workspace jako `Path`."""
+        if workspace_path is not None:
+            return workspace_path
+        current_workspace = getattr(self, "workspace_path", None)
+        if isinstance(current_workspace, Path):
+            return current_workspace
+        resolved_workspace = self._resolve_workspace_path()
+        self.workspace_path = resolved_workspace
+        return resolved_workspace
+
     def _container_workspace_mount(self, container) -> Path | None:
         """Zwraca hostową ścieżkę bind mounta dla `/workspace` (jeśli istnieje)."""
         container.reload()
@@ -292,9 +305,7 @@ class DockerHabitat:
         try:
             image_name = SETTINGS.DOCKER_IMAGE_NAME
             self._ensure_image_present(image_name)
-            workspace_path = workspace_path or getattr(
-                self, "workspace_path", self._resolve_workspace_path()
-            )
+            workspace_path = self._resolve_effective_workspace_path(workspace_path)
             container = self._run_container(image_name, workspace_path)
             container.reload()
             logger.info(
@@ -373,9 +384,7 @@ class DockerHabitat:
             self._active_container_name(),
             retries_left,
         )
-        expected_workspace = workspace_path or getattr(
-            self, "workspace_path", self._resolve_workspace_path()
-        )
+        expected_workspace = self._resolve_effective_workspace_path(workspace_path)
         try:
             existing = self.client.containers.get(self._active_container_name())
             if self._has_expected_workspace_mount(existing, expected_workspace):

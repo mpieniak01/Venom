@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
 import {
   type SelfLearningDatasetStrategy,
   type SelfLearningEmbeddingPolicy,
@@ -59,6 +60,12 @@ type SupportedEngine =
 const FIELD_LABEL_CLASS = "text-xs text-[color:var(--text-secondary)]";
 const FIELD_SELECT_CLASS =
   "flex h-9 w-full rounded-md border border-white/10 bg-transparent px-3 py-1 text-sm text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500";
+const SELECT_MENU_BUTTON_CLASS =
+  "mt-0 h-10 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2";
+const SELECT_MENU_MENU_CLASS =
+  "w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md";
+const SELECT_MENU_OPTION_CLASS =
+  "rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]";
 const SUPPORTED_ENGINES: ReadonlySet<SupportedEngine> = new Set([
   "unsloth",
   "huggingface",
@@ -226,141 +233,216 @@ interface ModeSectionProps {
   readonly onRagRetrievalModeChange: (value: SelfLearningRagRetrievalMode) => void;
 }
 
-function ModeSection({
-  mode,
+interface LlmModeSectionProps {
+  readonly t: TranslateFn;
+  readonly runtimeOptions: ReadonlyArray<{ id: string; label: string }>;
+  readonly selectedRuntime: string;
+  readonly onRuntimeChange: (runtimeId: string) => void;
+  readonly trainableModels: readonly SelfLearningTrainableModelInfo[];
+  readonly effectiveBaseModel: string;
+  readonly datasetStrategy: SelfLearningDatasetStrategy;
+  readonly taskMixPreset: SelfLearningTaskMixPreset;
+  readonly onBaseModelChange: (value: string) => void;
+  readonly onDatasetStrategyChange: (value: SelfLearningDatasetStrategy) => void;
+  readonly onTaskMixPresetChange: (value: SelfLearningTaskMixPreset) => void;
+}
+
+function LlmModeSection({
   t,
   runtimeOptions,
   selectedRuntime,
   onRuntimeChange,
   trainableModels,
-  embeddingProfiles,
   effectiveBaseModel,
   datasetStrategy,
   taskMixPreset,
+  onBaseModelChange,
+  onDatasetStrategyChange,
+  onTaskMixPresetChange,
+}: LlmModeSectionProps) {
+  const selectedModel =
+    trainableModels.find((model) => model.model_id === effectiveBaseModel) ?? null;
+  const compatibility = selectedModel ? getModelCompatibility(selectedModel) : [];
+  const compatibilityLabel =
+    compatibility.length > 0
+      ? compatibility.map((runtime) => getRuntimeDisplayName(runtime, t)).join(" • ")
+      : t("academy.training.runtimeUnknown");
+  const runtimeSelectOptions: SelectMenuOption[] = runtimeOptions.map((runtime) => ({
+    value: runtime.id,
+    label: runtime.label,
+  }));
+  const baseModelOptions: SelectMenuOption[] = trainableModels.map((model) => ({
+    value: model.model_id,
+    label: model.model_id,
+    description: getInstallStateLabel(model, t),
+  }));
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <label className={FIELD_LABEL_CLASS}>{t("cockpit.models.server")}</label>
+        <SelectMenu
+          value={selectedRuntime}
+          options={runtimeSelectOptions}
+          onChange={onRuntimeChange}
+          placeholder={t("cockpit.models.chooseServer")}
+          ariaLabel={t("cockpit.actions.selectServer")}
+          disabled={runtimeSelectOptions.length === 0}
+          buttonClassName={SELECT_MENU_BUTTON_CLASS}
+          menuClassName={SELECT_MENU_MENU_CLASS}
+          optionClassName={SELECT_MENU_OPTION_CLASS}
+        />
+      </div>
+      <div className="space-y-1">
+        <label className={FIELD_LABEL_CLASS}>{t("academy.selfLearning.config.baseModel")}</label>
+        <SelectMenu
+          value={effectiveBaseModel}
+          options={baseModelOptions}
+          onChange={onBaseModelChange}
+          placeholder={t("academy.selfLearning.config.noTrainableModels")}
+          ariaLabel={t("academy.selfLearning.config.baseModel")}
+          disabled={baseModelOptions.length === 0}
+          buttonClassName={SELECT_MENU_BUTTON_CLASS}
+          menuClassName={SELECT_MENU_MENU_CLASS}
+          optionClassName={SELECT_MENU_OPTION_CLASS}
+          renderButton={(option) => {
+            if (!option) {
+              return (
+                <span className="min-w-0 flex-1 truncate text-left text-hint">
+                  {t("academy.selfLearning.config.noTrainableModels")}
+                </span>
+              );
+            }
+            const model = trainableModels.find((item) => item.model_id === option.value);
+            return (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-left text-sm text-[color:var(--text-primary)]">
+                  {option.label}
+                </span>
+                {model ? (
+                  <span className="shrink-0 text-[11px] text-[color:var(--ui-muted)]">
+                    {t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`)}
+                  </span>
+                ) : null}
+              </div>
+            );
+          }}
+          renderOption={(option, active) => {
+            const model = trainableModels.find((item) => item.model_id === option.value);
+            if (!model) {
+              return (
+                <span className={`text-sm ${active ? "text-[color:var(--primary)]" : "text-[color:var(--text-primary)]"}`}>
+                  {option.label}
+                </span>
+              );
+            }
+            return (
+              <div className="flex w-full items-center gap-2">
+                <span
+                  className={`min-w-0 flex-1 truncate text-sm ${
+                    active ? "text-[color:var(--primary)]" : "text-[color:var(--text-primary)]"
+                  }`}
+                >
+                  {model.model_id}
+                </span>
+                <span className="shrink-0 text-[11px] text-[color:var(--ui-muted)]">
+                  {t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`)}
+                </span>
+                <span className="shrink-0 text-[11px] text-hint/80">
+                  {getInstallStateLabel(model, t)}
+                </span>
+              </div>
+            );
+          }}
+        />
+        {selectedModel ? (
+          <div className="mt-2 rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] px-3 py-2 text-[11px] text-[color:var(--text-primary)]">
+            <p>
+              <span className="text-[color:var(--text-secondary)]">{t("academy.training.engineLabel")}:</span>{" "}
+              {t(`academy.training.engineNames.${resolveEngineKey(selectedModel.provider)}`)} •{" "}
+              <span className="text-[color:var(--text-secondary)]">
+                {t("academy.training.compatibilityLabel")}:
+              </span>{" "}
+              {compatibilityLabel} • {getInstallStateLabel(selectedModel, t)}
+            </p>
+            <p className="mt-1 text-[color:var(--text-secondary)]">
+              {t("academy.selfLearning.config.chatDeployHint")}
+            </p>
+          </div>
+        ) : null}
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="space-y-1">
+          <label htmlFor="self-learning-dataset-strategy" className={FIELD_LABEL_CLASS}>
+            {t("academy.selfLearning.config.datasetStrategy")}
+          </label>
+          <select
+            id="self-learning-dataset-strategy"
+            value={datasetStrategy}
+            onChange={(event) =>
+              onDatasetStrategyChange(event.target.value as SelfLearningDatasetStrategy)
+            }
+            className={FIELD_SELECT_CLASS}
+          >
+            <option value="reconstruct">
+              {t("academy.selfLearning.config.datasetStrategies.reconstruct")}
+            </option>
+            <option value="qa_from_docs">
+              {t("academy.selfLearning.config.datasetStrategies.qaFromDocs")}
+            </option>
+            <option value="repo_tasks_basic">
+              {t("academy.selfLearning.config.datasetStrategies.repoTasksBasic")}
+            </option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="self-learning-task-mix" className={FIELD_LABEL_CLASS}>
+            {t("academy.selfLearning.config.taskMixPreset")}
+          </label>
+          <select
+            id="self-learning-task-mix"
+            value={taskMixPreset}
+            onChange={(event) => onTaskMixPresetChange(event.target.value as SelfLearningTaskMixPreset)}
+            className={FIELD_SELECT_CLASS}
+            disabled={datasetStrategy === "reconstruct"}
+          >
+            <option value="balanced">{t("academy.selfLearning.config.taskMixPresets.balanced")}</option>
+            <option value="qa-heavy">{t("academy.selfLearning.config.taskMixPresets.qaHeavy")}</option>
+            <option value="repair-heavy">{t("academy.selfLearning.config.taskMixPresets.repairHeavy")}</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface RagModeSectionProps {
+  readonly t: TranslateFn;
+  readonly embeddingProfiles: readonly SelfLearningEmbeddingProfile[];
+  readonly effectiveEmbeddingProfile: string;
+  readonly embeddingPolicy: SelfLearningEmbeddingPolicy;
+  readonly selectedEmbeddingProfileState: SelfLearningEmbeddingProfile | null;
+  readonly ragChunkingMode: SelfLearningRagChunkingMode;
+  readonly ragRetrievalMode: SelfLearningRagRetrievalMode;
+  readonly onEmbeddingProfileChange: (value: string) => void;
+  readonly onEmbeddingPolicyChange: (value: SelfLearningEmbeddingPolicy) => void;
+  readonly onRagChunkingModeChange: (value: SelfLearningRagChunkingMode) => void;
+  readonly onRagRetrievalModeChange: (value: SelfLearningRagRetrievalMode) => void;
+}
+
+function RagModeSection({
+  t,
+  embeddingProfiles,
   effectiveEmbeddingProfile,
   embeddingPolicy,
   selectedEmbeddingProfileState,
   ragChunkingMode,
   ragRetrievalMode,
-  onBaseModelChange,
-  onDatasetStrategyChange,
-  onTaskMixPresetChange,
   onEmbeddingProfileChange,
   onEmbeddingPolicyChange,
   onRagChunkingModeChange,
   onRagRetrievalModeChange,
-}: ModeSectionProps) {
-  if (mode === "llm_finetune") {
-    const selectedModel =
-      trainableModels.find((model) => model.model_id === effectiveBaseModel) ?? null;
-    const compatibility = selectedModel ? getModelCompatibility(selectedModel) : [];
-    const compatibilityLabel =
-      compatibility.length > 0
-        ? compatibility.map((runtime) => getRuntimeDisplayName(runtime, t)).join(" • ")
-        : t("academy.training.runtimeUnknown");
-
-    return (
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <label htmlFor="self-learning-runtime" className={FIELD_LABEL_CLASS}>
-            {t("cockpit.models.server")}
-          </label>
-          <select
-            id="self-learning-runtime"
-            value={selectedRuntime}
-            onChange={(event) => onRuntimeChange(event.target.value)}
-            className={FIELD_SELECT_CLASS}
-          >
-            {runtimeOptions.length === 0 ? (
-              <option value="">{t("cockpit.models.chooseServer")}</option>
-            ) : (
-              runtimeOptions.map((runtime) => (
-                <option key={runtime.id} value={runtime.id}>
-                  {runtime.label}
-                </option>
-              ))
-            )}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label htmlFor="self-learning-base-model" className={FIELD_LABEL_CLASS}>
-            {t("academy.selfLearning.config.baseModel")}
-          </label>
-          <select
-            id="self-learning-base-model"
-            value={effectiveBaseModel}
-            onChange={(event) => onBaseModelChange(event.target.value)}
-            className={FIELD_SELECT_CLASS}
-          >
-            {trainableModels.length === 0 ? (
-              <option value="">{t("academy.selfLearning.config.noTrainableModels")}</option>
-            ) : (
-              trainableModels.map((model) => (
-                <option key={model.model_id} value={model.model_id}>
-                  {`${model.model_id} • ${getInstallStateLabel(model, t)}`}
-                </option>
-              ))
-            )}
-          </select>
-          {selectedModel ? (
-            <div className="mt-1 space-y-0.5 text-[11px] text-hint">
-              <p>
-                {t("academy.training.compatibilityLabel")}: {compatibilityLabel}
-              </p>
-              <p>
-                {t("academy.training.engineLabel")}:{" "}
-                {t(`academy.training.engineNames.${resolveEngineKey(selectedModel.provider)}`)}
-              </p>
-              <p>{getInstallStateLabel(selectedModel, t)}</p>
-              <p className="text-hint/80">{t("academy.selfLearning.config.chatDeployHint")}</p>
-            </div>
-          ) : null}
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="space-y-1">
-            <label htmlFor="self-learning-dataset-strategy" className={FIELD_LABEL_CLASS}>
-              {t("academy.selfLearning.config.datasetStrategy")}
-            </label>
-            <select
-              id="self-learning-dataset-strategy"
-              value={datasetStrategy}
-              onChange={(event) =>
-                onDatasetStrategyChange(event.target.value as SelfLearningDatasetStrategy)
-              }
-              className={FIELD_SELECT_CLASS}
-            >
-              <option value="reconstruct">
-                {t("academy.selfLearning.config.datasetStrategies.reconstruct")}
-              </option>
-              <option value="qa_from_docs">
-                {t("academy.selfLearning.config.datasetStrategies.qaFromDocs")}
-              </option>
-              <option value="repo_tasks_basic">
-                {t("academy.selfLearning.config.datasetStrategies.repoTasksBasic")}
-              </option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="self-learning-task-mix" className={FIELD_LABEL_CLASS}>
-              {t("academy.selfLearning.config.taskMixPreset")}
-            </label>
-            <select
-              id="self-learning-task-mix"
-              value={taskMixPreset}
-              onChange={(event) => onTaskMixPresetChange(event.target.value as SelfLearningTaskMixPreset)}
-              className={FIELD_SELECT_CLASS}
-              disabled={datasetStrategy === "reconstruct"}
-            >
-              <option value="balanced">{t("academy.selfLearning.config.taskMixPresets.balanced")}</option>
-              <option value="qa-heavy">{t("academy.selfLearning.config.taskMixPresets.qaHeavy")}</option>
-              <option value="repair-heavy">{t("academy.selfLearning.config.taskMixPresets.repairHeavy")}</option>
-            </select>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+}: RagModeSectionProps) {
   return (
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
@@ -386,51 +468,53 @@ function ModeSection({
           </select>
         </div>
         <div className="space-y-1">
-            <label htmlFor="self-learning-embedding-policy" className={FIELD_LABEL_CLASS}>
-              {t("academy.selfLearning.config.embeddingPolicy")}
-            </label>
+          <label htmlFor="self-learning-embedding-policy" className={FIELD_LABEL_CLASS}>
+            {t("academy.selfLearning.config.embeddingPolicy")}
+          </label>
           <select
             id="self-learning-embedding-policy"
             value={embeddingPolicy}
             onChange={(event) => onEmbeddingPolicyChange(event.target.value as SelfLearningEmbeddingPolicy)}
-              className={FIELD_SELECT_CLASS}
+            className={FIELD_SELECT_CLASS}
           >
             <option value="strict">{t("academy.selfLearning.config.embeddingPolicyStrict")}</option>
-            <option value="allow_fallback">{t("academy.selfLearning.config.embeddingPolicyAllowFallback")}</option>
+            <option value="allow_fallback">
+              {t("academy.selfLearning.config.embeddingPolicyAllowFallback")}
+            </option>
           </select>
         </div>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1">
-            <label htmlFor="self-learning-rag-chunking-mode" className={FIELD_LABEL_CLASS}>
-              {t("academy.selfLearning.config.ragChunkingMode")}
-            </label>
+          <label htmlFor="self-learning-rag-chunking-mode" className={FIELD_LABEL_CLASS}>
+            {t("academy.selfLearning.config.ragChunkingMode")}
+          </label>
           <select
             id="self-learning-rag-chunking-mode"
             value={ragChunkingMode}
             onChange={(event) => onRagChunkingModeChange(event.target.value as SelfLearningRagChunkingMode)}
-              className={FIELD_SELECT_CLASS}
+            className={FIELD_SELECT_CLASS}
           >
             <option value="plain">{t("academy.selfLearning.config.ragChunkingModes.plain")}</option>
             <option value="code_aware">{t("academy.selfLearning.config.ragChunkingModes.codeAware")}</option>
           </select>
         </div>
         <div className="space-y-1">
-            <label htmlFor="self-learning-rag-retrieval-mode" className={FIELD_LABEL_CLASS}>
-              {t("academy.selfLearning.config.ragRetrievalMode")}
-            </label>
+          <label htmlFor="self-learning-rag-retrieval-mode" className={FIELD_LABEL_CLASS}>
+            {t("academy.selfLearning.config.ragRetrievalMode")}
+          </label>
           <select
             id="self-learning-rag-retrieval-mode"
             value={ragRetrievalMode}
             onChange={(event) => onRagRetrievalModeChange(event.target.value as SelfLearningRagRetrievalMode)}
-              className={FIELD_SELECT_CLASS}
+            className={FIELD_SELECT_CLASS}
           >
             <option value="vector">{t("academy.selfLearning.config.ragRetrievalModes.vector")}</option>
             <option value="hybrid">{t("academy.selfLearning.config.ragRetrievalModes.hybrid")}</option>
           </select>
         </div>
       </div>
-      <div className="space-y-1 rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
+      <div className="space-y-1 rounded-lg border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] px-3 py-2 text-xs text-[color:var(--text-primary)]">
         <p className="font-semibold text-[color:var(--text-heading)]">
           {t("academy.selfLearning.config.preflightTitle")}
         </p>
@@ -442,26 +526,97 @@ function ModeSection({
                 : t("academy.selfLearning.config.preflightUnhealthy")}
             </p>
             <p>
-              {t("academy.selfLearning.config.preflightProvider")}: {selectedEmbeddingProfileState.provider}
+              <span className="text-[color:var(--text-secondary)]">
+                {t("academy.selfLearning.config.preflightProvider")}:
+              </span>{" "}
+              {selectedEmbeddingProfileState.provider}
             </p>
             <p>
-              {t("academy.selfLearning.config.preflightModel")}: {selectedEmbeddingProfileState.model}
+              <span className="text-[color:var(--text-secondary)]">
+                {t("academy.selfLearning.config.preflightModel")}:
+              </span>{" "}
+              {selectedEmbeddingProfileState.model}
             </p>
             <p>
-              {t("academy.selfLearning.config.preflightDimension")}: {selectedEmbeddingProfileState.dimension ?? "-"}
+              <span className="text-[color:var(--text-secondary)]">
+                {t("academy.selfLearning.config.preflightDimension")}:
+              </span>{" "}
+              {selectedEmbeddingProfileState.dimension ?? "-"}
             </p>
             <p>
-              {t("academy.selfLearning.config.preflightFallback")}:{" "}
+              <span className="text-[color:var(--text-secondary)]">
+                {t("academy.selfLearning.config.preflightFallback")}:
+              </span>{" "}
               {selectedEmbeddingProfileState.fallback_active
                 ? t("academy.selfLearning.config.preflightFallbackActive")
                 : t("academy.selfLearning.config.preflightFallbackInactive")}
             </p>
           </>
         ) : (
-          <p>{t("academy.selfLearning.config.preflightNoProfile")}</p>
+          <p className="text-[color:var(--text-secondary)]">
+            {t("academy.selfLearning.config.preflightNoProfile")}
+          </p>
         )}
       </div>
     </div>
+  );
+}
+
+function ModeSection({
+  mode,
+  t,
+  runtimeOptions,
+  selectedRuntime,
+  onRuntimeChange,
+  trainableModels,
+  embeddingProfiles,
+  effectiveBaseModel,
+  datasetStrategy,
+  taskMixPreset,
+  effectiveEmbeddingProfile,
+  embeddingPolicy,
+  selectedEmbeddingProfileState,
+  ragChunkingMode,
+  ragRetrievalMode,
+  onBaseModelChange,
+  onDatasetStrategyChange,
+  onTaskMixPresetChange,
+  onEmbeddingProfileChange,
+  onEmbeddingPolicyChange,
+  onRagChunkingModeChange,
+  onRagRetrievalModeChange,
+}: ModeSectionProps) {
+  if (mode === "llm_finetune") {
+    return (
+      <LlmModeSection
+        t={t}
+        runtimeOptions={runtimeOptions}
+        selectedRuntime={selectedRuntime}
+        onRuntimeChange={onRuntimeChange}
+        trainableModels={trainableModels}
+        effectiveBaseModel={effectiveBaseModel}
+        datasetStrategy={datasetStrategy}
+        taskMixPreset={taskMixPreset}
+        onBaseModelChange={onBaseModelChange}
+        onDatasetStrategyChange={onDatasetStrategyChange}
+        onTaskMixPresetChange={onTaskMixPresetChange}
+      />
+    );
+  }
+  return (
+    <RagModeSection
+      t={t}
+      embeddingProfiles={embeddingProfiles}
+      effectiveEmbeddingProfile={effectiveEmbeddingProfile}
+      embeddingPolicy={embeddingPolicy}
+      selectedEmbeddingProfileState={selectedEmbeddingProfileState}
+      ragChunkingMode={ragChunkingMode}
+      ragRetrievalMode={ragRetrievalMode}
+      onEmbeddingProfileChange={onEmbeddingProfileChange}
+      onEmbeddingPolicyChange={onEmbeddingPolicyChange}
+      onRagChunkingModeChange={onRagChunkingModeChange}
+      onRagRetrievalModeChange={onRagRetrievalModeChange}
+    />
   );
 }
 

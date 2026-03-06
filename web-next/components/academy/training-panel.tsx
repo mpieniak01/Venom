@@ -448,12 +448,16 @@ export function TrainingPanel() {
               />
             </div>
             {selectedModel ? (
-              <div className="mt-2 rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-[11px] text-hint">
+              <div className="mt-2 rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] px-3 py-2 text-[11px] text-[color:var(--text-primary)]">
                 <p className="truncate">
-                  {t("academy.training.engineLabel")}:{" "}
+                  <span className="text-[color:var(--text-secondary)]">
+                    {t("academy.training.engineLabel")}:
+                  </span>{" "}
                   {t(`academy.training.engineNames.${resolveEngineKey(selectedModel.provider)}`)} •{" "}
-                  {t("academy.training.compatibilityLabel")}: {selectedModelCompatibilityLabel} •{" "}
-                  {selectedModelInstallStateLabel}
+                  <span className="text-[color:var(--text-secondary)]">
+                    {t("academy.training.compatibilityLabel")}:
+                  </span>{" "}
+                  {selectedModelCompatibilityLabel} • {selectedModelInstallStateLabel}
                 </p>
               </div>
             ) : null}

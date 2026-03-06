@@ -124,9 +124,11 @@ async def validate_adapter_runtime_compatibility(
     adapter_id: str,
     runtime_id: str,
     model_id: str | None = None,
+    settings_obj: Any | None = None,
+    list_trainable_models_fn: Any = list_trainable_models,
 ) -> None:
     """Validate that adapter base model can run on selected inference runtime."""
-    settings = _get_settings()
+    settings = settings_obj or _get_settings()
     runtime_local_id = _resolve_local_runtime_id(runtime_id.strip().lower())
     if not runtime_id.strip():
         return
@@ -146,7 +148,7 @@ async def validate_adapter_runtime_compatibility(
     if not base_model:
         return
 
-    trainable_models = await list_trainable_models(mgr=mgr)
+    trainable_models = await list_trainable_models_fn(mgr=mgr)
     trainable_by_model = {item.model_id.lower(): item for item in trainable_models}
     trainable_info = trainable_by_model.get(base_model.lower())
     if trainable_info is None:
@@ -198,9 +200,10 @@ def audit_adapters(
     mgr: Any,
     runtime_id: str | None = None,
     model_id: str | None = None,
+    settings_obj: Any | None = None,
 ) -> Dict[str, Any]:
     """Preflight audit for historical adapters metadata confidence and compatibility."""
-    settings = _get_settings()
+    settings = settings_obj or _get_settings()
     models_dir = Path(settings.ACADEMY_MODELS_DIR)
     if not models_dir.exists():
         return _empty_adapters_audit_payload()

@@ -253,6 +253,15 @@ def test_wait_until_container_absent_handles_repeated_generic_exception(monkeypa
     monkeypatch.setattr(docker_habitat, "NotFound", original_not_found)
 
 
+def test_has_named_container_candidates_is_conservative_on_list_error():
+    instance = _make_habitat_instance()
+    instance.client.containers = SimpleNamespace(
+        list=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("docker busy"))
+    )
+
+    assert instance._has_named_container_candidates() is True
+
+
 def test_init_raises_when_docker_sdk_unavailable(monkeypatch):
     monkeypatch.setattr(docker_habitat, "docker", None)
     with pytest.raises(RuntimeError, match="Docker SDK nie jest dostępny"):
@@ -307,6 +316,38 @@ def test_get_or_create_container_recreates_on_workspace_mismatch(monkeypatch, tm
     assert returned is created
     instance._recreate_container.assert_called_once_with(existing)
     instance._create_container.assert_called_once()
+
+
+def test_get_or_create_container_recreates_when_start_conflicts(monkeypatch, tmp_path):
+    instance = _make_habitat_instance()
+
+    class FakeContainer:
+        status = "exited"
+
+        def start(self):
+            raise docker_habitat.APIError(
+                "409 Client Error: Conflict (container is marked for removal)"
+            )
+
+        def reload(self):
+            return None
+
+    existing = FakeContainer()
+    instance.client.containers = SimpleNamespace(get=lambda _name: existing)
+    monkeypatch.setattr(
+        instance, "_resolve_workspace_path", lambda: tmp_path / "workspace"
+    )
+    monkeypatch.setattr(instance, "_has_expected_workspace_mount", lambda *_: True)
+    recreate_mock = MagicMock()
+    create_mock = MagicMock(return_value="recreated-after-start-conflict")
+    monkeypatch.setattr(instance, "_recreate_container", recreate_mock)
+    monkeypatch.setattr(instance, "_create_container", create_mock)
+
+    result = instance._get_or_create_container()
+
+    assert result == "recreated-after-start-conflict"
+    recreate_mock.assert_called_once_with(existing)
+    create_mock.assert_called_once_with(tmp_path / "workspace")
 
 
 def test_recover_from_name_conflict_fallbacks_on_reuse_exception(monkeypatch, tmp_path):

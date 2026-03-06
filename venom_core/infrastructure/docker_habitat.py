@@ -35,7 +35,7 @@ class DockerHabitat:
     """
 
     CONTAINER_NAME = "venom-sandbox"
-    CONTAINER_REMOVE_WAIT_SECONDS = 10.0
+    CONTAINER_REMOVE_WAIT_SECONDS = 30.0
     CONTAINER_REMOVE_POLL_SECONDS = 0.5
     CONTAINER_CONFLICT_RETRIES = 3
 
@@ -95,8 +95,19 @@ class DockerHabitat:
                 logger.info(
                     f"Uruchamianie zatrzymanego kontenera: {self.CONTAINER_NAME}"
                 )
-                container.start()
-                container.reload()
+                try:
+                    container.start()
+                    container.reload()
+                except APIError as exc:
+                    if self._is_name_conflict_error(exc):
+                        logger.warning(
+                            "Nie można uruchomić kontenera %s (%s). Rekreacja.",
+                            self.CONTAINER_NAME,
+                            exc,
+                        )
+                        self._recreate_container(container)
+                        return self._create_container(expected_workspace)
+                    raise
 
             return container
 
@@ -144,18 +155,58 @@ class DockerHabitat:
         self._remove_container_by_name_if_exists()
 
     def _remove_container_by_name_if_exists(self) -> None:
-        """Usuwa kontener po nazwie, jeśli nadal istnieje."""
+        """Usuwa kontenery konfliktujące po nazwie i czeka na zwolnienie nazwy."""
         try:
             existing = self.client.containers.get(self.CONTAINER_NAME)
         except NotFound:
+            existing = None
+        if existing is not None:
+            try:
+                existing.remove(force=True)
+            except Exception as exc:
+                logger.warning(
+                    f"Nie udało się usunąć kontenera {self.CONTAINER_NAME}: {exc}"
+                )
+
+        # Domknij przypadki, gdzie API get() zwraca chwilowo NotFound,
+        # ale nazwa pozostaje zablokowana przez osierocony/dead kontener.
+        self._remove_conflicting_named_containers()
+        self._wait_until_container_absent()
+
+    def _remove_conflicting_named_containers(self) -> None:
+        """Usuwa wszystkie kontenery dokładnie pasujące do CONTAINER_NAME."""
+        list_fn = getattr(self.client.containers, "list", None)
+        if list_fn is None:
             return
+
         try:
-            existing.remove(force=True)
+            candidates = list_fn(all=True, filters={"name": self.CONTAINER_NAME})
         except Exception as exc:
             logger.warning(
-                f"Nie udało się usunąć kontenera {self.CONTAINER_NAME}: {exc}"
+                f"Nie udało się pobrać listy kontenerów konfliktowych: {exc}"
             )
-        self._wait_until_container_absent()
+            return
+
+        for candidate in candidates:
+            if not self._is_exact_container_name_match(candidate):
+                continue
+            try:
+                candidate.remove(force=True)
+            except Exception as exc:
+                logger.warning(
+                    f"Nie udało się usunąć konfliktowego kontenera {self.CONTAINER_NAME}: {exc}"
+                )
+
+    def _is_exact_container_name_match(self, container: Any) -> bool:
+        """Sprawdza, czy kontener ma dokładnie nazwę CONTAINER_NAME."""
+        name = str(getattr(container, "name", "") or "").strip()
+        if name == self.CONTAINER_NAME:
+            return True
+        try:
+            attrs_name = str(container.attrs.get("Name", "") or "").strip()
+        except Exception:
+            attrs_name = ""
+        return attrs_name in {self.CONTAINER_NAME, f"/{self.CONTAINER_NAME}"}
 
     def _wait_until_container_absent(self) -> None:
         """Czeka aż nazwa kontenera będzie ponownie dostępna."""
@@ -163,12 +214,13 @@ class DockerHabitat:
         while time.time() < deadline:
             try:
                 self.client.containers.get(self.CONTAINER_NAME)
+                self._remove_conflicting_named_containers()
             except NotFound:
-                return
+                if not self._has_named_container_candidates():
+                    return
             except Exception as exc:
                 logger.warning(
-                    "Błąd podczas sprawdzania dostępności nazwy kontenera: %s",
-                    exc,
+                    f"Błąd podczas sprawdzania dostępności nazwy kontenera: {exc}"
                 )
             time.sleep(self.CONTAINER_REMOVE_POLL_SECONDS)
         logger.warning(
@@ -176,6 +228,21 @@ class DockerHabitat:
             "Sprawdź `docker ps -a` i usuń konflikt ręcznie, jeśli problem się powtarza.",
             self.CONTAINER_NAME,
         )
+
+    def _has_named_container_candidates(self) -> bool:
+        """Zwraca True gdy istnieją kontenery pasujące dokładnie do CONTAINER_NAME."""
+        list_fn = getattr(self.client.containers, "list", None)
+        if list_fn is None:
+            return False
+        try:
+            candidates = list_fn(all=True, filters={"name": self.CONTAINER_NAME})
+        except Exception as exc:
+            logger.warning(
+                f"Nie udało się sprawdzić listy kontenerów podczas oczekiwania: {exc}"
+            )
+            # Zachowawczo zakładamy, że nazwa może nadal być zajęta.
+            return True
+        return any(self._is_exact_container_name_match(c) for c in candidates)
 
     def _create_container(
         self,

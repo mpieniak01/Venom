@@ -7,8 +7,8 @@
 **Sygnały jakości**
 - *GitGuardian:* wykrywanie sekretów i zapobieganie wyciekom w historii repo i pull requestach.
 - *OpenAPI Contract:* weryfikuje eksport OpenAPI i synchronizację codegen typów TypeScript.
-- *SonarCloud Quality Gate:* live status of code-quality gate on SonarCloud.
-- *Snyk Vulnerabilities:* żywy status podatności zależności dla tego repozytorium GitHub.
+- *SonarCloud Quality:* aktualny stan kontroli jakości kodu w SonarCloud.
+- *Snyk Vulnerabilities:* aktualny status podatności zależności dla tego repozytorium GitHub.
 
 > **| [English Documentation Available](README.md)**
 

@@ -188,6 +188,14 @@ def test_runtime_compatibility_resolution_and_recommended_runtime():
     assert unknown_compat == {"onnx": False}
     assert academy_models.resolve_recommended_runtime(unknown_compat) is None
 
+    hf_compat = academy_models.resolve_runtime_compatibility(
+        provider="huggingface",
+        available_runtime_ids=["vllm", "ollama"],
+        model_metadata={"runtime": ""},
+    )
+    assert hf_compat == {"vllm": True, "ollama": True}
+    assert academy_models.resolve_recommended_runtime(hf_compat) == "vllm"
+
 
 def test_collect_local_trainable_models_filters_invalid_and_seen():
     local_models = [
@@ -441,21 +449,28 @@ def test_activate_adapter_with_chat_runtime_deploy_ollama(
     mock_settings, mock_config_manager, tmp_path
 ):
     mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "phi3:latest"
     mock_settings.ACTIVE_LLM_SERVER = "ollama"
     mgr = MagicMock()
 
     adapter_dir = tmp_path / "ok-adapter" / "adapter"
     adapter_dir.mkdir(parents=True)
+    (tmp_path / "ok-adapter" / "metadata.json").write_text(
+        '{"base_model":"phi3:latest"}',
+        encoding="utf-8",
+    )
     mgr.activate_adapter.return_value = True
     mgr.create_ollama_modelfile.return_value = "venom-adapter-ok-adapter"
     mock_config_manager.get_config.return_value = {"LAST_MODEL_OLLAMA": "phi3:latest"}
 
-    payload = academy_models.activate_adapter(
-        mgr=mgr,
-        adapter_id="ok-adapter",
-        runtime_id="ollama",
-        deploy_to_chat_runtime=True,
-    )
+    with patch.object(academy_models, "SETTINGS", mock_settings):
+        payload = academy_models.activate_adapter(
+            mgr=mgr,
+            adapter_id="ok-adapter",
+            runtime_id="ollama",
+            model_id="phi3:latest",
+            deploy_to_chat_runtime=True,
+        )
     assert payload["success"] is True
     assert payload["deployed"] is True
     assert payload["runtime_id"] == "ollama"
@@ -796,9 +811,44 @@ async def test_validate_adapter_runtime_compatibility_rejects_missing_runtime_mo
             )
 
 
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_rejects_ollama_deploy_on_base_model_mismatch(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+    adapter_dir = tmp_path / "adapter-1"
+    (adapter_dir / "adapter").mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.activate_adapter.return_value = True
+    mgr.create_ollama_modelfile.return_value = "venom-adapter-adapter-1"
+
+    with patch.object(academy_models, "SETTINGS", mock_settings):
+        with pytest.raises(ValueError, match="ADAPTER_BASE_MODEL_MISMATCH"):
+            academy_models.activate_adapter(
+                mgr=mgr,
+                adapter_id="adapter-1",
+                runtime_id="ollama",
+                model_id="gemma-3-4b-it",
+                deploy_to_chat_runtime=True,
+            )
+
+    mgr.create_ollama_modelfile.assert_not_called()
+
+
 def test_runtime_helper_alias_and_provider_inference():
     assert (
         academy_models._canonical_runtime_model_id("gemma3:latest") == "gemma-3-4b-it"
+    )
+    assert (
+        academy_models._canonical_runtime_model_id("qwen2.5-coder:3b")
+        == "qwen/qwen2.5-coder-3b-instruct"
     )
     assert academy_models._canonical_runtime_model_id("  ") == ""
 
@@ -842,6 +892,11 @@ async def test_assert_runtime_model_available_handles_direct_alias_and_missing()
     await academy_models._assert_runtime_model_available(
         mgr=mgr, runtime_id="vllm", model_id="gemma3:latest"
     )
+    await academy_models._assert_runtime_model_available(
+        mgr=mgr,
+        runtime_id="ollama",
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+    )
 
     with pytest.raises(ValueError, match="Selected model is not available on runtime"):
         await academy_models._assert_runtime_model_available(
@@ -856,6 +911,91 @@ async def test_assert_runtime_model_available_ignores_loader_failure():
     await academy_models._assert_runtime_model_available(
         mgr=mgr, runtime_id="vllm", model_id="gemma-3-4b-it"
     )
+
+
+@patch("venom_core.api.routes.academy_models.SETTINGS")
+def test_require_trusted_adapter_base_model_rejects_unknown_metadata(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
+    adapter_dir = tmp_path / "legacy-adapter"
+    (adapter_dir / "adapter").mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="ADAPTER_BASE_MODEL_UNKNOWN"):
+        academy_models._require_trusted_adapter_base_model(
+            adapter_dir=adapter_dir,
+            default_model=mock_settings.ACADEMY_DEFAULT_BASE_MODEL,
+        )
+
+
+@patch("venom_core.api.routes.academy_models.SETTINGS")
+def test_require_trusted_adapter_base_model_rejects_inconsistent_metadata(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
+    adapter_dir = tmp_path / "legacy-adapter"
+    (adapter_dir / "adapter").mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
+        encoding="utf-8",
+    )
+    (adapter_dir / "adapter" / "adapter_config.json").write_text(
+        '{"base_model_name_or_path":"gemma-3-4b-it"}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ADAPTER_METADATA_INCONSISTENT"):
+        academy_models._require_trusted_adapter_base_model(
+            adapter_dir=adapter_dir,
+            default_model=mock_settings.ACADEMY_DEFAULT_BASE_MODEL,
+        )
+
+
+@pytest.mark.asyncio
+@patch("venom_core.api.routes.academy_models.SETTINGS")
+async def test_audit_adapters_categorizes_unknown_mismatch_and_compatible(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
+
+    unknown_dir = tmp_path / "unknown-adapter"
+    (unknown_dir / "adapter").mkdir(parents=True)
+
+    mismatch_dir = tmp_path / "mismatch-adapter"
+    (mismatch_dir / "adapter").mkdir(parents=True)
+    (mismatch_dir / "metadata.json").write_text(
+        '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
+        encoding="utf-8",
+    )
+    (mismatch_dir / "adapter" / "adapter_config.json").write_text(
+        '{"base_model_name_or_path":"gemma-3-4b-it"}',
+        encoding="utf-8",
+    )
+
+    compatible_dir = tmp_path / "compatible-adapter"
+    (compatible_dir / "adapter").mkdir(parents=True)
+    (compatible_dir / "metadata.json").write_text(
+        '{"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct"}',
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.get_active_adapter_info.return_value = {"adapter_id": "compatible-adapter"}
+
+    payload = await academy_models.audit_adapters(
+        mgr=mgr,
+        runtime_id="ollama",
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+    )
+
+    by_id = {item["adapter_id"]: item for item in payload["adapters"]}
+    assert by_id["unknown-adapter"]["category"] == "blocked_unknown_base"
+    assert by_id["unknown-adapter"]["reason_code"] == "ADAPTER_BASE_MODEL_UNKNOWN"
+    assert by_id["mismatch-adapter"]["category"] == "blocked_mismatch"
+    assert by_id["mismatch-adapter"]["reason_code"] == "ADAPTER_METADATA_INCONSISTENT"
+    assert by_id["compatible-adapter"]["category"] == "compatible"
+    assert by_id["compatible-adapter"]["is_active"] is True
 
 
 def test_runtime_resolution_helpers_and_model_dir_detection(tmp_path):
@@ -940,6 +1080,10 @@ def test_deploy_adapter_to_vllm_runtime_updates_config_and_settings(
 
     adapter_dir = tmp_path / "adapter-1"
     (adapter_dir / "adapter").mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        json.dumps({"base_model": "unsloth/Phi-3-mini-4k-instruct"}),
+        encoding="utf-8",
+    )
     runtime_dir = adapter_dir / "runtime_vllm"
     runtime_dir.mkdir(parents=True)
     (runtime_dir / "config.json").write_text("{}", encoding="utf-8")
@@ -1107,7 +1251,7 @@ def test_deploy_adapter_to_vllm_runtime_rejects_empty_base_model(
         encoding="utf-8",
     )
 
-    with pytest.raises(RuntimeError, match="Adapter base model is empty"):
+    with pytest.raises(ValueError, match="ADAPTER_BASE_MODEL_UNKNOWN"):
         academy_models._deploy_adapter_to_vllm_runtime(
             adapter_id="adapter-empty",
         )

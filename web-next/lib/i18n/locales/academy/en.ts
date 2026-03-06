@@ -82,6 +82,8 @@ export const academy = {
     },
     compatibilityLabel: "post-training inference runtime",
     runtimeUnknown: "no confirmed post-training inference runtime compatibility",
+    externalTrainingHint:
+      "{{runtime}} runtime is used for deployment and chat inference. LoRA training runs externally in Academy (HF/PEFT/Unsloth pipeline), not inside runtime.",
     engineNames: {
       unsloth: "Unsloth",
       huggingface: "HuggingFace",
@@ -250,7 +252,7 @@ export const academy = {
       },
       noTrainableModels: "No trainable models available",
       chatDeployHint:
-        "Auto-deploy of adapters to Chat is currently available for Ollama runtime; runtime compatibility indicates where the adapter can run after training.",
+        "Adapter deployment to Chat depends on selected runtime capabilities; runtime compatibility indicates where the adapter can run after training.",
       embeddingProfile: "Embedding profile",
       noEmbeddingProfiles: "No embedding profiles available",
       embeddingPolicy: "Embedding policy",

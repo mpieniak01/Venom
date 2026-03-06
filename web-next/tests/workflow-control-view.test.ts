@@ -11,13 +11,13 @@ describe("workflow-control view helpers", () => {
     assert.equal(
       shouldShowApplyResultsModal(true, {
         apply_mode: "hot_swap",
-      }),
+      } as never),
       true
     );
     assert.equal(
       shouldShowApplyResultsModal(false, {
         apply_mode: "hot_swap",
-      }),
+      } as never),
       false
     );
   });

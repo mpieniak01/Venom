@@ -239,6 +239,38 @@ for version in genealogy['versions']:
    └─> Dashboard: wykresy Loss, statystyki, genealogia
 ```
 
+## Ścieżka deployu LoRA do Ollama (trening zewnętrzny)
+
+Kontrakt Academy rozdziela trening i deploy runtime:
+
+1. **Silnik treningowy (zewnętrzny):**
+   - Trening LoRA/QLoRA działa w Academy (pipeline HF/PEFT/Unsloth).
+   - Ollama nie jest traktowana jako natywny silnik treningu LoRA w tym kontrakcie.
+
+2. **Silnik deployu runtime (Ollama):**
+   - Academy aktywuje i wdraża artefakty adaptera do runtime.
+   - Capability runtime są publikowane przez `GET /api/v1/system/llm-runtime/options`:
+     - `supports_native_training`
+     - `supports_adapter_import_safetensors`
+     - `supports_adapter_import_gguf`
+     - `supports_adapter_runtime_apply`
+
+3. **Twarda walidacja kompatybilności:**
+   - Przy deployu adaptera do Ollama Academy sprawdza zgodność `base_model` adaptera z modelem runtime `FROM`.
+   - Przy mismatch deploy jest blokowany błędem HTTP `400` z kodem:
+     - `ADAPTER_BASE_MODEL_MISMATCH`
+
+Checklista deployu:
+
+1. Wytrenuj adapter na znanym modelu bazowym.
+2. Wybierz najpierw `server -> model -> adapter`.
+3. Aktywuj adapter z deployem do runtime.
+4. Jeśli pojawi się mismatch, przełącz model runtime na zgodny z bazą adaptera i ponów deploy.
+
+Uwaga operacyjna:
+
+1. Dla historycznych adapterów z brakami lub niespójnością metadanych użyj runbooka: `docs/PL/ACADEMY_ADAPTER_METADATA_RUNBOOK.md`.
+
 ## Konfiguracja
 
 ### Wymagania systemowe

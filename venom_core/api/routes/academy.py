@@ -411,9 +411,28 @@ async def list_adapters() -> List[AdapterInfo]:
     return await academy_route_handlers.list_adapters_handler(academy=_academy_module())
 
 
+@router.get(
+    "/adapters/audit",
+    responses={
+        500: RESP_500_INTERNAL,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
+async def audit_adapters(
+    runtime_id: Annotated[Optional[str], Query()] = None,
+    model_id: Annotated[Optional[str], Query()] = None,
+) -> Dict[str, Any]:
+    return await academy_route_handlers.audit_adapters_handler(
+        academy=_academy_module(),
+        runtime_id=runtime_id,
+        model_id=model_id,
+    )
+
+
 @router.post(
     "/adapters/activate",
     responses={
+        400: RESP_400_BAD_REQUEST,
         403: RESP_403_LOCALHOST_ONLY,
         404: RESP_404_ADAPTER_NOT_FOUND,
         500: RESP_500_INTERNAL,

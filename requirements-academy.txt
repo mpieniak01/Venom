@@ -5,10 +5,15 @@
 # Możliwe jest użycie CPU, ale będzie znacznie wolniejsze.
 
 # === Core Framework (CPU / GPU) ===
-accelerate>=0.34.0            # Wymagane przez TRL/PEFT (działa na CPU i GPU)
-datasets>=3.2.0               # Hugging Face Datasets library
-trl<0.9.0                     # TRL (SFTTrainer)
-peft>=0.18.0                  # Parameter-Efficient Fine-Tuning (LoRA)
+# Uwaga: poniżej są jawnie wypisane również zależności, które wcześniej
+# wpadały tranzytywnie (transformers, torch), aby użytkownik nie musiał
+# zgadywać brakujących bibliotek po czystej instalacji.
+accelerate>=1.12.0,<2.0       # Runtime treningu (HF accelerate)
+datasets>=4.6.0,<5.0          # Hugging Face Datasets library
+trl>=0.8.6,<0.9.0             # TRL (SFTTrainer) - pin kompatybilny z obecnym kodem
+peft>=0.18.0,<0.19.0          # Parameter-Efficient Fine-Tuning (LoRA)
+transformers>=4.57.0,<5.0.0   # Modele/tokenizacja HF (jawnie, nie tylko tranzytywnie)
+torch==2.8.0                  # Pin kompatybilny z obecnym stosem runtime (vllm/torchvision/torchaudio/xformers)
 pypandoc>=1.14,<2.0           # Wrapper Pandoc do konwersji dokumentów
 pypdf>=4.0.0                  # Ekstrakcja tekstu z PDF
 python-docx>=1.1.0            # Ekstrakcja tekstu z DOCX
@@ -23,8 +28,8 @@ python-docx>=1.1.0            # Ekstrakcja tekstu z DOCX
 docker>=7.1.0                 # Docker Python SDK dla GPUHabitat
 
 # === Progress & Monitoring (Optional) ===
-wandb>=0.19.1                 # Weights & Biases integration (opcjonalne)
-tensorboard>=2.18.0           # TensorBoard logging (opcjonalne)
+wandb>=0.25.0,<0.26.0         # Weights & Biases integration (opcjonalne)
+tensorboard>=2.20.0,<3.0.0    # TensorBoard logging (opcjonalne)
 
 # UWAGI INSTALACYJNE:
 # 1. Dla GPU (NVIDIA):
@@ -44,3 +49,4 @@ tensorboard>=2.18.0           # TensorBoard logging (opcjonalne)
 # 3. Weryfikacja instalacji:
 #    - docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
 #    - python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
+#    - python -c "import transformers, peft, trl, datasets, accelerate; print('academy deps OK')"

@@ -139,7 +139,10 @@ export function useCockpitSectionProps() {
     () => runtimeTargets.find((runtime) => runtime.runtime_id === resolvedServerId) ?? null,
     [resolvedServerId, runtimeTargets],
   );
-  const adapterDeploySupported = Boolean(selectedRuntimeTarget?.adapter_deploy_supported);
+  const adapterDeploySupported = Boolean(
+    selectedRuntimeTarget?.supports_adapter_runtime_apply ??
+      selectedRuntimeTarget?.adapter_deploy_supported,
+  );
   const adapterDeployReason = adapterDeploySupported
     ? null
     : t("cockpit.models.adapterRuntimeNotSupported", { runtime: resolvedServerId || "unknown" });

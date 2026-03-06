@@ -1283,6 +1283,10 @@ def _runtime_target_payload(
     adapter_deploy_supported, adapter_deploy_mode = _runtime_adapter_deploy_capability(
         runtime_id
     )
+    runtime_capabilities = _runtime_capabilities(
+        runtime_id=runtime_id,
+        source_type=source_type,
+    )
     return {
         "runtime_id": runtime_id,
         "source_type": source_type,
@@ -1294,6 +1298,48 @@ def _runtime_target_payload(
         "models": models,
         "adapter_deploy_supported": adapter_deploy_supported,
         "adapter_deploy_mode": adapter_deploy_mode,
+        "supports_native_training": runtime_capabilities["supports_native_training"],
+        "supports_adapter_import_safetensors": runtime_capabilities[
+            "supports_adapter_import_safetensors"
+        ],
+        "supports_adapter_import_gguf": runtime_capabilities[
+            "supports_adapter_import_gguf"
+        ],
+        "supports_adapter_runtime_apply": runtime_capabilities[
+            "supports_adapter_runtime_apply"
+        ],
+    }
+
+
+def _runtime_capabilities(*, runtime_id: str, source_type: str) -> dict[str, bool]:
+    runtime = runtime_id.strip().lower()
+    source = source_type.strip().lower()
+    if source != "local-runtime":
+        return {
+            "supports_native_training": False,
+            "supports_adapter_import_safetensors": False,
+            "supports_adapter_import_gguf": False,
+            "supports_adapter_runtime_apply": False,
+        }
+    if runtime == "ollama":
+        return {
+            "supports_native_training": False,
+            "supports_adapter_import_safetensors": True,
+            "supports_adapter_import_gguf": True,
+            "supports_adapter_runtime_apply": True,
+        }
+    if runtime == "vllm":
+        return {
+            "supports_native_training": False,
+            "supports_adapter_import_safetensors": False,
+            "supports_adapter_import_gguf": False,
+            "supports_adapter_runtime_apply": True,
+        }
+    return {
+        "supports_native_training": False,
+        "supports_adapter_import_safetensors": False,
+        "supports_adapter_import_gguf": False,
+        "supports_adapter_runtime_apply": False,
     }
 
 

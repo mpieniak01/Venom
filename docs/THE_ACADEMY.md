@@ -239,6 +239,38 @@ for version in genealogy['versions']:
    └─> Dashboard: Loss charts, statistics, genealogy
 ```
 
+## Ollama LoRA Deployment Path (External Training)
+
+The Academy contract separates training and runtime deployment:
+
+1. **Training engine (external):**
+  - LoRA/QLoRA training runs in Academy (HF/PEFT/Unsloth pipeline).
+  - Ollama is not used as a native LoRA trainer in this repository contract.
+
+2. **Runtime deployment engine (Ollama):**
+  - Academy exports and activates adapter artifacts.
+  - Runtime capabilities are exposed via `GET /api/v1/system/llm-runtime/options`:
+    - `supports_native_training`
+    - `supports_adapter_import_safetensors`
+    - `supports_adapter_import_gguf`
+    - `supports_adapter_runtime_apply`
+
+3. **Compatibility guard (blocking):**
+  - During adapter deploy to Ollama, Academy validates adapter `base_model` against selected runtime `FROM` model.
+  - On mismatch, deploy is blocked with HTTP `400` and reason code:
+    - `ADAPTER_BASE_MODEL_MISMATCH`
+
+Deployment checklist:
+
+1. Train adapter from a known base model in Academy.
+2. Select runtime server and runtime model first (`server -> model -> adapter`).
+3. Activate adapter with deploy flag.
+4. If mismatch is reported, switch runtime model to matching base model and retry.
+
+Operational note:
+
+1. For legacy adapters with missing/inconsistent metadata, use runbook: `docs/ACADEMY_ADAPTER_METADATA_RUNBOOK.md`.
+
 ## Configuration
 
 ### System Requirements

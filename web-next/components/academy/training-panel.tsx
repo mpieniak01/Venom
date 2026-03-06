@@ -91,6 +91,15 @@ export function TrainingPanel() {
   const [viewingLogs, setViewingLogs] = useState<string | null>(null);
   const [trainableModels, setTrainableModels] = useState<TrainableModelInfo[]>([]);
   const [runtimeOptions, setRuntimeOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [runtimeCapabilities, setRuntimeCapabilities] = useState<
+    Record<
+      string,
+      {
+        supports_native_training?: boolean;
+        supports_adapter_runtime_apply?: boolean;
+      }
+    >
+  >({});
   const [selectedRuntime, setSelectedRuntime] = useState("");
   const [selectedBaseModel, setSelectedBaseModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -144,7 +153,23 @@ export function TrainingPanel() {
           id: runtime.runtime_id,
           label: getRuntimeDisplayName(runtime.runtime_id),
         }));
+      const runtimeCapabilitiesMap = (catalog.runtimes ?? []).reduce<
+        Record<
+          string,
+          {
+            supports_native_training?: boolean;
+            supports_adapter_runtime_apply?: boolean;
+          }
+        >
+      >((acc, runtime) => {
+        acc[runtime.runtime_id] = {
+          supports_native_training: runtime.supports_native_training,
+          supports_adapter_runtime_apply: runtime.supports_adapter_runtime_apply,
+        };
+        return acc;
+      }, {});
       setRuntimeOptions(availableRuntimes);
+      setRuntimeCapabilities(runtimeCapabilitiesMap);
       const activeRuntimeId =
         String(catalog.active?.runtime_id || catalog.active?.active_server || "").trim();
       const preferredRuntime =
@@ -182,6 +207,7 @@ export function TrainingPanel() {
       console.error("Failed to load trainable models:", err);
       setTrainableModels([]);
       setRuntimeOptions([]);
+      setRuntimeCapabilities({});
       setSelectedRuntime("");
       setSelectedBaseModel("");
     } finally {
@@ -280,6 +306,7 @@ export function TrainingPanel() {
   if (!modelsLoading && trainableModels.length === 0) {
     baseModelPlaceholder = t("academy.training.noTrainableModels");
   }
+  const selectedRuntimeCapabilities = runtimeCapabilities[selectedRuntime] ?? {};
 
   return (
     <div className="space-y-6">
@@ -324,6 +351,13 @@ export function TrainingPanel() {
                 optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
               />
             </div>
+            {selectedRuntimeCapabilities.supports_native_training === false ? (
+              <p className="mt-2 text-xs text-hint">
+                {t("academy.training.externalTrainingHint", {
+                  runtime: getRuntimeDisplayName(selectedRuntime || "runtime"),
+                })}
+              </p>
+            ) : null}
           </div>
           <div className="sm:col-span-2 xl:col-span-5">
             <p className="text-sm font-medium text-[color:var(--text-secondary)]">

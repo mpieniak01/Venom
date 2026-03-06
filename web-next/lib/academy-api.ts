@@ -322,6 +322,10 @@ export interface UnifiedModelCatalogResponse {
     active: boolean;
     adapter_deploy_supported?: boolean;
     adapter_deploy_mode?: string;
+    supports_native_training?: boolean;
+    supports_adapter_import_safetensors?: boolean;
+    supports_adapter_import_gguf?: boolean;
+    supports_adapter_runtime_apply?: boolean;
   }>;
   all_models: RuntimeCatalogModelInfo[];
   chat_models: RuntimeCatalogModelInfo[];
@@ -642,6 +646,10 @@ type RuntimeOptionsPayload = {
     active: boolean;
     adapter_deploy_supported?: boolean;
     adapter_deploy_mode?: string;
+    supports_native_training?: boolean;
+    supports_adapter_import_safetensors?: boolean;
+    supports_adapter_import_gguf?: boolean;
+    supports_adapter_runtime_apply?: boolean;
   }>;
   model_catalog?: {
     all_models?: RuntimeCatalogModelInfo[];
@@ -809,6 +817,7 @@ export interface SelfLearningTrainableModelInfo {
   label: string;
   provider: string;
   recommended: boolean;
+  installed_local?: boolean;
   runtime_compatibility: Record<string, boolean>;
   recommended_runtime?: string | null;
 }

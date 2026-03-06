@@ -164,6 +164,9 @@ Kluczowe pola kontraktu Academy:
 - `source_type`: gdzie wykonywany jest trening (`local` lub `cloud`), nie skąd pochodzi model.
 - `runtime_compatibility`: mapa runtime, na których adapter po treningu może działać.
 - `recommended_runtime`: preferowany runtime dla inferencji adaptera.
+- `supports_native_training`: czy runtime oferuje natywny trening (dla Ollama: `false`).
+- `supports_adapter_import_safetensors` / `supports_adapter_import_gguf`: formaty importu adaptera dostępne w runtime.
+- `supports_adapter_runtime_apply`: czy runtime wspiera zastosowanie adaptera w ścieżce czatu.
 
 Praktyczna sekwencja:
 1. Wybierz treningowalny model bazowy w Academy.
@@ -171,6 +174,7 @@ Praktyczna sekwencja:
 3. W Chat przełącz runtime kompatybilny z tym modelem/adapterem.
 4. Aktywuj adapter (opcjonalnie z `runtime_id`), żeby wymusić walidację kompatybilności.
 5. Gdy `deploy_to_chat_runtime=true`, Academy może automatycznie przełączyć model Chat dla adapterów Ollama/vLLM.
+6. Dla deployu do Ollama mismatch `adapter_base_model` vs runtime `FROM` jest blokowany błędem `400` z `reason_code=ADAPTER_BASE_MODEL_MISMATCH`.
 
 Aktualny zakres runtime:
 1. Automatyczny deploy/rollback adaptera do runtime Chat jest zaimplementowany dla `ollama` i `vllm`.

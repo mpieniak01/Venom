@@ -6,9 +6,9 @@ export function useCockpitQueueActions(input: {
   queuePaused: boolean;
   refreshQueue: () => void | Promise<void>;
   refreshTasks: () => void | Promise<void>;
-  purgeQueueFn: () => Promise<void>;
+  purgeQueueFn: () => Promise<unknown>;
   emergencyStopFn: () => Promise<{ cancelled: number; purged: number }>;
-  toggleQueueFn: (resume: boolean) => Promise<void>;
+  toggleQueueFn: (resume: boolean) => Promise<unknown>;
   t: (key: string, replacements?: Record<string, string | number>) => string;
 }) {
   const {

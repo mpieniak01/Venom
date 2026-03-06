@@ -200,6 +200,37 @@ def test_recreate_container_continues_when_stop_and_remove_fail(monkeypatch):
     remove_by_name.assert_called_once()
 
 
+def test_recreate_container_stops_running_container(monkeypatch):
+    instance = _make_habitat_instance()
+
+    class FakeContainer:
+        status = "running"
+
+        def __init__(self):
+            self.stop_called = False
+            self.remove_called = False
+
+        def reload(self):
+            return None
+
+        def stop(self):
+            self.stop_called = True
+
+        def remove(self, force=False):
+            _ = force
+            self.remove_called = True
+
+    container = FakeContainer()
+    remove_by_name = MagicMock()
+    monkeypatch.setattr(instance, "_remove_container_by_name_if_exists", remove_by_name)
+
+    instance._recreate_container(container)
+
+    assert container.stop_called is True
+    assert container.remove_called is True
+    remove_by_name.assert_called_once()
+
+
 def test_wait_until_container_absent_returns_on_not_found(monkeypatch):
     instance = _make_habitat_instance()
     instance.client.containers = SimpleNamespace(
@@ -253,6 +284,30 @@ def test_wait_until_container_absent_handles_repeated_generic_exception(monkeypa
     monkeypatch.setattr(docker_habitat, "NotFound", original_not_found)
 
 
+def test_wait_until_container_absent_retries_when_candidates_exist(monkeypatch):
+    instance = _make_habitat_instance()
+    instance.CONTAINER_REMOVE_WAIT_SECONDS = 1
+    instance.CONTAINER_REMOVE_POLL_SECONDS = 0
+    calls = {"count": 0}
+
+    def _get(_name):
+        calls["count"] += 1
+        raise docker_habitat.NotFound("not found")
+
+    candidate_states = iter([True, False])
+    instance.client.containers = SimpleNamespace(get=_get)
+    monkeypatch.setattr(
+        instance, "_has_named_container_candidates", lambda: next(candidate_states)
+    )
+    sleep_mock = MagicMock()
+    monkeypatch.setattr(docker_habitat.time, "sleep", sleep_mock)
+
+    instance._wait_until_container_absent()
+
+    assert calls["count"] >= 2
+    sleep_mock.assert_called()
+
+
 def test_has_named_container_candidates_is_conservative_on_list_error():
     instance = _make_habitat_instance()
     instance.client.containers = SimpleNamespace(
@@ -260,6 +315,64 @@ def test_has_named_container_candidates_is_conservative_on_list_error():
     )
 
     assert instance._has_named_container_candidates() is True
+
+
+def test_remove_conflicting_named_containers_handles_list_error():
+    instance = _make_habitat_instance()
+    instance.client.containers = SimpleNamespace(
+        list=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("list failed"))
+    )
+
+    instance._remove_conflicting_named_containers()
+
+
+def test_remove_conflicting_named_containers_filters_and_removes_exact():
+    instance = _make_habitat_instance()
+
+    removed = {"ok": False}
+
+    class _MatchByName:
+        name = "venom-sandbox"
+        attrs = {}
+
+        def remove(self, force=False):
+            _ = force
+            removed["ok"] = True
+
+    class _MatchByAttrs:
+        name = "venom-sandbox-other"
+        attrs = {"Name": "/venom-sandbox"}
+
+        def remove(self, force=False):
+            raise RuntimeError("remove failed")
+
+    class _NoMatch:
+        name = "venom-sandbox-other"
+        attrs = {"Name": "/venom-sandbox-other"}
+
+        def remove(self, force=False):
+            raise AssertionError("should not be called")
+
+    instance.client.containers = SimpleNamespace(
+        list=lambda **_kwargs: [_MatchByName(), _MatchByAttrs(), _NoMatch()]
+    )
+
+    instance._remove_conflicting_named_containers()
+
+    assert removed["ok"] is True
+
+
+def test_is_exact_container_name_match_handles_attrs_exception():
+    instance = _make_habitat_instance()
+
+    class _Container:
+        name = "not-match"
+
+        @property
+        def attrs(self):
+            raise RuntimeError("attrs error")
+
+    assert instance._is_exact_container_name_match(_Container()) is False
 
 
 def test_init_raises_when_docker_sdk_unavailable(monkeypatch):
@@ -348,6 +461,31 @@ def test_get_or_create_container_recreates_when_start_conflicts(monkeypatch, tmp
     assert result == "recreated-after-start-conflict"
     recreate_mock.assert_called_once_with(existing)
     create_mock.assert_called_once_with(tmp_path / "workspace")
+
+
+def test_get_or_create_container_raises_on_non_conflict_start_error(
+    monkeypatch, tmp_path
+):
+    instance = _make_habitat_instance()
+
+    class FakeContainer:
+        status = "exited"
+
+        def start(self):
+            raise docker_habitat.APIError("500 Server Error")
+
+        def reload(self):
+            return None
+
+    instance.client.containers = SimpleNamespace(get=lambda _name: FakeContainer())
+    monkeypatch.setattr(
+        instance, "_resolve_workspace_path", lambda: tmp_path / "workspace"
+    )
+    monkeypatch.setattr(instance, "_has_expected_workspace_mount", lambda *_: True)
+    monkeypatch.setattr(instance, "_is_name_conflict_error", lambda *_: False)
+
+    with pytest.raises(docker_habitat.APIError):
+        instance._get_or_create_container()
 
 
 def test_recover_from_name_conflict_fallbacks_on_reuse_exception(monkeypatch, tmp_path):

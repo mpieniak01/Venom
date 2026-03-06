@@ -7,7 +7,7 @@ const devPort = Number(process.env.PLAYWRIGHT_PORT || 3000);
 const baseURL = process.env.BASE_URL || `http://${devHost}:${devPort}`;
 
 const isProdServer = process.env.PLAYWRIGHT_MODE === "prod";
-const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_SERVER === "true";
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_SERVER !== "false";
 const webServerCommand = isProdServer
   ? [
     // Zapewnia dostępność zasobów statycznych dla standalone builda.
@@ -30,13 +30,12 @@ const config: PlaywrightTestConfig = {
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  webServer: reuseExistingServer
-    ? undefined
-    : {
-      command: webServerCommand,
-      url: baseURL,
-      timeout: 120_000,
-    },
+  webServer: {
+    command: webServerCommand,
+    url: baseURL,
+    timeout: 120_000,
+    reuseExistingServer,
+  },
 };
 
 export default config;

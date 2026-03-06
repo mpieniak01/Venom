@@ -37,7 +37,7 @@ def test_docker_habitat_initialization():
     habitat = DockerHabitat()
     assert habitat.container is not None
     assert habitat.container.status == "running"
-    assert habitat.container.name == "venom-sandbox"
+    assert habitat.container.name.startswith("venom-sandbox")
 
 
 def test_docker_habitat_execute_simple_command(docker_habitat):

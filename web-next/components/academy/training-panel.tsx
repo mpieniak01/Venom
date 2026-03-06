@@ -315,11 +315,12 @@ export function TrainingPanel() {
       return compatibility.map((runtime) => getRuntimeDisplayName(runtime)).join(" • ");
     })()
     : "";
-  const selectedModelInstallStateLabel = selectedModel
-    ? selectedModel.installed_local
+  let selectedModelInstallStateLabel = "";
+  if (selectedModel) {
+    selectedModelInstallStateLabel = selectedModel.installed_local
       ? t("academy.training.installState.localInstalled")
-      : t("academy.training.installState.catalogDownload")
-    : "";
+      : t("academy.training.installState.catalogDownload");
+  }
 
   return (
     <div className="space-y-6">

@@ -59,7 +59,7 @@ def test_get_training_status_missing_job_returns_404(mock_settings, client_with_
 
 
 @patch("venom_core.config.SETTINGS")
-def test_activate_adapter_invalid_path_returns_400(
+def test_activate_adapter_missing_adapter_returns_404(
     mock_settings, client_with_deps, tmp_path
 ):
     mock_settings.ENABLE_ACADEMY = True
@@ -72,7 +72,7 @@ def test_activate_adapter_invalid_path_returns_400(
             "runtime_id": "ollama",
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == 404
 
 
 def test_normalize_job_status_canonical_mapping():

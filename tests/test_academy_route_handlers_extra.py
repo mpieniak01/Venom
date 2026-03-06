@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
@@ -95,7 +95,7 @@ async def test_audit_adapters_handler_returns_payload() -> None:
         },
     }
     academy.academy_models = SimpleNamespace(
-        audit_adapters=AsyncMock(return_value=audit_payload),
+        audit_adapters=Mock(return_value=audit_payload),
     )
 
     payload = await route_handlers.audit_adapters_handler(
@@ -195,6 +195,36 @@ async def test_activate_adapter_handler_maps_reason_code_value_error_to_http_400
         "message": "Adapter base model does not match selected runtime model",
         "reason_code": "ADAPTER_BASE_MODEL_MISMATCH",
     }
+
+
+@pytest.mark.asyncio
+async def test_activate_adapter_handler_maps_missing_adapter_to_http_404() -> None:
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    manager = object()
+    academy._get_model_manager = lambda: manager
+
+    academy.academy_models = SimpleNamespace(
+        validate_adapter_runtime_compatibility=AsyncMock(
+            side_effect=FileNotFoundError("Adapter not found")
+        ),
+        activate_adapter=lambda **_kwargs: {"success": True},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await route_handlers.activate_adapter_handler(
+            request=SimpleNamespace(
+                adapter_id="missing",
+                runtime_id="ollama",
+                model_id="gemma3:latest",
+                deploy_to_chat_runtime=True,
+            ),
+            req=SimpleNamespace(),
+            academy=academy,
+        )
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "Adapter not found"
 
 
 @pytest.mark.asyncio

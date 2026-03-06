@@ -131,7 +131,7 @@ test.describe("Academy smoke", () => {
               adapter_deploy_supported: true,
               adapter_deploy_mode: "ollama_modelfile",
               supports_native_training: false,
-              supports_adapter_import_safetensors: false,
+              supports_adapter_import_safetensors: true,
               supports_adapter_import_gguf: true,
               supports_adapter_runtime_apply: true,
             },

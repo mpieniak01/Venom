@@ -636,12 +636,6 @@ async def list_trainable_models(
         result=result,
         seen=seen,
     )
-    ensure_default_model_visible(
-        default_model=default_model,
-        available_runtime_ids=available_runtime_ids,
-        result=result,
-        seen=seen,
-    )
     # API contract for Academy model picker: return only actually trainable options.
     result = [item for item in result if item.trainable]
     deduped_by_family: dict[str, TrainableModelInfo] = {}

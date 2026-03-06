@@ -29,21 +29,28 @@ def _get_settings() -> Any:
     return SETTINGS
 
 
-def _resolve_runtime_for_adapter_deploy(runtime_id: str | None) -> str:
+def _resolve_runtime_for_adapter_deploy(
+    runtime_id: str | None,
+    *,
+    get_active_llm_runtime_fn: Any = get_active_llm_runtime,
+    settings_obj: Any | None = None,
+) -> str:
     requested = (runtime_id or "").strip().lower()
     if requested:
         return requested
-    active_runtime = get_active_llm_runtime()
+    active_runtime = get_active_llm_runtime_fn()
     active_provider = str(getattr(active_runtime, "provider", "") or "").strip().lower()
     if active_provider:
         return active_provider
-    settings = _get_settings()
+    settings = settings_obj or _get_settings()
     fallback = str(getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
     return fallback or "ollama"
 
 
-def _runtime_endpoint_for_hash(runtime_id: str) -> str | None:
-    settings = _get_settings()
+def _runtime_endpoint_for_hash(
+    runtime_id: str, *, settings_obj: Any | None = None
+) -> str | None:
+    settings = settings_obj or _get_settings()
     if runtime_id == "vllm":
         return str(getattr(settings, "VLLM_ENDPOINT", "")).strip() or None
     if runtime_id == "onnx":
@@ -114,7 +121,13 @@ def _build_runtime_rollback_updates(
     runtime_local_id: str,
     previous_key: str,
     fallback_model: str,
+    resolve_local_runtime_model_path_by_name_fn: Any | None = None,
+    settings_obj: Any | None = None,
 ) -> Dict[str, Any]:
+    resolver = (
+        resolve_local_runtime_model_path_by_name_fn
+        or _resolve_local_runtime_model_path_by_name
+    )
     updates: Dict[str, Any] = {
         "ACTIVE_LLM_SERVER": runtime_local_id,
         "LLM_MODEL_NAME": fallback_model,
@@ -127,9 +140,10 @@ def _build_runtime_rollback_updates(
     if runtime_local_id != "vllm":
         return updates
     updates["LAST_MODEL_VLLM"] = fallback_model
-    fallback_path = _resolve_local_runtime_model_path_by_name(
+    fallback_path = resolver(
         mgr=mgr,
         model_name=fallback_model,
+        settings_obj=settings_obj,
     )
     if not fallback_path:
         return updates
@@ -146,8 +160,11 @@ def _apply_runtime_rollback_settings(
     fallback_model: str,
     config_hash: str,
     updates: Dict[str, Any],
+    settings_obj: Any | None = None,
+    restart_vllm_runtime_fn: Any | None = None,
 ) -> None:
-    settings = _get_settings()
+    restart_fn = restart_vllm_runtime_fn or _restart_vllm_runtime
+    settings = settings_obj or _get_settings()
     settings.ACTIVE_LLM_SERVER = runtime_local_id
     settings.LLM_MODEL_NAME = fallback_model
     settings.HYBRID_LOCAL_MODEL = fallback_model
@@ -158,7 +175,7 @@ def _apply_runtime_rollback_settings(
         settings.VLLM_MODEL_PATH = str(updates["VLLM_MODEL_PATH"])
     settings.VLLM_SERVED_MODEL_NAME = fallback_model
     settings.LAST_MODEL_VLLM = fallback_model
-    _restart_vllm_runtime()
+    restart_fn(settings_obj=settings)
 
 
 def _is_runtime_model_dir(path: Path) -> bool:
@@ -175,36 +192,56 @@ def _is_runtime_model_dir(path: Path) -> bool:
     return False
 
 
-def _resolve_repo_root() -> Path:
-    settings = _get_settings()
+def _resolve_repo_root(*, settings_obj: Any | None = None) -> Path:
+    settings = settings_obj or _get_settings()
     root = Path(getattr(settings, "REPO_ROOT", ".")).resolve()
     return root
 
 
-def _resolve_local_runtime_model_path_by_name(*, mgr: Any, model_name: str) -> str:
+def _resolve_local_runtime_model_path_by_name(
+    *,
+    mgr: Any,
+    model_name: str,
+    settings_obj: Any | None = None,
+    resolve_repo_root_fn: Any = _resolve_repo_root,
+) -> str:
     candidate = model_name.strip()
     if not candidate:
         return ""
     search_dirs: list[Path] = []
     models_dir = getattr(mgr, "models_dir", None)
     if isinstance(models_dir, Path):
-        search_dirs.append(models_dir)
+        search_dirs.append(models_dir.resolve())
     else:
-        settings = _get_settings()
+        settings = settings_obj or _get_settings()
         academy_dir = Path(getattr(settings, "ACADEMY_MODELS_DIR", "")).resolve()
         search_dirs.append(academy_dir)
-    repo_models = _resolve_repo_root() / "models"
+    repo_models = resolve_repo_root_fn(settings_obj=settings_obj) / "models"
     if repo_models not in search_dirs:
         search_dirs.append(repo_models)
     for base in search_dirs:
-        candidate_path = base / candidate
+        base_resolved = base.resolve()
+        candidate_path = (base_resolved / candidate).resolve()
+        try:
+            candidate_path.relative_to(base_resolved)
+        except ValueError:
+            continue
         if candidate_path.exists() and candidate_path.is_dir():
             return str(candidate_path)
     return ""
 
 
-def _restart_vllm_runtime() -> None:
-    service_script = _resolve_repo_root() / "scripts" / "llm" / "vllm_service.sh"
+def _restart_vllm_runtime(
+    *,
+    resolve_repo_root_fn: Any = _resolve_repo_root,
+    settings_obj: Any | None = None,
+) -> None:
+    service_script = (
+        resolve_repo_root_fn(settings_obj=settings_obj)
+        / "scripts"
+        / "llm"
+        / "vllm_service.sh"
+    )
     if not service_script.exists():
         raise RuntimeError(f"vLLM service script not found: {service_script}")
     result = subprocess.run(
@@ -326,8 +363,15 @@ def _resolve_requested_runtime_model(model_id: str | None) -> str:
 def _deploy_adapter_to_vllm_runtime(
     *,
     adapter_id: str,
+    settings_obj: Any | None = None,
+    config_manager_obj: Any = config_manager,
+    compute_llm_config_hash_fn: Any = compute_llm_config_hash,
+    runtime_endpoint_for_hash_fn: Any = _runtime_endpoint_for_hash,
+    build_vllm_runtime_model_from_adapter_fn: Any = _build_vllm_runtime_model_from_adapter,
+    is_runtime_model_dir_fn: Any = _is_runtime_model_dir,
+    restart_vllm_runtime_fn: Any = _restart_vllm_runtime,
 ) -> Dict[str, Any]:
-    settings = _get_settings()
+    settings = settings_obj or _get_settings()
     models_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
     adapter_path = adapter_dir / "adapter"
@@ -340,16 +384,16 @@ def _deploy_adapter_to_vllm_runtime(
     if not base_model:
         raise RuntimeError("Adapter base model is empty; cannot deploy to vLLM")
 
-    runtime_model_dir = _build_vllm_runtime_model_from_adapter(
+    runtime_model_dir = build_vllm_runtime_model_from_adapter_fn(
         adapter_dir=adapter_dir,
         base_model=base_model,
     )
-    if not _is_runtime_model_dir(runtime_model_dir):
+    if not is_runtime_model_dir_fn(runtime_model_dir):
         raise RuntimeError(
             f"Failed to prepare runtime-usable vLLM model from adapter: {runtime_model_dir}"
         )
 
-    config = config_manager.get_config(mask_secrets=False)
+    config = config_manager_obj.get_config(mask_secrets=False)
     last_model_key = "LAST_MODEL_VLLM"
     previous_model_key = previous_model_key_for_server("vllm")
     previous_model = str(
@@ -369,10 +413,10 @@ def _deploy_adapter_to_vllm_runtime(
     }
     if previous_model and previous_model != selected_model:
         updates[previous_model_key] = previous_model
-    endpoint = _runtime_endpoint_for_hash("vllm")
-    config_hash = compute_llm_config_hash("vllm", endpoint, selected_model)
+    endpoint = runtime_endpoint_for_hash_fn("vllm", settings_obj=settings)
+    config_hash = compute_llm_config_hash_fn("vllm", endpoint, selected_model)
     updates["LLM_CONFIG_HASH"] = config_hash
-    config_manager.update_config(updates)
+    config_manager_obj.update_config(updates)
     try:
         settings.LLM_SERVICE_TYPE = "local"
         settings.ACTIVE_LLM_SERVER = "vllm"
@@ -388,7 +432,7 @@ def _deploy_adapter_to_vllm_runtime(
     except Exception:
         logger.warning("Failed to update SETTINGS for vLLM adapter deploy.")
 
-    _restart_vllm_runtime()
+    restart_vllm_runtime_fn(settings_obj=settings)
     return {
         "deployed": True,
         "runtime_id": "vllm",
@@ -399,7 +443,17 @@ def _deploy_adapter_to_vllm_runtime(
 
 
 def _handle_non_ollama_runtime_deploy(
-    *, runtime_local_id: str, adapter_id: str
+    *,
+    runtime_local_id: str,
+    adapter_id: str,
+    settings_obj: Any | None = None,
+    config_manager_obj: Any = config_manager,
+    compute_llm_config_hash_fn: Any = compute_llm_config_hash,
+    runtime_endpoint_for_hash_fn: Any = _runtime_endpoint_for_hash,
+    build_vllm_runtime_model_from_adapter_fn: Any = _build_vllm_runtime_model_from_adapter,
+    is_runtime_model_dir_fn: Any = _is_runtime_model_dir,
+    restart_vllm_runtime_fn: Any = _restart_vllm_runtime,
+    deploy_adapter_to_vllm_runtime_fn: Any | None = None,
 ) -> Dict[str, Any]:
     if runtime_local_id == "onnx":
         return {
@@ -408,7 +462,18 @@ def _handle_non_ollama_runtime_deploy(
             "runtime_id": runtime_local_id,
         }
     if runtime_local_id == "vllm":
-        return _deploy_adapter_to_vllm_runtime(adapter_id=adapter_id)
+        if deploy_adapter_to_vllm_runtime_fn is not None:
+            return deploy_adapter_to_vllm_runtime_fn(adapter_id=adapter_id)
+        return _deploy_adapter_to_vllm_runtime(
+            adapter_id=adapter_id,
+            settings_obj=settings_obj,
+            config_manager_obj=config_manager_obj,
+            compute_llm_config_hash_fn=compute_llm_config_hash_fn,
+            runtime_endpoint_for_hash_fn=runtime_endpoint_for_hash_fn,
+            build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
+            is_runtime_model_dir_fn=is_runtime_model_dir_fn,
+            restart_vllm_runtime_fn=restart_vllm_runtime_fn,
+        )
     return {}
 
 
@@ -420,8 +485,23 @@ def _deploy_adapter_to_chat_runtime(
     model_id: str | None,
     canonical_runtime_model_id_fn: Any,
     require_trusted_adapter_base_model_fn: Any,
+    settings_obj: Any | None = None,
+    config_manager_obj: Any = config_manager,
+    compute_llm_config_hash_fn: Any = compute_llm_config_hash,
+    resolve_runtime_for_adapter_deploy_fn: Any = _resolve_runtime_for_adapter_deploy,
+    runtime_endpoint_for_hash_fn: Any = _runtime_endpoint_for_hash,
+    build_vllm_runtime_model_from_adapter_fn: Any = _build_vllm_runtime_model_from_adapter,
+    is_runtime_model_dir_fn: Any = _is_runtime_model_dir,
+    restart_vllm_runtime_fn: Any = _restart_vllm_runtime,
+    get_active_llm_runtime_fn: Any = get_active_llm_runtime,
+    deploy_adapter_to_vllm_runtime_fn: Any | None = None,
 ) -> Dict[str, Any]:
-    runtime_candidate = _resolve_runtime_for_adapter_deploy(runtime_id)
+    settings = settings_obj or _get_settings()
+    runtime_candidate = resolve_runtime_for_adapter_deploy_fn(
+        runtime_id,
+        get_active_llm_runtime_fn=get_active_llm_runtime_fn,
+        settings_obj=settings,
+    )
     runtime_local_id = _resolve_local_runtime_id(runtime_candidate)
     if runtime_local_id is None:
         return {
@@ -433,13 +513,20 @@ def _deploy_adapter_to_chat_runtime(
     non_ollama_payload = _handle_non_ollama_runtime_deploy(
         runtime_local_id=runtime_local_id,
         adapter_id=adapter_id,
+        settings_obj=settings,
+        config_manager_obj=config_manager_obj,
+        compute_llm_config_hash_fn=compute_llm_config_hash_fn,
+        runtime_endpoint_for_hash_fn=runtime_endpoint_for_hash_fn,
+        build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
+        is_runtime_model_dir_fn=is_runtime_model_dir_fn,
+        restart_vllm_runtime_fn=restart_vllm_runtime_fn,
+        deploy_adapter_to_vllm_runtime_fn=deploy_adapter_to_vllm_runtime_fn,
     )
     if non_ollama_payload:
         return non_ollama_payload
 
     requested_model = _resolve_requested_runtime_model(model_id)
 
-    settings = _get_settings()
     models_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
     adapter_base_model = require_trusted_adapter_base_model_fn(
@@ -471,7 +558,7 @@ def _deploy_adapter_to_chat_runtime(
     if not deployed_model:
         raise RuntimeError("Failed to create Ollama model for adapter deployment")
 
-    config = config_manager.get_config(mask_secrets=False)
+    config = config_manager_obj.get_config(mask_secrets=False)
     last_model_key = "LAST_MODEL_OLLAMA"
     previous_model_key = previous_model_key_for_server(runtime_local_id)
     previous_model = str(
@@ -486,10 +573,10 @@ def _deploy_adapter_to_chat_runtime(
     }
     if previous_model and previous_model != selected_model:
         updates[previous_model_key] = previous_model
-    endpoint = _runtime_endpoint_for_hash(runtime_local_id)
-    config_hash = compute_llm_config_hash(runtime_local_id, endpoint, selected_model)
+    endpoint = runtime_endpoint_for_hash_fn(runtime_local_id, settings_obj=settings)
+    config_hash = compute_llm_config_hash_fn(runtime_local_id, endpoint, selected_model)
     updates["LLM_CONFIG_HASH"] = config_hash
-    config_manager.update_config(updates)
+    config_manager_obj.update_config(updates)
     try:
         settings.ACTIVE_LLM_SERVER = runtime_local_id
         settings.LLM_MODEL_NAME = selected_model
@@ -506,9 +593,20 @@ def _deploy_adapter_to_chat_runtime(
     }
 
 
-def _rollback_chat_runtime_after_adapter_deactivation(*, mgr: Any) -> Dict[str, Any]:
-    active_runtime = get_active_llm_runtime()
-    config = config_manager.get_config(mask_secrets=False)
+def _rollback_chat_runtime_after_adapter_deactivation(
+    *,
+    mgr: Any,
+    settings_obj: Any | None = None,
+    get_active_llm_runtime_fn: Any = get_active_llm_runtime,
+    config_manager_obj: Any = config_manager,
+    compute_llm_config_hash_fn: Any = compute_llm_config_hash,
+    runtime_endpoint_for_hash_fn: Any = _runtime_endpoint_for_hash,
+    resolve_local_runtime_model_path_by_name_fn: Any = _resolve_local_runtime_model_path_by_name,
+    restart_vllm_runtime_fn: Any = _restart_vllm_runtime,
+) -> Dict[str, Any]:
+    settings = settings_obj or _get_settings()
+    active_runtime = get_active_llm_runtime_fn()
+    config = config_manager_obj.get_config(mask_secrets=False)
     runtime_local_id, _ = _resolve_runtime_for_rollback(
         active_runtime=active_runtime,
         config=config,
@@ -539,17 +637,21 @@ def _rollback_chat_runtime_after_adapter_deactivation(*, mgr: Any) -> Dict[str, 
         runtime_local_id=runtime_local_id,
         previous_key=previous_key,
         fallback_model=fallback_model,
+        resolve_local_runtime_model_path_by_name_fn=resolve_local_runtime_model_path_by_name_fn,
+        settings_obj=settings,
     )
-    endpoint = _runtime_endpoint_for_hash(runtime_local_id)
-    config_hash = compute_llm_config_hash(runtime_local_id, endpoint, fallback_model)
+    endpoint = runtime_endpoint_for_hash_fn(runtime_local_id, settings_obj=settings)
+    config_hash = compute_llm_config_hash_fn(runtime_local_id, endpoint, fallback_model)
     updates["LLM_CONFIG_HASH"] = config_hash
-    config_manager.update_config(updates)
+    config_manager_obj.update_config(updates)
     try:
         _apply_runtime_rollback_settings(
             runtime_local_id=runtime_local_id,
             fallback_model=fallback_model,
             config_hash=config_hash,
             updates=updates,
+            settings_obj=settings,
+            restart_vllm_runtime_fn=restart_vllm_runtime_fn,
         )
     except Exception:
         logger.warning("Failed to update SETTINGS during adapter chat rollback.")

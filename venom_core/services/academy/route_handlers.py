@@ -389,7 +389,7 @@ async def list_adapters_handler(*, academy: Any) -> List[AdapterInfo]:
         )
 
 
-async def audit_adapters_handler(
+def audit_adapters_handler(
     *,
     academy: Any,
     runtime_id: str | None,

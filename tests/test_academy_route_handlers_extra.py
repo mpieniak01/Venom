@@ -98,7 +98,7 @@ async def test_audit_adapters_handler_returns_payload() -> None:
         audit_adapters=Mock(return_value=audit_payload),
     )
 
-    payload = await route_handlers.audit_adapters_handler(
+    payload = route_handlers.audit_adapters_handler(
         academy=academy,
         runtime_id="ollama",
         model_id="gemma-3-4b-it",

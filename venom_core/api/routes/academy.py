@@ -422,7 +422,7 @@ async def audit_adapters(
     runtime_id: Annotated[Optional[str], Query()] = None,
     model_id: Annotated[Optional[str], Query()] = None,
 ) -> Dict[str, Any]:
-    return await academy_route_handlers.audit_adapters_handler(
+    return academy_route_handlers.audit_adapters_handler(
         academy=_academy_module(),
         runtime_id=runtime_id,
         model_id=model_id,

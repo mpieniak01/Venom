@@ -18,7 +18,10 @@ from .adapter_metadata_service import (
     ADAPTER_NOT_FOUND_DETAIL,
     _require_trusted_adapter_base_model,
 )
-from .trainable_catalog_service import _resolve_local_runtime_id
+from .trainable_catalog_service import (
+    _canonical_runtime_model_id,
+    _resolve_local_runtime_id,
+)
 
 logger = get_logger(__name__)
 
@@ -477,29 +480,51 @@ def _handle_non_ollama_runtime_deploy(
     return {}
 
 
+def _resolve_chat_runtime_deploy_deps(
+    *,
+    deploy_deps: Dict[str, Any] | None,
+    legacy_deps: Dict[str, Any],
+) -> Dict[str, Any]:
+    defaults: Dict[str, Any] = {
+        "canonical_runtime_model_id_fn": _canonical_runtime_model_id,
+        "require_trusted_adapter_base_model_fn": _require_trusted_adapter_base_model,
+        "config_manager_obj": config_manager,
+        "compute_llm_config_hash_fn": compute_llm_config_hash,
+        "resolve_runtime_for_adapter_deploy_fn": _resolve_runtime_for_adapter_deploy,
+        "runtime_endpoint_for_hash_fn": _runtime_endpoint_for_hash,
+        "build_vllm_runtime_model_from_adapter_fn": _build_vllm_runtime_model_from_adapter,
+        "is_runtime_model_dir_fn": _is_runtime_model_dir,
+        "restart_vllm_runtime_fn": _restart_vllm_runtime,
+        "get_active_llm_runtime_fn": get_active_llm_runtime,
+        "deploy_adapter_to_vllm_runtime_fn": None,
+    }
+    resolved = dict(defaults)
+    if deploy_deps:
+        resolved.update(deploy_deps)
+    if legacy_deps:
+        resolved.update(legacy_deps)
+    return resolved
+
+
 def _deploy_adapter_to_chat_runtime(
     *,
     mgr: Any,
     adapter_id: str,
     runtime_id: str | None,
     model_id: str | None,
-    canonical_runtime_model_id_fn: Any,
-    require_trusted_adapter_base_model_fn: Any,
     settings_obj: Any | None = None,
-    config_manager_obj: Any = config_manager,
-    compute_llm_config_hash_fn: Any = compute_llm_config_hash,
-    resolve_runtime_for_adapter_deploy_fn: Any = _resolve_runtime_for_adapter_deploy,
-    runtime_endpoint_for_hash_fn: Any = _runtime_endpoint_for_hash,
-    build_vllm_runtime_model_from_adapter_fn: Any = _build_vllm_runtime_model_from_adapter,
-    is_runtime_model_dir_fn: Any = _is_runtime_model_dir,
-    restart_vllm_runtime_fn: Any = _restart_vllm_runtime,
-    get_active_llm_runtime_fn: Any = get_active_llm_runtime,
-    deploy_adapter_to_vllm_runtime_fn: Any | None = None,
+    deploy_deps: Dict[str, Any] | None = None,
+    **legacy_deps: Any,
 ) -> Dict[str, Any]:
     settings = settings_obj or _get_settings()
-    runtime_candidate = resolve_runtime_for_adapter_deploy_fn(
+    deps = _resolve_chat_runtime_deploy_deps(
+        deploy_deps=deploy_deps,
+        legacy_deps=legacy_deps,
+    )
+
+    runtime_candidate = deps["resolve_runtime_for_adapter_deploy_fn"](
         runtime_id,
-        get_active_llm_runtime_fn=get_active_llm_runtime_fn,
+        get_active_llm_runtime_fn=deps["get_active_llm_runtime_fn"],
         settings_obj=settings,
     )
     runtime_local_id = _resolve_local_runtime_id(runtime_candidate)
@@ -514,13 +539,15 @@ def _deploy_adapter_to_chat_runtime(
         runtime_local_id=runtime_local_id,
         adapter_id=adapter_id,
         settings_obj=settings,
-        config_manager_obj=config_manager_obj,
-        compute_llm_config_hash_fn=compute_llm_config_hash_fn,
-        runtime_endpoint_for_hash_fn=runtime_endpoint_for_hash_fn,
-        build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
-        is_runtime_model_dir_fn=is_runtime_model_dir_fn,
-        restart_vllm_runtime_fn=restart_vllm_runtime_fn,
-        deploy_adapter_to_vllm_runtime_fn=deploy_adapter_to_vllm_runtime_fn,
+        config_manager_obj=deps["config_manager_obj"],
+        compute_llm_config_hash_fn=deps["compute_llm_config_hash_fn"],
+        runtime_endpoint_for_hash_fn=deps["runtime_endpoint_for_hash_fn"],
+        build_vllm_runtime_model_from_adapter_fn=deps[
+            "build_vllm_runtime_model_from_adapter_fn"
+        ],
+        is_runtime_model_dir_fn=deps["is_runtime_model_dir_fn"],
+        restart_vllm_runtime_fn=deps["restart_vllm_runtime_fn"],
+        deploy_adapter_to_vllm_runtime_fn=deps["deploy_adapter_to_vllm_runtime_fn"],
     )
     if non_ollama_payload:
         return non_ollama_payload
@@ -529,13 +556,13 @@ def _deploy_adapter_to_chat_runtime(
 
     models_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
-    adapter_base_model = require_trusted_adapter_base_model_fn(
+    adapter_base_model = deps["require_trusted_adapter_base_model_fn"](
         adapter_dir=adapter_dir,
         default_model=str(getattr(settings, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
     ).strip()
     if adapter_base_model and requested_model:
-        adapter_canonical = canonical_runtime_model_id_fn(adapter_base_model)
-        requested_canonical = canonical_runtime_model_id_fn(requested_model)
+        adapter_canonical = deps["canonical_runtime_model_id_fn"](adapter_base_model)
+        requested_canonical = deps["canonical_runtime_model_id_fn"](requested_model)
         if requested_canonical and requested_canonical != adapter_canonical:
             message = (
                 "Adapter base model does not match selected Ollama runtime FROM model. "
@@ -558,7 +585,7 @@ def _deploy_adapter_to_chat_runtime(
     if not deployed_model:
         raise RuntimeError("Failed to create Ollama model for adapter deployment")
 
-    config = config_manager_obj.get_config(mask_secrets=False)
+    config = deps["config_manager_obj"].get_config(mask_secrets=False)
     last_model_key = "LAST_MODEL_OLLAMA"
     previous_model_key = previous_model_key_for_server(runtime_local_id)
     previous_model = str(
@@ -573,10 +600,15 @@ def _deploy_adapter_to_chat_runtime(
     }
     if previous_model and previous_model != selected_model:
         updates[previous_model_key] = previous_model
-    endpoint = runtime_endpoint_for_hash_fn(runtime_local_id, settings_obj=settings)
-    config_hash = compute_llm_config_hash_fn(runtime_local_id, endpoint, selected_model)
+    endpoint = deps["runtime_endpoint_for_hash_fn"](
+        runtime_local_id,
+        settings_obj=settings,
+    )
+    config_hash = deps["compute_llm_config_hash_fn"](
+        runtime_local_id, endpoint, selected_model
+    )
     updates["LLM_CONFIG_HASH"] = config_hash
-    config_manager_obj.update_config(updates)
+    deps["config_manager_obj"].update_config(updates)
     try:
         settings.ACTIVE_LLM_SERVER = runtime_local_id
         settings.LLM_MODEL_NAME = selected_model

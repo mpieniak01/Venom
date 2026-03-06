@@ -159,25 +159,14 @@ async def validate_adapter_runtime_compatibility(
         return
 
     if runtime_compatibility.get(runtime_local_id):
-        selected_model = str(model_id or "").strip()
-        if not selected_model:
-            return
-        await _assert_runtime_model_available(
+        await _assert_selected_runtime_model_compatible_with_adapter_base(
             mgr=mgr,
-            runtime_id=runtime_local_id,
-            model_id=selected_model,
+            runtime_local_id=runtime_local_id,
+            model_id=model_id,
+            adapter_id=adapter_id,
+            base_model=base_model,
         )
-        adapter_runtime_model = f"venom-adapter-{adapter_id}".lower()
-        selected_canonical = _canonical_runtime_model_id(selected_model)
-        base_canonical = _canonical_runtime_model_id(base_model)
-        if selected_model.lower() == adapter_runtime_model:
-            return
-        if selected_canonical == base_canonical:
-            return
-        raise ValueError(
-            f"{ADAPTER_BASE_MODEL_MISMATCH}: Adapter base model does not match selected runtime model. "
-            f"Selected model: '{selected_model}', adapter base model: '{base_model}'."
-        )
+        return
 
     compatible_runtimes = sorted(
         runtime
@@ -192,6 +181,38 @@ async def validate_adapter_runtime_compatibility(
         )
     raise ValueError(
         "Adapter does not expose compatible local runtimes for activation."
+    )
+
+
+async def _assert_selected_runtime_model_compatible_with_adapter_base(
+    *,
+    mgr: Any,
+    runtime_local_id: str,
+    model_id: str | None,
+    adapter_id: str,
+    base_model: str,
+) -> None:
+    selected_model = str(model_id or "").strip()
+    if not selected_model:
+        return
+
+    await _assert_runtime_model_available(
+        mgr=mgr,
+        runtime_id=runtime_local_id,
+        model_id=selected_model,
+    )
+
+    adapter_runtime_model = f"venom-adapter-{adapter_id}".lower()
+    selected_canonical = _canonical_runtime_model_id(selected_model)
+    base_canonical = _canonical_runtime_model_id(base_model)
+    if selected_model.lower() == adapter_runtime_model:
+        return
+    if selected_canonical == base_canonical:
+        return
+
+    raise ValueError(
+        f"{ADAPTER_BASE_MODEL_MISMATCH}: Adapter base model does not match selected runtime model. "
+        f"Selected model: '{selected_model}', adapter base model: '{base_model}'."
     )
 
 

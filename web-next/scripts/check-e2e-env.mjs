@@ -21,6 +21,8 @@ const targets = [
 const timeoutMs = Number(process.env.E2E_PREFLIGHT_TIMEOUT_MS ?? 3000);
 const retries = Number(process.env.E2E_PREFLIGHT_RETRIES ?? 10);
 const retryDelayMs = Number(process.env.E2E_PREFLIGHT_RETRY_DELAY_MS ?? 1000);
+const strictPreflight =
+  process.env.E2E_PREFLIGHT_STRICT === "1" || process.env.CI === "true";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -73,8 +75,15 @@ async function main() {
     }
   }
   if (hardFail) {
-    console.error("\nPrzerwano: wymagane usługi nie działają.");
-    process.exit(1);
+    if (strictPreflight) {
+      console.error("\nPrzerwano: wymagane usługi nie działają.");
+      process.exit(1);
+    }
+    console.warn(
+      "\n⏭️  E2E preflight niespełniony: pomijam testy E2E (tryb non-strict). " +
+        "Ustaw E2E_PREFLIGHT_STRICT=1, aby wymusić błąd."
+    );
+    process.exit(2);
   } else {
     console.log("\nPreflight OK. Uruchamiam testy...");
   }

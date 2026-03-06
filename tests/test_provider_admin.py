@@ -259,8 +259,22 @@ class TestProviderAdminEndpoints:
         assert len(data["entries"]) == 1
         assert data["entries"][0]["provider"] == "openai"
 
-    def test_idempotency_test_connection(self, client):
+    def test_idempotency_test_connection(self, client, monkeypatch):
         """Test that test-connection is idempotent."""
+        from venom_core.api.routes.providers import ProviderStatus
+
+        async def _stable_ollama_status() -> ProviderStatus:
+            return ProviderStatus(
+                status="connected",
+                message="stubbed",
+                reason_code=None,
+            )
+
+        monkeypatch.setattr(
+            "venom_core.api.routes.providers._check_ollama_status",
+            _stable_ollama_status,
+        )
+
         # Call multiple times
         response1 = client.post("/api/v1/providers/ollama/test-connection")
         response2 = client.post("/api/v1/providers/ollama/test-connection")

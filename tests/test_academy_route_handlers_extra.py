@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
@@ -76,6 +76,38 @@ async def test_list_adapters_handler_maps_generic_error_to_http_500() -> None:
 
 
 @pytest.mark.asyncio
+async def test_audit_adapters_handler_returns_payload() -> None:
+    academy = _build_academy_base()
+    manager = object()
+    academy._get_model_manager = lambda: manager
+    audit_payload = {
+        "count": 1,
+        "adapters": [
+            {
+                "adapter_id": "a1",
+                "category": "blocked_unknown_base",
+            }
+        ],
+        "summary": {
+            "compatible": 0,
+            "blocked_unknown_base": 1,
+            "blocked_mismatch": 0,
+        },
+    }
+    academy.academy_models = SimpleNamespace(
+        audit_adapters=Mock(return_value=audit_payload),
+    )
+
+    payload = route_handlers.audit_adapters_handler(
+        academy=academy,
+        runtime_id="ollama",
+        model_id="gemma-3-4b-it",
+    )
+
+    assert payload == audit_payload
+
+
+@pytest.mark.asyncio
 async def test_activate_adapter_handler_returns_503_when_manager_missing() -> None:
     academy = _build_academy_base()
     academy.require_localhost_request = lambda _req: None
@@ -125,6 +157,74 @@ async def test_activate_adapter_handler_passes_model_id_to_compatibility_validat
         runtime_id="vllm",
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
     )
+
+
+@pytest.mark.asyncio
+async def test_activate_adapter_handler_maps_reason_code_value_error_to_http_400() -> (
+    None
+):
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    manager = object()
+    academy._get_model_manager = lambda: manager
+
+    academy.academy_models = SimpleNamespace(
+        validate_adapter_runtime_compatibility=AsyncMock(return_value=None),
+        activate_adapter=lambda **_kwargs: (_ for _ in ()).throw(
+            ValueError(
+                "ADAPTER_BASE_MODEL_MISMATCH: Adapter base model does not match selected runtime model"
+            )
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await route_handlers.activate_adapter_handler(
+            request=SimpleNamespace(
+                adapter_id="a1",
+                runtime_id="ollama",
+                model_id="gemma-3-4b-it",
+                deploy_to_chat_runtime=True,
+            ),
+            req=SimpleNamespace(),
+            academy=academy,
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == {
+        "error": "ADAPTER_BASE_MODEL_MISMATCH",
+        "message": "Adapter base model does not match selected runtime model",
+        "reason_code": "ADAPTER_BASE_MODEL_MISMATCH",
+    }
+
+
+@pytest.mark.asyncio
+async def test_activate_adapter_handler_maps_missing_adapter_to_http_404() -> None:
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    manager = object()
+    academy._get_model_manager = lambda: manager
+
+    academy.academy_models = SimpleNamespace(
+        validate_adapter_runtime_compatibility=AsyncMock(
+            side_effect=FileNotFoundError("Adapter not found")
+        ),
+        activate_adapter=lambda **_kwargs: {"success": True},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await route_handlers.activate_adapter_handler(
+            request=SimpleNamespace(
+                adapter_id="missing",
+                runtime_id="ollama",
+                model_id="gemma3:latest",
+                deploy_to_chat_runtime=True,
+            ),
+            req=SimpleNamespace(),
+            academy=academy,
+        )
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "Adapter not found"
 
 
 @pytest.mark.asyncio

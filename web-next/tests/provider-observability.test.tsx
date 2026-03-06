@@ -1,53 +1,26 @@
-import { describe, it } from "node:test";
-import { render, screen } from "@testing-library/react";
+import assert from "node:assert/strict";
+import { afterEach, describe, it } from "node:test";
+import { cleanup, render, screen } from "@testing-library/react";
 import { ProviderMetricsCard } from "../components/providers/provider-metrics-card";
 import { ProviderHealthCard } from "../components/providers/provider-health-card";
 import { AlertsList, AlertsSummary } from "../components/providers/alerts-list";
 
-// Mock useTranslation hook
-jest.mock("../lib/i18n", () => ({
-  useTranslation: () => ({
-    t: (key: string, params?: Record<string, unknown>) => {
-      // Simple mock translation
-      if (key.includes("noData")) return "No metrics data available";
-      if (key.includes("title")) return "Provider Metrics";
-      if (key.includes("healthScore")) return "Health Score";
-      if (key.includes("totalRequests")) return "Total Requests";
-      if (key.includes("successRate")) return "Success Rate";
-      if (key.includes("latency.p50")) return "P50 Latency";
-      if (key.includes("totalCost")) return "Total Cost";
-      if (key.includes("totalTokens")) return "Total Tokens";
-      if (key.includes("errorRate")) return "Error Rate";
-      if (key.includes("availability")) return "Availability";
-      if (key.includes("healthy")) return "Healthy";
-      if (key.includes("degraded")) return "Degraded";
-      if (key.includes("critical")) return "Critical";
-      if (key.includes("noBreaches")) return "No SLO breaches";
-      if (key.includes("sloBreaches")) return "SLO Breaches";
-      if (key.includes("noAlerts")) return "No active alerts";
-      if (key.includes("severity.warning")) return "Warning";
-      if (key.includes("severity.critical")) return "Critical";
-      if (key.includes("types.HIGH_LATENCY")) return "High Latency";
+afterEach(() => {
+  cleanup();
+});
 
-      // Handle parameterized messages
-      if (params) {
-        let result = key;
-        Object.entries(params).forEach(([k, v]) => {
-          result = result.replace(`{{${k}}}`, String(v));
-        });
-        return result;
-      }
+function assertTextVisible(text: string | RegExp) {
+  assert.ok(screen.queryAllByText(text).length > 0);
+}
 
-      return key;
-    },
-  }),
-}));
+function assertTextMissing(text: string | RegExp) {
+  assert.equal(screen.queryAllByText(text).length, 0);
+}
 
 describe("ProviderMetricsCard", () => {
   it("renders no data message when metrics is null", () => {
     render(<ProviderMetricsCard provider="openai" metrics={null} />);
-    // @ts-expect-error - Testing library types
-    expect(screen.getByText("No metrics data available")).toBeInTheDocument();
+    assertTextVisible("Brak danych metryk");
   });
 
   it("renders metrics with all data", () => {
@@ -78,13 +51,13 @@ describe("ProviderMetricsCard", () => {
 
     render(<ProviderMetricsCard provider="openai" metrics={metrics} />);
 
-    expect(screen.getByText("1,000")).toBeInTheDocument(); // total requests
-    expect(screen.getByText("95.0%")).toBeInTheDocument(); // success rate
-    expect(screen.getByText("250ms")).toBeInTheDocument(); // p50
-    expect(screen.getByText("500ms")).toBeInTheDocument(); // p95
-    expect(screen.getByText("750ms")).toBeInTheDocument(); // p99
-    expect(screen.getByText("$12.5000")).toBeInTheDocument(); // cost
-    expect(screen.getByText("100,000")).toBeInTheDocument(); // tokens
+    assertTextVisible("1,000"); // total requests
+    assertTextVisible("95.0%"); // success rate
+    assertTextVisible("250ms"); // p50
+    assertTextVisible("500ms"); // p95
+    assertTextVisible("750ms"); // p99
+    assertTextVisible("$12.5000"); // cost
+    assertTextVisible("100,000"); // tokens
   });
 
   it("handles missing latency data", () => {
@@ -116,7 +89,7 @@ describe("ProviderMetricsCard", () => {
     render(<ProviderMetricsCard provider="ollama" metrics={metrics} />);
 
     const dashElements = screen.getAllByText("—");
-    expect(dashElements).toHaveLength(3); // p50, p95, p99 all show —
+    assert.equal((dashElements).length, 3); // p50, p95, p99 all show —
   });
 
   it("shows error breakdown when errors exist", () => {
@@ -147,17 +120,17 @@ describe("ProviderMetricsCard", () => {
 
     render(<ProviderMetricsCard provider="openai" metrics={metrics} />);
 
-    expect(screen.getByText("10")).toBeInTheDocument(); // total errors
-    expect(screen.getByText("5")).toBeInTheDocument(); // timeouts
-    expect(screen.getByText("3")).toBeInTheDocument(); // auth errors
-    expect(screen.getByText("2")).toBeInTheDocument(); // budget errors
+    assertTextVisible("10"); // total errors
+    assertTextVisible("5"); // timeouts
+    assertTextVisible("3"); // auth errors
+    assertTextVisible("2"); // budget errors
   });
 });
 
 describe("ProviderHealthCard", () => {
   it("renders no data message when health is null", () => {
     render(<ProviderHealthCard provider="openai" health={null} />);
-    expect(screen.getByText("No metrics data available")).toBeInTheDocument();
+    assertTextVisible("Brak danych metryk");
   });
 
   it("renders healthy status correctly", () => {
@@ -179,9 +152,9 @@ describe("ProviderHealthCard", () => {
 
     render(<ProviderHealthCard provider="openai" health={health} />);
 
-    expect(screen.getByText("Healthy")).toBeInTheDocument();
-    expect(screen.getByText("100/100")).toBeInTheDocument();
-    expect(screen.getByText("No SLO breaches")).toBeInTheDocument();
+    assertTextVisible("Zdrowy");
+    assertTextVisible("100/100");
+    assertTextVisible("Brak naruszeń SLO");
   });
 
   it("renders degraded status with breaches", () => {
@@ -203,9 +176,9 @@ describe("ProviderHealthCard", () => {
 
     render(<ProviderHealthCard provider="google" health={health} />);
 
-    expect(screen.getByText("Degraded")).toBeInTheDocument();
-    expect(screen.getByText("75/100")).toBeInTheDocument();
-    expect(screen.getByText("latency_p99_1500ms_above_1000ms")).toBeInTheDocument();
+    assertTextVisible("Ograniczony");
+    assertTextVisible("75/100");
+    assertTextVisible("latency_p99_1500ms_above_1000ms");
   });
 
   it("renders critical status with multiple breaches", () => {
@@ -232,14 +205,14 @@ describe("ProviderHealthCard", () => {
 
     render(<ProviderHealthCard provider="openai" health={health} />);
 
-    expect(screen.getByText("Critical")).toBeInTheDocument();
-    expect(screen.getByText("20/100")).toBeInTheDocument();
+    assertTextVisible("Krytyczny");
+    assertTextVisible("20/100");
 
     // Check all breaches are displayed
-    expect(screen.getByText(/availability.*90.*99/)).toBeInTheDocument();
-    expect(screen.getByText(/latency.*3000.*1000/)).toBeInTheDocument();
-    expect(screen.getByText(/error_rate.*5\.0.*1\.0/)).toBeInTheDocument();
-    expect(screen.getByText(/cost.*60.*50/)).toBeInTheDocument();
+    assertTextVisible(/availability.*90.*99/);
+    assertTextVisible(/latency.*3000.*1000/);
+    assertTextVisible(/error_rate.*5\.0.*1\.0/);
+    assertTextVisible(/cost.*60.*50/);
   });
 
   it("shows SLO targets vs current metrics", () => {
@@ -261,17 +234,17 @@ describe("ProviderHealthCard", () => {
 
     render(<ProviderHealthCard provider="openai" health={health} />);
 
-    expect(screen.getByText(/99\.80% \/ 99\.00%/)).toBeInTheDocument(); // availability
-    expect(screen.getByText(/500ms \/ 1000ms/)).toBeInTheDocument(); // latency
-    expect(screen.getByText(/0\.20% \/ 1\.00%/)).toBeInTheDocument(); // error rate
-    expect(screen.getByText(/\$15\.00 \/ \$50\.00/)).toBeInTheDocument(); // cost
+    assertTextVisible(/99\.80% \/ 99\.00%/); // availability
+    assertTextVisible(/500ms \/ 1000ms/); // latency
+    assertTextVisible(/0\.20% \/ 1\.00%/); // error rate
+    assertTextVisible(/\$15\.00 \/ \$50\.00/); // cost
   });
 });
 
 describe("AlertsList", () => {
   it("renders no alerts message when empty", () => {
     render(<AlertsList alerts={[]} />);
-    expect(screen.getByText("No active alerts")).toBeInTheDocument();
+    assertTextVisible("Brak aktywnych alertów");
   });
 
   it("renders alerts with correct severity colors and icons", () => {
@@ -302,11 +275,11 @@ describe("AlertsList", () => {
 
     render(<AlertsList alerts={alerts} />);
 
-    expect(screen.getByText("Critical")).toBeInTheDocument();
-    expect(screen.getByText("Warning")).toBeInTheDocument();
-    expect(screen.getByText("High Latency")).toBeInTheDocument();
-    expect(screen.getByText("openai")).toBeInTheDocument();
-    expect(screen.getByText("google")).toBeInTheDocument();
+    assertTextVisible("Krytyczny");
+    assertTextVisible("Ostrzeżenie");
+    assertTextVisible("Wysokie Opóźnienie");
+    assertTextVisible("openai");
+    assertTextVisible("google");
   });
 
   it("filters alerts by provider", () => {
@@ -337,8 +310,8 @@ describe("AlertsList", () => {
 
     render(<AlertsList alerts={alerts} providerFilter="openai" />);
 
-    expect(screen.getByText("openai")).toBeInTheDocument();
-    expect(screen.queryByText("google")).not.toBeInTheDocument();
+    assertTextVisible("openai");
+    assertTextMissing("google");
   });
 
   it("filters alerts by severity", () => {
@@ -369,8 +342,8 @@ describe("AlertsList", () => {
 
     render(<AlertsList alerts={alerts} severityFilter="critical" />);
 
-    expect(screen.getByText("Critical")).toBeInTheDocument();
-    expect(screen.queryByText("Warning")).not.toBeInTheDocument();
+    assertTextVisible("Krytyczny");
+    assertTextMissing("Ostrzeżenie");
   });
 });
 
@@ -391,14 +364,14 @@ describe("AlertsSummary", () => {
 
     render(<AlertsSummary summary={summary} />);
 
-    expect(screen.getByText("10")).toBeInTheDocument(); // total
-    expect(screen.getByText("3")).toBeInTheDocument(); // info
-    expect(screen.getByText("5")).toBeInTheDocument(); // warning
-    expect(screen.getByText("2")).toBeInTheDocument(); // critical
-    expect(screen.getByText("openai")).toBeInTheDocument();
-    expect(screen.getByText("6")).toBeInTheDocument();
-    expect(screen.getByText("google")).toBeInTheDocument();
-    expect(screen.getByText("4")).toBeInTheDocument();
+    assertTextVisible("10"); // total
+    assertTextVisible("3"); // info
+    assertTextVisible("5"); // warning
+    assertTextVisible("2"); // critical
+    assertTextVisible("openai");
+    assertTextVisible("6");
+    assertTextVisible("google");
+    assertTextVisible("4");
   });
 
   it("renders with zero alerts", () => {
@@ -415,6 +388,6 @@ describe("AlertsSummary", () => {
     render(<AlertsSummary summary={summary} />);
 
     const zeros = screen.getAllByText("0");
-    expect(zeros.length).toBeGreaterThanOrEqual(4); // total + 3 severities
+    assert.ok((zeros.length) >= 4); // total + 3 severities
   });
 });

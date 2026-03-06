@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { ApplyResults } from "../types/workflow-control";
 import {
   getWorkflowStatusMeta,
   shouldShowApplyResultsModal,
@@ -7,19 +8,17 @@ import {
 
 describe("workflow-control view helpers", () => {
   it("shows apply results modal only when both flag and data are present", () => {
+    const applyResults: ApplyResults = {
+      execution_ticket: "ticket-1",
+      apply_mode: "hot_swap",
+      reason_code: "success_hot_swap",
+      message: "applied",
+      applied_changes: [],
+      rollback_available: false,
+    };
     assert.equal(shouldShowApplyResultsModal(true, null), false);
-    assert.equal(
-      shouldShowApplyResultsModal(true, {
-        apply_mode: "hot_swap",
-      }),
-      true
-    );
-    assert.equal(
-      shouldShowApplyResultsModal(false, {
-        apply_mode: "hot_swap",
-      }),
-      false
-    );
+    assert.equal(shouldShowApplyResultsModal(true, applyResults), true);
+    assert.equal(shouldShowApplyResultsModal(false, applyResults), false);
   });
 
   it("computes operation availability from workflow status", () => {

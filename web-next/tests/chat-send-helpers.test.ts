@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { handleStandardTaskSend } from "../components/cockpit/chat-send-helpers";
+import type { LocalHistoryEntry } from "../components/cockpit/chat-send-helpers";
+import type { Dispatch, SetStateAction } from "react";
 
 type LocalEntry = {
   role?: string;
@@ -11,11 +13,9 @@ type LocalEntry = {
 };
 
 function createHistoryStore(initial: LocalEntry[]) {
-  let history = [...initial];
-  const setLocalSessionHistory = (
-    updater: (prev: LocalEntry[]) => LocalEntry[],
-  ) => {
-    history = updater(history);
+  let history: LocalHistoryEntry[] = [...initial];
+  const setLocalSessionHistory: Dispatch<SetStateAction<LocalHistoryEntry[]>> = (value) => {
+    history = typeof value === "function" ? value(history) : value;
   };
   return {
     getHistory: () => history,
@@ -37,8 +37,8 @@ describe("handleStandardTaskSend", () => {
       activeServerInfo: null,
       parsed: {
         cleaned: "hej",
-        forcedTool: null,
-        forcedProvider: null,
+        forcedTool: undefined,
+        forcedProvider: undefined,
         sessionReset: false,
       },
       forcedIntent: null,
@@ -85,8 +85,8 @@ describe("handleStandardTaskSend", () => {
       activeServerInfo: null,
       parsed: {
         cleaned: "hej",
-        forcedTool: null,
-        forcedProvider: null,
+        forcedTool: undefined,
+        forcedProvider: undefined,
         sessionReset: false,
       },
       forcedIntent: null,

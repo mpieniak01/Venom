@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -283,11 +283,22 @@ def test_cancel_training_sets_cancelled_and_cleans_container(
 
 
 @patch("venom_core.config.SETTINGS")
-def test_activate_adapter_success(mock_settings, client, mock_model_manager):
+def test_activate_adapter_success(mock_settings, client, mock_model_manager, tmp_path):
     mock_settings.ENABLE_ACADEMY = True
-    mock_settings.ACADEMY_MODELS_DIR = "./data/models"
+    models_dir = tmp_path / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    adapter_dir = models_dir / "training_001"
+    (adapter_dir / "adapter").mkdir(parents=True, exist_ok=True)
+    (adapter_dir / "metadata.json").write_text(
+        json.dumps({"base_model": "unsloth/Phi-3-mini-4k-instruct"}),
+        encoding="utf-8",
+    )
+    mock_settings.ACADEMY_MODELS_DIR = str(models_dir)
     mock_model_manager.activate_adapter.return_value = True
-    with patch("pathlib.Path.exists", return_value=True):
+    with patch(
+        "venom_core.api.routes.academy_models.validate_adapter_runtime_compatibility",
+        new=AsyncMock(return_value=None),
+    ):
         response = client.post(
             "/api/v1/academy/adapters/activate",
             json={

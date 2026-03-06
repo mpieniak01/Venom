@@ -209,6 +209,9 @@ def run_local_training_job(
     env = os.environ.copy()
     if enable_gpu:
         env["CUDA_VISIBLE_DEVICES"] = "0"
+    # Local Academy training must run without external experiment tracking setup.
+    env.setdefault("WANDB_DISABLED", "true")
+    env.setdefault("WANDB_MODE", "disabled")
 
     executable = (python_bin or "").strip() or sys.executable or "python3"
 

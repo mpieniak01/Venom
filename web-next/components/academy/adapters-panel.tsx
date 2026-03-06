@@ -54,7 +54,12 @@ export function AdaptersPanel() {
     const selectedRuntimeMeta = runtimes.find(
       (runtime) => runtime.runtime_id === resolvedRuntime,
     );
-    setAdapterDeploySupported(Boolean(selectedRuntimeMeta?.adapter_deploy_supported));
+    setAdapterDeploySupported(
+      Boolean(
+        selectedRuntimeMeta?.supports_adapter_runtime_apply ??
+          selectedRuntimeMeta?.adapter_deploy_supported,
+      ),
+    );
     const models = (catalog.chat_models ?? []).filter(
       (model) => model.runtime_id === resolvedRuntime,
     );

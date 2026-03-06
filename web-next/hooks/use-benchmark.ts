@@ -32,6 +32,11 @@ interface UseBenchmarkReturn {
 
 export function useBenchmark(): UseBenchmarkReturn {
     const t = useTranslation();
+    const translatePreflight = useCallback(
+        (path: string, replacements?: Record<string, unknown>) =>
+            t(path, replacements as Record<string, string | number> | undefined),
+        [t],
+    );
     const [status, setStatus] = useState<BenchmarkStatus>("idle");
     const [logs, setLogs] = useState<BenchmarkLog[]>([]);
     const [results, setResults] = useState<BenchmarkModelResult[]>([]);
@@ -120,7 +125,7 @@ export function useBenchmark(): UseBenchmarkReturn {
             conflict: t("benchmark.preflight.conflict"),
             runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
         });
-        await emitActiveLlmStateLog(buildApiUrl, addLog, t);
+        await emitActiveLlmStateLog(buildApiUrl, addLog, translatePreflight);
         addLog(
             t("benchmark.preflight.startingModels", { models: config.models.join(", ") }),
             "info",
@@ -141,7 +146,7 @@ export function useBenchmark(): UseBenchmarkReturn {
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const detail = (errorData as { detail?: string }).detail;
-                const message = resolveStartFailureMessage(response, detail, t);
+                const message = resolveStartFailureMessage(response, detail, translatePreflight);
                 throw new Error(message);
             }
 
@@ -163,7 +168,7 @@ export function useBenchmark(): UseBenchmarkReturn {
             addLog(`Błąd uruchomienia: ${errorMessage}`, "error");
             stopPolling();
         }
-    }, [addLog, pollStatus, reset, stopPolling, t]);
+    }, [addLog, pollStatus, reset, stopPolling, t, translatePreflight]);
 
     // Clean up on unmount
     // useEffect(() => () => stopPolling(), [stopPolling]); // Commented out to avoid double mounting issues in strict mode canceling too early, manual reset handles most.

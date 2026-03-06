@@ -59,13 +59,19 @@ def test_get_training_status_missing_job_returns_404(mock_settings, client_with_
 
 
 @patch("venom_core.config.SETTINGS")
-def test_activate_adapter_invalid_path_returns_404(mock_settings, client_with_deps):
+def test_activate_adapter_missing_adapter_returns_404(
+    mock_settings, client_with_deps, tmp_path
+):
     mock_settings.ENABLE_ACADEMY = True
-    with patch("pathlib.Path.exists", return_value=False):
-        response = client_with_deps.post(
-            "/api/v1/academy/adapters/activate",
-            json={"adapter_id": "x", "adapter_path": "/invalid/path"},
-        )
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "models")
+    response = client_with_deps.post(
+        "/api/v1/academy/adapters/activate",
+        json={
+            "adapter_id": "x",
+            "adapter_path": "/invalid/path",
+            "runtime_id": "ollama",
+        },
+    )
     assert response.status_code == 404
 
 

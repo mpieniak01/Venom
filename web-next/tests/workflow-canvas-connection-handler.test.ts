@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { Edge } from "@xyflow/react";
 
 import { handleWorkflowConnect } from "../components/workflow-control/canvas/connection-handler";
 
@@ -14,7 +15,7 @@ describe("workflow canvas connection handler", () => {
     let setEdgesCount = 0;
 
     handleWorkflowConnect(
-      { source: "runtime", target: "provider" },
+      { source: "runtime", target: "provider", sourceHandle: null, targetHandle: null },
       {
         readOnly: true,
         nodes: NODES,
@@ -38,7 +39,7 @@ describe("workflow canvas connection handler", () => {
     let setEdgesCount = 0;
 
     handleWorkflowConnect(
-      { source: "runtime", target: "provider" },
+      { source: "runtime", target: "provider", sourceHandle: null, targetHandle: null },
       {
         readOnly: false,
         nodes: NODES,
@@ -75,11 +76,13 @@ describe("workflow canvas connection handler", () => {
   });
 
   it("adds edge for valid connection", () => {
-    let updater: ((edges: Array<{ id: string; source: string; target: string }>) => unknown) | null =
-      null;
+    const existing: Edge[] = [
+      { id: "e-1", source: "decision", target: "intent", sourceHandle: null, targetHandle: null },
+    ];
+    const capture: { next: Edge[] } = { next: existing };
 
     handleWorkflowConnect(
-      { source: "runtime", target: "provider" },
+      { source: "runtime", target: "provider", sourceHandle: null, targetHandle: null },
       {
         readOnly: false,
         nodes: NODES,
@@ -88,17 +91,16 @@ describe("workflow canvas connection handler", () => {
           throw new Error("pushToast should not be called for valid connection");
         },
         setEdges: (nextUpdater) => {
-          updater = nextUpdater;
+          capture.next = nextUpdater(existing);
         },
         validateConnectionFn: () => ({ isValid: true }),
       },
     );
 
-    assert.ok(updater, "setEdges updater must be provided");
-    const existing = [{ id: "e-1", source: "decision", target: "intent" }];
-    const next = updater!(existing) as Array<{ id: string; source: string; target: string }>;
+    const next = capture.next;
+    const last = next[next.length - 1];
     assert.equal(next.length, existing.length + 1);
-    assert.equal(next.at(-1)?.source, "runtime");
-    assert.equal(next.at(-1)?.target, "provider");
+    assert.equal(last?.source, "runtime");
+    assert.equal(last?.target, "provider");
   });
 });

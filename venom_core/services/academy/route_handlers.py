@@ -29,6 +29,24 @@ from venom_core.api.schemas.academy import (
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 
+def _value_error_detail_with_reason_code(exc: ValueError) -> str | dict[str, str]:
+    raw_detail = str(exc).strip()
+    if ":" not in raw_detail:
+        return raw_detail
+    reason_code, message = raw_detail.split(":", 1)
+    normalized_reason = reason_code.strip()
+    normalized_message = message.strip()
+    if not normalized_reason or not normalized_message:
+        return raw_detail
+    if not normalized_reason.replace("_", "").isalnum():
+        return raw_detail
+    return {
+        "error": normalized_reason,
+        "message": normalized_message,
+        "reason_code": normalized_reason,
+    }
+
+
 def _collect_scope_counts(
     *,
     curator: Any,
@@ -371,6 +389,55 @@ async def list_adapters_handler(*, academy: Any) -> List[AdapterInfo]:
         )
 
 
+def audit_adapters_handler(
+    *,
+    academy: Any,
+    runtime_id: str | None,
+    model_id: str | None,
+) -> Dict[str, Any]:
+    try:
+        academy._ensure_academy_enabled()
+        return academy.academy_models.audit_adapters(
+            mgr=academy._get_model_manager(),
+            runtime_id=runtime_id,
+            model_id=model_id,
+        )
+
+    except academy.AcademyRouteError as e:
+        raise academy._to_http_exception(e) from e
+    except Exception as e:
+        academy.logger.error(f"Failed to audit adapters: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to audit adapters: {str(e)}",
+        )
+
+
+def _resolve_activation_runtime_id(*, request: Any) -> str:
+    runtime_id = str(getattr(request, "runtime_id", "") or "").strip()
+    if runtime_id:
+        return runtime_id
+    active_runtime = get_active_llm_runtime()
+    return str(getattr(active_runtime, "provider", "") or "").strip()
+
+
+async def _validate_adapter_compatibility_if_runtime_selected(
+    *,
+    academy: Any,
+    manager: Any,
+    request: Any,
+    runtime_id: str,
+) -> None:
+    if not runtime_id:
+        return
+    await academy.academy_models.validate_adapter_runtime_compatibility(
+        mgr=manager,
+        adapter_id=request.adapter_id,
+        runtime_id=runtime_id,
+        model_id=str(getattr(request, "model_id", "") or "").strip() or None,
+    )
+
+
 async def activate_adapter_handler(
     *,
     request: Any,
@@ -386,21 +453,18 @@ async def activate_adapter_handler(
                 status_code=503,
                 detail="ModelManager not available for adapter activation",
             )
-        runtime_id = str(getattr(request, "runtime_id", "") or "").strip()
-        if not runtime_id:
-            active_runtime = get_active_llm_runtime()
-            runtime_id = str(getattr(active_runtime, "provider", "") or "").strip()
-        if runtime_id:
-            await academy.academy_models.validate_adapter_runtime_compatibility(
-                mgr=manager,
-                adapter_id=request.adapter_id,
-                runtime_id=runtime_id,
-                model_id=str(getattr(request, "model_id", "") or "").strip() or None,
-            )
+        runtime_id = _resolve_activation_runtime_id(request=request)
+        await _validate_adapter_compatibility_if_runtime_selected(
+            academy=academy,
+            manager=manager,
+            request=request,
+            runtime_id=runtime_id,
+        )
         return academy.academy_models.activate_adapter(
             mgr=manager,
             adapter_id=request.adapter_id,
             runtime_id=runtime_id or None,
+            model_id=str(getattr(request, "model_id", "") or "").strip() or None,
             deploy_to_chat_runtime=bool(
                 getattr(request, "deploy_to_chat_runtime", False)
             ),
@@ -409,7 +473,10 @@ async def activate_adapter_handler(
     except academy.AcademyRouteError as e:
         raise academy._to_http_exception(e) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(
+            status_code=400,
+            detail=_value_error_detail_with_reason_code(e),
+        ) from e
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Adapter not found") from None
     except RuntimeError as e:

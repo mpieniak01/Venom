@@ -60,6 +60,11 @@ interface UseCodingBenchmarkReturn {
 
 export function useCodingBenchmark(): UseCodingBenchmarkReturn {
   const t = useTranslation();
+  const translatePreflight = useCallback(
+    (path: string, replacements?: Record<string, unknown>) =>
+      t(path, replacements as Record<string, string | number> | undefined),
+    [t],
+  );
   const [status, setStatus] = useState<CodingBenchmarkStatus>("idle");
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<CodingBenchmarkRun | null>(null);
@@ -172,7 +177,7 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
       conflict: t("benchmark.preflight.conflict"),
       runtimeUnhealthy: t("benchmark.preflight.runtimeUnhealthy"),
     });
-    await emitActiveLlmStateLog(buildApiUrl, addLog, t);
+    await emitActiveLlmStateLog(buildApiUrl, addLog, translatePreflight);
     addLog(
       t("benchmark.coding.logs.startingModels", {
         models: req.models.join(", "),
@@ -196,7 +201,7 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const detail = (errorData as { detail?: string }).detail;
-        const message = resolveStartFailureMessage(response, detail, t);
+        const message = resolveStartFailureMessage(response, detail, translatePreflight);
         throw new Error(message);
       }
 
@@ -227,7 +232,7 @@ export function useCodingBenchmark(): UseCodingBenchmarkReturn {
       );
       stopPolling();
     }
-  }, [addLog, pollStatus, reset, stopPolling, t]);
+  }, [addLog, pollStatus, reset, stopPolling, t, translatePreflight]);
 
   const deleteRun = useCallback(async (id: string) => {
     try {

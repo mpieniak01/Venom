@@ -532,6 +532,7 @@ training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
     optim="adamw_8bit",
     save_strategy="epoch",
+    report_to="none",
 )
 
 trainer_kwargs = dict(
@@ -667,6 +668,7 @@ training_args = TrainingArguments(
     fp16=CUDA_AVAILABLE,
     use_cpu=(not CUDA_AVAILABLE),
     no_cuda=(not CUDA_AVAILABLE),
+    report_to="none",
 )
 
 try:

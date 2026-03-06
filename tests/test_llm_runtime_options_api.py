@@ -289,6 +289,10 @@ def test_runtime_target_payload_contains_adapter_deploy_capability() -> None:
     )
     assert payload["adapter_deploy_supported"] is True
     assert payload["adapter_deploy_mode"] == "vllm_exported_runtime_model"
+    assert payload["supports_native_training"] is False
+    assert payload["supports_adapter_import_safetensors"] is False
+    assert payload["supports_adapter_import_gguf"] is False
+    assert payload["supports_adapter_runtime_apply"] is True
 
 
 def test_apply_vllm_runtime_autofix_updates_invalid_config(tmp_path: Path) -> None:

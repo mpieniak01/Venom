@@ -1,6 +1,6 @@
 "use client";
 
-type ModelDef = { name: string; provider?: string };
+type ModelDef = { name: string; provider?: string | null };
 
 export function useCockpitModelActivation(input: {
   selectedLlmServer: string;

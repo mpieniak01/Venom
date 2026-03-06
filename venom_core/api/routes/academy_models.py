@@ -34,6 +34,19 @@ _TRAINABLE_MODEL_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "gemma3:latest": "gemma-3-4b-it",
     "gemma3:4b": "gemma-3-4b-it",
     "gemma3:1b": "gemma-3-1b-it",
+    "qwen2.5-coder:3b": "qwen/qwen2.5-coder-3b-instruct",
+    "qwen2.5-coder:7b": "qwen/qwen2.5-coder-7b-instruct",
+}
+ADAPTER_BASE_MODEL_MISMATCH = "ADAPTER_BASE_MODEL_MISMATCH"
+ADAPTER_BASE_MODEL_UNKNOWN = "ADAPTER_BASE_MODEL_UNKNOWN"
+ADAPTER_METADATA_INCONSISTENT = "ADAPTER_METADATA_INCONSISTENT"
+ADAPTER_NOT_FOUND_DETAIL = "Adapter not found"
+
+_BASE_MODEL_CONFIDENT_SOURCES: Set[str] = {
+    "metadata.base_model",
+    "adapter.adapter_config.base_model_name_or_path",
+    "adapter.adapter_config.base_model_name",
+    "runtime_vllm.venom_runtime_vllm.base_model",
 }
 type ModelSourceType = Literal["local", "cloud"]
 type ModelCostTier = Literal["free", "paid", "unknown"]
@@ -309,7 +322,8 @@ def resolve_runtime_compatibility(
     if provider_hint_id:
         preferred.add(provider_hint_id)
 
-    # For HF/Unsloth trainable families, vLLM is the primary local inference target.
+    # For HF/Unsloth trainable families, vLLM is primary, but Ollama is also a valid
+    # deployment runtime for adapters in current contract (external training + runtime deploy).
     if not preferred and provider_lc in {
         "unsloth",
         "huggingface",
@@ -317,7 +331,10 @@ def resolve_runtime_compatibility(
         "config",
         "unknown",
     }:
-        preferred.add("vllm")
+        if "vllm" in compatibility:
+            preferred.add("vllm")
+        if "ollama" in compatibility:
+            preferred.add("ollama")
 
     for runtime_id in preferred:
         if runtime_id in compatibility:
@@ -678,6 +695,154 @@ def _load_adapter_metadata(adapter_dir: Path) -> Dict[str, Any]:
         return {}
 
 
+def _read_json_file(path: Path) -> Dict[str, Any]:
+    if not path.exists() or not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            return payload
+    except Exception as exc:
+        logger.warning("Failed to parse JSON for %s: %s", path, exc)
+    return {}
+
+
+def _collect_adapter_base_model_candidates(
+    *,
+    adapter_dir: Path,
+    default_model: str,
+) -> List[Dict[str, str]]:
+    metadata = _load_adapter_metadata(adapter_dir)
+    candidates: List[Dict[str, str]] = []
+
+    metadata_model = str(metadata.get("base_model") or "").strip()
+    if metadata_model:
+        candidates.append(
+            {
+                "source": "metadata.base_model",
+                "model": metadata_model,
+            }
+        )
+
+    adapter_config = _read_json_file(adapter_dir / "adapter" / "adapter_config.json")
+    adapter_model_name_or_path = str(
+        adapter_config.get("base_model_name_or_path") or ""
+    ).strip()
+    if adapter_model_name_or_path:
+        candidates.append(
+            {
+                "source": "adapter.adapter_config.base_model_name_or_path",
+                "model": adapter_model_name_or_path,
+            }
+        )
+    adapter_model_name = str(adapter_config.get("base_model_name") or "").strip()
+    if adapter_model_name:
+        candidates.append(
+            {
+                "source": "adapter.adapter_config.base_model_name",
+                "model": adapter_model_name,
+            }
+        )
+
+    runtime_manifest = _read_json_file(
+        adapter_dir / "runtime_vllm" / "venom_runtime_vllm.json"
+    )
+    runtime_model = str(runtime_manifest.get("base_model") or "").strip()
+    if runtime_model:
+        candidates.append(
+            {
+                "source": "runtime_vllm.venom_runtime_vllm.base_model",
+                "model": runtime_model,
+            }
+        )
+
+    fallback_model = default_model.strip()
+    if fallback_model:
+        candidates.append(
+            {
+                "source": "settings.ACADEMY_DEFAULT_BASE_MODEL",
+                "model": fallback_model,
+            }
+        )
+    return candidates
+
+
+def _assess_adapter_base_model(
+    *,
+    adapter_dir: Path,
+    default_model: str,
+) -> Dict[str, Any]:
+    candidates = _collect_adapter_base_model_candidates(
+        adapter_dir=adapter_dir,
+        default_model=default_model,
+    )
+
+    trusted_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.get("source") in _BASE_MODEL_CONFIDENT_SOURCES
+        and str(candidate.get("model") or "").strip()
+    ]
+
+    if not trusted_candidates:
+        fallback_model = str(default_model or "").strip()
+        return {
+            "base_model": fallback_model,
+            "canonical_base_model": _canonical_runtime_model_id(fallback_model),
+            "trusted": False,
+            "reason_code": ADAPTER_BASE_MODEL_UNKNOWN,
+            "reason": "Missing reliable adapter base model metadata",
+            "sources": candidates,
+        }
+
+    canonical_models = {
+        _canonical_runtime_model_id(str(candidate["model"]))
+        for candidate in trusted_candidates
+        if _canonical_runtime_model_id(str(candidate["model"]))
+    }
+    if len(canonical_models) > 1:
+        preferred = str(trusted_candidates[0]["model"])
+        return {
+            "base_model": preferred,
+            "canonical_base_model": _canonical_runtime_model_id(preferred),
+            "trusted": False,
+            "reason_code": ADAPTER_METADATA_INCONSISTENT,
+            "reason": "Conflicting base model values across adapter metadata artifacts",
+            "sources": candidates,
+        }
+
+    preferred_model = str(trusted_candidates[0]["model"]) if trusted_candidates else ""
+    return {
+        "base_model": preferred_model,
+        "canonical_base_model": _canonical_runtime_model_id(preferred_model),
+        "trusted": True,
+        "reason_code": None,
+        "reason": None,
+        "sources": candidates,
+    }
+
+
+def _require_trusted_adapter_base_model(
+    *,
+    adapter_dir: Path,
+    default_model: str,
+) -> str:
+    assessment = _assess_adapter_base_model(
+        adapter_dir=adapter_dir,
+        default_model=default_model,
+    )
+    base_model = str(assessment.get("base_model") or "").strip()
+    trusted = bool(assessment.get("trusted"))
+    if trusted and base_model:
+        return base_model
+    reason_code = str(assessment.get("reason_code") or ADAPTER_BASE_MODEL_UNKNOWN)
+    reason = str(
+        assessment.get("reason")
+        or "Adapter base model is not reliable enough for deployment validation"
+    )
+    raise ValueError(f"{reason_code}: {reason}")
+
+
 def _resolve_adapter_base_model(*, adapter_dir: Path, default_model: str) -> str:
     metadata = _load_adapter_metadata(adapter_dir)
     base_model = str(metadata.get("base_model") or "").strip()
@@ -1017,7 +1182,10 @@ def _deploy_adapter_to_vllm_runtime(
 ) -> Dict[str, Any]:
     models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
-    base_model = _resolve_adapter_base_model(
+    adapter_path = adapter_dir / "adapter"
+    if not adapter_path.exists():
+        raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
+    base_model = _require_trusted_adapter_base_model(
         adapter_dir=adapter_dir,
         default_model=str(getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
     ).strip()
@@ -1087,6 +1255,7 @@ def _deploy_adapter_to_chat_runtime(
     mgr: Any,
     adapter_id: str,
     runtime_id: str | None,
+    model_id: str | None,
 ) -> Dict[str, Any]:
     runtime_candidate = _resolve_runtime_for_adapter_deploy(runtime_id)
     runtime_local_id = _resolve_local_runtime_id(runtime_candidate)
@@ -1097,16 +1266,41 @@ def _deploy_adapter_to_chat_runtime(
             "runtime_id": runtime_candidate,
         }
 
-    if runtime_local_id == "onnx":
-        return {
-            "deployed": False,
-            "reason": f"runtime_not_supported:{runtime_local_id}",
-            "runtime_id": runtime_local_id,
-        }
-    if runtime_local_id == "vllm":
-        return _deploy_adapter_to_vllm_runtime(
-            adapter_id=adapter_id,
-        )
+    non_ollama_payload = _handle_non_ollama_runtime_deploy(
+        runtime_local_id=runtime_local_id,
+        adapter_id=adapter_id,
+    )
+    if non_ollama_payload:
+        return non_ollama_payload
+
+    requested_model = _resolve_requested_runtime_model(model_id)
+
+    models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
+    adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
+    adapter_base_model = _require_trusted_adapter_base_model(
+        adapter_dir=adapter_dir,
+        default_model=str(getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
+    ).strip()
+    if adapter_base_model and requested_model:
+        adapter_canonical = _canonical_runtime_model_id(adapter_base_model)
+        requested_canonical = _canonical_runtime_model_id(requested_model)
+        if requested_canonical and requested_canonical != adapter_canonical:
+            reason_code = ADAPTER_BASE_MODEL_MISMATCH
+            message = (
+                "Adapter base model does not match selected Ollama runtime FROM model. "
+                f"runtime_model='{requested_model}', adapter_base_model='{adapter_base_model}'."
+            )
+            logger.warning(
+                "Blocking Ollama adapter deploy due to %s "
+                "(adapter_id=%s, runtime_model=%s, adapter_base_model=%s)"
+                % (
+                    reason_code,
+                    adapter_id,
+                    requested_model,
+                    adapter_base_model,
+                )
+            )
+            raise ValueError(f"{reason_code}: {message}")
 
     ollama_model_name = f"venom-adapter-{adapter_id}"
     deployed_model = mgr.create_ollama_modelfile(
@@ -1219,6 +1413,39 @@ def _resolve_adapter_dir(*, models_dir: Path, adapter_id: str) -> Path:
     return adapter_dir
 
 
+def _require_existing_adapter_artifact(*, adapter_dir: Path) -> Path:
+    adapter_path = (adapter_dir / "adapter").resolve()
+    if not adapter_path.exists():
+        raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
+    return adapter_path
+
+
+def _resolve_requested_runtime_model(model_id: str | None) -> str:
+    requested_model = str(model_id or "").strip()
+    if requested_model:
+        return requested_model
+    config_snapshot = config_manager.get_config(mask_secrets=False)
+    return str(
+        config_snapshot.get("LAST_MODEL_OLLAMA")
+        or config_snapshot.get("LLM_MODEL_NAME")
+        or ""
+    ).strip()
+
+
+def _handle_non_ollama_runtime_deploy(
+    *, runtime_local_id: str, adapter_id: str
+) -> Dict[str, Any]:
+    if runtime_local_id == "onnx":
+        return {
+            "deployed": False,
+            "reason": f"runtime_not_supported:{runtime_local_id}",
+            "runtime_id": runtime_local_id,
+        }
+    if runtime_local_id == "vllm":
+        return _deploy_adapter_to_vllm_runtime(adapter_id=adapter_id)
+    return {}
+
+
 async def validate_adapter_runtime_compatibility(
     *,
     mgr: Any,
@@ -1240,7 +1467,8 @@ async def validate_adapter_runtime_compatibility(
 
     models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR).resolve()
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
-    base_model = _resolve_adapter_base_model(
+    _require_existing_adapter_artifact(adapter_dir=adapter_dir)
+    base_model = _require_trusted_adapter_base_model(
         adapter_dir=adapter_dir,
         default_model=str(getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
     ).strip()
@@ -1274,7 +1502,7 @@ async def validate_adapter_runtime_compatibility(
         if selected_canonical == base_canonical:
             return
         raise ValueError(
-            "Adapter base model does not match selected runtime model. "
+            f"{ADAPTER_BASE_MODEL_MISMATCH}: Adapter base model does not match selected runtime model. "
             f"Selected model: '{selected_model}', adapter base model: '{base_model}'."
         )
 
@@ -1292,6 +1520,166 @@ async def validate_adapter_runtime_compatibility(
     raise ValueError(
         "Adapter does not expose compatible local runtimes for activation."
     )
+
+
+def _empty_adapters_audit_payload() -> Dict[str, Any]:
+    return {
+        "count": 0,
+        "adapters": [],
+        "summary": {
+            "compatible": 0,
+            "blocked_unknown_base": 0,
+            "blocked_mismatch": 0,
+        },
+    }
+
+
+def _resolve_active_adapter_id(mgr: Any) -> str:
+    if not mgr:
+        return ""
+    active_info = mgr.get_active_adapter_info()
+    if not isinstance(active_info, dict):
+        return ""
+    return str(active_info.get("adapter_id") or "").strip()
+
+
+def _evaluate_adapter_audit_status(
+    *,
+    assessment: Dict[str, Any],
+    base_model: str,
+    runtime_local_id: str | None,
+    selected_model: str,
+    selected_model_canonical: str,
+) -> tuple[str, str | None, str]:
+    reason_code = str(assessment.get("reason_code") or "").strip() or None
+    category = "compatible"
+    message = "Adapter metadata is consistent"
+
+    if not bool(assessment.get("trusted")):
+        if reason_code == ADAPTER_METADATA_INCONSISTENT:
+            return (
+                "blocked_mismatch",
+                reason_code,
+                str(assessment.get("reason") or "Inconsistent adapter metadata"),
+            )
+        return (
+            "blocked_unknown_base",
+            ADAPTER_BASE_MODEL_UNKNOWN,
+            str(assessment.get("reason") or "Reliable base_model metadata is missing"),
+        )
+
+    if runtime_local_id and selected_model_canonical:
+        base_canonical = _canonical_runtime_model_id(base_model)
+        if base_canonical and base_canonical != selected_model_canonical:
+            return (
+                "blocked_mismatch",
+                ADAPTER_BASE_MODEL_MISMATCH,
+                "Adapter base model does not match selected runtime model "
+                f"('{selected_model}')",
+            )
+    return category, reason_code, message
+
+
+def _build_adapter_audit_item(
+    *,
+    training_dir: Path,
+    adapter_path: Path,
+    assessment: Dict[str, Any],
+    base_model: str,
+    category: str,
+    reason_code: str | None,
+    message: str,
+    active_adapter_id: str,
+) -> Dict[str, Any]:
+    return {
+        "adapter_id": training_dir.name,
+        "adapter_path": str(adapter_path),
+        "base_model": base_model,
+        "canonical_base_model": str(assessment.get("canonical_base_model") or ""),
+        "trusted_metadata": bool(assessment.get("trusted")),
+        "category": category,
+        "reason_code": reason_code,
+        "message": message,
+        "is_active": training_dir.name == active_adapter_id,
+        "sources": list(assessment.get("sources") or []),
+        "manual_repair_hint": (
+            "Fill adapter metadata with a single consistent base_model and rerun audit"
+            if category != "compatible"
+            else None
+        ),
+    }
+
+
+def audit_adapters(
+    *,
+    mgr: Any,
+    runtime_id: str | None = None,
+    model_id: str | None = None,
+) -> Dict[str, Any]:
+    """Preflight audit for historical adapters metadata confidence and compatibility."""
+    models_dir = Path(SETTINGS.ACADEMY_MODELS_DIR)
+    if not models_dir.exists():
+        return _empty_adapters_audit_payload()
+
+    runtime_local_id = _resolve_local_runtime_id(str(runtime_id or "").strip().lower())
+    selected_model = str(model_id or "").strip()
+    selected_model_canonical = _canonical_runtime_model_id(selected_model)
+
+    active_adapter_id = _resolve_active_adapter_id(mgr)
+
+    items: List[Dict[str, Any]] = []
+    for training_dir in sorted(models_dir.iterdir(), key=lambda p: p.name):
+        if not training_dir.is_dir():
+            continue
+        adapter_path = training_dir / "adapter"
+        if not adapter_path.exists():
+            continue
+
+        assessment = _assess_adapter_base_model(
+            adapter_dir=training_dir,
+            default_model=str(
+                getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")
+            ).strip(),
+        )
+        base_model = str(assessment.get("base_model") or "").strip()
+        category, reason_code, message = _evaluate_adapter_audit_status(
+            assessment=assessment,
+            base_model=base_model,
+            runtime_local_id=runtime_local_id,
+            selected_model=selected_model,
+            selected_model_canonical=selected_model_canonical,
+        )
+
+        items.append(
+            _build_adapter_audit_item(
+                training_dir=training_dir,
+                adapter_path=adapter_path,
+                assessment=assessment,
+                base_model=base_model,
+                category=category,
+                reason_code=reason_code,
+                message=message,
+                active_adapter_id=active_adapter_id,
+            )
+        )
+
+    summary = {
+        "compatible": sum(1 for item in items if item.get("category") == "compatible"),
+        "blocked_unknown_base": sum(
+            1 for item in items if item.get("category") == "blocked_unknown_base"
+        ),
+        "blocked_mismatch": sum(
+            1 for item in items if item.get("category") == "blocked_mismatch"
+        ),
+    }
+
+    return {
+        "count": len(items),
+        "adapters": items,
+        "summary": summary,
+        "runtime_id": runtime_local_id,
+        "model_id": selected_model or None,
+    }
 
 
 async def list_adapters(mgr: Any) -> List[AdapterInfo]:
@@ -1346,6 +1734,7 @@ def activate_adapter(
     adapter_id: str,
     *,
     runtime_id: str | None = None,
+    model_id: str | None = None,
     deploy_to_chat_runtime: bool = False,
 ) -> Dict[str, Any]:
     """Activate adapter in model manager, returning API payload."""
@@ -1356,7 +1745,7 @@ def activate_adapter(
     adapter_path = (adapter_dir / "adapter").resolve()
 
     if not adapter_path.exists():
-        raise FileNotFoundError("Adapter not found")
+        raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
 
     success = mgr.activate_adapter(
         adapter_id=adapter_id, adapter_path=str(adapter_path)
@@ -1375,6 +1764,7 @@ def activate_adapter(
             mgr=mgr,
             adapter_id=adapter_id,
             runtime_id=runtime_id,
+            model_id=model_id,
         )
         payload.update(deploy_payload)
         if deploy_payload.get("deployed"):

@@ -68,7 +68,7 @@ def test_ensure_image_present_pulls_missing(monkeypatch):
 
     class FakeImages:
         def get(self, name):
-            raise docker_habitat.ImageNotFound
+            raise docker_habitat.ImageNotFound("not found")
 
         def pull(self, name):
             _pull(name)
@@ -153,7 +153,7 @@ def test_recover_from_name_conflict_reuses_existing(monkeypatch, tmp_path):
 def test_remove_container_by_name_if_exists_handles_missing(monkeypatch):
     instance = _make_habitat_instance()
     instance.client.containers = SimpleNamespace(
-        get=lambda name: (_ for _ in ()).throw(docker_habitat.NotFound)
+        get=lambda name: (_ for _ in ()).throw(docker_habitat.NotFound("not found"))
     )
 
     # Should not raise
@@ -203,7 +203,7 @@ def test_recreate_container_continues_when_stop_and_remove_fail(monkeypatch):
 def test_wait_until_container_absent_returns_on_not_found(monkeypatch):
     instance = _make_habitat_instance()
     instance.client.containers = SimpleNamespace(
-        get=lambda name: (_ for _ in ()).throw(docker_habitat.NotFound)
+        get=lambda name: (_ for _ in ()).throw(docker_habitat.NotFound("not found"))
     )
 
     # Should return quickly without sleeping
@@ -222,7 +222,7 @@ def test_wait_until_container_absent_ignores_generic_exception_then_returns(
         calls["count"] += 1
         if calls["count"] == 1:
             raise RuntimeError("temporary docker API glitch")
-        raise docker_habitat.NotFound
+        raise docker_habitat.NotFound("not found")
 
     instance.client.containers = SimpleNamespace(get=_get)
     monkeypatch.setattr(docker_habitat.time, "sleep", lambda *_args, **_kwargs: None)
@@ -403,7 +403,7 @@ def test_init_initializes_container_from_get_or_create(monkeypatch):
 def test_get_or_create_container_creates_new_when_not_found(monkeypatch):
     instance = _make_habitat_instance()
     instance.client.containers = SimpleNamespace(
-        get=lambda _name: (_ for _ in ()).throw(docker_habitat.NotFound)
+        get=lambda _name: (_ for _ in ()).throw(docker_habitat.NotFound("not found"))
     )
     monkeypatch.setattr(instance, "_create_container", MagicMock(return_value="new"))
     assert instance._get_or_create_container() == "new"

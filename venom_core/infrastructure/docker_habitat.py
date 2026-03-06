@@ -1,5 +1,6 @@
 """Moduł: docker_habitat - Zarządca bezpiecznego środowiska wykonawczego (Docker Sandbox)."""
 
+import hashlib
 import importlib
 import time
 from pathlib import Path
@@ -23,13 +24,14 @@ except Exception:  # pragma: no cover
 
 logger = get_logger(__name__)
 CONTAINER_WORKDIR = "/workspace"
+DEFAULT_WORKSPACE_ROOT = Path(SETTINGS.WORKSPACE_ROOT).resolve()
 
 
 class DockerHabitat:
     """
     Zarządca siedliska Docker - bezpieczne środowisko uruchomieniowe dla Venoma.
 
-    Zarządza jednym długożyjącym kontenerem Docker (`venom-sandbox`),
+    Zarządza długożyjącym kontenerem Docker (`venom-sandbox`),
     w którym Venom uruchamia i testuje kod. Kontener montuje workspace
     jako volume, umożliwiając dostęp do plików między hostem a kontenerem.
     """
@@ -61,10 +63,29 @@ class DockerHabitat:
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
+        self.workspace_path = self._resolve_workspace_path()
+        self.container_name = self._resolve_container_name(self.workspace_path)
         self.container = self._get_or_create_container()
         logger.info(
-            f"DockerHabitat zainicjalizowany z kontenerem: {self.CONTAINER_NAME}"
+            f"DockerHabitat zainicjalizowany z kontenerem: {self._active_container_name()}"
         )
+
+    def _active_container_name(self) -> str:
+        return getattr(self, "container_name", self.CONTAINER_NAME)
+
+    def _resolve_container_name(self, workspace_path: Path) -> str:
+        """
+        Zwraca nazwę kontenera.
+        Dla domyślnego workspace zachowujemy historyczną nazwę `venom-sandbox`,
+        a dla innych workspace dodajemy stabilny suffix, aby uniknąć konfliktów
+        między równoległymi testami/workerami.
+        """
+        if workspace_path.resolve() == DEFAULT_WORKSPACE_ROOT:
+            return self.CONTAINER_NAME
+        workspace_hash = hashlib.sha1(
+            str(workspace_path.resolve()).encode("utf-8")
+        ).hexdigest()[:12]
+        return f"{self.CONTAINER_NAME}-{workspace_hash}"
 
     def _get_or_create_container(self):
         """
@@ -76,12 +97,15 @@ class DockerHabitat:
         Raises:
             RuntimeError: Jeśli nie można utworzyć/uruchomić kontenera
         """
+        container_name = self._active_container_name()
         try:
             # Sprawdź czy kontener już istnieje
-            container = self.client.containers.get(self.CONTAINER_NAME)
-            logger.info(f"Znaleziono istniejący kontener: {self.CONTAINER_NAME}")
+            container = self.client.containers.get(container_name)
+            logger.info(f"Znaleziono istniejący kontener: {container_name}")
 
-            expected_workspace = self._resolve_workspace_path()
+            expected_workspace = getattr(
+                self, "workspace_path", self._resolve_workspace_path()
+            )
             if not self._has_expected_workspace_mount(container, expected_workspace):
                 logger.warning(
                     "Istniejący kontener ma niezgodny mount workspace "
@@ -92,9 +116,7 @@ class DockerHabitat:
 
             # Jeśli kontener istnieje ale nie działa, uruchom go
             if container.status != "running":
-                logger.info(
-                    f"Uruchamianie zatrzymanego kontenera: {self.CONTAINER_NAME}"
-                )
+                logger.info(f"Uruchamianie zatrzymanego kontenera: {container_name}")
                 try:
                     container.start()
                     container.reload()
@@ -102,7 +124,7 @@ class DockerHabitat:
                     if self._is_name_conflict_error(exc):
                         logger.warning(
                             "Nie można uruchomić kontenera %s (%s). Rekreacja.",
-                            self.CONTAINER_NAME,
+                            container_name,
                             exc,
                         )
                         self._recreate_container(container)
@@ -113,7 +135,7 @@ class DockerHabitat:
 
         except NotFound:
             # Kontener nie istnieje - utwórz nowy
-            logger.info(f"Tworzenie nowego kontenera: {self.CONTAINER_NAME}")
+            logger.info(f"Tworzenie nowego kontenera: {container_name}")
             return self._create_container()
 
     def _resolve_workspace_path(self) -> Path:
@@ -156,8 +178,9 @@ class DockerHabitat:
 
     def _remove_container_by_name_if_exists(self) -> None:
         """Usuwa kontenery konfliktujące po nazwie i czeka na zwolnienie nazwy."""
+        container_name = self._active_container_name()
         try:
-            existing = self.client.containers.get(self.CONTAINER_NAME)
+            existing = self.client.containers.get(container_name)
         except NotFound:
             existing = None
         if existing is not None:
@@ -165,7 +188,7 @@ class DockerHabitat:
                 existing.remove(force=True)
             except Exception as exc:
                 logger.warning(
-                    f"Nie udało się usunąć kontenera {self.CONTAINER_NAME}: {exc}"
+                    f"Nie udało się usunąć kontenera {container_name}: {exc}"
                 )
 
         # Domknij przypadki, gdzie API get() zwraca chwilowo NotFound,
@@ -175,12 +198,13 @@ class DockerHabitat:
 
     def _remove_conflicting_named_containers(self) -> None:
         """Usuwa wszystkie kontenery dokładnie pasujące do CONTAINER_NAME."""
+        container_name = self._active_container_name()
         list_fn = getattr(self.client.containers, "list", None)
         if list_fn is None:
             return
 
         try:
-            candidates = list_fn(all=True, filters={"name": self.CONTAINER_NAME})
+            candidates = list_fn(all=True, filters={"name": container_name})
         except Exception as exc:
             logger.warning(
                 f"Nie udało się pobrać listy kontenerów konfliktowych: {exc}"
@@ -194,26 +218,28 @@ class DockerHabitat:
                 candidate.remove(force=True)
             except Exception as exc:
                 logger.warning(
-                    f"Nie udało się usunąć konfliktowego kontenera {self.CONTAINER_NAME}: {exc}"
+                    f"Nie udało się usunąć konfliktowego kontenera {container_name}: {exc}"
                 )
 
     def _is_exact_container_name_match(self, container: Any) -> bool:
         """Sprawdza, czy kontener ma dokładnie nazwę CONTAINER_NAME."""
+        container_name = self._active_container_name()
         name = str(getattr(container, "name", "") or "").strip()
-        if name == self.CONTAINER_NAME:
+        if name == container_name:
             return True
         try:
             attrs_name = str(container.attrs.get("Name", "") or "").strip()
         except Exception:
             attrs_name = ""
-        return attrs_name in {self.CONTAINER_NAME, f"/{self.CONTAINER_NAME}"}
+        return attrs_name in {container_name, f"/{container_name}"}
 
     def _wait_until_container_absent(self) -> None:
         """Czeka aż nazwa kontenera będzie ponownie dostępna."""
+        container_name = self._active_container_name()
         deadline = time.time() + self.CONTAINER_REMOVE_WAIT_SECONDS
         while time.time() < deadline:
             try:
-                self.client.containers.get(self.CONTAINER_NAME)
+                self.client.containers.get(container_name)
                 self._remove_conflicting_named_containers()
             except NotFound:
                 if not self._has_named_container_candidates():
@@ -226,16 +252,17 @@ class DockerHabitat:
         logger.warning(
             "Timeout oczekiwania na zwolnienie nazwy kontenera %s. "
             "Sprawdź `docker ps -a` i usuń konflikt ręcznie, jeśli problem się powtarza.",
-            self.CONTAINER_NAME,
+            container_name,
         )
 
     def _has_named_container_candidates(self) -> bool:
         """Zwraca True gdy istnieją kontenery pasujące dokładnie do CONTAINER_NAME."""
+        container_name = self._active_container_name()
         list_fn = getattr(self.client.containers, "list", None)
         if list_fn is None:
             return False
         try:
-            candidates = list_fn(all=True, filters={"name": self.CONTAINER_NAME})
+            candidates = list_fn(all=True, filters={"name": container_name})
         except Exception as exc:
             logger.warning(
                 f"Nie udało się sprawdzić listy kontenerów podczas oczekiwania: {exc}"
@@ -265,11 +292,13 @@ class DockerHabitat:
         try:
             image_name = SETTINGS.DOCKER_IMAGE_NAME
             self._ensure_image_present(image_name)
-            workspace_path = workspace_path or self._resolve_workspace_path()
+            workspace_path = workspace_path or getattr(
+                self, "workspace_path", self._resolve_workspace_path()
+            )
             container = self._run_container(image_name, workspace_path)
             container.reload()
             logger.info(
-                f"Utworzono kontener {self.CONTAINER_NAME} z volume: {workspace_path} -> {CONTAINER_WORKDIR}"
+                f"Utworzono kontener {self._active_container_name()} z volume: {workspace_path} -> {CONTAINER_WORKDIR}"
             )
             return container
 
@@ -304,7 +333,7 @@ class DockerHabitat:
     def _run_container(self, image_name: str, workspace_path: Path):
         return self.client.containers.run(
             image=image_name,
-            name=self.CONTAINER_NAME,
+            name=self._active_container_name(),
             command="tail -f /dev/null",
             volumes={str(workspace_path): {"bind": CONTAINER_WORKDIR, "mode": "rw"}},
             working_dir=CONTAINER_WORKDIR,
@@ -341,12 +370,14 @@ class DockerHabitat:
         logger.warning(
             "Konflikt nazwy kontenera %s; próba ponownego użycia "
             "(pozostałe retry: %s).",
-            self.CONTAINER_NAME,
+            self._active_container_name(),
             retries_left,
         )
-        expected_workspace = workspace_path or self._resolve_workspace_path()
+        expected_workspace = workspace_path or getattr(
+            self, "workspace_path", self._resolve_workspace_path()
+        )
         try:
-            existing = self.client.containers.get(self.CONTAINER_NAME)
+            existing = self.client.containers.get(self._active_container_name())
             if self._has_expected_workspace_mount(existing, expected_workspace):
                 if existing.status != "running":
                     existing.start()
@@ -407,7 +438,7 @@ class DockerHabitat:
             # Sprawdź czy kontener działa
             self.container.reload()
             if self.container.status != "running":
-                error_msg = f"Kontener {self.CONTAINER_NAME} nie działa (status: {self.container.status})"
+                error_msg = f"Kontener {self._active_container_name()} nie działa (status: {self.container.status})"
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
 
@@ -442,9 +473,9 @@ class DockerHabitat:
         """
         try:
             if self.container:
-                logger.info(f"Zatrzymywanie kontenera: {self.CONTAINER_NAME}")
+                logger.info(f"Zatrzymywanie kontenera: {self._active_container_name()}")
                 self.container.stop()
-                logger.info(f"Usuwanie kontenera: {self.CONTAINER_NAME}")
+                logger.info(f"Usuwanie kontenera: {self._active_container_name()}")
                 self.container.remove()
                 logger.info("Kontener został usunięty")
         except Exception as e:

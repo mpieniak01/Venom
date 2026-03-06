@@ -10,6 +10,8 @@ from venom_core.config import SETTINGS
 from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.shell_skill import ShellSkill
 
+requires_docker = pytest.mark.requires_docker
+
 
 @pytest.fixture
 def temp_workspace():
@@ -38,6 +40,7 @@ def _allow_shell_for_tests():
         permission_guard.set_level(previous_level)
 
 
+@requires_docker
 def test_shell_skill_initialization_sandbox():
     """Test inicjalizacji ShellSkill z sandbox."""
     skill = ShellSkill(use_sandbox=True)
@@ -54,6 +57,7 @@ def test_shell_skill_initialization_local():
     assert skill.habitat is None
 
 
+@requires_docker
 def test_shell_skill_run_simple_command_sandbox(temp_workspace):
     """Test wykonania prostej komendy w sandbox."""
     skill = ShellSkill(use_sandbox=True)
@@ -77,6 +81,7 @@ def test_shell_skill_run_simple_command_local(temp_workspace):
     assert "pomyślnie" in result or "exit_code=0" in result
 
 
+@requires_docker
 def test_shell_skill_run_python_command_sandbox(temp_workspace):
     """Test wykonania komendy Python w sandbox."""
     skill = ShellSkill(use_sandbox=True)
@@ -90,6 +95,7 @@ def test_shell_skill_run_python_command_sandbox(temp_workspace):
     assert "pomyślnie" in result.lower()
 
 
+@requires_docker
 def test_shell_skill_run_failed_command_sandbox(temp_workspace):
     """Test wykonania komendy która się nie powiedzie w sandbox."""
     skill = ShellSkill(use_sandbox=True)
@@ -145,6 +151,7 @@ def test_shell_skill_get_exit_code_from_error():
     assert exit_code == 127
 
 
+@requires_docker
 def test_shell_skill_python_script_execution_sandbox():
     """Test wykonania skryptu Python w sandbox."""
     skill = ShellSkill(use_sandbox=True)
@@ -177,6 +184,7 @@ def test_shell_skill_python_script_execution_local(temp_workspace):
     assert "pomyślnie" in result.lower() or "exit_code=0" in result
 
 
+@requires_docker
 def test_shell_skill_working_directory_sandbox():
     """Test czy working directory jest ustawiony poprawnie w sandbox."""
     skill = ShellSkill(use_sandbox=True)
@@ -208,6 +216,7 @@ def test_shell_skill_working_directory_local(temp_workspace):
     assert "test_dir_local.txt" in result or "pomyślnie" in result.lower()
 
 
+@requires_docker
 def test_shell_skill_timeout_sandbox(temp_workspace):
     """Test timeout w sandbox."""
     skill = ShellSkill(use_sandbox=True)
@@ -233,6 +242,7 @@ def test_shell_skill_config_enable_sandbox_false(temp_workspace):
     SETTINGS.ENABLE_SANDBOX = original_enable
 
 
+@requires_docker
 def test_shell_skill_stderr_capture_sandbox(temp_workspace):
     """Test czy stderr jest przechwytywany w sandbox."""
     skill = ShellSkill(use_sandbox=True)

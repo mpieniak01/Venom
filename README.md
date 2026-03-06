@@ -1,13 +1,13 @@
 # Venom v1.7.0 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
-[![SonarCloud Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
+[![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 [![Known Vulnerabilities](https://snyk.io/test/github/mpieniak01/Venom/badge.svg)](https://snyk.io/test/github/mpieniak01/Venom)
 
 **Quality Signals**
 - *GitGuardian:* secret detection and leak prevention in repository history and pull requests.
 - *OpenAPI Contract:* validates OpenAPI export and TypeScript codegen synchronization.
-- *SonarCloud Quality Gate:* live status of code-quality gate on SonarCloud (new code).
+- *SonarCloud Quality Gate:* live status of code-quality gate on SonarCloud.
 - *Snyk Vulnerabilities:* live status of dependency vulnerabilities for this GitHub repository.
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**

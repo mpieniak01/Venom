@@ -40,6 +40,7 @@ _TRAINABLE_MODEL_ALIAS_TO_CANONICAL: Dict[str, str] = {
 ADAPTER_BASE_MODEL_MISMATCH = "ADAPTER_BASE_MODEL_MISMATCH"
 ADAPTER_BASE_MODEL_UNKNOWN = "ADAPTER_BASE_MODEL_UNKNOWN"
 ADAPTER_METADATA_INCONSISTENT = "ADAPTER_METADATA_INCONSISTENT"
+ADAPTER_NOT_FOUND_DETAIL = "Adapter not found"
 
 _BASE_MODEL_CONFIDENT_SOURCES: Set[str] = {
     "metadata.base_model",
@@ -1183,7 +1184,7 @@ def _deploy_adapter_to_vllm_runtime(
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
     adapter_path = adapter_dir / "adapter"
     if not adapter_path.exists():
-        raise FileNotFoundError("Adapter not found")
+        raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
     base_model = _require_trusted_adapter_base_model(
         adapter_dir=adapter_dir,
         default_model=str(getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
@@ -1415,7 +1416,7 @@ def _resolve_adapter_dir(*, models_dir: Path, adapter_id: str) -> Path:
 def _require_existing_adapter_artifact(*, adapter_dir: Path) -> Path:
     adapter_path = (adapter_dir / "adapter").resolve()
     if not adapter_path.exists():
-        raise FileNotFoundError("Adapter not found")
+        raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
     return adapter_path
 
 
@@ -1744,7 +1745,7 @@ def activate_adapter(
     adapter_path = (adapter_dir / "adapter").resolve()
 
     if not adapter_path.exists():
-        raise FileNotFoundError("Adapter not found")
+        raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
 
     success = mgr.activate_adapter(
         adapter_id=adapter_id, adapter_path=str(adapter_path)

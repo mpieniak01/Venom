@@ -5,7 +5,10 @@ import type { ReactNode } from "react";
 
 import type { SelfLearningRunStatus } from "../lib/academy-api";
 import { LanguageProvider } from "../lib/i18n";
-import { SelfLearningConfigurator } from "../components/academy/self-learning-configurator";
+import {
+  SelfLearningConfigurator,
+  type SelfLearningConfig,
+} from "../components/academy/self-learning-configurator";
 import { SelfLearningHistory } from "../components/academy/self-learning-history";
 
 afterEach(() => {
@@ -39,9 +42,15 @@ function makeRun(overrides: Partial<SelfLearningRunStatus>): SelfLearningRunStat
   };
 }
 
+function firstCallArg<T>(fn: { mock: { calls: Array<{ arguments: unknown[] }> } }): T {
+  const call = fn.mock.calls[0];
+  assert.ok(call);
+  return call.arguments[0] as T;
+}
+
 describe("SelfLearningConfigurator", () => {
   it("disables start button when no source is selected", async () => {
-    const onStart = mock.fn(async () => {});
+    const onStart = mock.fn(async (_payload: SelfLearningConfig) => {});
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
@@ -126,19 +135,7 @@ describe("SelfLearningConfigurator", () => {
     });
 
     assert.equal(onStart.mock.callCount(), 1);
-    const payload = onStart.mock.calls[0]?.arguments[0] as {
-      mode: string;
-      dry_run: boolean;
-      limits: { max_file_size_kb: number; max_files: number; max_total_size_mb: number };
-      sources: string[];
-      llm_config:
-        | {
-            base_model: string;
-            dataset_strategy?: string;
-            task_mix_preset?: string;
-          }
-        | null;
-    };
+    const payload = firstCallArg<SelfLearningConfig>(onStart);
     assert.equal(payload.mode, "llm_finetune");
     assert.equal(payload.dry_run, true);
     assert.equal(payload.limits.max_file_size_kb, 512);
@@ -151,7 +148,7 @@ describe("SelfLearningConfigurator", () => {
   });
 
   it("submits selected dataset strategy and task mix for llm mode", async () => {
-    const onStart = mock.fn(async () => {});
+    const onStart = mock.fn(async (_payload: SelfLearningConfig) => {});
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
@@ -185,15 +182,13 @@ describe("SelfLearningConfigurator", () => {
       fireEvent.click(screen.getByRole("button", { name: /Start Self-Learning/i }));
     });
 
-    const payload = onStart.mock.calls[0]?.arguments[0] as {
-      llm_config?: { dataset_strategy?: string; task_mix_preset?: string } | null;
-    };
+    const payload = firstCallArg<SelfLearningConfig>(onStart);
     assert.equal(payload.llm_config?.dataset_strategy, "repo_tasks_basic");
     assert.equal(payload.llm_config?.task_mix_preset, "repair-heavy");
   });
 
   it("blocks rag start in strict policy when embedding fallback is active", async () => {
-    const onStart = mock.fn(async () => {});
+    const onStart = mock.fn(async (_payload: SelfLearningConfig) => {});
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
@@ -261,9 +256,7 @@ describe("SelfLearningConfigurator", () => {
       fireEvent.click(screen.getByRole("button", { name: /Start Self-Learning/i }));
     });
 
-    const payload = onStart.mock.calls[0]?.arguments[0] as {
-      rag_config?: { chunking_mode?: string; retrieval_mode?: string } | null;
-    };
+    const payload = firstCallArg<SelfLearningConfig>(onStart);
     assert.equal(payload.rag_config?.chunking_mode, "code_aware");
     assert.equal(payload.rag_config?.retrieval_mode, "hybrid");
   });
@@ -284,7 +277,7 @@ describe("SelfLearningHistory", () => {
       error_message: "Parsing failed",
     });
 
-    const onSelectRun = mock.fn(() => {});
+    const onSelectRun = mock.fn((_: string) => {});
     const onRefresh = mock.fn(async () => {});
     const onDeleteRun = mock.fn(async () => {});
     const onClearAll = mock.fn(async () => {});
@@ -305,7 +298,7 @@ describe("SelfLearningHistory", () => {
       fireEvent.click(runBButton);
     });
     assert.equal(onSelectRun.mock.callCount(), 1);
-    assert.equal(onSelectRun.mock.calls[0]?.arguments[0], runB.run_id);
+    assert.equal(firstCallArg<string>(onSelectRun), runB.run_id);
   });
 
   it("renders selected run details and allows deleting selected run", async () => {
@@ -329,9 +322,9 @@ describe("SelfLearningHistory", () => {
       error_message: "Skipped binary files",
     });
 
-    const onSelectRun = mock.fn(() => {});
+    const onSelectRun = mock.fn((_: string) => {});
     const onRefresh = mock.fn(async () => {});
-    const onDeleteRun = mock.fn(async () => {});
+    const onDeleteRun = mock.fn(async (_: string) => {});
     const onClearAll = mock.fn(async () => {});
 
     renderWithLanguage(
@@ -360,6 +353,6 @@ describe("SelfLearningHistory", () => {
       fireEvent.click(screen.getByRole("button", { name: /Delete run/i }));
     });
     assert.equal(onDeleteRun.mock.callCount(), 1);
-    assert.equal(onDeleteRun.mock.calls[0]?.arguments[0], run.run_id);
+    assert.equal(firstCallArg<string>(onDeleteRun), run.run_id);
   });
 });

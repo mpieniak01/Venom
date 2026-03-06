@@ -454,20 +454,31 @@ def test_start_run_rejects_rag_without_embedding_profile(tmp_path: Path):
         service.start_run(mode="rag_index", sources=["docs"], dry_run=True)
 
 
-def test_start_run_rejects_incompatible_runtime_for_base_model(tmp_path: Path):
+@pytest.mark.asyncio
+async def test_start_run_allows_ollama_runtime_for_hf_trainable_base_model(
+    tmp_path: Path,
+):
     service = SelfLearningService(
         storage_dir=str(tmp_path / "storage"), repo_root=str(tmp_path)
     )
-    with pytest.raises(ValueError, match="incompatible with runtime 'ollama'"):
-        service.start_run(
-            mode="llm_finetune",
-            sources=["docs"],
-            llm_config={
-                "base_model": "unsloth/Phi-3-mini-4k-instruct",
-                "runtime_id": "ollama",
-            },
-            dry_run=True,
-        )
+    run_id = service.start_run(
+        mode="llm_finetune",
+        sources=["docs"],
+        llm_config={
+            "base_model": "unsloth/Phi-3-mini-4k-instruct",
+            "runtime_id": "ollama",
+        },
+        dry_run=True,
+    )
+    await asyncio.sleep(0)
+    status = service.get_status(run_id)
+    assert status is not None
+    assert status["status"] in {
+        "pending",
+        "running",
+        "completed",
+        "completed_with_warnings",
+    }
 
 
 @pytest.mark.asyncio

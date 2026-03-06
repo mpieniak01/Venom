@@ -27,18 +27,18 @@ describe("sidebar optional modules", () => {
   it("does not include module-example when feature flag is disabled", async () => {
     process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE = "false";
     const items = await loadNavigationItems();
-    assert.equal(items.some((item) => item.href === "/module-example"), false);
+    assert.equal(items.some((item: { href?: string }) => item.href === "/module-example"), false);
   });
 
   it("includes module-example when feature flag is enabled", async () => {
     process.env.NEXT_PUBLIC_FEATURE_MODULE_EXAMPLE = "true";
     const items = await loadNavigationItems();
-    assert.equal(items.some((item) => item.href === "/module-example"), true);
+    assert.equal(items.some((item: { href?: string }) => item.href === "/module-example"), true);
   });
 
   it("includes google-home when feature flag is enabled", async () => {
     process.env.NEXT_PUBLIC_FEATURE_GOOGLE_HOME_BRIDGE = "true";
     const items = await loadNavigationItems();
-    assert.equal(items.some((item) => item.href === "/google-home"), true);
+    assert.equal(items.some((item: { href?: string }) => item.href === "/google-home"), true);
   });
 });

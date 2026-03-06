@@ -1118,6 +1118,9 @@ class SelfLearningService:
             preferred.add("ollama")
         if provider_lc in _VLLM_COMPATIBLE_PROVIDERS:
             preferred.add("vllm")
+            # 191F contract: adapters trained externally on HF/Unsloth families
+            # can be deployed to both vLLM and Ollama runtimes.
+            preferred.add("ollama")
         if runtime_hint in _LOCAL_RUNTIME_IDS:
             preferred.add(runtime_hint)
         if not preferred:

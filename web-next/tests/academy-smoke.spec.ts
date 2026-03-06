@@ -119,10 +119,36 @@ test.describe("Academy smoke", () => {
             config_hash: "test-hash",
             source_type: "local-runtime",
           },
-          runtimes: [],
+          runtimes: [
+            {
+              runtime_id: "ollama",
+              source_type: "local-runtime",
+              configured: true,
+              available: true,
+              status: "online",
+              reason: null,
+              active: true,
+              adapter_deploy_supported: true,
+              adapter_deploy_mode: "ollama_modelfile",
+              supports_native_training: false,
+              supports_adapter_import_safetensors: false,
+              supports_adapter_import_gguf: true,
+              supports_adapter_runtime_apply: true,
+            },
+          ],
           model_catalog: {
             all_models: [],
-            chat_models: [],
+            chat_models: [
+              {
+                id: "gemma3:latest",
+                name: "gemma3:latest",
+                provider: "ollama",
+                runtime_id: "ollama",
+                source_type: "local-runtime",
+                active: true,
+                chat_compatible: true,
+              },
+            ],
             coding_models: [],
             trainable_models: [
               {
@@ -137,10 +163,10 @@ test.describe("Academy smoke", () => {
                 priority_bucket: 0,
                 runtime_compatibility: {
                   vllm: true,
-                  ollama: false,
+                  ollama: true,
                   onnx: false,
                 },
-                recommended_runtime: "vllm",
+                recommended_runtime: "ollama",
               },
             ],
           },
@@ -169,10 +195,10 @@ test.describe("Academy smoke", () => {
               recommended: true,
               runtime_compatibility: {
                 vllm: true,
-                ollama: false,
+                ollama: true,
                 onnx: false,
               },
-              recommended_runtime: "vllm",
+              recommended_runtime: "ollama",
             },
           ],
           embedding_profiles: [
@@ -360,7 +386,11 @@ test.describe("Academy smoke", () => {
     await expect(page.getByText("selflearn")).toBeVisible();
     await expect(page.getByText("Zakończony").first()).toBeVisible();
     expect(selfLearningStartPayload).not.toBeNull();
-    expect((selfLearningStartPayload?.sources as string[]) ?? []).toEqual(["docs"]);
+    expect((selfLearningStartPayload?.sources as string[]) ?? []).toEqual([
+      "docs",
+      "docs_dev",
+      "code",
+    ]);
     const ragConfig = (selfLearningStartPayload?.rag_config as Record<string, unknown>) ?? {};
     expect(ragConfig.embedding_profile_id).toBe("local:default");
     expect(ragConfig.embedding_policy).toBe("strict");

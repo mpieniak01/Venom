@@ -50,7 +50,7 @@ function firstCallArg<T>(fn: { mock: { calls: Array<{ arguments: unknown[] }> } 
 
 describe("SelfLearningConfigurator", () => {
   it("disables start button when no source is selected", async () => {
-    const onStart = mock.fn(async (_payload: SelfLearningConfig) => {});
+    const onStart = mock.fn(async () => {});
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
@@ -148,7 +148,7 @@ describe("SelfLearningConfigurator", () => {
   });
 
   it("submits selected dataset strategy and task mix for llm mode", async () => {
-    const onStart = mock.fn(async (_payload: SelfLearningConfig) => {});
+    const onStart = mock.fn(async () => {});
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
@@ -188,7 +188,7 @@ describe("SelfLearningConfigurator", () => {
   });
 
   it("blocks rag start in strict policy when embedding fallback is active", async () => {
-    const onStart = mock.fn(async (_payload: SelfLearningConfig) => {});
+    const onStart = mock.fn(async () => {});
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
@@ -277,7 +277,7 @@ describe("SelfLearningHistory", () => {
       error_message: "Parsing failed",
     });
 
-    const onSelectRun = mock.fn((_: string) => {});
+    const onSelectRun = mock.fn(() => {});
     const onRefresh = mock.fn(async () => {});
     const onDeleteRun = mock.fn(async () => {});
     const onClearAll = mock.fn(async () => {});
@@ -322,9 +322,9 @@ describe("SelfLearningHistory", () => {
       error_message: "Skipped binary files",
     });
 
-    const onSelectRun = mock.fn((_: string) => {});
+    const onSelectRun = mock.fn(() => {});
     const onRefresh = mock.fn(async () => {});
-    const onDeleteRun = mock.fn(async (_: string) => {});
+    const onDeleteRun = mock.fn(async () => {});
     const onClearAll = mock.fn(async () => {});
 
     renderWithLanguage(

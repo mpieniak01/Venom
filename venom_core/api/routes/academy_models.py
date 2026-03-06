@@ -11,7 +11,9 @@ import anyio
 from venom_core.api.schemas.academy import AdapterInfo
 from venom_core.config import SETTINGS
 from venom_core.services.academy import adapter_audit_service as _audit_service
+from venom_core.services.academy import adapter_metadata_service as _metadata_service
 from venom_core.services.academy import adapter_runtime_service as _runtime_service
+from venom_core.services.academy import trainable_catalog_service as _catalog_service
 from venom_core.services.academy.adapter_metadata_service import (
     ADAPTER_NOT_FOUND_DETAIL,
     _require_trusted_adapter_base_model,
@@ -28,6 +30,30 @@ logger = get_logger(__name__)
 config_manager = _runtime_service.config_manager
 compute_llm_config_hash = _runtime_service.compute_llm_config_hash
 get_active_llm_runtime = _runtime_service.get_active_llm_runtime
+
+# Public helpers kept for backwards compatibility of academy_models module API.
+ADAPTER_BASE_MODEL_MISMATCH = _metadata_service.ADAPTER_BASE_MODEL_MISMATCH
+ADAPTER_BASE_MODEL_UNKNOWN = _metadata_service.ADAPTER_BASE_MODEL_UNKNOWN
+ADAPTER_METADATA_INCONSISTENT = _metadata_service.ADAPTER_METADATA_INCONSISTENT
+_assert_runtime_model_available = _metadata_service._assert_runtime_model_available
+_infer_local_runtime_provider = _metadata_service._infer_local_runtime_provider
+
+add_trainable_model_from_catalog = _catalog_service.add_trainable_model_from_catalog
+build_model_label = _catalog_service.build_model_label
+classify_model_cost_tier = _catalog_service.classify_model_cost_tier
+classify_model_source_type = _catalog_service.classify_model_source_type
+collect_default_trainable_models = _catalog_service.collect_default_trainable_models
+collect_local_trainable_models = _catalog_service.collect_local_trainable_models
+discover_available_runtime_targets = _catalog_service.discover_available_runtime_targets
+ensure_default_model_visible = _catalog_service.ensure_default_model_visible
+get_default_trainable_models_catalog = (
+    _catalog_service.get_default_trainable_models_catalog
+)
+get_model_non_trainable_reason = _catalog_service.get_model_non_trainable_reason
+is_model_trainable = _catalog_service.is_model_trainable
+resolve_model_priority_bucket = _catalog_service.resolve_model_priority_bucket
+resolve_recommended_runtime = _catalog_service.resolve_recommended_runtime
+resolve_runtime_compatibility = _catalog_service.resolve_runtime_compatibility
 
 _INITIAL_SETTINGS = SETTINGS
 

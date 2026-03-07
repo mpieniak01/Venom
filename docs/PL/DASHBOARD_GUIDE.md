@@ -24,8 +24,8 @@ npm --prefix web-next run dev:turbo    # opcjonalny tryb Turbopack
 Presety stacku (z roota repo):
 
 ```bash
-make start   # pełny stack dev: backend + web-next (turbopack) + aktywny runtime LLM
-make start2  # pełny stack dev: backend + web-next (webpack fallback) + aktywny runtime LLM
+make start   # pełny stack dev: backend + web-next (webpack-safe dev) + aktywny runtime LLM
+make start2  # pełny stack dev: backend + web-next (turbopack) + aktywny runtime LLM
 ```
 
 Najważniejsze zmienne środowiskowe frontu:
@@ -51,8 +51,8 @@ API_PROXY_TARGET=http://localhost:8000              # cel rewritera Next (dev)
 Korzystaj z wrapperów `Makefile` z roota repo (`/home/ubuntu/venom`), żeby spójnie uruchamiać backend/frontend/runtime.
 
 ```bash
-make start                    # pełny stack (backend + frontend + aktywny runtime LLM)
-make start2                   # pełny stack (backend + frontend na webpack fallback + aktywny runtime LLM)
+make start                    # pełny stack (backend + frontend na webpack-safe dev + aktywny runtime LLM)
+make start2                   # pełny stack (backend + frontend na turbopack + aktywny runtime LLM)
 make stop                     # zatrzymanie pełnego stacku
 make status                   # status procesów/runtime
 ```
@@ -62,14 +62,14 @@ Tryby lekkie/celowane:
 ```bash
 make api-dev                  # tylko backend (uvicorn --reload)
 make web-dev                  # tylko frontend (webpack fallback)
-make web-dev-turbo            # tylko frontend (turbopack, domyślny tryb dev)
+make web-dev-turbo            # tylko frontend (turbopack, tryb opt-in)
 make web-dev-turbo-debug      # turbopack z rozszerzonym logowaniem
 make test-web-turbo-smoke-clean # smoke regresyjny dla dev:turbo
 ```
 
 Zasada operacyjna:
 1. Utrzymuj jedną aktywną instancję `next dev`, aby uniknąć konfliktu `.next/dev/lock`.
-2. `web-dev-turbo` (Turbopack) traktuj jako tryb domyślny, a `web-dev` (webpack) jako ścieżkę fallback.
+2. Dla pełnego stacku używaj domyślnie `make start` (webpack-safe), a `make start2` (turbopack) gdy potrzebujesz ścieżki Turbopack.
 
 ### 1.5 Struktura
 ```

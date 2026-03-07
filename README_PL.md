@@ -227,7 +227,8 @@ Polityka protokołów:
 
 ### Najczęstsze komendy
 ```bash
-make start       # backend + frontend (dev)
+make start       # backend + frontend (webpack-safe dev)
+make start2      # backend + frontend (turbopack dev)
 make stop        # zatrzymanie usług
 make status      # status procesów
 make start-prod  # tryb produkcyjny

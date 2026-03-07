@@ -1,6 +1,7 @@
 # Makefile dla Venom – rozdzielony backend FastAPI + frontend Next.js
 
 VENV ?= .venv
+REPO_ROOT ?= $(CURDIR)
 PYTHON_BIN ?= $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 PYTEST_BIN ?= $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 UVICORN ?= $(VENV)/bin/uvicorn
@@ -15,7 +16,7 @@ WEB_PORT ?= 3000
 WEB_HOST ?= 0.0.0.0
 WEB_DISPLAY ?= 127.0.0.1
 WEB_PID_FILE ?= .web-next.pid
-NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1
+NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
 NEXT_TURBO_WATCH_ENV ?= WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1
 START_MODE ?= dev
@@ -25,11 +26,13 @@ UVICORN_DEV_FLAGS ?= --reload
 UVICORN_PROD_FLAGS ?= --no-server-header
 BACKEND_LOG ?= logs/backend.log
 WEB_LOG ?= logs/web-next.log
+WEB_NODE_PATH ?= $(abspath $(WEB_DIR)/node_modules)
 VLLM_ENDPOINT ?= http://127.0.0.1:8001
 VLLM_START_TIMEOUT_SEC ?= 240
 ENV_FILE ?= .env.dev
 ENV_EXAMPLE_FILE ?= .env.dev.example
 ENV_RUN ?= $(PYTHON_BIN) -m dotenv -f "$(ENV_FILE)" run --
+ENV_RUN_ABS ?= $(abspath $(PYTHON_BIN)) -m dotenv -f "$(abspath $(ENV_FILE))" run --
 WEB_APP_VERSION ?= $(shell node -p "require('./web-next/package.json').version" 2>/dev/null || echo unknown)
 PREPROD_ENV_BASE := ENV_FILE=.env.preprod ENV_EXAMPLE_FILE=.env.preprod.example
 PREPROD_ENV_READONLY := $(PREPROD_ENV_BASE) ENVIRONMENT_ROLE=preprod DB_SCHEMA=preprod CACHE_NAMESPACE=preprod QUEUE_NAMESPACE=preprod STORAGE_PREFIX=preprod ALLOW_DATA_MUTATION=0
@@ -497,7 +500,7 @@ define start_web_turbo_target
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
 	@echo "▶️  Uruchamiam UI ($(1), host $(WEB_HOST), port $(WEB_PORT))"
-	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(NEXT_TURBO_WATCH_ENV) $(4) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run $(2) -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(NEXT_TURBO_WATCH_ENV) $(4) $(ENV_RUN_ABS) setsid $(NPM) run $(2) -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI ($(1)) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
@@ -510,7 +513,7 @@ start-dev:
 	$(MAKE) --no-print-directory ensure-env-file
 	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=webpack _start
 
-start2: start-dev-webpack
+start2: start-dev-turbo
 
 start-dev-webpack:
 	$(MAKE) --no-print-directory ensure-env-file
@@ -896,9 +899,9 @@ _start:
 		: > $(WEB_LOG); \
 		if [ "$(START_MODE)" = "prod" ]; then \
 			echo "🛠  Buduję Next.js (npm run build)"; \
-			NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1; \
+			cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(NPM) run build >/dev/null 2>&1; \
 			echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"; \
-			NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+			cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN_ABS) setsid $(NPM) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 			echo $$! > $(WEB_PID_FILE); \
 		else \
 			if [ "$(START_WEB_MODE)" != "webpack" ] && [ "$(START_WEB_MODE)" != "turbo" ] && [ "$(START_WEB_MODE)" != "turbo-debug" ]; then \
@@ -907,15 +910,15 @@ _start:
 			fi; \
 			if [ "$(START_WEB_MODE)" = "turbo" ]; then \
 				echo "▶️  Uruchamiam UI (Next.js dev:turbo, host $(WEB_HOST), port $(WEB_PORT))"; \
-				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 $(NEXT_TURBO_WATCH_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 $(NEXT_TURBO_WATCH_ENV) $(ENV_RUN_ABS) setsid $(NPM) run dev:turbo -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 				echo $$! > $(WEB_PID_FILE); \
 			elif [ "$(START_WEB_MODE)" = "turbo-debug" ]; then \
 				echo "▶️  Uruchamiam UI (Next.js dev:turbo:debug, host $(WEB_HOST), port $(WEB_PORT))"; \
-				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(NEXT_TURBO_WATCH_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run dev:turbo:debug -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev $(NEXT_TURBO_WATCH_ENV) $(ENV_RUN_ABS) setsid $(NPM) run dev:turbo:debug -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 				echo $$! > $(WEB_PID_FILE); \
 			else \
 				echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
-				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN_ABS) setsid $(NPM) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 				echo $$! > $(WEB_PID_FILE); \
 			fi; \
 		fi; \
@@ -929,7 +932,7 @@ _start:
 			if [ "$(START_MODE)" = "dev" ] && { [ "$(START_WEB_MODE)" = "turbo" ] || [ "$(START_WEB_MODE)" = "turbo-debug" ]; } && [ -f "$(WEB_LOG)" ] && grep -Eiq "Too many open files|Failed to allocate directory watch" "$(WEB_LOG)"; then \
 				echo "⚠️  Turbopack nie wystartował przez błąd watchera. Przełączam UI na fallback webpack."; \
 				: > $(WEB_LOG); \
-				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN_ABS) setsid $(NPM) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 				echo $$! > $(WEB_PID_FILE); \
 				WPID=$$(cat $(WEB_PID_FILE)); \
 				effective_web_mode="webpack"; \
@@ -1106,9 +1109,9 @@ web:
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
 	@echo "🛠  Buduję Next.js (npm run build)..."
-	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1
+	cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(NPM) run build >/dev/null 2>&1
 	@echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"
-	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_PROD_ENV) $(ENV_RUN_ABS) setsid $(NPM) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
@@ -1119,7 +1122,7 @@ web-dev:
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
 	@echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"
-	NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	cd $(WEB_DIR) && NODE_PATH="$(WEB_NODE_PATH)" NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN_ABS) setsid $(NPM) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> ../$(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
@@ -1248,7 +1251,7 @@ help:
 	@echo ""
 	@echo "Start/Stop:"
 	@echo "  make start                    - start backend + frontend (webpack-safe dev) + runtime LLM"
-	@echo "  make start2                   - start backend + frontend (webpack) + runtime LLM"
+	@echo "  make start2                   - start backend + frontend (turbopack) + runtime LLM"
 	@echo "  make stop                     - stop backend + frontend + runtime LLM"
 	@echo "  make status                   - status procesów"
 	@echo "  make web-dev                  - frontend dev (webpack, fallback)"

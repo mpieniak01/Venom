@@ -1,12 +1,18 @@
 """Additional Academy API tests for edge-case coverage."""
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from tests.helpers.academy_wiring import academy_client
 from venom_core.api.routes import academy as academy_routes
+from venom_core.api.routes import academy_self_learning as academy_self_learning_routes
+from venom_core.api.routes import llm_simple as llm_simple_routes
 
 
 @pytest.fixture
@@ -279,6 +285,354 @@ def test_activate_adapter_rejects_incompatible_runtime(mock_settings, client_wit
         )
     assert response.status_code == 400
     assert "Compatible runtimes: vllm" in response.json()["detail"]
+
+
+@patch("venom_core.config.SETTINGS")
+def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tmp_path):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "models")
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "gemma-3-4b-it"
+
+    class _RuntimeState(SimpleNamespace):
+        pass
+
+    current_runtime = _RuntimeState(
+        provider="ollama",
+        runtime_id="ollama",
+        model_name="gemma3:latest",
+        endpoint="http://127.0.0.1:11434/v1",
+        config_hash="hash-base",
+        service_type="local-runtime",
+    )
+
+    class _ConfigManager:
+        def __init__(self) -> None:
+            self._config = {
+                "ACTIVE_LLM_SERVER": "ollama",
+                "LLM_MODEL_NAME": "gemma3:latest",
+                "HYBRID_LOCAL_MODEL": "gemma3:latest",
+                "LAST_MODEL_OLLAMA": "gemma3:latest",
+            }
+
+        def get_config(self, *, mask_secrets: bool = False) -> dict[str, str]:
+            return dict(self._config)
+
+        def update_config(self, updates: dict[str, str]) -> None:
+            self._config.update(updates)
+            selected_model = str(updates.get("LLM_MODEL_NAME") or "").strip()
+            if selected_model:
+                current_runtime.model_name = selected_model
+            selected_hash = str(updates.get("LLM_CONFIG_HASH") or "").strip()
+            if selected_hash:
+                current_runtime.config_hash = selected_hash
+
+    class _FakeModelManager:
+        def __init__(self) -> None:
+            self.active_adapter_id: str | None = None
+
+        def get_active_adapter_info(self) -> dict[str, str] | None:
+            if not self.active_adapter_id:
+                return None
+            return {"adapter_id": self.active_adapter_id}
+
+        def activate_adapter(self, *, adapter_id: str, adapter_path: str) -> bool:
+            self.active_adapter_id = adapter_id
+            return Path(adapter_path).exists()
+
+        def deactivate_adapter(self) -> bool:
+            if not self.active_adapter_id:
+                return False
+            self.active_adapter_id = None
+            return True
+
+        def create_ollama_modelfile(self, *, version_id: str, output_name: str) -> str:
+            assert version_id
+            return output_name
+
+    class _FakeSelfLearningService:
+        def __init__(self) -> None:
+            self.run_id = "59d9a38d-6d24-478a-8bd7-8d64e09cec65"
+            self.adapter_id = f"self_learning_{self.run_id}"
+            self.repo_root = tmp_path
+            self.models_dir = Path(mock_settings.ACADEMY_MODELS_DIR)
+            self.models_dir.mkdir(parents=True, exist_ok=True)
+            (self.repo_root / "README_PL.md").write_text(
+                "# Venom\n\nVenom to platforma AI.",
+                encoding="utf-8",
+            )
+            self._status_payload: dict[str, object] | None = None
+
+        async def get_capabilities(self) -> dict[str, object]:
+            return {
+                "trainable_models": [
+                    {
+                        "model_id": "gemma-3-4b-it",
+                        "label": "Gemma 3 4B IT",
+                        "provider": "huggingface",
+                        "recommended": True,
+                        "runtime_compatibility": {"ollama": True, "vllm": True},
+                        "recommended_runtime": "ollama",
+                    }
+                ],
+                "embedding_profiles": [
+                    {
+                        "profile_id": "local:default",
+                        "provider": "local",
+                        "model": "sentence-transformers/all-MiniLM-L6-v2",
+                        "dimension": 384,
+                        "healthy": True,
+                        "fallback_active": False,
+                        "details": {},
+                    }
+                ],
+                "default_base_model": "gemma-3-4b-it",
+                "default_embedding_profile_id": "local:default",
+            }
+
+        def start_run(
+            self,
+            *,
+            mode: str,
+            sources: list[str],
+            limits: dict[str, object],
+            llm_config: dict[str, object] | None,
+            rag_config: dict[str, object] | None,
+            dry_run: bool,
+        ) -> str:
+            assert mode == "llm_finetune"
+            assert sources == ["repo_readmes"]
+            assert dry_run is False
+            assert rag_config is None
+            assert limits["max_files"] == 10
+            assert llm_config is not None
+            assert llm_config["runtime_id"] == "ollama"
+            assert llm_config["base_model"] == "gemma-3-4b-it"
+            adapter_dir = self.models_dir / self.adapter_id / "adapter"
+            adapter_dir.mkdir(parents=True, exist_ok=True)
+            (adapter_dir / "adapter_config.json").write_text(
+                json.dumps({"base_model_name_or_path": "gemma-3-4b-it"}),
+                encoding="utf-8",
+            )
+            ((self.models_dir / self.adapter_id) / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "base_model": "gemma-3-4b-it",
+                        "created_at": "2026-03-07T10:00:00+00:00",
+                        "parameters": {
+                            "runtime_id": "ollama",
+                            "lora_rank": 8,
+                            "learning_rate": 0.0002,
+                            "num_epochs": 2,
+                            "selected_files": ["README_PL.md"],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self._status_payload = {
+                "run_id": self.run_id,
+                "status": "completed",
+                "mode": "llm_finetune",
+                "sources": ["repo_readmes"],
+                "created_at": "2026-03-07T10:00:00+00:00",
+                "started_at": "2026-03-07T10:00:01+00:00",
+                "finished_at": "2026-03-07T10:00:30+00:00",
+                "progress": {
+                    "files_discovered": 1,
+                    "files_processed": 1,
+                    "chunks_created": 4,
+                    "records_created": 4,
+                    "indexed_vectors": 0,
+                },
+                "artifacts": {
+                    "adapter_path": str(adapter_dir),
+                    "selected_files": [str(self.repo_root / "README_PL.md")],
+                },
+                "logs": [
+                    "Selected file: README_PL.md",
+                    "Training completed successfully.",
+                ],
+                "error_message": None,
+                "llm_config": dict(llm_config),
+            }
+            return self.run_id
+
+        def get_status(self, run_id: str) -> dict[str, object] | None:
+            if run_id != self.run_id:
+                return None
+            return self._status_payload
+
+        def list_runs(self, *, limit: int) -> list[dict[str, object]]:
+            assert limit >= 1
+            return [self._status_payload] if self._status_payload else []
+
+    async def _fake_stream_simple_chunks(
+        *,
+        completions_url: str,
+        payload: dict[str, object],
+        runtime: object,
+        request_id: object,
+        model_name: str,
+    ):
+        assert completions_url == "http://runtime.test/v1/chat/completions"
+        assert (
+            model_name
+            == "venom-adapter-self_learning_59d9a38d-6d24-478a-8bd7-8d64e09cec65"
+        )
+        messages = payload.get("messages")
+        assert isinstance(messages, list)
+        assert any(
+            "co to jest Venom" in str(message.get("content") or "")
+            for message in messages
+            if isinstance(message, dict)
+        )
+        yield 'data: {"choices":[{"delta":{"content":"Venom to lokalna platforma AI."}}]}\n\n'
+        yield "data: [DONE]\n\n"
+
+    app = FastAPI()
+    model_manager = _FakeModelManager()
+    self_learning_service = _FakeSelfLearningService()
+    config_manager = _ConfigManager()
+    academy_routes.set_dependencies(
+        professor=MagicMock(),
+        dataset_curator=MagicMock(),
+        gpu_habitat=MagicMock(training_containers={}),
+        lessons_store=MagicMock(),
+        model_manager=model_manager,
+    )
+    academy_self_learning_routes.set_dependencies(
+        self_learning_service=self_learning_service
+    )
+    app.include_router(academy_routes.router)
+    app.include_router(academy_self_learning_routes.router)
+    app.include_router(llm_simple_routes.router)
+
+    with (
+        patch(
+            "venom_core.api.routes.academy.require_localhost_request",
+            return_value=None,
+        ),
+        patch(
+            "venom_core.api.routes.academy_models.config_manager",
+            config_manager,
+        ),
+        patch(
+            "venom_core.api.routes.academy_models.validate_adapter_runtime_compatibility",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "venom_core.api.routes.llm_simple.get_active_llm_runtime",
+            lambda: current_runtime,
+        ),
+        patch(
+            "venom_core.api.routes.llm_simple._build_chat_completions_url",
+            lambda _runtime: "http://runtime.test/v1/chat/completions",
+        ),
+        patch(
+            "venom_core.api.routes.llm_simple._stream_simple_chunks",
+            _fake_stream_simple_chunks,
+        ),
+    ):
+        client = TestClient(app)
+
+        capabilities = client.get("/api/v1/academy/self-learning/capabilities")
+        assert capabilities.status_code == 200
+        capabilities_payload = capabilities.json()
+        assert (
+            capabilities_payload["trainable_models"][0]["model_id"] == "gemma-3-4b-it"
+        )
+        assert capabilities_payload["trainable_models"][0]["runtime_compatibility"][
+            "ollama"
+        ]
+
+        start_response = client.post(
+            "/api/v1/academy/self-learning/start",
+            json={
+                "mode": "llm_finetune",
+                "sources": ["repo_readmes"],
+                "limits": {
+                    "max_file_size_kb": 256,
+                    "max_files": 10,
+                    "max_total_size_mb": 5,
+                },
+                "llm_config": {
+                    "base_model": "gemma-3-4b-it",
+                    "runtime_id": "ollama",
+                    "dataset_strategy": "reconstruct",
+                    "task_mix_preset": "balanced",
+                    "lora_rank": 8,
+                    "learning_rate": 0.0002,
+                    "num_epochs": 2,
+                    "batch_size": 1,
+                    "max_seq_length": 1024,
+                },
+                "dry_run": False,
+            },
+        )
+        assert start_response.status_code == 200
+        run_id = start_response.json()["run_id"]
+        assert run_id == self_learning_service.run_id
+
+        status_response = client.get(f"/api/v1/academy/self-learning/{run_id}/status")
+        assert status_response.status_code == 200
+        status_payload = status_response.json()
+        assert status_payload["status"] == "completed"
+        assert status_payload["artifacts"]["selected_files"] == [
+            str(tmp_path / "README_PL.md")
+        ]
+
+        adapters_response = client.get("/api/v1/academy/adapters")
+        assert adapters_response.status_code == 200
+        adapters_payload = adapters_response.json()
+        assert len(adapters_payload) == 1
+        assert adapters_payload[0]["adapter_id"] == self_learning_service.adapter_id
+        assert adapters_payload[0]["base_model"] == "gemma-3-4b-it"
+
+        activate_response = client.post(
+            "/api/v1/academy/adapters/activate",
+            json={
+                "adapter_id": self_learning_service.adapter_id,
+                "adapter_path": str(
+                    Path(mock_settings.ACADEMY_MODELS_DIR)
+                    / self_learning_service.adapter_id
+                    / "adapter"
+                ),
+                "runtime_id": "ollama",
+                "model_id": "gemma3:latest",
+                "deploy_to_chat_runtime": True,
+            },
+        )
+        assert activate_response.status_code == 200
+        activate_payload = activate_response.json()
+        assert activate_payload["deployed"] is True
+        assert activate_payload["runtime_id"] == "ollama"
+        assert (
+            activate_payload["chat_model"]
+            == "venom-adapter-self_learning_59d9a38d-6d24-478a-8bd7-8d64e09cec65"
+        )
+
+        adapters_after_activation = client.get("/api/v1/academy/adapters")
+        assert adapters_after_activation.status_code == 200
+        assert adapters_after_activation.json()[0]["is_active"] is True
+
+        chat_response = client.post(
+            "/api/v1/llm/simple/stream",
+            json={
+                "content": "co to jest Venom",
+                "session_id": "academy-scenario",
+            },
+        )
+        assert chat_response.status_code == 200
+        assert "Venom to lokalna platforma AI." in chat_response.text
+
+    academy_routes.set_dependencies(
+        professor=None,
+        dataset_curator=None,
+        gpu_habitat=None,
+        lessons_store=None,
+        model_manager=None,
+    )
+    academy_self_learning_routes.set_dependencies(self_learning_service=None)
 
 
 @patch("venom_core.config.SETTINGS")

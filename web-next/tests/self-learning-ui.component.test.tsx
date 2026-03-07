@@ -54,8 +54,8 @@ describe("SelfLearningConfigurator", () => {
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
-        runtimeOptions={[{ id: "vllm", label: "vllm" }]}
-        selectedRuntime="vllm"
+        runtimeOptions={[{ id: "ollama", label: "ollama" }]}
+        selectedRuntime="ollama"
         onRuntimeChange={() => {}}
         trainableModels={[
           {
@@ -95,8 +95,8 @@ describe("SelfLearningConfigurator", () => {
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
-        runtimeOptions={[{ id: "vllm", label: "vllm" }]}
-        selectedRuntime="vllm"
+        runtimeOptions={[{ id: "ollama", label: "ollama" }]}
+        selectedRuntime="ollama"
         onRuntimeChange={() => {}}
         trainableModels={[
           {
@@ -152,8 +152,8 @@ describe("SelfLearningConfigurator", () => {
     renderWithLanguage(
       <SelfLearningConfigurator
         loading={false}
-        runtimeOptions={[{ id: "vllm", label: "vllm" }]}
-        selectedRuntime="vllm"
+        runtimeOptions={[{ id: "ollama", label: "ollama" }]}
+        selectedRuntime="ollama"
         onRuntimeChange={() => {}}
         trainableModels={[
           {

@@ -44,7 +44,7 @@ export function resolveSelfLearningStartErrorMessage(
   fallbackMessage: string,
 ): string {
   const resolved = resolveAcademyApiErrorMessage(error);
-  if (resolved && resolved !== "Unknown Academy API error") {
+  if (resolved) {
     return resolved;
   }
   if (error instanceof Error && error.message.trim().length > 0) return error.message;

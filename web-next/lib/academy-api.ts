@@ -542,27 +542,34 @@ function resolveErrorMessage(body: ParsedErrorBody): string | null {
 }
 
 export function resolveAcademyApiErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    const payload =
-      error.data && typeof error.data === "object"
-        ? (error.data as ParsedErrorBody)
-        : null;
-    if (payload) {
-      if (payload.detail && typeof payload.detail === "object" && !Array.isArray(payload.detail)) {
-        const structured = formatStructuredAcademyErrorDetail(
-          payload.detail as StructuredAcademyErrorDetail,
-        );
-        if (structured) return structured;
-      }
-      const resolved = resolveErrorMessage(payload);
-      if (resolved) return resolved;
-    }
-    return error.message;
-  }
+  if (error instanceof ApiError) return resolveApiErrorMessage(error);
   if (error instanceof Error) {
     return error.message;
   }
-  return "Unknown Academy API error";
+  return "";
+}
+
+function resolveApiErrorMessage(error: ApiError): string {
+  const payload = parseApiErrorPayload(error);
+  if (payload) {
+    const structured = resolveStructuredAcademyErrorMessage(payload);
+    if (structured) return structured;
+    const resolved = resolveErrorMessage(payload);
+    if (resolved) return resolved;
+  }
+  return error.message;
+}
+
+function parseApiErrorPayload(error: ApiError): ParsedErrorBody | null {
+  if (!error.data || typeof error.data !== "object") return null;
+  return error.data as ParsedErrorBody;
+}
+
+function resolveStructuredAcademyErrorMessage(body: ParsedErrorBody): string | null {
+  if (!body.detail || typeof body.detail !== "object" || Array.isArray(body.detail)) {
+    return null;
+  }
+  return formatStructuredAcademyErrorDetail(body.detail as StructuredAcademyErrorDetail);
 }
 
 /**

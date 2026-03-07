@@ -28,6 +28,7 @@ class TrainingRequest(BaseModel):
 
     dataset_path: str | None = None
     base_model: str | None = None
+    runtime_id: str | None = Field(default=None, min_length=1, max_length=32)
     lora_rank: int = Field(default=8, ge=4, le=64)
     learning_rate: float = Field(default=2e-4, gt=0, le=1e-2)
     num_epochs: int = Field(default=2, ge=1, le=20)

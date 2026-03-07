@@ -121,6 +121,25 @@ function getInstallStateLabel(
     : t("academy.training.installState.catalogDownload");
 }
 
+function getModelRuntimeBadgeLabel(params: {
+  model: SelfLearningTrainableModelInfo;
+  selectedRuntime: string;
+  t: TranslateFn;
+}): string {
+  const { model, selectedRuntime, t } = params;
+  if (selectedRuntime && model.runtime_compatibility?.[selectedRuntime]) {
+    return getRuntimeDisplayName(selectedRuntime, t);
+  }
+  if (model.recommended_runtime && model.runtime_compatibility?.[model.recommended_runtime]) {
+    return getRuntimeDisplayName(model.recommended_runtime, t);
+  }
+  const compatibility = getModelCompatibility(model);
+  if (compatibility.length > 0) {
+    return getRuntimeDisplayName(compatibility[0], t);
+  }
+  return t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`);
+}
+
 function computeCanStart(params: {
   sourcesCount: number;
   loading: boolean;
@@ -315,13 +334,13 @@ function LlmModeSection({
             }
             const model = trainableModels.find((item) => item.model_id === option.value);
             return (
-              <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
                 <span className="min-w-0 flex-1 truncate text-left text-sm text-[color:var(--text-primary)]">
                   {option.label}
                 </span>
                 {model ? (
                   <span className="shrink-0 text-[11px] text-[color:var(--ui-muted)]">
-                    {t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`)}
+                    {getModelRuntimeBadgeLabel({ model, selectedRuntime, t })}
                   </span>
                 ) : null}
               </div>
@@ -337,20 +356,22 @@ function LlmModeSection({
               );
             }
             return (
-              <div className="flex w-full items-center gap-2">
+              <div className="flex w-full items-center justify-between gap-2 text-left">
                 <span
-                  className={`min-w-0 flex-1 truncate text-sm ${
+                  className={`min-w-0 flex-1 truncate text-left text-sm ${
                     active ? "text-[color:var(--primary)]" : "text-[color:var(--text-primary)]"
                   }`}
                 >
                   {model.model_id}
                 </span>
-                <span className="shrink-0 text-[11px] text-[color:var(--ui-muted)]">
-                  {t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`)}
-                </span>
-                <span className="shrink-0 text-[11px] text-hint/80">
-                  {getInstallStateLabel(model, t)}
-                </span>
+                <div className="flex shrink-0 items-center gap-2 text-right">
+                  <span className="text-[11px] text-[color:var(--ui-muted)]">
+                    {getModelRuntimeBadgeLabel({ model, selectedRuntime, t })}
+                  </span>
+                  <span className="text-[11px] text-hint/80">
+                    {getInstallStateLabel(model, t)}
+                  </span>
+                </div>
               </div>
             );
           }}
@@ -646,9 +667,16 @@ export function SelfLearningConfigurator({
   const [ragChunkingMode, setRagChunkingMode] = useState<SelfLearningRagChunkingMode>("plain");
   const [ragRetrievalMode, setRagRetrievalMode] = useState<SelfLearningRagRetrievalMode>("vector");
 
+  const compatibleTrainableModels = useMemo(
+    () =>
+      selectedRuntime
+        ? trainableModels.filter((item) => Boolean(item.runtime_compatibility?.[selectedRuntime]))
+        : trainableModels,
+    [selectedRuntime, trainableModels],
+  );
   const trainableModelIds = useMemo(
-    () => new Set(trainableModels.map((item) => item.model_id)),
-    [trainableModels],
+    () => new Set(compatibleTrainableModels.map((item) => item.model_id)),
+    [compatibleTrainableModels],
   );
   const embeddingProfileIds = useMemo(
     () => new Set(embeddingProfiles.map((item) => item.profile_id)),
@@ -658,10 +686,10 @@ export function SelfLearningConfigurator({
     () =>
       (defaultBaseModelProp && trainableModelIds.has(defaultBaseModelProp)
         ? defaultBaseModelProp
-        : trainableModels.find((item) => item.recommended)?.model_id) ??
-      trainableModels[0]?.model_id ??
+        : compatibleTrainableModels.find((item) => item.recommended)?.model_id) ??
+      compatibleTrainableModels[0]?.model_id ??
       "",
-    [defaultBaseModelProp, trainableModelIds, trainableModels],
+    [compatibleTrainableModels, defaultBaseModelProp, trainableModelIds],
   );
   const defaultEmbeddingProfile = useMemo(
     () =>
@@ -684,6 +712,14 @@ export function SelfLearningConfigurator({
   const selectedEmbeddingProfileState = useMemo(
     () => embeddingProfiles.find((profile) => profile.profile_id === effectiveEmbeddingProfile) ?? null,
     [embeddingProfiles, effectiveEmbeddingProfile],
+  );
+  const selectedBaseModelState = useMemo(
+    () => compatibleTrainableModels.find((model) => model.model_id === effectiveBaseModel) ?? null,
+    [compatibleTrainableModels, effectiveBaseModel],
+  );
+  const effectiveCompatibility = useMemo(
+    () => (selectedBaseModelState ? getModelCompatibility(selectedBaseModelState) : []),
+    [selectedBaseModelState],
   );
 
   const canStart = useMemo(
@@ -745,6 +781,7 @@ export function SelfLearningConfigurator({
     { source: "docs_en", labelKey: "academy.selfLearning.config.sources.docsEn", nested: true },
     { source: "docs_pl", labelKey: "academy.selfLearning.config.sources.docsPl", nested: true },
     { source: "docs_dev", labelKey: "academy.selfLearning.config.sources.docsDev" },
+    { source: "repo_readmes", labelKey: "academy.selfLearning.config.sources.repoReadmes" },
     { source: "code", labelKey: "academy.selfLearning.config.sources.code" },
   ];
 
@@ -797,7 +834,7 @@ export function SelfLearningConfigurator({
           runtimeOptions={runtimeOptions}
           selectedRuntime={selectedRuntime}
           onRuntimeChange={onRuntimeChange}
-          trainableModels={trainableModels}
+          trainableModels={compatibleTrainableModels}
         embeddingProfiles={embeddingProfiles}
         effectiveBaseModel={effectiveBaseModel}
         datasetStrategy={datasetStrategy}
@@ -815,6 +852,28 @@ export function SelfLearningConfigurator({
         onRagChunkingModeChange={setRagChunkingMode}
         onRagRetrievalModeChange={setRagRetrievalMode}
       />
+
+      {mode === "llm_finetune" ? (
+        <div className="space-y-1 rounded-lg border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] px-3 py-2 text-xs text-[color:var(--text-primary)]">
+          <p className="font-semibold text-[color:var(--text-heading)]">
+            {t("academy.selfLearning.config.preflightTitle")}
+          </p>
+          <p>
+            <span className="text-[color:var(--text-secondary)]">{t("cockpit.models.server")}:</span>{" "}
+            {selectedRuntime ? getRuntimeDisplayName(selectedRuntime, t) : t("academy.training.runtimeUnknown")}
+          </p>
+          <p>
+            <span className="text-[color:var(--text-secondary)]">{t("academy.selfLearning.config.baseModel")}:</span>{" "}
+            {effectiveBaseModel || t("academy.selfLearning.config.noTrainableModels")}
+          </p>
+          <p>
+            <span className="text-[color:var(--text-secondary)]">{t("academy.training.compatibilityLabel")}:</span>{" "}
+            {effectiveCompatibility.length > 0
+              ? effectiveCompatibility.map((runtime) => getRuntimeDisplayName(runtime, t)).join(" • ")
+              : t("academy.training.runtimeUnknown")}
+          </p>
+        </div>
+      ) : null}
 
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-wide text-[color:var(--text-secondary)]">

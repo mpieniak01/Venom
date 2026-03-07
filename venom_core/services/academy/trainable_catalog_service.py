@@ -302,6 +302,17 @@ def resolve_runtime_compatibility(
     if provider_hint_id:
         preferred.add(provider_hint_id)
 
+    # Local HuggingFace-layout folders discovered under vLLM remain valid
+    # training bases for the Academy -> Ollama adapter deploy path.
+    if (
+        _supports_ollama_adapter_deploy(
+            provider_lc=provider_lc,
+            model_metadata=model_metadata,
+        )
+        and "ollama" in compatibility
+    ):
+        preferred.add("ollama")
+
     # For HF/Unsloth trainable families, vLLM is primary, but Ollama is also a valid
     # deployment runtime for adapters in current contract (external training + runtime deploy).
     if not preferred and provider_lc in {
@@ -321,6 +332,32 @@ def resolve_runtime_compatibility(
             compatibility[runtime_id] = True
 
     return compatibility
+
+
+def _supports_ollama_adapter_deploy(
+    *,
+    provider_lc: str,
+    model_metadata: Optional[Dict[str, Any]],
+) -> bool:
+    if provider_lc in {"ollama", "onnx"}:
+        return False
+    if not model_metadata:
+        return provider_lc in {"unsloth", "huggingface", "hf", "config", "unknown"}
+
+    model_type = str(model_metadata.get("type") or "").lower()
+    runtime = str(model_metadata.get("runtime") or "").lower()
+    source = str(model_metadata.get("source") or "").lower()
+    if _is_onnx_artifact(
+        provider_lc=provider_lc, runtime=runtime, model_type=model_type
+    ):
+        return False
+    if _is_ollama_artifact(provider_lc=provider_lc, source=source):
+        return False
+
+    model_path = _resolve_model_path_from_metadata(model_metadata)
+    if model_path is None:
+        return False
+    return _non_trainable_reason_from_model_path(model_path) is None
 
 
 def resolve_recommended_runtime(

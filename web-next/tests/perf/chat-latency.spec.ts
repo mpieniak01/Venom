@@ -85,15 +85,33 @@ async function ensureChatRuntimeReady(page: Page, target: TargetConfig): Promise
   if ((await modelButton.count()) === 0) {
     return true;
   }
-  const label = ((await modelButton.first().textContent()) ?? "").trim();
-  const isDisabled = await modelButton.first().isDisabled();
-  const isUnavailable = /Brak modeli|Wybierz model/i.test(label);
+  const button = modelButton.first();
+  const waitDeadline = Date.now() + 10_000;
+  let label = "";
+  let isDisabled = true;
+  let isUnavailable = true;
+
+  while (Date.now() < waitDeadline) {
+    label = ((await button.textContent()) ?? "").trim();
+    isDisabled = await button.isDisabled();
+    isUnavailable = /Brak modeli|No models|Wybierz model|Choose model/i.test(label);
+    if (!isDisabled && !isUnavailable) {
+      return true;
+    }
+    await page.waitForTimeout(250);
+  }
+
   if (isDisabled || isUnavailable) {
-    test.skip(
-      true,
-      `${target.name} pominięty: brak aktywnego modelu czatu (label="${label || "n/a"}", disabled=${String(isDisabled)})`,
+    if (target.optional) {
+      test.skip(
+        true,
+        `${target.name} pominięty: brak aktywnego modelu czatu (label="${label || "n/a"}", disabled=${String(isDisabled)})`,
+      );
+      return false;
+    }
+    throw new Error(
+      `${target.name}: brak aktywnego modelu czatu (label="${label || "n/a"}", disabled=${String(isDisabled)})`,
     );
-    return false;
   }
   return true;
 }
@@ -127,11 +145,14 @@ async function waitForResponseLatency(
 async function measureLatency(page: Page, target: TargetConfig) {
   const backendOk = await isBackendHealthy();
   if (!backendOk) {
-    test.skip(
-      true,
-      `Backend niedostępny pod ${defaultApiBase} (healthz). Pomijam test UI.`,
-    );
-    return;
+    if (target.optional) {
+      test.skip(
+        true,
+        `Backend niedostępny pod ${defaultApiBase} (healthz). Pomijam test UI.`,
+      );
+      return;
+    }
+    throw new Error(`Backend niedostępny pod ${defaultApiBase} (healthz).`);
   }
   await page.goto(target.url);
   const promptLocator = page.locator(target.promptSelector);
@@ -194,7 +215,7 @@ test.describe("latencja chatu", () => {
     test(`latencja chatu – ${target.name}`, async ({ page }) => {
       test.skip(
         !target.url,
-        `Brak adresu URL dla ${target.name} (ustaw PERF_NEXT_BASE_URL / PERF_LEGACY_BASE_URL)`,
+        `Brak adresu URL dla ${target.name} (ustaw PERF_NEXT_BASE_URL lub BASE_URL)`,
       );
       await measureLatency(page, target);
     });

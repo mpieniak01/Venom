@@ -70,6 +70,7 @@ def build_job_record(
         "dataset_path": dataset_path,
         "base_model": base_model,
         "parameters": {
+            "runtime_id": getattr(request, "runtime_id", None),
             "lora_rank": request.lora_rank,
             "learning_rate": request.learning_rate,
             "num_epochs": request.num_epochs,

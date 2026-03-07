@@ -221,6 +221,42 @@ async def test_rag_index_deduplicates_overlapping_docs_sources(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_rag_index_repo_readmes_source_collects_only_root_readmes(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    nested_dir = repo_root / "venom_core"
+    docs_dir.mkdir(parents=True)
+    nested_dir.mkdir(parents=True)
+    (repo_root / "README.md").write_text("Root README EN", encoding="utf-8")
+    (repo_root / "README_PL.md").write_text("Root README PL", encoding="utf-8")
+    (docs_dir / "README.md").write_text(
+        "Docs README should be ignored", encoding="utf-8"
+    )
+    (nested_dir / "README.md").write_text(
+        "Nested README should be ignored", encoding="utf-8"
+    )
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+    )
+
+    run_id = service.start_run(
+        mode="rag_index",
+        sources=["repo_readmes"],
+        rag_config={
+            "embedding_profile_id": "local:default",
+            "embedding_policy": "strict",
+        },
+        dry_run=True,
+    )
+    status = await _wait_terminal(service, run_id)
+
+    assert status["status"] == "completed"
+    assert status["progress"]["files_discovered"] == 2
+
+
+@pytest.mark.asyncio
 async def test_llm_finetune_repo_tasks_strategy_uses_task_mix_and_report(
     tmp_path: Path,
 ):

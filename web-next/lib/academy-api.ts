@@ -27,6 +27,7 @@ export interface DatasetResponse {
 export interface TrainingParams {
   dataset_path?: string;
   base_model?: string;
+  runtime_id?: string | null;
   lora_rank?: number;
   learning_rate?: number;
   num_epochs?: number;
@@ -768,7 +769,13 @@ export async function setDatasetConversionTrainingSelection(params: {
 // ==================== Academy v3: Self-Learning ====================
 
 export type SelfLearningMode = "llm_finetune" | "rag_index";
-export type SelfLearningSource = "docs" | "docs_en" | "docs_pl" | "docs_dev" | "code";
+export type SelfLearningSource =
+  | "docs"
+  | "docs_en"
+  | "docs_pl"
+  | "docs_dev"
+  | "code"
+  | "repo_readmes";
 export type SelfLearningEmbeddingPolicy = "strict" | "allow_fallback";
 export type SelfLearningRagChunkingMode = "plain" | "code_aware";
 export type SelfLearningRagRetrievalMode = "vector" | "hybrid";

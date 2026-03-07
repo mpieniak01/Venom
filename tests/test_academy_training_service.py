@@ -55,6 +55,7 @@ def test_dataset_resolution_and_model_validation(tmp_path: Path) -> None:
 
 def test_job_building_and_sync_and_cleanup(tmp_path: Path) -> None:
     req = SimpleNamespace(
+        runtime_id="ollama",
         lora_rank=8,
         learning_rate=1e-4,
         num_epochs=2,
@@ -68,6 +69,7 @@ def test_job_building_and_sync_and_cleanup(tmp_path: Path) -> None:
         request=req,
     )
     assert record["status"] == "queued"
+    assert record["parameters"]["runtime_id"] == "ollama"
     assert record["parameters"]["num_epochs"] == 2
 
     job = {"status": "running", "output_dir": str(tmp_path)}

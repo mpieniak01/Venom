@@ -6,8 +6,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-import anyio
-
 from venom_core.api.schemas.academy import AdapterInfo
 from venom_core.config import SETTINGS
 from venom_core.services.academy import adapter_audit_service as _audit_service
@@ -56,6 +54,80 @@ resolve_recommended_runtime = _catalog_service.resolve_recommended_runtime
 resolve_runtime_compatibility = _catalog_service.resolve_runtime_compatibility
 
 _INITIAL_SETTINGS = SETTINGS
+
+
+def _load_jsonl_records(path: Path) -> List[Dict[str, Any]]:
+    if not path.exists() or not path.is_file():
+        return []
+    records: List[Dict[str, Any]] = []
+    try:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            payload = json.loads(line)
+            if isinstance(payload, dict):
+                records.append(payload)
+    except Exception as exc:
+        logger.warning("Failed to read JSONL records from %s: %s", path, exc)
+    return records
+
+
+def _load_self_learning_run_snapshot(
+    *,
+    repo_root: Path,
+    adapter_id: str,
+) -> Dict[str, Any]:
+    prefix = "self_learning_"
+    if not adapter_id.startswith(prefix):
+        return {}
+    run_id = adapter_id[len(prefix) :].strip()
+    if not run_id:
+        return {}
+    runs_file = repo_root / "data" / "academy" / "self_learning" / "runs.jsonl"
+    matches = [
+        record
+        for record in _load_jsonl_records(runs_file)
+        if str(record.get("run_id") or "").strip() == run_id
+    ]
+    return matches[-1] if matches else {}
+
+
+def _resolve_adapter_display_info(
+    *,
+    repo_root: Path,
+    training_dir: Path,
+    default_model: str,
+) -> Dict[str, Any]:
+    metadata = _metadata_service._load_adapter_metadata(training_dir)
+    base_model_assessment = _metadata_service._assess_adapter_base_model(
+        adapter_dir=training_dir,
+        default_model=default_model,
+    )
+    run_snapshot = _load_self_learning_run_snapshot(
+        repo_root=repo_root,
+        adapter_id=training_dir.name,
+    )
+    llm_config = run_snapshot.get("llm_config")
+    run_training_params = llm_config if isinstance(llm_config, dict) else {}
+    metadata_params = metadata.get("parameters")
+    training_params = (
+        metadata_params
+        if isinstance(metadata_params, dict) and metadata_params
+        else run_training_params
+    )
+    created_at = (
+        str(metadata.get("created_at") or "").strip()
+        or str(run_snapshot.get("created_at") or "").strip()
+    )
+    if not created_at:
+        created_at = "unknown"
+    base_model = str(base_model_assessment.get("base_model") or "").strip()
+    return {
+        "base_model": base_model or default_model,
+        "created_at": created_at,
+        "training_params": training_params if isinstance(training_params, dict) else {},
+    }
 
 
 def _resolve_settings_for_call() -> Any:
@@ -210,6 +282,7 @@ async def list_adapters(mgr: Any) -> List[AdapterInfo]:
     settings = _resolve_settings_for_call()
     adapters: List[AdapterInfo] = []
     models_dir = Path(settings.ACADEMY_MODELS_DIR)
+    repo_root = _resolve_repo_root()
 
     if not models_dir.exists():
         return []
@@ -228,21 +301,19 @@ async def list_adapters(mgr: Any) -> List[AdapterInfo]:
         if not adapter_path.exists():
             continue
 
-        metadata_file = training_dir / "metadata.json"
-        metadata: Dict[str, Any] = {}
-        if metadata_file.exists():
-            metadata_raw = await anyio.Path(metadata_file).read_text(encoding="utf-8")
-            metadata = json.loads(metadata_raw)
+        display_info = _resolve_adapter_display_info(
+            repo_root=repo_root,
+            training_dir=training_dir,
+            default_model=settings.ACADEMY_DEFAULT_BASE_MODEL,
+        )
 
         adapters.append(
             AdapterInfo(
                 adapter_id=training_dir.name,
                 adapter_path=str(adapter_path),
-                base_model=metadata.get(
-                    "base_model", settings.ACADEMY_DEFAULT_BASE_MODEL
-                ),
-                created_at=metadata.get("created_at", "unknown"),
-                training_params=metadata.get("parameters", {}),
+                base_model=str(display_info.get("base_model") or ""),
+                created_at=str(display_info.get("created_at") or "unknown"),
+                training_params=dict(display_info.get("training_params") or {}),
                 is_active=(training_dir.name == active_adapter_id),
             )
         )

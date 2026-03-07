@@ -303,6 +303,45 @@ async def test_list_trainable_models_sorts_local_before_cloud_free(
 
 @pytest.mark.asyncio
 @patch("venom_core.config.SETTINGS")
+async def test_list_trainable_models_local_hf_base_keeps_ollama_compatibility(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
+    model_dir = tmp_path / "gemma-3-4b-it"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_text("weights", encoding="utf-8")
+
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "gemma-3-4b-it",
+                "provider": "vllm",
+                "runtime": "vllm",
+                "source": "models",
+                "type": "folder",
+                "path": str(model_dir),
+            },
+            {
+                "name": "gemma3:latest",
+                "provider": "ollama",
+                "runtime": "ollama",
+                "source": "ollama",
+                "type": "manifest",
+            },
+        ]
+    )
+
+    models = await academy_models.list_trainable_models(mgr=mgr)
+
+    gemma = next(item for item in models if item.model_id == "gemma-3-4b-it")
+    assert gemma.runtime_compatibility == {"vllm": True, "ollama": True}
+    assert gemma.recommended_runtime == "vllm"
+
+
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
 async def test_list_trainable_models_deduplicates_model_family_entries(
     mock_settings, tmp_path
 ):
@@ -401,6 +440,82 @@ async def test_list_adapters_skips_invalid_dirs_and_marks_active(
     assert adapters[0].adapter_id == "training_001"
     assert adapters[0].is_active is True
     assert adapters[0].base_model == "bm"
+
+
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
+async def test_list_adapters_falls_back_to_adapter_config_without_metadata(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "base-model"
+
+    job_dir = tmp_path / "training_002"
+    adapter_dir = job_dir / "adapter"
+    adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter_config.json").write_text(
+        json.dumps({"base_model_name_or_path": "google/gemma-3-4b-it"}),
+        encoding="utf-8",
+    )
+
+    adapters = await academy_models.list_adapters(mgr=None)
+
+    assert len(adapters) == 1
+    assert adapters[0].base_model == "google/gemma-3-4b-it"
+    assert adapters[0].created_at == "unknown"
+    assert adapters[0].training_params == {}
+
+
+@pytest.mark.asyncio
+@patch("venom_core.api.routes.academy_models._resolve_repo_root")
+@patch("venom_core.config.SETTINGS")
+async def test_list_adapters_falls_back_to_self_learning_run_snapshot(
+    mock_settings, mock_resolve_repo_root, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "models")
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "base-model"
+    mock_resolve_repo_root.return_value = tmp_path
+
+    run_id = "59d9a38d-6d24-478a-8bd7-8d64e09cec65"
+    training_dir = tmp_path / "models" / f"self_learning_{run_id}"
+    adapter_dir = training_dir / "adapter"
+    adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter_config.json").write_text(
+        json.dumps({"base_model_name_or_path": "google/gemma-3-4b-it"}),
+        encoding="utf-8",
+    )
+
+    runs_dir = tmp_path / "data" / "academy" / "self_learning"
+    runs_dir.mkdir(parents=True)
+    (runs_dir / "runs.jsonl").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "created_at": "2026-03-07T06:02:41.634093+00:00",
+                "llm_config": {
+                    "base_model": "google/gemma-3-4b-it",
+                    "runtime_id": "ollama",
+                    "lora_rank": 16,
+                    "num_epochs": 3,
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    adapters = await academy_models.list_adapters(mgr=None)
+
+    assert len(adapters) == 1
+    assert adapters[0].adapter_id == f"self_learning_{run_id}"
+    assert adapters[0].base_model == "google/gemma-3-4b-it"
+    assert adapters[0].created_at == "2026-03-07T06:02:41.634093+00:00"
+    assert adapters[0].training_params == {
+        "base_model": "google/gemma-3-4b-it",
+        "runtime_id": "ollama",
+        "lora_rank": 16,
+        "num_epochs": 3,
+    }
 
 
 @patch("venom_core.config.SETTINGS")

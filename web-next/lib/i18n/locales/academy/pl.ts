@@ -232,6 +232,7 @@ export const academy = {
         docsEn: "Tylko dokumentacja angielska (/docs bez /docs/PL)",
         docsPl: "Tylko dokumentacja polska (/docs/PL)",
         docsDev: "Dokumentacja developerska (/docs_dev)",
+        repoReadmes: "Tylko README z root repo (/README.md, /README_PL.md)",
         code: "Kod źródłowy (venom_core, web-next, scripts)",
       },
       maxFileSize: "Maks. rozmiar pliku (KB)",

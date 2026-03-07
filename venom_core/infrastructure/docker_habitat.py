@@ -64,14 +64,14 @@ class DockerHabitat:
             raise RuntimeError(error_msg) from e
 
         self.workspace_path = self._resolve_workspace_path()
-        self.container_name = self._resolve_container_name(self.workspace_path)
+        self.resolved_container_name = self._resolve_container_name(self.workspace_path)
         self.container = self._get_or_create_container()
         logger.info(
             f"DockerHabitat zainicjalizowany z kontenerem: {self._active_container_name()}"
         )
 
     def _active_container_name(self) -> str:
-        return getattr(self, "container_name", self.CONTAINER_NAME)
+        return getattr(self, "resolved_container_name", self.CONTAINER_NAME)
 
     def _resolve_container_name(self, workspace_path: Path) -> str:
         """

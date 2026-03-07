@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const nextBase = process.env.PERF_NEXT_BASE_URL ?? "http://localhost:3000";
-const legacyBase = process.env.PERF_LEGACY_BASE_URL ?? "http://localhost:8000";
+const apiBase =
+  process.env.PERF_API_BASE ??
+  process.env.VENOM_API_BASE ??
+  "http://127.0.0.1:8000";
 
 export default defineConfig({
   testDir: "./tests/perf",
@@ -27,7 +30,7 @@ export default defineConfig({
   },
   metadata: {
     nextBase,
-    legacyBase,
+    apiBase,
   },
   projects: [
     {

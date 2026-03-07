@@ -7,7 +7,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 SelfLearningMode = Literal["llm_finetune", "rag_index"]
-SelfLearningSource = Literal["docs", "docs_en", "docs_pl", "docs_dev", "code"]
+SelfLearningSource = Literal[
+    "docs",
+    "docs_en",
+    "docs_pl",
+    "docs_dev",
+    "code",
+    "repo_readmes",
+]
 SelfLearningDatasetStrategy = Literal[
     "reconstruct",
     "qa_from_docs",

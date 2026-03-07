@@ -34,7 +34,14 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 SelfLearningMode = Literal["llm_finetune", "rag_index"]
-SelfLearningSource = Literal["docs", "docs_en", "docs_pl", "docs_dev", "code"]
+SelfLearningSource = Literal[
+    "docs",
+    "docs_en",
+    "docs_pl",
+    "docs_dev",
+    "code",
+    "repo_readmes",
+]
 SelfLearningDatasetStrategy = Literal[
     "reconstruct",
     "qa_from_docs",
@@ -101,6 +108,7 @@ _SOURCE_PATHS: dict[SelfLearningSource, tuple[str, ...]] = {
     "docs_pl": ("docs/PL",),
     "docs_dev": ("docs_dev",),
     "code": ("venom_core", "web-next", "scripts"),
+    "repo_readmes": ("README.md", "README_PL.md"),
 }
 _VALID_MODES: tuple[SelfLearningMode, ...] = ("llm_finetune", "rag_index")
 _VALID_STATUSES: tuple[SelfLearningStatus, ...] = (
@@ -328,6 +336,8 @@ class SelfLearningService:
         run_limits = self._parse_limits(limits)
         run_llm_config = self._parse_llm_config(llm_config)
         run_rag_config = self._parse_rag_config(rag_config)
+        requested_base_model = run_llm_config.base_model
+        requested_runtime_id = run_llm_config.runtime_id
         self._apply_mode_defaults(
             mode=mode,
             llm_config=run_llm_config,
@@ -355,6 +365,23 @@ class SelfLearningService:
         )
         run.artifacts["repo_commit_sha"] = self._resolve_repo_commit_sha()
         run.artifacts["knowledge_snapshot_at"] = run.created_at
+        if mode == "llm_finetune":
+            run.artifacts["requested_base_model"] = requested_base_model
+            run.artifacts["requested_runtime_id"] = requested_runtime_id
+            run.artifacts["effective_base_model"] = run_llm_config.base_model
+            run.artifacts["effective_runtime_id"] = run_llm_config.runtime_id
+            self._add_log(
+                run,
+                f"Requested base model: {requested_base_model or 'none'}",
+            )
+            self._add_log(
+                run,
+                f"Target runtime: {requested_runtime_id or 'none'}",
+            )
+            self._add_log(
+                run,
+                f"Effective base model: {run_llm_config.base_model or 'none'}",
+            )
         with self._lock:
             self._runs[run_id] = run
         self._append_run_snapshot(run)
@@ -2302,6 +2329,9 @@ class SelfLearningService:
         return total_size, decision == "limit_total"
 
     def _iter_candidate_paths(self, root: Path) -> Iterable[Path]:
+        if root.is_file():
+            yield root
+            return
         for current_root, dirs, files in os.walk(root):
             dirs[:] = [d for d in dirs if d not in _BLOCKED_PATH_PARTS]
             if self._contains_blocked_part(Path(current_root)):
@@ -2592,7 +2622,7 @@ class SelfLearningService:
                 candidate = (self.repo_root / rel_path).resolve()
                 if (
                     candidate.exists()
-                    and candidate.is_dir()
+                    and (candidate.is_dir() or candidate.is_file())
                     and self._is_path_within_repo(candidate)
                 ):
                     roots.append((source, candidate))

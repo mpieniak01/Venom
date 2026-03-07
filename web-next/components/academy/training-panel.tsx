@@ -237,6 +237,7 @@ export function TrainingPanel() {
       setLoading(true);
       await startTraining({
         base_model: selectedBaseModel,
+        runtime_id: selectedRuntime || null,
         lora_rank: loraRank,
         learning_rate: learningRate,
         num_epochs: numEpochs,
@@ -298,6 +299,20 @@ export function TrainingPanel() {
       }
       return left.localeCompare(right);
     });
+  };
+
+  const getModelRuntimeBadgeLabel = (model: TrainableModelInfo): string => {
+    if (selectedRuntime && model.runtime_compatibility?.[selectedRuntime]) {
+      return getRuntimeDisplayName(selectedRuntime);
+    }
+    if (model.recommended_runtime && model.runtime_compatibility?.[model.recommended_runtime]) {
+      return getRuntimeDisplayName(model.recommended_runtime);
+    }
+    const compatibility = getModelCompatibility(model);
+    if (compatibility.length > 0) {
+      return getRuntimeDisplayName(compatibility[0]);
+    }
+    return t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`);
   };
 
   const modelPickerOptions = buildTrainingModelPickerOptions(trainableModels, t);
@@ -385,7 +400,7 @@ export function TrainingPanel() {
                 placeholder={baseModelPlaceholder}
                 ariaLabel={t("academy.training.baseModel")}
                 disabled={modelsLoading || trainableModels.length === 0}
-                buttonClassName="mt-0 h-10 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
+                buttonClassName="mt-0 h-10 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-left text-sm normal-case tracking-normal text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
                 menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
                 optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
                 renderButton={(option) => {
@@ -398,12 +413,12 @@ export function TrainingPanel() {
                     );
                   }
                   return (
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
                       <span className="min-w-0 flex-1 truncate text-left text-sm text-[color:var(--text-primary)]">
                         {selectedOption.model.model_id}
                       </span>
                       <span className="shrink-0 text-[11px] text-[color:var(--ui-muted)]">
-                        {t(`academy.training.engineNames.${resolveEngineKey(selectedOption.model.provider)}`)}
+                        {getModelRuntimeBadgeLabel(selectedOption.model)}
                       </span>
                     </div>
                   );
@@ -427,22 +442,24 @@ export function TrainingPanel() {
                     return <span className="text-sm text-hint">{typedOption.label}</span>;
                   }
                   return (
-                    <div className="flex w-full items-center gap-2">
+                    <div className="flex w-full items-center justify-between gap-2 text-left">
                       <span
-                        className={`min-w-0 flex-1 truncate text-sm ${
+                        className={`min-w-0 flex-1 truncate text-left text-sm ${
                           active ? "text-[color:var(--primary)]" : "text-[color:var(--text-primary)]"
                         }`}
                       >
                         {model.model_id}
                       </span>
-                      <span className="shrink-0 text-[11px] text-[color:var(--ui-muted)]">
-                        {t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`)}
-                      </span>
-                      <span className="shrink-0 text-[11px] text-hint/80">
-                        {model.installed_local
-                          ? t("academy.training.installState.localInstalled")
-                          : t("academy.training.installState.catalogDownload")}
-                      </span>
+                      <div className="flex shrink-0 items-center gap-2 text-right">
+                        <span className="text-[11px] text-[color:var(--ui-muted)]">
+                          {getModelRuntimeBadgeLabel(model)}
+                        </span>
+                        <span className="text-[11px] text-hint/80">
+                          {model.installed_local
+                            ? t("academy.training.installState.localInstalled")
+                            : t("academy.training.installState.catalogDownload")}
+                        </span>
+                      </div>
                     </div>
                   );
                 }}

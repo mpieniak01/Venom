@@ -14,15 +14,15 @@ logger = get_logger(__name__)
 
 ADAPTER_BASE_MODEL_MISMATCH = "ADAPTER_BASE_MODEL_MISMATCH"
 ADAPTER_BASE_MODEL_UNKNOWN = "ADAPTER_BASE_MODEL_UNKNOWN"
+ADAPTER_METADATA_INCOMPLETE = "ADAPTER_METADATA_INCOMPLETE"
 ADAPTER_METADATA_INCONSISTENT = "ADAPTER_METADATA_INCONSISTENT"
+ADAPTER_RUNTIME_MODEL_MISSING = "ADAPTER_RUNTIME_MODEL_MISSING"
 ADAPTER_NOT_FOUND_DETAIL = "Adapter not found"
 CANONICAL_ADAPTER_METADATA_VERSION = 2
 
 _BASE_MODEL_CONFIDENT_SOURCES: Set[str] = {
+    "metadata.effective_base_model",
     "metadata.base_model",
-    "adapter.adapter_config.base_model_name_or_path",
-    "adapter.adapter_config.base_model_name",
-    "runtime_vllm.venom_runtime_vllm.base_model",
 }
 
 
@@ -106,10 +106,18 @@ def _read_json_file(path: Path) -> Dict[str, Any]:
 def _collect_adapter_base_model_candidates(
     *,
     adapter_dir: Path,
-    default_model: str,
 ) -> List[Dict[str, str]]:
     metadata = _load_adapter_metadata(adapter_dir)
     candidates: List[Dict[str, str]] = []
+
+    metadata_effective_model = str(metadata.get("effective_base_model") or "").strip()
+    if metadata_effective_model:
+        candidates.append(
+            {
+                "source": "metadata.effective_base_model",
+                "model": metadata_effective_model,
+            }
+        )
 
     metadata_model = str(metadata.get("base_model") or "").strip()
     if metadata_model:
@@ -152,42 +160,37 @@ def _collect_adapter_base_model_candidates(
             }
         )
 
-    fallback_model = default_model.strip()
-    if fallback_model:
-        candidates.append(
-            {
-                "source": "settings.ACADEMY_DEFAULT_BASE_MODEL",
-                "model": fallback_model,
-            }
-        )
     return candidates
 
 
 def _assess_adapter_base_model(
     *,
     adapter_dir: Path,
-    default_model: str,
 ) -> Dict[str, Any]:
-    candidates = _collect_adapter_base_model_candidates(
-        adapter_dir=adapter_dir,
-        default_model=default_model,
-    )
+    metadata = _load_adapter_metadata(adapter_dir)
+    candidates = _collect_adapter_base_model_candidates(adapter_dir=adapter_dir)
+    metadata_version = metadata.get("metadata_version")
+    metadata_is_canonical = metadata_version == CANONICAL_ADAPTER_METADATA_VERSION
 
     trusted_candidates = [
         candidate
         for candidate in candidates
-        if candidate.get("source") in _BASE_MODEL_CONFIDENT_SOURCES
+        if metadata_is_canonical
+        and candidate.get("source") in _BASE_MODEL_CONFIDENT_SOURCES
         and str(candidate.get("model") or "").strip()
     ]
 
     if not trusted_candidates:
-        fallback_model = str(default_model or "").strip()
         return {
-            "base_model": fallback_model,
-            "canonical_base_model": _canonical_runtime_model_id(fallback_model),
+            "base_model": "",
+            "canonical_base_model": "",
             "trusted": False,
-            "reason_code": ADAPTER_BASE_MODEL_UNKNOWN,
-            "reason": "Missing reliable adapter base model metadata",
+            "reason_code": ADAPTER_METADATA_INCOMPLETE,
+            "reason": (
+                "Canonical adapter metadata is missing or incomplete"
+                if metadata
+                else "Canonical adapter metadata is missing"
+            ),
             "sources": candidates,
         }
 
@@ -221,12 +224,8 @@ def _assess_adapter_base_model(
 def _require_trusted_adapter_base_model(
     *,
     adapter_dir: Path,
-    default_model: str,
 ) -> str:
-    assessment = _assess_adapter_base_model(
-        adapter_dir=adapter_dir,
-        default_model=default_model,
-    )
+    assessment = _assess_adapter_base_model(adapter_dir=adapter_dir)
     base_model = str(assessment.get("base_model") or "").strip()
     trusted = bool(assessment.get("trusted"))
     if trusted and base_model:
@@ -237,14 +236,6 @@ def _require_trusted_adapter_base_model(
         or "Adapter base model is not reliable enough for deployment validation"
     )
     raise ValueError(f"{reason_code}: {reason}")
-
-
-def _resolve_adapter_base_model(*, adapter_dir: Path, default_model: str) -> str:
-    metadata = _load_adapter_metadata(adapter_dir)
-    base_model = str(metadata.get("base_model") or "").strip()
-    if base_model:
-        return base_model
-    return default_model
 
 
 def _infer_local_runtime_provider(model: Dict[str, Any]) -> str:
@@ -299,6 +290,6 @@ async def _assert_runtime_model_available(
 
     available_hint = ", ".join(sorted(runtime_models)[:8]) or "none"
     raise ValueError(
-        "Selected model is not available on runtime "
+        f"{ADAPTER_RUNTIME_MODEL_MISSING}: Selected model is not available on runtime "
         f"'{runtime_id}': '{candidate}'. Available: {available_hint}."
     )

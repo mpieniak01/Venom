@@ -8,6 +8,14 @@ const baseURL = process.env.BASE_URL || `http://${devHost}:${devPort}`;
 
 const isProdServer = process.env.PLAYWRIGHT_MODE === "prod";
 const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_SERVER !== "false";
+const devServerEnv = [
+  "NEXT_MODE=dev",
+  "NEXT_DISABLE_TURBOPACK=1",
+  "NEXT_TELEMETRY_DISABLED=1",
+  "WATCHPACK_POLLING=true",
+  "WATCHPACK_POLLING_INTERVAL=1000",
+  "CHOKIDAR_USEPOLLING=1",
+].join(" ");
 const webServerCommand = isProdServer
   ? [
     // Zapewnia dostępność zasobów statycznych dla standalone builda.
@@ -15,7 +23,7 @@ const webServerCommand = isProdServer
     `cp -r .next/static .next/standalone/web-next/.next/static`,
     `PORT=${devPort} HOSTNAME=${devHost} node .next/standalone/web-next/server.js`,
   ].join(" && ")
-  : `npm run dev -- --hostname ${devHost} --port ${devPort}`;
+  : `${devServerEnv} npm run dev -- --hostname ${devHost} --port ${devPort}`;
 
 const config: PlaywrightTestConfig = {
   testDir: "./tests",

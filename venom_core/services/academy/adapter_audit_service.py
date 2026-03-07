@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from .adapter_metadata_service import (
     ADAPTER_BASE_MODEL_MISMATCH,
     ADAPTER_BASE_MODEL_UNKNOWN,
+    ADAPTER_METADATA_INCOMPLETE,
     ADAPTER_METADATA_INCONSISTENT,
     _assert_runtime_model_available,
     _assess_adapter_base_model,
@@ -22,6 +23,8 @@ from .trainable_catalog_service import (
     _resolve_local_runtime_id,
     list_trainable_models,
 )
+
+ADAPTER_RUNTIME_INCOMPATIBLE = "ADAPTER_RUNTIME_INCOMPATIBLE"
 
 
 def _get_settings() -> Any:
@@ -72,7 +75,7 @@ def _evaluate_adapter_audit_status(
             )
         return (
             "blocked_unknown_base",
-            ADAPTER_BASE_MODEL_UNKNOWN,
+            reason_code or ADAPTER_METADATA_INCOMPLETE or ADAPTER_BASE_MODEL_UNKNOWN,
             str(assessment.get("reason") or "Reliable base_model metadata is missing"),
         )
 
@@ -143,7 +146,6 @@ async def validate_adapter_runtime_compatibility(
     _require_existing_adapter_artifact(adapter_dir=adapter_dir)
     base_model = _require_trusted_adapter_base_model(
         adapter_dir=adapter_dir,
-        default_model=str(getattr(settings, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
     ).strip()
     if not base_model:
         return
@@ -176,11 +178,11 @@ async def validate_adapter_runtime_compatibility(
     if compatible_runtimes:
         supported_hint = ", ".join(compatible_runtimes)
         raise ValueError(
-            "Adapter is incompatible with selected runtime "
+            f"{ADAPTER_RUNTIME_INCOMPATIBLE}: Adapter is incompatible with selected runtime "
             f"'{runtime_local_id}'. Compatible runtimes: {supported_hint}."
         )
     raise ValueError(
-        "Adapter does not expose compatible local runtimes for activation."
+        f"{ADAPTER_RUNTIME_INCOMPATIBLE}: Adapter does not expose compatible local runtimes for activation."
     )
 
 
@@ -243,12 +245,7 @@ def audit_adapters(
         if not adapter_path.exists():
             continue
 
-        assessment = _assess_adapter_base_model(
-            adapter_dir=training_dir,
-            default_model=str(
-                getattr(settings, "ACADEMY_DEFAULT_BASE_MODEL", "")
-            ).strip(),
-        )
+        assessment = _assess_adapter_base_model(adapter_dir=training_dir)
         base_model = str(assessment.get("base_model") or "").strip()
         category, reason_code, message = _evaluate_adapter_audit_status(
             assessment=assessment,

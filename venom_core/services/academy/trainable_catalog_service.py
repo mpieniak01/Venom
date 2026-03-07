@@ -24,6 +24,18 @@ _TRAINABLE_MODEL_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "gemma3:latest": "gemma-3-4b-it",
     "gemma3:4b": "gemma-3-4b-it",
     "gemma3:1b": "gemma-3-1b-it",
+    "google/gemma-3-4b-it": "gemma-3-4b-it",
+    "google/gemma-3-1b-it": "gemma-3-1b-it",
+    "phi3:mini": "phi-3-mini-4k-instruct",
+    "phi3:latest": "phi-3-mini-4k-instruct",
+    "unsloth/phi-3-mini-4k-instruct": "phi-3-mini-4k-instruct",
+    "microsoft/phi-3-mini-4k-instruct": "phi-3-mini-4k-instruct",
+    "unsloth/phi-3.5-mini-instruct": "phi-3.5-mini-instruct",
+    "microsoft/phi-3.5-mini-instruct": "phi-3.5-mini-instruct",
+    "llama3.2:1b": "llama-3.2-1b-instruct",
+    "llama3.2:3b": "llama-3.2-3b-instruct",
+    "unsloth/llama-3.2-1b-instruct": "llama-3.2-1b-instruct",
+    "unsloth/llama-3.2-3b-instruct": "llama-3.2-3b-instruct",
     "qwen2.5-coder:3b": "qwen/qwen2.5-coder-3b-instruct",
     "qwen2.5-coder:7b": "qwen/qwen2.5-coder-7b-instruct",
 }
@@ -277,11 +289,36 @@ def discover_available_runtime_targets(local_models: List[Dict[str, Any]]) -> Li
     return ordered
 
 
+def discover_runtime_model_families(
+    local_models: List[Dict[str, Any]],
+) -> Dict[str, Set[str]]:
+    """Build runtime -> canonical model-family index from local runtime catalog."""
+    discovered: Dict[str, Set[str]] = {}
+    for model in local_models:
+        runtime_id = _canonical_local_runtime_id(
+            str(
+                model.get("runtime")
+                or model.get("provider")
+                or model.get("source")
+                or ""
+            )
+        )
+        if not runtime_id:
+            continue
+        canonical_family = _canonical_runtime_model_id(str(model.get("name") or ""))
+        if not canonical_family:
+            continue
+        discovered.setdefault(runtime_id, set()).add(canonical_family)
+    return discovered
+
+
 def resolve_runtime_compatibility(
     *,
     provider: str,
     available_runtime_ids: List[str],
+    model_id: str | None = None,
     model_metadata: Optional[Dict[str, Any]] = None,
+    runtime_model_families: Optional[Dict[str, Set[str]]] = None,
 ) -> Dict[str, bool]:
     """Resolve where trained model+adapter can be served for inference."""
     compatibility: Dict[str, bool] = dict.fromkeys(available_runtime_ids, False)
@@ -329,9 +366,28 @@ def resolve_runtime_compatibility(
 
     for runtime_id in preferred:
         if runtime_id in compatibility:
+            if runtime_id == "ollama" and not _ollama_runtime_family_available(
+                model_id=model_id
+                or str(model_metadata.get("name") if model_metadata else ""),
+                runtime_model_families=runtime_model_families,
+            ):
+                continue
             compatibility[runtime_id] = True
 
     return compatibility
+
+
+def _ollama_runtime_family_available(
+    *,
+    model_id: str,
+    runtime_model_families: Optional[Dict[str, Set[str]]],
+) -> bool:
+    if not runtime_model_families:
+        return False
+    canonical_family = _canonical_runtime_model_id(model_id)
+    if not canonical_family:
+        return False
+    return canonical_family in runtime_model_families.get("ollama", set())
 
 
 def _supports_ollama_adapter_deploy(
@@ -375,101 +431,49 @@ def resolve_recommended_runtime(
 
 def get_default_trainable_models_catalog(
     available_runtime_ids: List[str],
+    runtime_model_families: Optional[Dict[str, Set[str]]] = None,
 ) -> List[TrainableModelInfo]:
     """Return default fallback catalog for trainable models."""
-    default_runtime_compatibility = resolve_runtime_compatibility(
-        provider="huggingface",
-        available_runtime_ids=available_runtime_ids,
-    )
-    default_recommended_runtime = resolve_recommended_runtime(
-        default_runtime_compatibility
-    )
-    return [
-        TrainableModelInfo(
-            model_id="unsloth/Phi-3-mini-4k-instruct",
-            label="Phi-3 Mini 4K (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=True,
-            source_type="local",
-            cost_tier="free",
-            priority_bucket=1,
-            runtime_compatibility=dict(default_runtime_compatibility),
-            recommended_runtime=default_recommended_runtime,
+    defaults = [
+        ("unsloth/Phi-3-mini-4k-instruct", "Phi-3 Mini 4K (Unsloth)", "unsloth"),
+        ("unsloth/Phi-3.5-mini-instruct", "Phi-3.5 Mini (Unsloth)", "unsloth"),
+        ("unsloth/Llama-3.2-1B-Instruct", "Llama 3.2 1B (Unsloth)", "unsloth"),
+        ("unsloth/Llama-3.2-3B-Instruct", "Llama 3.2 3B (Unsloth)", "unsloth"),
+        (
+            "Qwen/Qwen2.5-Coder-3B-Instruct",
+            "Qwen2.5 Coder 3B (HuggingFace)",
+            "huggingface",
         ),
-        TrainableModelInfo(
-            model_id="unsloth/Phi-3.5-mini-instruct",
-            label="Phi-3.5 Mini (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=False,
-            source_type="local",
-            cost_tier="free",
-            priority_bucket=1,
-            runtime_compatibility=dict(default_runtime_compatibility),
-            recommended_runtime=default_recommended_runtime,
+        (
+            "Qwen/Qwen2.5-Coder-7B-Instruct",
+            "Qwen2.5 Coder 7B (HuggingFace)",
+            "huggingface",
         ),
-        TrainableModelInfo(
-            model_id="unsloth/Llama-3.2-1B-Instruct",
-            label="Llama 3.2 1B (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=False,
-            source_type="local",
-            cost_tier="free",
-            priority_bucket=1,
-            runtime_compatibility=dict(default_runtime_compatibility),
-            recommended_runtime=default_recommended_runtime,
-        ),
-        TrainableModelInfo(
-            model_id="unsloth/Llama-3.2-3B-Instruct",
-            label="Llama 3.2 3B (Unsloth)",
-            provider="unsloth",
-            trainable=True,
-            recommended=False,
-            source_type="local",
-            cost_tier="free",
-            priority_bucket=1,
-            runtime_compatibility=dict(default_runtime_compatibility),
-            recommended_runtime=default_recommended_runtime,
-        ),
-        TrainableModelInfo(
-            model_id="Qwen/Qwen2.5-Coder-3B-Instruct",
-            label="Qwen2.5 Coder 3B (HuggingFace)",
-            provider="huggingface",
-            trainable=True,
-            recommended=False,
-            source_type="local",
-            cost_tier="free",
-            priority_bucket=1,
-            runtime_compatibility=dict(default_runtime_compatibility),
-            recommended_runtime=default_recommended_runtime,
-        ),
-        TrainableModelInfo(
-            model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
-            label="Qwen2.5 Coder 7B (HuggingFace)",
-            provider="huggingface",
-            trainable=True,
-            recommended=False,
-            source_type="local",
-            cost_tier="free",
-            priority_bucket=1,
-            runtime_compatibility=dict(default_runtime_compatibility),
-            recommended_runtime=default_recommended_runtime,
-        ),
-        TrainableModelInfo(
-            model_id="google/gemma-3-4b-it",
-            label="Gemma 3 4B Instruct (HuggingFace)",
-            provider="huggingface",
-            trainable=True,
-            recommended=False,
-            source_type="local",
-            cost_tier="free",
-            priority_bucket=1,
-            runtime_compatibility=dict(default_runtime_compatibility),
-            recommended_runtime=default_recommended_runtime,
-        ),
+        ("google/gemma-3-4b-it", "Gemma 3 4B Instruct (HuggingFace)", "huggingface"),
     ]
+    result: List[TrainableModelInfo] = []
+    for model_id, label, provider in defaults:
+        runtime_compatibility = resolve_runtime_compatibility(
+            provider=provider,
+            available_runtime_ids=available_runtime_ids,
+            model_id=model_id,
+            runtime_model_families=runtime_model_families,
+        )
+        result.append(
+            TrainableModelInfo(
+                model_id=model_id,
+                label=label,
+                provider=provider,
+                trainable=True,
+                recommended=False,
+                source_type="local",
+                cost_tier="free",
+                priority_bucket=1,
+                runtime_compatibility=runtime_compatibility,
+                recommended_runtime=resolve_recommended_runtime(runtime_compatibility),
+            )
+        )
+    return result
 
 
 def add_trainable_model_from_catalog(
@@ -478,13 +482,13 @@ def add_trainable_model_from_catalog(
     model_id: str,
     provider: str,
     label: str,
-    default_model: str,
     reason: Optional[str] = None,
     installed_local: bool = False,
     source_type: Optional[ModelSourceType] = None,
     cost_tier: Optional[ModelCostTier] = None,
     available_runtime_ids: Optional[List[str]] = None,
     model_metadata: Optional[Dict[str, Any]] = None,
+    runtime_model_families: Optional[Dict[str, Set[str]]] = None,
 ) -> None:
     """Append model entry when unseen."""
     if not model_id or model_id in seen:
@@ -506,7 +510,9 @@ def add_trainable_model_from_catalog(
     runtime_compatibility = resolve_runtime_compatibility(
         provider=provider,
         available_runtime_ids=available_runtime_ids or [],
+        model_id=model_id,
         model_metadata=model_metadata,
+        runtime_model_families=runtime_model_families,
     )
     recommended_runtime = resolve_recommended_runtime(runtime_compatibility)
     result.append(
@@ -516,7 +522,7 @@ def add_trainable_model_from_catalog(
             provider=provider,
             trainable=reason is None,
             reason_if_not_trainable=reason,
-            recommended=(model_id == default_model),
+            recommended=False,
             installed_local=installed_local,
             source_type=resolved_source_type,
             cost_tier=resolved_cost_tier,
@@ -530,8 +536,8 @@ def add_trainable_model_from_catalog(
 
 def collect_local_trainable_models(
     local_models: List[Dict[str, Any]],
-    default_model: str,
     available_runtime_ids: List[str],
+    runtime_model_families: Dict[str, Set[str]],
     result: List[TrainableModelInfo],
     seen: set[str],
 ) -> None:
@@ -555,51 +561,29 @@ def collect_local_trainable_models(
             label=build_model_label(
                 model_id=model_id, provider=provider, source=source
             ),
-            default_model=default_model,
             reason=reason,
             installed_local=True,
             available_runtime_ids=available_runtime_ids,
             model_metadata=model,
+            runtime_model_families=runtime_model_families,
         )
 
 
 def collect_default_trainable_models(
-    default_model: str,
     available_runtime_ids: List[str],
+    runtime_model_families: Dict[str, Set[str]],
     result: List[TrainableModelInfo],
     seen: set[str],
 ) -> None:
     """Collect fallback defaults for Academy model list."""
     for entry in get_default_trainable_models_catalog(
-        available_runtime_ids=available_runtime_ids
+        available_runtime_ids=available_runtime_ids,
+        runtime_model_families=runtime_model_families,
     ):
         if entry.model_id in seen:
             continue
-        entry.recommended = entry.model_id == default_model
         result.append(entry)
         seen.add(entry.model_id)
-
-
-def ensure_default_model_visible(
-    default_model: str,
-    available_runtime_ids: List[str],
-    result: List[TrainableModelInfo],
-    seen: set[str],
-) -> None:
-    """Ensure configured default model is present even if custom/non-trainable."""
-    if not default_model or default_model in seen:
-        return
-    reason = get_model_non_trainable_reason(model_id=default_model, provider=None)
-    add_trainable_model_from_catalog(
-        result=result,
-        seen=seen,
-        model_id=default_model,
-        provider="config",
-        label=f"{default_model} (default)",
-        default_model=default_model,
-        reason=reason,
-        available_runtime_ids=available_runtime_ids,
-    )
 
 
 def _trainable_model_family_key(model_id: str) -> str:
@@ -629,25 +613,23 @@ async def list_trainable_models(
     local_models: Optional[List[Dict[str, Any]]] = None,
 ) -> List[TrainableModelInfo]:
     """Build sorted list of Academy trainable models."""
-    from venom_core.config import SETTINGS
-
     result: List[TrainableModelInfo] = []
     seen: set[str] = set()
-    default_model_raw = getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "")
-    default_model = (
-        default_model_raw.strip() if isinstance(default_model_raw, str) else ""
-    )
     discovered_local_models: List[Dict[str, Any]] = local_models or []
     available_runtime_ids: List[str] = []
+    runtime_model_families: Dict[str, Set[str]] = {}
 
     if discovered_local_models:
         available_runtime_ids = discover_available_runtime_targets(
             discovered_local_models
         )
+        runtime_model_families = discover_runtime_model_families(
+            discovered_local_models
+        )
         collect_local_trainable_models(
             local_models=discovered_local_models,
-            default_model=default_model,
             available_runtime_ids=available_runtime_ids,
+            runtime_model_families=runtime_model_families,
             result=result,
             seen=seen,
         )
@@ -657,10 +639,13 @@ async def list_trainable_models(
             available_runtime_ids = discover_available_runtime_targets(
                 discovered_local_models
             )
+            runtime_model_families = discover_runtime_model_families(
+                discovered_local_models
+            )
             collect_local_trainable_models(
                 local_models=discovered_local_models,
-                default_model=default_model,
                 available_runtime_ids=available_runtime_ids,
+                runtime_model_families=runtime_model_families,
                 result=result,
                 seen=seen,
             )
@@ -668,8 +653,8 @@ async def list_trainable_models(
             logger.warning("Failed to load local model catalog for Academy: %s", exc)
 
     collect_default_trainable_models(
-        default_model=default_model,
         available_runtime_ids=available_runtime_ids,
+        runtime_model_families=runtime_model_families,
         result=result,
         seen=seen,
     )
@@ -687,11 +672,12 @@ async def list_trainable_models(
     result.sort(
         key=lambda item: (
             item.priority_bucket,
-            not item.recommended,
             item.label.lower(),
             item.model_id.lower(),
         )
     )
+    for index, item in enumerate(result):
+        item.recommended = index == 0
     return result
 
 

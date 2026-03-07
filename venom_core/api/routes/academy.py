@@ -309,7 +309,7 @@ async def curate_dataset(
     },
 )
 async def start_training(request: TrainingRequest, req: Request) -> TrainingResponse:
-    return academy_route_handlers.start_training_handler(
+    return await academy_route_handlers.start_training_handler(
         request=request,
         req=req,
         academy=_academy_module(),

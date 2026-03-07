@@ -48,6 +48,15 @@ function firstCallArg<T>(fn: { mock: { calls: Array<{ arguments: unknown[] }> } 
   return call.arguments[0] as T;
 }
 
+function selectSelfLearningBaseModel(modelId: string) {
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: /Training base model|Model bazowy treningu|Trainings-Basismodell/i,
+    }),
+  );
+  fireEvent.click(screen.getByText(modelId));
+}
+
 describe("SelfLearningConfigurator", () => {
   it("disables start button when no source is selected", async () => {
     const onStart = mock.fn(async () => {});
@@ -124,6 +133,7 @@ describe("SelfLearningConfigurator", () => {
     );
 
     fireEvent.click(screen.getByText(/LLM Fine-tune/i));
+    selectSelfLearningBaseModel("qwen2.5-coder:3b");
     fireEvent.click(screen.getByText(/Dry run/i));
 
     fireEvent.change(screen.getByLabelText(/Max file size/i), { target: { value: "512" } });
@@ -171,6 +181,7 @@ describe("SelfLearningConfigurator", () => {
     );
 
     fireEvent.click(screen.getByText(/LLM Fine-tune/i));
+    selectSelfLearningBaseModel("qwen2.5-coder:3b");
     fireEvent.change(screen.getByLabelText(/Dataset strategy/i), {
       target: { value: "repo_tasks_basic" },
     });
@@ -185,6 +196,86 @@ describe("SelfLearningConfigurator", () => {
     const payload = firstCallArg<SelfLearningConfig>(onStart);
     assert.equal(payload.llm_config?.dataset_strategy, "repo_tasks_basic");
     assert.equal(payload.llm_config?.task_mix_preset, "repair-heavy");
+  });
+
+  it("blocks llm start until base model is selected explicitly", async () => {
+    const onStart = mock.fn(async () => {});
+    renderWithLanguage(
+      <SelfLearningConfigurator
+        loading={false}
+        runtimeOptions={[{ id: "ollama", label: "ollama" }]}
+        selectedRuntime="ollama"
+        onRuntimeChange={() => {}}
+        trainableModels={[
+          {
+            model_id: "qwen2.5-coder:3b",
+            label: "qwen2.5-coder:3b",
+            provider: "ollama",
+            recommended: true,
+            runtime_compatibility: { ollama: true },
+            recommended_runtime: "ollama",
+          },
+        ]}
+        embeddingProfiles={[]}
+        onStart={onStart}
+      />
+    );
+
+    fireEvent.click(screen.getByText(/LLM Fine-tune/i));
+
+    assert.equal(
+      screen.getByText(/LLM fine-tune requires an explicit base model selection/i) instanceof HTMLElement,
+      true,
+    );
+
+    const startButton = screen.getByRole("button", { name: /Start Self-Learning/i });
+    assert.equal((startButton as HTMLButtonElement).disabled, true);
+
+    await act(async () => {
+      fireEvent.click(startButton);
+    });
+
+    assert.equal(onStart.mock.callCount(), 0);
+  });
+
+  it("shows runtime-family warning and blocks llm start when selected runtime has no compatible model", async () => {
+    const onStart = mock.fn(async () => {});
+    renderWithLanguage(
+      <SelfLearningConfigurator
+        loading={false}
+        runtimeOptions={[{ id: "ollama", label: "ollama" }]}
+        selectedRuntime="ollama"
+        onRuntimeChange={() => {}}
+        trainableModels={[
+          {
+            model_id: "unsloth/Phi-3-mini-4k-instruct",
+            label: "unsloth/Phi-3-mini-4k-instruct",
+            provider: "unsloth",
+            recommended: true,
+            runtime_compatibility: { vllm: true, ollama: false },
+            recommended_runtime: "vllm",
+          },
+        ]}
+        embeddingProfiles={[]}
+        onStart={onStart}
+      />
+    );
+
+    fireEvent.click(screen.getByText(/LLM Fine-tune/i));
+
+    const warnings = screen.getAllByText(
+      /Selected runtime ollama has no compatible base model for self-learning/i,
+    );
+    assert.equal(warnings.length, 2);
+
+    const startButton = screen.getByRole("button", { name: /Start Self-Learning/i });
+    assert.equal((startButton as HTMLButtonElement).disabled, true);
+
+    await act(async () => {
+      fireEvent.click(startButton);
+    });
+
+    assert.equal(onStart.mock.callCount(), 0);
   });
 
   it("blocks rag start in strict policy when embedding fallback is active", async () => {

@@ -112,6 +112,21 @@ make test-catalog-check
 make pr-fast
 ```
 
+Minimal Academy contract after 196:
+
+- backend: `tests/test_academy_models_module.py` keeps `model_catalog.trainable_models` classification, runtime family gating, and canonical adapter metadata rules,
+- backend: `tests/test_academy_api_contracts.py` keeps end-to-end Academy route contracts (`training`, `self-learning`, adapter activation/deactivation, structured errors),
+- backend: `tests/test_academy_self_learning_routes.py` keeps structured `reason_code` error mapping for self-learning routes,
+- frontend: `web-next/tests/academy-training-picker.test.ts` and `web-next/tests/self-learning-ui.component.test.tsx` keep explicit `server + model + base_model` selection semantics,
+- frontend: `web-next/tests/self-learning-panel-error.test.tsx` and `web-next/tests/academy-api.test.ts` keep structured error presentation in UI,
+- frontend/browser: `web-next/tests/academy-smoke.spec.ts` keeps the canonical flow `repo_readmes -> adapter canonical metadata -> activate -> chat`.
+
+Rules:
+
+- tests must not encode fallback to `ACADEMY_DEFAULT_BASE_MODEL`, `LAST_MODEL_*`, or `LLM_MODEL_NAME` as valid Academy behavior,
+- adapters without canonical `metadata.json` are invalid artifacts and should be represented in tests as blocked/removed state, not repairable state,
+- Chat, Training, and Self-learning must all derive runtime/model selection from `/api/v1/system/llm-runtime/options`, not from separate hardcoded fixtures.
+
 ### Level 3: PR quality gates (mandatory before merge)
 
 Goal: align with CI and Sonar expectations.

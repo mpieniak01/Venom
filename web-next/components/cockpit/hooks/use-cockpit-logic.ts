@@ -58,6 +58,7 @@ import { useCockpitInteractiveState } from "./use-cockpit-interactive-state";
 import { useCockpitLayout } from "./use-cockpit-layout";
 import { useCockpitMacros } from "./use-cockpit-macros";
 import { useCockpitMetricsDisplay } from "./use-cockpit-metrics-display";
+import { resolveCockpitRuntimeModelSelection } from "@/lib/cockpit-runtime-selection";
 
 type Data = ReturnType<typeof useCockpitData>;
 type Interactive = ReturnType<typeof useCockpitInteractiveState>;
@@ -300,28 +301,25 @@ export function useCockpitLogic({
         }
     }, [data.history, interactive.state.historyDetail, interactive.setters]);
 
-    // Sync active server/model if selection is empty
+    // Sync active server from runtime state on initial load.
     useEffect(() => {
-        // Sync Server
         if (!interactive.state.selectedLlmServer && data.activeServerInfo?.active_server) {
             interactive.setters.setSelectedLlmServer(data.activeServerInfo.active_server);
-        }
-        // Sync Model
-        if (!interactive.state.selectedLlmModel && data.activeServerInfo?.active_model) {
-            interactive.setters.setSelectedLlmModel(data.activeServerInfo.active_model);
         }
     }, [
         data.activeServerInfo,
         interactive.state.selectedLlmServer,
-        interactive.state.selectedLlmModel,
         interactive.setters
     ]);
 
     useEffect(() => {
-        const runtimeTargets = data.llmRuntimeOptions?.runtimes ?? [];
+        const runtimeTargets = data.unifiedModelCatalog?.runtimes ?? [];
         const activeServer = (data.activeServerInfo?.active_server || "").trim();
         const effectiveServer = (interactive.state.selectedLlmServer || activeServer).trim();
         if (!effectiveServer) {
+            if (interactive.state.selectedLlmModel) {
+                interactive.setters.setSelectedLlmModel("");
+            }
             return;
         }
         const runtime = runtimeTargets.find((item) => item.runtime_id === effectiveServer);
@@ -329,38 +327,34 @@ export function useCockpitLogic({
             .filter((model) => model.chat_compatible !== false)
             .map((model) => model.name);
         if (runtimeModels.length === 0) {
+            if (interactive.state.selectedLlmModel) {
+                interactive.setters.setSelectedLlmModel("");
+            }
             return;
         }
-        const selectedModel = (interactive.state.selectedLlmModel || "").trim();
-        if (selectedModel && runtimeModels.includes(selectedModel)) {
+        const currentSelection = (interactive.state.selectedLlmModel || "").trim();
+        const selectedModel = resolveCockpitRuntimeModelSelection(
+            currentSelection,
+            runtimeModels,
+        );
+        if (selectedModel === currentSelection) {
             return;
         }
-        const lastModels = data.activeServerInfo?.last_models ?? {};
-        const runtimeKey = effectiveServer.toLowerCase();
-        let preferredFromRuntime = "";
-        if (runtimeKey === "ollama") {
-            preferredFromRuntime = String(lastModels.ollama || "").trim();
-        } else if (runtimeKey === "vllm") {
-            preferredFromRuntime = String(lastModels.vllm || "").trim();
+        if (!currentSelection && effectiveServer === activeServer) {
+            const activeModel = resolveCockpitRuntimeModelSelection(
+                (data.activeServerInfo?.active_model || "").trim(),
+                runtimeModels,
+            );
+            if (activeModel) {
+                interactive.setters.setSelectedLlmModel(activeModel);
+            }
+            return;
         }
-        const activeModel =
-            effectiveServer === activeServer
-                ? (data.activeServerInfo?.active_model || "").trim()
-                : "";
-        let nextModel = runtimeModels[0] || "";
-        if (preferredFromRuntime && runtimeModels.includes(preferredFromRuntime)) {
-            nextModel = preferredFromRuntime;
-        } else if (activeModel && runtimeModels.includes(activeModel)) {
-            nextModel = activeModel;
-        }
-        if (nextModel && nextModel !== selectedModel) {
-            interactive.setters.setSelectedLlmModel(nextModel);
-        }
+        interactive.setters.setSelectedLlmModel(selectedModel);
     }, [
         data.activeServerInfo?.active_model,
         data.activeServerInfo?.active_server,
-        data.activeServerInfo?.last_models,
-        data.llmRuntimeOptions?.runtimes,
+        data.unifiedModelCatalog?.runtimes,
         interactive.state.selectedLlmModel,
         interactive.state.selectedLlmServer,
         interactive.setters,
@@ -405,7 +399,6 @@ export function useCockpitLogic({
         selectedLlmServer: interactive.state.selectedLlmServer,
         selectedLlmModel: interactive.state.selectedLlmModel,
         activeServer: data.activeServerInfo?.active_server || "",
-        models: data.models?.models,
         setSelectedLlmModel: interactive.setters.setSelectedLlmModel,
         setActiveLlmRuntimeFn: setActiveLlmRuntime,
         setActiveLlmServerFn: setActiveLlmServer,

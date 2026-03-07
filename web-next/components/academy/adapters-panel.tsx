@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
 import {
   listAdapters,
+  auditAdapters,
   activateAdapter,
   deactivateAdapter,
   getUnifiedModelCatalog,
   type AdapterInfo,
+  type AdapterAuditItem,
+  resolveAcademyApiErrorMessage,
 } from "@/lib/academy-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
 
@@ -25,6 +28,10 @@ export function AdaptersPanel() {
   const [selectedRuntime, setSelectedRuntime] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [adapterDeploySupported, setAdapterDeploySupported] = useState(false);
+  const [adapterAuditById, setAdapterAuditById] = useState<Record<string, AdapterAuditItem>>(
+    {},
+  );
+  const [activationError, setActivationError] = useState<string>("");
 
   const loadRuntimeModels = useCallback(async (runtimeOverride?: string) => {
     const catalog = await getUnifiedModelCatalog();
@@ -46,7 +53,6 @@ export function AdaptersPanel() {
       runtimeOverride ||
       selectedRuntime ||
       activeRuntimeId ||
-      runtimeSelectOptions[0]?.value ||
       "";
     if (resolvedRuntime !== selectedRuntime) {
       setSelectedRuntime(resolvedRuntime);
@@ -68,18 +74,11 @@ export function AdaptersPanel() {
       label: model.name,
     }));
     setModelOptions(modelSelectOptions);
-    const activeModelId = String(catalog.active?.active_model || "").trim();
     setSelectedModel((current) => {
       if (current && modelSelectOptions.some((option) => option.value === current)) {
         return current;
       }
-      if (
-        activeModelId &&
-        modelSelectOptions.some((option) => option.value === activeModelId)
-      ) {
-        return activeModelId;
-      }
-      return modelSelectOptions[0]?.value || "";
+      return "";
     });
   }, [selectedRuntime]);
 
@@ -95,6 +94,30 @@ export function AdaptersPanel() {
       setLoading(false);
     }
   }, [loadRuntimeModels]);
+
+  const loadAdapterAudit = useCallback(async () => {
+    if (!selectedRuntime || !selectedModel) {
+      setAdapterAuditById({});
+      return;
+    }
+    try {
+      const payload = await auditAdapters({
+        runtime_id: selectedRuntime,
+        model_id: selectedModel,
+      });
+      const next = (payload.adapters ?? []).reduce<Record<string, AdapterAuditItem>>(
+        (acc, item) => {
+          acc[item.adapter_id] = item;
+          return acc;
+        },
+        {},
+      );
+      setAdapterAuditById(next);
+    } catch (error) {
+      console.error("Failed to load adapter audit:", error);
+      setAdapterAuditById({});
+    }
+  }, [selectedModel, selectedRuntime]);
 
   useEffect(() => {
     loadAdapters();
@@ -113,8 +136,23 @@ export function AdaptersPanel() {
     });
   }, [selectedRuntime, loadRuntimeModels]);
 
+  useEffect(() => {
+    loadAdapterAudit().catch((error) => {
+      console.error("Failed to refresh adapter audit:", error);
+    });
+  }, [loadAdapterAudit]);
+
   async function handleActivate(adapter: AdapterInfo) {
+    if (!selectedRuntime) {
+      setActivationError(t("academy.adapters.runtimeSelectionRequired"));
+      return;
+    }
+    if (!selectedModel) {
+      setActivationError(t("academy.adapters.modelSelectionRequired"));
+      return;
+    }
     try {
+      setActivationError("");
       setActivating(adapter.adapter_id);
       await activateAdapter({
         adapter_id: adapter.adapter_id,
@@ -124,8 +162,10 @@ export function AdaptersPanel() {
         deploy_to_chat_runtime: true,
       });
       await loadAdapters();
+      await loadAdapterAudit();
     } catch (err) {
       console.error("Failed to activate adapter:", err);
+      setActivationError(resolveAcademyApiErrorMessage(err));
     } finally {
       setActivating(null);
     }
@@ -134,16 +174,28 @@ export function AdaptersPanel() {
   async function handleDeactivate() {
     try {
       setDeactivating(true);
+      setActivationError("");
       await deactivateAdapter();
       await loadAdapters();
+      await loadAdapterAudit();
     } catch (err) {
       console.error("Failed to deactivate adapter:", err);
+      setActivationError(resolveAcademyApiErrorMessage(err));
     } finally {
       setDeactivating(false);
     }
   }
 
   const hasActiveAdapter = adapters.some(a => a.is_active);
+
+  const getAdapterAudit = (adapterId: string) => adapterAuditById[adapterId] ?? null;
+
+  const isAdapterBlocked = (adapterId: string) =>
+    getAdapterAudit(adapterId)?.category === "blocked_mismatch" ||
+    getAdapterAudit(adapterId)?.category === "blocked_unknown_base";
+
+  const isAdapterMetadataIncomplete = (adapter: AdapterInfo) =>
+    adapter.metadata_status === "metadata_incomplete";
 
   const getButtonContent = (adapterId: string, isActive: boolean) => {
     if (activating === adapterId) {
@@ -249,6 +301,11 @@ export function AdaptersPanel() {
           })}
         </p>
       ) : null}
+      {activationError ? (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+          {activationError}
+        </div>
+      ) : null}
 
       {/* Lista adapterów */}
       <div className="space-y-3">
@@ -261,7 +318,11 @@ export function AdaptersPanel() {
             </p>
           </div>
         ) : (
-          adapters.map((adapter) => (
+          adapters.map((adapter) => {
+            const audit = getAdapterAudit(adapter.adapter_id);
+            const blocked =
+              isAdapterBlocked(adapter.adapter_id) || isAdapterMetadataIncomplete(adapter);
+            return (
             <div
               key={adapter.adapter_id}
               className={`rounded-xl border p-6 ${
@@ -290,6 +351,12 @@ export function AdaptersPanel() {
                       <p className="mt-0.5 font-mono text-theme-secondary">{adapter.base_model}</p>
                     </div>
                     <div>
+                      <span className="text-theme-muted">{t("academy.adapters.targetRuntime")}:</span>
+                      <p className="mt-0.5 font-mono text-theme-secondary">
+                        {adapter.target_runtime || t("academy.training.runtimeUnknown")}
+                      </p>
+                    </div>
+                    <div>
                       <span className="text-theme-muted">{t("academy.adapters.createdAt")}:</span>
                       <p className="mt-0.5 text-theme-secondary">
                         {adapter.created_at === "unknown"
@@ -298,6 +365,30 @@ export function AdaptersPanel() {
                       </p>
                     </div>
                   </div>
+                  {isAdapterMetadataIncomplete(adapter) ? (
+                    <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs">
+                      <p className="font-medium text-amber-300">
+                        {t("academy.adapters.metadataIncomplete")}
+                      </p>
+                      <p className="mt-1 text-theme-muted">
+                        {t("academy.adapters.metadataIncompleteDescription")}
+                      </p>
+                    </div>
+                  ) : null}
+                  {audit ? (
+                    <div className="mt-3 rounded-lg border border-white/10 bg-black/10 p-3 text-xs">
+                      <p
+                        className={
+                          blocked ? "font-medium text-amber-300" : "font-medium text-emerald-300"
+                        }
+                      >
+                        {blocked
+                          ? t("academy.adapters.blocked")
+                          : t("academy.adapters.compatible")}
+                      </p>
+                      <p className="mt-1 text-theme-muted">{audit.message}</p>
+                    </div>
+                  ) : null}
 
                   {Object.keys(adapter.training_params).length > 0 && (
                     <div className="mt-2">
@@ -322,6 +413,7 @@ export function AdaptersPanel() {
                   onClick={() => handleActivate(adapter)}
                   disabled={
                     adapter.is_active ||
+                    blocked ||
                     activating === adapter.adapter_id ||
                     !selectedRuntime ||
                     !selectedModel ||
@@ -335,7 +427,8 @@ export function AdaptersPanel() {
                 </Button>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
 

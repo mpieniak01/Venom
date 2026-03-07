@@ -414,7 +414,7 @@ export async function handleSimpleTaskSend(params: {
         updateSimpleStream(clientId, { text: buffer, status: "COMPLETED", done: true });
         const duration = Date.now() - startedAt;
         const timestamp = new Date().toISOString();
-        const simpleModelName = selectedLlmModel || activeServerInfo?.active_model || undefined;
+        const simpleModelName = selectedLlmModel || undefined;
         const simpleEndpoint = activeServerInfo?.active_endpoint ?? undefined;
         setLocalSessionHistory((prev) => {
             const next = [...prev];

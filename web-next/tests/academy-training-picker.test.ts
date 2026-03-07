@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { TrainableModelInfo } from "../lib/academy-api";
-import { buildTrainingModelPickerOptions } from "../components/academy/training-panel";
+import {
+  buildTrainingModelPickerOptions,
+  resolveTrainingBaseModelSelection,
+} from "../components/academy/training-panel";
 
 function t(key: string): string {
   const dict: Record<string, string> = {
@@ -104,5 +107,33 @@ describe("academy training model picker options", () => {
     const options = buildTrainingModelPickerOptions(models, t);
     const sectionOption = options.find((option) => option.kind === "section");
     assert.equal(sectionOption?.sectionKey, "cloudFree");
+  });
+
+  it("does not auto-select a new base model when current selection is missing", () => {
+    const models: TrainableModelInfo[] = [
+      {
+        model_id: "gemma-3-4b-it",
+        label: "gemma local",
+        provider: "vllm",
+        trainable: true,
+        recommended: true,
+        installed_local: true,
+        source_type: "local",
+        cost_tier: "free",
+        priority_bucket: 0,
+        runtime_compatibility: { vllm: true, ollama: true },
+        recommended_runtime: "vllm",
+      },
+    ];
+
+    assert.equal(resolveTrainingBaseModelSelection("", models), "");
+    assert.equal(
+      resolveTrainingBaseModelSelection("missing-model", models),
+      "",
+    );
+    assert.equal(
+      resolveTrainingBaseModelSelection("gemma-3-4b-it", models),
+      "gemma-3-4b-it",
+    );
   });
 });

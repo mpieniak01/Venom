@@ -1,12 +1,9 @@
 "use client";
 
-type ModelDef = { name: string; provider?: string | null };
-
 export function useCockpitModelActivation(input: {
   selectedLlmServer: string;
   selectedLlmModel: string;
   activeServer: string;
-  models: ModelDef[] | undefined;
   setSelectedLlmModel: (model: string) => void;
   setActiveLlmRuntimeFn: (provider: string, model: string) => Promise<unknown>;
   setActiveLlmServerFn: (provider: string, model?: string) => Promise<unknown>;
@@ -18,7 +15,6 @@ export function useCockpitModelActivation(input: {
     selectedLlmServer,
     selectedLlmModel,
     activeServer,
-    models,
     setSelectedLlmModel,
     setActiveLlmRuntimeFn,
     setActiveLlmServerFn,
@@ -31,11 +27,7 @@ export function useCockpitModelActivation(input: {
     const previousModel = selectedLlmModel || "";
     setSelectedLlmModel(model);
 
-    let provider = selectedLlmServer || activeServer;
-    const modelDef = models?.find((m) => m.name === model);
-    if (modelDef?.provider) {
-      provider = modelDef.provider;
-    }
+    const provider = selectedLlmServer || activeServer;
 
     if (!provider) {
       pushToast(t("cockpit.modelActivation.providerMissing"), "warning");

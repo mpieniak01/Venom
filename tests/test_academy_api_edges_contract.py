@@ -99,7 +99,9 @@ def test_ensure_academy_enabled_raises_when_missing_dependencies(mock_settings):
 
 
 @patch("venom_core.config.SETTINGS")
-def test_list_adapters_without_metadata_file_uses_defaults(mock_settings, tmp_path):
+def test_list_adapters_without_metadata_file_is_marked_incomplete(
+    mock_settings, tmp_path
+):
     mock_settings.ENABLE_ACADEMY = True
     mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
     mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "base-model"
@@ -116,8 +118,10 @@ def test_list_adapters_without_metadata_file_uses_defaults(mock_settings, tmp_pa
     assert resp.status_code == 200
     payload = resp.json()
     assert len(payload) == 1
-    assert payload[0]["base_model"] == "base-model"
+    assert payload[0]["base_model"] == "unknown"
     assert payload[0]["created_at"] == "unknown"
+    assert payload[0]["metadata_status"] == "metadata_incomplete"
+    assert payload[0]["metadata_reason_code"] == "ADAPTER_METADATA_INCOMPLETE"
 
 
 @patch("venom_core.config.SETTINGS")
@@ -371,7 +375,7 @@ def test_curate_dataset_handles_unexpected_exception(mock_settings):
             json={"include_lessons": True, "include_git": False},
         )
 
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["success"] is False
+    assert resp.status_code == 500
+    payload = resp.json()["detail"]
+    assert payload["reason_code"] == "DATASET_CURATE_FAILED"
     assert "Failed to curate dataset" in payload["message"]

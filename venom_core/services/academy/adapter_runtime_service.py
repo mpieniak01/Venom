@@ -34,20 +34,8 @@ def _get_settings() -> Any:
 
 def _resolve_runtime_for_adapter_deploy(
     runtime_id: str | None,
-    *,
-    get_active_llm_runtime_fn: Any = get_active_llm_runtime,
-    settings_obj: Any | None = None,
 ) -> str:
-    requested = (runtime_id or "").strip().lower()
-    if requested:
-        return requested
-    active_runtime = get_active_llm_runtime_fn()
-    active_provider = str(getattr(active_runtime, "provider", "") or "").strip().lower()
-    if active_provider:
-        return active_provider
-    settings = settings_obj or _get_settings()
-    fallback = str(getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
-    return fallback or "ollama"
+    return (runtime_id or "").strip().lower()
 
 
 def _runtime_endpoint_for_hash(
@@ -61,39 +49,21 @@ def _runtime_endpoint_for_hash(
     return build_http_url("localhost", 11434, "/v1")
 
 
-def _first_runtime_with_previous_model(
-    *, config: Dict[str, Any], candidates: tuple[str, ...]
-) -> tuple[str | None, str]:
-    for candidate_runtime in candidates:
-        prev_value = str(
-            config.get(previous_model_key_for_server(candidate_runtime)) or ""
-        ).strip()
-        if prev_value:
-            return candidate_runtime, prev_value
-    return None, ""
-
-
 def _resolve_runtime_for_rollback(
     *,
     active_runtime: Any,
-    config: Dict[str, Any],
+    settings_obj: Any | None = None,
 ) -> tuple[str, str]:
     runtime_candidate = (
         str(getattr(active_runtime, "provider", "") or "").strip().lower()
     )
-    settings = _get_settings()
+    settings = settings_obj or _get_settings()
     runtime_candidate = (
         runtime_candidate
         or str(getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
     )
     runtime_local_id = _resolve_local_runtime_id(runtime_candidate)
-    if runtime_local_id is None:
-        inferred_runtime, _ = _first_runtime_with_previous_model(
-            config=config,
-            candidates=("ollama", "vllm"),
-        )
-        runtime_local_id = inferred_runtime
-    return runtime_local_id or "ollama", runtime_candidate
+    return runtime_local_id or "", runtime_candidate
 
 
 def _resolve_fallback_model_for_rollback(
@@ -103,19 +73,25 @@ def _resolve_fallback_model_for_rollback(
 ) -> tuple[str, str, str]:
     previous_key = previous_model_key_for_server(runtime_local_id)
     fallback_model = str(config.get(previous_key) or "").strip()
-    if fallback_model:
-        return runtime_local_id, previous_key, fallback_model
-    inferred_runtime, inferred_model = _first_runtime_with_previous_model(
-        config=config,
-        candidates=("ollama", "vllm"),
+    return runtime_local_id, previous_key, fallback_model
+
+
+def _resolve_current_runtime_state(
+    *,
+    active_runtime: Any,
+    settings_obj: Any | None = None,
+) -> tuple[str, str]:
+    settings = settings_obj or _get_settings()
+    runtime_candidate = (
+        str(getattr(active_runtime, "provider", "") or "").strip().lower()
+        or str(getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
     )
-    if not inferred_runtime:
-        return runtime_local_id, previous_key, ""
-    return (
-        inferred_runtime,
-        previous_model_key_for_server(inferred_runtime),
-        inferred_model,
+    runtime_local_id = _resolve_local_runtime_id(runtime_candidate) or ""
+    active_model = (
+        str(getattr(active_runtime, "model_name", "") or "").strip()
+        or str(getattr(settings, "LLM_MODEL_NAME", "") or "").strip()
     )
+    return runtime_local_id, active_model
 
 
 def _build_runtime_rollback_updates(
@@ -352,15 +328,7 @@ def _require_existing_adapter_artifact(*, adapter_dir: Path) -> Path:
 
 
 def _resolve_requested_runtime_model(model_id: str | None) -> str:
-    requested_model = str(model_id or "").strip()
-    if requested_model:
-        return requested_model
-    config_snapshot = config_manager.get_config(mask_secrets=False)
-    return str(
-        config_snapshot.get("LAST_MODEL_OLLAMA")
-        or config_snapshot.get("LLM_MODEL_NAME")
-        or ""
-    ).strip()
+    return str(model_id or "").strip()
 
 
 def _deploy_adapter_to_vllm_runtime(
@@ -373,6 +341,7 @@ def _deploy_adapter_to_vllm_runtime(
     build_vllm_runtime_model_from_adapter_fn: Any = _build_vllm_runtime_model_from_adapter,
     is_runtime_model_dir_fn: Any = _is_runtime_model_dir,
     restart_vllm_runtime_fn: Any = _restart_vllm_runtime,
+    get_active_llm_runtime_fn: Any = get_active_llm_runtime,
 ) -> Dict[str, Any]:
     settings = settings_obj or _get_settings()
     models_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
@@ -382,7 +351,6 @@ def _deploy_adapter_to_vllm_runtime(
         raise FileNotFoundError(ADAPTER_NOT_FOUND_DETAIL)
     base_model = _require_trusted_adapter_base_model(
         adapter_dir=adapter_dir,
-        default_model=str(getattr(settings, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
     ).strip()
     if not base_model:
         raise RuntimeError("Adapter base model is empty; cannot deploy to vLLM")
@@ -396,12 +364,13 @@ def _deploy_adapter_to_vllm_runtime(
             f"Failed to prepare runtime-usable vLLM model from adapter: {runtime_model_dir}"
         )
 
-    config = config_manager_obj.get_config(mask_secrets=False)
     last_model_key = "LAST_MODEL_VLLM"
     previous_model_key = previous_model_key_for_server("vllm")
-    previous_model = str(
-        config.get(last_model_key) or config.get("LLM_MODEL_NAME") or ""
-    ).strip()
+    active_runtime = get_active_llm_runtime_fn()
+    active_runtime_id, active_model = _resolve_current_runtime_state(
+        active_runtime=active_runtime,
+        settings_obj=settings,
+    )
     selected_model = f"venom-adapter-{adapter_id}"
     template_path = runtime_model_dir / "chat_template.jinja"
     updates: Dict[str, Any] = {
@@ -414,8 +383,8 @@ def _deploy_adapter_to_vllm_runtime(
         "VLLM_CHAT_TEMPLATE": str(template_path) if template_path.exists() else "",
         last_model_key: selected_model,
     }
-    if previous_model and previous_model != selected_model:
-        updates[previous_model_key] = previous_model
+    if active_runtime_id == "vllm" and active_model and active_model != selected_model:
+        updates[previous_model_key] = active_model
     endpoint = runtime_endpoint_for_hash_fn("vllm", settings_obj=settings)
     config_hash = compute_llm_config_hash_fn("vllm", endpoint, selected_model)
     updates["LLM_CONFIG_HASH"] = config_hash
@@ -457,6 +426,7 @@ def _handle_non_ollama_runtime_deploy(
     is_runtime_model_dir_fn: Any = _is_runtime_model_dir,
     restart_vllm_runtime_fn: Any = _restart_vllm_runtime,
     deploy_adapter_to_vllm_runtime_fn: Any | None = None,
+    get_active_llm_runtime_fn: Any = get_active_llm_runtime,
 ) -> Dict[str, Any]:
     if runtime_local_id == "onnx":
         return {
@@ -476,6 +446,7 @@ def _handle_non_ollama_runtime_deploy(
             build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
             is_runtime_model_dir_fn=is_runtime_model_dir_fn,
             restart_vllm_runtime_fn=restart_vllm_runtime_fn,
+            get_active_llm_runtime_fn=get_active_llm_runtime_fn,
         )
     return {}
 
@@ -522,11 +493,16 @@ def _deploy_adapter_to_chat_runtime(
         legacy_deps=legacy_deps,
     )
 
-    runtime_candidate = deps["resolve_runtime_for_adapter_deploy_fn"](
-        runtime_id,
-        get_active_llm_runtime_fn=deps["get_active_llm_runtime_fn"],
-        settings_obj=settings,
-    )
+    runtime_candidate = deps["resolve_runtime_for_adapter_deploy_fn"](runtime_id)
+    if not runtime_candidate:
+        raise ValueError(
+            "ADAPTER_RUNTIME_REQUIRED: Select target runtime before adapter activation."
+        )
+    requested_model = _resolve_requested_runtime_model(model_id)
+    if not requested_model:
+        raise ValueError(
+            "ADAPTER_RUNTIME_MODEL_REQUIRED: Select runtime model before adapter activation."
+        )
     runtime_local_id = _resolve_local_runtime_id(runtime_candidate)
     if runtime_local_id is None:
         return {
@@ -548,17 +524,15 @@ def _deploy_adapter_to_chat_runtime(
         is_runtime_model_dir_fn=deps["is_runtime_model_dir_fn"],
         restart_vllm_runtime_fn=deps["restart_vllm_runtime_fn"],
         deploy_adapter_to_vllm_runtime_fn=deps["deploy_adapter_to_vllm_runtime_fn"],
+        get_active_llm_runtime_fn=deps["get_active_llm_runtime_fn"],
     )
     if non_ollama_payload:
         return non_ollama_payload
-
-    requested_model = _resolve_requested_runtime_model(model_id)
 
     models_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
     adapter_base_model = deps["require_trusted_adapter_base_model_fn"](
         adapter_dir=adapter_dir,
-        default_model=str(getattr(settings, "ACADEMY_DEFAULT_BASE_MODEL", "")).strip(),
     ).strip()
     if adapter_base_model and requested_model:
         adapter_canonical = deps["canonical_runtime_model_id_fn"](adapter_base_model)
@@ -585,12 +559,13 @@ def _deploy_adapter_to_chat_runtime(
     if not deployed_model:
         raise RuntimeError("Failed to create Ollama model for adapter deployment")
 
-    config = deps["config_manager_obj"].get_config(mask_secrets=False)
     last_model_key = "LAST_MODEL_OLLAMA"
     previous_model_key = previous_model_key_for_server(runtime_local_id)
-    previous_model = str(
-        config.get(last_model_key) or config.get("LLM_MODEL_NAME") or ""
-    ).strip()
+    active_runtime = deps["get_active_llm_runtime_fn"]()
+    active_runtime_id, active_model = _resolve_current_runtime_state(
+        active_runtime=active_runtime,
+        settings_obj=settings,
+    )
     selected_model = str(deployed_model)
     updates: Dict[str, Any] = {
         "ACTIVE_LLM_SERVER": runtime_local_id,
@@ -598,8 +573,12 @@ def _deploy_adapter_to_chat_runtime(
         "HYBRID_LOCAL_MODEL": selected_model,
         last_model_key: selected_model,
     }
-    if previous_model and previous_model != selected_model:
-        updates[previous_model_key] = previous_model
+    if (
+        active_runtime_id == runtime_local_id
+        and active_model
+        and active_model != selected_model
+    ):
+        updates[previous_model_key] = active_model
     endpoint = deps["runtime_endpoint_for_hash_fn"](
         runtime_local_id,
         settings_obj=settings,
@@ -641,8 +620,15 @@ def _rollback_chat_runtime_after_adapter_deactivation(
     config = config_manager_obj.get_config(mask_secrets=False)
     runtime_local_id, _ = _resolve_runtime_for_rollback(
         active_runtime=active_runtime,
-        config=config,
+        settings_obj=settings,
     )
+
+    if not runtime_local_id:
+        return {
+            "rolled_back": False,
+            "reason": "runtime_not_local",
+            "runtime_id": "",
+        }
 
     if runtime_local_id == "onnx":
         return {

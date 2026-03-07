@@ -30,8 +30,9 @@ Academy training/inference compatibility contract:
   - `trainable_models` include `runtime_compatibility` and `recommended_runtime` derived from available local stack,
   - `trainable_models` include `source_type`, `cost_tier`, `priority_bucket` for local-first ordering.
 - `POST /api/v1/academy/adapters/activate`
-  - accepts optional `runtime_id`,
+  - requires explicit `runtime_id` and `model_id` when `deploy_to_chat_runtime=true`,
   - rejects incompatible `base_model + adapter + runtime` combinations with `400`.
+  - blocks adapters without canonical `metadata.json`; legacy repair is not part of the runtime contract.
 
 ## Profile Definitions
 

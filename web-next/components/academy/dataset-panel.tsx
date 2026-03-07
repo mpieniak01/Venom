@@ -21,6 +21,7 @@ import {
   listDatasetConversionFiles,
   deleteDatasetUpload,
   previewDataset,
+  resolveAcademyApiErrorMessage,
   type DatasetResponse,
   type DatasetConversionFileInfo,
   type UploadFileInfo,
@@ -136,7 +137,7 @@ export function DatasetPanel() {
       pushToast(t("academy.dataset.fileDeleted"), "success");
     } catch (err) {
       console.error("Failed to delete upload:", err);
-      pushToast(t("academy.dataset.deleteFileFailed"), "error");
+      pushToast(resolveAcademyApiErrorMessage(err), "error");
     }
   }
 
@@ -169,7 +170,7 @@ export function DatasetPanel() {
       setPreview(data);
     } catch (err) {
       console.error("Failed to preview dataset:", err);
-      pushToast(t("academy.dataset.previewFailed"), "error");
+      pushToast(resolveAcademyApiErrorMessage(err), "error");
     } finally {
       setPreviewing(false);
     }
@@ -202,7 +203,7 @@ export function DatasetPanel() {
           avg_input_length: 0,
           avg_output_length: 0,
         },
-        message: err instanceof Error ? err.message : t("academy.dataset.curateFailed"),
+        message: resolveAcademyApiErrorMessage(err),
       });
     } finally {
       setLoading(false);

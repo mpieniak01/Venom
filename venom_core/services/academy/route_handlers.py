@@ -569,45 +569,13 @@ async def activate_adapter_handler(
             runtime_id=requested_runtime_id,
             model_id=requested_model_id,
         )
-
-    except academy.AcademyRouteError as e:
-        raise academy._to_http_exception(e) from e
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=_value_error_detail_with_reason_code(
-                e,
-                adapter_id=requested_adapter_id or None,
-                requested_runtime_id=requested_runtime_id or None,
-                requested_model_id=requested_model_id or None,
-            ),
-        ) from e
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Adapter not found") from None
-    except RuntimeError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=_error_detail_with_reason_code(
-                reason_code="ADAPTER_ACTIVATION_FAILED",
-                message=str(e),
-                adapter_id=requested_adapter_id or None,
-                requested_runtime_id=requested_runtime_id or None,
-                requested_model_id=requested_model_id or None,
-            ),
-        ) from e
-    except HTTPException:
-        raise
-    except Exception as e:
-        academy.logger.error(f"Failed to activate adapter: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=_error_detail_with_reason_code(
-                reason_code="ADAPTER_ACTIVATION_FAILED",
-                message=f"Failed to activate adapter: {str(e)}",
-                adapter_id=requested_adapter_id or None,
-                requested_runtime_id=requested_runtime_id or None,
-                requested_model_id=requested_model_id or None,
-            ),
+    except Exception as exc:
+        _raise_adapter_activation_http_exception(
+            academy=academy,
+            exc=exc,
+            adapter_id=requested_adapter_id,
+            requested_runtime_id=requested_runtime_id,
+            requested_model_id=requested_model_id,
         )
 
 
@@ -656,6 +624,50 @@ def _activate_adapter(
         model_id=model_id or None,
         deploy_to_chat_runtime=bool(getattr(request, "deploy_to_chat_runtime", False)),
     )
+
+
+def _raise_adapter_activation_http_exception(
+    *,
+    academy: Any,
+    exc: Exception,
+    adapter_id: str,
+    requested_runtime_id: str,
+    requested_model_id: str,
+) -> None:
+    context = {
+        "adapter_id": adapter_id or None,
+        "requested_runtime_id": requested_runtime_id or None,
+        "requested_model_id": requested_model_id or None,
+    }
+    if isinstance(exc, academy.AcademyRouteError):
+        raise academy._to_http_exception(exc) from exc
+    if isinstance(exc, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail=_value_error_detail_with_reason_code(exc, **context),
+        ) from exc
+    if isinstance(exc, FileNotFoundError):
+        raise HTTPException(status_code=404, detail="Adapter not found") from None
+    if isinstance(exc, RuntimeError):
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="ADAPTER_ACTIVATION_FAILED",
+                message=str(exc),
+                **context,
+            ),
+        ) from exc
+    if isinstance(exc, HTTPException):
+        raise exc
+    academy.logger.error(f"Failed to activate adapter: {exc}", exc_info=True)
+    raise HTTPException(
+        status_code=500,
+        detail=_error_detail_with_reason_code(
+            reason_code="ADAPTER_ACTIVATION_FAILED",
+            message=f"Failed to activate adapter: {str(exc)}",
+            **context,
+        ),
+    ) from exc
 
 
 def deactivate_adapter_handler(*, req: Request, academy: Any) -> Dict[str, Any]:

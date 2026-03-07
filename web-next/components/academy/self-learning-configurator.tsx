@@ -691,19 +691,21 @@ function ModeSection({
   );
 }
 
+type RuntimePreflightSectionProps = Readonly<{
+  t: TranslateFn;
+  selectedRuntime: string;
+  effectiveBaseModel: string;
+  effectiveCompatibility: string[];
+  hasCompatibleTrainableModels: boolean;
+}>;
+
 function RuntimePreflightSection({
   t,
   selectedRuntime,
   effectiveBaseModel,
   effectiveCompatibility,
   hasCompatibleTrainableModels,
-}: {
-  t: TranslateFn;
-  selectedRuntime: string;
-  effectiveBaseModel: string;
-  effectiveCompatibility: string[];
-  hasCompatibleTrainableModels: boolean;
-}) {
+}: RuntimePreflightSectionProps) {
   return (
     <div className="space-y-1 rounded-lg border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] px-3 py-2 text-xs text-[color:var(--text-primary)]">
       <p className="font-semibold text-[color:var(--text-heading)]">

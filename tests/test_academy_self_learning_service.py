@@ -10,7 +10,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from venom_core.config import SETTINGS
-from venom_core.services.academy.self_learning_service import SelfLearningService
+from venom_core.services.academy.self_learning_service import (
+    RagConfig,
+    SelfLearningService,
+)
 
 
 class DummyEmbeddingService:
@@ -478,6 +481,43 @@ def test_resolve_default_embedding_profile_id_falls_back_to_first_profile(
     ]
 
     assert service._resolve_default_embedding_profile_id() == "profile-a"
+
+
+def test_apply_mode_defaults_assigns_default_embedding_profile_for_rag(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    rag_config = RagConfig()
+    service._resolve_default_embedding_profile_id = lambda: "local:default"  # type: ignore[method-assign]
+
+    service._apply_mode_defaults(mode="rag_index", rag_config=rag_config)
+
+    assert rag_config.embedding_profile_id == "local:default"
+
+
+def test_fetch_local_models_sync_returns_list_from_sync_manager(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        model_manager=MagicMock(
+            list_local_models=MagicMock(return_value=[{"id": "m1"}])
+        ),
+    )
+
+    assert service._fetch_local_models_sync() == [{"id": "m1"}]
+
+
+def test_fetch_local_models_sync_returns_empty_on_manager_error(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        model_manager=MagicMock(
+            list_local_models=MagicMock(side_effect=RuntimeError("boom"))
+        ),
+    )
+
+    assert service._fetch_local_models_sync() == []
 
 
 def test_start_run_rejects_rag_without_embedding_profile(tmp_path: Path):

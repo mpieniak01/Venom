@@ -99,6 +99,38 @@ def test_start_self_learning(client: TestClient, mock_service: MagicMock):
     assert data["message"]
 
 
+def test_self_learning_error_detail_with_reason_code_filters_blank_context() -> None:
+    detail = routes._error_detail_with_reason_code(
+        reason_code="SELF_LEARNING_TEST",
+        message="boom",
+        requested_runtime_id="ollama",
+        requested_base_model=" ",
+    )
+
+    assert detail == {
+        "error": "SELF_LEARNING_TEST",
+        "message": "boom",
+        "reason_code": "SELF_LEARNING_TEST",
+        "requested_runtime_id": "ollama",
+    }
+
+
+def test_self_learning_value_error_detail_with_reason_code_structures_context() -> None:
+    detail = routes._value_error_detail_with_reason_code(
+        ValueError("MODEL_RUNTIME_INCOMPATIBLE: Base model does not match runtime"),
+        requested_runtime_id="ollama",
+        requested_base_model="gemma-3-4b-it",
+    )
+
+    assert detail == {
+        "error": "MODEL_RUNTIME_INCOMPATIBLE",
+        "message": "Base model does not match runtime",
+        "reason_code": "MODEL_RUNTIME_INCOMPATIBLE",
+        "requested_runtime_id": "ollama",
+        "requested_base_model": "gemma-3-4b-it",
+    }
+
+
 def test_start_self_learning_passes_llm_dataset_fields(
     client: TestClient, mock_service: MagicMock
 ):
@@ -182,6 +214,20 @@ def test_get_self_learning_status_not_found(
     assert response.status_code == 404
 
 
+def test_get_self_learning_status_internal_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.get_status.side_effect = RuntimeError("boom")
+    response = client.get(
+        "/api/v1/academy/self-learning/6de0cc81-77db-4bbf-a598-b66c7a8d45e8/status"
+    )
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "SELF_LEARNING_STATUS_FAILED"
+    assert detail["run_id"] == "6de0cc81-77db-4bbf-a598-b66c7a8d45e8"
+    assert detail["message"] == "Failed to get self-learning status: boom"
+
+
 def test_start_self_learning_validation_error(
     client: TestClient, mock_service: MagicMock
 ):
@@ -202,6 +248,37 @@ def test_start_self_learning_validation_error(
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "bad request"
+
+
+def test_start_self_learning_reason_code_value_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.start_run.side_effect = ValueError(
+        "MODEL_RUNTIME_INCOMPATIBLE: Base model does not match runtime"
+    )
+    response = client.post(
+        "/api/v1/academy/self-learning/start",
+        json={
+            "mode": "llm_finetune",
+            "sources": ["repo_readmes"],
+            "limits": {
+                "max_file_size_kb": 256,
+                "max_files": 500,
+                "max_total_size_mb": 50,
+            },
+            "llm_config": {
+                "base_model": "gemma-3-4b-it",
+                "runtime_id": "ollama",
+            },
+            "dry_run": True,
+        },
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "MODEL_RUNTIME_INCOMPATIBLE"
+    assert detail["requested_runtime_id"] == "ollama"
+    assert detail["requested_base_model"] == "gemma-3-4b-it"
+    assert detail["message"] == "Base model does not match runtime"
 
 
 def test_start_self_learning_structured_validation_error(

@@ -67,6 +67,64 @@ def test_collect_scope_counts_only_enabled_parts() -> None:
     assert counts == {"lessons": 6, "git": 0, "task_history": 5}
 
 
+def test_value_error_detail_with_reason_code_includes_context() -> None:
+    detail = route_handlers._value_error_detail_with_reason_code(
+        ValueError("MODEL_RUNTIME_REQUIRED: Select runtime first"),
+        requested_runtime_id="ollama",
+        requested_model_id="",
+    )
+
+    assert detail == {
+        "error": "MODEL_RUNTIME_REQUIRED",
+        "message": "Select runtime first",
+        "reason_code": "MODEL_RUNTIME_REQUIRED",
+        "requested_runtime_id": "ollama",
+    }
+
+
+def test_error_detail_with_reason_code_ignores_blank_context() -> None:
+    detail = route_handlers._error_detail_with_reason_code(
+        reason_code="TEST_ERROR",
+        message="boom",
+        adapter_id="a1",
+        requested_runtime_id=" ",
+    )
+
+    assert detail == {
+        "error": "TEST_ERROR",
+        "message": "boom",
+        "reason_code": "TEST_ERROR",
+        "adapter_id": "a1",
+    }
+
+
+def test_resolve_activation_runtime_id_prefers_explicit_runtime() -> None:
+    request = SimpleNamespace(runtime_id=" Ollama ", deploy_to_chat_runtime=True)
+
+    assert route_handlers._resolve_activation_runtime_id(request=request) == "Ollama"
+
+
+def test_resolve_activation_runtime_id_returns_empty_when_deploy_enabled_without_runtime() -> (
+    None
+):
+    request = SimpleNamespace(runtime_id="", deploy_to_chat_runtime=True)
+
+    assert route_handlers._resolve_activation_runtime_id(request=request) == ""
+
+
+def test_resolve_activation_runtime_id_falls_back_to_active_runtime_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = SimpleNamespace(runtime_id="", deploy_to_chat_runtime=False)
+    monkeypatch.setattr(
+        route_handlers,
+        "get_active_llm_runtime",
+        lambda: SimpleNamespace(provider="vllm"),
+    )
+
+    assert route_handlers._resolve_activation_runtime_id(request=request) == "vllm"
+
+
 @pytest.mark.asyncio
 async def test_list_adapters_handler_maps_generic_error_to_http_500() -> None:
     academy = _build_academy_base()
@@ -138,6 +196,69 @@ def test_audit_adapters_handler_maps_generic_error_to_structured_http_500() -> N
         "requested_runtime_id": "ollama",
         "requested_model_id": "gemma3:latest",
     }
+
+
+def test_raise_adapter_activation_http_exception_maps_academy_route_error() -> None:
+    academy = _build_academy_base()
+
+    with pytest.raises(HTTPException) as exc:
+        route_handlers._raise_adapter_activation_http_exception(
+            academy=academy,
+            exc=_AcademyRouteError(status_code=409, detail="route error"),
+            adapter_id="a1",
+            requested_runtime_id="ollama",
+            requested_model_id="gemma3:latest",
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == "route error"
+
+
+def test_raise_adapter_activation_http_exception_maps_runtime_error() -> None:
+    academy = _build_academy_base()
+
+    with pytest.raises(HTTPException) as exc:
+        route_handlers._raise_adapter_activation_http_exception(
+            academy=academy,
+            exc=RuntimeError("boom"),
+            adapter_id="a1",
+            requested_runtime_id="ollama",
+            requested_model_id="gemma3:latest",
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "adapter_id": "a1",
+        "error": "ADAPTER_ACTIVATION_FAILED",
+        "message": "boom",
+        "reason_code": "ADAPTER_ACTIVATION_FAILED",
+        "requested_model_id": "gemma3:latest",
+        "requested_runtime_id": "ollama",
+    }
+
+
+def test_raise_adapter_activation_http_exception_maps_generic_error() -> None:
+    academy = _build_academy_base()
+
+    with pytest.raises(HTTPException) as exc:
+        route_handlers._raise_adapter_activation_http_exception(
+            academy=academy,
+            exc=Exception("boom"),
+            adapter_id="a1",
+            requested_runtime_id="ollama",
+            requested_model_id="gemma3:latest",
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "adapter_id": "a1",
+        "error": "ADAPTER_ACTIVATION_FAILED",
+        "message": "Failed to activate adapter: boom",
+        "reason_code": "ADAPTER_ACTIVATION_FAILED",
+        "requested_model_id": "gemma3:latest",
+        "requested_runtime_id": "ollama",
+    }
+    assert academy.logger.errors == ["Failed to activate adapter: boom"]
 
 
 @pytest.mark.asyncio

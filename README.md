@@ -226,7 +226,8 @@ Protocol policy:
 
 ### Most common commands
 ```bash
-make start       # backend + frontend (dev)
+make start       # backend + frontend (webpack-safe dev)
+make start2      # backend + frontend (turbopack dev)
 make stop        # stop services
 make status      # process status
 make start-prod  # production mode

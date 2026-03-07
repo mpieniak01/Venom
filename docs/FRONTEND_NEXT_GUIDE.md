@@ -83,7 +83,7 @@ Requirements:
   - `web-next/tests/operations-i18n-keys.test.ts`
 
 ### 0.3.2 Turbopack stability workflow (PR 193)
-- For stack launchers, treat Turbopack as default daily mode (`make start`), and use webpack as fallback (`make start2` / `make web-dev`).
+- For stack launchers, use webpack-safe mode as default (`make start`) and Turbopack as alternative (`make start2` / `make web-dev-turbo`).
 - Before reporting Turbopack instability, run:
   - `npm --prefix web-next run test:dev:turbo:smoke:clean`
 - CI automation available in:
@@ -95,10 +95,10 @@ Requirements:
 ### 0.3.3 Makefile wrappers (stack launch)
 From repository root, you can use:
 - `make start` / `make stop` / `make status` (full stack lifecycle).
-- `make start2` (full stack lifecycle with webpack frontend fallback).
+- `make start2` (full stack lifecycle with Turbopack frontend).
 - `make api-dev` (backend only).
 - `make web-dev` (frontend only, webpack fallback).
-- `make web-dev-turbo` / `make web-dev-turbo-debug` (frontend only, turbopack primary path).
+- `make web-dev-turbo` / `make web-dev-turbo-debug` (frontend only, turbopack opt-in path).
 - `make test-web-turbo-smoke-clean` (turbopack regression smoke).
 
 ### 0.4 Configuration and proxy

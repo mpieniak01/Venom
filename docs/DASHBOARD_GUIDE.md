@@ -24,8 +24,8 @@ npm --prefix web-next run dev:turbo    # optional Turbopack mode
 Stack presets (from repo root):
 
 ```bash
-make start   # full dev stack: backend + web-next (turbopack) + active LLM runtime
-make start2  # full dev stack: backend + web-next (webpack fallback) + active LLM runtime
+make start   # full dev stack: backend + web-next (webpack-safe dev) + active LLM runtime
+make start2  # full dev stack: backend + web-next (turbopack) + active LLM runtime
 ```
 
 Most important frontend environment variables:
@@ -51,8 +51,8 @@ API_PROXY_TARGET=http://localhost:8000              # Next rewriter target (dev)
 Use `Makefile` wrappers from repository root (`/home/ubuntu/venom`) to keep backend/frontend/runtime consistent.
 
 ```bash
-make start                    # full stack (backend + frontend + active LLM runtime)
-make start2                   # full stack (backend + frontend on webpack fallback + active LLM runtime)
+make start                    # full stack (backend + frontend on webpack-safe dev + active LLM runtime)
+make start2                   # full stack (backend + frontend on turbopack + active LLM runtime)
 make stop                     # stop full stack
 make status                   # runtime/process status
 ```
@@ -62,14 +62,14 @@ Light/targeted modes:
 ```bash
 make api-dev                  # backend only (uvicorn --reload)
 make web-dev                  # frontend only (webpack fallback)
-make web-dev-turbo            # frontend only (turbopack, default dev mode)
+make web-dev-turbo            # frontend only (turbopack, opt-in mode)
 make web-dev-turbo-debug      # turbopack with extended debug logs
 make test-web-turbo-smoke-clean # regression smoke for dev:turbo
 ```
 
 Operational rule:
 1. Keep one active `next dev` instance at a time to avoid `.next/dev/lock` conflicts.
-2. Treat `web-dev-turbo` (Turbopack) as default daily mode; use `web-dev` (webpack) as fallback path.
+2. For full stack launchers use `make start` (webpack-safe) by default; use `make start2` (turbopack) when you need Turbopack flow.
 
 ### 1.5 Structure
 ```

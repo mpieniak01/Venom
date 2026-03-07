@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import path from "path";
 
 const API_PROXY_TARGET =
   process.env.API_PROXY_TARGET ||
@@ -11,14 +10,13 @@ const WATCH_POLL_INTERVAL_MS = Number(process.env.NEXT_WATCH_POLL_INTERVAL_MS ||
 const nextConfig: NextConfig = {
   // Ułatwia deployment produkcyjny (docker / serverless)
   output: "standalone",
-  // Pozwala uniknąć ostrzeżeń przy wielu lockfile w repo (monorepo).
-  outputFileTracingRoot: path.join(__dirname, ".."),
+  // Tracing i watcher dev muszą pracować na tym samym workspace root,
+  // inaczej Next 16 ignoruje turbopack.root i wraca do szerszego zakresu repo.
+  outputFileTracingRoot: TURBOPACK_ROOT,
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion", "chart.js", "mermaid"],
   },
   // Dev watcher musi być ograniczony do samego workspace frontendu.
-  // Produkcyjny tracing może dalej obejmować root repo, ale Turbopack nie powinien
-  // próbować obserwować całego monorepo z logs/data/test-results.
   turbopack: {
     root: TURBOPACK_ROOT,
   },

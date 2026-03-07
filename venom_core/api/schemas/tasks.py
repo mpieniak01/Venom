@@ -140,6 +140,8 @@ class HistoryRequestSummary(BaseModel):
     llm_endpoint: str | None = None
     llm_config_hash: str | None = None
     llm_runtime_id: str | None = None
+    adapter_applied: bool | None = None
+    adapter_id: str | None = None
     forced_tool: str | None = None
     forced_provider: str | None = None
     forced_intent: str | None = None
@@ -169,6 +171,8 @@ class HistoryRequestDetail(BaseModel):
     llm_endpoint: str | None = None
     llm_config_hash: str | None = None
     llm_runtime_id: str | None = None
+    adapter_applied: bool | None = None
+    adapter_id: str | None = None
     forced_tool: str | None = None
     forced_provider: str | None = None
     forced_intent: str | None = None

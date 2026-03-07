@@ -137,7 +137,8 @@ export function DatasetPanel() {
       pushToast(t("academy.dataset.fileDeleted"), "success");
     } catch (err) {
       console.error("Failed to delete upload:", err);
-      pushToast(resolveAcademyApiErrorMessage(err), "error");
+      const resolved = resolveAcademyApiErrorMessage(err);
+      pushToast(resolved || t("academy.common.unknownError"), "error");
     }
   }
 
@@ -170,7 +171,8 @@ export function DatasetPanel() {
       setPreview(data);
     } catch (err) {
       console.error("Failed to preview dataset:", err);
-      pushToast(resolveAcademyApiErrorMessage(err), "error");
+      const resolved = resolveAcademyApiErrorMessage(err);
+      pushToast(resolved || t("academy.common.unknownError"), "error");
     } finally {
       setPreviewing(false);
     }
@@ -193,6 +195,7 @@ export function DatasetPanel() {
       setResult(data);
     } catch (err) {
       console.error("Failed to curate dataset:", err);
+      const resolved = resolveAcademyApiErrorMessage(err);
       setResult({
         success: false,
         statistics: {
@@ -203,7 +206,7 @@ export function DatasetPanel() {
           avg_input_length: 0,
           avg_output_length: 0,
         },
-        message: resolveAcademyApiErrorMessage(err),
+        message: resolved || t("academy.common.unknownError"),
       });
     } finally {
       setLoading(false);

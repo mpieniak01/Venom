@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
@@ -219,6 +220,21 @@ async def start_training_handler(
                 runtime_id=request.runtime_id,
                 manager=academy._get_model_manager(),
             )
+        resolve_training_base_model = getattr(
+            academy.academy_training,
+            "resolve_training_base_model",
+            None,
+        )
+        training_base_model = base_model
+        if callable(resolve_training_base_model):
+            training_base_model = await resolve_training_base_model(
+                base_model=base_model,
+                manager=academy._get_model_manager(),
+            )
+        if not str(training_base_model or "").strip():
+            raise ValueError(
+                "MODEL_TRAINING_BASE_UNRESOLVED: Failed to resolve concrete training base model"
+            )
 
         job_id = f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         output_dir = Path(SETTINGS.ACADEMY_MODELS_DIR) / job_id
@@ -229,6 +245,7 @@ async def start_training_handler(
             base_model=base_model,
             output_dir=output_dir,
             request=request,
+            training_base_model=training_base_model,
         )
         job_id = str(job_record["job_id"])
         academy._save_job_to_history(job_record)
@@ -237,7 +254,7 @@ async def start_training_handler(
         try:
             job_info = habitat.run_training_job(
                 dataset_path=dataset_path,
-                base_model=base_model,
+                base_model=training_base_model,
                 output_dir=str(output_dir),
                 lora_rank=request.lora_rank,
                 learning_rate=request.learning_rate,
@@ -561,7 +578,7 @@ async def activate_adapter_handler(
             request=request,
             requested_runtime_id=requested_runtime_id,
         )
-        return _activate_adapter(
+        return await _activate_adapter(
             academy=academy,
             manager=manager,
             request=request,
@@ -608,7 +625,7 @@ async def _prepare_adapter_activation(
     )
 
 
-def _activate_adapter(
+async def _activate_adapter(
     *,
     academy: Any,
     manager: Any,
@@ -617,7 +634,8 @@ def _activate_adapter(
     runtime_id: str,
     model_id: str,
 ) -> Dict[str, Any]:
-    return academy.academy_models.activate_adapter(
+    return await asyncio.to_thread(
+        academy.academy_models.activate_adapter,
         mgr=manager,
         adapter_id=adapter_id,
         runtime_id=runtime_id or None,

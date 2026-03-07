@@ -68,6 +68,8 @@ class RequestTrace(BaseModel):
     llm_endpoint: Optional[str] = None
     llm_config_hash: Optional[str] = None
     llm_runtime_id: Optional[str] = None
+    adapter_applied: Optional[bool] = None
+    adapter_id: Optional[str] = None
     forced_tool: Optional[str] = None
     forced_provider: Optional[str] = None
     forced_intent: Optional[str] = None
@@ -486,6 +488,8 @@ class RequestTracer:
         endpoint = endpoint or metadata.get("endpoint")
         config_hash = metadata.get("config_hash")
         runtime_id = metadata.get("runtime_id")
+        adapter_applied = metadata.get("adapter_applied")
+        adapter_id = metadata.get("adapter_id")
 
         with self._traces_lock:
             trace = self._traces.get(request_id)
@@ -500,6 +504,20 @@ class RequestTracer:
             trace.llm_endpoint = endpoint
             trace.llm_config_hash = config_hash
             trace.llm_runtime_id = runtime_id
+            if isinstance(adapter_applied, bool):
+                trace.adapter_applied = adapter_applied
+            elif adapter_applied is None:
+                trace.adapter_applied = None
+            else:
+                trace.adapter_applied = str(adapter_applied).strip().lower() in {
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                }
+            trace.adapter_id = (
+                str(adapter_id).strip() if adapter_id is not None else None
+            ) or None
 
         self._save_traces()
         logger.debug(

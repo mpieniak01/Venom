@@ -89,6 +89,10 @@ export const cockpitLocale = {
       providerLabel: "Server / Provider",
       endpointLabel: "Endpoint",
       runtimeIdLabel: "Runtime ID",
+      adapterAppliedLabel: "Adapter",
+      adapterAppliedYes: "yes (request via adapter)",
+      adapterAppliedNo: "no (base model)",
+      adapterIdLabel: "Adapter ID",
       uiTimingsTitle: "UI timings",
       uiTimingHistory: "submit → history",
       feedbackTitle: "Feedback",
@@ -148,6 +152,10 @@ export const cockpitLocale = {
       activeAdapterNone: "No active adapter for the current audit context.",
       activeAdapterSwitchHint:
         "Switch runtime model to one compatible with the adapter base or disable the adapter before continuing.",
+      adapterSelectionBaseHint:
+        "No adapter selected: requests are sent with the base model only.",
+      adapterSelectionAdapterHint:
+        "Adapter selected: requests should run through the active adapter for this server and model.",
       adapterIncompatible: "incompatible with runtime {{runtime}}",
       adapterRuntimeNotSupported: "chat adapter deploy is not supported for runtime {{runtime}}",
       runtimeModelAuditWarning:

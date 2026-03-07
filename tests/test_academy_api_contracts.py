@@ -441,8 +441,16 @@ def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tm
             self.active_adapter_id = None
             return True
 
-        def create_ollama_modelfile(self, *, version_id: str, output_name: str) -> str:
+        def create_ollama_modelfile(
+            self,
+            *,
+            version_id: str,
+            output_name: str,
+            from_model: str | None = None,
+            use_experimental: bool = False,
+        ) -> str:
             assert version_id
+            assert from_model
             return output_name
 
     class _FakeSelfLearningService:
@@ -512,12 +520,22 @@ def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tm
                 json.dumps(
                     {
                         "metadata_version": 2,
+                        "adapter_id": self.adapter_id,
+                        "run_id": self.run_id,
                         "base_model": "gemma-3-4b-it",
+                        "requested_base_model": "gemma-3-4b-it",
                         "effective_base_model": "gemma-3-4b-it",
+                        "requested_runtime_id": "ollama",
+                        "effective_runtime_id": "ollama",
                         "created_at": "2026-03-07T10:00:00+00:00",
+                        "started_at": "2026-03-07T10:00:01+00:00",
+                        "finished_at": "2026-03-07T10:00:30+00:00",
                         "source_flow": "self_learning",
+                        "source": "self_learning",
+                        "dataset_path": str(self.repo_root / "README_PL.md"),
                         "parameters": {
                             "runtime_id": "ollama",
+                            "training_base_model": "gemma-3-4b-it",
                             "lora_rank": 8,
                             "learning_rate": 0.0002,
                             "num_epochs": 2,
@@ -685,6 +703,13 @@ def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tm
         assert len(adapters_payload) == 1
         assert adapters_payload[0]["adapter_id"] == self_learning_service.adapter_id
         assert adapters_payload[0]["base_model"] == "gemma-3-4b-it"
+        assert adapters_payload[0]["metadata_status"] == "canonical"
+        assert adapters_payload[0]["target_runtime"] == "ollama"
+        assert adapters_payload[0]["source_flow"] == "self_learning"
+        assert (
+            adapters_payload[0]["training_params"]["training_base_model"]
+            == "gemma-3-4b-it"
+        )
 
         activate_response = client.post(
             "/api/v1/academy/adapters/activate",

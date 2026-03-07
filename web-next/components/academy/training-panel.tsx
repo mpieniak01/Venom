@@ -254,7 +254,8 @@ export function TrainingPanel() {
       pushToast(response.message, "success");
       await loadJobs();
     } catch (err) {
-      pushToast(resolveAcademyApiErrorMessage(err), "error");
+      const resolved = resolveAcademyApiErrorMessage(err);
+      pushToast(resolved || t("academy.common.unknownError"), "error");
       if (!(err instanceof ApiError && err.status === 400)) {
         console.error("Failed to start training:", err);
       }

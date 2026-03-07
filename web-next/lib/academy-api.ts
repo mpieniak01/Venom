@@ -9,10 +9,12 @@ import { getApiBaseUrl } from "./env";
 
 type StructuredAcademyErrorDetail = {
   message?: unknown;
+  reason_code?: unknown;
   adapter_id?: unknown;
   requested_runtime_id?: unknown;
   requested_base_model?: unknown;
   requested_model_id?: unknown;
+  compatible_runtimes?: unknown;
 };
 
 export interface DatasetStats {
@@ -257,20 +259,30 @@ export async function activateAdapter(params: {
 /**
  * Dezaktywacja adaptera (rollback do modelu bazowego)
  */
-export async function deactivateAdapter(): Promise<{
+export async function deactivateAdapter(params?: {
+  deploy_to_chat_runtime?: boolean;
+}): Promise<{
   success: boolean;
   message: string;
   rolled_back?: boolean;
   runtime_id?: string;
   chat_model?: string;
 }> {
+  const query = new URLSearchParams();
+  if (typeof params?.deploy_to_chat_runtime === "boolean") {
+    query.set("deploy_to_chat_runtime", String(params.deploy_to_chat_runtime));
+  }
+  const queryString = query.toString();
+  const url = queryString
+    ? `/api/v1/academy/adapters/deactivate?${queryString}`
+    : "/api/v1/academy/adapters/deactivate";
   return apiFetch<{
     success: boolean;
     message: string;
     rolled_back?: boolean;
     runtime_id?: string;
     chat_model?: string;
-  }>("/api/v1/academy/adapters/deactivate", {
+  }>(url, {
     method: "POST",
   });
 }
@@ -356,6 +368,8 @@ export interface RuntimeCatalogModelInfo {
   owned_by_runtime?: string | null;
   ownership_status?: "native" | "foreign" | "unknown";
   compatible_runtimes?: string[];
+  model_kind?: "base_model" | "adapter_artifact";
+  is_adapter_artifact?: boolean;
 }
 
 export interface UnifiedModelCatalogResponse {
@@ -482,7 +496,15 @@ function formatStructuredAcademyErrorDetail(detail: StructuredAcademyErrorDetail
     typeof detail.requested_base_model === "string" ? detail.requested_base_model.trim() : "";
   const requestedModelId =
     typeof detail.requested_model_id === "string" ? detail.requested_model_id.trim() : "";
+  const compatibleRuntimes = Array.isArray(detail.compatible_runtimes)
+    ? detail.compatible_runtimes
+        .map((value) => String(value || "").trim())
+        .filter((value) => value.length > 0)
+    : [];
   if (!adapterId && !requestedRuntime && !requestedBaseModel && !requestedModelId) {
+    if (compatibleRuntimes.length > 0) {
+      return `${message} (compatible_runtimes=${compatibleRuntimes.join("|")})`;
+    }
     return message;
   }
   const contextParts: string[] = [];
@@ -490,6 +512,9 @@ function formatStructuredAcademyErrorDetail(detail: StructuredAcademyErrorDetail
   if (requestedRuntime) contextParts.push(`runtime=${requestedRuntime}`);
   if (requestedBaseModel) contextParts.push(`base_model=${requestedBaseModel}`);
   if (requestedModelId) contextParts.push(`model_id=${requestedModelId}`);
+  if (compatibleRuntimes.length > 0) {
+    contextParts.push(`compatible_runtimes=${compatibleRuntimes.join("|")}`);
+  }
   return `${message} (${contextParts.join(", ")})`;
 }
 

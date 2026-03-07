@@ -15,6 +15,7 @@ import {
   resolveAcademyApiErrorMessage,
 } from "@/lib/academy-api";
 import { useLanguage, useTranslation } from "@/lib/i18n";
+import { filterRuntimeBaseModels } from "@/lib/runtime-model-filters";
 
 export function AdaptersPanel() {
   const t = useTranslation();
@@ -49,6 +50,9 @@ export function AdaptersPanel() {
     const activeRuntimeId = String(
       catalog.active?.runtime_id || catalog.active?.active_server || "",
     ).trim();
+    const activeModelId = String(
+      catalog.active?.model_id || catalog.active?.active_model || "",
+    ).trim();
     const resolvedRuntime =
       runtimeOverride ||
       selectedRuntime ||
@@ -66,8 +70,10 @@ export function AdaptersPanel() {
           selectedRuntimeMeta?.adapter_deploy_supported,
       ),
     );
-    const models = (catalog.chat_models ?? []).filter(
-      (model) => model.runtime_id === resolvedRuntime,
+    const models = filterRuntimeBaseModels(
+      (catalog.chat_models ?? []).filter(
+        (model) => model.runtime_id === resolvedRuntime,
+      ),
     );
     const modelSelectOptions = models.map((model) => ({
       value: model.name,
@@ -78,7 +84,10 @@ export function AdaptersPanel() {
       if (current && modelSelectOptions.some((option) => option.value === current)) {
         return current;
       }
-      return "";
+      if (activeModelId && modelSelectOptions.some((option) => option.value === activeModelId)) {
+        return activeModelId;
+      }
+      return modelSelectOptions[0]?.value ?? "";
     });
   }, [selectedRuntime]);
 
@@ -165,7 +174,8 @@ export function AdaptersPanel() {
       await loadAdapterAudit();
     } catch (err) {
       console.error("Failed to activate adapter:", err);
-      setActivationError(resolveAcademyApiErrorMessage(err));
+      const resolved = resolveAcademyApiErrorMessage(err);
+      setActivationError(resolved || t("academy.common.unknownError"));
     } finally {
       setActivating(null);
     }
@@ -180,7 +190,8 @@ export function AdaptersPanel() {
       await loadAdapterAudit();
     } catch (err) {
       console.error("Failed to deactivate adapter:", err);
-      setActivationError(resolveAcademyApiErrorMessage(err));
+      const resolved = resolveAcademyApiErrorMessage(err);
+      setActivationError(resolved || t("academy.common.unknownError"));
     } finally {
       setDeactivating(false);
     }

@@ -287,7 +287,11 @@ class ModelManager(ModelManagerDiscoveryMixin):
         return cast(List[ModelVersion], get_all_versions_impl(manager=self))
 
     def create_ollama_modelfile(
-        self, version_id: str, output_name: Optional[str] = None
+        self,
+        version_id: str,
+        output_name: Optional[str] = None,
+        from_model: Optional[str] = None,
+        use_experimental: bool = False,
     ) -> Optional[str]:
         """
         Tworzy Modelfile dla Ollama z adapterem LoRA.
@@ -311,8 +315,9 @@ class ModelManager(ModelManagerDiscoveryMixin):
         output_name = output_name or f"venom-{version_id}"
 
         try:
+            base_for_from = str(from_model or "").strip() or version.base_model
             # Utwórz Modelfile
-            modelfile_content = f"""FROM {version.base_model}
+            modelfile_content = f"""FROM {base_for_from}
 ADAPTER {version.adapter_path}
 
 # Venom Model - version {version_id}
@@ -333,14 +338,21 @@ PARAMETER top_k 40
 
             # Utwórz model w Ollama
             cmd = ["ollama", "create", output_name, "-f", str(modelfile_path)]
+            if use_experimental:
+                cmd.append("--experimental")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
             if result.returncode == 0:
                 logger.info(f"✅ Utworzono model w Ollama: {output_name}")
                 return output_name
             else:
+                stderr = (result.stderr or "").strip()
+                stdout = (result.stdout or "").strip()
+                details = stderr or stdout or "unknown error"
                 logger.error(
-                    f"❌ Błąd podczas tworzenia modelu w Ollama: {result.stderr}"
+                    "❌ Błąd podczas tworzenia modelu w Ollama (code=%s): %s",
+                    result.returncode,
+                    details,
                 )
                 return None
 

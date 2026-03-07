@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG_DIR="$ROOT_DIR/logs"
 PID_FILE="$LOG_DIR/ollama.pid"
 LOG_FILE="$LOG_DIR/ollama.log"
+HEALTH_URL="${OLLAMA_HEALTH_URL:-http://localhost:11434/api/tags}"
 OLLAMA_BIN="$(command -v ollama || true)"
 SYSTEMCTL_BIN="$(command -v systemctl || true)"
 SYSTEMD_UNIT="${OLLAMA_SYSTEMD_UNIT:-ollama.service}"
@@ -23,8 +24,30 @@ if [[ -n "$SYSTEMCTL_BIN" ]] && (
   USE_SYSTEMD=true
 fi
 
+is_healthy() {
+  curl -fsS "$HEALTH_URL" >/dev/null 2>&1
+}
+
+is_systemd_active() {
+  [[ "$USE_SYSTEMD" == "true" ]] && \
+    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" is-active --quiet "$SYSTEMD_UNIT"
+}
+
 start() {
+  if is_healthy; then
+    if [[ "$USE_SYSTEMD" == "true" ]]; then
+      echo "Ollama już odpowiada na $HEALTH_URL (systemd active, pomijam start)"
+    else
+      echo "Ollama już odpowiada na $HEALTH_URL (pomijam start)"
+    fi
+    return 0
+  fi
+
   if [[ "$USE_SYSTEMD" == "true" ]]; then
+    if is_systemd_active; then
+      echo "Usługa systemd ${SYSTEMD_UNIT} już działa, czekam tylko na zdrowie runtime"
+      return 0
+    fi
     echo "Uruchamiam usługę systemd ${SYSTEMD_UNIT}"
     "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" start "$SYSTEMD_UNIT"
     return 0

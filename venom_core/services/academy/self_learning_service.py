@@ -374,7 +374,6 @@ class SelfLearningService:
         requested_runtime_id = run_llm_config.runtime_id
         self._apply_mode_defaults(
             mode=mode,
-            llm_config=run_llm_config,
             rag_config=run_rag_config,
         )
         self._validate_mode_config(
@@ -756,13 +755,13 @@ class SelfLearningService:
         base_model: str,
         runtime_id: str,
     ) -> None:
+        local_models = self._fetch_local_models_sync()
         provider = self._infer_training_provider(base_model)
-        runtime_model_families = discover_runtime_model_families(
-            self._fetch_local_models_sync()
-        )
+        available_runtime_ids = self._resolve_available_runtime_ids(local_models)
+        runtime_model_families = discover_runtime_model_families(local_models)
         compatibility = self._resolve_runtime_compatibility(
             provider=provider,
-            available_runtime_ids=[],
+            available_runtime_ids=available_runtime_ids,
             model_id=base_model,
             model_metadata={"name": base_model},
             runtime_model_families=runtime_model_families,
@@ -825,7 +824,6 @@ class SelfLearningService:
         self,
         *,
         mode: SelfLearningMode,
-        llm_config: LlmConfig,
         rag_config: RagConfig,
     ) -> None:
         if mode == "rag_index" and not rag_config.embedding_profile_id:

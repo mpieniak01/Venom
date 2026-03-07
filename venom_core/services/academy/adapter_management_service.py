@@ -63,7 +63,6 @@ async def list_adapters(
     *,
     mgr: Any,
     settings_obj: Any,
-    repo_root: Path,
 ) -> list[AdapterInfo]:
     """List available adapters with display metadata resolved from stable sources."""
     adapters: list[AdapterInfo] = []
@@ -71,11 +70,7 @@ async def list_adapters(
     if not models_dir.exists():
         return []
 
-    active_adapter_id = None
-    if mgr:
-        active_info = mgr.get_active_adapter_info()
-        if active_info:
-            active_adapter_id = active_info.get("adapter_id")
+    active_adapter_id = _resolve_active_adapter_id(mgr)
 
     for training_dir in models_dir.iterdir():
         if not training_dir.is_dir():
@@ -83,28 +78,48 @@ async def list_adapters(
         adapter_path = training_dir / "adapter"
         if not adapter_path.exists():
             continue
-        display_info = _resolve_adapter_display_info(
-            training_dir=training_dir,
-        )
         adapters.append(
-            AdapterInfo(
-                adapter_id=training_dir.name,
-                adapter_path=str(adapter_path),
-                base_model=str(display_info.get("base_model") or ""),
-                created_at=str(display_info.get("created_at") or "unknown"),
-                training_params=dict(display_info.get("training_params") or {}),
-                target_runtime=str(display_info.get("target_runtime") or "") or None,
-                source_flow=str(display_info.get("source_flow") or "") or None,
-                metadata_status=str(
-                    display_info.get("metadata_status") or "metadata_incomplete"
-                ),
-                metadata_reason_code=str(display_info.get("metadata_reason_code") or "")
-                or None,
-                is_active=(training_dir.name == active_adapter_id),
+            _build_adapter_info(
+                training_dir=training_dir,
+                adapter_path=adapter_path,
+                active_adapter_id=active_adapter_id,
             )
         )
 
     return adapters
+
+
+def _resolve_active_adapter_id(mgr: Any) -> str | None:
+    if not mgr:
+        return None
+    active_info = mgr.get_active_adapter_info()
+    if not active_info:
+        return None
+    return active_info.get("adapter_id")
+
+
+def _build_adapter_info(
+    *,
+    training_dir: Path,
+    adapter_path: Path,
+    active_adapter_id: str | None,
+) -> AdapterInfo:
+    display_info = _resolve_adapter_display_info(training_dir=training_dir)
+    return AdapterInfo(
+        adapter_id=training_dir.name,
+        adapter_path=str(adapter_path),
+        base_model=str(display_info.get("base_model") or ""),
+        created_at=str(display_info.get("created_at") or "unknown"),
+        training_params=dict(display_info.get("training_params") or {}),
+        target_runtime=str(display_info.get("target_runtime") or "") or None,
+        source_flow=str(display_info.get("source_flow") or "") or None,
+        metadata_status=str(
+            display_info.get("metadata_status") or "metadata_incomplete"
+        ),
+        metadata_reason_code=str(display_info.get("metadata_reason_code") or "")
+        or None,
+        is_active=(training_dir.name == active_adapter_id),
+    )
 
 
 def activate_adapter(

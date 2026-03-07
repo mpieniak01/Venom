@@ -7,6 +7,7 @@ import { HelpCircle, Package } from "lucide-react";
 import Link from "next/link";
 import type { SelectMenuOption } from "@/components/ui/select-menu";
 import { SelectMenu } from "@/components/ui/select-menu";
+import { useTranslation } from "@/lib/i18n";
 import type { LlmServerInfo } from "@/lib/types";
 
 type CockpitModelsProps = Readonly<{
@@ -56,6 +57,7 @@ export function CockpitModels({
   llmActionPending,
   onActivateServer,
 }: CockpitModelsProps) {
+  const t = useTranslation();
   let activateServerLabel = "Aktywuj serwer";
   if (llmActionPending === `activate:${selectedLlmServer}`) {
     activateServerLabel = "Aktywuję...";
@@ -108,7 +110,11 @@ export function CockpitModels({
               options={llmModelOptions}
               onChange={onSelectLlmModel}
               ariaLabel="Wybierz model LLM"
-              placeholder={availableModelsForServer.length > 0 ? "Wybierz model" : "Brak modeli"}
+              placeholder={
+                availableModelsForServer.length > 0
+                  ? t("cockpit.models.chooseModel")
+                  : t("cockpit.models.noModels")
+              }
               disabled={llmServers.length === 0 || availableModelsForServer.length === 0}
               buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
               menuClassName="w-full max-h-72 overflow-y-auto"

@@ -554,30 +554,20 @@ async def activate_adapter_handler(
     try:
         academy._ensure_academy_enabled()
         academy.require_localhost_request(req)
-        manager = academy._get_model_manager()
-        if not manager:
-            raise academy.AcademyRouteError(
-                status_code=503,
-                detail="ModelManager not available for adapter activation",
-            )
-        _validate_activation_request_contract(
-            request=request,
-            runtime_id=requested_runtime_id,
-        )
-        await _validate_adapter_compatibility_if_runtime_selected(
+        manager = _require_adapter_activation_manager(academy)
+        await _prepare_adapter_activation(
             academy=academy,
             manager=manager,
             request=request,
-            runtime_id=requested_runtime_id,
+            requested_runtime_id=requested_runtime_id,
         )
-        return academy.academy_models.activate_adapter(
-            mgr=manager,
+        return _activate_adapter(
+            academy=academy,
+            manager=manager,
+            request=request,
             adapter_id=requested_adapter_id,
-            runtime_id=requested_runtime_id or None,
-            model_id=requested_model_id or None,
-            deploy_to_chat_runtime=bool(
-                getattr(request, "deploy_to_chat_runtime", False)
-            ),
+            runtime_id=requested_runtime_id,
+            model_id=requested_model_id,
         )
 
     except academy.AcademyRouteError as e:
@@ -619,6 +609,53 @@ async def activate_adapter_handler(
                 requested_model_id=requested_model_id or None,
             ),
         )
+
+
+def _require_adapter_activation_manager(academy: Any) -> Any:
+    manager = academy._get_model_manager()
+    if manager:
+        return manager
+    raise academy.AcademyRouteError(
+        status_code=503,
+        detail="ModelManager not available for adapter activation",
+    )
+
+
+async def _prepare_adapter_activation(
+    *,
+    academy: Any,
+    manager: Any,
+    request: Any,
+    requested_runtime_id: str,
+) -> None:
+    _validate_activation_request_contract(
+        request=request,
+        runtime_id=requested_runtime_id,
+    )
+    await _validate_adapter_compatibility_if_runtime_selected(
+        academy=academy,
+        manager=manager,
+        request=request,
+        runtime_id=requested_runtime_id,
+    )
+
+
+def _activate_adapter(
+    *,
+    academy: Any,
+    manager: Any,
+    request: Any,
+    adapter_id: str,
+    runtime_id: str,
+    model_id: str,
+) -> Dict[str, Any]:
+    return academy.academy_models.activate_adapter(
+        mgr=manager,
+        adapter_id=adapter_id,
+        runtime_id=runtime_id or None,
+        model_id=model_id or None,
+        deploy_to_chat_runtime=bool(getattr(request, "deploy_to_chat_runtime", False)),
+    )
 
 
 def deactivate_adapter_handler(*, req: Request, academy: Any) -> Dict[str, Any]:

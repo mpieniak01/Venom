@@ -52,11 +52,10 @@ export function buildCockpitAdapterOptions({
     ...adapters.map((adapter) => {
       const audit = auditById[adapter.adapter_id];
       const blocked = isBlockedCockpitAdapterAudit(audit);
-      const statusLabel = audit
-        ? blocked
-          ? blockedLabel
-          : compatibleLabel
-        : unknownStatusLabel;
+      let statusLabel = unknownStatusLabel;
+      if (audit) {
+        statusLabel = blocked ? blockedLabel : compatibleLabel;
+      }
       const statusMessage = audit?.message ? ` - ${audit.message}` : "";
       return {
         value: adapter.adapter_id,

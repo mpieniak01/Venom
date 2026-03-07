@@ -80,16 +80,16 @@ export function resolveCockpitActiveRuntimeInfo(
 
   const runtimeModels = activeRuntime?.models ?? [];
   const declaredActiveModel = (catalog?.active?.active_model || "").trim();
-  const activeModelFromCatalog =
-    declaredActiveModel ||
-    (runtimeModels.find((model) => model.active)?.name || "").trim();
+  const runtimeActiveModel = runtimeModels.find((model) => model.active)?.name || "";
+  const activeModelFromCatalog = declaredActiveModel || runtimeActiveModel.trim();
   const fallbackMatchesActiveRuntime =
     (fallback?.active_server || fallback?.runtime_id || "").trim() === activeRuntimeId;
-  const resolvedActiveModel = activeModelFromCatalog
-    ? activeModelFromCatalog
-    : fallbackMatchesActiveRuntime
-      ? fallback?.active_model || null
-      : null;
+  let resolvedActiveModel: string | null = null;
+  if (activeModelFromCatalog) {
+    resolvedActiveModel = activeModelFromCatalog;
+  } else if (fallbackMatchesActiveRuntime) {
+    resolvedActiveModel = fallback?.active_model || null;
+  }
 
   return {
     ...fallback,

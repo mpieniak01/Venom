@@ -875,6 +875,24 @@ _start:
 		fi; \
 	fi; \
 	if [ -z "$$ui_skip" ]; then \
+		wait_for_ui_ready() { \
+			local pid="$$1"; \
+			local failure_label="$$2"; \
+			local ready=""; \
+			for attempt in {1..40}; do \
+				if kill -0 "$$pid" 2>/dev/null; then \
+					if curl -fsS http://$(WEB_DISPLAY):$(WEB_PORT) >/dev/null 2>&1; then \
+						ready="yes"; \
+						break; \
+					fi; \
+				else \
+					echo "$$failure_label proces $$pid zakończył się przed startem" >&2; \
+					break; \
+				fi; \
+				sleep 1; \
+			done; \
+			printf '%s' "$$ready"; \
+		}; \
 		: > $(WEB_LOG); \
 		if [ "$(START_MODE)" = "prod" ]; then \
 			echo "🛠  Buduję Next.js (npm run build)"; \
@@ -902,45 +920,22 @@ _start:
 			fi; \
 		fi; \
 		WPID=$$(cat $(WEB_PID_FILE)); \
-		ui_ready=""; \
+		ui_ready=$$(wait_for_ui_ready "$$WPID" "❌ UI (Next.js)"); \
 		effective_web_mode="$(START_WEB_MODE)"; \
-		for attempt in {1..40}; do \
-			if kill -0 $$WPID 2>/dev/null; then \
-				if curl -fsS http://$(WEB_DISPLAY):$(WEB_PORT) >/dev/null 2>&1; then \
-					ui_ready="yes"; \
-					break; \
-				fi; \
-			else \
-				echo "❌ UI (Next.js) proces $$WPID zakończył się przed startem"; \
-				break; \
+		if [ -z "$$ui_ready" ]; then \
+			echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
+			kill -TERM -$$WPID 2>/dev/null || kill $$WPID 2>/dev/null || true; \
+			rm -f $(WEB_PID_FILE); \
+			if [ "$(START_MODE)" = "dev" ] && { [ "$(START_WEB_MODE)" = "turbo" ] || [ "$(START_WEB_MODE)" = "turbo-debug" ]; } && [ -f "$(WEB_LOG)" ] && grep -Eiq "Too many open files|Failed to allocate directory watch" "$(WEB_LOG)"; then \
+				echo "⚠️  Turbopack nie wystartował przez błąd watchera. Przełączam UI na fallback webpack."; \
+				: > $(WEB_LOG); \
+				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				echo $$! > $(WEB_PID_FILE); \
+				WPID=$$(cat $(WEB_PID_FILE)); \
+				effective_web_mode="webpack"; \
+				ui_ready=$$(wait_for_ui_ready "$$WPID" "❌ UI fallback (webpack)"); \
 			fi; \
-			sleep 1; \
-		done; \
 			if [ -z "$$ui_ready" ]; then \
-				echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
-				kill -TERM -$$WPID 2>/dev/null || kill $$WPID 2>/dev/null || true; \
-				rm -f $(WEB_PID_FILE); \
-				if [ "$(START_MODE)" = "dev" ] && { [ "$(START_WEB_MODE)" = "turbo" ] || [ "$(START_WEB_MODE)" = "turbo-debug" ]; } && [ -f "$(WEB_LOG)" ] && grep -Eiq "Too many open files|Failed to allocate directory watch" "$(WEB_LOG)"; then \
-					echo "⚠️  Turbopack nie wystartował przez błąd watchera. Przełączam UI na fallback webpack."; \
-					: > $(WEB_LOG); \
-					NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
-					echo $$! > $(WEB_PID_FILE); \
-					WPID=$$(cat $(WEB_PID_FILE)); \
-					effective_web_mode="webpack"; \
-					for attempt in {1..40}; do \
-						if kill -0 $$WPID 2>/dev/null; then \
-							if curl -fsS http://$(WEB_DISPLAY):$(WEB_PORT) >/dev/null 2>&1; then \
-								ui_ready="yes"; \
-								break; \
-							fi; \
-						else \
-							echo "❌ UI fallback (webpack) proces $$WPID zakończył się przed startem"; \
-							break; \
-						fi; \
-						sleep 1; \
-					done; \
-				fi; \
-				if [ -z "$$ui_ready" ]; then \
 				# zatrzymaj backend, aby nie zostawiać pół-startu
 				if [ -f $(PID_FILE) ]; then \
 					BPID=$$(cat $(PID_FILE)); \
@@ -948,10 +943,10 @@ _start:
 					rm -f $(PID_FILE); \
 				fi; \
 				$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
-					$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
-					exit 1; \
-				fi; \
+				$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+				exit 1; \
 			fi; \
+		fi; \
 			if [ "$(START_MODE)" = "dev" ]; then \
 				expected_bundler=""; \
 				if [ "$$effective_web_mode" = "webpack" ]; then \

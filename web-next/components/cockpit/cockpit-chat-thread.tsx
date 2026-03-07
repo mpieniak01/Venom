@@ -84,6 +84,68 @@ type ChatComposerProps = Readonly<{
   compactControls?: boolean;
 }>;
 
+function resolveSelectedCanonicalModel(
+  selectedLlmModel: string,
+  llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>,
+): string {
+  return String(llmModelMetadata?.[selectedLlmModel]?.canonical_model_id || selectedLlmModel || "")
+    .trim()
+    .toLowerCase();
+}
+
+function resolveScopedAdapters(
+  catalog: Awaited<ReturnType<typeof getUnifiedModelCatalog>>,
+  selectedRuntimeId: string,
+  selectedCanonical: string,
+) {
+  const byRuntimeModel = catalog.adapter_catalog.by_runtime_model || {};
+  const byRuntime = catalog.adapter_catalog.by_runtime || {};
+  const scopedByModel = selectedRuntimeId
+    ? byRuntimeModel?.[selectedRuntimeId]?.[selectedCanonical]
+    : undefined;
+  const scopedByRuntime = (selectedRuntimeId ? byRuntime?.[selectedRuntimeId] : []) || [];
+  if (selectedCanonical.length > 0) {
+    return Array.isArray(scopedByModel) ? scopedByModel : [];
+  }
+  return scopedByRuntime;
+}
+
+function buildAdapterAuditMap(adapters: AdapterAuditItem[]): Record<string, AdapterAuditItem> {
+  return adapters.reduce<Record<string, AdapterAuditItem>>((acc, item) => {
+    acc[item.adapter_id] = item;
+    return acc;
+  }, {});
+}
+
+async function switchCockpitAdapterSelection({
+  value,
+  baseModelAdapterValue,
+  adapters,
+  selectedRuntimeId,
+  selectedLlmModel,
+}: {
+  value: string;
+  baseModelAdapterValue: string;
+  adapters: Array<{ adapter_id: string; adapter_path: string }>;
+  selectedRuntimeId: string;
+  selectedLlmModel: string;
+}) {
+  if (value === baseModelAdapterValue) {
+    await deactivateAdapter();
+    return;
+  }
+  const adapter = adapters.find((entry) => entry.adapter_id === value);
+  if (!adapter) {
+    return;
+  }
+  await activateAdapter({
+    adapter_id: adapter.adapter_id,
+    adapter_path: adapter.adapter_path,
+    runtime_id: selectedRuntimeId,
+    model_id: selectedLlmModel,
+  });
+}
+
 export const ChatComposer = memo(
   forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer(
     {
@@ -168,23 +230,11 @@ export const ChatComposer = memo(
       try {
         setAdapterSelectLoading(true);
         const catalog = await getUnifiedModelCatalog();
-        const selectedModelMeta = llmModelMetadata?.[selectedLlmModel];
-        const selectedCanonical = String(
-          selectedModelMeta?.canonical_model_id || selectedLlmModel || "",
-        )
-          .trim()
-          .toLowerCase();
-        const byRuntimeModel = catalog.adapter_catalog.by_runtime_model || {};
-        const byRuntime = catalog.adapter_catalog.by_runtime || {};
-        const scopedByModel = selectedRuntimeId
-          ? byRuntimeModel?.[selectedRuntimeId]?.[selectedCanonical]
-          : undefined;
-        const scopedByRuntime =
-          (selectedRuntimeId ? byRuntime?.[selectedRuntimeId] : []) || [];
-        let next = scopedByRuntime;
-        if (selectedCanonical.length > 0) {
-          next = Array.isArray(scopedByModel) ? scopedByModel : [];
-        }
+        const selectedCanonical = resolveSelectedCanonicalModel(
+          selectedLlmModel,
+          llmModelMetadata,
+        );
+        const next = resolveScopedAdapters(catalog, selectedRuntimeId, selectedCanonical);
         setAdapters(next);
         const active = next.find((adapter) => adapter.is_active);
         setSelectedAdapter(active?.adapter_id ?? BASE_MODEL_ADAPTER_VALUE);
@@ -221,14 +271,7 @@ export const ChatComposer = memo(
             runtime_id: selectedRuntimeId,
             model_id: selectedLlmModel,
           });
-          const next = (payload.adapters ?? []).reduce<Record<string, AdapterAuditItem>>(
-            (acc, item) => {
-              acc[item.adapter_id] = item;
-              return acc;
-            },
-            {},
-          );
-          setAdapterAuditById(next);
+          setAdapterAuditById(buildAdapterAuditMap(payload.adapters ?? []));
         } catch (error) {
           console.error("Failed to load adapter audit for chat selector:", error);
           setAdapterAuditById({});
@@ -260,20 +303,13 @@ export const ChatComposer = memo(
         try {
           setAdapterMutationError("");
           setAdapterMutationPending(true);
-          if (value === BASE_MODEL_ADAPTER_VALUE) {
-            await deactivateAdapter();
-          } else {
-            const adapter = adapters.find((entry) => entry.adapter_id === value);
-            if (!adapter) {
-              return;
-            }
-            await activateAdapter({
-              adapter_id: adapter.adapter_id,
-              adapter_path: adapter.adapter_path,
-              runtime_id: selectedRuntimeId,
-              model_id: selectedLlmModel,
-            });
-          }
+          await switchCockpitAdapterSelection({
+            value,
+            baseModelAdapterValue: BASE_MODEL_ADAPTER_VALUE,
+            adapters,
+            selectedRuntimeId,
+            selectedLlmModel,
+          });
           await loadAdapters();
         } catch (error) {
           console.error("Failed to switch Academy adapter from chat selector:", error);

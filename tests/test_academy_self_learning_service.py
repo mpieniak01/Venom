@@ -531,6 +531,40 @@ def test_start_run_preserves_requested_base_model_in_runtime_mismatch_error(
         )
 
 
+def test_validate_runtime_compatibility_accepts_matching_local_runtime_family(
+    tmp_path: Path,
+):
+    local_models = [
+        {
+            "name": "gemma-3-4b-it",
+            "provider": "vllm",
+            "runtime": "vllm",
+            "source": "models",
+        },
+        {
+            "name": "gemma3:latest",
+            "provider": "ollama",
+            "runtime": "ollama",
+            "source": "ollama",
+        },
+    ]
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        is_model_trainable_fn=lambda model_id: model_id == "gemma-3-4b-it",
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(service, "_fetch_local_models_sync", lambda: local_models)
+
+    try:
+        service._validate_runtime_compatibility_for_base_model(
+            base_model="gemma-3-4b-it",
+            runtime_id="ollama",
+        )
+    finally:
+        monkeypatch.undo()
+
+
 @pytest.mark.asyncio
 async def test_start_run_uses_default_embedding_profile_for_rag(tmp_path: Path):
     service = SelfLearningService(

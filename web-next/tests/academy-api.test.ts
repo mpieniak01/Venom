@@ -85,4 +85,8 @@ describe("academy api helpers", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("returns empty string when academy error cannot be resolved", () => {
+    assert.equal(resolveAcademyApiErrorMessage(null), "");
+  });
 });

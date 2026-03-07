@@ -200,7 +200,6 @@ async def list_adapters(mgr: Any) -> List[AdapterInfo]:
     return await _management_service.list_adapters(
         mgr=mgr,
         settings_obj=_resolve_settings_for_call(),
-        repo_root=_resolve_repo_root(),
     )
 
 

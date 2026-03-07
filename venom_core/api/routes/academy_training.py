@@ -11,6 +11,10 @@ from typing import Any, Callable, Dict, List, Optional
 from fastapi import HTTPException
 
 from venom_core.api.schemas.academy import AcademyJobSummary
+from venom_core.services.academy.trainable_catalog_service import (
+    _canonical_runtime_model_id,
+    resolve_runtime_compatibility,
+)
 
 
 def resolve_dataset_path(
@@ -55,6 +59,53 @@ def ensure_trainable_base_model(
     return base_model
 
 
+def _infer_training_provider(model_id: str) -> str:
+    normalized = model_id.strip().lower()
+    if ":" in normalized:
+        return "ollama"
+    if normalized.startswith("unsloth/"):
+        return "unsloth"
+    if "/" in normalized:
+        return "huggingface"
+    return "unknown"
+
+
+def validate_runtime_compatibility_for_base_model(
+    *,
+    base_model: str,
+    runtime_id: Optional[str],
+) -> None:
+    """Reject runtime/base_model pairs that are outside Academy deploy contract."""
+    normalized_runtime_id = str(runtime_id or "").strip().lower()
+    if not normalized_runtime_id:
+        return
+    compatibility = resolve_runtime_compatibility(
+        provider=_infer_training_provider(base_model),
+        available_runtime_ids=["vllm", "ollama", "onnx"],
+        model_metadata={"name": base_model},
+    )
+    if compatibility.get(normalized_runtime_id):
+        return
+    compatible_runtimes = [
+        runtime for runtime, allowed in compatibility.items() if bool(allowed)
+    ]
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "error": "MODEL_RUNTIME_INCOMPATIBLE",
+            "message": (
+                f"Model '{base_model}' is incompatible with runtime "
+                f"'{normalized_runtime_id}'."
+            ),
+            "reason_code": "MODEL_RUNTIME_INCOMPATIBLE",
+            "requested_runtime_id": normalized_runtime_id,
+            "requested_base_model": base_model,
+            "effective_base_model": _canonical_runtime_model_id(base_model),
+            "compatible_runtimes": compatible_runtimes,
+        },
+    )
+
+
 def build_job_record(
     *,
     dataset_path: str,
@@ -70,6 +121,10 @@ def build_job_record(
         "dataset_path": dataset_path,
         "base_model": base_model,
         "parameters": {
+            "requested_runtime_id": getattr(request, "runtime_id", None),
+            "requested_base_model": base_model,
+            "effective_runtime_id": getattr(request, "runtime_id", None),
+            "effective_base_model": base_model,
             "runtime_id": getattr(request, "runtime_id", None),
             "lora_rank": request.lora_rank,
             "learning_rate": request.learning_rate,

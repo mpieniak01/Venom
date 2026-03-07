@@ -95,6 +95,7 @@ class AdapterInfo(BaseModel):
     base_model: str
     created_at: str
     training_params: dict[str, Any] = Field(default_factory=dict)
+    target_runtime: str | None = None
     is_active: bool = False
 
 

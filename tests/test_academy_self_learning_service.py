@@ -1247,6 +1247,12 @@ async def test_llm_finetune_waits_for_finished_job_and_adapter(tmp_path: Path):
     adapter_path = status["artifacts"].get("adapter_path")
     assert isinstance(adapter_path, str)
     assert Path(adapter_path, "adapter_config.json").exists()
+    metadata_payload = json.loads(
+        Path(adapter_path).parent.joinpath("metadata.json").read_text(encoding="utf-8")
+    )
+    assert metadata_payload["source_flow"] == "self_learning"
+    assert metadata_payload["requested_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
+    assert metadata_payload["effective_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
 
 
 def test_ensure_no_active_training_jobs_blocks_running_jobs(tmp_path: Path):

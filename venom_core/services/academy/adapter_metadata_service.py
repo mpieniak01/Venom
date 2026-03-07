@@ -16,6 +16,7 @@ ADAPTER_BASE_MODEL_MISMATCH = "ADAPTER_BASE_MODEL_MISMATCH"
 ADAPTER_BASE_MODEL_UNKNOWN = "ADAPTER_BASE_MODEL_UNKNOWN"
 ADAPTER_METADATA_INCONSISTENT = "ADAPTER_METADATA_INCONSISTENT"
 ADAPTER_NOT_FOUND_DETAIL = "Adapter not found"
+CANONICAL_ADAPTER_METADATA_VERSION = 2
 
 _BASE_MODEL_CONFIDENT_SOURCES: Set[str] = {
     "metadata.base_model",
@@ -30,10 +31,64 @@ def _load_adapter_metadata(adapter_dir: Path) -> Dict[str, Any]:
     if not metadata_file.exists():
         return {}
     try:
-        return json.loads(metadata_file.read_text(encoding="utf-8"))
+        payload = json.loads(metadata_file.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            return payload
     except Exception as exc:
         logger.warning("Failed to read adapter metadata for %s: %s", adapter_dir, exc)
-        return {}
+    return {}
+
+
+def build_canonical_adapter_metadata(
+    *,
+    adapter_id: str,
+    base_model: str,
+    created_at: str,
+    source_flow: str,
+    training_params: Dict[str, Any] | None = None,
+    run_id: str | None = None,
+    requested_runtime_id: str | None = None,
+    requested_base_model: str | None = None,
+    effective_runtime_id: str | None = None,
+    effective_base_model: str | None = None,
+    dataset_path: str | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    source: str | None = None,
+) -> Dict[str, Any]:
+    """Build the canonical adapter metadata payload persisted after training."""
+    resolved_effective_base_model = (effective_base_model or base_model).strip()
+    payload: Dict[str, Any] = {
+        "metadata_version": CANONICAL_ADAPTER_METADATA_VERSION,
+        "adapter_id": adapter_id,
+        "run_id": run_id or adapter_id,
+        "source_flow": source_flow,
+        "source": source or source_flow,
+        "created_at": created_at,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "base_model": resolved_effective_base_model,
+        "requested_base_model": (requested_base_model or resolved_effective_base_model),
+        "effective_base_model": resolved_effective_base_model,
+        "requested_runtime_id": requested_runtime_id,
+        "effective_runtime_id": effective_runtime_id or requested_runtime_id,
+        "dataset_path": dataset_path,
+        "parameters": dict(training_params or {}),
+    }
+    return payload
+
+
+def write_canonical_adapter_metadata(
+    *,
+    adapter_dir: Path,
+    payload: Dict[str, Any],
+) -> None:
+    """Write canonical metadata.json next to adapter artifacts."""
+    metadata_file = adapter_dir / "metadata.json"
+    metadata_file.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _read_json_file(path: Path) -> Dict[str, Any]:

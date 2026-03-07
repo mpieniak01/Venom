@@ -7,6 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from venom_core.services.academy.adapter_metadata_service import (
+    build_canonical_adapter_metadata,
+    write_canonical_adapter_metadata,
+)
+
 
 def load_jobs_history(jobs_file: Path, *, logger: Any) -> list[dict[str, Any]]:
     """Load JSONL training-job history."""
@@ -75,16 +80,21 @@ def update_job_in_history(
 
 def save_adapter_metadata(job: dict[str, Any], adapter_path: Path) -> None:
     """Persist deterministic adapter metadata after successful training."""
-    metadata_file = adapter_path.parent / "metadata.json"
-    metadata = {
-        "job_id": job.get("job_id"),
-        "base_model": job.get("base_model"),
-        "dataset_path": job.get("dataset_path"),
-        "parameters": job.get("parameters", {}),
-        "created_at": job.get("finished_at") or datetime.now().isoformat(),
-        "started_at": job.get("started_at"),
-        "finished_at": job.get("finished_at"),
-        "source": "academy",
-    }
-    with open(metadata_file, "w", encoding="utf-8") as handle:
-        json.dump(metadata, handle, ensure_ascii=False, indent=2)
+    metadata = build_canonical_adapter_metadata(
+        adapter_id=str(adapter_path.parent.name),
+        run_id=str(job.get("job_id") or adapter_path.parent.name),
+        base_model=str(job.get("base_model") or ""),
+        created_at=str(job.get("finished_at") or datetime.now().isoformat()),
+        source_flow="training",
+        source="academy",
+        training_params=job.get("parameters", {}),
+        requested_runtime_id=job.get("parameters", {}).get("runtime_id"),
+        requested_base_model=job.get("base_model"),
+        effective_runtime_id=job.get("parameters", {}).get("runtime_id"),
+        effective_base_model=job.get("base_model"),
+        dataset_path=job.get("dataset_path"),
+        started_at=job.get("started_at"),
+        finished_at=job.get("finished_at"),
+    )
+    metadata["job_id"] = job.get("job_id")
+    write_canonical_adapter_metadata(adapter_dir=adapter_path.parent, payload=metadata)

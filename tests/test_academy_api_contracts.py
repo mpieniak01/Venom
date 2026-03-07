@@ -224,7 +224,7 @@ def test_list_adapters_success_with_metadata_and_active_flag(
     adapter_dir = training_dir / "adapter"
     adapter_dir.mkdir(parents=True)
     (training_dir / "metadata.json").write_text(
-        '{"base_model":"bm","created_at":"2024-01-01","parameters":{"epochs":1}}',
+        '{"base_model":"bm","effective_base_model":"bm","effective_runtime_id":"ollama","created_at":"2024-01-01","parameters":{"epochs":1}}',
         encoding="utf-8",
     )
     manager = MagicMock()
@@ -238,6 +238,7 @@ def test_list_adapters_success_with_metadata_and_active_flag(
     assert len(adapters) == 1
     assert adapters[0]["is_active"] is True
     assert adapters[0]["base_model"] == "bm"
+    assert adapters[0]["target_runtime"] == "ollama"
 
 
 @patch("venom_core.config.SETTINGS")

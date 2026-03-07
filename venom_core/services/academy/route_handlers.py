@@ -180,6 +180,16 @@ def start_training_handler(
             default_base_model=SETTINGS.ACADEMY_DEFAULT_BASE_MODEL,
             is_model_trainable_fn=academy._is_model_trainable,
         )
+        validate_runtime_pair = getattr(
+            academy.academy_training,
+            "validate_runtime_compatibility_for_base_model",
+            None,
+        )
+        if callable(validate_runtime_pair):
+            validate_runtime_pair(
+                base_model=base_model,
+                runtime_id=request.runtime_id,
+            )
 
         job_id = f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         output_dir = Path(SETTINGS.ACADEMY_MODELS_DIR) / job_id

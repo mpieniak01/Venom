@@ -29,6 +29,10 @@ from typing import (
 import psutil
 
 from venom_core.config import SETTINGS
+from venom_core.services.academy.adapter_metadata_service import (
+    build_canonical_adapter_metadata,
+    write_canonical_adapter_metadata,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -1490,10 +1494,14 @@ class SelfLearningService:
         base_model: str,
         run: SelfLearningRun,
     ) -> None:
-        metadata_payload = {
-            "base_model": base_model,
-            "created_at": run.finished_at or _utc_now_iso(),
-            "parameters": {
+        metadata_payload = build_canonical_adapter_metadata(
+            adapter_id=output_dir.name,
+            run_id=run.run_id,
+            base_model=base_model,
+            created_at=run.finished_at or _utc_now_iso(),
+            source_flow="self_learning",
+            source="self_learning",
+            training_params={
                 "lora_rank": run.llm_config.lora_rank,
                 "learning_rate": run.llm_config.learning_rate,
                 "num_epochs": run.llm_config.num_epochs,
@@ -1502,11 +1510,25 @@ class SelfLearningService:
                 "dataset_strategy": run.llm_config.dataset_strategy,
                 "task_mix_preset": run.llm_config.task_mix_preset,
             },
-        }
-        metadata_file = output_dir / "metadata.json"
-        metadata_file.write_text(
-            json.dumps(metadata_payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+            requested_runtime_id=cast(
+                Optional[str], run.artifacts.get("requested_runtime_id")
+            ),
+            requested_base_model=cast(
+                Optional[str], run.artifacts.get("requested_base_model")
+            ),
+            effective_runtime_id=cast(
+                Optional[str], run.artifacts.get("effective_runtime_id")
+            ),
+            effective_base_model=cast(
+                Optional[str], run.artifacts.get("effective_base_model")
+            ),
+            dataset_path=cast(Optional[str], run.artifacts.get("dataset_path")),
+            started_at=run.started_at,
+            finished_at=run.finished_at,
+        )
+        write_canonical_adapter_metadata(
+            adapter_dir=output_dir,
+            payload=metadata_payload,
         )
 
     async def _prepare_runtime_for_llm_training(self, run: SelfLearningRun) -> None:

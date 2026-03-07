@@ -80,11 +80,21 @@ def _resolve_adapter_display_info(
     )
     if not created_at:
         created_at = "unknown"
-    base_model = str(base_model_assessment.get("base_model") or "").strip()
+    effective_base_model = str(metadata.get("effective_base_model") or "").strip()
+    base_model = (
+        effective_base_model
+        or str(base_model_assessment.get("base_model") or "").strip()
+    )
+    target_runtime = (
+        str(metadata.get("effective_runtime_id") or "").strip()
+        or str(metadata.get("requested_runtime_id") or "").strip()
+        or str(run_training_params.get("runtime_id") or "").strip()
+    )
     return {
         "base_model": base_model or default_model,
         "created_at": created_at,
         "training_params": training_params if isinstance(training_params, dict) else {},
+        "target_runtime": target_runtime,
     }
 
 
@@ -124,6 +134,7 @@ async def list_adapters(
                 base_model=str(display_info.get("base_model") or ""),
                 created_at=str(display_info.get("created_at") or "unknown"),
                 training_params=dict(display_info.get("training_params") or {}),
+                target_runtime=str(display_info.get("target_runtime") or "") or None,
                 is_active=(training_dir.name == active_adapter_id),
             )
         )

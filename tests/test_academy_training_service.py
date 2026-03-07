@@ -52,6 +52,19 @@ def test_dataset_resolution_and_model_validation(tmp_path: Path) -> None:
             is_model_trainable_fn=lambda _name: False,
         )
 
+    at.validate_runtime_compatibility_for_base_model(
+        base_model="google/gemma-3-4b-it",
+        runtime_id="ollama",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        at.validate_runtime_compatibility_for_base_model(
+            base_model="gemma3:latest",
+            runtime_id="vllm",
+        )
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["reason_code"] == "MODEL_RUNTIME_INCOMPATIBLE"
+
 
 def test_job_building_and_sync_and_cleanup(tmp_path: Path) -> None:
     req = SimpleNamespace(
@@ -70,6 +83,8 @@ def test_job_building_and_sync_and_cleanup(tmp_path: Path) -> None:
     )
     assert record["status"] == "queued"
     assert record["parameters"]["runtime_id"] == "ollama"
+    assert record["parameters"]["requested_runtime_id"] == "ollama"
+    assert record["parameters"]["effective_base_model"] == "phi3"
     assert record["parameters"]["num_epochs"] == 2
 
     job = {"status": "running", "output_dir": str(tmp_path)}

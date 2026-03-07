@@ -508,6 +508,19 @@ def test_fetch_local_models_sync_returns_list_from_sync_manager(tmp_path: Path):
     assert service._fetch_local_models_sync() == [{"id": "m1"}]
 
 
+def test_fetch_local_models_sync_returns_list_from_async_manager(tmp_path: Path):
+    async def _list_local_models() -> list[dict[str, str]]:
+        return [{"id": "m_async"}]
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        model_manager=MagicMock(list_local_models=_list_local_models),
+    )
+
+    assert service._fetch_local_models_sync() == [{"id": "m_async"}]
+
+
 def test_fetch_local_models_sync_returns_empty_on_manager_error(tmp_path: Path):
     service = SelfLearningService(
         storage_dir=str(tmp_path / "storage"),
@@ -518,6 +531,24 @@ def test_fetch_local_models_sync_returns_empty_on_manager_error(tmp_path: Path):
     )
 
     assert service._fetch_local_models_sync() == []
+
+
+def test_fetch_local_models_sync_returns_list_from_async_manager_inside_event_loop(
+    tmp_path: Path,
+):
+    async def _list_local_models() -> list[dict[str, str]]:
+        return [{"id": "m_loop"}]
+
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        model_manager=MagicMock(list_local_models=_list_local_models),
+    )
+
+    async def _exercise() -> list[dict[str, str]]:
+        return service._fetch_local_models_sync()
+
+    assert asyncio.run(_exercise()) == [{"id": "m_loop"}]
 
 
 def test_start_run_rejects_rag_without_embedding_profile(tmp_path: Path):
@@ -989,6 +1020,74 @@ def test_get_status_recovers_orphaned_running_llm_run_with_live_logs(tmp_path: P
     assert any("[train:running] loss=0.4567" in line for line in payload["logs"])
 
 
+def test_get_status_recovers_orphaned_finished_llm_run_and_writes_metadata(
+    tmp_path: Path,
+):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    models_dir = tmp_path / "models"
+    run_id = "88888888-8888-8888-8888-888888888888"
+    output_dir = models_dir / f"self_learning_{run_id}"
+    adapter_dir = output_dir / "adapter"
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(SETTINGS, "ACADEMY_MODELS_DIR", str(models_dir))
+    try:
+        run = service._run_from_payload(
+            {
+                "run_id": run_id,
+                "mode": "llm_finetune",
+                "sources": ["repo_readmes"],
+                "limits": {},
+                "llm_config": {
+                    "base_model": "gemma-3-4b-it",
+                    "runtime_id": "ollama",
+                },
+                "rag_config": {},
+                "status": "running",
+                "created_at": "2026-03-05T00:00:00+00:00",
+                "started_at": "2026-03-05T00:00:01+00:00",
+                "logs": [],
+                "artifacts": {
+                    "requested_base_model": "gemma-3-4b-it",
+                    "effective_base_model": "gemma-3-4b-it",
+                    "requested_runtime_id": "ollama",
+                    "effective_runtime_id": "ollama",
+                    "training_base_model": "/home/ubuntu/venom/models/gemma-3-4b-it",
+                },
+                "progress": {},
+                "error_message": None,
+            }
+        )
+        service._runs[run_id] = run
+
+        class HabitatStub:
+            @staticmethod
+            def get_training_status(_job_name: str):
+                return {"status": "finished", "logs": "finished"}
+
+        service.gpu_habitat = HabitatStub()
+        payload = service.get_status(run_id)
+    finally:
+        monkeypatch.undo()
+
+    assert payload is not None
+    assert payload["status"] == "completed"
+    assert payload["artifacts"]["adapter_path"] == str(adapter_dir)
+    metadata_path = output_dir / "metadata.json"
+    assert metadata_path.exists()
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["metadata_version"] == 2
+    assert metadata["effective_base_model"] == "gemma-3-4b-it"
+    assert metadata["requested_runtime_id"] == "ollama"
+    assert metadata["effective_runtime_id"] == "ollama"
+    assert metadata["source_flow"] == "self_learning"
+
+
 @pytest.mark.asyncio
 async def test_rag_allow_fallback_policy_allows_indexing(tmp_path: Path):
     repo_root = tmp_path / "repo"
@@ -1393,6 +1492,126 @@ async def test_llm_finetune_waits_for_finished_job_and_adapter(tmp_path: Path):
     assert metadata_payload["source_flow"] == "self_learning"
     assert metadata_payload["requested_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
     assert metadata_payload["effective_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
+    assert (
+        metadata_payload["parameters"]["training_base_model"]
+        == "unsloth/Phi-3-mini-4k-instruct"
+    )
+
+
+@pytest.mark.asyncio
+async def test_llm_finetune_resolves_local_training_base_model_path(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    docs_dir = repo_root / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "train.md").write_text(
+        "Gemma local training.\n" * 120, encoding="utf-8"
+    )
+
+    model_dir = tmp_path / "models" / "gemma-3-4b-it"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_text("weights", encoding="utf-8")
+
+    class HabitatStub:
+        use_local_runtime = False
+
+        def __init__(self) -> None:
+            self.training_containers: dict[str, dict[str, str]] = {}
+            self.base_model_calls: list[str] = []
+            self._poll_count = 0
+
+        def run_training_job(
+            self, *, base_model: str, output_dir: str, job_name: str, **_kwargs
+        ):
+            self.base_model_calls.append(base_model)
+            adapter_dir = Path(output_dir) / "adapter"
+            adapter_dir.mkdir(parents=True, exist_ok=True)
+            (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+            self.training_containers[job_name] = {"status": "running"}
+            return {"job_name": job_name, "status": "running"}
+
+        def get_training_status(self, job_name: str):
+            self._poll_count += 1
+            if self._poll_count < 2:
+                return {"status": "running", "logs": "still running"}
+            self.training_containers[job_name] = {"status": "finished"}
+            return {"status": "finished", "logs": "ok"}
+
+    habitat = HabitatStub()
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(repo_root),
+        gpu_habitat=habitat,
+        model_manager=DummyModelManagerWithUnload(
+            [
+                {
+                    "name": "gemma-3-4b-it",
+                    "provider": "vllm",
+                    "runtime": "vllm",
+                    "path": str(model_dir),
+                },
+                {
+                    "name": "gemma3:latest",
+                    "provider": "ollama",
+                    "runtime": "ollama",
+                    "path": "ollama://gemma3:latest",
+                },
+            ]
+        ),
+        is_model_trainable_fn=lambda _model_id: True,
+    )
+
+    run_id = service.start_run(
+        mode="llm_finetune",
+        sources=["docs"],
+        llm_config={"base_model": "gemma-3-4b-it", "runtime_id": "ollama"},
+        dry_run=False,
+    )
+    status = await _wait_terminal(service, run_id)
+
+    assert status["status"] == "completed"
+    assert habitat.base_model_calls
+    assert habitat.base_model_calls[-1] == str(model_dir.resolve())
+    assert status["artifacts"]["requested_runtime_id"] == "ollama"
+    assert status["artifacts"]["effective_runtime_id"] == "ollama"
+    assert status["artifacts"]["requested_base_model"] == "gemma-3-4b-it"
+    assert status["artifacts"]["effective_base_model"] == "gemma-3-4b-it"
+    assert status["artifacts"]["training_base_model"] == str(model_dir.resolve())
+    metadata_payload = json.loads(
+        Path(status["artifacts"]["adapter_path"])
+        .parent.joinpath("metadata.json")
+        .read_text(encoding="utf-8")
+    )
+    assert metadata_payload["requested_runtime_id"] == "ollama"
+    assert metadata_payload["effective_runtime_id"] == "ollama"
+    assert metadata_payload["requested_base_model"] == "gemma-3-4b-it"
+    assert metadata_payload["effective_base_model"] == "gemma-3-4b-it"
+    assert metadata_payload["parameters"]["training_base_model"] == str(
+        model_dir.resolve()
+    )
+
+
+def test_start_run_fails_when_training_base_model_resolution_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path / "repo"),
+        is_model_trainable_fn=lambda _model_id: True,
+    )
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service.resolve_effective_training_base_model",
+        lambda *_args, **_kwargs: "",
+    )
+    with pytest.raises(Exception) as exc:
+        service.start_run(
+            mode="llm_finetune",
+            sources=["docs"],
+            llm_config={"base_model": "gemma-3-4b-it"},
+            dry_run=True,
+        )
+    detail = getattr(exc.value, "detail", {})
+    assert detail.get("reason_code") == "MODEL_TRAINING_BASE_UNRESOLVED"
 
 
 @pytest.mark.asyncio

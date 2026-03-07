@@ -488,7 +488,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Academy runtime/base-model contract regression for active cleanup flow."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_admin_audit.py",
@@ -2876,6 +2876,20 @@
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
+      "path": "tests/test_llm_simple_route_model_resolution.py",
+      "domain": "runtime",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Fast deterministic regression check for explicit SimpleMode model resolution."
+    },
+    {
       "path": "tests/test_llm_simple_stream.py",
       "domain": "runtime",
       "test_type": "route_contract",
@@ -4057,8 +4071,8 @@
     {
       "path": "tests/test_provider_admin.py",
       "domain": "providers",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "route_contract",
+      "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",

@@ -843,6 +843,7 @@ def _runtime_model_payload(
         else is_feedback_loop_ready(model_id)
     )
     canonical_model_id = _canonical_model_id(model_id)
+    is_adapter_artifact = str(name or "").strip().lower().startswith("venom-adapter-")
     payload: dict[str, Any] = {
         "id": model_id,
         "name": name,
@@ -862,6 +863,8 @@ def _runtime_model_payload(
         "owned_by_runtime": owned_by_runtime,
         "ownership_status": ownership_status or "unknown",
         "compatible_runtimes": compatible_runtimes or [],
+        "model_kind": "adapter_artifact" if is_adapter_artifact else "base_model",
+        "is_adapter_artifact": is_adapter_artifact,
     }
     if capabilities:
         payload["capabilities"] = capabilities
@@ -990,9 +993,7 @@ def _build_model_catalog(
         model for model in chat_models if bool(model.get("coding_eligible"))
     ]
     inference_only_artifacts = [
-        model
-        for model in all_models
-        if str(model.get("name") or "").strip().lower().startswith("venom-adapter-")
+        model for model in all_models if bool(model.get("is_adapter_artifact"))
     ]
     return {
         "all_models": all_models,

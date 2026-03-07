@@ -41,6 +41,16 @@ def _prepare_runtime_context(request: TaskRequest, runtime_info) -> dict:
         Słownik z kontekstem runtime
     """
     runtime_context = runtime_info.to_payload()
+    model_name = str(runtime_info.model_name or "").strip()
+    adapter_prefix = "venom-adapter-"
+    if model_name.startswith(adapter_prefix):
+        runtime_context["adapter_applied"] = True
+        runtime_context["adapter_id"] = (
+            model_name[len(adapter_prefix) :].strip() or None
+        )
+    else:
+        runtime_context["adapter_applied"] = False
+        runtime_context["adapter_id"] = None
     if request.expected_config_hash:
         runtime_context["expected_config_hash"] = request.expected_config_hash
     if request.expected_runtime_id:

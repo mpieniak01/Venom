@@ -39,6 +39,14 @@ _TRAINABLE_MODEL_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "qwen2.5-coder:3b": "qwen/qwen2.5-coder-3b-instruct",
     "qwen2.5-coder:7b": "qwen/qwen2.5-coder-7b-instruct",
 }
+_CANONICAL_TO_PREFERRED_TRAINING_BASE: Dict[str, str] = {
+    "gemma-3-4b-it": "google/gemma-3-4b-it",
+    "gemma-3-1b-it": "google/gemma-3-1b-it",
+    "phi-3-mini-4k-instruct": "unsloth/Phi-3-mini-4k-instruct",
+    "phi-3.5-mini-instruct": "unsloth/Phi-3.5-mini-instruct",
+    "llama-3.2-1b-instruct": "unsloth/Llama-3.2-1B-Instruct",
+    "llama-3.2-3b-instruct": "unsloth/Llama-3.2-3B-Instruct",
+}
 
 type ModelSourceType = Literal["local", "cloud"]
 type ModelCostTier = Literal["free", "paid", "unknown"]
@@ -196,6 +204,11 @@ def get_model_non_trainable_reason(
     if _looks_like_hf_repo_id(model_id):
         return None
 
+    # Canonical trainable families may be referenced by normalized local/runtime ids
+    # (e.g. "gemma-3-4b-it") without HF repo prefix.
+    if model_id_lc in _TRAINABLE_MODEL_ALIAS_TO_CANONICAL.values():
+        return None
+
     return "Model capability cannot be verified for Academy LoRA training"
 
 
@@ -339,6 +352,23 @@ def resolve_runtime_compatibility(
     if provider_hint_id:
         preferred.add(provider_hint_id)
 
+    # HF/Unsloth training bases are always deployable to vLLM in current Academy contract.
+    if provider_lc in {"unsloth", "huggingface", "hf", "config", "unknown"}:
+        if "vllm" in compatibility:
+            preferred.add("vllm")
+        if "ollama" in compatibility and model_id and _looks_like_hf_repo_id(model_id):
+            preferred.add("ollama")
+    if (
+        "ollama" in compatibility
+        and provider_lc not in {"ollama", "onnx"}
+        and _ollama_runtime_family_available(
+            model_id=model_id
+            or str(model_metadata.get("name") if model_metadata else ""),
+            runtime_model_families=runtime_model_families,
+        )
+    ):
+        preferred.add("ollama")
+
     # Local HuggingFace-layout folders discovered under vLLM remain valid
     # training bases for the Academy -> Ollama adapter deploy path.
     if (
@@ -375,6 +405,56 @@ def resolve_runtime_compatibility(
             compatibility[runtime_id] = True
 
     return compatibility
+
+
+def infer_training_provider(model_id: str) -> str:
+    """Infer training provider from model identifier."""
+    normalized = model_id.strip().lower()
+    if ":" in normalized:
+        return "ollama"
+    if normalized.startswith("unsloth/"):
+        return "unsloth"
+    if "/" in normalized:
+        return "huggingface"
+    return "unknown"
+
+
+def assess_runtime_base_model_compatibility(
+    *,
+    base_model: str,
+    runtime_id: str,
+    available_runtime_ids: List[str],
+    runtime_model_families: Optional[Dict[str, Set[str]]] = None,
+) -> Dict[str, Any]:
+    """Assess runtime/base model compatibility with a single shared contract."""
+    normalized_runtime_id = (
+        _canonical_local_runtime_id(runtime_id) or runtime_id.strip().lower()
+    )
+    compatibility = resolve_runtime_compatibility(
+        provider=infer_training_provider(base_model),
+        available_runtime_ids=available_runtime_ids,
+        model_metadata={"name": base_model},
+        model_id=base_model,
+        runtime_model_families=runtime_model_families,
+    )
+    compatible_runtimes = [
+        runtime for runtime in LOCAL_RUNTIME_PREFERENCE if compatibility.get(runtime)
+    ]
+    is_compatible = bool(compatibility.get(normalized_runtime_id))
+    reason_code = None
+    if not is_compatible:
+        reason_code = (
+            "MODEL_RUNTIME_INCOMPATIBLE"
+            if compatible_runtimes
+            else "MODEL_RUNTIME_TARGETS_UNAVAILABLE"
+        )
+    return {
+        "runtime_id": normalized_runtime_id,
+        "compatibility": compatibility,
+        "compatible_runtimes": compatible_runtimes,
+        "is_compatible": is_compatible,
+        "reason_code": reason_code,
+    }
 
 
 def _ollama_runtime_family_available(
@@ -690,3 +770,58 @@ def _canonical_runtime_model_id(model_id: str) -> str:
 
 def _resolve_local_runtime_id(runtime_id: str) -> Optional[str]:
     return _canonical_local_runtime_id(runtime_id)
+
+
+def _resolve_local_hf_training_path(
+    *,
+    model_id: str,
+    canonical_model_id: str,
+    local_models: List[Dict[str, Any]],
+) -> Optional[str]:
+    requested = model_id.strip()
+    requested_path = Path(requested).expanduser()
+    if requested and requested_path.exists():
+        resolved = requested_path.resolve()
+        if _non_trainable_reason_from_model_path(resolved) is None:
+            return str(resolved)
+
+    for local_model in local_models:
+        local_model_name = str(local_model.get("name") or "").strip()
+        if not local_model_name:
+            continue
+        local_canonical = _canonical_runtime_model_id(local_model_name)
+        if local_model_name != requested and local_canonical != canonical_model_id:
+            continue
+        local_path = _resolve_model_path_from_metadata(local_model)
+        if local_path is None:
+            continue
+        if _non_trainable_reason_from_model_path(local_path) is None:
+            return str(local_path.resolve())
+    return None
+
+
+def resolve_effective_training_base_model(
+    model_id: str,
+    *,
+    local_models: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """Resolve selected model id to concrete training base (local HF path or repo id)."""
+    selected_model_id = model_id.strip()
+    if not selected_model_id:
+        return ""
+    if _looks_like_hf_repo_id(selected_model_id):
+        return selected_model_id
+
+    canonical_model_id = _canonical_runtime_model_id(selected_model_id)
+    resolved_local_path = _resolve_local_hf_training_path(
+        model_id=selected_model_id,
+        canonical_model_id=canonical_model_id,
+        local_models=local_models or [],
+    )
+    if resolved_local_path:
+        return resolved_local_path
+
+    preferred = _CANONICAL_TO_PREFERRED_TRAINING_BASE.get(canonical_model_id)
+    if preferred:
+        return preferred
+    return selected_model_id

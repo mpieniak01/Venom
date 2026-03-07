@@ -83,7 +83,37 @@ async def test_dataset_resolution_and_model_validation(tmp_path: Path) -> None:
             runtime_id="vllm",
         )
     assert exc_info.value.status_code == 400
-    assert exc_info.value.detail["reason_code"] == "MODEL_RUNTIME_INCOMPATIBLE"
+    assert exc_info.value.detail["reason_code"] == "MODEL_RUNTIME_TARGETS_UNAVAILABLE"
+
+    model_dir = tmp_path / "hf-gemma"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_text("weights", encoding="utf-8")
+    manager.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "gemma-3-4b-it",
+                "provider": "vllm",
+                "runtime": "vllm",
+                "path": str(model_dir),
+            }
+        ]
+    )
+    resolved_training_base = await at.resolve_training_base_model(
+        base_model="gemma-3-4b-it",
+        manager=manager,
+    )
+    assert resolved_training_base == str(model_dir.resolve())
+
+    with pytest.raises(HTTPException) as unresolved_exc:
+        await at.resolve_training_base_model(
+            base_model=" ",
+            manager=manager,
+        )
+    assert unresolved_exc.value.status_code == 400
+    assert (
+        unresolved_exc.value.detail["reason_code"] == "MODEL_TRAINING_BASE_UNRESOLVED"
+    )
 
 
 def test_job_building_and_sync_and_cleanup(tmp_path: Path) -> None:
@@ -100,11 +130,15 @@ def test_job_building_and_sync_and_cleanup(tmp_path: Path) -> None:
         base_model="phi3",
         output_dir=tmp_path,
         request=req,
+        training_base_model="unsloth/Phi-3-mini-4k-instruct",
     )
     assert record["status"] == "queued"
     assert record["parameters"]["runtime_id"] == "ollama"
     assert record["parameters"]["requested_runtime_id"] == "ollama"
     assert record["parameters"]["effective_base_model"] == "phi3"
+    assert (
+        record["parameters"]["training_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
+    )
     assert record["parameters"]["num_epochs"] == 2
 
     job = {"status": "running", "output_dir": str(tmp_path)}

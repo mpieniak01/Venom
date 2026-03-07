@@ -59,6 +59,7 @@ import { useCockpitLayout } from "./use-cockpit-layout";
 import { useCockpitMacros } from "./use-cockpit-macros";
 import { useCockpitMetricsDisplay } from "./use-cockpit-metrics-display";
 import { resolveCockpitRuntimeModelSelection } from "@/lib/cockpit-runtime-selection";
+import { filterRuntimeBaseModels } from "@/lib/runtime-model-filters";
 
 type Data = ReturnType<typeof useCockpitData>;
 type Interactive = ReturnType<typeof useCockpitInteractiveState>;
@@ -323,8 +324,9 @@ export function useCockpitLogic({
             return;
         }
         const runtime = runtimeTargets.find((item) => item.runtime_id === effectiveServer);
-        const runtimeModels = (runtime?.models ?? [])
-            .filter((model) => model.chat_compatible !== false)
+        const runtimeModels = filterRuntimeBaseModels(
+            (runtime?.models ?? []).filter((model) => model.chat_compatible !== false),
+        )
             .map((model) => model.name);
         if (runtimeModels.length === 0) {
             if (interactive.state.selectedLlmModel) {

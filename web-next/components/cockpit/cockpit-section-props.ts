@@ -16,6 +16,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useCockpitContext } from "@/components/cockpit/cockpit-context";
 import { mapTelemetryTone, type TelemetryFeedEntry } from "@/components/cockpit/cockpit-utils";
 import { setActiveLlmServer } from "@/hooks/use-api";
+import { filterRuntimeBaseModels } from "@/lib/runtime-model-filters";
 
 
 
@@ -143,7 +144,9 @@ export function useCockpitSectionProps() {
   const selectedRuntimeModels = useMemo(() => {
     if (!resolvedServerId) return [];
     const target = runtimeTargets.find((runtime) => runtime.runtime_id === resolvedServerId);
-    return (target?.models ?? []).filter((model) => model.chat_compatible !== false);
+    return filterRuntimeBaseModels(
+      (target?.models ?? []).filter((model) => model.chat_compatible !== false),
+    );
   }, [resolvedServerId, runtimeTargets]);
   const selectedRuntimeTarget = useMemo(
     () => runtimeTargets.find((runtime) => runtime.runtime_id === resolvedServerId) ?? null,

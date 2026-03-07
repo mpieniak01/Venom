@@ -103,6 +103,7 @@ tests/test_llm_runtime_utils.py
 tests/test_llm_server_controller.py
 tests/test_llm_server_selection.py
 tests/test_llm_simple_payload_service.py
+tests/test_llm_simple_route_model_resolution.py
 tests/test_logger_utils.py
 tests/test_main_internal_helpers.py
 tests/test_main_setup_router_dependencies.py

@@ -16,6 +16,7 @@ from venom_core.utils.url_policy import build_http_url
 
 from .adapter_metadata_service import (
     ADAPTER_NOT_FOUND_DETAIL,
+    _load_adapter_metadata,
     _require_trusted_adapter_base_model,
 )
 from .trainable_catalog_service import (
@@ -331,6 +332,26 @@ def _resolve_requested_runtime_model(model_id: str | None) -> str:
     return str(model_id or "").strip()
 
 
+def _resolve_ollama_create_from_model(
+    *,
+    adapter_dir: Path,
+    requested_model: str,
+    is_runtime_model_dir_fn: Any = _is_runtime_model_dir,
+) -> tuple[str, bool]:
+    """Resolve FROM model for ollama create and whether --experimental is required."""
+    metadata = _load_adapter_metadata(adapter_dir)
+    parameters = metadata.get("parameters")
+    training_base_model = ""
+    if isinstance(parameters, dict):
+        training_base_model = str(parameters.get("training_base_model") or "").strip()
+
+    if training_base_model:
+        candidate = Path(training_base_model).expanduser().resolve()
+        if is_runtime_model_dir_fn(candidate):
+            return str(candidate), True
+    return requested_model, False
+
+
 def _deploy_adapter_to_vllm_runtime(
     *,
     adapter_id: str,
@@ -552,9 +573,17 @@ def _deploy_adapter_to_chat_runtime(
             raise ValueError(f"ADAPTER_BASE_MODEL_MISMATCH: {message}")
 
     ollama_model_name = f"venom-adapter-{adapter_id}"
+    from_model, use_experimental = _resolve_ollama_create_from_model(
+        adapter_dir=adapter_dir,
+        requested_model=requested_model,
+        is_runtime_model_dir_fn=deps["is_runtime_model_dir_fn"],
+    )
+
     deployed_model = mgr.create_ollama_modelfile(
         version_id=adapter_id,
         output_name=ollama_model_name,
+        from_model=from_model,
+        use_experimental=use_experimental,
     )
     if not deployed_model:
         raise RuntimeError("Failed to create Ollama model for adapter deployment")

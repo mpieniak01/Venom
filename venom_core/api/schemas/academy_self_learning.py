@@ -157,5 +157,4 @@ class SelfLearningCapabilitiesResponse(BaseModel):
 
     trainable_models: list[SelfLearningTrainableModelInfo] = Field(default_factory=list)
     embedding_profiles: list[SelfLearningEmbeddingProfile] = Field(default_factory=list)
-    default_base_model: str | None = None
     default_embedding_profile_id: str | None = None

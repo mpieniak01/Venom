@@ -269,7 +269,9 @@ Checklista deployu:
 
 Uwaga operacyjna:
 
-1. Dla historycznych adapterów z brakami lub niespójnością metadanych użyj runbooka: `docs/PL/ACADEMY_ADAPTER_METADATA_RUNBOOK.md`.
+1. Academy nie wspiera już ręcznej naprawy historycznych adapterów.
+2. Kanoniczne `metadata.json` jest obowiązkowe.
+3. Adapter bez kompletnego `metadata.json` jest nieważnym artefaktem i powinien zostać usunięty albo wygenerowany ponownie, a nie naprawiany ręcznie.
 
 ## Konfiguracja
 
@@ -434,12 +436,14 @@ Wdrożony panel Self-Learning zapewnia:
 
 ### Deploy adapterów do Chat
 1. `POST /api/v1/academy/adapters/activate`:
+   - wymaga jawnego `runtime_id + model_id`, gdy `deploy_to_chat_runtime=true`,
    - `ollama`: deploy wspierany,
    - `vllm`: deploy wspierany,
    - `onnx`: `runtime_not_supported` (guardrails only).
 2. `POST /api/v1/academy/adapters/deactivate`:
    - rollback do `PREVIOUS_MODEL_*` dla `ollama` i `vllm`,
    - `onnx`: skip z powodem.
+3. Adapter bez kanonicznego `metadata.json` jest blokowany i nie podlega ręcznej migracji.
 
 ### Semantyka UI (Cockpit Chat)
 1. `Model` = model serwowalny przez aktywny runtime.

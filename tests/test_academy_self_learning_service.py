@@ -10,7 +10,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from venom_core.config import SETTINGS
-from venom_core.services.academy.self_learning_service import SelfLearningService
+from venom_core.services.academy.self_learning_service import (
+    RagConfig,
+    SelfLearningService,
+)
 
 
 class DummyEmbeddingService:
@@ -356,8 +359,9 @@ def test_start_run_rejects_llm_without_base_model(tmp_path: Path):
         monkeypatch.undo()
 
 
-@pytest.mark.asyncio
-async def test_start_run_uses_default_base_model_when_missing(tmp_path: Path):
+def test_start_run_does_not_fallback_to_default_base_model_when_missing(
+    tmp_path: Path,
+):
     service = SelfLearningService(
         storage_dir=str(tmp_path / "storage"),
         repo_root=str(tmp_path),
@@ -366,13 +370,10 @@ async def test_start_run_uses_default_base_model_when_missing(tmp_path: Path):
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "custom/model")
     try:
-        run_id = service.start_run(mode="llm_finetune", sources=["docs"], dry_run=True)
-        status = service.get_status(run_id)
+        with pytest.raises(ValueError, match="llm_config.base_model is required"):
+            service.start_run(mode="llm_finetune", sources=["docs"], dry_run=True)
     finally:
         monkeypatch.undo()
-    assert status is not None
-    assert status["llm_config"]["base_model"] == "custom/model"
-    service.clear_all_runs()
 
 
 def test_start_run_uses_shared_trainable_model_validator(tmp_path: Path):
@@ -482,6 +483,43 @@ def test_resolve_default_embedding_profile_id_falls_back_to_first_profile(
     assert service._resolve_default_embedding_profile_id() == "profile-a"
 
 
+def test_apply_mode_defaults_assigns_default_embedding_profile_for_rag(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+    )
+    rag_config = RagConfig()
+    service._resolve_default_embedding_profile_id = lambda: "local:default"  # type: ignore[method-assign]
+
+    service._apply_mode_defaults(mode="rag_index", rag_config=rag_config)
+
+    assert rag_config.embedding_profile_id == "local:default"
+
+
+def test_fetch_local_models_sync_returns_list_from_sync_manager(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        model_manager=MagicMock(
+            list_local_models=MagicMock(return_value=[{"id": "m1"}])
+        ),
+    )
+
+    assert service._fetch_local_models_sync() == [{"id": "m1"}]
+
+
+def test_fetch_local_models_sync_returns_empty_on_manager_error(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        model_manager=MagicMock(
+            list_local_models=MagicMock(side_effect=RuntimeError("boom"))
+        ),
+    )
+
+    assert service._fetch_local_models_sync() == []
+
+
 def test_start_run_rejects_rag_without_embedding_profile(tmp_path: Path):
     service = SelfLearningService(
         storage_dir=str(tmp_path / "storage"), repo_root=str(tmp_path)
@@ -490,31 +528,81 @@ def test_start_run_rejects_rag_without_embedding_profile(tmp_path: Path):
         service.start_run(mode="rag_index", sources=["docs"], dry_run=True)
 
 
-@pytest.mark.asyncio
-async def test_start_run_allows_ollama_runtime_for_hf_trainable_base_model(
+def test_start_run_rejects_ollama_runtime_without_matching_runtime_family(
     tmp_path: Path,
 ):
     service = SelfLearningService(
         storage_dir=str(tmp_path / "storage"), repo_root=str(tmp_path)
     )
-    run_id = service.start_run(
-        mode="llm_finetune",
-        sources=["docs"],
-        llm_config={
-            "base_model": "unsloth/Phi-3-mini-4k-instruct",
-            "runtime_id": "ollama",
-        },
-        dry_run=True,
+    with pytest.raises(
+        ValueError, match="does not expose compatible local runtime targets"
+    ):
+        service.start_run(
+            mode="llm_finetune",
+            sources=["docs"],
+            llm_config={
+                "base_model": "unsloth/Phi-3-mini-4k-instruct",
+                "runtime_id": "ollama",
+            },
+            dry_run=True,
+        )
+
+
+def test_start_run_preserves_requested_base_model_in_runtime_mismatch_error(
+    tmp_path: Path,
+):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        is_model_trainable_fn=lambda model_id: model_id == "gemma-3-4b-it",
     )
-    await asyncio.sleep(0)
-    status = service.get_status(run_id)
-    assert status is not None
-    assert status["status"] in {
-        "pending",
-        "running",
-        "completed",
-        "completed_with_warnings",
-    }
+    with pytest.raises(
+        ValueError,
+        match="Model 'gemma-3-4b-it' does not expose compatible local runtime targets",
+    ):
+        service.start_run(
+            mode="llm_finetune",
+            sources=["repo_readmes"],
+            llm_config={
+                "base_model": "gemma-3-4b-it",
+                "runtime_id": "ollama",
+            },
+            dry_run=True,
+        )
+
+
+def test_validate_runtime_compatibility_accepts_matching_local_runtime_family(
+    tmp_path: Path,
+):
+    local_models = [
+        {
+            "name": "gemma-3-4b-it",
+            "provider": "vllm",
+            "runtime": "vllm",
+            "source": "models",
+        },
+        {
+            "name": "gemma3:latest",
+            "provider": "ollama",
+            "runtime": "ollama",
+            "source": "ollama",
+        },
+    ]
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        is_model_trainable_fn=lambda model_id: model_id == "gemma-3-4b-it",
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(service, "_fetch_local_models_sync", lambda: local_models)
+
+    try:
+        service._validate_runtime_compatibility_for_base_model(
+            base_model="gemma-3-4b-it",
+            runtime_id="ollama",
+        )
+    finally:
+        monkeypatch.undo()
 
 
 @pytest.mark.asyncio
@@ -560,7 +648,6 @@ async def test_capabilities_exposes_trainable_models_and_embedding_profiles(
     finally:
         monkeypatch.undo()
 
-    assert payload["default_base_model"] == "qwen2.5-coder:3b"
     assert payload["default_embedding_profile_id"] == "local:default"
     assert payload["embedding_profiles"][0]["healthy"] is True
     models = {item["model"] for item in payload["embedding_profiles"]}
@@ -610,7 +697,60 @@ async def test_capabilities_prefers_model_compatible_with_active_runtime(
     finally:
         monkeypatch.undo()
 
-    assert payload["default_base_model"] == "qwen2.5-coder:3b"
+    assert "default_base_model" not in payload
+
+
+@pytest.mark.asyncio
+async def test_capabilities_require_matching_ollama_runtime_family(
+    tmp_path: Path,
+):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path),
+        vector_store=DummyVectorStore(),
+        model_manager=DummyModelManager(
+            [
+                {
+                    "name": "unsloth/Phi-3-mini-4k-instruct",
+                    "provider": "unsloth",
+                    "runtime": "vllm",
+                    "source": "models",
+                },
+                {
+                    "name": "gemma-3-4b-it",
+                    "provider": "vllm",
+                    "runtime": "vllm",
+                    "source": "models",
+                },
+                {
+                    "name": "gemma3:latest",
+                    "provider": "ollama",
+                    "runtime": "ollama",
+                    "source": "ollama",
+                },
+            ]
+        ),
+    )
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(SETTINGS, "ACTIVE_LLM_SERVER", "ollama")
+    monkeypatch.setattr(
+        SETTINGS,
+        "ACADEMY_DEFAULT_BASE_MODEL",
+        "unsloth/Phi-3-mini-4k-instruct",
+    )
+    try:
+        payload = await service.get_capabilities()
+    finally:
+        monkeypatch.undo()
+
+    by_id = {item["model_id"]: item for item in payload["trainable_models"]}
+    assert by_id["unsloth/Phi-3-mini-4k-instruct"]["runtime_compatibility"] == {
+        "vllm": True,
+        "ollama": False,
+    }
+    assert by_id["google/gemma-3-4b-it"]["runtime_compatibility"]["ollama"] is True
+    assert "default_base_model" not in payload
 
 
 @pytest.mark.asyncio
@@ -728,7 +868,9 @@ async def test_load_trainable_models_uses_loader_payload_when_present(tmp_path: 
 
 
 @pytest.mark.asyncio
-async def test_load_trainable_models_adds_config_default_when_missing(tmp_path: Path):
+async def test_load_trainable_models_does_not_add_config_default_when_missing(
+    tmp_path: Path,
+):
     service = SelfLearningService(
         storage_dir=str(tmp_path / "storage"),
         repo_root=str(tmp_path),
@@ -746,10 +888,8 @@ async def test_load_trainable_models_adds_config_default_when_missing(tmp_path: 
     finally:
         monkeypatch.undo()
 
-    assert any(
-        item["model_id"] == "custom/default-model" and item["provider"] == "config"
-        for item in models
-    )
+    assert not any(item["provider"] == "config" for item in models)
+    assert all(item["model_id"] != "custom/default-model" for item in models)
 
 
 def test_chunk_text_prefers_natural_split_when_possible():
@@ -1253,6 +1393,55 @@ async def test_llm_finetune_waits_for_finished_job_and_adapter(tmp_path: Path):
     assert metadata_payload["source_flow"] == "self_learning"
     assert metadata_payload["requested_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
     assert metadata_payload["effective_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
+
+
+@pytest.mark.asyncio
+async def test_run_llm_finetune_does_not_fallback_to_config_default_base_model(
+    tmp_path: Path,
+):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path / "repo"),
+    )
+    run = service._run_from_payload(
+        {
+            "run_id": "55555555-5555-5555-5555-555555555555",
+            "mode": "llm_finetune",
+            "sources": ["docs"],
+            "limits": {},
+            "llm_config": {
+                "num_epochs": 1,
+                "dataset_strategy": "reconstruct",
+                "task_mix_preset": "balanced",
+            },
+            "rag_config": {},
+            "status": "running",
+            "created_at": "2026-03-05T00:00:00+00:00",
+            "logs": [],
+            "artifacts": {},
+            "progress": {},
+        }
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "custom/default-model")
+    try:
+        with pytest.raises(
+            Exception, match="llm_config.base_model is required for fine-tuning"
+        ):
+            await service._run_llm_finetune(
+                run,
+                [
+                    {
+                        "text": "Venom academy training sample " * 50,
+                        "path": "docs/intro.md",
+                        "source": "docs",
+                    }
+                ],
+            )
+    finally:
+        monkeypatch.undo()
+
+    assert run.artifacts.get("selected_base_model") is None
 
 
 def test_ensure_no_active_training_jobs_blocks_running_jobs(tmp_path: Path):

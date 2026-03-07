@@ -136,7 +136,7 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
       {/* Konfiguracja */}
       <div className="rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-6">
         <h3 className="mb-4 text-sm font-medium text-[color:var(--text-secondary)]">{t("academy.overview.configTitle")}</h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <p className="text-xs text-hint">{t("academy.overview.minLessons")}</p>
             <p className="mt-1 text-lg font-semibold text-[color:var(--text-heading)]">{status.config.min_lessons}</p>
@@ -144,10 +144,6 @@ export function AcademyOverview({ status, onRefresh }: AcademyOverviewProps) {
           <div>
             <p className="text-xs text-hint">{t("academy.overview.trainingInterval")}</p>
             <p className="mt-1 text-lg font-semibold text-[color:var(--text-heading)]">{status.config.training_interval_hours}h</p>
-          </div>
-          <div>
-            <p className="text-xs text-hint">{t("academy.overview.baseModel")}</p>
-            <p className="mt-1 text-sm font-mono text-[color:var(--text-heading)]">{status.config.default_base_model}</p>
           </div>
         </div>
       </div>

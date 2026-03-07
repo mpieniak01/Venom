@@ -15,11 +15,11 @@ WEB_PORT ?= 3000
 WEB_HOST ?= 0.0.0.0
 WEB_DISPLAY ?= 127.0.0.1
 WEB_PID_FILE ?= .web-next.pid
-NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
+NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
 NEXT_TURBO_WATCH_ENV ?= WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1
 START_MODE ?= dev
-START_WEB_MODE ?= turbo
+START_WEB_MODE ?= webpack
 ALLOW_DEGRADED_START ?= 0
 UVICORN_DEV_FLAGS ?= --reload
 UVICORN_PROD_FLAGS ?= --no-server-header
@@ -508,7 +508,7 @@ start: start-dev
 
 start-dev:
 	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=turbo _start
+	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=webpack _start
 
 start2: start-dev-webpack
 
@@ -517,7 +517,8 @@ start-dev-webpack:
 	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=webpack _start
 
 start-dev-turbo:
-	$(MAKE) --no-print-directory start-dev
+	$(MAKE) --no-print-directory ensure-env-file
+	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=turbo _start
 
 start-prod:
 	@echo "⚠️  OSTRZEŻENIE: tryb 'prod' nie jest jeszcze oficjalnie zwalidowany/rekomendowany operacyjnie."
@@ -874,6 +875,24 @@ _start:
 		fi; \
 	fi; \
 	if [ -z "$$ui_skip" ]; then \
+		wait_for_ui_ready() { \
+			local pid="$$1"; \
+			local failure_label="$$2"; \
+			local ready=""; \
+			for attempt in {1..40}; do \
+				if kill -0 "$$pid" 2>/dev/null; then \
+					if curl -fsS http://$(WEB_DISPLAY):$(WEB_PORT) >/dev/null 2>&1; then \
+						ready="yes"; \
+						break; \
+					fi; \
+				else \
+					echo "$$failure_label proces $$pid zakończył się przed startem" >&2; \
+					break; \
+				fi; \
+				sleep 1; \
+			done; \
+			printf '%s' "$$ready"; \
+		}; \
 		: > $(WEB_LOG); \
 		if [ "$(START_MODE)" = "prod" ]; then \
 			echo "🛠  Buduję Next.js (npm run build)"; \
@@ -901,36 +920,36 @@ _start:
 			fi; \
 		fi; \
 		WPID=$$(cat $(WEB_PID_FILE)); \
-		ui_ready=""; \
-		for attempt in {1..40}; do \
-			if kill -0 $$WPID 2>/dev/null; then \
-				if curl -fsS http://$(WEB_DISPLAY):$(WEB_PORT) >/dev/null 2>&1; then \
-					ui_ready="yes"; \
-					break; \
-				fi; \
-			else \
-				echo "❌ UI (Next.js) proces $$WPID zakończył się przed startem"; \
-				break; \
+		ui_ready=$$(wait_for_ui_ready "$$WPID" "❌ UI (Next.js)"); \
+		effective_web_mode="$(START_WEB_MODE)"; \
+		if [ -z "$$ui_ready" ]; then \
+			echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
+			kill -TERM -$$WPID 2>/dev/null || kill $$WPID 2>/dev/null || true; \
+			rm -f $(WEB_PID_FILE); \
+			if [ "$(START_MODE)" = "dev" ] && { [ "$(START_WEB_MODE)" = "turbo" ] || [ "$(START_WEB_MODE)" = "turbo-debug" ]; } && [ -f "$(WEB_LOG)" ] && grep -Eiq "Too many open files|Failed to allocate directory watch" "$(WEB_LOG)"; then \
+				echo "⚠️  Turbopack nie wystartował przez błąd watchera. Przełączam UI na fallback webpack."; \
+				: > $(WEB_LOG); \
+				NEXT_PUBLIC_APP_VERSION="$(WEB_APP_VERSION)" NEXT_PUBLIC_ENVIRONMENT_ROLE="$${ENVIRONMENT_ROLE:-dev}" $(NEXT_DEV_ENV) $(ENV_RUN) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+				echo $$! > $(WEB_PID_FILE); \
+				WPID=$$(cat $(WEB_PID_FILE)); \
+				effective_web_mode="webpack"; \
+				ui_ready=$$(wait_for_ui_ready "$$WPID" "❌ UI fallback (webpack)"); \
 			fi; \
-			sleep 1; \
-		done; \
 			if [ -z "$$ui_ready" ]; then \
-				echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
-				kill -TERM -$$WPID 2>/dev/null || kill $$WPID 2>/dev/null || true; \
-				rm -f $(WEB_PID_FILE); \
 				# zatrzymaj backend, aby nie zostawiać pół-startu
-			if [ -f $(PID_FILE) ]; then \
-				BPID=$$(cat $(PID_FILE)); \
-				kill $$BPID 2>/dev/null || true; \
-				rm -f $(PID_FILE); \
-			fi; \
-			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+				if [ -f $(PID_FILE) ]; then \
+					BPID=$$(cat $(PID_FILE)); \
+					kill $$BPID 2>/dev/null || true; \
+					rm -f $(PID_FILE); \
+				fi; \
+				$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
 				$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
 				exit 1; \
 			fi; \
+		fi; \
 			if [ "$(START_MODE)" = "dev" ]; then \
 				expected_bundler=""; \
-				if [ "$(START_WEB_MODE)" = "webpack" ]; then \
+				if [ "$$effective_web_mode" = "webpack" ]; then \
 					expected_bundler="webpack"; \
 				else \
 					expected_bundler="turbopack"; \
@@ -1228,12 +1247,12 @@ help:
 	@echo "Venom Makefile - najczęściej używane komendy"
 	@echo ""
 	@echo "Start/Stop:"
-	@echo "  make start                    - start backend + frontend (turbopack) + runtime LLM"
+	@echo "  make start                    - start backend + frontend (webpack-safe dev) + runtime LLM"
 	@echo "  make start2                   - start backend + frontend (webpack) + runtime LLM"
 	@echo "  make stop                     - stop backend + frontend + runtime LLM"
 	@echo "  make status                   - status procesów"
 	@echo "  make web-dev                  - frontend dev (webpack, fallback)"
-	@echo "  make web-dev-turbo            - frontend dev (turbopack, domyślny tryb dev)"
+	@echo "  make web-dev-turbo            - frontend dev (turbopack, opt-in)"
 	@echo "  make web-dev-turbo-debug      - frontend dev turbopack + debug logi"
 	@echo ""
 	@echo "Testy:"

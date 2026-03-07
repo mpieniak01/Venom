@@ -116,6 +116,7 @@ def test_academy_status_enabled(mock_settings, client):
     data = response.json()
     assert data["enabled"] is True
     assert data["jobs"]["finished"] == 0
+    assert "default_base_model" not in data["config"]
 
 
 @patch("venom_core.config.SETTINGS")
@@ -170,6 +171,7 @@ def test_start_training_tracks_queued_preparing_running(
         response = client.post(
             "/api/v1/academy/train",
             json={
+                "base_model": "unsloth/Phi-3-mini-4k-instruct",
                 "lora_rank": 16,
                 "learning_rate": 0.0002,
                 "num_epochs": 3,
@@ -192,6 +194,86 @@ def test_start_training_tracks_queued_preparing_running(
     status_updates = [call.args[1]["status"] for call in mock_update_job.call_args_list]
     assert "preparing" in status_updates
     assert "running" in status_updates
+
+
+@patch("venom_core.config.SETTINGS")
+def test_start_training_requires_explicit_base_model(
+    mock_settings,
+    client,
+):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_TRAINING_DIR = "./data/training"
+    mock_settings.ACADEMY_MODELS_DIR = "./data/models"
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch(
+            "pathlib.Path.glob",
+            return_value=[Path("./data/training/dataset_123.jsonl")],
+        ),
+    ):
+        response = client.post(
+            "/api/v1/academy/train",
+            json={
+                "lora_rank": 16,
+                "learning_rate": 0.0002,
+                "num_epochs": 3,
+                "batch_size": 4,
+            },
+        )
+
+    assert response.status_code == 400
+    payload = response.json()["detail"]
+    assert payload["reason_code"] == "MODEL_BASE_MODEL_REQUIRED"
+
+
+@patch("venom_core.config.SETTINGS")
+def test_start_training_rejects_ollama_without_matching_runtime_family(
+    mock_settings,
+    client,
+    mock_model_manager,
+):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_TRAINING_DIR = "./data/training"
+    mock_settings.ACADEMY_MODELS_DIR = "./data/models"
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/Phi-3-mini-4k-instruct"
+
+    mock_model_manager.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "gemma3:latest",
+                "provider": "ollama",
+                "path": "./data/models/gemma3",
+            }
+        ]
+    )
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch(
+            "pathlib.Path.glob",
+            return_value=[Path("./data/training/dataset_123.jsonl")],
+        ),
+    ):
+        response = client.post(
+            "/api/v1/academy/train",
+            json={
+                "base_model": "unsloth/Phi-3-mini-4k-instruct",
+                "runtime_id": "ollama",
+                "lora_rank": 16,
+                "learning_rate": 0.0002,
+                "num_epochs": 3,
+                "batch_size": 4,
+            },
+        )
+
+    assert response.status_code == 400
+    payload = response.json()["detail"]
+    assert payload["reason_code"] == "MODEL_RUNTIME_INCOMPATIBLE"
+    assert payload["requested_runtime_id"] == "ollama"
+    assert payload["requested_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
+    assert payload["compatible_runtimes"] == ["vllm"]
 
 
 @patch("venom_core.config.SETTINGS")

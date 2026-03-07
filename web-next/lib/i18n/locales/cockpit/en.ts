@@ -52,6 +52,7 @@ export const cockpitLocale = {
       taskPendingId: "in progress…",
       taskSendError: "Failed to send task",
       emptyPrompt: "Provide task content.",
+      modelSelectionRequired: "Choose a model for the current server before starting chat or activation.",
       sessionInitializing: "Session is initializing. Please try again in a moment.",
       serverSwitchError: "Failed to switch active LLM server.",
     },
@@ -138,6 +139,15 @@ export const cockpitLocale = {
       chooseModel: "Choose model",
       loadingAdapters: "Loading adapters",
       adapterBase: "Base model (no adapter)",
+      adapterCompatible: "compatible with current model",
+      adapterBlocked: "blocked for current model",
+      adapterStatusUnknown: "audit status unknown",
+      activeAdapterLabel: "Active adapter",
+      activeAdapterCompatible: "active adapter matches the current selection",
+      activeAdapterBlocked: "active adapter does not match the current runtime model",
+      activeAdapterNone: "No active adapter for the current audit context.",
+      activeAdapterSwitchHint:
+        "Switch runtime model to one compatible with the adapter base or disable the adapter before continuing.",
       adapterIncompatible: "incompatible with runtime {{runtime}}",
       adapterRuntimeNotSupported: "chat adapter deploy is not supported for runtime {{runtime}}",
       runtimeModelAuditWarning:

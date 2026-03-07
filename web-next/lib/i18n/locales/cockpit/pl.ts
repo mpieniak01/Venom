@@ -59,6 +59,7 @@ export const cockpitLocale = {
       taskPendingId: "w toku…",
       taskSendError: "Nie udało się wysłać zadania",
       emptyPrompt: "Podaj treść zadania.",
+      modelSelectionRequired: "Wybierz model dla aktualnego serwera, zanim uruchomisz czat lub aktywację.",
       sessionInitializing: "Sesja inicjalizuje się. Spróbuj ponownie za chwilę.",
       serverSwitchError: "Nie udało się przełączyć aktywnego serwera LLM.",
     },
@@ -145,6 +146,15 @@ export const cockpitLocale = {
       chooseModel: "Wybierz model",
       loadingAdapters: "Ładowanie adapterów",
       adapterBase: "Model bazowy (bez adaptera)",
+      adapterCompatible: "zgodny z bieżącym modelem",
+      adapterBlocked: "zablokowany dla bieżącego modelu",
+      adapterStatusUnknown: "status audytu nieznany",
+      activeAdapterLabel: "Aktywny adapter",
+      activeAdapterCompatible: "aktywny adapter jest zgodny z bieżącym wyborem",
+      activeAdapterBlocked: "aktywny adapter nie pasuje do bieżącego modelu runtime",
+      activeAdapterNone: "Brak aktywnego adaptera dla bieżącego kontekstu audytu.",
+      activeAdapterSwitchHint:
+        "Zmień model runtime na zgodny z bazą adaptera albo wyłącz adapter przed dalszą pracą.",
       adapterIncompatible: "niekompatybilny z runtime {{runtime}}",
       adapterRuntimeNotSupported: "deploy adaptera do czatu nie jest wspierany dla runtime {{runtime}}",
       runtimeModelAuditWarning:

@@ -33,6 +33,12 @@ from venom_core.services.academy.adapter_metadata_service import (
     build_canonical_adapter_metadata,
     write_canonical_adapter_metadata,
 )
+from venom_core.services.academy.trainable_catalog_service import (
+    discover_available_runtime_targets,
+    discover_runtime_model_families,
+    resolve_recommended_runtime,
+    resolve_runtime_compatibility,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -170,6 +176,30 @@ _LOCAL_EMBEDDING_PROFILES: tuple[tuple[str, int], ...] = (
 
 class SelfLearningError(Exception):
     """Domain-level exception for self-learning runs."""
+
+
+class SelfLearningValidationError(ValueError):
+    """Structured validation error surfaced by self-learning start contract."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str,
+        requested_runtime_id: str | None = None,
+        requested_base_model: str | None = None,
+        effective_base_model: str | None = None,
+        compatible_runtimes: list[str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.detail = {
+            "message": message,
+            "reason_code": reason_code,
+            "requested_runtime_id": requested_runtime_id,
+            "requested_base_model": requested_base_model,
+            "effective_base_model": effective_base_model,
+            "compatible_runtimes": compatible_runtimes or [],
+        }
 
 
 @dataclass
@@ -344,7 +374,6 @@ class SelfLearningService:
         requested_runtime_id = run_llm_config.runtime_id
         self._apply_mode_defaults(
             mode=mode,
-            llm_config=run_llm_config,
             rag_config=run_rag_config,
         )
         self._validate_mode_config(
@@ -703,8 +732,12 @@ class SelfLearningService:
                 )
             is_trainable = self._is_trainable_model(llm_config.base_model)
             if not is_trainable:
-                raise ValueError(
-                    f"Model '{llm_config.base_model}' is not trainable in Academy"
+                raise SelfLearningValidationError(
+                    f"Model '{llm_config.base_model}' is not trainable in Academy",
+                    reason_code="MODEL_NOT_TRAINABLE",
+                    requested_runtime_id=llm_config.runtime_id,
+                    requested_base_model=llm_config.base_model,
+                    effective_base_model=llm_config.base_model,
                 )
             if llm_config.runtime_id:
                 self._validate_runtime_compatibility_for_base_model(
@@ -722,11 +755,16 @@ class SelfLearningService:
         base_model: str,
         runtime_id: str,
     ) -> None:
+        local_models = self._fetch_local_models_sync()
         provider = self._infer_training_provider(base_model)
+        available_runtime_ids = self._resolve_available_runtime_ids(local_models)
+        runtime_model_families = discover_runtime_model_families(local_models)
         compatibility = self._resolve_runtime_compatibility(
             provider=provider,
-            available_runtime_ids=[],
+            available_runtime_ids=available_runtime_ids,
+            model_id=base_model,
             model_metadata={"name": base_model},
+            runtime_model_families=runtime_model_families,
         )
         if compatibility.get(runtime_id):
             return
@@ -735,12 +773,24 @@ class SelfLearningService:
         ]
         if available:
             supported = ", ".join(available)
-            raise ValueError(
-                f"Model '{base_model}' is incompatible with runtime '{runtime_id}'. "
-                f"Supported runtimes: {supported}."
+            raise SelfLearningValidationError(
+                (
+                    f"Model '{base_model}' is incompatible with runtime '{runtime_id}'. "
+                    f"Supported runtimes: {supported}."
+                ),
+                reason_code="MODEL_RUNTIME_INCOMPATIBLE",
+                requested_runtime_id=runtime_id,
+                requested_base_model=base_model,
+                effective_base_model=base_model,
+                compatible_runtimes=available,
             )
-        raise ValueError(
-            f"Model '{base_model}' does not expose compatible local runtime targets."
+        raise SelfLearningValidationError(
+            f"Model '{base_model}' does not expose compatible local runtime targets.",
+            reason_code="MODEL_RUNTIME_TARGETS_UNAVAILABLE",
+            requested_runtime_id=runtime_id,
+            requested_base_model=base_model,
+            effective_base_model=base_model,
+            compatible_runtimes=[],
         )
 
     @staticmethod
@@ -774,15 +824,8 @@ class SelfLearningService:
         self,
         *,
         mode: SelfLearningMode,
-        llm_config: LlmConfig,
         rag_config: RagConfig,
     ) -> None:
-        if mode == "llm_finetune":
-            selected_model = (llm_config.base_model or "").strip()
-            if not selected_model or not self._is_trainable_model(selected_model):
-                fallback_model = self._resolve_fallback_base_model()
-                if fallback_model:
-                    llm_config.base_model = fallback_model
         if mode == "rag_index" and not rag_config.embedding_profile_id:
             fallback_profile_id = self._resolve_default_embedding_profile_id()
             if fallback_profile_id:
@@ -802,13 +845,6 @@ class SelfLearningService:
                     exc,
                 )
         return self._is_trainable_model_candidate(candidate)
-
-    def _resolve_fallback_base_model(self) -> str | None:
-        default_model = str(getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "") or "")
-        candidate = default_model.strip()
-        if candidate and self._is_trainable_model(candidate):
-            return candidate
-        return None
 
     def _resolve_default_embedding_profile_id(self) -> str | None:
         profiles = self._embedding_profiles()
@@ -843,38 +879,6 @@ class SelfLearningService:
     async def get_capabilities(self) -> dict[str, Any]:
         trainable_models = await self._load_trainable_models()
         embedding_profiles = self._embedding_profiles()
-        preferred_runtime = self._resolve_preferred_runtime_for_capabilities()
-        default_base_model = next(
-            (
-                item["model_id"]
-                for item in trainable_models
-                if preferred_runtime
-                and bool(item.get("runtime_compatibility", {}).get(preferred_runtime))
-                and bool(item.get("recommended"))
-            ),
-            None,
-        )
-        if default_base_model is None:
-            default_base_model = next(
-                (
-                    item["model_id"]
-                    for item in trainable_models
-                    if preferred_runtime
-                    and bool(
-                        item.get("runtime_compatibility", {}).get(preferred_runtime)
-                    )
-                ),
-                None,
-            )
-        if default_base_model is None:
-            default_base_model = next(
-                (
-                    item["model_id"]
-                    for item in trainable_models
-                    if bool(item.get("recommended"))
-                ),
-                trainable_models[0]["model_id"] if trainable_models else None,
-            )
         default_embedding_profile_id = next(
             (item["profile_id"] for item in embedding_profiles if item.get("healthy")),
             embedding_profiles[0]["profile_id"] if embedding_profiles else None,
@@ -882,17 +886,8 @@ class SelfLearningService:
         return {
             "trainable_models": trainable_models,
             "embedding_profiles": embedding_profiles,
-            "default_base_model": default_base_model,
             "default_embedding_profile_id": default_embedding_profile_id,
         }
-
-    def _resolve_preferred_runtime_for_capabilities(self) -> str | None:
-        active_runtime = (
-            str(getattr(SETTINGS, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
-        )
-        if active_runtime in _LOCAL_RUNTIME_IDS:
-            return active_runtime
-        return None
 
     async def _load_trainable_models(self) -> list[dict[str, Any]]:
         from_loader = await self._load_trainable_models_from_loader()
@@ -902,47 +897,31 @@ class SelfLearningService:
         result: list[dict[str, Any]] = []
         seen: set[str] = set()
         local_models = await self._fetch_local_models()
-        default_model = str(
-            getattr(SETTINGS, "ACADEMY_DEFAULT_BASE_MODEL", "") or ""
-        ).strip()
 
         available_runtime_ids = self._resolve_available_runtime_ids(local_models)
-        default_runtime_compatibility = self._resolve_runtime_compatibility(
-            provider="huggingface",
-            available_runtime_ids=available_runtime_ids,
-        )
-        default_recommended_runtime = self._resolve_recommended_runtime(
-            default_runtime_compatibility
-        )
+        runtime_model_families = discover_runtime_model_families(local_models)
 
         self._append_local_trainable_models(
             result=result,
             seen=seen,
             local_models=local_models,
-            default_model=default_model,
             available_runtime_ids=available_runtime_ids,
+            runtime_model_families=runtime_model_families,
         )
         self._append_default_trainable_models(
             result=result,
             seen=seen,
-            default_model=default_model,
-            default_runtime_compatibility=default_runtime_compatibility,
-            default_recommended_runtime=default_recommended_runtime,
-        )
-        self._append_config_default_trainable_model(
-            result=result,
-            seen=seen,
-            default_model=default_model,
-            default_runtime_compatibility=default_runtime_compatibility,
-            default_recommended_runtime=default_recommended_runtime,
+            available_runtime_ids=available_runtime_ids,
+            runtime_model_families=runtime_model_families,
         )
 
         result.sort(
             key=lambda item: (
-                not bool(item.get("recommended")),
                 str(item.get("label") or item.get("model_id") or "").lower(),
             )
         )
+        for index, item in enumerate(result):
+            item["recommended"] = index == 0
         return result
 
     async def _load_trainable_models_from_loader(self) -> list[dict[str, Any]]:
@@ -971,14 +950,30 @@ class SelfLearningService:
             logger.warning("Failed to load local models for self-learning: %s", exc)
         return []
 
+    def _fetch_local_models_sync(self) -> list[dict[str, Any]]:
+        if self.model_manager is None or not hasattr(
+            self.model_manager, "list_local_models"
+        ):
+            return []
+        try:
+            fetched = self.model_manager.list_local_models()
+            if isinstance(fetched, list):
+                return [item for item in fetched if isinstance(item, dict)]
+        except Exception as exc:
+            logger.warning(
+                "Failed to load local models synchronously for self-learning: %s",
+                exc,
+            )
+        return []
+
     def _append_local_trainable_models(
         self,
         *,
         result: list[dict[str, Any]],
         seen: set[str],
         local_models: list[dict[str, Any]],
-        default_model: str,
         available_runtime_ids: list[str],
+        runtime_model_families: dict[str, set[str]],
     ) -> None:
         for model in local_models:
             model_id = str(model.get("name") or "").strip()
@@ -990,14 +985,16 @@ class SelfLearningService:
             runtime_compatibility = self._resolve_runtime_compatibility(
                 provider=provider,
                 available_runtime_ids=available_runtime_ids,
+                model_id=model_id,
                 model_metadata=model,
+                runtime_model_families=runtime_model_families,
             )
             result.append(
                 {
                     "model_id": model_id,
                     "label": f"{model_id} ({provider})",
                     "provider": provider,
-                    "recommended": model_id == default_model,
+                    "recommended": False,
                     "runtime_compatibility": runtime_compatibility,
                     "recommended_runtime": self._resolve_recommended_runtime(
                         runtime_compatibility
@@ -1011,50 +1008,31 @@ class SelfLearningService:
         *,
         result: list[dict[str, Any]],
         seen: set[str],
-        default_model: str,
-        default_runtime_compatibility: dict[str, bool],
-        default_recommended_runtime: str | None,
+        available_runtime_ids: list[str],
+        runtime_model_families: dict[str, set[str]],
     ) -> None:
         for model_id, label, provider in _DEFAULT_TRAINABLE_MODELS:
             if model_id in seen:
                 continue
+            runtime_compatibility = SelfLearningService._resolve_runtime_compatibility(
+                provider=provider,
+                available_runtime_ids=available_runtime_ids,
+                model_id=model_id,
+                runtime_model_families=runtime_model_families,
+            )
             result.append(
                 {
                     "model_id": model_id,
                     "label": label,
                     "provider": provider,
-                    "recommended": model_id == default_model,
-                    "runtime_compatibility": dict(default_runtime_compatibility),
-                    "recommended_runtime": default_recommended_runtime,
+                    "recommended": False,
+                    "runtime_compatibility": dict(runtime_compatibility),
+                    "recommended_runtime": SelfLearningService._resolve_recommended_runtime(
+                        runtime_compatibility
+                    ),
                 }
             )
             seen.add(model_id)
-
-    def _append_config_default_trainable_model(
-        self,
-        *,
-        result: list[dict[str, Any]],
-        seen: set[str],
-        default_model: str,
-        default_runtime_compatibility: dict[str, bool],
-        default_recommended_runtime: str | None,
-    ) -> None:
-        if (
-            not default_model
-            or default_model in seen
-            or not self._is_trainable_model_candidate(default_model)
-        ):
-            return
-        result.append(
-            {
-                "model_id": default_model,
-                "label": f"{default_model} (default)",
-                "provider": "config",
-                "recommended": True,
-                "runtime_compatibility": dict(default_runtime_compatibility),
-                "recommended_runtime": default_recommended_runtime,
-            }
-        )
 
     @staticmethod
     def _normalize_trainable_models_payload(payload: list[Any]) -> list[dict[str, Any]]:
@@ -1087,36 +1065,23 @@ class SelfLearningService:
 
     @staticmethod
     def _resolve_available_runtime_ids(local_models: list[dict[str, Any]]) -> list[str]:
-        discovered: set[str] = set()
-        for model in local_models:
-            for candidate in (
-                str(model.get("runtime") or ""),
-                str(model.get("provider") or ""),
-                str(model.get("source") or ""),
-            ):
-                normalized = candidate.strip().lower()
-                if normalized in _LOCAL_RUNTIME_IDS:
-                    discovered.add(normalized)
-        return sorted(discovered)
+        return discover_available_runtime_targets(local_models)
 
     @staticmethod
     def _resolve_runtime_compatibility(
         *,
         provider: str,
         available_runtime_ids: list[str],
+        model_id: str | None = None,
         model_metadata: dict[str, Any] | None = None,
+        runtime_model_families: dict[str, set[str]] | None = None,
     ) -> dict[str, bool]:
-        compatibility = dict.fromkeys(_LOCAL_RUNTIME_IDS, False)
-        preferred = SelfLearningService._preferred_runtime_ids(
+        compatibility = resolve_runtime_compatibility(
             provider=provider,
-            model_metadata=model_metadata,
-        )
-        for runtime in preferred:
-            if runtime in compatibility:
-                compatibility[runtime] = True
-        SelfLearningService._apply_runtime_availability_filter(
-            compatibility=compatibility,
             available_runtime_ids=available_runtime_ids,
+            model_id=model_id,
+            model_metadata=model_metadata,
+            runtime_model_families=runtime_model_families,
         )
         return compatibility
 
@@ -1173,9 +1138,9 @@ class SelfLearningService:
     def _resolve_recommended_runtime(
         runtime_compatibility: dict[str, bool],
     ) -> str | None:
-        for runtime in _LOCAL_RUNTIME_IDS:
-            if runtime_compatibility.get(runtime):
-                return runtime
+        resolved = resolve_recommended_runtime(runtime_compatibility)
+        if resolved is not None:
+            return resolved
         return None
 
     @staticmethod
@@ -1442,6 +1407,11 @@ class SelfLearningService:
                 "Dataset quality check failed: insufficient accepted records for selected strategy"
             )
 
+        base_model = str(run.llm_config.base_model or "").strip()
+        if not base_model:
+            raise SelfLearningError("llm_config.base_model is required for fine-tuning")
+        run.artifacts["selected_base_model"] = base_model
+
         if run.dry_run:
             self._add_log(run, "Dry run enabled; training startup skipped.")
             return
@@ -1450,8 +1420,6 @@ class SelfLearningService:
         if habitat is None:
             raise SelfLearningError("GPUHabitat is not available for fine-tuning")
 
-        base_model = run.llm_config.base_model or SETTINGS.ACADEMY_DEFAULT_BASE_MODEL
-        run.artifacts["selected_base_model"] = base_model
         output_dir = Path(SETTINGS.ACADEMY_MODELS_DIR) / f"self_learning_{run.run_id}"
         output_dir.mkdir(parents=True, exist_ok=True)
 

@@ -384,7 +384,7 @@ Aktualne reguły lokalnej kwalifikacji LoRA w Academy:
 
 ### Guard aktywacji adaptera Academy
 
-Aktywacja adaptera wspiera opcjonalną walidację runtime:
+Aktywacja adaptera używa jawnego kontraktu runtime/model:
 
 ```bash
 POST /api/v1/academy/adapters/activate
@@ -394,19 +394,24 @@ Content-Type: application/json
   "adapter_id": "training_20240101_120000",
   "adapter_path": "./data/models/training_20240101_120000/adapter",
   "runtime_id": "vllm",
+  "model_id": "gemma-3-4b-it",
   "deploy_to_chat_runtime": true
 }
 ```
 
 Zasady:
 - `runtime_id` akceptuje lokalne runtime (`ollama`, `vllm`, `onnx`),
+- `model_id` jest wymagane, gdy `deploy_to_chat_runtime=true`,
 - backend waliduje kompatybilność `model bazowy adaptera + runtime` przed aktywacją,
+- backend waliduje zgodność `adapter + runtime model` przed deployem,
 - niekompatybilna kombinacja zwraca HTTP `400` wraz z listą kompatybilnych runtime.
-- `deploy_to_chat_runtime` jest opcjonalne (domyślnie `false`) i próbuje wdrożyć adapter do aktywnego runtime czatu.
+- `deploy_to_chat_runtime` jest opcjonalne (domyślnie `false`) i wdraża adapter tylko do jawnie wskazanego runtime/modelu.
+- adapter bez kanonicznego `metadata.json` jest traktowany jako nieważny artefakt i nie podlega ręcznej migracji.
 
-Aktualne ograniczenie:
-1. Automatyczny deploy/rollback adaptera do runtime czatu jest obecnie zaimplementowany dla `ollama`.
-2. Wsparcie deploy/rollback dla `vllm` i `onnx` jest planowane jako follow-up.
+Aktualny zakres:
+1. Automatyczny deploy/rollback adaptera do runtime czatu jest zaimplementowany dla `ollama` i `vllm`.
+2. `onnx` pozostaje guardrails-only dla adapter deploy i zwraca `runtime_not_supported`.
+3. Academy nie fallbackuje do `ACADEMY_DEFAULT_BASE_MODEL`, `LAST_MODEL_*` ani `LLM_MODEL_NAME` jako źródła decyzji procesu.
 
 ## Cache i tryb offline
 

@@ -13,6 +13,7 @@ from tests.helpers.academy_wiring import academy_client
 from venom_core.api.routes import academy as academy_routes
 from venom_core.api.routes import academy_self_learning as academy_self_learning_routes
 from venom_core.api.routes import llm_simple as llm_simple_routes
+from venom_core.api.schemas.academy import TrainableModelInfo
 
 
 @pytest.fixture
@@ -38,10 +39,15 @@ def test_start_training_failure_updates_history(mock_settings, client_with_deps)
     ):
         mock_habitat.return_value.run_training_job.side_effect = RuntimeError("boom")
 
-        response = client_with_deps.post("/api/v1/academy/train", json={})
+        response = client_with_deps.post(
+            "/api/v1/academy/train",
+            json={"base_model": "unsloth/Phi-3-mini-4k-instruct"},
+        )
 
-    assert response.status_code == 200
-    assert response.json()["success"] is False
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "TRAINING_START_FAILED"
+    assert detail["requested_base_model"] == "unsloth/Phi-3-mini-4k-instruct"
     status_updates = [
         c.args[1]["status"] for c in mock_update.call_args_list if "status" in c.args[1]
     ]
@@ -115,7 +121,10 @@ def test_get_training_status_runtime_error_returns_500(mock_settings, client_wit
         mock_habitat.return_value.get_training_status.side_effect = RuntimeError("boom")
         response = client_with_deps.get("/api/v1/academy/train/job-1/status")
     assert response.status_code == 500
-    assert "Failed to get status" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "TRAINING_STATUS_FAILED"
+    assert detail["job_id"] == "job-1"
+    assert "Failed to get status" in detail["message"]
 
 
 @patch("venom_core.config.SETTINGS")
@@ -195,7 +204,9 @@ def test_list_jobs_error_returns_500(mock_settings, client_with_deps):
     ):
         response = client_with_deps.get("/api/v1/academy/jobs")
     assert response.status_code == 500
-    assert "Failed to list jobs" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "TRAINING_JOBS_LIST_FAILED"
+    assert "Failed to list jobs" in detail["message"]
 
 
 @patch("venom_core.config.SETTINGS")
@@ -224,7 +235,7 @@ def test_list_adapters_success_with_metadata_and_active_flag(
     adapter_dir = training_dir / "adapter"
     adapter_dir.mkdir(parents=True)
     (training_dir / "metadata.json").write_text(
-        '{"base_model":"bm","effective_base_model":"bm","effective_runtime_id":"ollama","created_at":"2024-01-01","parameters":{"epochs":1}}',
+        '{"metadata_version":2,"base_model":"bm","effective_base_model":"bm","effective_runtime_id":"ollama","created_at":"2024-01-01","source_flow":"training","parameters":{"epochs":1}}',
         encoding="utf-8",
     )
     manager = MagicMock()
@@ -239,6 +250,7 @@ def test_list_adapters_success_with_metadata_and_active_flag(
     assert adapters[0]["is_active"] is True
     assert adapters[0]["base_model"] == "bm"
     assert adapters[0]["target_runtime"] == "ollama"
+    assert adapters[0]["metadata_status"] == "canonical"
 
 
 @patch("venom_core.config.SETTINGS")
@@ -270,7 +282,7 @@ def test_activate_adapter_rejects_incompatible_runtime(mock_settings, client_wit
             "venom_core.api.routes.academy_models.validate_adapter_runtime_compatibility",
             new=AsyncMock(
                 side_effect=ValueError(
-                    "Adapter is incompatible with selected runtime 'onnx'. Compatible runtimes: vllm."
+                    "ADAPTER_RUNTIME_INCOMPATIBLE: Adapter is incompatible with selected runtime 'onnx'. Compatible runtimes: vllm."
                 )
             ),
         ),
@@ -285,7 +297,90 @@ def test_activate_adapter_rejects_incompatible_runtime(mock_settings, client_wit
             },
         )
     assert response.status_code == 400
-    assert "Compatible runtimes: vllm" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "ADAPTER_RUNTIME_INCOMPATIBLE"
+    assert "Compatible runtimes: vllm" in detail["message"]
+    assert detail["adapter_id"] == "a1"
+    assert detail["requested_runtime_id"] == "onnx"
+
+
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_rejects_runtime_model_family_mismatch_without_side_effects(
+    mock_settings, tmp_path
+):
+    mock_settings.ENABLE_ACADEMY = True
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "models")
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "gemma-3-4b-it"
+
+    adapter_root = Path(mock_settings.ACADEMY_MODELS_DIR) / "self_learning_gemma"
+    adapter_dir = adapter_root / "adapter"
+    adapter_dir.mkdir(parents=True)
+    (adapter_root / "metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_version": 2,
+                "base_model": "gemma-3-4b-it",
+                "effective_base_model": "gemma-3-4b-it",
+                "effective_runtime_id": "ollama",
+                "created_at": "2026-03-07T12:00:00+00:00",
+                "source_flow": "self_learning",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager = MagicMock()
+    manager.activate_adapter.return_value = True
+    manager.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "gemma3:latest",
+                "provider": "ollama",
+                "path": str(tmp_path / "gemma3"),
+            },
+            {
+                "name": "phi3:mini",
+                "provider": "ollama",
+                "path": str(tmp_path / "phi3"),
+            },
+        ]
+    )
+
+    with academy_client(model_manager=manager) as client:
+        with patch(
+            "venom_core.api.routes.academy_models.list_trainable_models",
+            AsyncMock(
+                return_value=[
+                    TrainableModelInfo(
+                        model_id="gemma-3-4b-it",
+                        label="Gemma 3 4B IT",
+                        provider="huggingface",
+                        trainable=True,
+                        runtime_compatibility={"ollama": True, "vllm": True},
+                        recommended_runtime="ollama",
+                    )
+                ]
+            ),
+        ):
+            response = client.post(
+                "/api/v1/academy/adapters/activate",
+                json={
+                    "adapter_id": "self_learning_gemma",
+                    "adapter_path": str(adapter_dir),
+                    "runtime_id": "ollama",
+                    "model_id": "phi3:mini",
+                    "deploy_to_chat_runtime": True,
+                },
+            )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "ADAPTER_BASE_MODEL_MISMATCH"
+    assert "selected runtime model" in detail["message"]
+    assert detail["adapter_id"] == "self_learning_gemma"
+    assert detail["requested_runtime_id"] == "ollama"
+    assert detail["requested_model_id"] == "phi3:mini"
+    manager.activate_adapter.assert_not_called()
 
 
 @patch("venom_core.config.SETTINGS")
@@ -386,7 +481,6 @@ def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tm
                         "details": {},
                     }
                 ],
-                "default_base_model": "gemma-3-4b-it",
                 "default_embedding_profile_id": "local:default",
             }
 
@@ -417,8 +511,11 @@ def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tm
             ((self.models_dir / self.adapter_id) / "metadata.json").write_text(
                 json.dumps(
                     {
+                        "metadata_version": 2,
                         "base_model": "gemma-3-4b-it",
+                        "effective_base_model": "gemma-3-4b-it",
                         "created_at": "2026-03-07T10:00:00+00:00",
+                        "source_flow": "self_learning",
                         "parameters": {
                             "runtime_id": "ollama",
                             "lora_rank": 8,
@@ -659,3 +756,4 @@ def test_academy_status_uses_gpu_info_fallback_on_error(
     assert response.status_code == 200
     payload = response.json()
     assert payload["gpu"]["available"] is True
+    assert "default_base_model" not in payload["config"]

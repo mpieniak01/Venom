@@ -148,6 +148,10 @@ export function useChatSend(params: ChatSendParams) {
       setMessage(t("cockpit.chatMessages.emptyPrompt"));
       return false;
     }
+    if (selectedLlmServer && !selectedLlmModel) {
+      setMessage(t("cockpit.chatMessages.modelSelectionRequired"));
+      return false;
+    }
 
     const switchResult = await handleRuntimeSwitch({
       parsed,

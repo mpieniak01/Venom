@@ -20,9 +20,16 @@ import { filterSlashSuggestions, filterAgentSuggestions } from "@/lib/slash-comm
 import type { SlashCommand } from "@/lib/slash-commands";
 import {
   activateAdapter,
+  auditAdapters,
+  type AdapterAuditItem,
   deactivateAdapter,
   getUnifiedModelCatalog,
+  resolveAcademyApiErrorMessage,
 } from "@/lib/academy-api";
+import {
+  buildCockpitAdapterOptions,
+  isBlockedCockpitAdapterAudit,
+} from "@/lib/academy-adapter-options";
 import { Settings, ThumbsDown, ThumbsUp } from "lucide-react";
 
 export type ChatMode = "direct" | "normal" | "complex";
@@ -77,6 +84,230 @@ type ChatComposerProps = Readonly<{
   compactControls?: boolean;
 }>;
 
+function resolveSelectedCanonicalModel(
+  selectedLlmModel: string,
+  llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>,
+): string {
+  return String(llmModelMetadata?.[selectedLlmModel]?.canonical_model_id || selectedLlmModel || "")
+    .trim()
+    .toLowerCase();
+}
+
+function resolveScopedAdapters(
+  catalog: Awaited<ReturnType<typeof getUnifiedModelCatalog>>,
+  selectedRuntimeId: string,
+  selectedCanonical: string,
+) {
+  const byRuntimeModel = catalog.adapter_catalog.by_runtime_model || {};
+  const byRuntime = catalog.adapter_catalog.by_runtime || {};
+  const scopedByModel = selectedRuntimeId
+    ? byRuntimeModel?.[selectedRuntimeId]?.[selectedCanonical]
+    : undefined;
+  const scopedByRuntime = (selectedRuntimeId ? byRuntime?.[selectedRuntimeId] : []) || [];
+  if (selectedCanonical.length > 0) {
+    return Array.isArray(scopedByModel) ? scopedByModel : [];
+  }
+  return scopedByRuntime;
+}
+
+function buildAdapterAuditMap(adapters: AdapterAuditItem[]): Record<string, AdapterAuditItem> {
+  return adapters.reduce<Record<string, AdapterAuditItem>>((acc, item) => {
+    acc[item.adapter_id] = item;
+    return acc;
+  }, {});
+}
+
+async function switchCockpitAdapterSelection({
+  value,
+  baseModelAdapterValue,
+  adapters,
+  selectedRuntimeId,
+  selectedLlmModel,
+}: {
+  value: string;
+  baseModelAdapterValue: string;
+  adapters: Array<{ adapter_id: string; adapter_path: string }>;
+  selectedRuntimeId: string;
+  selectedLlmModel: string;
+}) {
+  if (value === baseModelAdapterValue) {
+    await deactivateAdapter();
+    return;
+  }
+  const adapter = adapters.find((entry) => entry.adapter_id === value);
+  if (!adapter) {
+    return;
+  }
+  await activateAdapter({
+    adapter_id: adapter.adapter_id,
+    adapter_path: adapter.adapter_path,
+    runtime_id: selectedRuntimeId,
+    model_id: selectedLlmModel,
+  });
+}
+
+function useChatAdapterSelection({
+  adapterDeploySupported,
+  llmModelMetadata,
+  selectedLlmModel,
+  selectedRuntimeId,
+  t,
+}: {
+  adapterDeploySupported: boolean;
+  llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>;
+  selectedLlmModel: string;
+  selectedRuntimeId: string;
+  t: ReturnType<typeof useTranslation>;
+}) {
+  const baseModelAdapterValue = "__base_model__";
+  const [adapterSelectLoading, setAdapterSelectLoading] = useState(false);
+  const [adapterMutationPending, setAdapterMutationPending] = useState(false);
+  const [adapterMutationError, setAdapterMutationError] = useState("");
+  const [adapterAuditById, setAdapterAuditById] = useState<Record<string, AdapterAuditItem>>({});
+  const [adapters, setAdapters] = useState<
+    Array<{
+      adapter_id: string;
+      adapter_path: string;
+      base_model: string;
+      canonical_base_model_id?: string;
+      is_active: boolean;
+      compatible_runtimes?: string[];
+    }>
+  >([]);
+  const [selectedAdapter, setSelectedAdapter] = useState(baseModelAdapterValue);
+
+  const adapterOptions = useMemo<SelectMenuOption[]>(() => {
+    return buildCockpitAdapterOptions({
+      adapters,
+      auditById: adapterAuditById,
+      adapterDeploySupported,
+      baseOptionValue: baseModelAdapterValue,
+      baseOptionLabel: t("cockpit.models.adapterBase"),
+      compatibleLabel: t("cockpit.models.adapterCompatible"),
+      blockedLabel: t("cockpit.models.adapterBlocked"),
+      unknownStatusLabel: t("cockpit.models.adapterStatusUnknown"),
+    });
+  }, [adapterAuditById, adapterDeploySupported, adapters, baseModelAdapterValue, t]);
+
+  const activeAdapterAudit = useMemo(
+    () => Object.values(adapterAuditById).find((item) => item.is_active) ?? null,
+    [adapterAuditById],
+  );
+
+  const activeAdapterBlocked = isBlockedCockpitAdapterAudit(activeAdapterAudit);
+
+  const loadAdapters = useCallback(async () => {
+    try {
+      setAdapterSelectLoading(true);
+      const catalog = await getUnifiedModelCatalog();
+      const selectedCanonical = resolveSelectedCanonicalModel(selectedLlmModel, llmModelMetadata);
+      const next = resolveScopedAdapters(catalog, selectedRuntimeId, selectedCanonical);
+      setAdapters(next);
+      const active = next.find((adapter) => adapter.is_active);
+      setSelectedAdapter(active?.adapter_id ?? baseModelAdapterValue);
+    } catch (error) {
+      console.error("Failed to load Academy adapters for chat selector:", error);
+    } finally {
+      setAdapterSelectLoading(false);
+    }
+  }, [baseModelAdapterValue, llmModelMetadata, selectedLlmModel, selectedRuntimeId]);
+
+  useEffect(() => {
+    loadAdapters().catch((error) => {
+      console.error("Failed to initialize adapter selector dependencies:", error);
+    });
+  }, [loadAdapters]);
+
+  useEffect(() => {
+    if (!adapterDeploySupported && selectedAdapter !== baseModelAdapterValue) {
+      setSelectedAdapter(baseModelAdapterValue);
+    }
+  }, [adapterDeploySupported, baseModelAdapterValue, selectedAdapter]);
+
+  useEffect(() => {
+    if (!adapterDeploySupported || !selectedRuntimeId || !selectedLlmModel) {
+      setAdapterAuditById({});
+      return;
+    }
+    async function loadAdapterAudit() {
+      try {
+        const payload = await auditAdapters({
+          runtime_id: selectedRuntimeId,
+          model_id: selectedLlmModel,
+        });
+        setAdapterAuditById(buildAdapterAuditMap(payload.adapters ?? []));
+      } catch (error) {
+        console.error("Failed to load adapter audit for chat selector:", error);
+        setAdapterAuditById({});
+      }
+    }
+    loadAdapterAudit().catch((error) => {
+      console.error("Failed to refresh adapter audit for chat selector:", error);
+    });
+  }, [adapterDeploySupported, selectedLlmModel, selectedRuntimeId]);
+
+  useEffect(() => {
+    if (!adapterOptions.some((option) => option.value === selectedAdapter)) {
+      setSelectedAdapter(baseModelAdapterValue);
+    }
+  }, [adapterOptions, baseModelAdapterValue, selectedAdapter]);
+
+  const handleAdapterSelect = useCallback(
+    async (value: string) => {
+      const option = adapterOptions.find((entry) => entry.value === value);
+      if (option?.disabled) {
+        const blockedAudit = adapterAuditById[value];
+        if (isBlockedCockpitAdapterAudit(blockedAudit)) {
+          setAdapterMutationError(blockedAudit?.message || t("cockpit.models.adapterBlocked"));
+        }
+        return;
+      }
+      setSelectedAdapter(value);
+      try {
+        setAdapterMutationError("");
+        setAdapterMutationPending(true);
+        await switchCockpitAdapterSelection({
+          value,
+          baseModelAdapterValue,
+          adapters,
+          selectedRuntimeId,
+          selectedLlmModel,
+        });
+        await loadAdapters();
+      } catch (error) {
+        console.error("Failed to switch Academy adapter from chat selector:", error);
+        setAdapterMutationError(resolveAcademyApiErrorMessage(error));
+        await loadAdapters();
+      } finally {
+        setAdapterMutationPending(false);
+      }
+    },
+    [
+      adapterAuditById,
+      adapterOptions,
+      adapters,
+      baseModelAdapterValue,
+      loadAdapters,
+      selectedLlmModel,
+      selectedRuntimeId,
+      t,
+    ],
+  );
+
+  return {
+    adapterOptions,
+    adapterSelectLoading,
+    adapterMutationPending,
+    adapterMutationError,
+    activeAdapterAudit,
+    activeAdapterBlocked,
+    selectedAdapter,
+    setSelectedAdapter,
+    handleAdapterSelect,
+    baseModelAdapterValue,
+  };
+}
+
 export const ChatComposer = memo(
   forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer(
     {
@@ -104,22 +335,8 @@ export const ChatComposer = memo(
     },
     ref,
   ) {
-    const BASE_MODEL_ADAPTER_VALUE = "__base_model__";
     const t = useTranslation();
     const [draft, setDraft] = useState("");
-    const [adapterSelectLoading, setAdapterSelectLoading] = useState(false);
-    const [adapterMutationPending, setAdapterMutationPending] = useState(false);
-    const [adapters, setAdapters] = useState<
-      Array<{
-        adapter_id: string;
-        adapter_path: string;
-        base_model: string;
-        canonical_base_model_id?: string;
-        is_active: boolean;
-        compatible_runtimes?: string[];
-      }>
-    >([]);
-    const [selectedAdapter, setSelectedAdapter] = useState(BASE_MODEL_ADAPTER_VALUE);
     const [slashSuggestions, setSlashSuggestions] = useState<SlashCommand[]>([]);
     const [slashIndex, setSlashIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -132,111 +349,22 @@ export const ChatComposer = memo(
       () => selectedLlmServer.trim().toLowerCase(),
       [selectedLlmServer],
     );
-
-    const adapterOptions = useMemo<SelectMenuOption[]>(() => {
-      const baseOption: SelectMenuOption = {
-        value: BASE_MODEL_ADAPTER_VALUE,
-        label: t("cockpit.models.adapterBase"),
-      };
-      if (!adapterDeploySupported) {
-        return [baseOption];
-      }
-      return [
-        baseOption,
-        ...adapters.map((adapter) => ({
-          value: adapter.adapter_id,
-          label: adapter.adapter_id,
-          description: adapter.base_model,
-        })),
-      ];
-    }, [adapterDeploySupported, adapters, t]);
-
-    const loadAdapters = useCallback(async () => {
-      try {
-        setAdapterSelectLoading(true);
-        const catalog = await getUnifiedModelCatalog();
-        const selectedModelMeta = llmModelMetadata?.[selectedLlmModel];
-        const selectedCanonical = String(
-          selectedModelMeta?.canonical_model_id || selectedLlmModel || "",
-        )
-          .trim()
-          .toLowerCase();
-        const byRuntimeModel = catalog.adapter_catalog.by_runtime_model || {};
-        const byRuntime = catalog.adapter_catalog.by_runtime || {};
-        const scopedByModel = selectedRuntimeId
-          ? byRuntimeModel?.[selectedRuntimeId]?.[selectedCanonical]
-          : undefined;
-        const scopedByRuntime =
-          (selectedRuntimeId ? byRuntime?.[selectedRuntimeId] : []) || [];
-        let next = scopedByRuntime;
-        if (selectedCanonical.length > 0) {
-          next = Array.isArray(scopedByModel) ? scopedByModel : [];
-        }
-        setAdapters(next);
-        const active = next.find((adapter) => adapter.is_active);
-        setSelectedAdapter(active?.adapter_id ?? BASE_MODEL_ADAPTER_VALUE);
-      } catch (error) {
-        console.error("Failed to load Academy adapters for chat selector:", error);
-      } finally {
-        setAdapterSelectLoading(false);
-      }
-    }, [llmModelMetadata, selectedLlmModel, selectedRuntimeId]);
-
-    useEffect(() => {
-      async function loadAdapterDependencies() {
-        await loadAdapters();
-      }
-      loadAdapterDependencies().catch((error) => {
-        console.error("Failed to initialize adapter selector dependencies:", error);
-      });
-    }, [loadAdapters]);
-
-    useEffect(() => {
-      if (!adapterDeploySupported && selectedAdapter !== BASE_MODEL_ADAPTER_VALUE) {
-        setSelectedAdapter(BASE_MODEL_ADAPTER_VALUE);
-      }
-    }, [adapterDeploySupported, selectedAdapter]);
-
-    useEffect(() => {
-      if (adapterOptions.some((option) => option.value === selectedAdapter)) {
-        return;
-      }
-      setSelectedAdapter(BASE_MODEL_ADAPTER_VALUE);
-    }, [adapterOptions, selectedAdapter]);
-
-    const handleAdapterSelect = useCallback(
-      async (value: string) => {
-        const option = adapterOptions.find((entry) => entry.value === value);
-        if (option?.disabled) {
-          return;
-        }
-        setSelectedAdapter(value);
-        try {
-          setAdapterMutationPending(true);
-          if (value === BASE_MODEL_ADAPTER_VALUE) {
-            await deactivateAdapter();
-          } else {
-            const adapter = adapters.find((entry) => entry.adapter_id === value);
-            if (!adapter) {
-              return;
-            }
-            await activateAdapter({
-              adapter_id: adapter.adapter_id,
-              adapter_path: adapter.adapter_path,
-              runtime_id: selectedRuntimeId,
-              model_id: selectedLlmModel,
-            });
-          }
-          await loadAdapters();
-        } catch (error) {
-          console.error("Failed to switch Academy adapter from chat selector:", error);
-          await loadAdapters();
-        } finally {
-          setAdapterMutationPending(false);
-        }
-      },
-      [adapterOptions, adapters, loadAdapters, selectedLlmModel, selectedRuntimeId],
-    );
+    const {
+      adapterOptions,
+      adapterSelectLoading,
+      adapterMutationPending,
+      adapterMutationError,
+      activeAdapterAudit,
+      activeAdapterBlocked,
+      selectedAdapter,
+      handleAdapterSelect,
+    } = useChatAdapterSelection({
+      adapterDeploySupported,
+      llmModelMetadata,
+      selectedLlmModel,
+      selectedRuntimeId,
+      t,
+    });
 
     useImperativeHandle(ref, () => ({
       setDraft: (value: string) => {
@@ -397,6 +525,7 @@ export const ChatComposer = memo(
                 }}
                 ariaLabel={t("cockpit.actions.selectModel")}
                 buttonTestId="llm-model-select"
+                optionTestIdPrefix="llm-model-option"
                 placeholder={t("cockpit.models.noModels")}
                 disabled={!hasModels}
                 menuWidth="content"
@@ -416,6 +545,7 @@ export const ChatComposer = memo(
                 }}
                 ariaLabel={t("cockpit.actions.selectAdapter")}
                 buttonTestId="chat-adapter-select"
+                optionTestIdPrefix="chat-adapter-option"
                 placeholder={t("cockpit.models.loadingAdapters")}
                 disabled={
                   adapterSelectLoading ||
@@ -433,6 +563,39 @@ export const ChatComposer = memo(
                     })}
                 </p>
               )}
+              {adapterMutationError && !adapterDeployUnsupported ? (
+                <p className="text-[11px] text-red-300">{adapterMutationError}</p>
+              ) : null}
+              {adapterDeploySupported && selectedRuntimeId && selectedLlmModel ? (
+                <div className="rounded-lg border border-white/10 bg-black/10 p-2 text-[11px] text-theme-muted">
+                  <p className="font-medium text-[color:var(--text-primary)]">
+                    {t("cockpit.models.activeAdapterLabel")}
+                  </p>
+                  {activeAdapterAudit ? (
+                    <>
+                      <p className="mt-1 font-mono text-[color:var(--text-primary)]">
+                        {activeAdapterAudit.adapter_id}
+                      </p>
+                      <p className="mt-1">
+                        {t("academy.adapters.baseModel")}: {activeAdapterAudit.base_model}
+                      </p>
+                      <p className={activeAdapterBlocked ? "mt-1 text-amber-300" : "mt-1 text-emerald-300"}>
+                        {activeAdapterBlocked
+                          ? t("cockpit.models.activeAdapterBlocked")
+                          : t("cockpit.models.activeAdapterCompatible")}
+                      </p>
+                      <p className="mt-1">{activeAdapterAudit.message}</p>
+                      {activeAdapterBlocked ? (
+                        <p className="mt-1 text-amber-200">
+                          {t("cockpit.models.activeAdapterSwitchHint")}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className="mt-1">{t("cockpit.models.activeAdapterNone")}</p>
+                  )}
+                </div>
+              ) : null}
             </div>
             <div className={controlStackClassName}>
               <label className={labelClassName}>{t("cockpit.modes.mode")}</label>

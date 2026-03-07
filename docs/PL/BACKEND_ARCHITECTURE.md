@@ -82,6 +82,29 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
   - opcjonalny parametr `runtime_id`,
   - przy niekompatybilnym `base_model + adapter + runtime` zwraca `400`.
 
+### Docelowy kontrakt Academy (PR 196)
+Academy, Samodoskonalenie, Adaptery i Chat muszą realizować jeden jawny proces:
+
+1. Użytkownik wybiera `server/runtime`.
+2. Użytkownik wybiera model runtime.
+3. Użytkownik wybiera jawny `base_model` z `model_catalog.trainable_models`.
+4. Academy wytwarza adapter z kanonicznym `metadata.json`.
+5. Adapter może być aktywowany tylko dla jawnego `runtime_id + model_id`.
+
+Twarde zasady:
+
+- `GET /api/v1/system/llm-runtime/options` jest jedynym źródłem prawdy dla selektorów runtime/model w Chat, Training i Self-learning.
+- Routery `venom_core/api/routes/academy*.py` pozostają cienką warstwą HTTP; orkiestracja należy do `venom_core/services/academy/*`.
+- Deploy, audit i aktywacja adaptera ufają wyłącznie kanonicznym metadanym adaptera, a nie heurystykom z `adapter_config.json`, `runs.jsonl` ani domyślnym wartościom z konfiguracji.
+- Academy nie może fallbackować semantycznie do `ACADEMY_DEFAULT_BASE_MODEL`, `LAST_MODEL_*` ani `LLM_MODEL_NAME` przy wyborze modelu bazowego treningu, modelu runtime ani celu aktywacji adaptera.
+- Historyczne adaptery bez kanonicznego `metadata.json` są nieważnymi artefaktami; należy je usunąć albo wygenerować ponownie, a nie naprawiać ręcznie.
+- Błędy user-facing w Academy powinny używać structured payloadów z `reason_code` i kontekstem requestu, a nie ad-hoc stringów.
+
+Implikacje repo:
+
+- Jeśli nowa trasa Academy potrzebuje logiki operacyjnej, należy dodać lub rozszerzyć service w `venom_core/services/academy/*`, zamiast importować niższe warstwy bezpośrednio do routera.
+- Jeśli testy utrwalają fallback do domyślnego modelu w Academy, należy je przepisać na regresje dla jawnego kontraktu procesu, a nie utrzymywać jako kompatybilność wsteczną.
+
 ## Warstwa Wykonawcza (Skills & MCP)
 Zintegrowana z Microsoft Semantic Kernel, pozwala na rozszerzanie możliwości agentów:
 - `venom_core/execution/skills/base_skill.py` – Klasa bazowa dla wszystkich umiejętności.

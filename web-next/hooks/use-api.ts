@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import {
+  getUnifiedModelCatalog,
+  type UnifiedModelCatalogResponse,
+} from "@/lib/academy-api";
 import { getApiBaseUrl } from "@/lib/env";
 import { normalizeMetricsRequired } from "@/lib/metrics-adapter";
 import {
@@ -511,6 +515,14 @@ export function useLlmRuntimeOptions(intervalMs = 0) {
             : undefined,
       };
     },
+    intervalMs,
+  );
+}
+
+export function useUnifiedModelCatalog(intervalMs = 0) {
+  return usePolling<UnifiedModelCatalogResponse>(
+    "unified-model-catalog",
+    () => getUnifiedModelCatalog(),
     intervalMs,
   );
 }

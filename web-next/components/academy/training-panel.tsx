@@ -6,15 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
+import { useToast } from "@/components/ui/toast";
 import { LogViewer } from "./log-viewer";
 import {
   startTraining,
   listJobs,
   getUnifiedModelCatalog,
+  resolveAcademyApiErrorMessage,
   type TrainingJob,
   type TrainingJobStatus,
   type TrainableModelInfo,
 } from "@/lib/academy-api";
+import { ApiError } from "@/lib/api-client";
 import { useLanguage, useTranslation } from "@/lib/i18n";
 
 type SupportedEngine =
@@ -79,9 +82,23 @@ export function buildTrainingModelPickerOptions(
   });
 }
 
+export function resolveTrainingBaseModelSelection(
+  currentSelection: string,
+  trainableModels: readonly TrainableModelInfo[],
+): string {
+  if (
+    currentSelection &&
+    trainableModels.some((model) => model.model_id === currentSelection)
+  ) {
+    return currentSelection;
+  }
+  return "";
+}
+
 export function TrainingPanel() {
   const { language } = useLanguage();
   const t = useTranslation();
+  const { pushToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
   const [loraRank, setLoraRank] = useState(8);
@@ -176,7 +193,6 @@ export function TrainingPanel() {
         runtimeOverride ||
         selectedRuntime ||
         activeRuntimeId ||
-        availableRuntimes[0]?.id ||
         "";
       if (preferredRuntime && preferredRuntime !== selectedRuntime) {
         setSelectedRuntime(preferredRuntime);
@@ -192,17 +208,9 @@ export function TrainingPanel() {
             Boolean(model.runtime_compatibility?.[preferredRuntime])),
       );
       setTrainableModels(trainable);
-      setSelectedBaseModel((current) => {
-        if (current && trainable.some((model) => model.model_id === current)) {
-          return current;
-        }
-        const activeModelId = String(catalog.active?.active_model || "").trim();
-        if (activeModelId && trainable.some((model) => model.model_id === activeModelId)) {
-          return activeModelId;
-        }
-        const recommended = trainable.find((model) => model.recommended);
-        return recommended?.model_id ?? trainable[0]?.model_id ?? "";
-      });
+      setSelectedBaseModel((current) =>
+        resolveTrainingBaseModelSelection(current, trainable),
+      );
     } catch (err) {
       console.error("Failed to load trainable models:", err);
       setTrainableModels([]);
@@ -235,7 +243,7 @@ export function TrainingPanel() {
     if (!selectedBaseModel) return;
     try {
       setLoading(true);
-      await startTraining({
+      const response = await startTraining({
         base_model: selectedBaseModel,
         runtime_id: selectedRuntime || null,
         lora_rank: loraRank,
@@ -243,9 +251,13 @@ export function TrainingPanel() {
         num_epochs: numEpochs,
         batch_size: batchSize,
       });
+      pushToast(response.message, "success");
       await loadJobs();
     } catch (err) {
-      console.error("Failed to start training:", err);
+      pushToast(resolveAcademyApiErrorMessage(err), "error");
+      if (!(err instanceof ApiError && err.status === 400)) {
+        console.error("Failed to start training:", err);
+      }
     } finally {
       setLoading(false);
     }
@@ -320,8 +332,11 @@ export function TrainingPanel() {
   let baseModelPlaceholder = t("academy.training.loadingModels");
   if (!modelsLoading && trainableModels.length === 0) {
     baseModelPlaceholder = t("academy.training.noTrainableModels");
+  } else if (!modelsLoading) {
+    baseModelPlaceholder = t("academy.training.chooseBaseModel");
   }
   const selectedRuntimeCapabilities = runtimeCapabilities[selectedRuntime] ?? {};
+  const hasRuntimeCompatibleModels = trainableModels.length > 0;
   const selectedModel = trainableModels.find((model) => model.model_id === selectedBaseModel) ?? null;
   const selectedModelCompatibilityLabel = selectedModel
     ? (() => {
@@ -374,6 +389,8 @@ export function TrainingPanel() {
                 }}
                 placeholder={t("cockpit.models.chooseServer")}
                 ariaLabel={t("cockpit.actions.selectServer")}
+                buttonTestId="academy-training-runtime-select"
+                optionTestIdPrefix="academy-training-runtime-option"
                 disabled={modelsLoading || runtimeOptions.length === 0}
                 buttonClassName="mt-0 h-11 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
                 menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
@@ -387,6 +404,13 @@ export function TrainingPanel() {
                 })}
               </p>
             ) : null}
+            {!modelsLoading && selectedRuntime && !hasRuntimeCompatibleModels ? (
+              <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                {t("academy.training.runtimeModelMismatchWarning", {
+                  runtime: getRuntimeDisplayName(selectedRuntime),
+                })}
+              </div>
+            ) : null}
           </div>
           <div className="sm:col-span-2 xl:col-span-5">
             <p className="text-sm font-medium text-[color:var(--text-secondary)]">
@@ -399,7 +423,9 @@ export function TrainingPanel() {
                 onChange={setSelectedBaseModel}
                 placeholder={baseModelPlaceholder}
                 ariaLabel={t("academy.training.baseModel")}
-                disabled={modelsLoading || trainableModels.length === 0}
+                buttonTestId="academy-training-base-model-select"
+                optionTestIdPrefix="academy-training-base-model-option"
+                disabled={modelsLoading || !hasRuntimeCompatibleModels}
                 buttonClassName="mt-0 h-10 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-left text-sm normal-case tracking-normal text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
                 menuClassName="w-[min(980px,96vw)] max-h-[360px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
                 optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
@@ -479,6 +505,11 @@ export function TrainingPanel() {
                 </p>
               </div>
             ) : null}
+            {!modelsLoading && hasRuntimeCompatibleModels && !selectedBaseModel ? (
+              <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                {t("academy.training.baseModelSelectionRequired")}
+              </div>
+            ) : null}
             <p className="mt-1 text-xs text-hint">{t("academy.training.baseModelHint")}</p>
             <p className="mt-1 text-xs text-hint/60">{t("academy.training.orderingHint")}</p>
           </div>
@@ -548,7 +579,7 @@ export function TrainingPanel() {
           <div className="sm:col-span-2 xl:col-span-1 xl:self-end">
             <Button
               onClick={handleStartTraining}
-              disabled={loading || modelsLoading || !selectedBaseModel}
+              disabled={loading || modelsLoading || !selectedBaseModel || !hasRuntimeCompatibleModels}
               className="w-full gap-2"
             >
               {loading ? (

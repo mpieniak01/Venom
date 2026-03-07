@@ -53,6 +53,9 @@ export const academy = {
     baseModel: "Training base model",
     baseModelHint: "Only models from the trainable list can be used for Academy training.",
     loadingModels: "Loading trainable models...",
+    chooseBaseModel: "Choose base model",
+    baseModelSelectionRequired:
+      "Training requires an explicit base model selection compatible with the selected server.",
     noTrainableModels: "No trainable models available",
     engineLabel: "model provider",
     locationLabel: "training",
@@ -84,6 +87,8 @@ export const academy = {
     runtimeUnknown: "no confirmed post-training inference runtime compatibility",
     externalTrainingHint:
       "{{runtime}} runtime is used for deployment and chat inference. LoRA training runs externally in Academy (HF/PEFT/Unsloth pipeline), not inside runtime.",
+    runtimeModelMismatchWarning:
+      "No compatible training base model is currently available for {{runtime}}. Choose a different server or install a local runtime model from the same family.",
     engineNames: {
       unsloth: "Unsloth",
       huggingface: "HuggingFace",
@@ -126,9 +131,17 @@ export const academy = {
     emptyTitle: "No adapters available",
     emptyDescription: "Run training to create the first adapter",
     baseModel: "Base model",
+    targetRuntime: "Target runtime",
     createdAt: "Created",
     unknownDate: "Unknown date",
     parameters: "Parameters",
+    compatible: "Compatible with current selection",
+    blocked: "Blocked for current selection",
+    runtimeSelectionRequired: "Choose a server before activating the adapter.",
+    modelSelectionRequired: "Choose a runtime model before activating the adapter.",
+    metadataIncomplete: "Adapter requires a new canonical manifest",
+    metadataIncompleteDescription:
+      "This adapter does not have a complete metadata.json in the new format and is not treated as a valid activation artifact.",
     infoTitle: "Adapter activation is hot-swap - backend restart is not required",
     infoDescription:
       "LoRA adapter modifies only a small subset of base model parameters, enabling fast training and low memory usage.",
@@ -251,7 +264,12 @@ export const academy = {
         qaHeavy: "Q&A heavy",
         repairHeavy: "Repair heavy",
       },
+      chooseBaseModel: "Choose base model",
+      baseModelSelectionRequired:
+        "LLM fine-tune requires an explicit base model selection compatible with the selected runtime.",
       noTrainableModels: "No trainable models available",
+      runtimeModelMismatchWarning:
+        "Selected runtime {{runtime}} has no compatible base model for self-learning. Choose a different server or install a local runtime model from the same family.",
       chatDeployHint:
         "Adapter deployment to Chat depends on selected runtime capabilities; runtime compatibility indicates where the adapter can run after training.",
       embeddingProfile: "Embedding profile",

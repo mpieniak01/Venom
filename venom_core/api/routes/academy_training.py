@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from venom_core.api.schemas.academy import AcademyJobSummary
 from venom_core.services.academy.trainable_catalog_service import (
     _canonical_runtime_model_id,
+    discover_runtime_model_families,
     resolve_runtime_compatibility,
 )
 
@@ -38,11 +39,22 @@ def resolve_dataset_path(
 def ensure_trainable_base_model(
     *,
     request_base_model: Optional[str],
-    default_base_model: str,
     is_model_trainable_fn: Callable[[str], bool],
 ) -> str:
-    """Resolve base model and validate trainability for Academy pipeline."""
-    base_model = request_base_model or default_base_model
+    """Validate explicitly requested base model for Academy pipeline."""
+    base_model = str(request_base_model or "").strip()
+    if not base_model:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "MODEL_BASE_MODEL_REQUIRED",
+                "message": (
+                    "Training requires an explicit base_model selection. "
+                    "Choose a trainable model from the Academy catalog."
+                ),
+                "reason_code": "MODEL_BASE_MODEL_REQUIRED",
+            },
+        )
     if not is_model_trainable_fn(base_model):
         raise HTTPException(
             status_code=400,
@@ -70,19 +82,29 @@ def _infer_training_provider(model_id: str) -> str:
     return "unknown"
 
 
-def validate_runtime_compatibility_for_base_model(
+async def validate_runtime_compatibility_for_base_model(
     *,
     base_model: str,
     runtime_id: Optional[str],
+    manager: Any | None = None,
 ) -> None:
     """Reject runtime/base_model pairs that are outside Academy deploy contract."""
     normalized_runtime_id = str(runtime_id or "").strip().lower()
     if not normalized_runtime_id:
         return
+    runtime_model_families: dict[str, set[str]] = {}
+    if manager is not None and hasattr(manager, "list_local_models"):
+        try:
+            local_models = await manager.list_local_models()
+        except Exception:
+            local_models = []
+        runtime_model_families = discover_runtime_model_families(local_models)
     compatibility = resolve_runtime_compatibility(
         provider=_infer_training_provider(base_model),
         available_runtime_ids=["vllm", "ollama", "onnx"],
         model_metadata={"name": base_model},
+        model_id=base_model,
+        runtime_model_families=runtime_model_families,
     )
     if compatibility.get(normalized_runtime_id):
         return

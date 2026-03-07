@@ -101,6 +101,29 @@ Architecture guard tests:
   - optional `runtime_id` input,
   - rejects incompatible `base_model + adapter + runtime` with `400`.
 
+### Academy target-state contract (PR 196)
+Academy, Self-learning, Adapters, and Chat must follow one explicit process:
+
+1. User selects `server/runtime`.
+2. User selects runtime `model`.
+3. User selects explicit trainable `base_model` from `model_catalog.trainable_models`.
+4. Academy produces adapter with canonical `metadata.json`.
+5. Adapter can be activated only against explicit `runtime_id + model_id`.
+
+Hard rules:
+
+- `GET /api/v1/system/llm-runtime/options` is the only source of truth for runtime/model selectors in Chat, Training, and Self-learning.
+- Routers in `venom_core/api/routes/academy*.py` stay thin; orchestration lives in `venom_core/services/academy/*`.
+- Adapter deploy/audit/activation trust only canonical adapter metadata, not heuristics from `adapter_config.json`, `runs.jsonl`, or config defaults.
+- Academy must not fall back semantically to `ACADEMY_DEFAULT_BASE_MODEL`, `LAST_MODEL_*`, or `LLM_MODEL_NAME` when deciding training base, runtime model, or adapter target.
+- Legacy adapters without canonical `metadata.json` are invalid artifacts; they should be removed or regenerated, not repaired in place.
+- User-facing Academy errors should use structured payloads with `reason_code` and request context, not ad-hoc raw strings.
+
+Repository implications:
+
+- If a new Academy route needs operational logic, add/extend a service in `venom_core/services/academy/*` rather than importing lower layers directly into the router.
+- If tests encode fallback-to-default behavior for Academy process decisions, they should be rewritten as regressions for explicit contract behavior instead of preserved for backward compatibility.
+
 ## Execution Layer (Skills & MCP)
 Integrated with Microsoft Semantic Kernel, enabling agent capabilities expansion:
 - `venom_core/execution/skills/base_skill.py` – Base class for all skills.

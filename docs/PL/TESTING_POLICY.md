@@ -110,6 +110,21 @@ Minimalny kontrakt testów dla Academy trainable models (PR 186):
 - frontend: `web-next/tests/academy-training-picker.test.ts` (sekcje i kolejnosc pseudo-selecta: local -> cloud free -> cloud other),
 - frontend: `web-next/tests/cockpit-i18n-and-inspector-utils.test.ts` + testy chat selectora (regresja komunikatow i blokad adapter/runtime).
 
+Minimalny kontrakt Academy po 196:
+
+- backend: `tests/test_academy_models_module.py` utrzymuje klasyfikację `model_catalog.trainable_models`, gating rodzin runtime i zasady kanonicznych metadanych adaptera,
+- backend: `tests/test_academy_api_contracts.py` utrzymuje kontrakty end-to-end Academy (`training`, `self-learning`, aktywacja/dezaktywacja adaptera, structured errors),
+- backend: `tests/test_academy_self_learning_routes.py` utrzymuje mapowanie błędów self-learning do `reason_code`,
+- frontend: `web-next/tests/academy-training-picker.test.ts` i `web-next/tests/self-learning-ui.component.test.tsx` utrzymują jawną semantykę wyboru `server + model + base_model`,
+- frontend: `web-next/tests/self-learning-panel-error.test.tsx` i `web-next/tests/academy-api.test.ts` utrzymują structured błędy w UI,
+- frontend/browser: `web-next/tests/academy-smoke.spec.ts` utrzymuje kanoniczny flow `repo_readmes -> canonical adapter metadata -> activate -> chat`.
+
+Zasady:
+
+- testy nie mogą utrwalać fallbacku do `ACADEMY_DEFAULT_BASE_MODEL`, `LAST_MODEL_*` ani `LLM_MODEL_NAME` jako poprawnego zachowania Academy,
+- adapter bez kanonicznego `metadata.json` jest nieważnym artefaktem i w testach powinien być reprezentowany jako stan blocked/removed, nie repairable,
+- Chat, Training i Self-learning muszą wyprowadzać wybór runtime/modelu z `/api/v1/system/llm-runtime/options`, a nie z oddzielnych hardcodowanych fixture.
+
 Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.json`):
 
 - `domain`: zakres domenowy/systemowy (np. `academy`, `workflow`, `providers`, `runtime`)

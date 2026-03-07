@@ -4,8 +4,16 @@
  * API client dla endpointów THE_ACADEMY - trenowanie modeli.
  */
 
-import { apiFetch } from "./api-client";
+import { ApiError, apiFetch } from "./api-client";
 import { getApiBaseUrl } from "./env";
+
+type StructuredAcademyErrorDetail = {
+  message?: unknown;
+  adapter_id?: unknown;
+  requested_runtime_id?: unknown;
+  requested_base_model?: unknown;
+  requested_model_id?: unknown;
+};
 
 export interface DatasetStats {
   total_examples: number;
@@ -80,7 +88,37 @@ export interface AdapterInfo {
   base_model: string;
   created_at: string;
   training_params: Record<string, unknown>;
+  target_runtime?: string | null;
+  source_flow?: string | null;
+  metadata_status: "canonical" | "metadata_incomplete";
+  metadata_reason_code?: string | null;
   is_active: boolean;
+}
+
+export interface AdapterAuditItem {
+  adapter_id: string;
+  adapter_path: string;
+  base_model: string;
+  canonical_base_model: string;
+  trusted_metadata: boolean;
+  category: "compatible" | "blocked_unknown_base" | "blocked_mismatch";
+  reason_code?: string | null;
+  message: string;
+  is_active: boolean;
+  sources: Array<Record<string, unknown>>;
+  manual_repair_hint?: string | null;
+}
+
+export interface AdapterAuditResponse {
+  count: number;
+  adapters: AdapterAuditItem[];
+  summary: {
+    compatible: number;
+    blocked_unknown_base: number;
+    blocked_mismatch: number;
+  };
+  runtime_id?: string | null;
+  model_id?: string | null;
 }
 
 export interface AcademyStatus {
@@ -108,7 +146,6 @@ export interface AcademyStatus {
   config: {
     min_lessons: number;
     training_interval_hours: number;
-    default_base_model: string;
   };
 }
 
@@ -173,6 +210,20 @@ export async function listJobs(params?: {
  */
 export async function listAdapters(): Promise<AdapterInfo[]> {
   return apiFetch<AdapterInfo[]>("/api/v1/academy/adapters");
+}
+
+export async function auditAdapters(params?: {
+  runtime_id?: string;
+  model_id?: string;
+}): Promise<AdapterAuditResponse> {
+  const query = new URLSearchParams();
+  if (params?.runtime_id) query.set("runtime_id", params.runtime_id);
+  if (params?.model_id) query.set("model_id", params.model_id);
+  const queryString = query.toString();
+  const url = queryString
+    ? `/api/v1/academy/adapters/audit?${queryString}`
+    : "/api/v1/academy/adapters/audit";
+  return apiFetch<AdapterAuditResponse>(url);
 }
 
 /**
@@ -420,6 +471,28 @@ type ParsedErrorBody = {
   errors?: unknown;
 };
 
+function formatStructuredAcademyErrorDetail(detail: StructuredAcademyErrorDetail): string | null {
+  const message = typeof detail.message === "string" ? detail.message.trim() : "";
+  if (!message) return null;
+  const adapterId =
+    typeof detail.adapter_id === "string" ? detail.adapter_id.trim() : "";
+  const requestedRuntime =
+    typeof detail.requested_runtime_id === "string" ? detail.requested_runtime_id.trim() : "";
+  const requestedBaseModel =
+    typeof detail.requested_base_model === "string" ? detail.requested_base_model.trim() : "";
+  const requestedModelId =
+    typeof detail.requested_model_id === "string" ? detail.requested_model_id.trim() : "";
+  if (!adapterId && !requestedRuntime && !requestedBaseModel && !requestedModelId) {
+    return message;
+  }
+  const contextParts: string[] = [];
+  if (adapterId) contextParts.push(`adapter=${adapterId}`);
+  if (requestedRuntime) contextParts.push(`runtime=${requestedRuntime}`);
+  if (requestedBaseModel) contextParts.push(`base_model=${requestedBaseModel}`);
+  if (requestedModelId) contextParts.push(`model_id=${requestedModelId}`);
+  return `${message} (${contextParts.join(", ")})`;
+}
+
 function extractErrorMessageFromArray(items: unknown[]): string | null {
   const messages: string[] = [];
   for (const item of items) {
@@ -466,6 +539,37 @@ function resolveErrorMessage(body: ParsedErrorBody): string | null {
     extractErrorMessage(body.detail) ||
     extractErrorMessage(body.errors)
   );
+}
+
+export function resolveAcademyApiErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) return resolveApiErrorMessage(error);
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "";
+}
+
+function resolveApiErrorMessage(error: ApiError): string {
+  const payload = parseApiErrorPayload(error);
+  if (payload) {
+    const structured = resolveStructuredAcademyErrorMessage(payload);
+    if (structured) return structured;
+    const resolved = resolveErrorMessage(payload);
+    if (resolved) return resolved;
+  }
+  return error.message;
+}
+
+function parseApiErrorPayload(error: ApiError): ParsedErrorBody | null {
+  if (!error.data || typeof error.data !== "object") return null;
+  return error.data as ParsedErrorBody;
+}
+
+function resolveStructuredAcademyErrorMessage(body: ParsedErrorBody): string | null {
+  if (!body.detail || typeof body.detail !== "object" || Array.isArray(body.detail)) {
+    return null;
+  }
+  return formatStructuredAcademyErrorDetail(body.detail as StructuredAcademyErrorDetail);
 }
 
 /**
@@ -842,7 +946,6 @@ export interface SelfLearningEmbeddingProfile {
 export interface SelfLearningCapabilitiesResponse {
   trainable_models: SelfLearningTrainableModelInfo[];
   embedding_profiles: SelfLearningEmbeddingProfile[];
-  default_base_model?: string | null;
   default_embedding_profile_id?: string | null;
 }
 

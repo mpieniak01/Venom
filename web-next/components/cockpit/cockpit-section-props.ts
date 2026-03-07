@@ -120,10 +120,20 @@ export function useCockpitSectionProps() {
     async (model: string) => handleActivateModel(model),
     [handleActivateModel],
   );
+  const handleSelectLlmServer = useCallback(
+    (value: string) => {
+      if (!value || value === selectedLlmServer) {
+        return;
+      }
+      setSelectedLlmServer(value);
+      setSelectedLlmModel("");
+    },
+    [selectedLlmServer, setSelectedLlmModel, setSelectedLlmServer],
+  );
 
   const runtimeTargets = useMemo(
-    () => data.llmRuntimeOptions?.runtimes ?? [],
-    [data.llmRuntimeOptions],
+    () => data.unifiedModelCatalog?.runtimes ?? [],
+    [data.unifiedModelCatalog],
   );
   const llmServerOptions = useMemo(
     () => runtimeTargets.map((runtime) => ({ label: runtime.runtime_id, value: runtime.runtime_id })),
@@ -147,7 +157,7 @@ export function useCockpitSectionProps() {
     ? null
     : t("cockpit.models.adapterRuntimeNotSupported", { runtime: resolvedServerId || "unknown" });
   const modelAuditIssuesCount = Number(
-    data.llmRuntimeOptions?.model_audit?.issues_count ?? 0,
+    data.unifiedModelCatalog?.model_audit?.issues_count ?? 0,
   );
   const llmModelOptions = useMemo(
     () =>
@@ -213,6 +223,10 @@ export function useCockpitSectionProps() {
     const selectedServer = interactive.state.selectedLlmServer;
     const selectedModel = interactive.state.selectedLlmModel;
     if (!selectedServer) return;
+    if (availableModelsForServer.length > 0 && !selectedModel) {
+      interactive.setters.setMessage(t("cockpit.chatMessages.modelSelectionRequired"));
+      return;
+    }
 
     if (selectedModel) {
       handleActivateModel(selectedModel).catch((error) => {
@@ -244,11 +258,13 @@ export function useCockpitSectionProps() {
       interactive.setters.setMessage(message);
     });
   }, [
+    availableModelsForServer.length,
     data.refresh,
     handleActivateModel,
     interactive.state.selectedLlmModel,
     interactive.state.selectedLlmServer,
     interactive.setters,
+    t,
   ]);
 
   const connected = logic.telemetry.connected;
@@ -438,7 +454,7 @@ export function useCockpitSectionProps() {
     setLabMode,
     selectedLlmServer,
     llmServerOptions,
-    setSelectedLlmServer,
+    setSelectedLlmServer: handleSelectLlmServer,
     selectedLlmModel,
     llmModelOptions,
     llmModelMetadata,
@@ -466,13 +482,13 @@ export function useCockpitSectionProps() {
     onActivateModel,
     onOpenTuning,
     onSend,
+    handleSelectLlmServer,
     selectedLlmModel,
     selectedLlmServer,
     sending,
     setChatMode,
     setLabMode,
     setSelectedLlmModel,
-    setSelectedLlmServer,
     tuningLabel,
   ]);
 
@@ -481,7 +497,7 @@ export function useCockpitSectionProps() {
     llmServers,
     selectedLlmServer,
     llmServerOptions: llmServerOptionsPanel,
-    onSelectLlmServer: setSelectedLlmServer,
+    onSelectLlmServer: handleSelectLlmServer,
     selectedLlmModel,
     llmModelOptions: llmModelOptionsPanel,
     onSelectLlmModel: setSelectedLlmModel,
@@ -533,11 +549,11 @@ export function useCockpitSectionProps() {
     onClearPinnedLogs,
     pinnedLogs,
     resolveServerStatus,
+    handleSelectLlmServer,
     selectedLlmModel,
     selectedLlmServer,
     selectedServerEntry,
     setSelectedLlmModel,
-    setSelectedLlmServer,
     sessionId,
     tasksPreview,
   ]);

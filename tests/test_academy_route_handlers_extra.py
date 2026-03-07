@@ -18,6 +18,10 @@ class _Logger:
     def __init__(self) -> None:
         self.warnings: list[str] = []
         self.errors: list[str] = []
+        self.infos: list[str] = []
+
+    def info(self, msg: str, *args: Any, **_kwargs: Any) -> None:
+        self.infos.append(msg % args if args else msg)
 
     def warning(self, msg: str, *args: Any, **_kwargs: Any) -> None:
         self.warnings.append(msg % args if args else msg)
@@ -73,6 +77,11 @@ async def test_list_adapters_handler_maps_generic_error_to_http_500() -> None:
     with pytest.raises(HTTPException) as exc:
         await route_handlers.list_adapters_handler(academy=academy)
     assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "error": "ADAPTERS_LIST_FAILED",
+        "message": "Failed to list adapters: boom",
+        "reason_code": "ADAPTERS_LIST_FAILED",
+    }
 
 
 @pytest.mark.asyncio
@@ -105,6 +114,30 @@ async def test_audit_adapters_handler_returns_payload() -> None:
     )
 
     assert payload == audit_payload
+
+
+def test_audit_adapters_handler_maps_generic_error_to_structured_http_500() -> None:
+    academy = _build_academy_base()
+    academy._get_model_manager = lambda: object()
+    academy.academy_models = SimpleNamespace(
+        audit_adapters=Mock(side_effect=RuntimeError("boom")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        route_handlers.audit_adapters_handler(
+            academy=academy,
+            runtime_id="ollama",
+            model_id="gemma3:latest",
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "error": "ADAPTERS_AUDIT_FAILED",
+        "message": "Failed to audit adapters: boom",
+        "reason_code": "ADAPTERS_AUDIT_FAILED",
+        "requested_runtime_id": "ollama",
+        "requested_model_id": "gemma3:latest",
+    }
 
 
 @pytest.mark.asyncio
@@ -191,9 +224,107 @@ async def test_activate_adapter_handler_maps_reason_code_value_error_to_http_400
 
     assert exc.value.status_code == 400
     assert exc.value.detail == {
+        "adapter_id": "a1",
         "error": "ADAPTER_BASE_MODEL_MISMATCH",
         "message": "Adapter base model does not match selected runtime model",
+        "requested_model_id": "gemma-3-4b-it",
+        "requested_runtime_id": "ollama",
         "reason_code": "ADAPTER_BASE_MODEL_MISMATCH",
+    }
+
+
+@pytest.mark.asyncio
+async def test_activate_adapter_handler_requires_runtime_model_for_chat_runtime_deploy() -> (
+    None
+):
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    manager = object()
+    academy._get_model_manager = lambda: manager
+
+    validate_mock = AsyncMock(return_value=None)
+    activate_mock = Mock(return_value={"success": True})
+    academy.academy_models = SimpleNamespace(
+        validate_adapter_runtime_compatibility=validate_mock,
+        activate_adapter=activate_mock,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await route_handlers.activate_adapter_handler(
+            request=SimpleNamespace(
+                adapter_id="a1",
+                runtime_id="ollama",
+                model_id="",
+                deploy_to_chat_runtime=True,
+            ),
+            req=SimpleNamespace(),
+            academy=academy,
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == {
+        "adapter_id": "a1",
+        "error": "ADAPTER_RUNTIME_MODEL_REQUIRED",
+        "message": "Select runtime model before adapter activation.",
+        "requested_runtime_id": "ollama",
+        "reason_code": "ADAPTER_RUNTIME_MODEL_REQUIRED",
+    }
+    validate_mock.assert_not_awaited()
+    activate_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_start_training_handler_maps_runtime_error_to_structured_http_500() -> (
+    None
+):
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    academy.DATASET_REQUIRED_DETAIL = "dataset required"
+    academy._get_gpu_habitat = lambda: SimpleNamespace(
+        run_training_job=Mock(side_effect=RuntimeError("boom"))
+    )
+    academy._get_model_manager = lambda: None
+    academy._is_model_trainable = lambda _name: True
+    academy._save_job_to_history = Mock()
+    academy._update_job_in_history = Mock()
+    academy.academy_training = SimpleNamespace(
+        resolve_dataset_path=Mock(return_value="dataset.jsonl"),
+        ensure_trainable_base_model=Mock(return_value="gemma-3-4b-it"),
+        validate_runtime_compatibility_for_base_model=AsyncMock(return_value=None),
+        build_job_record=Mock(
+            return_value={
+                "job_id": "training_20260307_000000",
+                "parameters": {
+                    "requested_runtime_id": "ollama",
+                    "requested_base_model": "gemma-3-4b-it",
+                },
+            }
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await route_handlers.start_training_handler(
+            request=SimpleNamespace(
+                base_model="gemma-3-4b-it",
+                runtime_id="ollama",
+                dataset_path=None,
+                lora_rank=8,
+                learning_rate=0.0002,
+                num_epochs=2,
+                max_seq_length=1024,
+                batch_size=1,
+            ),
+            req=SimpleNamespace(),
+            academy=academy,
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "error": "TRAINING_START_FAILED",
+        "message": "Failed to start training: boom",
+        "reason_code": "TRAINING_START_FAILED",
+        "requested_runtime_id": "ollama",
+        "requested_base_model": "gemma-3-4b-it",
     }
 
 
@@ -307,6 +438,21 @@ def test_list_dataset_uploads_and_delete_upload_paths() -> None:
     assert exc.value.status_code == 404
 
 
+def test_list_dataset_uploads_maps_generic_error_to_structured_http_500() -> None:
+    academy = _build_academy_base()
+    academy._load_uploads_metadata = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+
+    with pytest.raises(HTTPException) as exc:
+        route_handlers.list_dataset_uploads_handler(academy=academy)
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "error": "DATASET_UPLOADS_LIST_FAILED",
+        "message": "Failed to list dataset uploads: boom",
+        "reason_code": "DATASET_UPLOADS_LIST_FAILED",
+    }
+
+
 def test_conversion_listing_download_and_stream_helpers() -> None:
     academy = _build_academy_base()
     academy._resolve_user_id = lambda _req: "u1"
@@ -363,6 +509,97 @@ def test_conversion_listing_download_and_stream_helpers() -> None:
     assert isinstance(stream_resp, StreamingResponse)
 
 
+def test_list_dataset_conversion_files_maps_generic_error_to_structured_http_500() -> (
+    None
+):
+    academy = _build_academy_base()
+    academy._resolve_user_id = lambda _req: "u1"
+    academy._get_user_conversion_workspace = lambda _uid: {"base_dir": "/tmp/u1"}
+    academy._user_conversion_metadata_lock = lambda *_args, **_kwargs: None
+    academy._load_user_conversion_metadata = lambda *_args, **_kwargs: []
+    academy._normalize_conversion_item = lambda item: item
+    academy.academy_conversion = SimpleNamespace(
+        list_conversion_files_for_user=lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("boom")
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        route_handlers.list_dataset_conversion_files_handler(
+            req=SimpleNamespace(),
+            academy=academy,
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "error": "DATASET_CONVERSION_LIST_FAILED",
+        "message": "Failed to list conversion files: boom",
+        "reason_code": "DATASET_CONVERSION_LIST_FAILED",
+    }
+
+
+@pytest.mark.asyncio
+async def test_preview_dataset_conversion_file_maps_generic_error_to_structured_http_500() -> (
+    None
+):
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    academy._check_path_traversal = lambda _fid: True
+    text_file = Path("/tmp/test-preview.txt")
+    academy._resolve_existing_user_file = lambda _req, file_id: (
+        {"name": "x.txt"},
+        text_file,
+    )
+    academy.academy_conversion = SimpleNamespace(
+        read_text_preview=AsyncMock(side_effect=RuntimeError("boom"))
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await route_handlers.preview_dataset_conversion_file_handler(
+            file_id="f1",
+            req=SimpleNamespace(),
+            academy=academy,
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "error": "DATASET_FILE_PREVIEW_FAILED",
+        "message": "Failed to preview conversion file: boom",
+        "reason_code": "DATASET_FILE_PREVIEW_FAILED",
+        "file_id": "f1",
+    }
+
+
+def test_download_dataset_conversion_file_maps_generic_error_to_structured_http_500() -> (
+    None
+):
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    academy._check_path_traversal = lambda _fid: True
+    academy._resolve_existing_user_file = lambda _req, file_id: (
+        {"name": "x.txt"},
+        Path(__file__),
+    )
+    academy.academy_conversion = SimpleNamespace(
+        guess_media_type=lambda _path: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        route_handlers.download_dataset_conversion_file_handler(
+            file_id="f1",
+            req=SimpleNamespace(),
+            academy=academy,
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "error": "DATASET_FILE_DOWNLOAD_FAILED",
+        "message": "Failed to download conversion file: boom",
+        "reason_code": "DATASET_FILE_DOWNLOAD_FAILED",
+        "file_id": "f1",
+    }
+
+
 def test_deactivate_adapter_handler_respects_query_flag_false() -> None:
     academy = _build_academy_base()
     academy.require_localhost_request = lambda _req: None
@@ -389,3 +626,27 @@ def test_deactivate_adapter_handler_defaults_query_flag_to_true() -> None:
     payload = route_handlers.deactivate_adapter_handler(req=req, academy=academy)
     assert payload["mgr"] is manager
     assert payload["deploy_to_chat_runtime"] is True
+
+
+def test_deactivate_adapter_handler_maps_generic_error_to_structured_http_500() -> None:
+    academy = _build_academy_base()
+    academy.require_localhost_request = lambda _req: None
+    academy._get_model_manager = lambda: object()
+    academy.academy_models = SimpleNamespace(
+        deactivate_adapter=lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("boom")
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        route_handlers.deactivate_adapter_handler(
+            req=SimpleNamespace(query_params={}),
+            academy=academy,
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {
+        "error": "ADAPTER_DEACTIVATION_FAILED",
+        "message": "Failed to deactivate adapter: boom",
+        "reason_code": "ADAPTER_DEACTIVATION_FAILED",
+    }

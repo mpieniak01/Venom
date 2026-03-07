@@ -157,20 +157,23 @@ Inference tuning and Academy training are connected but separate:
 2. Chat/runtime selection uses:
    - `GET /api/v1/system/llm-runtime/options`
 3. Adapter activation can include runtime validation:
-   - `POST /api/v1/academy/adapters/activate` with optional `runtime_id`
-   - optional `deploy_to_chat_runtime=true` to deploy active adapter to Chat runtime
+   - `POST /api/v1/academy/adapters/activate`
+   - when `deploy_to_chat_runtime=true`, request must include explicit `runtime_id` and `model_id`
 
 Important Academy contract fields:
 - `source_type`: where training runs (`local` or `cloud`), not model-origin distribution.
 - `runtime_compatibility`: map of runtimes where trained adapter can be served.
 - `recommended_runtime`: preferred runtime for adapter inference.
+- canonical `metadata.json`: the only trusted adapter manifest for deploy/audit/activation.
 
 Practical sequence:
-1. Choose trainable base model in Academy.
-2. Train adapter.
-3. In Chat, switch to runtime compatible with that base/adapter.
-4. Activate adapter (optionally with `runtime_id`) to enforce compatibility check.
-5. If `deploy_to_chat_runtime=true`, Academy can auto-switch Chat runtime model for Ollama/vLLM adapters.
+1. Choose runtime server and runtime model first.
+2. Choose explicit trainable base model compatible with that runtime stack.
+3. Train adapter.
+4. In Chat, stay on runtime/model compatible with that base/adapter.
+5. Activate adapter with explicit `runtime_id + model_id`.
+6. If `deploy_to_chat_runtime=true`, Academy deploys only to the explicitly selected runtime/model.
+7. Invalid adapters without canonical metadata must be removed/regenerated, not repaired in place.
 
 Current runtime scope:
 1. Automatic adapter deploy/rollback to Chat runtime is implemented for `ollama` and `vllm`.
@@ -178,6 +181,7 @@ Current runtime scope:
 3. Chat should treat model and adapter as separate layers:
    - `Model` -> runtime-servable model
    - `Adapter` -> Academy overlay deployed conditionally by runtime capability
+4. Academy no longer falls back to config-default base models or remembered runtime models during training/self-learning/activation.
 
 ## Usage
 

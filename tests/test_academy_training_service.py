@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -9,7 +10,8 @@ from fastapi import HTTPException
 from venom_core.api.routes import academy_training as at
 
 
-def test_dataset_resolution_and_model_validation(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_dataset_resolution_and_model_validation(tmp_path: Path) -> None:
     dataset = tmp_path / "dataset_001.jsonl"
     dataset.write_text(
         '{"instruction":"i","input":"","output":"o"}\n', encoding="utf-8"
@@ -38,27 +40,45 @@ def test_dataset_resolution_and_model_validation(tmp_path: Path) -> None:
 
     assert (
         at.ensure_trainable_base_model(
-            request_base_model=None,
-            default_base_model="phi3",
+            request_base_model="phi3",
             is_model_trainable_fn=lambda _name: True,
         )
         == "phi3"
     )
 
+    with pytest.raises(HTTPException) as missing_model_exc:
+        at.ensure_trainable_base_model(
+            request_base_model=None,
+            is_model_trainable_fn=lambda _name: True,
+        )
+    assert missing_model_exc.value.status_code == 400
+    assert missing_model_exc.value.detail["reason_code"] == "MODEL_BASE_MODEL_REQUIRED"
+
     with pytest.raises(HTTPException):
         at.ensure_trainable_base_model(
             request_base_model="bad",
-            default_base_model="phi3",
             is_model_trainable_fn=lambda _name: False,
         )
 
-    at.validate_runtime_compatibility_for_base_model(
+    manager = MagicMock()
+    manager.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "gemma3:latest",
+                "provider": "ollama",
+                "path": str(tmp_path / "gemma3"),
+            }
+        ]
+    )
+
+    await at.validate_runtime_compatibility_for_base_model(
         base_model="google/gemma-3-4b-it",
         runtime_id="ollama",
+        manager=manager,
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        at.validate_runtime_compatibility_for_base_model(
+        await at.validate_runtime_compatibility_for_base_model(
             base_model="gemma3:latest",
             runtime_id="vllm",
         )

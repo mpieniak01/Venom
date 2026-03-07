@@ -410,7 +410,7 @@ Current local LoRA eligibility rules in Academy:
 
 ### Academy adapter activation guard
 
-Adapter activation supports optional runtime validation:
+Adapter activation uses an explicit runtime/model contract:
 
 ```bash
 POST /api/v1/academy/adapters/activate
@@ -420,19 +420,24 @@ Content-Type: application/json
   "adapter_id": "training_20240101_120000",
   "adapter_path": "./data/models/training_20240101_120000/adapter",
   "runtime_id": "vllm",
+  "model_id": "gemma-3-4b-it",
   "deploy_to_chat_runtime": true
 }
 ```
 
 Rules:
 - `runtime_id` accepts local runtimes (`ollama`, `vllm`, `onnx`).
+- `model_id` is required when `deploy_to_chat_runtime=true`.
 - Backend validates `adapter base_model + runtime` compatibility before activation.
+- Backend validates `adapter + runtime model` before deploy.
 - Incompatible combinations are rejected with HTTP `400` and a list of compatible runtimes.
-- `deploy_to_chat_runtime` is optional (default `false`) and attempts adapter deployment into the active chat runtime.
+- `deploy_to_chat_runtime` is optional (default `false`) and deploys only into the explicitly selected runtime/model.
+- Adapters without canonical `metadata.json` are invalid artifacts and are not repaired manually.
 
-Current limitation:
-1. Automatic adapter deploy/rollback to chat runtime is currently implemented for `ollama`.
-2. Deploy/rollback support for `vllm` and `onnx` is planned as follow-up.
+Current scope:
+1. Automatic adapter deploy/rollback to chat runtime is implemented for `ollama` and `vllm`.
+2. `onnx` remains guardrails-only for adapter deploy and returns `runtime_not_supported`.
+3. Academy no longer falls back to `ACADEMY_DEFAULT_BASE_MODEL`, `LAST_MODEL_*`, or `LLM_MODEL_NAME` as decision inputs for training/self-learning/adapter activation.
 
 ## Cache and Offline Mode
 

@@ -9,6 +9,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from venom_core.api.routes import academy_self_learning as routes
+from venom_core.services.academy.self_learning_service import (
+    SelfLearningValidationError,
+)
 
 
 @pytest.fixture
@@ -60,7 +63,6 @@ def mock_service():
                     "details": {},
                 }
             ],
-            "default_base_model": "qwen2.5-coder:3b",
             "default_embedding_profile_id": "local:default",
         }
     )
@@ -166,7 +168,7 @@ def test_get_self_learning_capabilities(client: TestClient):
     response = client.get("/api/v1/academy/self-learning/capabilities")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["default_base_model"] == "qwen2.5-coder:3b"
+    assert "default_base_model" not in payload
     assert payload["embedding_profiles"][0]["profile_id"] == "local:default"
 
 
@@ -202,6 +204,43 @@ def test_start_self_learning_validation_error(
     assert response.json()["detail"] == "bad request"
 
 
+def test_start_self_learning_structured_validation_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.start_run.side_effect = SelfLearningValidationError(
+        "Model 'gemma-3-4b-it' does not expose compatible local runtime targets.",
+        reason_code="MODEL_RUNTIME_TARGETS_UNAVAILABLE",
+        requested_runtime_id="ollama",
+        requested_base_model="gemma-3-4b-it",
+        effective_base_model="gemma-3-4b-it",
+        compatible_runtimes=[],
+    )
+    response = client.post(
+        "/api/v1/academy/self-learning/start",
+        json={
+            "mode": "llm_finetune",
+            "sources": ["repo_readmes"],
+            "limits": {
+                "max_file_size_kb": 256,
+                "max_files": 500,
+                "max_total_size_mb": 50,
+            },
+            "llm_config": {
+                "base_model": "gemma-3-4b-it",
+                "runtime_id": "ollama",
+            },
+            "dry_run": True,
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()["detail"]
+    assert payload["reason_code"] == "MODEL_RUNTIME_TARGETS_UNAVAILABLE"
+    assert payload["requested_runtime_id"] == "ollama"
+    assert payload["requested_base_model"] == "gemma-3-4b-it"
+    assert payload["effective_base_model"] == "gemma-3-4b-it"
+
+
 def test_start_self_learning_internal_error(
     client: TestClient, mock_service: MagicMock
 ):
@@ -221,6 +260,9 @@ def test_start_self_learning_internal_error(
         },
     )
     assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "SELF_LEARNING_START_FAILED"
+    assert "Failed to process self-learning request: boom" == detail["message"]
 
 
 def test_list_self_learning_runs(client: TestClient):
@@ -237,6 +279,9 @@ def test_get_self_learning_capabilities_internal_error(
     mock_service.get_capabilities = AsyncMock(side_effect=RuntimeError("boom"))
     response = client.get("/api/v1/academy/self-learning/capabilities")
     assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "SELF_LEARNING_CAPABILITIES_FAILED"
+    assert detail["message"] == "Failed to load self-learning capabilities: boom"
 
 
 def test_list_self_learning_runs_internal_error(
@@ -245,6 +290,9 @@ def test_list_self_learning_runs_internal_error(
     mock_service.list_runs.side_effect = RuntimeError("boom")
     response = client.get("/api/v1/academy/self-learning/list?limit=20")
     assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "SELF_LEARNING_LIST_FAILED"
+    assert detail["message"] == "Failed to list self-learning runs: boom"
 
 
 def test_delete_self_learning_run(client: TestClient):
@@ -262,6 +310,10 @@ def test_delete_self_learning_run_internal_error(
         "/api/v1/academy/self-learning/6de0cc81-77db-4bbf-a598-b66c7a8d45e8"
     )
     assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "SELF_LEARNING_DELETE_FAILED"
+    assert detail["run_id"] == "6de0cc81-77db-4bbf-a598-b66c7a8d45e8"
+    assert detail["message"] == "Failed to delete self-learning run: boom"
 
 
 def test_clear_all_self_learning_runs(client: TestClient):
@@ -276,6 +328,9 @@ def test_clear_all_self_learning_runs_internal_error(
     mock_service.clear_all_runs.side_effect = RuntimeError("boom")
     response = client.delete("/api/v1/academy/self-learning/all")
     assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "SELF_LEARNING_CLEAR_FAILED"
+    assert detail["message"] == "Failed to clear self-learning runs: boom"
 
 
 def test_service_unavailable_returns_503(mock_service: MagicMock):

@@ -413,7 +413,10 @@ def test_delete_upload_returns_500_when_unlink_fails(client, tmp_path):
         response = client.delete("/api/v1/academy/dataset/uploads/locked.jsonl")
 
     assert response.status_code == 500
-    assert "Failed to delete upload" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "DATASET_UPLOAD_DELETE_FAILED"
+    assert detail["file_id"] == "locked.jsonl"
+    assert "Failed to delete upload" in detail["message"]
 
 
 # ==================== Preview Tests ====================
@@ -659,7 +662,9 @@ def test_preview_returns_500_when_curator_fails(client, mock_dataset_curator):
     )
 
     assert response.status_code == 500
-    assert "Failed to preview dataset" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "DATASET_PREVIEW_FAILED"
+    assert "Failed to preview dataset" in detail["message"]
 
 
 # ==================== Curate with Scope Tests ====================
@@ -744,6 +749,27 @@ def test_curate_with_missing_upload_continues(client, mock_dataset_curator, tmp_
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
+
+
+def test_curate_returns_500_when_curator_fails(client, mock_dataset_curator, tmp_path):
+    """Nieoczekiwany błąd kuracji powinien dać structured HTTP 500."""
+    mock_dataset_curator.clear.side_effect = RuntimeError("curate internal error")
+
+    with patch("venom_core.api.routes.academy._get_uploads_dir", return_value=tmp_path):
+        response = client.post(
+            "/api/v1/academy/dataset",
+            json={
+                "include_lessons": True,
+                "include_git": False,
+                "include_task_history": False,
+                "upload_ids": [],
+            },
+        )
+
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "DATASET_CURATE_FAILED"
+    assert detail["message"] == "Failed to curate dataset: curate internal error"
 
 
 # ==================== Training Validation Tests ====================

@@ -108,7 +108,7 @@ export function CockpitModels({
               options={llmModelOptions}
               onChange={onSelectLlmModel}
               ariaLabel="Wybierz model LLM"
-              placeholder="Brak modeli"
+              placeholder={availableModelsForServer.length > 0 ? "Wybierz model" : "Brak modeli"}
               disabled={llmServers.length === 0 || availableModelsForServer.length === 0}
               buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
               menuClassName="w-full max-h-72 overflow-y-auto"

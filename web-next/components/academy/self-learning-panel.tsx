@@ -9,6 +9,7 @@ import {
   getUnifiedModelCatalog,
   getSelfLearningRunStatus,
   listSelfLearningRuns,
+  resolveAcademyApiErrorMessage,
   startSelfLearning,
   type SelfLearningEmbeddingProfile,
   type SelfLearningRunStatus,
@@ -38,6 +39,18 @@ export function isTerminalSelfLearningStatus(status: SelfLearningStatus): boolea
   return TERMINAL_STATUSES.has(status);
 }
 
+export function resolveSelfLearningStartErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+): string {
+  const resolved = resolveAcademyApiErrorMessage(error);
+  if (resolved && resolved !== "Unknown Academy API error") {
+    return resolved;
+  }
+  if (error instanceof Error && error.message.trim().length > 0) return error.message;
+  return fallbackMessage;
+}
+
 export function SelfLearningPanel() {
   const t = useTranslation();
   const { pushToast } = useToast();
@@ -50,7 +63,6 @@ export function SelfLearningPanel() {
   const [selectedRuntime, setSelectedRuntime] = useState("");
   const [runtimeModelAuditIssuesCount, setRuntimeModelAuditIssuesCount] = useState(0);
   const [embeddingProfiles, setEmbeddingProfiles] = useState<SelfLearningEmbeddingProfile[]>([]);
-  const [defaultBaseModel, setDefaultBaseModel] = useState<string | null>(null);
   const [defaultEmbeddingProfileId, setDefaultEmbeddingProfileId] = useState<string | null>(null);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -107,7 +119,7 @@ export function SelfLearningPanel() {
           ) {
             return activeRuntimeId;
           }
-          return availableRuntimes[0]?.id || "";
+          return "";
         });
       } catch (catalogError) {
         console.warn(
@@ -117,7 +129,6 @@ export function SelfLearningPanel() {
       }
       setTrainableModels(trainable);
       setEmbeddingProfiles(response.embedding_profiles ?? []);
-      setDefaultBaseModel(response.default_base_model ?? null);
       setDefaultEmbeddingProfileId(response.default_embedding_profile_id ?? null);
     } catch (error) {
       console.error("Failed to load self-learning capabilities", error);
@@ -125,34 +136,8 @@ export function SelfLearningPanel() {
   }, []);
 
   const resolveSelfLearningStartError = useCallback(
-    (error: unknown): string => {
-      if (error instanceof ApiError && error.data && typeof error.data === "object") {
-        const detail = (error.data as { detail?: unknown }).detail;
-        if (typeof detail === "string" && detail.trim().length > 0) {
-          return detail;
-        }
-        if (Array.isArray(detail)) {
-          const messages = detail
-            .map((item) => {
-              if (typeof item === "string") return item;
-              if (!item || typeof item !== "object") return "";
-              const msg = (item as { msg?: unknown }).msg;
-              return typeof msg === "string" ? msg : "";
-            })
-            .filter((item) => item.trim().length > 0);
-          if (messages.length > 0) {
-            return messages.join("; ");
-          }
-        }
-      }
-      if (error instanceof ApiError && typeof error.data === "string" && error.data.trim().length > 0) {
-        return error.data;
-      }
-      if (error instanceof Error && error.message.trim().length > 0) {
-        return error.message;
-      }
-      return t("academy.common.unknownError");
-    },
+    (error: unknown): string =>
+      resolveSelfLearningStartErrorMessage(error, t("academy.common.unknownError")),
     [t]
   );
 
@@ -321,7 +306,6 @@ export function SelfLearningPanel() {
         selectedRuntime={selectedRuntime}
         onRuntimeChange={setSelectedRuntime}
         embeddingProfiles={embeddingProfiles}
-        defaultBaseModel={defaultBaseModel}
         defaultEmbeddingProfileId={defaultEmbeddingProfileId}
         onStart={handleStart}
       />

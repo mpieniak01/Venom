@@ -269,7 +269,9 @@ Deployment checklist:
 
 Operational note:
 
-1. For legacy adapters with missing/inconsistent metadata, use runbook: `docs/ACADEMY_ADAPTER_METADATA_RUNBOOK.md`.
+1. Academy no longer supports manual repair flow for legacy adapters.
+2. Canonical adapter metadata is mandatory.
+3. Adapters without complete `metadata.json` are invalid artifacts and should be deleted/regenerated, not patched in place.
 
 ## Configuration
 
@@ -584,6 +586,7 @@ Activate a LoRA adapter (hot-swap).
   "adapter_id": "training_20240101_120000",
   "adapter_path": "./data/models/training_20240101_120000/adapter",
   "runtime_id": "ollama",
+  "model_id": "gemma3:latest",
   "deploy_to_chat_runtime": true
 }
 ```
@@ -602,9 +605,11 @@ Activate a LoRA adapter (hot-swap).
 
 Notes:
 1. `deploy_to_chat_runtime` is optional (defaults to `false`).
-2. Runtime auto-deploy is implemented for `ollama` and `vllm`.
-3. `onnx` remains guardrails-only for adapter deploy and returns `runtime_not_supported:onnx`.
-4. Cloud runtimes are not valid targets for Academy adapter deploy.
+2. When `deploy_to_chat_runtime=true`, both `runtime_id` and `model_id` must be provided explicitly.
+3. Runtime auto-deploy is implemented for `ollama` and `vllm`.
+4. `onnx` remains guardrails-only for adapter deploy and returns `runtime_not_supported:onnx`.
+5. Cloud runtimes are not valid targets for Academy adapter deploy.
+6. Academy does not guess runtime/model from config, previous runtime state, or legacy adapter metadata.
 
 #### **POST /api/v1/academy/adapters/deactivate**
 Deactivate current adapter (rollback to base model).
@@ -629,6 +634,7 @@ Model/adapter contract in Chat:
 3. Runtime capability is exposed in runtime options as:
    - `adapter_deploy_supported`
    - `adapter_deploy_mode`
+4. Invalid adapters without canonical metadata are blocked and should not be migrated manually.
 
 #### **GET /api/v1/academy/train/{job_id}/logs/stream**
 Stream training logs in real-time (SSE).

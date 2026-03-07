@@ -30,6 +30,7 @@ export const cockpitLocale = {
       taskPendingId: "in Bearbeitung…",
       taskSendError: "Aufgabe konnte nicht gesendet werden",
       emptyPrompt: "Bitte Aufgabeninhalt eingeben.",
+      modelSelectionRequired: "Wähle ein Modell für den aktuellen Server, bevor du Chat oder Aktivierung startest.",
       sessionInitializing: "Sitzung wird initialisiert. Bitte gleich erneut versuchen.",
       serverSwitchError: "Aktiver LLM-Server konnte nicht umgeschaltet werden.",
     },
@@ -116,6 +117,15 @@ export const cockpitLocale = {
       chooseModel: "Modell wählen",
       loadingAdapters: "Adapter werden geladen",
       adapterBase: "Basismodell (ohne Adapter)",
+      adapterCompatible: "mit aktuellem Modell kompatibel",
+      adapterBlocked: "für aktuelles Modell blockiert",
+      adapterStatusUnknown: "Audit-Status unbekannt",
+      activeAdapterLabel: "Aktiver Adapter",
+      activeAdapterCompatible: "aktiver Adapter passt zur aktuellen Auswahl",
+      activeAdapterBlocked: "aktiver Adapter passt nicht zum aktuellen Runtime-Modell",
+      activeAdapterNone: "Kein aktiver Adapter für den aktuellen Audit-Kontext.",
+      activeAdapterSwitchHint:
+        "Wechsle auf ein mit der Adapter-Basis kompatibles Runtime-Modell oder deaktiviere den Adapter vor dem Fortfahren.",
       adapterIncompatible: "nicht kompatibel mit Runtime {{runtime}}",
       adapterRuntimeNotSupported: "Adapter-Deploy in den Chat wird für Runtime {{runtime}} nicht unterstützt",
       runtimeModelAuditWarning:

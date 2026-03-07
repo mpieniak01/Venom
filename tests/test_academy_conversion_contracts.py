@@ -542,7 +542,8 @@ def _build_route_academy_stub() -> Any:
     return academy
 
 
-def test_route_handlers_curate_and_training_start(
+@pytest.mark.asyncio
+async def test_route_handlers_curate_and_training_start(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     route_handlers = _load_route_handlers_module()
@@ -604,7 +605,7 @@ def test_route_handlers_curate_and_training_start(
         sys.modules, "venom_core.config", SimpleNamespace(SETTINGS=fake_settings)
     )
 
-    training_resp = route_handlers.start_training_handler(
+    training_resp = await route_handlers.start_training_handler(
         request=TrainingRequest(),
         req=SimpleNamespace(),
         academy=academy,

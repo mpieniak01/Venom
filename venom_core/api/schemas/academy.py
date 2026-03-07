@@ -96,6 +96,9 @@ class AdapterInfo(BaseModel):
     created_at: str
     training_params: dict[str, Any] = Field(default_factory=dict)
     target_runtime: str | None = None
+    source_flow: str | None = None
+    metadata_status: Literal["canonical", "metadata_incomplete"] = "canonical"
+    metadata_reason_code: str | None = None
     is_active: bool = False
 
 

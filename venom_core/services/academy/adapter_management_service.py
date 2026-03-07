@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -14,87 +13,49 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def _load_jsonl_records(path: Path) -> list[dict[str, Any]]:
-    if not path.exists() or not path.is_file():
-        return []
-    records: list[dict[str, Any]] = []
-    try:
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line:
-                continue
-            payload = json.loads(line)
-            if isinstance(payload, dict):
-                records.append(payload)
-    except Exception as exc:
-        logger.warning("Failed to read JSONL records from %s: %s", path, exc)
-    return records
-
-
-def _load_self_learning_run_snapshot(
-    *,
-    repo_root: Path,
-    adapter_id: str,
-) -> dict[str, Any]:
-    prefix = "self_learning_"
-    if not adapter_id.startswith(prefix):
-        return {}
-    run_id = adapter_id[len(prefix) :].strip()
-    if not run_id:
-        return {}
-    runs_file = repo_root / "data" / "academy" / "self_learning" / "runs.jsonl"
-    matches = [
-        record
-        for record in _load_jsonl_records(runs_file)
-        if str(record.get("run_id") or "").strip() == run_id
-    ]
-    return matches[-1] if matches else {}
-
-
 def _resolve_adapter_display_info(
     *,
-    repo_root: Path,
     training_dir: Path,
-    default_model: str,
 ) -> dict[str, Any]:
     metadata = _metadata_service._load_adapter_metadata(training_dir)
-    base_model_assessment = _metadata_service._assess_adapter_base_model(
-        adapter_dir=training_dir,
-        default_model=default_model,
+    metadata_version = metadata.get("metadata_version")
+    metadata_complete = (
+        metadata_version == _metadata_service.CANONICAL_ADAPTER_METADATA_VERSION
+        and str(
+            metadata.get("effective_base_model") or metadata.get("base_model") or ""
+        ).strip()
+        and str(metadata.get("created_at") or "").strip()
+        and str(metadata.get("source_flow") or "").strip()
     )
-    run_snapshot = _load_self_learning_run_snapshot(
-        repo_root=repo_root,
-        adapter_id=training_dir.name,
-    )
-    llm_config = run_snapshot.get("llm_config")
-    run_training_params = llm_config if isinstance(llm_config, dict) else {}
-    metadata_params = metadata.get("parameters")
-    training_params = (
-        metadata_params
-        if isinstance(metadata_params, dict) and metadata_params
-        else run_training_params
-    )
-    created_at = (
-        str(metadata.get("created_at") or "").strip()
-        or str(run_snapshot.get("created_at") or "").strip()
-    )
-    if not created_at:
-        created_at = "unknown"
-    effective_base_model = str(metadata.get("effective_base_model") or "").strip()
-    base_model = (
-        effective_base_model
-        or str(base_model_assessment.get("base_model") or "").strip()
-    )
+    if not metadata_complete:
+        return {
+            "base_model": "unknown",
+            "created_at": "unknown",
+            "training_params": {},
+            "target_runtime": "",
+            "source_flow": "",
+            "metadata_status": "metadata_incomplete",
+            "metadata_reason_code": _metadata_service.ADAPTER_METADATA_INCOMPLETE,
+        }
+
     target_runtime = (
         str(metadata.get("effective_runtime_id") or "").strip()
         or str(metadata.get("requested_runtime_id") or "").strip()
-        or str(run_training_params.get("runtime_id") or "").strip()
     )
     return {
-        "base_model": base_model or default_model,
-        "created_at": created_at,
-        "training_params": training_params if isinstance(training_params, dict) else {},
+        "base_model": str(
+            metadata.get("effective_base_model") or metadata.get("base_model") or ""
+        ).strip(),
+        "created_at": str(metadata.get("created_at") or "").strip() or "unknown",
+        "training_params": (
+            dict(metadata.get("parameters") or {})
+            if isinstance(metadata.get("parameters"), dict)
+            else {}
+        ),
         "target_runtime": target_runtime,
+        "source_flow": str(metadata.get("source_flow") or "").strip() or None,
+        "metadata_status": "canonical",
+        "metadata_reason_code": None,
     }
 
 
@@ -123,9 +84,7 @@ async def list_adapters(
         if not adapter_path.exists():
             continue
         display_info = _resolve_adapter_display_info(
-            repo_root=repo_root,
             training_dir=training_dir,
-            default_model=settings_obj.ACADEMY_DEFAULT_BASE_MODEL,
         )
         adapters.append(
             AdapterInfo(
@@ -135,6 +94,12 @@ async def list_adapters(
                 created_at=str(display_info.get("created_at") or "unknown"),
                 training_params=dict(display_info.get("training_params") or {}),
                 target_runtime=str(display_info.get("target_runtime") or "") or None,
+                source_flow=str(display_info.get("source_flow") or "") or None,
+                metadata_status=str(
+                    display_info.get("metadata_status") or "metadata_incomplete"
+                ),
+                metadata_reason_code=str(display_info.get("metadata_reason_code") or "")
+                or None,
                 is_active=(training_dir.name == active_adapter_id),
             )
         )
@@ -171,6 +136,17 @@ def activate_adapter(
     adapter_path = (adapter_dir / "adapter").resolve()
     if not adapter_path.exists():
         raise FileNotFoundError(_metadata_service.ADAPTER_NOT_FOUND_DETAIL)
+    if deploy_to_chat_runtime:
+        requested_runtime = str(runtime_id or "").strip()
+        requested_model = str(model_id or "").strip()
+        if not requested_runtime:
+            raise ValueError(
+                "ADAPTER_RUNTIME_REQUIRED: Select target runtime before adapter activation."
+            )
+        if not requested_model:
+            raise ValueError(
+                "ADAPTER_RUNTIME_MODEL_REQUIRED: Select runtime model before adapter activation."
+            )
 
     success = mgr.activate_adapter(
         adapter_id=adapter_id, adapter_path=str(adapter_path)

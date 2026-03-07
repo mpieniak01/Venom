@@ -29,7 +29,10 @@ from venom_core.api.schemas.academy import (
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 
-def _value_error_detail_with_reason_code(exc: ValueError) -> str | dict[str, str]:
+def _value_error_detail_with_reason_code(
+    exc: ValueError,
+    **context: str | None,
+) -> str | dict[str, str]:
     raw_detail = str(exc).strip()
     if ":" not in raw_detail:
         return raw_detail
@@ -40,11 +43,34 @@ def _value_error_detail_with_reason_code(exc: ValueError) -> str | dict[str, str
         return raw_detail
     if not normalized_reason.replace("_", "").isalnum():
         return raw_detail
-    return {
+    detail: dict[str, str] = {
         "error": normalized_reason,
         "message": normalized_message,
         "reason_code": normalized_reason,
     }
+    for key, value in context.items():
+        normalized_value = str(value or "").strip()
+        if normalized_value:
+            detail[key] = normalized_value
+    return detail
+
+
+def _error_detail_with_reason_code(
+    *,
+    reason_code: str,
+    message: str,
+    **context: str | None,
+) -> dict[str, str]:
+    detail: dict[str, str] = {
+        "error": reason_code,
+        "message": message,
+        "reason_code": reason_code,
+    }
+    for key, value in context.items():
+        normalized_value = str(value or "").strip()
+        if normalized_value:
+            detail[key] = normalized_value
+    return detail
 
 
 def _collect_scope_counts(
@@ -143,13 +169,16 @@ def curate_dataset_handler(
 
     except Exception as e:
         academy.logger.error(f"Failed to curate dataset: {e}", exc_info=True)
-        return DatasetResponse(
-            success=False,
-            message=f"Failed to curate dataset: {str(e)}",
-        )
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_CURATE_FAILED",
+                message=f"Failed to curate dataset: {str(e)}",
+            ),
+        ) from e
 
 
-def start_training_handler(
+async def start_training_handler(
     *,
     request: TrainingRequest,
     req: Request,
@@ -177,7 +206,6 @@ def start_training_handler(
         )
         base_model = academy.academy_training.ensure_trainable_base_model(
             request_base_model=request.base_model,
-            default_base_model=SETTINGS.ACADEMY_DEFAULT_BASE_MODEL,
             is_model_trainable_fn=academy._is_model_trainable,
         )
         validate_runtime_pair = getattr(
@@ -186,9 +214,10 @@ def start_training_handler(
             None,
         )
         if callable(validate_runtime_pair):
-            validate_runtime_pair(
+            await validate_runtime_pair(
                 base_model=base_model,
                 runtime_id=request.runtime_id,
+                manager=academy._get_model_manager(),
             )
 
         job_id = f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -247,14 +276,40 @@ def start_training_handler(
 
     except academy.AcademyRouteError as e:
         raise academy._to_http_exception(e) from e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=_value_error_detail_with_reason_code(
+                e,
+                requested_runtime_id=str(
+                    getattr(request, "runtime_id", "") or ""
+                ).strip()
+                or None,
+                requested_base_model=str(
+                    getattr(request, "base_model", "") or ""
+                ).strip()
+                or None,
+            ),
+        ) from e
     except HTTPException:
         raise
     except Exception as e:
         academy.logger.error(f"Failed to start training: {e}", exc_info=True)
-        return TrainingResponse(
-            success=False,
-            message=f"Failed to start training: {str(e)}",
-        )
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="TRAINING_START_FAILED",
+                message=f"Failed to start training: {str(e)}",
+                requested_runtime_id=str(
+                    getattr(request, "runtime_id", "") or ""
+                ).strip()
+                or None,
+                requested_base_model=str(
+                    getattr(request, "base_model", "") or ""
+                ).strip()
+                or None,
+            ),
+        ) from e
 
 
 def get_training_status_handler(
@@ -312,7 +367,14 @@ def get_training_status_handler(
         raise
     except Exception as e:
         academy.logger.error(f"Failed to get training status: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="TRAINING_STATUS_FAILED",
+                message=f"Failed to get status: {str(e)}",
+                job_id=job_id,
+            ),
+        )
 
 
 def stream_training_logs_handler(*, job_id: str, academy: Any) -> StreamingResponse:
@@ -380,7 +442,14 @@ def list_jobs_handler(
         raise academy._to_http_exception(e) from e
     except Exception as e:
         academy.logger.error(f"Failed to list jobs: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list jobs: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="TRAINING_JOBS_LIST_FAILED",
+                message=f"Failed to list jobs: {str(e)}",
+                requested_status=status,
+            ),
+        )
 
 
 async def list_adapters_handler(*, academy: Any) -> List[AdapterInfo]:
@@ -395,7 +464,11 @@ async def list_adapters_handler(*, academy: Any) -> List[AdapterInfo]:
     except Exception as e:
         academy.logger.error(f"Failed to list adapters: {e}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Failed to list adapters: {str(e)}"
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="ADAPTERS_LIST_FAILED",
+                message=f"Failed to list adapters: {str(e)}",
+            ),
         )
 
 
@@ -419,7 +492,12 @@ def audit_adapters_handler(
         academy.logger.error(f"Failed to audit adapters: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to audit adapters: {str(e)}",
+            detail=_error_detail_with_reason_code(
+                reason_code="ADAPTERS_AUDIT_FAILED",
+                message=f"Failed to audit adapters: {str(e)}",
+                requested_runtime_id=runtime_id,
+                requested_model_id=model_id,
+            ),
         )
 
 
@@ -427,8 +505,24 @@ def _resolve_activation_runtime_id(*, request: Any) -> str:
     runtime_id = str(getattr(request, "runtime_id", "") or "").strip()
     if runtime_id:
         return runtime_id
+    if bool(getattr(request, "deploy_to_chat_runtime", False)):
+        return ""
     active_runtime = get_active_llm_runtime()
     return str(getattr(active_runtime, "provider", "") or "").strip()
+
+
+def _validate_activation_request_contract(*, request: Any, runtime_id: str) -> None:
+    if not bool(getattr(request, "deploy_to_chat_runtime", False)):
+        return
+    if not runtime_id:
+        raise ValueError(
+            "ADAPTER_RUNTIME_REQUIRED: Select target runtime before adapter activation."
+        )
+    model_id = str(getattr(request, "model_id", "") or "").strip()
+    if not model_id:
+        raise ValueError(
+            "ADAPTER_RUNTIME_MODEL_REQUIRED: Select runtime model before adapter activation."
+        )
 
 
 async def _validate_adapter_compatibility_if_runtime_selected(
@@ -454,6 +548,9 @@ async def activate_adapter_handler(
     req: Request,
     academy: Any,
 ) -> Dict[str, Any]:
+    requested_adapter_id = str(getattr(request, "adapter_id", "") or "").strip()
+    requested_runtime_id = _resolve_activation_runtime_id(request=request)
+    requested_model_id = str(getattr(request, "model_id", "") or "").strip()
     try:
         academy._ensure_academy_enabled()
         academy.require_localhost_request(req)
@@ -463,18 +560,21 @@ async def activate_adapter_handler(
                 status_code=503,
                 detail="ModelManager not available for adapter activation",
             )
-        runtime_id = _resolve_activation_runtime_id(request=request)
+        _validate_activation_request_contract(
+            request=request,
+            runtime_id=requested_runtime_id,
+        )
         await _validate_adapter_compatibility_if_runtime_selected(
             academy=academy,
             manager=manager,
             request=request,
-            runtime_id=runtime_id,
+            runtime_id=requested_runtime_id,
         )
         return academy.academy_models.activate_adapter(
             mgr=manager,
-            adapter_id=request.adapter_id,
-            runtime_id=runtime_id or None,
-            model_id=str(getattr(request, "model_id", "") or "").strip() or None,
+            adapter_id=requested_adapter_id,
+            runtime_id=requested_runtime_id or None,
+            model_id=requested_model_id or None,
             deploy_to_chat_runtime=bool(
                 getattr(request, "deploy_to_chat_runtime", False)
             ),
@@ -485,19 +585,39 @@ async def activate_adapter_handler(
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=_value_error_detail_with_reason_code(e),
+            detail=_value_error_detail_with_reason_code(
+                e,
+                adapter_id=requested_adapter_id or None,
+                requested_runtime_id=requested_runtime_id or None,
+                requested_model_id=requested_model_id or None,
+            ),
         ) from e
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Adapter not found") from None
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="ADAPTER_ACTIVATION_FAILED",
+                message=str(e),
+                adapter_id=requested_adapter_id or None,
+                requested_runtime_id=requested_runtime_id or None,
+                requested_model_id=requested_model_id or None,
+            ),
+        ) from e
     except HTTPException:
         raise
     except Exception as e:
         academy.logger.error(f"Failed to activate adapter: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to activate adapter: {str(e)}",
+            detail=_error_detail_with_reason_code(
+                reason_code="ADAPTER_ACTIVATION_FAILED",
+                message=f"Failed to activate adapter: {str(e)}",
+                adapter_id=requested_adapter_id or None,
+                requested_runtime_id=requested_runtime_id or None,
+                requested_model_id=requested_model_id or None,
+            ),
         )
 
 
@@ -533,7 +653,10 @@ def deactivate_adapter_handler(*, req: Request, academy: Any) -> Dict[str, Any]:
         academy.logger.error(f"Failed to deactivate adapter: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to deactivate adapter: {str(e)}",
+            detail=_error_detail_with_reason_code(
+                reason_code="ADAPTER_DEACTIVATION_FAILED",
+                message=f"Failed to deactivate adapter: {str(e)}",
+            ),
         )
 
 
@@ -562,7 +685,11 @@ def cancel_training_handler(
         academy.logger.error(f"Failed to cancel training: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to cancel training: {str(e)}",
+            detail=_error_detail_with_reason_code(
+                reason_code="TRAINING_CANCEL_FAILED",
+                message=f"Failed to cancel training: {str(e)}",
+                job_id=job_id,
+            ),
         )
 
 
@@ -613,7 +740,6 @@ def academy_status_handler(*, academy: Any) -> Dict[str, Any]:
             "config": {
                 "min_lessons": SETTINGS.ACADEMY_MIN_LESSONS,
                 "training_interval_hours": SETTINGS.ACADEMY_TRAINING_INTERVAL_HOURS,
-                "default_base_model": SETTINGS.ACADEMY_DEFAULT_BASE_MODEL,
             },
         }
 
@@ -621,7 +747,10 @@ def academy_status_handler(*, academy: Any) -> Dict[str, Any]:
         academy.logger.error(f"Failed to get academy status: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get academy status: {str(e)}",
+            detail=_error_detail_with_reason_code(
+                reason_code="ACADEMY_STATUS_FAILED",
+                message=f"Failed to get academy status: {str(e)}",
+            ),
         )
 
 
@@ -674,9 +803,18 @@ def list_dataset_uploads_handler(*, academy: Any) -> List[UploadFileInfo]:
         academy._ensure_academy_enabled()
     except academy.AcademyRouteError as e:
         raise academy._to_http_exception(e) from e
-
-    uploads = academy._load_uploads_metadata()
-    return [UploadFileInfo(**u) for u in uploads]
+    try:
+        uploads = academy._load_uploads_metadata()
+        return [UploadFileInfo(**u) for u in uploads]
+    except Exception as exc:
+        academy.logger.error("Failed to list dataset uploads: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_UPLOADS_LIST_FAILED",
+                message=f"Failed to list dataset uploads: {str(exc)}",
+            ),
+        ) from exc
 
 
 def delete_dataset_upload_handler(
@@ -709,7 +847,11 @@ def delete_dataset_upload_handler(
         academy.logger.error(f"Failed to delete upload {file_id}: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to delete upload: {str(e)}",
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_UPLOAD_DELETE_FAILED",
+                message=f"Failed to delete upload: {str(e)}",
+                file_id=file_id,
+            ),
         )
 
 
@@ -723,21 +865,35 @@ def list_dataset_conversion_files_handler(
     except academy.AcademyRouteError as e:
         raise academy._to_http_exception(e) from e
 
-    user_id = academy._resolve_user_id(req)
-    workspace = academy._get_user_conversion_workspace(user_id)
-    payload = academy.academy_conversion.list_conversion_files_for_user(
-        user_id=user_id,
-        workspace=workspace,
-        user_conversion_metadata_lock_fn=academy._user_conversion_metadata_lock,
-        load_user_conversion_metadata_fn=academy._load_user_conversion_metadata,
-        normalize_conversion_item_fn=academy._normalize_conversion_item,
-    )
-    return DatasetConversionListResponse(
-        user_id=payload["user_id"],
-        workspace_dir=payload["workspace_dir"],
-        source_files=payload["source_files"],
-        converted_files=payload["converted_files"],
-    )
+    try:
+        user_id = academy._resolve_user_id(req)
+        workspace = academy._get_user_conversion_workspace(user_id)
+        payload = academy.academy_conversion.list_conversion_files_for_user(
+            user_id=user_id,
+            workspace=workspace,
+            user_conversion_metadata_lock_fn=academy._user_conversion_metadata_lock,
+            load_user_conversion_metadata_fn=academy._load_user_conversion_metadata,
+            normalize_conversion_item_fn=academy._normalize_conversion_item,
+        )
+        return DatasetConversionListResponse(
+            user_id=payload["user_id"],
+            workspace_dir=payload["workspace_dir"],
+            source_files=payload["source_files"],
+            converted_files=payload["converted_files"],
+        )
+    except Exception as exc:
+        academy.logger.error(
+            "Failed to list conversion files: %s",
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_CONVERSION_LIST_FAILED",
+                message=f"Failed to list conversion files: {str(exc)}",
+            ),
+        ) from exc
 
 
 async def upload_dataset_conversion_files_handler(
@@ -753,47 +909,63 @@ async def upload_dataset_conversion_files_handler(
 
     from venom_core.config import SETTINGS
 
-    user_id = academy._resolve_user_id(req)
-    workspace = academy._get_user_conversion_workspace(user_id)
+    try:
+        user_id = academy._resolve_user_id(req)
+        workspace = academy._get_user_conversion_workspace(user_id)
 
-    form = await req.form()
-    files = form.getlist("files")
-    if not files:
-        raise HTTPException(status_code=400, detail="No files provided")
-    if len(files) > SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Too many files (max {SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST})",
-        )
-    return await academy.academy_conversion.upload_conversion_files_for_user(
-        files=files,
-        workspace=workspace,
-        settings=SETTINGS,
-        user_conversion_metadata_lock_fn=academy._user_conversion_metadata_lock,
-        load_user_conversion_metadata_fn=academy._load_user_conversion_metadata,
-        save_user_conversion_metadata_fn=academy._save_user_conversion_metadata,
-        validate_upload_filename_fn=lambda file,
-        settings,
-        *,
-        allowed_extensions=None: academy.academy_uploads.validate_upload_filename(
-            file=file,
-            settings=settings,
-            check_path_traversal_fn=academy._check_path_traversal,
-            validate_file_extension_fn=academy._validate_file_extension,
-            allowed_extensions=allowed_extensions,
-        ),
-        persist_with_limits_fn=lambda **kwargs: academy.academy_uploads.persist_with_limits(
-            **kwargs,
-            logger=academy.logger,
-            cleanup_uploaded_file_fn=lambda path: academy.academy_uploads.cleanup_uploaded_file(
-                path,
-                logger=academy.logger,
+        form = await req.form()
+        files = form.getlist("files")
+        if not files:
+            raise HTTPException(status_code=400, detail="No files provided")
+        if len(files) > SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Too many files (max {SETTINGS.ACADEMY_MAX_UPLOADS_PER_REQUEST})",
+            )
+        return await academy.academy_conversion.upload_conversion_files_for_user(
+            files=files,
+            workspace=workspace,
+            settings=SETTINGS,
+            user_conversion_metadata_lock_fn=academy._user_conversion_metadata_lock,
+            load_user_conversion_metadata_fn=academy._load_user_conversion_metadata,
+            save_user_conversion_metadata_fn=academy._save_user_conversion_metadata,
+            validate_upload_filename_fn=lambda file,
+            settings,
+            *,
+            allowed_extensions=None: academy.academy_uploads.validate_upload_filename(
+                file=file,
+                settings=settings,
+                check_path_traversal_fn=academy._check_path_traversal,
+                validate_file_extension_fn=academy._validate_file_extension,
+                allowed_extensions=allowed_extensions,
             ),
-        ),
-        build_conversion_file_id_fn=academy._build_conversion_file_id,
-        build_conversion_item_fn=academy._build_conversion_item,
-        normalize_conversion_item_fn=academy._normalize_conversion_item,
-    )
+            persist_with_limits_fn=lambda **kwargs: academy.academy_uploads.persist_with_limits(
+                **kwargs,
+                logger=academy.logger,
+                cleanup_uploaded_file_fn=lambda path: academy.academy_uploads.cleanup_uploaded_file(
+                    path,
+                    logger=academy.logger,
+                ),
+            ),
+            build_conversion_file_id_fn=academy._build_conversion_file_id,
+            build_conversion_item_fn=academy._build_conversion_item,
+            normalize_conversion_item_fn=academy._normalize_conversion_item,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        academy.logger.error(
+            "Failed to upload conversion files: %s",
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_CONVERSION_UPLOAD_FAILED",
+                message=f"Failed to upload conversion files: {str(exc)}",
+            ),
+        ) from exc
 
 
 def convert_dataset_file_handler(
@@ -852,7 +1024,12 @@ def convert_dataset_file_handler(
         )
         raise HTTPException(
             status_code=500,
-            detail="Conversion failed due to internal error",
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_CONVERSION_INTERNAL_FAILED",
+                message="Conversion failed due to internal error",
+                file_id=file_id,
+                target_format=target_format,
+            ),
         ) from exc
 
     return DatasetConversionResult(
@@ -893,6 +1070,21 @@ def set_dataset_conversion_training_selection_handler(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        academy.logger.error(
+            "Failed to update conversion training selection for %s: %s",
+            file_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_CONVERSION_SELECTION_FAILED",
+                message=f"Failed to update conversion training selection: {str(exc)}",
+                file_id=file_id,
+            ),
+        ) from exc
     return academy._normalize_conversion_item(item)
 
 
@@ -923,9 +1115,25 @@ async def preview_dataset_conversion_file_handler(
             detail="Preview supported only for .txt and .md files",
         )
 
-    preview_text, truncated = await academy.academy_conversion.read_text_preview(
-        file_path=file_path
-    )
+    try:
+        preview_text, truncated = await academy.academy_conversion.read_text_preview(
+            file_path=file_path
+        )
+    except Exception as exc:
+        academy.logger.error(
+            "Failed to preview conversion file %s: %s",
+            file_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_FILE_PREVIEW_FAILED",
+                message=f"Failed to preview conversion file: {str(exc)}",
+                file_id=file_id,
+            ),
+        ) from exc
 
     return DatasetFilePreviewResponse(
         file_id=file_id,
@@ -956,12 +1164,28 @@ def download_dataset_conversion_file_handler(
     except academy.AcademyRouteError as e:
         raise academy._to_http_exception(e) from e
 
-    media_type = academy.academy_conversion.guess_media_type(file_path)
-    return FileResponse(
-        path=str(file_path),
-        filename=str(item.get("name") or file_path.name),
-        media_type=media_type,
-    )
+    try:
+        media_type = academy.academy_conversion.guess_media_type(file_path)
+        return FileResponse(
+            path=str(file_path),
+            filename=str(item.get("name") or file_path.name),
+            media_type=media_type,
+        )
+    except Exception as exc:
+        academy.logger.error(
+            "Failed to download conversion file %s: %s",
+            file_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_FILE_DOWNLOAD_FAILED",
+                message=f"Failed to download conversion file: {str(exc)}",
+                file_id=file_id,
+            ),
+        ) from exc
 
 
 def preview_dataset_handler(
@@ -1031,5 +1255,8 @@ def preview_dataset_handler(
         academy.logger.error(f"Failed to preview dataset: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to preview dataset: {str(e)}",
+            detail=_error_detail_with_reason_code(
+                reason_code="DATASET_PREVIEW_FAILED",
+                message=f"Failed to preview dataset: {str(e)}",
+            ),
         )

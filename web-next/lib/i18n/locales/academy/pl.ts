@@ -53,6 +53,9 @@ export const academy = {
     baseModel: "Model bazowy treningu",
     baseModelHint: "Do treningu Academy można użyć tylko modeli z listy trenowalnych.",
     loadingModels: "Ładowanie modeli trenowalnych...",
+    chooseBaseModel: "Wybierz model bazowy",
+    baseModelSelectionRequired:
+      "Trening wymaga jawnego wyboru modelu bazowego zgodnego z wybranym serwerem.",
     noTrainableModels: "Brak dostępnych modeli trenowalnych",
     engineLabel: "dostawca modelu",
     locationLabel: "trening",
@@ -84,6 +87,8 @@ export const academy = {
     runtimeUnknown: "brak potwierdzonej kompatybilności runtime inferencji",
     externalTrainingHint:
       "Runtime {{runtime}} służy do deployu i inferencji w czacie. Trening LoRA odbywa się zewnętrznie w Academy (pipeline HF/PEFT/Unsloth), nie wewnątrz runtime.",
+    runtimeModelMismatchWarning:
+      "Dla runtime {{runtime}} nie ma teraz żadnego zgodnego modelu bazowego do treningu. Wybierz inny serwer albo doinstaluj lokalny model runtime z tej samej rodziny.",
     engineNames: {
       unsloth: "Unsloth",
       huggingface: "HuggingFace",
@@ -126,9 +131,17 @@ export const academy = {
     emptyTitle: "Brak dostępnych adapterów",
     emptyDescription: "Uruchom trening, aby utworzyć pierwszy adapter",
     baseModel: "Model bazowy",
+    targetRuntime: "Runtime docelowy",
     createdAt: "Utworzono",
     unknownDate: "Nieznana data",
     parameters: "Parametry",
+    compatible: "Kompatybilny z aktualnym wyborem",
+    blocked: "Zablokowany dla aktualnego wyboru",
+    runtimeSelectionRequired: "Wybierz serwer przed aktywacją adaptera.",
+    modelSelectionRequired: "Wybierz model runtime przed aktywacją adaptera.",
+    metadataIncomplete: "Adapter wymaga nowego canonical manifest",
+    metadataIncompleteDescription:
+      "Ten adapter nie ma kompletnego metadata.json w nowym formacie i nie jest traktowany jako poprawny artefakt do aktywacji.",
     infoTitle: "Aktywacja adaptera to hot-swap - model zostanie zamieniony bez restartu backendu",
     infoDescription:
       "Adapter LoRA modyfikuje tylko niewielką część parametrów bazowego modelu, co pozwala na szybkie uczenie i niskie zużycie pamięci.",
@@ -251,7 +264,12 @@ export const academy = {
         qaHeavy: "Q&A heavy",
         repairHeavy: "Repair heavy",
       },
+      chooseBaseModel: "Wybierz model bazowy",
+      baseModelSelectionRequired:
+        "LLM fine-tune wymaga jawnego wyboru modelu bazowego zgodnego z wybranym runtime.",
       noTrainableModels: "Brak modeli trenowalnych",
+      runtimeModelMismatchWarning:
+        "Wybrany runtime {{runtime}} nie ma żadnego zgodnego modelu bazowego do self-learning. Zmień serwer albo doinstaluj lokalny model runtime z tej samej rodziny.",
       chatDeployHint:
         "Deploy adaptera do czatu zależy od capability wybranego runtime; kompatybilność runtime opisuje, gdzie adapter może być użyty po treningu.",
       embeddingProfile: "Profil embeddingów",

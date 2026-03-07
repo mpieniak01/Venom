@@ -44,7 +44,7 @@ classify_model_source_type = _catalog_service.classify_model_source_type
 collect_default_trainable_models = _catalog_service.collect_default_trainable_models
 collect_local_trainable_models = _catalog_service.collect_local_trainable_models
 discover_available_runtime_targets = _catalog_service.discover_available_runtime_targets
-ensure_default_model_visible = _catalog_service.ensure_default_model_visible
+discover_runtime_model_families = _catalog_service.discover_runtime_model_families
 get_default_trainable_models_catalog = (
     _catalog_service.get_default_trainable_models_catalog
 )
@@ -109,17 +109,8 @@ def _runtime_endpoint_for_hash(
 
 def _resolve_runtime_for_adapter_deploy(
     runtime_id: str | None,
-    *,
-    get_active_llm_runtime_fn: Any | None = None,
-    settings_obj: Any | None = None,
 ) -> str:
-    settings = settings_obj or _resolve_settings_for_call()
-    active_runtime_fn = get_active_llm_runtime_fn or get_active_llm_runtime
-    return _runtime_service._resolve_runtime_for_adapter_deploy(
-        runtime_id,
-        get_active_llm_runtime_fn=active_runtime_fn,
-        settings_obj=settings,
-    )
+    return _runtime_service._resolve_runtime_for_adapter_deploy(runtime_id)
 
 
 def _is_runtime_model_dir(path: Path) -> bool:

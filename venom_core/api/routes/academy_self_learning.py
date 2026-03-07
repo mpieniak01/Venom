@@ -14,6 +14,9 @@ from venom_core.api.schemas.academy_self_learning import (
     SelfLearningStartRequest,
     SelfLearningStartResponse,
 )
+from venom_core.services.academy.self_learning_service import (
+    SelfLearningValidationError,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -24,6 +27,45 @@ _self_learning_service: Any | None = None
 
 SERVICE_UNAVAILABLE_DETAIL = "SelfLearningService is unavailable"
 INTERNAL_ERROR_DETAIL = "Failed to process self-learning request"
+
+
+def _error_detail_with_reason_code(
+    *,
+    reason_code: str,
+    message: str,
+    **context: str | None,
+) -> dict[str, str]:
+    detail: dict[str, str] = {
+        "error": reason_code,
+        "message": message,
+        "reason_code": reason_code,
+    }
+    for key, value in context.items():
+        normalized_value = str(value or "").strip()
+        if normalized_value:
+            detail[key] = normalized_value
+    return detail
+
+
+def _value_error_detail_with_reason_code(
+    exc: ValueError,
+    **context: str | None,
+) -> str | dict[str, str]:
+    raw_detail = str(exc).strip()
+    if ":" not in raw_detail:
+        return raw_detail
+    reason_code, message = raw_detail.split(":", 1)
+    normalized_reason = reason_code.strip()
+    normalized_message = message.strip()
+    if not normalized_reason or not normalized_message:
+        return raw_detail
+    if not normalized_reason.replace("_", "").isalnum():
+        return raw_detail
+    return _error_detail_with_reason_code(
+        reason_code=normalized_reason,
+        message=normalized_message,
+        **context,
+    )
 
 
 def set_dependencies(*, self_learning_service: Any | None = None) -> None:
@@ -44,6 +86,16 @@ def set_dependencies(*, self_learning_service: Any | None = None) -> None:
 async def start_self_learning(
     request: SelfLearningStartRequest,
 ) -> SelfLearningStartResponse:
+    requested_runtime_id = (
+        str(getattr(request.llm_config, "runtime_id", "") or "").strip()
+        if request.llm_config
+        else ""
+    )
+    requested_base_model = (
+        str(getattr(request.llm_config, "base_model", "") or "").strip()
+        if request.llm_config
+        else ""
+    )
     if _self_learning_service is None:
         raise HTTPException(status_code=503, detail=SERVICE_UNAVAILABLE_DETAIL)
     try:
@@ -59,11 +111,28 @@ async def start_self_learning(
             run_id=run_id,
             message="Self-learning run started",
         )
+    except SelfLearningValidationError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=_value_error_detail_with_reason_code(
+                exc,
+                requested_runtime_id=requested_runtime_id or None,
+                requested_base_model=requested_base_model or None,
+            ),
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to start self-learning run")
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="SELF_LEARNING_START_FAILED",
+                message=f"Failed to process self-learning request: {str(exc)}",
+                requested_runtime_id=requested_runtime_id or None,
+                requested_base_model=requested_base_model or None,
+            ),
+        ) from exc
 
 
 @router.get(
@@ -81,7 +150,13 @@ async def get_self_learning_capabilities() -> SelfLearningCapabilitiesResponse:
         return SelfLearningCapabilitiesResponse(**payload)
     except Exception as exc:
         logger.exception("Failed to load self-learning capabilities")
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="SELF_LEARNING_CAPABILITIES_FAILED",
+                message=f"Failed to load self-learning capabilities: {str(exc)}",
+            ),
+        ) from exc
 
 
 @router.get(
@@ -104,7 +179,14 @@ def get_self_learning_status(run_id: str) -> SelfLearningRunStatusResponse:
         raise
     except Exception as exc:
         logger.exception("Failed to get self-learning status for run %s", run_id)
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="SELF_LEARNING_STATUS_FAILED",
+                message=f"Failed to get self-learning status: {str(exc)}",
+                run_id=run_id,
+            ),
+        ) from exc
 
 
 @router.get(
@@ -125,7 +207,13 @@ def list_self_learning_runs(
         return SelfLearningListResponse(runs=runs, count=len(runs))
     except Exception as exc:
         logger.exception("Failed to list self-learning runs")
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="SELF_LEARNING_LIST_FAILED",
+                message=f"Failed to list self-learning runs: {str(exc)}",
+            ),
+        ) from exc
 
 
 @router.delete(
@@ -146,7 +234,13 @@ def clear_all_self_learning_runs() -> SelfLearningDeleteResponse:
         )
     except Exception as exc:
         logger.exception("Failed to clear self-learning runs")
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="SELF_LEARNING_CLEAR_FAILED",
+                message=f"Failed to clear self-learning runs: {str(exc)}",
+            ),
+        ) from exc
 
 
 @router.delete(
@@ -169,4 +263,11 @@ def delete_self_learning_run(run_id: str) -> SelfLearningDeleteResponse:
         raise
     except Exception as exc:
         logger.exception("Failed to delete self-learning run %s", run_id)
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="SELF_LEARNING_DELETE_FAILED",
+                message=f"Failed to delete self-learning run: {str(exc)}",
+                run_id=run_id,
+            ),
+        ) from exc

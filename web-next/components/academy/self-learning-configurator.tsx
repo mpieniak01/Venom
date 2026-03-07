@@ -40,7 +40,6 @@ interface Props {
   readonly onRuntimeChange: (runtimeId: string) => void;
   readonly trainableModels: readonly SelfLearningTrainableModelInfo[];
   readonly embeddingProfiles: readonly SelfLearningEmbeddingProfile[];
-  readonly defaultBaseModel?: string | null;
   readonly defaultEmbeddingProfileId?: string | null;
   readonly onStart: (config: SelfLearningConfig) => Promise<void> | void;
 }
@@ -144,7 +143,7 @@ function computeCanStart(params: {
   sourcesCount: number;
   loading: boolean;
   mode: SelfLearningMode;
-  effectiveBaseModel: string;
+  selectedBaseModel: string;
   effectiveEmbeddingProfile: string;
   selectedEmbeddingProfileState: SelfLearningEmbeddingProfile | null;
   embeddingPolicy: SelfLearningEmbeddingPolicy;
@@ -153,7 +152,7 @@ function computeCanStart(params: {
     return false;
   }
   if (params.mode === "llm_finetune") {
-    return params.effectiveBaseModel.length > 0;
+    return params.selectedBaseModel.length > 0;
   }
   if (params.effectiveEmbeddingProfile.length === 0) {
     return false;
@@ -281,6 +280,7 @@ function LlmModeSection({
 }: LlmModeSectionProps) {
   const selectedModel =
     trainableModels.find((model) => model.model_id === effectiveBaseModel) ?? null;
+  const hasRuntimeCompatibleModels = trainableModels.length > 0;
   const compatibility = selectedModel ? getModelCompatibility(selectedModel) : [];
   const compatibilityLabel =
     compatibility.length > 0
@@ -306,6 +306,8 @@ function LlmModeSection({
           onChange={onRuntimeChange}
           placeholder={t("cockpit.models.chooseServer")}
           ariaLabel={t("cockpit.actions.selectServer")}
+          buttonTestId="academy-self-learning-runtime-select"
+          optionTestIdPrefix="academy-self-learning-runtime-option"
           disabled={runtimeSelectOptions.length === 0}
           buttonClassName={SELECT_MENU_BUTTON_CLASS}
           menuClassName={SELECT_MENU_MENU_CLASS}
@@ -318,8 +320,14 @@ function LlmModeSection({
           value={effectiveBaseModel}
           options={baseModelOptions}
           onChange={onBaseModelChange}
-          placeholder={t("academy.selfLearning.config.noTrainableModels")}
+          placeholder={
+            hasRuntimeCompatibleModels
+              ? t("academy.selfLearning.config.chooseBaseModel")
+              : t("academy.selfLearning.config.noTrainableModels")
+          }
           ariaLabel={t("academy.selfLearning.config.baseModel")}
+          buttonTestId="academy-self-learning-base-model-select"
+          optionTestIdPrefix="academy-self-learning-base-model-option"
           disabled={baseModelOptions.length === 0}
           buttonClassName={SELECT_MENU_BUTTON_CLASS}
           menuClassName={SELECT_MENU_MENU_CLASS}
@@ -328,7 +336,9 @@ function LlmModeSection({
             if (!option) {
               return (
                 <span className="min-w-0 flex-1 truncate text-left text-hint">
-                  {t("academy.selfLearning.config.noTrainableModels")}
+                  {hasRuntimeCompatibleModels
+                    ? t("academy.selfLearning.config.chooseBaseModel")
+                    : t("academy.selfLearning.config.noTrainableModels")}
                 </span>
               );
             }
@@ -376,6 +386,18 @@ function LlmModeSection({
             );
           }}
         />
+        {!hasRuntimeCompatibleModels && selectedRuntime ? (
+          <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100">
+            {t("academy.selfLearning.config.runtimeModelMismatchWarning", {
+              runtime: getRuntimeDisplayName(selectedRuntime, t),
+            })}
+          </div>
+        ) : null}
+        {hasRuntimeCompatibleModels && !selectedModel ? (
+          <div className="mt-2 rounded-md border border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] px-3 py-2 text-[11px] text-[color:var(--text-secondary)]">
+            {t("academy.selfLearning.config.baseModelSelectionRequired")}
+          </div>
+        ) : null}
         {selectedModel ? (
           <div className="mt-2 rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] px-3 py-2 text-[11px] text-[color:var(--text-primary)]">
             <p>
@@ -648,7 +670,6 @@ export function SelfLearningConfigurator({
   onRuntimeChange,
   trainableModels,
   embeddingProfiles,
-  defaultBaseModel: defaultBaseModelProp,
   defaultEmbeddingProfileId: defaultEmbeddingProfileIdProp,
   onStart,
 }: Props) {
@@ -682,15 +703,6 @@ export function SelfLearningConfigurator({
     () => new Set(embeddingProfiles.map((item) => item.profile_id)),
     [embeddingProfiles],
   );
-  const defaultBaseModel = useMemo(
-    () =>
-      (defaultBaseModelProp && trainableModelIds.has(defaultBaseModelProp)
-        ? defaultBaseModelProp
-        : compatibleTrainableModels.find((item) => item.recommended)?.model_id) ??
-      compatibleTrainableModels[0]?.model_id ??
-      "",
-    [compatibleTrainableModels, defaultBaseModelProp, trainableModelIds],
-  );
   const defaultEmbeddingProfile = useMemo(
     () =>
       (defaultEmbeddingProfileIdProp &&
@@ -702,9 +714,7 @@ export function SelfLearningConfigurator({
     [defaultEmbeddingProfileIdProp, embeddingProfileIds, embeddingProfiles],
   );
   const effectiveBaseModel =
-    selectedBaseModel && trainableModelIds.has(selectedBaseModel)
-      ? selectedBaseModel
-      : defaultBaseModel;
+    selectedBaseModel && trainableModelIds.has(selectedBaseModel) ? selectedBaseModel : "";
   const effectiveEmbeddingProfile =
     selectedEmbeddingProfile && embeddingProfileIds.has(selectedEmbeddingProfile)
       ? selectedEmbeddingProfile
@@ -717,6 +727,7 @@ export function SelfLearningConfigurator({
     () => compatibleTrainableModels.find((model) => model.model_id === effectiveBaseModel) ?? null,
     [compatibleTrainableModels, effectiveBaseModel],
   );
+  const hasCompatibleTrainableModels = compatibleTrainableModels.length > 0;
   const effectiveCompatibility = useMemo(
     () => (selectedBaseModelState ? getModelCompatibility(selectedBaseModelState) : []),
     [selectedBaseModelState],
@@ -728,7 +739,7 @@ export function SelfLearningConfigurator({
         sourcesCount: sources.length,
         loading,
         mode,
-        effectiveBaseModel,
+        selectedBaseModel: effectiveBaseModel,
         effectiveEmbeddingProfile,
         selectedEmbeddingProfileState,
         embeddingPolicy,
@@ -828,7 +839,7 @@ export function SelfLearningConfigurator({
         </div>
       </div>
 
-        <ModeSection
+      <ModeSection
           mode={mode}
           t={t}
           runtimeOptions={runtimeOptions}
@@ -872,6 +883,13 @@ export function SelfLearningConfigurator({
               ? effectiveCompatibility.map((runtime) => getRuntimeDisplayName(runtime, t)).join(" • ")
               : t("academy.training.runtimeUnknown")}
           </p>
+          {!hasCompatibleTrainableModels && selectedRuntime ? (
+            <p className="text-amber-200">
+              {t("academy.selfLearning.config.runtimeModelMismatchWarning", {
+                runtime: getRuntimeDisplayName(selectedRuntime, t),
+              })}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

@@ -6,8 +6,7 @@ import {
     useTasks,
     useQueueStatus,
     useServiceStatus,
-    useLlmServers,
-    useLlmRuntimeOptions,
+    useUnifiedModelCatalog,
     useActiveLlmServer,
     useGraphSummary,
     useModels,
@@ -18,6 +17,7 @@ import {
     useFeedbackLogs,
     useModelsUsage,
 } from "@/hooks/use-api";
+import { resolveCockpitActiveRuntimeInfo } from "@/lib/cockpit-runtime-selection";
 import type { CockpitInitialData } from "@/lib/server-data";
 import type { Task } from "@/lib/types";
 
@@ -48,17 +48,12 @@ export function useCockpitData(initialData: CockpitInitialData) {
 
     // LLM Servers
     const {
-        data: liveLlmServers,
-        loading: llmServersPollingLoading,
-        refresh: refreshLlmServers,
-    } = useLlmServers(30000);
-    const {
-        data: liveRuntimeOptions,
-        loading: llmRuntimeOptionsLoading,
-    } = useLlmRuntimeOptions();
+        data: liveUnifiedModelCatalog,
+        loading: unifiedModelCatalogLoading,
+        refresh: refreshUnifiedModelCatalog,
+    } = useUnifiedModelCatalog();
     const llmServers =
-        liveLlmServers ??
-        liveRuntimeOptions?.runtimes.map((runtime) => ({
+        liveUnifiedModelCatalog?.runtimes.map((runtime) => ({
             name: runtime.runtime_id,
             display_name: runtime.runtime_id.toUpperCase(),
             provider: runtime.runtime_id,
@@ -73,7 +68,10 @@ export function useCockpitData(initialData: CockpitInitialData) {
 
     const { data: liveActiveServer, refresh: refreshActiveServer } =
         useActiveLlmServer(30000);
-    const activeServerInfo = liveActiveServer ?? null;
+    const activeServerInfo = resolveCockpitActiveRuntimeInfo(
+        liveUnifiedModelCatalog ?? null,
+        liveActiveServer ?? null,
+    );
 
     // Graph
     const { data: liveGraph } = useGraphSummary();
@@ -142,7 +140,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
         queue,
         services,
         llmServers,
-        llmRuntimeOptions: liveRuntimeOptions ?? null,
+        unifiedModelCatalog: liveUnifiedModelCatalog ?? null,
         activeServerInfo,
         graph,
         models,
@@ -156,7 +154,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
         loading: {
             metrics: metricsLoading,
             queue: queueLoading,
-            llmServers: llmServersPollingLoading || llmRuntimeOptionsLoading,
+            llmServers: unifiedModelCatalogLoading,
             tokenMetrics: tokenMetricsLoading,
             history: historyLoading,
             learning: learningLoading,
@@ -167,7 +165,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
             tasks: refreshTasks,
             queue: refreshQueue,
             services: refreshServices,
-            llmServers: refreshLlmServers,
+            llmServers: refreshUnifiedModelCatalog,
             activeServer: refreshActiveServer,
             models: refreshModels,
             git: refreshGit,

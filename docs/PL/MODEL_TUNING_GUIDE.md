@@ -157,8 +157,8 @@ Strojenie inferencji i trening Academy są powiązane, ale to osobne kontrakty:
 2. Selekcja runtime/modelu w Chat używa:
    - `GET /api/v1/system/llm-runtime/options`
 3. Aktywacja adaptera może zawierać walidację runtime:
-   - `POST /api/v1/academy/adapters/activate` z opcjonalnym `runtime_id`
-   - opcjonalne `deploy_to_chat_runtime=true`, aby wdrożyć aktywny adapter do runtime Chat
+   - `POST /api/v1/academy/adapters/activate`
+   - gdy `deploy_to_chat_runtime=true`, request musi zawierać jawne `runtime_id` i `model_id`
 
 Kluczowe pola kontraktu Academy:
 - `source_type`: gdzie wykonywany jest trening (`local` lub `cloud`), nie skąd pochodzi model.
@@ -167,14 +167,17 @@ Kluczowe pola kontraktu Academy:
 - `supports_native_training`: czy runtime oferuje natywny trening (dla Ollama: `false`).
 - `supports_adapter_import_safetensors` / `supports_adapter_import_gguf`: formaty importu adaptera dostępne w runtime.
 - `supports_adapter_runtime_apply`: czy runtime wspiera zastosowanie adaptera w ścieżce czatu.
+- kanoniczne `metadata.json`: jedyny zaufany manifest adaptera dla deployu, auditu i aktywacji.
 
 Praktyczna sekwencja:
-1. Wybierz treningowalny model bazowy w Academy.
-2. Wytrenuj adapter.
-3. W Chat przełącz runtime kompatybilny z tym modelem/adapterem.
-4. Aktywuj adapter (opcjonalnie z `runtime_id`), żeby wymusić walidację kompatybilności.
-5. Gdy `deploy_to_chat_runtime=true`, Academy może automatycznie przełączyć model Chat dla adapterów Ollama/vLLM.
-6. Dla deployu do Ollama mismatch `adapter_base_model` vs runtime `FROM` jest blokowany błędem `400` z `reason_code=ADAPTER_BASE_MODEL_MISMATCH`.
+1. Wybierz najpierw `server` i model runtime.
+2. Wybierz jawnie model bazowy treningu kompatybilny z tym stosem runtime.
+3. Wytrenuj adapter.
+4. W Chat pozostań na runtime/modelu zgodnym z bazą adaptera.
+5. Aktywuj adapter z jawnym `runtime_id + model_id`.
+6. Gdy `deploy_to_chat_runtime=true`, Academy deployuje tylko do jawnie wybranego runtime/modelu.
+7. Dla deployu do Ollama mismatch `adapter_base_model` vs runtime `FROM` jest blokowany błędem `400` z `reason_code=ADAPTER_BASE_MODEL_MISMATCH`.
+8. Adapter bez kanonicznego `metadata.json` jest nieważny i powinien być usunięty lub wygenerowany ponownie.
 
 Aktualny zakres runtime:
 1. Automatyczny deploy/rollback adaptera do runtime Chat jest zaimplementowany dla `ollama` i `vllm`.
@@ -182,6 +185,7 @@ Aktualny zakres runtime:
 3. Chat powinien rozdzielać dwie warstwy:
    - `Model` -> model serwowalny przez runtime
    - `Adapter` -> nakładka Academy wdrażana zależnie od capability runtime
+4. Academy nie fallbackuje już do domyślnego modelu z konfiguracji ani do zapamiętanego modelu runtime podczas treningu, samodoskonalenia i aktywacji adaptera.
 
 ## Użycie
 

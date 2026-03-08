@@ -3,6 +3,7 @@
 
 tests/ollama_bench/test_common_and_scoreboard.py
 tests/ollama_bench/test_scheduler.py
+tests/test_academy_adapter_runtime_service.py
 tests/test_academy_api.py
 tests/test_academy_api_contracts.py
 tests/test_academy_api_dataset_edge_cases.py

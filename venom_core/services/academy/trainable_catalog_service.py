@@ -20,6 +20,10 @@ PAID_CLOUD_PROVIDERS = {
 }
 PAID_MODEL_MARKERS = ("gpt-", "claude", "gemini")
 LOCAL_RUNTIME_PREFERENCE = ("vllm", "ollama", "onnx")
+GEMMA_3_4B_HF_REPO = "google/gemma-3-4b-it"
+PHI_35_MINI_CANONICAL = "phi-3.5-mini-instruct"
+LLAMA_32_1B_CANONICAL = "llama-3.2-1b-instruct"
+LLAMA_32_3B_CANONICAL = "llama-3.2-3b-instruct"
 _TRAINABLE_MODEL_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "gemma2:2b": "gemma-2-2b-it",
     "gemma2:latest": "gemma-2-2b-it",
@@ -29,29 +33,29 @@ _TRAINABLE_MODEL_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "gemma3:latest": "gemma-3-4b-it",
     "gemma3:4b": "gemma-3-4b-it",
     "gemma3:1b": "gemma-3-1b-it",
-    "google/gemma-3-4b-it": "gemma-3-4b-it",
+    GEMMA_3_4B_HF_REPO: "gemma-3-4b-it",
     "google/gemma-3-1b-it": "gemma-3-1b-it",
     "phi3:mini": "phi-3-mini-4k-instruct",
     "phi3:latest": "phi-3-mini-4k-instruct",
     "unsloth/phi-3-mini-4k-instruct": "phi-3-mini-4k-instruct",
     "microsoft/phi-3-mini-4k-instruct": "phi-3-mini-4k-instruct",
-    "unsloth/phi-3.5-mini-instruct": "phi-3.5-mini-instruct",
-    "microsoft/phi-3.5-mini-instruct": "phi-3.5-mini-instruct",
-    "llama3.2:1b": "llama-3.2-1b-instruct",
-    "llama3.2:3b": "llama-3.2-3b-instruct",
-    "unsloth/llama-3.2-1b-instruct": "llama-3.2-1b-instruct",
-    "unsloth/llama-3.2-3b-instruct": "llama-3.2-3b-instruct",
+    "unsloth/phi-3.5-mini-instruct": PHI_35_MINI_CANONICAL,
+    "microsoft/phi-3.5-mini-instruct": PHI_35_MINI_CANONICAL,
+    "llama3.2:1b": LLAMA_32_1B_CANONICAL,
+    "llama3.2:3b": LLAMA_32_3B_CANONICAL,
+    "unsloth/llama-3.2-1b-instruct": LLAMA_32_1B_CANONICAL,
+    "unsloth/llama-3.2-3b-instruct": LLAMA_32_3B_CANONICAL,
     "qwen2.5-coder:3b": "qwen/qwen2.5-coder-3b-instruct",
     "qwen2.5-coder:7b": "qwen/qwen2.5-coder-7b-instruct",
 }
 _CANONICAL_TO_PREFERRED_TRAINING_BASE: Dict[str, str] = {
     "gemma-2-2b-it": "unsloth/gemma-2-2b-it",
-    "gemma-3-4b-it": "google/gemma-3-4b-it",
+    "gemma-3-4b-it": GEMMA_3_4B_HF_REPO,
     "gemma-3-1b-it": "google/gemma-3-1b-it",
     "phi-3-mini-4k-instruct": "unsloth/Phi-3-mini-4k-instruct",
-    "phi-3.5-mini-instruct": "unsloth/Phi-3.5-mini-instruct",
-    "llama-3.2-1b-instruct": "unsloth/Llama-3.2-1B-Instruct",
-    "llama-3.2-3b-instruct": "unsloth/Llama-3.2-3B-Instruct",
+    PHI_35_MINI_CANONICAL: "unsloth/Phi-3.5-mini-instruct",
+    LLAMA_32_1B_CANONICAL: "unsloth/Llama-3.2-1B-Instruct",
+    LLAMA_32_3B_CANONICAL: "unsloth/Llama-3.2-3B-Instruct",
 }
 
 type ModelSourceType = Literal["local", "cloud"]
@@ -536,7 +540,7 @@ def get_default_trainable_models_catalog(
             "huggingface",
         ),
         ("unsloth/gemma-2-2b-it", "Gemma 2 2B Instruct (Unsloth)", "unsloth"),
-        ("google/gemma-3-4b-it", "Gemma 3 4B Instruct (HuggingFace)", "huggingface"),
+        (GEMMA_3_4B_HF_REPO, "Gemma 3 4B Instruct (HuggingFace)", "huggingface"),
     ]
     result: List[TrainableModelInfo] = []
     for model_id, label, provider in defaults:

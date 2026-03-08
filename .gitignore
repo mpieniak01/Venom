@@ -130,5 +130,6 @@ data/training/
 
 # Academy self-learning runtime artifacts
 data/academy/self_learning/
+data/_trash/
 MagicMock*/
 <MagicMock*/

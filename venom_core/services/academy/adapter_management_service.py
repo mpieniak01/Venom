@@ -14,6 +14,31 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _is_canonical_adapter_metadata(metadata: dict[str, Any]) -> bool:
+    metadata_version = metadata.get("metadata_version")
+    required_fields = (
+        metadata.get("effective_base_model") or metadata.get("base_model") or "",
+        metadata.get("created_at") or "",
+        metadata.get("source_flow") or "",
+    )
+    return bool(
+        metadata_version == _metadata_service.CANONICAL_ADAPTER_METADATA_VERSION
+        and all(str(field).strip() for field in required_fields)
+    )
+
+
+def _build_incomplete_metadata_display_info() -> dict[str, Any]:
+    return {
+        "base_model": "unknown",
+        "created_at": "unknown",
+        "training_params": {},
+        "target_runtime": "",
+        "source_flow": "",
+        "metadata_status": "metadata_incomplete",
+        "metadata_reason_code": _metadata_service.ADAPTER_METADATA_INCOMPLETE,
+    }
+
+
 def _coerce_metadata_status(value: Any) -> Literal["canonical", "metadata_incomplete"]:
     normalized = str(value or "").strip().lower()
     if normalized == "canonical":
@@ -26,25 +51,8 @@ def _resolve_adapter_display_info(
     training_dir: Path,
 ) -> dict[str, Any]:
     metadata = _metadata_service._load_adapter_metadata(training_dir)
-    metadata_version = metadata.get("metadata_version")
-    metadata_complete = (
-        metadata_version == _metadata_service.CANONICAL_ADAPTER_METADATA_VERSION
-        and str(
-            metadata.get("effective_base_model") or metadata.get("base_model") or ""
-        ).strip()
-        and str(metadata.get("created_at") or "").strip()
-        and str(metadata.get("source_flow") or "").strip()
-    )
-    if not metadata_complete:
-        return {
-            "base_model": "unknown",
-            "created_at": "unknown",
-            "training_params": {},
-            "target_runtime": "",
-            "source_flow": "",
-            "metadata_status": "metadata_incomplete",
-            "metadata_reason_code": _metadata_service.ADAPTER_METADATA_INCOMPLETE,
-        }
+    if not _is_canonical_adapter_metadata(metadata):
+        return _build_incomplete_metadata_display_info()
 
     target_runtime = (
         str(metadata.get("effective_runtime_id") or "").strip()
@@ -69,15 +77,7 @@ def _resolve_adapter_display_info(
 
 def _is_canonical_adapter_metadata_complete(training_dir: Path) -> bool:
     metadata = _metadata_service._load_adapter_metadata(training_dir)
-    metadata_version = metadata.get("metadata_version")
-    return bool(
-        metadata_version == _metadata_service.CANONICAL_ADAPTER_METADATA_VERSION
-        and str(
-            metadata.get("effective_base_model") or metadata.get("base_model") or ""
-        ).strip()
-        and str(metadata.get("created_at") or "").strip()
-        and str(metadata.get("source_flow") or "").strip()
-    )
+    return _is_canonical_adapter_metadata(metadata)
 
 
 def purge_legacy_adapters(

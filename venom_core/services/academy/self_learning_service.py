@@ -1047,12 +1047,12 @@ class SelfLearningService:
             return asyncio.run(_to_coroutine(awaitable))
 
         result: dict[str, Any] = {}
-        error: dict[str, BaseException] = {}
+        error: dict[str, Exception] = {}
 
         def _runner() -> None:
             try:
                 result["value"] = asyncio.run(_to_coroutine(awaitable))
-            except BaseException as exc:  # pragma: no cover - defensive pass-through
+            except Exception as exc:  # pragma: no cover - defensive pass-through
                 error["exception"] = exc
 
         worker = threading.Thread(target=_runner, daemon=True)

@@ -485,36 +485,43 @@ type ParsedErrorBody = {
   errors?: unknown;
 };
 
-function formatStructuredAcademyErrorDetail(detail: StructuredAcademyErrorDetail): string | null {
-  const message = typeof detail.message === "string" ? detail.message.trim() : "";
-  if (!message) return null;
-  const adapterId =
-    typeof detail.adapter_id === "string" ? detail.adapter_id.trim() : "";
-  const requestedRuntime =
-    typeof detail.requested_runtime_id === "string" ? detail.requested_runtime_id.trim() : "";
-  const requestedBaseModel =
-    typeof detail.requested_base_model === "string" ? detail.requested_base_model.trim() : "";
-  const requestedModelId =
-    typeof detail.requested_model_id === "string" ? detail.requested_model_id.trim() : "";
+function normalizeStructuredErrorField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function resolveStructuredErrorContext(detail: StructuredAcademyErrorDetail): {
+  contextParts: string[];
+  compatibleRuntimes: string[];
+} {
+  const contextParts: string[] = [];
+  const fieldMap: Array<[string, unknown]> = [
+    ["adapter", detail.adapter_id],
+    ["runtime", detail.requested_runtime_id],
+    ["base_model", detail.requested_base_model],
+    ["model_id", detail.requested_model_id],
+  ];
+  for (const [label, value] of fieldMap) {
+    const normalized = normalizeStructuredErrorField(value);
+    if (normalized) {
+      contextParts.push(`${label}=${normalized}`);
+    }
+  }
   const compatibleRuntimes = Array.isArray(detail.compatible_runtimes)
     ? detail.compatible_runtimes
         .map((value) => String(value || "").trim())
         .filter((value) => value.length > 0)
     : [];
-  if (!adapterId && !requestedRuntime && !requestedBaseModel && !requestedModelId) {
-    if (compatibleRuntimes.length > 0) {
-      return `${message} (compatible_runtimes=${compatibleRuntimes.join("|")})`;
-    }
-    return message;
-  }
-  const contextParts: string[] = [];
-  if (adapterId) contextParts.push(`adapter=${adapterId}`);
-  if (requestedRuntime) contextParts.push(`runtime=${requestedRuntime}`);
-  if (requestedBaseModel) contextParts.push(`base_model=${requestedBaseModel}`);
-  if (requestedModelId) contextParts.push(`model_id=${requestedModelId}`);
+  return { contextParts, compatibleRuntimes };
+}
+
+function formatStructuredAcademyErrorDetail(detail: StructuredAcademyErrorDetail): string | null {
+  const message = normalizeStructuredErrorField(detail.message);
+  if (!message) return null;
+  const { contextParts, compatibleRuntimes } = resolveStructuredErrorContext(detail);
   if (compatibleRuntimes.length > 0) {
     contextParts.push(`compatible_runtimes=${compatibleRuntimes.join("|")}`);
   }
+  if (contextParts.length === 0) return message;
   return `${message} (${contextParts.join(", ")})`;
 }
 

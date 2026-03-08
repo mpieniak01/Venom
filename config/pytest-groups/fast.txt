@@ -7,6 +7,7 @@ tests/api/test_memory_openapi_contract.py
 tests/api/test_system_api.py
 tests/api/test_system_api_dynamic.py
 tests/security/test_autonomy_enforcement.py
+tests/test_academy_adapter_runtime_service.py
 tests/test_academy_api.py
 tests/test_academy_api_contracts.py
 tests/test_academy_api_dataset_edge_cases.py

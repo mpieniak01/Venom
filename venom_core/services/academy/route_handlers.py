@@ -91,6 +91,65 @@ def _collect_scope_counts(
     return counts
 
 
+async def _resolve_training_models_for_request(
+    *,
+    request: TrainingRequest,
+    academy: Any,
+) -> tuple[str, str]:
+    base_model = academy.academy_training.ensure_trainable_base_model(
+        request_base_model=request.base_model,
+        is_model_trainable_fn=academy._is_model_trainable,
+    )
+    validate_runtime_pair = getattr(
+        academy.academy_training,
+        "validate_runtime_compatibility_for_base_model",
+        None,
+    )
+    if callable(validate_runtime_pair):
+        await validate_runtime_pair(
+            base_model=base_model,
+            runtime_id=request.runtime_id,
+            manager=academy._get_model_manager(),
+        )
+    resolve_training_base_model = getattr(
+        academy.academy_training,
+        "resolve_training_base_model",
+        None,
+    )
+    training_base_model = base_model
+    if callable(resolve_training_base_model):
+        training_base_model = await resolve_training_base_model(
+            base_model=base_model,
+            manager=academy._get_model_manager(),
+        )
+    if not str(training_base_model or "").strip():
+        raise ValueError(
+            "MODEL_TRAINING_BASE_UNRESOLVED: Failed to resolve concrete training base model"
+        )
+    return base_model, str(training_base_model)
+
+
+def _request_runtime_base_context(request: TrainingRequest) -> dict[str, str | None]:
+    return {
+        "requested_runtime_id": str(getattr(request, "runtime_id", "") or "").strip()
+        or None,
+        "requested_base_model": str(getattr(request, "base_model", "") or "").strip()
+        or None,
+    }
+
+
+def _mark_training_start_failed(*, academy: Any, job_id: str, exc: Exception) -> None:
+    academy._update_job_in_history(
+        job_id,
+        {
+            "status": "failed",
+            "finished_at": datetime.now().isoformat(),
+            "error": str(exc),
+            "error_code": "TRAINING_START_FAILED",
+        },
+    )
+
+
 def curate_dataset_handler(
     *,
     request: DatasetScopeRequest,
@@ -185,6 +244,7 @@ async def start_training_handler(
     req: Request,
     academy: Any,
 ) -> TrainingResponse:
+    request_context = _request_runtime_base_context(request)
     try:
         academy._ensure_academy_enabled()
         academy.require_localhost_request(req)
@@ -205,36 +265,10 @@ async def start_training_handler(
             academy_training_dir=SETTINGS.ACADEMY_TRAINING_DIR,
             dataset_required_detail=academy.DATASET_REQUIRED_DETAIL,
         )
-        base_model = academy.academy_training.ensure_trainable_base_model(
-            request_base_model=request.base_model,
-            is_model_trainable_fn=academy._is_model_trainable,
+        base_model, training_base_model = await _resolve_training_models_for_request(
+            request=request,
+            academy=academy,
         )
-        validate_runtime_pair = getattr(
-            academy.academy_training,
-            "validate_runtime_compatibility_for_base_model",
-            None,
-        )
-        if callable(validate_runtime_pair):
-            await validate_runtime_pair(
-                base_model=base_model,
-                runtime_id=request.runtime_id,
-                manager=academy._get_model_manager(),
-            )
-        resolve_training_base_model = getattr(
-            academy.academy_training,
-            "resolve_training_base_model",
-            None,
-        )
-        training_base_model = base_model
-        if callable(resolve_training_base_model):
-            training_base_model = await resolve_training_base_model(
-                base_model=base_model,
-                manager=academy._get_model_manager(),
-            )
-        if not str(training_base_model or "").strip():
-            raise ValueError(
-                "MODEL_TRAINING_BASE_UNRESOLVED: Failed to resolve concrete training base model"
-            )
 
         job_id = f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         output_dir = Path(SETTINGS.ACADEMY_MODELS_DIR) / job_id
@@ -264,15 +298,7 @@ async def start_training_handler(
                 job_name=job_id,
             )
         except Exception as e:
-            academy._update_job_in_history(
-                job_id,
-                {
-                    "status": "failed",
-                    "finished_at": datetime.now().isoformat(),
-                    "error": str(e),
-                    "error_code": "TRAINING_START_FAILED",
-                },
-            )
+            _mark_training_start_failed(academy=academy, job_id=job_id, exc=e)
             raise
 
         academy._update_job_in_history(
@@ -298,14 +324,7 @@ async def start_training_handler(
             status_code=400,
             detail=_value_error_detail_with_reason_code(
                 e,
-                requested_runtime_id=str(
-                    getattr(request, "runtime_id", "") or ""
-                ).strip()
-                or None,
-                requested_base_model=str(
-                    getattr(request, "base_model", "") or ""
-                ).strip()
-                or None,
+                **request_context,
             ),
         ) from e
     except HTTPException:
@@ -317,14 +336,7 @@ async def start_training_handler(
             detail=_error_detail_with_reason_code(
                 reason_code="TRAINING_START_FAILED",
                 message=f"Failed to start training: {str(e)}",
-                requested_runtime_id=str(
-                    getattr(request, "runtime_id", "") or ""
-                ).strip()
-                or None,
-                requested_base_model=str(
-                    getattr(request, "base_model", "") or ""
-                ).strip()
-                or None,
+                **request_context,
             ),
         ) from e
 

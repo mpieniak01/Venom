@@ -19,21 +19,9 @@ const CONTRACT_ERROR_TERMS = [
 ];
 
 export function sanitizeMermaidDiagram(value: string) {
-  const cleaned = value.replaceAll(/\r?\n/g, "\n");
-  const safeChars = new Set(
-    Array.from(
-      String.raw`abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:/_-[]()>{}|#;\=+*"'"`,
-    ),
-  );
-  let output = "";
-  for (const char of cleaned) {
-    if (char === "\n") {
-      output += "\n";
-      continue;
-    }
-    output += safeChars.has(char) ? char : " ";
-  }
-  return output;
+  return value
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\t\n\x20-\x7E\u00A0-\uFFFF]/g, " ");
 }
 
 export function decorateExecutionFailed(container: HTMLDivElement) {

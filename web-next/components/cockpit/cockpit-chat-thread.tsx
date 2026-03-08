@@ -30,6 +30,7 @@ import {
   buildCockpitAdapterOptions,
   isBlockedCockpitAdapterAudit,
 } from "@/lib/academy-adapter-options";
+import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 import { Settings, ThumbsDown, ThumbsUp } from "lucide-react";
 
 export type ChatMode = "direct" | "normal" | "complex";
@@ -367,7 +368,7 @@ export const ChatComposer = memo(
       { value: "complex", label: t("cockpit.modes.complexLabel") },
     ];
     const selectedRuntimeId = useMemo(
-      () => selectedLlmServer.trim().toLowerCase(),
+      () => normalizeRuntimeId(selectedLlmServer).toLowerCase(),
       [selectedLlmServer],
     );
     const {
@@ -529,6 +530,7 @@ export const ChatComposer = memo(
                 onChange={setSelectedLlmServer}
                 ariaLabel={t("cockpit.actions.selectServer")}
                 buttonTestId="llm-server-select"
+                optionTestIdPrefix="llm-server-option"
                 placeholder={t("cockpit.models.chooseServer")}
                 buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap"
                 menuClassName="w-full max-h-72 overflow-y-auto"

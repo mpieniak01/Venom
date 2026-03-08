@@ -1026,7 +1026,7 @@ class SelfLearningService:
         try:
             fetched = self.model_manager.list_local_models()
             if inspect.isawaitable(fetched):
-                fetched = self._await_local_models_sync(cast(Awaitable[Any], fetched))
+                fetched = self._await_local_models_sync(fetched)
             if isinstance(fetched, list):
                 return [item for item in fetched if isinstance(item, dict)]
         except Exception as exc:
@@ -1038,17 +1038,20 @@ class SelfLearningService:
 
     @staticmethod
     def _await_local_models_sync(awaitable: Awaitable[Any]) -> Any:
+        async def _to_coroutine(value: Awaitable[Any]) -> Any:
+            return await value
+
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(awaitable)
+            return asyncio.run(_to_coroutine(awaitable))
 
         result: dict[str, Any] = {}
         error: dict[str, BaseException] = {}
 
         def _runner() -> None:
             try:
-                result["value"] = asyncio.run(awaitable)
+                result["value"] = asyncio.run(_to_coroutine(awaitable))
             except BaseException as exc:  # pragma: no cover - defensive pass-through
                 error["exception"] = exc
 

@@ -10,6 +10,7 @@ tests/test_academy_api_dataset_routes.py
 tests/test_academy_api_edges_contract.py
 tests/test_academy_conversion_contracts.py
 tests/test_academy_file_resolution_service.py
+tests/test_academy_history_module.py
 tests/test_academy_models_module.py
 tests/test_academy_route_handlers_extra.py
 tests/test_academy_route_helpers_modules.py
@@ -118,6 +119,7 @@ tests/test_message_broker.py
 tests/test_metrics.py
 tests/test_metrics_routes.py
 tests/test_model_discovery.py
+tests/test_model_manager.py
 tests/test_model_manager_adapter_ops.py
 tests/test_model_manager_discovery.py
 tests/test_model_manager_onnx.py

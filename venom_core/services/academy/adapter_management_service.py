@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from venom_core.api.schemas.academy import AdapterInfo
 from venom_core.services.academy import adapter_metadata_service as _metadata_service
@@ -12,6 +12,13 @@ from venom_core.services.academy import adapter_runtime_service as _runtime_serv
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _coerce_metadata_status(value: Any) -> Literal["canonical", "metadata_incomplete"]:
+    normalized = str(value or "").strip().lower()
+    if normalized == "canonical":
+        return "canonical"
+    return "metadata_incomplete"
 
 
 def _resolve_adapter_display_info(
@@ -178,9 +185,7 @@ def _build_adapter_info(
         training_params=dict(display_info.get("training_params") or {}),
         target_runtime=str(display_info.get("target_runtime") or "") or None,
         source_flow=str(display_info.get("source_flow") or "") or None,
-        metadata_status=str(
-            display_info.get("metadata_status") or "metadata_incomplete"
-        ),
+        metadata_status=_coerce_metadata_status(display_info.get("metadata_status")),
         metadata_reason_code=str(display_info.get("metadata_reason_code") or "")
         or None,
         is_active=(training_dir.name == active_adapter_id),

@@ -17,6 +17,7 @@ import { useCockpitContext } from "@/components/cockpit/cockpit-context";
 import { mapTelemetryTone, type TelemetryFeedEntry } from "@/components/cockpit/cockpit-utils";
 import { setActiveLlmServer } from "@/hooks/use-api";
 import { filterRuntimeBaseModels } from "@/lib/runtime-model-filters";
+import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 
 
 
@@ -123,10 +124,12 @@ export function useCockpitSectionProps() {
   );
   const handleSelectLlmServer = useCallback(
     (value: string) => {
-      if (!value || value === selectedLlmServer) {
+      const normalizedValue = normalizeRuntimeId(value);
+      const normalizedSelected = normalizeRuntimeId(selectedLlmServer);
+      if (!normalizedValue || normalizedValue === normalizedSelected) {
         return;
       }
-      setSelectedLlmServer(value);
+      setSelectedLlmServer(normalizedValue);
       setSelectedLlmModel("");
     },
     [selectedLlmServer, setSelectedLlmModel, setSelectedLlmServer],
@@ -136,11 +139,20 @@ export function useCockpitSectionProps() {
     () => data.unifiedModelCatalog?.runtimes ?? [],
     [data.unifiedModelCatalog],
   );
+  const normalizedSelectedLlmServer = useMemo(
+    () => normalizeRuntimeId(selectedLlmServer),
+    [selectedLlmServer],
+  );
   const llmServerOptions = useMemo(
     () => runtimeTargets.map((runtime) => ({ label: runtime.runtime_id, value: runtime.runtime_id })),
     [runtimeTargets],
   );
-  const resolvedServerId = selectedLlmServer || data.activeServerInfo?.active_server || "";
+  const resolvedServerId = normalizeRuntimeId(
+    normalizedSelectedLlmServer ||
+      data.activeServerInfo?.active_server ||
+      data.unifiedModelCatalog?.active?.active_server ||
+      "",
+  );
   const selectedRuntimeModels = useMemo(() => {
     if (!resolvedServerId) return [];
     const target = runtimeTargets.find((runtime) => runtime.runtime_id === resolvedServerId);
@@ -202,7 +214,10 @@ export function useCockpitSectionProps() {
     [selectedRuntimeModels],
   );
 
-  const selectedServerEntry = useMemo(() => data.llmServers?.find(s => s.name === selectedLlmServer) || null, [data.llmServers, selectedLlmServer]);
+  const selectedServerEntry = useMemo(
+    () => data.llmServers?.find((s) => s.name === normalizedSelectedLlmServer) || null,
+    [data.llmServers, normalizedSelectedLlmServer],
+  );
 
   const resolveServerStatus = useCallback((name?: string, fallback?: string | null) => {
     const runtimeMatch = runtimeTargets.find((runtime) => runtime.runtime_id === name);
@@ -223,7 +238,7 @@ export function useCockpitSectionProps() {
   const activeServerName = data.activeServerInfo?.active_server || "unknown";
 
   const onActivateServer = useCallback(() => {
-    const selectedServer = interactive.state.selectedLlmServer;
+    const selectedServer = normalizeRuntimeId(interactive.state.selectedLlmServer);
     const selectedModel = interactive.state.selectedLlmModel;
     if (!selectedServer) return;
     if (availableModelsForServer.length > 0 && !selectedModel) {
@@ -455,7 +470,7 @@ export function useCockpitSectionProps() {
     setChatMode,
     labMode,
     setLabMode,
-    selectedLlmServer,
+    selectedLlmServer: normalizedSelectedLlmServer,
     llmServerOptions,
     setSelectedLlmServer: handleSelectLlmServer,
     selectedLlmModel,
@@ -487,7 +502,7 @@ export function useCockpitSectionProps() {
     onSend,
     handleSelectLlmServer,
     selectedLlmModel,
-    selectedLlmServer,
+    normalizedSelectedLlmServer,
     sending,
     setChatMode,
     setLabMode,
@@ -498,7 +513,7 @@ export function useCockpitSectionProps() {
   const llmOpsPanelProps = useMemo(() => ({
     llmServersLoading,
     llmServers,
-    selectedLlmServer,
+    selectedLlmServer: normalizedSelectedLlmServer,
     llmServerOptions: llmServerOptionsPanel,
     onSelectLlmServer: handleSelectLlmServer,
     selectedLlmModel,
@@ -554,7 +569,7 @@ export function useCockpitSectionProps() {
     resolveServerStatus,
     handleSelectLlmServer,
     selectedLlmModel,
-    selectedLlmServer,
+    normalizedSelectedLlmServer,
     selectedServerEntry,
     setSelectedLlmModel,
     sessionId,

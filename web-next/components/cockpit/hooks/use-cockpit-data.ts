@@ -21,6 +21,9 @@ import { resolveCockpitActiveRuntimeInfo } from "@/lib/cockpit-runtime-selection
 import type { CockpitInitialData } from "@/lib/server-data";
 import type { Task } from "@/lib/types";
 
+const UNIFIED_MODEL_CATALOG_POLL_MS = 5000;
+const ACTIVE_LLM_SERVER_POLL_MS = 5000;
+
 export function useCockpitData(initialData: CockpitInitialData) {
     // Metrics
     const {
@@ -51,7 +54,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
         data: liveUnifiedModelCatalog,
         loading: unifiedModelCatalogLoading,
         refresh: refreshUnifiedModelCatalog,
-    } = useUnifiedModelCatalog();
+    } = useUnifiedModelCatalog(UNIFIED_MODEL_CATALOG_POLL_MS);
     const llmServers =
         liveUnifiedModelCatalog?.runtimes.map((runtime) => ({
             name: runtime.runtime_id,
@@ -67,7 +70,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
         [];
 
     const { data: liveActiveServer, refresh: refreshActiveServer } =
-        useActiveLlmServer(30000);
+        useActiveLlmServer(ACTIVE_LLM_SERVER_POLL_MS);
     const activeServerInfo = resolveCockpitActiveRuntimeInfo(
         liveUnifiedModelCatalog ?? null,
         liveActiveServer ?? null,

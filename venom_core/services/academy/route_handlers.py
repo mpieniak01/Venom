@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, NoReturn, Optional, cast
 
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -651,7 +651,7 @@ def _raise_adapter_activation_http_exception(
     adapter_id: str,
     requested_runtime_id: str,
     requested_model_id: str,
-) -> None:
+) -> NoReturn:
     context = {
         "adapter_id": adapter_id or None,
         "requested_runtime_id": requested_runtime_id or None,

@@ -7,10 +7,11 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from venom_core.api import dependencies as api_deps
-from tests.helpers.url_fixtures import MOCK_HTTP, local_runtime_id
-from venom_core.config import SETTINGS
 import venom_core.main as main_app
+from tests.helpers.url_fixtures import MOCK_HTTP, local_runtime_id
+from venom_core.api import dependencies as api_deps
+from venom_core.config import SETTINGS
+from venom_core.core.state_manager import StateManager
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
 
 
@@ -36,19 +37,32 @@ def patch_runtime(mock_runtime_info):
             "venom_core.utils.llm_runtime.get_active_llm_runtime",
             return_value=mock_runtime_info,
         ),
+        patch(
+            "venom_core.api.routes.tasks.get_active_llm_runtime",
+            return_value=mock_runtime_info,
+        ),
         patch.object(SETTINGS, "LLM_CONFIG_HASH", "abc123456789", create=True),
     ):
         yield
 
 
 @pytest.fixture
-def client():
+def client(tmp_path):
     """Fixture dla klienta testowego FastAPI (odpala lifespan)."""
     main_app.app.dependency_overrides = {}
     with TestClient(main_app.app) as test_client:
+        # Wymuszamy izolowany StateManager, bo część testów w innych modułach
+        # podmienia globalny main_app.state_manager na SimpleNamespace.
+        state_manager = StateManager(
+            state_file_path=str(tmp_path / "core_nervous_system_state.json")
+        )
+        main_app.state_manager = state_manager
         # Izolacja od innych testów, które podmieniają globalne dependencies.
-        api_deps.set_state_manager(main_app.state_manager)
+        api_deps.set_state_manager(state_manager)
         if main_app.orchestrator is not None:
+            # Endpoint /tasks używa orchestrator.state_manager podczas submitu.
+            # Musi wskazywać ten sam izolowany manager co dependency injection.
+            main_app.orchestrator.state_manager = state_manager
             api_deps.set_orchestrator(main_app.orchestrator)
         if main_app.request_tracer is not None:
             api_deps.set_request_tracer(main_app.request_tracer)
@@ -59,9 +73,11 @@ def client():
 @pytest.fixture
 def clear_state():
     """Fixture czyszczący stan przed testem."""
-    main_app.state_manager._tasks.clear()
+    state_manager = api_deps.get_state_manager()
+    assert hasattr(state_manager, "_tasks"), "StateManager contract requires '_tasks'"
+    state_manager._tasks.clear()
     yield
-    main_app.state_manager._tasks.clear()
+    state_manager._tasks.clear()
 
 
 def test_healthz_endpoint(client):

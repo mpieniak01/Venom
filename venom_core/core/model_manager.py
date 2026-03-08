@@ -68,6 +68,7 @@ logger = get_logger(__name__)
 MAX_STORAGE_GB = 50  # Limit na modele w GB
 DEFAULT_MODEL_SIZE_GB = 4.0  # Szacowany domyślny rozmiar modelu dla Resource Guard
 BYTES_IN_GB = 1024**3
+_OLLAMA_GGUF_ADAPTER_FILENAMES = ("Adapter-F16-LoRA.gguf", "Adapter-F32-LoRA.gguf")
 
 
 class ModelVersion:
@@ -316,9 +317,12 @@ class ModelManager(ModelManagerDiscoveryMixin):
 
         try:
             base_for_from = str(from_model or "").strip() or version.base_model
+            adapter_reference = self._resolve_ollama_adapter_reference(
+                version.adapter_path
+            )
             # Utwórz Modelfile
             modelfile_content = f"""FROM {base_for_from}
-ADAPTER {version.adapter_path}
+ADAPTER {adapter_reference}
 
 # Venom Model - version {version_id}
 # Created: {version.created_at}
@@ -365,6 +369,21 @@ PARAMETER top_k 40
         except Exception as e:
             logger.error(f"Błąd podczas tworzenia Modelfile: {e}")
             return None
+
+    def _resolve_ollama_adapter_reference(self, adapter_path: str) -> str:
+        path = Path(str(adapter_path or "")).expanduser().resolve()
+        if path.is_file():
+            return str(path)
+        if not path.exists() or not path.is_dir():
+            return str(path)
+        for filename in _OLLAMA_GGUF_ADAPTER_FILENAMES:
+            candidate = path / filename
+            if candidate.exists() and candidate.is_file():
+                return str(candidate.resolve())
+        for candidate in sorted(path.glob("*.gguf")):
+            if candidate.is_file():
+                return str(candidate.resolve())
+        return str(path)
 
     def load_adapter_for_kernel(
         self, version_id: str, kernel_builder

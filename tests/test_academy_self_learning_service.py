@@ -1499,7 +1499,9 @@ async def test_llm_finetune_waits_for_finished_job_and_adapter(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_llm_finetune_resolves_local_training_base_model_path(tmp_path: Path):
+async def test_llm_finetune_resolves_local_training_base_model_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     repo_root = tmp_path / "repo"
     docs_dir = repo_root / "docs"
     docs_dir.mkdir(parents=True)
@@ -1560,6 +1562,15 @@ async def test_llm_finetune_resolves_local_training_base_model_path(tmp_path: Pa
         ),
         is_model_trainable_fn=lambda _model_id: True,
     )
+    expected_gguf = (
+        tmp_path / "models" / "prepared" / "adapter" / "Adapter-F16-LoRA.gguf"
+    )
+    expected_gguf.parent.mkdir(parents=True, exist_ok=True)
+    expected_gguf.write_text("gguf", encoding="utf-8")
+    monkeypatch.setattr(
+        "venom_core.services.academy.self_learning_service._adapter_runtime._ensure_ollama_adapter_gguf",
+        lambda **_kwargs: expected_gguf,
+    )
 
     run_id = service.start_run(
         mode="llm_finetune",
@@ -1577,6 +1588,7 @@ async def test_llm_finetune_resolves_local_training_base_model_path(tmp_path: Pa
     assert status["artifacts"]["requested_base_model"] == "gemma-3-4b-it"
     assert status["artifacts"]["effective_base_model"] == "gemma-3-4b-it"
     assert status["artifacts"]["training_base_model"] == str(model_dir.resolve())
+    assert status["artifacts"]["ollama_adapter_gguf_path"] == str(expected_gguf)
     metadata_payload = json.loads(
         Path(status["artifacts"]["adapter_path"])
         .parent.joinpath("metadata.json")

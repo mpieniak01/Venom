@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
@@ -25,6 +27,11 @@ from .trainable_catalog_service import (
 )
 
 logger = get_logger(__name__)
+
+_OLLAMA_GGUF_ADAPTER_CANDIDATES = (
+    "Adapter-F16-LoRA.gguf",
+    "Adapter-F32-LoRA.gguf",
+)
 
 
 def _get_settings() -> Any:
@@ -352,6 +359,166 @@ def _resolve_ollama_create_from_model(
     return requested_model, False
 
 
+def _resolve_hf_cache_snapshot_for_repo_id(
+    *,
+    repo_id: str,
+    settings_obj: Any | None = None,
+) -> str:
+    settings = settings_obj or _get_settings()
+    repo_root = _resolve_repo_root(settings_obj=settings)
+    normalized = repo_id.strip().strip("/")
+    if not normalized or "/" not in normalized:
+        return ""
+    owner, name = normalized.split("/", 1)
+    model_store_id = f"models--{owner}--{name}".replace("/", "--")
+    hub_base = repo_root / "models" / "cache" / "huggingface" / "hub" / model_store_id
+    snapshots_dir = hub_base / "snapshots"
+    if not snapshots_dir.exists() or not snapshots_dir.is_dir():
+        return ""
+    snapshots = sorted(
+        [p for p in snapshots_dir.iterdir() if p.is_dir()],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for snapshot in snapshots:
+        if (snapshot / "config.json").exists():
+            return str(snapshot.resolve())
+    return ""
+
+
+def _resolve_adapter_training_base_for_ollama_gguf(
+    *,
+    adapter_dir: Path,
+    requested_from_model: str,
+    settings_obj: Any | None = None,
+) -> str:
+    metadata = _load_adapter_metadata(adapter_dir)
+    parameters = metadata.get("parameters")
+    training_base_model = ""
+    if isinstance(parameters, dict):
+        training_base_model = str(parameters.get("training_base_model") or "").strip()
+    candidate_values = [
+        training_base_model,
+        str(metadata.get("effective_base_model") or "").strip(),
+        str(metadata.get("base_model") or "").strip(),
+        requested_from_model.strip(),
+    ]
+    for candidate_raw in candidate_values:
+        candidate = candidate_raw.strip()
+        if not candidate:
+            continue
+        candidate_path = Path(candidate).expanduser()
+        if candidate_path.exists() and candidate_path.is_dir():
+            if (candidate_path / "config.json").exists():
+                return str(candidate_path.resolve())
+        resolved_snapshot = _resolve_hf_cache_snapshot_for_repo_id(
+            repo_id=candidate,
+            settings_obj=settings_obj,
+        )
+        if resolved_snapshot:
+            return resolved_snapshot
+    raise RuntimeError(
+        "Cannot resolve local HF base model snapshot for Ollama GGUF adapter export. "
+        "Expected training_base_model path or cached repo snapshot."
+    )
+
+
+def _resolve_llama_cpp_convert_script(*, settings_obj: Any | None = None) -> Path:
+    settings = settings_obj or _get_settings()
+    explicit_script = str(os.getenv("VENOM_LLAMA_CPP_CONVERT_SCRIPT", "")).strip()
+    if explicit_script:
+        path = Path(explicit_script).expanduser().resolve()
+        if path.exists() and path.is_file():
+            return path
+
+    explicit_dir = str(os.getenv("VENOM_LLAMA_CPP_DIR", "")).strip()
+    if not explicit_dir:
+        explicit_dir = str(getattr(settings, "ACADEMY_LLAMA_CPP_DIR", "") or "").strip()
+    if explicit_dir:
+        candidate = (
+            Path(explicit_dir).expanduser().resolve() / "convert_lora_to_gguf.py"
+        )
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+    repo_root = _resolve_repo_root(settings_obj=settings)
+    default_candidates = [
+        repo_root / "tools" / "llama.cpp" / "convert_lora_to_gguf.py",
+    ]
+    for candidate in default_candidates:
+        if candidate.exists() and candidate.is_file():
+            return candidate.resolve()
+
+    raise FileNotFoundError(
+        "llama.cpp convert_lora_to_gguf.py not found. "
+        "Set VENOM_LLAMA_CPP_DIR or VENOM_LLAMA_CPP_CONVERT_SCRIPT."
+    )
+
+
+def _resolve_existing_ollama_adapter_gguf(*, adapter_dir: Path) -> Path | None:
+    adapter_path = adapter_dir / "adapter"
+    if not adapter_path.exists() or not adapter_path.is_dir():
+        return None
+    for filename in _OLLAMA_GGUF_ADAPTER_CANDIDATES:
+        candidate = adapter_path / filename
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    for candidate in sorted(adapter_path.glob("*.gguf")):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _ensure_ollama_adapter_gguf(
+    *,
+    adapter_dir: Path,
+    from_model: str,
+    settings_obj: Any | None = None,
+) -> Path:
+    existing = _resolve_existing_ollama_adapter_gguf(adapter_dir=adapter_dir)
+    if existing is not None:
+        return existing.resolve()
+
+    adapter_path = adapter_dir / "adapter"
+    if not adapter_path.exists() or not adapter_path.is_dir():
+        raise FileNotFoundError(f"Adapter path not found: {adapter_path}")
+
+    base_model_path = _resolve_adapter_training_base_for_ollama_gguf(
+        adapter_dir=adapter_dir,
+        requested_from_model=from_model,
+        settings_obj=settings_obj,
+    )
+    convert_script = _resolve_llama_cpp_convert_script(settings_obj=settings_obj)
+    cmd = [
+        sys.executable,
+        str(convert_script),
+        "--outtype",
+        "f16",
+        "--base",
+        base_model_path,
+        str(adapter_path),
+    ]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=1800,
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        stdout = (result.stdout or "").strip()
+        details = stderr or stdout or "unknown error"
+        raise RuntimeError(
+            f"Failed to convert LoRA adapter to GGUF for Ollama deployment: {details}"
+        )
+    resolved = _resolve_existing_ollama_adapter_gguf(adapter_dir=adapter_dir)
+    if resolved is None:
+        raise RuntimeError(
+            "LoRA->GGUF conversion finished but no *.gguf file found in adapter dir."
+        )
+    return resolved.resolve()
+
+
 def _deploy_adapter_to_vllm_runtime(
     *,
     adapter_id: str,
@@ -577,6 +744,11 @@ def _deploy_adapter_to_chat_runtime(
         adapter_dir=adapter_dir,
         requested_model=requested_model,
         is_runtime_model_dir_fn=deps["is_runtime_model_dir_fn"],
+    )
+    _ensure_ollama_adapter_gguf(
+        adapter_dir=adapter_dir,
+        from_model=from_model,
+        settings_obj=settings,
     )
 
     deployed_model = mgr.create_ollama_modelfile(

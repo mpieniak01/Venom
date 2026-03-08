@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from venom_core.services.academy import adapter_runtime_service as _adapter_runtime
 from venom_core.services.academy.adapter_metadata_service import (
     build_canonical_adapter_metadata,
     write_canonical_adapter_metadata,
@@ -80,21 +81,29 @@ def update_job_in_history(
 
 def save_adapter_metadata(job: dict[str, Any], adapter_path: Path) -> None:
     """Persist deterministic adapter metadata after successful training."""
+    runtime_id = str(job.get("parameters", {}).get("runtime_id") or "").strip().lower()
+    base_model = str(job.get("base_model") or "").strip()
     metadata = build_canonical_adapter_metadata(
         adapter_id=str(adapter_path.parent.name),
         run_id=str(job.get("job_id") or adapter_path.parent.name),
-        base_model=str(job.get("base_model") or ""),
+        base_model=base_model,
         created_at=str(job.get("finished_at") or datetime.now().isoformat()),
         source_flow="training",
         source="academy",
         training_params=job.get("parameters", {}),
-        requested_runtime_id=job.get("parameters", {}).get("runtime_id"),
-        requested_base_model=job.get("base_model"),
-        effective_runtime_id=job.get("parameters", {}).get("runtime_id"),
-        effective_base_model=job.get("base_model"),
+        requested_runtime_id=runtime_id or None,
+        requested_base_model=base_model,
+        effective_runtime_id=runtime_id or None,
+        effective_base_model=base_model,
         dataset_path=job.get("dataset_path"),
         started_at=job.get("started_at"),
         finished_at=job.get("finished_at"),
     )
     metadata["job_id"] = job.get("job_id")
+    if runtime_id == "ollama":
+        gguf_path = _adapter_runtime._ensure_ollama_adapter_gguf(
+            adapter_dir=adapter_path.parent,
+            from_model=base_model,
+        )
+        metadata["ollama_adapter_gguf_path"] = str(gguf_path)
     write_canonical_adapter_metadata(adapter_dir=adapter_path.parent, payload=metadata)

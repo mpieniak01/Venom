@@ -30,6 +30,7 @@ from typing import (
 import psutil
 
 from venom_core.config import SETTINGS
+from venom_core.services.academy import adapter_runtime_service as _adapter_runtime
 from venom_core.services.academy.adapter_metadata_service import (
     build_canonical_adapter_metadata,
     write_canonical_adapter_metadata,
@@ -171,6 +172,7 @@ _DEFAULT_TRAINABLE_MODELS: tuple[tuple[str, str, str], ...] = (
     ("unsloth/Llama-3.2-3B-Instruct", "Llama 3.2 3B (Unsloth)", "unsloth"),
     ("Qwen/Qwen2.5-Coder-3B-Instruct", "Qwen2.5 Coder 3B (HuggingFace)", "huggingface"),
     ("Qwen/Qwen2.5-Coder-7B-Instruct", "Qwen2.5 Coder 7B (HuggingFace)", "huggingface"),
+    ("unsloth/gemma-2-2b-it", "Gemma 2 2B Instruct (Unsloth)", "unsloth"),
     ("google/gemma-3-4b-it", "Gemma 3 4B Instruct (HuggingFace)", "huggingface"),
 )
 _LOCAL_EMBEDDING_PROFILES: tuple[tuple[str, int], ...] = (
@@ -1544,6 +1546,11 @@ class SelfLearningService:
             base_model=base_model,
             run=run,
         )
+        self._prepare_ollama_adapter_artifact_if_required(
+            output_dir=output_dir,
+            run=run,
+            base_model=base_model,
+        )
         self._add_log(
             run,
             f"Training job finished with status={status_payload.get('status', 'unknown')}",
@@ -1592,6 +1599,38 @@ class SelfLearningService:
         write_canonical_adapter_metadata(
             adapter_dir=output_dir,
             payload=metadata_payload,
+        )
+
+    def _prepare_ollama_adapter_artifact_if_required(
+        self,
+        *,
+        output_dir: Path,
+        run: SelfLearningRun,
+        base_model: str,
+    ) -> None:
+        requested_runtime = (
+            str(run.artifacts.get("requested_runtime_id") or "").strip().lower()
+        )
+        effective_runtime = (
+            str(run.artifacts.get("effective_runtime_id") or "").strip().lower()
+        )
+        if requested_runtime != "ollama" and effective_runtime != "ollama":
+            return
+        try:
+            gguf_path = _adapter_runtime._ensure_ollama_adapter_gguf(
+                adapter_dir=output_dir,
+                from_model=base_model,
+                settings_obj=SETTINGS,
+            )
+        except Exception as exc:
+            raise SelfLearningError(
+                "Training finished but Ollama adapter conversion failed. "
+                f"Cannot activate adapter in chat runtime. Details: {exc}"
+            ) from exc
+        run.artifacts["ollama_adapter_gguf_path"] = str(gguf_path)
+        self._add_log(
+            run,
+            f"Ollama adapter artifact prepared: {gguf_path}",
         )
 
     async def _prepare_runtime_for_llm_training(self, run: SelfLearningRun) -> None:

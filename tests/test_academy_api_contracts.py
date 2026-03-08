@@ -648,6 +648,15 @@ def test_self_learning_ollama_gemma3_adapter_flow_reaches_chat(mock_settings, tm
             "venom_core.api.routes.llm_simple._stream_simple_chunks",
             _fake_stream_simple_chunks,
         ),
+        patch(
+            "venom_core.services.academy.adapter_runtime_service._ensure_ollama_adapter_gguf",
+            return_value=(
+                Path(mock_settings.ACADEMY_MODELS_DIR)
+                / self_learning_service.adapter_id
+                / "adapter"
+                / "Adapter-F16-LoRA.gguf"
+            ),
+        ),
     ):
         client = TestClient(app)
 

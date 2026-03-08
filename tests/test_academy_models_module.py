@@ -708,7 +708,13 @@ def test_activate_adapter_with_chat_runtime_deploy_ollama(
     mgr.create_ollama_modelfile.return_value = "venom-adapter-ok-adapter"
     mock_config_manager.get_config.return_value = {"LAST_MODEL_OLLAMA": "phi3:latest"}
 
-    with patch.object(academy_models, "SETTINGS", mock_settings):
+    with (
+        patch.object(academy_models, "SETTINGS", mock_settings),
+        patch(
+            "venom_core.services.academy.adapter_runtime_service._ensure_ollama_adapter_gguf",
+            return_value=adapter_dir / "Adapter-F16-LoRA.gguf",
+        ),
+    ):
         payload = academy_models.activate_adapter(
             mgr=mgr,
             adapter_id="ok-adapter",
@@ -1486,9 +1492,15 @@ def test_activate_adapter_ollama_deploy_does_not_fallback_to_last_model_config(
         "LLM_MODEL_NAME": "legacy:last",
     }
 
-    with patch(
-        "venom_core.api.routes.academy_models.get_active_llm_runtime",
-        return_value=SimpleNamespace(provider="", model_name=""),
+    with (
+        patch(
+            "venom_core.api.routes.academy_models.get_active_llm_runtime",
+            return_value=SimpleNamespace(provider="", model_name=""),
+        ),
+        patch(
+            "venom_core.services.academy.adapter_runtime_service._ensure_ollama_adapter_gguf",
+            return_value=adapter_dir / "Adapter-F16-LoRA.gguf",
+        ),
     ):
         payload = academy_models.activate_adapter(
             mgr=mgr,
@@ -1546,9 +1558,15 @@ def test_activate_adapter_ollama_deploy_uses_experimental_for_local_training_bas
     mgr.create_ollama_modelfile.return_value = "venom-adapter-ok-adapter"
     mock_config_manager.get_config.return_value = {}
 
-    with patch(
-        "venom_core.api.routes.academy_models.get_active_llm_runtime",
-        return_value=SimpleNamespace(provider="", model_name=""),
+    with (
+        patch(
+            "venom_core.api.routes.academy_models.get_active_llm_runtime",
+            return_value=SimpleNamespace(provider="", model_name=""),
+        ),
+        patch(
+            "venom_core.services.academy.adapter_runtime_service._ensure_ollama_adapter_gguf",
+            return_value=adapter_dir / "Adapter-F16-LoRA.gguf",
+        ),
     ):
         payload = academy_models.activate_adapter(
             mgr=mgr,
@@ -1565,6 +1583,55 @@ def test_activate_adapter_ollama_deploy_uses_experimental_for_local_training_bas
         from_model=str(local_training_base),
         use_experimental=True,
     )
+
+
+@patch("venom_core.api.routes.academy_models.compute_llm_config_hash")
+@patch("venom_core.api.routes.academy_models.config_manager")
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_ollama_deploy_prepares_gguf_before_ollama_create(
+    mock_settings,
+    mock_config_manager,
+    mock_hash,
+    tmp_path,
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACTIVE_LLM_SERVER = "ollama"
+    mock_settings.LLM_MODEL_NAME = ""
+    mock_hash.return_value = "hash-ollama"
+    mgr = MagicMock()
+
+    adapter_dir = tmp_path / "ok-adapter" / "adapter"
+    adapter_dir.mkdir(parents=True)
+    (tmp_path / "ok-adapter" / "metadata.json").write_text(
+        '{"metadata_version":2,"base_model":"phi3:latest","effective_base_model":"phi3:latest","created_at":"2026-03-07T12:00:00+00:00","source_flow":"training","parameters":{"training_base_model":"phi3:latest"}}',
+        encoding="utf-8",
+    )
+    mgr.activate_adapter.return_value = True
+    mgr.create_ollama_modelfile.return_value = "venom-adapter-ok-adapter"
+    mock_config_manager.get_config.return_value = {}
+
+    with (
+        patch(
+            "venom_core.api.routes.academy_models.get_active_llm_runtime",
+            return_value=SimpleNamespace(provider="", model_name=""),
+        ),
+        patch(
+            "venom_core.services.academy.adapter_runtime_service._ensure_ollama_adapter_gguf",
+            return_value=adapter_dir / "Adapter-F16-LoRA.gguf",
+        ) as mock_prepare,
+    ):
+        payload = academy_models.activate_adapter(
+            mgr=mgr,
+            adapter_id="ok-adapter",
+            runtime_id="ollama",
+            model_id="phi3:latest",
+            deploy_to_chat_runtime=True,
+        )
+
+    assert payload["success"] is True
+    mock_prepare.assert_called_once()
+    assert mock_prepare.call_args.kwargs["adapter_dir"] == tmp_path / "ok-adapter"
+    assert mock_prepare.call_args.kwargs["from_model"] == "phi3:latest"
 
 
 def test_build_vllm_runtime_model_from_adapter_missing_adapter_path(tmp_path: Path):

@@ -175,23 +175,37 @@ export function useCockpitSectionProps() {
     data.unifiedModelCatalog?.model_audit?.issues_count ?? 0,
   );
   const llmModelOptions = useMemo(
-    () =>
-      selectedRuntimeModels.map((model) => ({
+    () => {
+      const options = selectedRuntimeModels.map((model) => ({
         label: formatRuntimeModelOptionLabel(model, t),
         value: model.name,
-      })),
-    [selectedRuntimeModels, t],
+      }));
+      const selected = (selectedLlmModel || "").trim();
+      if (selected && !options.some((option) => option.value === selected)) {
+        options.unshift({
+          label: selected,
+          value: selected,
+        });
+      }
+      return options;
+    },
+    [selectedLlmModel, selectedRuntimeModels, t],
   );
   const llmModelMetadata = useMemo(
-    () =>
-      selectedRuntimeModels.reduce<Record<string, { canonical_model_id?: string | null }>>(
-        (acc, model) => {
-          acc[model.name] = { canonical_model_id: model.canonical_model_id ?? null };
-          return acc;
-        },
-        {},
-      ),
-    [selectedRuntimeModels],
+    () => {
+      const metadata = selectedRuntimeModels.reduce<
+        Record<string, { canonical_model_id?: string | null }>
+      >((acc, model) => {
+        acc[model.name] = { canonical_model_id: model.canonical_model_id ?? null };
+        return acc;
+      }, {});
+      const selected = (selectedLlmModel || "").trim();
+      if (selected && !metadata[selected]) {
+        metadata[selected] = { canonical_model_id: selected };
+      }
+      return metadata;
+    },
+    [selectedLlmModel, selectedRuntimeModels],
   );
   const hasModels = useMemo(
     () => llmModelOptions.length > 0,

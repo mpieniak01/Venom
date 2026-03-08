@@ -98,6 +98,7 @@ web-next/.vercel/
 web-next/test-results/
 web-next/playwright-report/
 web-next/public/test/
+web-next/optional-modules/
 
 # runtime pid files
 .web-next.pid

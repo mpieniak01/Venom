@@ -1,20 +1,9 @@
 import "server-only";
 
 import type { ComponentType } from "react";
+import { OPTIONAL_MODULE_COMPONENT_LOADERS } from "@/lib/generated/optional-module-components.generated.server";
 
 type OptionalModuleComponent = ComponentType | null;
-
-const OPTIONAL_MODULE_COMPONENT_LOADERS: Record<
-  string,
-  () => Promise<OptionalModuleComponent>
-> = {
-  brand_studio: async () =>
-    (await import("../../modules/venom-module-brand-studio/web-next/page")).default ?? null,
-  google_home_bridge: async () =>
-    (await import("../../modules/venom-module-google-home/web-next/page")).default ?? null,
-  module_example: async () =>
-    (await import("../../modules/venom-module-example/web-next/page")).default ?? null,
-};
 
 export async function getOptionalModuleComponent(moduleId: string): Promise<OptionalModuleComponent> {
   const loader = OPTIONAL_MODULE_COMPONENT_LOADERS[moduleId];

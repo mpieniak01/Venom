@@ -1,0 +1,13 @@
+# Replace /path/to/Venom with absolute repository path on target host.
+/path/to/Venom/logs/*.log {
+    daily
+    rotate 7
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    su root adm
+    create 0640 root adm
+    sharedscripts
+}

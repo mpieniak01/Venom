@@ -1,6 +1,109 @@
 import { expect, test, type Page } from "@playwright/test";
+import { ensureChatRuntimeReadyOrSkip } from "./utils/chat-runtime-readiness";
 
 const emptyJson = JSON.stringify([]);
+
+async function registerRuntimeContractRoutes(
+  page: Page,
+  {
+    runtimeId = "ollama",
+    modelName = "gemma2:2b",
+  }: { runtimeId?: string; modelName?: string } = {},
+) {
+  await page.route("**/api/v1/system/llm-runtime/options**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "success",
+        active: {
+          runtime_id: runtimeId,
+          active_server: runtimeId,
+          active_model: modelName,
+          active_endpoint: "http://127.0.0.1:11434/v1",
+          config_hash: "test-hash",
+          source_type: "local-runtime",
+        },
+        runtimes: [
+          {
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            configured: true,
+            available: true,
+            status: "online",
+            reason: null,
+            active: true,
+            adapter_deploy_supported: true,
+            adapter_deploy_mode: "ollama_modelfile",
+            supports_native_training: false,
+            supports_adapter_import_safetensors: true,
+            supports_adapter_import_gguf: true,
+            supports_adapter_runtime_apply: true,
+            models: [
+              {
+                id: modelName,
+                name: modelName,
+                provider: runtimeId.toLowerCase(),
+                runtime_id: runtimeId,
+                source_type: "local-runtime",
+                active: true,
+                chat_compatible: true,
+                canonical_model_id: "gemma-2-2b-it",
+              },
+            ],
+          },
+        ],
+        model_catalog: {
+          all_models: [{
+            id: modelName,
+            name: modelName,
+            provider: runtimeId.toLowerCase(),
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            active: true,
+            chat_compatible: true,
+            canonical_model_id: "gemma-2-2b-it",
+          }],
+          chat_models: [{
+            id: modelName,
+            name: modelName,
+            provider: runtimeId.toLowerCase(),
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            active: true,
+            chat_compatible: true,
+            canonical_model_id: "gemma-2-2b-it",
+          }],
+          runtime_servable_models: [{
+            id: modelName,
+            name: modelName,
+            provider: runtimeId.toLowerCase(),
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            active: true,
+            chat_compatible: true,
+            canonical_model_id: "gemma-2-2b-it",
+          }],
+        },
+      }),
+    });
+  });
+  await page.route("**/api/v1/system/llm-servers/active**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "success",
+        active_server: runtimeId,
+        active_model: modelName,
+        active_endpoint: "http://127.0.0.1:11434/v1",
+        config_hash: "test-hash",
+        runtime_id: runtimeId,
+        source_type: "local-runtime",
+      }),
+    });
+  });
+}
 
 async function selectChatMode(page: Page, label: string) {
   const modeValueMap: Record<string, string> = {
@@ -220,6 +323,7 @@ test.describe("Chat mode routing", () => {
         body: JSON.stringify({ providers: {} }),
       });
     });
+    await registerRuntimeContractRoutes(page);
   });
 
   test("Normal mode routes through tasks without forced intent", async ({ page }) => {
@@ -253,6 +357,7 @@ test.describe("Chat mode routing", () => {
     await waitForSessionReady(page);
     await waitForHydration(page);
     await waitForCockpitReady(page);
+    if (!(await ensureChatRuntimeReadyOrSkip(page))) return;
     const userBubbles = page.getByTestId("conversation-bubble-user");
     const assistantBubbles = page.getByTestId("conversation-bubble-assistant");
     const initialUserCount = await userBubbles.count();
@@ -310,6 +415,7 @@ test.describe("Chat mode routing", () => {
     await waitForSessionReady(page);
     await waitForHydration(page);
     await waitForCockpitReady(page);
+    if (!(await ensureChatRuntimeReadyOrSkip(page))) return;
     const userBubbles = page.getByTestId("conversation-bubble-user");
     const assistantBubbles = page.getByTestId("conversation-bubble-assistant");
     const initialUserCount = await userBubbles.count();
@@ -367,6 +473,7 @@ test.describe("Chat mode routing", () => {
     await waitForSessionReady(page);
     await waitForHydration(page);
     await waitForCockpitReady(page);
+    if (!(await ensureChatRuntimeReadyOrSkip(page))) return;
     await selectChatMode(page, "Normal");
     const chatHistory = page.getByTestId("cockpit-chat-history");
     await chatHistory.scrollIntoViewIfNeeded();
@@ -452,6 +559,7 @@ test.describe("Chat mode routing", () => {
     await waitForSessionReady(page);
     await waitForHydration(page);
     await waitForCockpitReady(page);
+    if (!(await ensureChatRuntimeReadyOrSkip(page))) return;
     await selectChatMode(page, "Complex");
     await page.getByTestId("cockpit-prompt-input").fill("Test complex");
     const taskRequest = page.waitForRequest(

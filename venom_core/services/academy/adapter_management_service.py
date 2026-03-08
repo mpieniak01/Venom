@@ -228,7 +228,7 @@ def activate_adapter(
     deploy_adapter_to_vllm_runtime_fn: Any,
 ) -> dict[str, Any]:
     """Activate adapter in model manager and optionally deploy it to chat runtime."""
-    models_dir = Path(settings_obj.ACADEMY_MODELS_DIR).resolve()
+    models_dir = _runtime_service._resolve_academy_models_dir(settings_obj=settings_obj)
     adapter_dir = _runtime_service._resolve_adapter_dir(
         models_dir=models_dir,
         adapter_id=adapter_id,
@@ -262,24 +262,39 @@ def activate_adapter(
     }
 
     if deploy_to_chat_runtime:
-        deploy_payload = _runtime_service._deploy_adapter_to_chat_runtime(
-            mgr=mgr,
-            adapter_id=adapter_id,
-            runtime_id=runtime_id,
-            model_id=model_id,
-            canonical_runtime_model_id_fn=canonical_runtime_model_id_fn,
-            require_trusted_adapter_base_model_fn=require_trusted_adapter_base_model_fn,
-            settings_obj=settings_obj,
-            config_manager_obj=config_manager_obj,
-            compute_llm_config_hash_fn=compute_llm_config_hash_fn,
-            resolve_runtime_for_adapter_deploy_fn=resolve_runtime_for_adapter_deploy_fn,
-            runtime_endpoint_for_hash_fn=runtime_endpoint_for_hash_fn,
-            build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
-            is_runtime_model_dir_fn=is_runtime_model_dir_fn,
-            restart_vllm_runtime_fn=restart_vllm_runtime_fn,
-            get_active_llm_runtime_fn=get_active_llm_runtime_fn,
-            deploy_adapter_to_vllm_runtime_fn=deploy_adapter_to_vllm_runtime_fn,
-        )
+        try:
+            deploy_payload = _runtime_service._deploy_adapter_to_chat_runtime(
+                mgr=mgr,
+                adapter_id=adapter_id,
+                runtime_id=runtime_id,
+                model_id=model_id,
+                canonical_runtime_model_id_fn=canonical_runtime_model_id_fn,
+                require_trusted_adapter_base_model_fn=require_trusted_adapter_base_model_fn,
+                settings_obj=settings_obj,
+                config_manager_obj=config_manager_obj,
+                compute_llm_config_hash_fn=compute_llm_config_hash_fn,
+                resolve_runtime_for_adapter_deploy_fn=resolve_runtime_for_adapter_deploy_fn,
+                runtime_endpoint_for_hash_fn=runtime_endpoint_for_hash_fn,
+                build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
+                is_runtime_model_dir_fn=is_runtime_model_dir_fn,
+                restart_vllm_runtime_fn=restart_vllm_runtime_fn,
+                get_active_llm_runtime_fn=get_active_llm_runtime_fn,
+                deploy_adapter_to_vllm_runtime_fn=deploy_adapter_to_vllm_runtime_fn,
+            )
+        except Exception as exc:
+            # Failed deploy must not leave adapter active in manager state.
+            try:
+                mgr.deactivate_adapter()
+            except Exception as rollback_exc:
+                logger.warning(
+                    "Failed to rollback adapter activation after deploy error "
+                    "(adapter_id=%s): %s",
+                    adapter_id,
+                    rollback_exc,
+                )
+            if isinstance(exc, (ValueError, FileNotFoundError, RuntimeError)):
+                raise
+            raise RuntimeError(f"ADAPTER_RUNTIME_DEPLOY_FAILED: {exc}") from exc
         payload.update(deploy_payload)
         if deploy_payload.get("deployed"):
             payload["message"] = (

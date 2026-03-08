@@ -106,7 +106,10 @@ function resolveScopedAdapters(
     : undefined;
   const scopedByRuntime = (selectedRuntimeId ? byRuntime?.[selectedRuntimeId] : []) || [];
   if (selectedCanonical.length > 0) {
-    return Array.isArray(scopedByModel) ? scopedByModel : [];
+    if (Array.isArray(scopedByModel) && scopedByModel.length > 0) {
+      return scopedByModel;
+    }
+    return scopedByRuntime;
   }
   return scopedByRuntime;
 }
@@ -132,25 +135,28 @@ async function switchCockpitAdapterSelection({
   applySelectedModel?: () => Promise<boolean>;
   selectedRuntimeId: string;
   selectedLlmModel: string;
-}) {
+}): Promise<{ chatModel: string | null }> {
   if (value === baseModelAdapterValue) {
     await deactivateAdapter({ deploy_to_chat_runtime: false });
     if (applySelectedModel) {
       await applySelectedModel();
     }
-    return;
+    return { chatModel: null };
   }
   const adapter = adapters.find((entry) => entry.adapter_id === value);
   if (!adapter) {
-    return;
+    return { chatModel: null };
   }
-  await activateAdapter({
+  const activation = await activateAdapter({
     adapter_id: adapter.adapter_id,
     adapter_path: adapter.adapter_path,
     runtime_id: selectedRuntimeId,
     model_id: selectedLlmModel,
     deploy_to_chat_runtime: true,
   });
+  return {
+    chatModel: String(activation.chat_model || "").trim() || null,
+  };
 }
 
 function useChatAdapterSelection({
@@ -159,6 +165,7 @@ function useChatAdapterSelection({
   llmModelMetadata,
   selectedLlmModel,
   selectedRuntimeId,
+  setSelectedLlmModel,
   t,
 }: {
   adapterDeploySupported: boolean;
@@ -166,6 +173,7 @@ function useChatAdapterSelection({
   llmModelMetadata?: Record<string, { canonical_model_id?: string | null }>;
   selectedLlmModel: string;
   selectedRuntimeId: string;
+  setSelectedLlmModel: (value: string) => void;
   t: ReturnType<typeof useTranslation>;
 }) {
   const baseModelAdapterValue = "__base_model__";
@@ -285,7 +293,7 @@ function useChatAdapterSelection({
       try {
         setAdapterMutationError("");
         setAdapterMutationPending(true);
-        await switchCockpitAdapterSelection({
+        const selection = await switchCockpitAdapterSelection({
           value,
           baseModelAdapterValue,
           adapters,
@@ -293,6 +301,9 @@ function useChatAdapterSelection({
           selectedRuntimeId,
           selectedLlmModel,
         });
+        if (selection.chatModel) {
+          setSelectedLlmModel(selection.chatModel);
+        }
         await loadAdapters();
       } catch (error) {
         console.error("Failed to switch Academy adapter from chat selector:", error);
@@ -312,6 +323,7 @@ function useChatAdapterSelection({
       loadAdapters,
       selectedLlmModel,
       selectedRuntimeId,
+      setSelectedLlmModel,
       t,
     ],
   );
@@ -394,6 +406,7 @@ export const ChatComposer = memo(
       llmModelMetadata,
       selectedLlmModel,
       selectedRuntimeId,
+      setSelectedLlmModel,
       t,
     });
 
@@ -547,13 +560,20 @@ export const ChatComposer = memo(
                   if (!value || value === selectedLlmModel) {
                     return;
                   }
-                  if (!onActivateModel) {
-                    setSelectedLlmModel(value);
-                    return;
-                  }
-                  Promise.resolve(onActivateModel(value)).catch((error) => {
+                  const activateModelSelection = async () => {
+                    if (selectedAdapter !== baseModelAdapterValue) {
+                      await handleAdapterSelect(baseModelAdapterValue);
+                    }
+                    if (!onActivateModel) {
+                      setSelectedLlmModel(value);
+                      return;
+                    }
+                    await onActivateModel(value);
+                  };
+                  activateModelSelection().catch((error) => {
                     console.error("Model activation action failed:", error);
                   });
+                  return;
                 }}
                 ariaLabel={t("cockpit.actions.selectModel")}
                 buttonTestId="llm-model-select"

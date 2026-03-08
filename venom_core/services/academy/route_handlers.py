@@ -27,6 +27,9 @@ from venom_core.api.schemas.academy import (
     TrainingResponse,
     UploadFileInfo,
 )
+from venom_core.services.academy.adapter_metadata_service import (
+    ADAPTER_NOT_FOUND_DETAIL,
+)
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 
@@ -72,6 +75,37 @@ def _error_detail_with_reason_code(
         if normalized_value:
             detail[key] = normalized_value
     return detail
+
+
+def _runtime_error_detail_with_reason_code(
+    exc: RuntimeError,
+    **context: str | None,
+) -> dict[str, str]:
+    raw_detail = str(exc).strip()
+    if ":" not in raw_detail:
+        return _error_detail_with_reason_code(
+            reason_code="ADAPTER_ACTIVATION_FAILED",
+            message=raw_detail,
+            **context,
+        )
+    reason_code, message = raw_detail.split(":", 1)
+    normalized_reason = reason_code.strip()
+    normalized_message = message.strip()
+    if (
+        not normalized_reason
+        or not normalized_message
+        or not normalized_reason.replace("_", "").isalnum()
+    ):
+        return _error_detail_with_reason_code(
+            reason_code="ADAPTER_ACTIVATION_FAILED",
+            message=raw_detail,
+            **context,
+        )
+    return _error_detail_with_reason_code(
+        reason_code=normalized_reason,
+        message=normalized_message,
+        **context,
+    )
 
 
 def _collect_scope_counts(
@@ -677,15 +711,23 @@ def _raise_adapter_activation_http_exception(
             detail=_value_error_detail_with_reason_code(exc, **context),
         ) from exc
     if isinstance(exc, FileNotFoundError):
-        raise HTTPException(status_code=404, detail="Adapter not found") from None
-    if isinstance(exc, RuntimeError):
+        message = str(exc).strip() or ADAPTER_NOT_FOUND_DETAIL
+        if message == ADAPTER_NOT_FOUND_DETAIL:
+            raise HTTPException(
+                status_code=404, detail=ADAPTER_NOT_FOUND_DETAIL
+            ) from None
         raise HTTPException(
             status_code=500,
             detail=_error_detail_with_reason_code(
-                reason_code="ADAPTER_ACTIVATION_FAILED",
-                message=str(exc),
+                reason_code="ADAPTER_RUNTIME_DEPLOY_ARTIFACT_MISSING",
+                message=message,
                 **context,
             ),
+        ) from exc
+    if isinstance(exc, RuntimeError):
+        raise HTTPException(
+            status_code=500,
+            detail=_runtime_error_detail_with_reason_code(exc, **context),
         ) from exc
     if isinstance(exc, HTTPException):
         raise exc

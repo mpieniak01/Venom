@@ -186,6 +186,14 @@ def _resolve_repo_root(*, settings_obj: Any | None = None) -> Path:
     return root
 
 
+def _resolve_academy_models_dir(*, settings_obj: Any | None = None) -> Path:
+    settings = settings_obj or _get_settings()
+    configured = Path(str(getattr(settings, "ACADEMY_MODELS_DIR", "data/models")))
+    if configured.is_absolute():
+        return configured.resolve()
+    return (_resolve_repo_root(settings_obj=settings_obj) / configured).resolve()
+
+
 def _resolve_local_runtime_model_path_by_name(
     *,
     mgr: Any,
@@ -201,9 +209,7 @@ def _resolve_local_runtime_model_path_by_name(
     if isinstance(models_dir, Path):
         search_dirs.append(models_dir.resolve())
     else:
-        settings = settings_obj or _get_settings()
-        academy_dir = Path(getattr(settings, "ACADEMY_MODELS_DIR", "")).resolve()
-        search_dirs.append(academy_dir)
+        search_dirs.append(_resolve_academy_models_dir(settings_obj=settings_obj))
     repo_models = resolve_repo_root_fn(settings_obj=settings_obj) / "models"
     if repo_models not in search_dirs:
         search_dirs.append(repo_models)
@@ -533,7 +539,7 @@ def _deploy_adapter_to_vllm_runtime(
     get_active_llm_runtime_fn: Any = get_active_llm_runtime,
 ) -> Dict[str, Any]:
     settings = settings_obj or _get_settings()
-    models_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
+    models_dir = _resolve_academy_models_dir(settings_obj=settings)
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
     adapter_path = adapter_dir / "adapter"
     if not adapter_path.exists():
@@ -718,7 +724,7 @@ def _deploy_adapter_to_chat_runtime(
     if non_ollama_payload:
         return non_ollama_payload
 
-    models_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
+    models_dir = _resolve_academy_models_dir(settings_obj=settings)
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
     adapter_base_model = deps["require_trusted_adapter_base_model_fn"](
         adapter_dir=adapter_dir,

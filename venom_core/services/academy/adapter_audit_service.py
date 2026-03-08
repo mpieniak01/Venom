@@ -141,7 +141,9 @@ async def validate_adapter_runtime_compatibility(
             f"got '{runtime_id}'."
         )
 
-    models_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
+    from venom_core.services.academy import adapter_runtime_service as _runtime_service
+
+    models_dir = _runtime_service._resolve_academy_models_dir(settings_obj=settings)
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
     _require_existing_adapter_artifact(adapter_dir=adapter_dir)
     base_model = _require_trusted_adapter_base_model(

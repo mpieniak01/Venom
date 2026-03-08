@@ -21,6 +21,7 @@ PAID_CLOUD_PROVIDERS = {
 PAID_MODEL_MARKERS = ("gpt-", "claude", "gemini")
 LOCAL_RUNTIME_PREFERENCE = ("vllm", "ollama", "onnx")
 GEMMA_3_4B_HF_REPO = "google/gemma-3-4b-it"
+UNSLOTH_GEMMA_2_2B_REPO = "unsloth/gemma-2-2b-it"
 PHI_35_MINI_CANONICAL = "phi-3.5-mini-instruct"
 LLAMA_32_1B_CANONICAL = "llama-3.2-1b-instruct"
 LLAMA_32_3B_CANONICAL = "llama-3.2-3b-instruct"
@@ -28,7 +29,7 @@ _TRAINABLE_MODEL_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "gemma2:2b": "gemma-2-2b-it",
     "gemma2:latest": "gemma-2-2b-it",
     "google/gemma-2-2b-it": "gemma-2-2b-it",
-    "unsloth/gemma-2-2b-it": "gemma-2-2b-it",
+    UNSLOTH_GEMMA_2_2B_REPO: "gemma-2-2b-it",
     "gemma-2-2b-it": "gemma-2-2b-it",
     "gemma3:latest": "gemma-3-4b-it",
     "gemma3:4b": "gemma-3-4b-it",
@@ -49,7 +50,7 @@ _TRAINABLE_MODEL_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "qwen2.5-coder:7b": "qwen/qwen2.5-coder-7b-instruct",
 }
 _CANONICAL_TO_PREFERRED_TRAINING_BASE: Dict[str, str] = {
-    "gemma-2-2b-it": "unsloth/gemma-2-2b-it",
+    "gemma-2-2b-it": UNSLOTH_GEMMA_2_2B_REPO,
     "gemma-3-4b-it": GEMMA_3_4B_HF_REPO,
     "gemma-3-1b-it": "google/gemma-3-1b-it",
     "phi-3-mini-4k-instruct": "unsloth/Phi-3-mini-4k-instruct",
@@ -539,7 +540,7 @@ def get_default_trainable_models_catalog(
             "Qwen2.5 Coder 7B (HuggingFace)",
             "huggingface",
         ),
-        ("unsloth/gemma-2-2b-it", "Gemma 2 2B Instruct (Unsloth)", "unsloth"),
+        (UNSLOTH_GEMMA_2_2B_REPO, "Gemma 2 2B Instruct (Unsloth)", "unsloth"),
         (GEMMA_3_4B_HF_REPO, "Gemma 3 4B Instruct (HuggingFace)", "huggingface"),
     ]
     result: List[TrainableModelInfo] = []

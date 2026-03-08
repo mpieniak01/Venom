@@ -27,6 +27,7 @@ from .trainable_catalog_service import (
 )
 
 logger = get_logger(__name__)
+MODEL_CONFIG_FILENAME = "config.json"
 
 _OLLAMA_GGUF_ADAPTER_CANDIDATES = (
     "Adapter-F16-LoRA.gguf",
@@ -168,7 +169,7 @@ def _apply_runtime_rollback_settings(
 def _is_runtime_model_dir(path: Path) -> bool:
     if not path.exists() or not path.is_dir():
         return False
-    if not (path / "config.json").exists():
+    if not (path / MODEL_CONFIG_FILENAME).exists():
         return False
     if any(path.glob("*.safetensors")):
         return True
@@ -381,7 +382,7 @@ def _resolve_hf_cache_snapshot_for_repo_id(
         reverse=True,
     )
     for snapshot in snapshots:
-        if (snapshot / "config.json").exists():
+        if (snapshot / MODEL_CONFIG_FILENAME).exists():
             return str(snapshot.resolve())
     return ""
 
@@ -409,7 +410,7 @@ def _resolve_adapter_training_base_for_ollama_gguf(
             continue
         candidate_path = Path(candidate).expanduser()
         if candidate_path.exists() and candidate_path.is_dir():
-            if (candidate_path / "config.json").exists():
+            if (candidate_path / MODEL_CONFIG_FILENAME).exists():
                 return str(candidate_path.resolve())
         resolved_snapshot = _resolve_hf_cache_snapshot_for_repo_id(
             repo_id=candidate,

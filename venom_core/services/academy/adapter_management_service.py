@@ -39,6 +39,33 @@ def _build_incomplete_metadata_display_info() -> dict[str, Any]:
     }
 
 
+def _purge_legacy_result(*, apply: bool) -> dict[str, Any]:
+    return {
+        "mode": "apply" if apply else "dry-run",
+        "removed": [],
+        "candidates": [],
+        "skipped_active": [],
+    }
+
+
+def _is_legacy_adapter_training_dir(training_dir: Path) -> bool:
+    if not training_dir.is_dir():
+        return False
+    adapter_path = training_dir / "adapter"
+    if not adapter_path.exists():
+        return False
+    return not _is_canonical_adapter_metadata_complete(training_dir)
+
+
+def _try_remove_legacy_training_dir(*, training_dir: Path, adapter_id: str) -> bool:
+    try:
+        shutil.rmtree(training_dir)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to remove legacy adapter '%s': %s", adapter_id, exc)
+        return False
+
+
 def _coerce_metadata_status(value: Any) -> Literal["canonical", "metadata_incomplete"]:
     normalized = str(value or "").strip().lower()
     if normalized == "canonical":
@@ -90,12 +117,7 @@ def purge_legacy_adapters(
     """Remove legacy adapter directories without canonical metadata."""
     models_dir = Path(settings_obj.ACADEMY_MODELS_DIR)
     if not models_dir.exists():
-        return {
-            "mode": "apply" if apply else "dry-run",
-            "removed": [],
-            "candidates": [],
-            "skipped_active": [],
-        }
+        return _purge_legacy_result(apply=apply)
 
     active_adapter_id = _resolve_active_adapter_id(mgr)
     removed: list[str] = []
@@ -103,25 +125,18 @@ def purge_legacy_adapters(
     skipped_active: list[str] = []
 
     for training_dir in models_dir.iterdir():
-        if not training_dir.is_dir():
-            continue
-        adapter_path = training_dir / "adapter"
-        if not adapter_path.exists():
-            continue
-        if _is_canonical_adapter_metadata_complete(training_dir):
+        if not _is_legacy_adapter_training_dir(training_dir):
             continue
         adapter_id = training_dir.name
         if active_adapter_id and adapter_id == active_adapter_id and not include_active:
             skipped_active.append(adapter_id)
             continue
         candidates.append(adapter_id)
-        if not apply:
-            continue
-        try:
-            shutil.rmtree(training_dir)
+        if apply and _try_remove_legacy_training_dir(
+            training_dir=training_dir,
+            adapter_id=adapter_id,
+        ):
             removed.append(adapter_id)
-        except Exception as exc:
-            logger.warning("Failed to remove legacy adapter '%s': %s", adapter_id, exc)
 
     return {
         "mode": "apply" if apply else "dry-run",

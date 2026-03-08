@@ -1,6 +1,7 @@
 # Systemd Service Configuration
 
 This directory contains example systemd unit files for running vLLM and Ollama as system services.
+It also contains a logrotate template for Venom runtime logs.
 
 ## Installation
 
@@ -90,6 +91,18 @@ sudo journalctl -u ollama.service -f
 # User services
 journalctl --user -u vllm.service -f
 journalctl --user -u ollama.service -f
+```
+
+## Log Rotation (runtime logs)
+
+Template file:
+- `venom.logrotate.example`
+
+Install (system-wide, requires sudo):
+```bash
+sudo cp scripts/systemd/venom.logrotate.example /etc/logrotate.d/venom
+sudo sed -i "s|/path/to/Venom|$(pwd)|g" /etc/logrotate.d/venom
+sudo logrotate -d /etc/logrotate.d/venom
 ```
 
 ## Troubleshooting

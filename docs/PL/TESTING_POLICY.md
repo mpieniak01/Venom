@@ -125,6 +125,18 @@ Zasady:
 - adapter bez kanonicznego `metadata.json` jest nieważnym artefaktem i w testach powinien być reprezentowany jako stan blocked/removed, nie repairable,
 - Chat, Training i Self-learning muszą wyprowadzać wybór runtime/modelu z `/api/v1/system/llm-runtime/options`, a nie z oddzielnych hardcodowanych fixture.
 
+Kontrakt skip dla precondition środowiska (197B):
+
+- Dla testów wymagających działających usług stan środowiska musi być klasyfikowany reason-code:
+  - `stack_not_started`
+  - `stack_degraded`
+  - `runtime_model_unavailable`
+- `stack_not_started` i `stack_degraded` oznaczają niespełniony precondition środowiska, a nie regresję produktu:
+  - preflight E2E zwraca ścieżkę skip (stan diagnostyczny mapowany na skip),
+  - funkcjonalne testy E2E wykonują skip, gdy runtime/model nie jest gotowy,
+  - testy backendowe wymagające żywego stacka używają `@pytest.mark.requires_stack` i wykonują skip przy braku precondition.
+- Czerwony test (`fail`) jest zarezerwowany dla regresji funkcjonalnej przy spełnionym precondition (`ready`).
+
 Model taksonomii testów (źródło kanoniczne: `config/testing/test_catalog.json`):
 
 - `domain`: zakres domenowy/systemowy (np. `academy`, `workflow`, `providers`, `runtime`)

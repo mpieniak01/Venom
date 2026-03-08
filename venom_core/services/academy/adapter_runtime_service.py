@@ -182,8 +182,13 @@ def _is_runtime_model_dir(path: Path) -> bool:
 
 def _resolve_repo_root(*, settings_obj: Any | None = None) -> Path:
     settings = settings_obj or _get_settings()
-    root = Path(getattr(settings, "REPO_ROOT", ".")).resolve()
-    return root
+    fallback_root = Path(__file__).resolve().parents[3]
+    configured = Path(str(getattr(settings, "REPO_ROOT", "") or "")).expanduser()
+    if not str(configured).strip():
+        return fallback_root
+    if configured.is_absolute():
+        return configured.resolve()
+    return (fallback_root / configured).resolve()
 
 
 def _resolve_academy_models_dir(*, settings_obj: Any | None = None) -> Path:

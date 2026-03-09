@@ -144,6 +144,7 @@ export function useRuntime() {
 
     useEffect(() => {
         if (!selectedServer) return;
+        if (llmServers.length === 0) return;
         const exists = llmServers.some((server) => server.name === selectedServer);
         if (exists) return;
         const active = activeServer.data?.active_server;
@@ -151,7 +152,7 @@ export function useRuntime() {
             setSelectedServer(active);
             return;
         }
-        setSelectedServer(llmServers[0]?.name ?? null);
+        setSelectedServer(llmServers[0].name);
     }, [activeServer.data?.active_server, llmServers, selectedServer]);
 
     useEffect(() => {

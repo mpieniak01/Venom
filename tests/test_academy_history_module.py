@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from venom_core.api.routes import academy_history
 
@@ -77,3 +78,30 @@ def test_save_adapter_metadata(tmp_path: Path):
     text = metadata_file.read_text(encoding="utf-8")
     assert '"job_id": "job-x"' in text
     assert '"source": "academy"' in text
+
+
+def test_save_adapter_metadata_prepares_ollama_gguf_for_ollama_runtime(tmp_path: Path):
+    adapter_path = tmp_path / "job-ollama" / "adapter"
+    adapter_path.parent.mkdir(parents=True, exist_ok=True)
+    adapter_path.mkdir(parents=True, exist_ok=True)
+    expected_gguf = adapter_path.parent / "adapter" / "Adapter-F16-LoRA.gguf"
+    expected_gguf.parent.mkdir(parents=True, exist_ok=True)
+    expected_gguf.write_text("gguf", encoding="utf-8")
+    job = {
+        "job_id": "job-ollama",
+        "base_model": "gemma-3-4b-it",
+        "parameters": {"runtime_id": "ollama"},
+        "started_at": "2026-01-01T00:00:00",
+        "finished_at": "2026-01-01T00:10:00",
+    }
+    with patch(
+        "venom_core.api.routes.academy_history._adapter_runtime._ensure_ollama_adapter_gguf",
+        return_value=expected_gguf,
+    ) as mock_convert:
+        academy_history.save_adapter_metadata(job, adapter_path)
+
+    mock_convert.assert_called_once()
+    metadata_file = adapter_path.parent / "metadata.json"
+    text = metadata_file.read_text(encoding="utf-8")
+    assert '"effective_runtime_id": "ollama"' in text
+    assert '"ollama_adapter_gguf_path"' in text

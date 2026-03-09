@@ -68,6 +68,7 @@ logger = get_logger(__name__)
 MAX_STORAGE_GB = 50  # Limit na modele w GB
 DEFAULT_MODEL_SIZE_GB = 4.0  # Szacowany domyślny rozmiar modelu dla Resource Guard
 BYTES_IN_GB = 1024**3
+_OLLAMA_GGUF_ADAPTER_FILENAMES = ("Adapter-F16-LoRA.gguf", "Adapter-F32-LoRA.gguf")
 
 
 class ModelVersion:
@@ -287,7 +288,11 @@ class ModelManager(ModelManagerDiscoveryMixin):
         return cast(List[ModelVersion], get_all_versions_impl(manager=self))
 
     def create_ollama_modelfile(
-        self, version_id: str, output_name: Optional[str] = None
+        self,
+        version_id: str,
+        output_name: Optional[str] = None,
+        from_model: Optional[str] = None,
+        use_experimental: bool = False,
     ) -> Optional[str]:
         """
         Tworzy Modelfile dla Ollama z adapterem LoRA.
@@ -311,9 +316,13 @@ class ModelManager(ModelManagerDiscoveryMixin):
         output_name = output_name or f"venom-{version_id}"
 
         try:
+            base_for_from = str(from_model or "").strip() or version.base_model
+            adapter_reference = self._resolve_ollama_adapter_reference(
+                version.adapter_path
+            )
             # Utwórz Modelfile
-            modelfile_content = f"""FROM {version.base_model}
-ADAPTER {version.adapter_path}
+            modelfile_content = f"""FROM {base_for_from}
+ADAPTER {adapter_reference}
 
 # Venom Model - version {version_id}
 # Created: {version.created_at}
@@ -333,14 +342,21 @@ PARAMETER top_k 40
 
             # Utwórz model w Ollama
             cmd = ["ollama", "create", output_name, "-f", str(modelfile_path)]
+            if use_experimental:
+                cmd.append("--experimental")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
             if result.returncode == 0:
                 logger.info(f"✅ Utworzono model w Ollama: {output_name}")
                 return output_name
             else:
+                stderr = (result.stderr or "").strip()
+                stdout = (result.stdout or "").strip()
+                details = stderr or stdout or "unknown error"
                 logger.error(
-                    f"❌ Błąd podczas tworzenia modelu w Ollama: {result.stderr}"
+                    "❌ Błąd podczas tworzenia modelu w Ollama (code=%s): %s",
+                    result.returncode,
+                    details,
                 )
                 return None
 
@@ -353,6 +369,21 @@ PARAMETER top_k 40
         except Exception as e:
             logger.error(f"Błąd podczas tworzenia Modelfile: {e}")
             return None
+
+    def _resolve_ollama_adapter_reference(self, adapter_path: str) -> str:
+        path = Path(str(adapter_path or "")).expanduser().resolve()
+        if path.is_file():
+            return str(path)
+        if not path.exists() or not path.is_dir():
+            return str(path)
+        for filename in _OLLAMA_GGUF_ADAPTER_FILENAMES:
+            candidate = path / filename
+            if candidate.exists() and candidate.is_file():
+                return str(candidate.resolve())
+        for candidate in sorted(path.glob("*.gguf")):
+            if candidate.is_file():
+                return str(candidate.resolve())
+        return str(path)
 
     def load_adapter_for_kernel(
         self, version_id: str, kernel_builder

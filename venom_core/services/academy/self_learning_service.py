@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -29,13 +30,18 @@ from typing import (
 import psutil
 
 from venom_core.config import SETTINGS
+from venom_core.services.academy import adapter_runtime_service as _adapter_runtime
 from venom_core.services.academy.adapter_metadata_service import (
     build_canonical_adapter_metadata,
     write_canonical_adapter_metadata,
 )
 from venom_core.services.academy.trainable_catalog_service import (
+    _canonical_runtime_model_id,
+    assess_runtime_base_model_compatibility,
     discover_available_runtime_targets,
     discover_runtime_model_families,
+    infer_training_provider,
+    resolve_effective_training_base_model,
     resolve_recommended_runtime,
     resolve_runtime_compatibility,
 )
@@ -166,6 +172,7 @@ _DEFAULT_TRAINABLE_MODELS: tuple[tuple[str, str, str], ...] = (
     ("unsloth/Llama-3.2-3B-Instruct", "Llama 3.2 3B (Unsloth)", "unsloth"),
     ("Qwen/Qwen2.5-Coder-3B-Instruct", "Qwen2.5 Coder 3B (HuggingFace)", "huggingface"),
     ("Qwen/Qwen2.5-Coder-7B-Instruct", "Qwen2.5 Coder 7B (HuggingFace)", "huggingface"),
+    ("unsloth/gemma-2-2b-it", "Gemma 2 2B Instruct (Unsloth)", "unsloth"),
     ("google/gemma-3-4b-it", "Gemma 3 4B Instruct (HuggingFace)", "huggingface"),
 )
 _LOCAL_EMBEDDING_PROFILES: tuple[tuple[str, int], ...] = (
@@ -381,6 +388,20 @@ class SelfLearningService:
             llm_config=run_llm_config,
             rag_config=run_rag_config,
         )
+        training_base_model = run_llm_config.base_model
+        if mode == "llm_finetune":
+            training_base_model = resolve_effective_training_base_model(
+                str(run_llm_config.base_model or ""),
+                local_models=self._fetch_local_models_sync(),
+            )
+            if not str(training_base_model or "").strip():
+                raise SelfLearningValidationError(
+                    "Failed to resolve concrete training base model for selected base_model",
+                    reason_code="MODEL_TRAINING_BASE_UNRESOLVED",
+                    requested_runtime_id=run_llm_config.runtime_id,
+                    requested_base_model=run_llm_config.base_model,
+                    effective_base_model=run_llm_config.base_model,
+                )
         if mode == "llm_finetune":
             self._validate_llm_finetune_runtime_preflight(dry_run=bool(dry_run))
 
@@ -403,6 +424,7 @@ class SelfLearningService:
             run.artifacts["requested_runtime_id"] = requested_runtime_id
             run.artifacts["effective_base_model"] = run_llm_config.base_model
             run.artifacts["effective_runtime_id"] = run_llm_config.runtime_id
+            run.artifacts["training_base_model"] = training_base_model
             self._add_log(
                 run,
                 f"Requested base model: {requested_base_model or 'none'}",
@@ -414,6 +436,10 @@ class SelfLearningService:
             self._add_log(
                 run,
                 f"Effective base model: {run_llm_config.base_model or 'none'}",
+            )
+            self._add_log(
+                run,
+                f"Resolved training base: {training_base_model or 'none'}",
             )
         with self._lock:
             self._runs[run_id] = run
@@ -511,10 +537,63 @@ class SelfLearningService:
         payload: dict[str, Any],
     ) -> bool:
         if status == "finished":
-            return self._mark_run_completed_if_needed(run)
+            changed = self._mark_run_completed_if_needed(run)
+            finalized = self._finalize_orphaned_finished_run(run)
+            return changed or finalized
         if status in {"failed", "error"}:
             return self._mark_run_failed_if_needed(run, payload=payload)
         return self._mark_run_running_if_needed(run)
+
+    def _finalize_orphaned_finished_run(self, run: SelfLearningRun) -> bool:
+        if run.mode != "llm_finetune":
+            return False
+
+        output_dir = Path(
+            run.artifacts.get("training_output_dir")
+            or (Path(SETTINGS.ACADEMY_MODELS_DIR) / f"self_learning_{run.run_id}")
+        ).resolve()
+        adapter_dir = output_dir / "adapter"
+        if not adapter_dir.exists():
+            return False
+
+        changed = False
+        output_dir_str = str(output_dir)
+        adapter_path_str = str(adapter_dir)
+        if str(run.artifacts.get("training_output_dir") or "") != output_dir_str:
+            run.artifacts["training_output_dir"] = output_dir_str
+            changed = True
+        if str(run.artifacts.get("adapter_path") or "") != adapter_path_str:
+            run.artifacts["adapter_path"] = adapter_path_str
+            changed = True
+
+        metadata_file = output_dir / "metadata.json"
+        if metadata_file.exists():
+            return changed
+
+        base_model = (
+            str(run.llm_config.base_model or "").strip()
+            or str(run.artifacts.get("effective_base_model") or "").strip()
+            or str(run.artifacts.get("requested_base_model") or "").strip()
+        )
+        if not base_model:
+            return changed
+        try:
+            self._write_adapter_metadata(
+                output_dir=output_dir,
+                base_model=base_model,
+                run=run,
+            )
+            changed = True
+            self._add_log(
+                run,
+                "Recovered canonical metadata for orphaned finished run.",
+            )
+        except Exception as exc:
+            self._add_log(
+                run,
+                f"Warning: failed to recover canonical metadata: {exc}",
+            )
+        return changed
 
     @staticmethod
     def _mark_run_completed_if_needed(run: SelfLearningRun) -> bool:
@@ -756,21 +835,17 @@ class SelfLearningService:
         runtime_id: str,
     ) -> None:
         local_models = self._fetch_local_models_sync()
-        provider = self._infer_training_provider(base_model)
         available_runtime_ids = self._resolve_available_runtime_ids(local_models)
         runtime_model_families = discover_runtime_model_families(local_models)
-        compatibility = self._resolve_runtime_compatibility(
-            provider=provider,
+        assessment = assess_runtime_base_model_compatibility(
+            base_model=base_model,
+            runtime_id=runtime_id,
             available_runtime_ids=available_runtime_ids,
-            model_id=base_model,
-            model_metadata={"name": base_model},
             runtime_model_families=runtime_model_families,
         )
-        if compatibility.get(runtime_id):
+        if assessment["is_compatible"]:
             return
-        available = [
-            runtime for runtime in _LOCAL_RUNTIME_IDS if compatibility.get(runtime)
-        ]
+        available = list(assessment["compatible_runtimes"])
         if available:
             supported = ", ".join(available)
             raise SelfLearningValidationError(
@@ -781,7 +856,7 @@ class SelfLearningService:
                 reason_code="MODEL_RUNTIME_INCOMPATIBLE",
                 requested_runtime_id=runtime_id,
                 requested_base_model=base_model,
-                effective_base_model=base_model,
+                effective_base_model=_canonical_runtime_model_id(base_model),
                 compatible_runtimes=available,
             )
         raise SelfLearningValidationError(
@@ -789,20 +864,13 @@ class SelfLearningService:
             reason_code="MODEL_RUNTIME_TARGETS_UNAVAILABLE",
             requested_runtime_id=runtime_id,
             requested_base_model=base_model,
-            effective_base_model=base_model,
+            effective_base_model=_canonical_runtime_model_id(base_model),
             compatible_runtimes=[],
         )
 
     @staticmethod
     def _infer_training_provider(model_id: str) -> str:
-        normalized = model_id.strip().lower()
-        if ":" in normalized:
-            return "ollama"
-        if normalized.startswith("unsloth/"):
-            return "unsloth"
-        if "/" in normalized:
-            return "huggingface"
-        return "unknown"
+        return infer_training_provider(model_id)
 
     def _validate_llm_finetune_runtime_preflight(self, *, dry_run: bool) -> None:
         if dry_run:
@@ -957,6 +1025,8 @@ class SelfLearningService:
             return []
         try:
             fetched = self.model_manager.list_local_models()
+            if inspect.isawaitable(fetched):
+                fetched = self._await_local_models_sync(fetched)
             if isinstance(fetched, list):
                 return [item for item in fetched if isinstance(item, dict)]
         except Exception as exc:
@@ -965,6 +1035,32 @@ class SelfLearningService:
                 exc,
             )
         return []
+
+    @staticmethod
+    def _await_local_models_sync(awaitable: Awaitable[Any]) -> Any:
+        async def _to_coroutine(value: Awaitable[Any]) -> Any:
+            return await value
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(_to_coroutine(awaitable))
+
+        result: dict[str, Any] = {}
+        error: dict[str, Exception] = {}
+
+        def _runner() -> None:
+            try:
+                result["value"] = asyncio.run(_to_coroutine(awaitable))
+            except Exception as exc:  # pragma: no cover - defensive pass-through
+                error["exception"] = exc
+
+        worker = threading.Thread(target=_runner, daemon=True)
+        worker.start()
+        worker.join()
+        if "exception" in error:
+            raise error["exception"]
+        return result.get("value")
 
     def _append_local_trainable_models(
         self,
@@ -1411,6 +1507,9 @@ class SelfLearningService:
         if not base_model:
             raise SelfLearningError("llm_config.base_model is required for fine-tuning")
         run.artifacts["selected_base_model"] = base_model
+        training_base_model = (
+            str(run.artifacts.get("training_base_model") or "").strip() or base_model
+        )
 
         if run.dry_run:
             self._add_log(run, "Dry run enabled; training startup skipped.")
@@ -1425,7 +1524,7 @@ class SelfLearningService:
 
         job_info = habitat.run_training_job(
             dataset_path=str(dataset_path),
-            base_model=base_model,
+            base_model=training_base_model,
             output_dir=str(output_dir),
             lora_rank=run.llm_config.lora_rank,
             learning_rate=run.llm_config.learning_rate,
@@ -1449,6 +1548,11 @@ class SelfLearningService:
             output_dir=output_dir,
             base_model=base_model,
             run=run,
+        )
+        self._prepare_ollama_adapter_artifact_if_required(
+            output_dir=output_dir,
+            run=run,
+            base_model=base_model,
         )
         self._add_log(
             run,
@@ -1477,6 +1581,7 @@ class SelfLearningService:
                 "max_seq_length": run.llm_config.max_seq_length,
                 "dataset_strategy": run.llm_config.dataset_strategy,
                 "task_mix_preset": run.llm_config.task_mix_preset,
+                "training_base_model": run.artifacts.get("training_base_model"),
             },
             requested_runtime_id=cast(
                 Optional[str], run.artifacts.get("requested_runtime_id")
@@ -1497,6 +1602,38 @@ class SelfLearningService:
         write_canonical_adapter_metadata(
             adapter_dir=output_dir,
             payload=metadata_payload,
+        )
+
+    def _prepare_ollama_adapter_artifact_if_required(
+        self,
+        *,
+        output_dir: Path,
+        run: SelfLearningRun,
+        base_model: str,
+    ) -> None:
+        requested_runtime = (
+            str(run.artifacts.get("requested_runtime_id") or "").strip().lower()
+        )
+        effective_runtime = (
+            str(run.artifacts.get("effective_runtime_id") or "").strip().lower()
+        )
+        if requested_runtime != "ollama" and effective_runtime != "ollama":
+            return
+        try:
+            gguf_path = _adapter_runtime._ensure_ollama_adapter_gguf(
+                adapter_dir=output_dir,
+                from_model=base_model,
+                settings_obj=SETTINGS,
+            )
+        except Exception as exc:
+            raise SelfLearningError(
+                "Training finished but Ollama adapter conversion failed. "
+                f"Cannot activate adapter in chat runtime. Details: {exc}"
+            ) from exc
+        run.artifacts["ollama_adapter_gguf_path"] = str(gguf_path)
+        self._add_log(
+            run,
+            f"Ollama adapter artifact prepared: {gguf_path}",
         )
 
     async def _prepare_runtime_for_llm_training(self, run: SelfLearningRun) -> None:

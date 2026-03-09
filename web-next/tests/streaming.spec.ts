@@ -1,4 +1,5 @@
 import { test } from "@playwright/test";
+import { ensureChatRuntimeReadyOrSkip } from "./utils/chat-runtime-readiness";
 
 const emptyJson = JSON.stringify([]);
 
@@ -22,6 +23,108 @@ const streamPayloads: StreamPayload[] = [
     },
   },
 ];
+
+async function registerRuntimeContractRoutes(
+  page: import("@playwright/test").Page,
+  {
+    runtimeId = "ollama",
+    modelName = "gemma2:2b",
+  }: { runtimeId?: string; modelName?: string } = {},
+) {
+  await page.route("**/api/v1/system/llm-runtime/options**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "success",
+        active: {
+          runtime_id: runtimeId,
+          active_server: runtimeId,
+          active_model: modelName,
+          active_endpoint: "http://127.0.0.1:11434/v1",
+          config_hash: "test-hash",
+          source_type: "local-runtime",
+        },
+        runtimes: [
+          {
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            configured: true,
+            available: true,
+            status: "online",
+            reason: null,
+            active: true,
+            adapter_deploy_supported: true,
+            adapter_deploy_mode: "ollama_modelfile",
+            supports_native_training: false,
+            supports_adapter_import_safetensors: true,
+            supports_adapter_import_gguf: true,
+            supports_adapter_runtime_apply: true,
+            models: [
+              {
+                id: modelName,
+                name: modelName,
+                provider: runtimeId.toLowerCase(),
+                runtime_id: runtimeId,
+                source_type: "local-runtime",
+                active: true,
+                chat_compatible: true,
+                canonical_model_id: "gemma-2-2b-it",
+              },
+            ],
+          },
+        ],
+        model_catalog: {
+          all_models: [{
+            id: modelName,
+            name: modelName,
+            provider: runtimeId.toLowerCase(),
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            active: true,
+            chat_compatible: true,
+            canonical_model_id: "gemma-2-2b-it",
+          }],
+          chat_models: [{
+            id: modelName,
+            name: modelName,
+            provider: runtimeId.toLowerCase(),
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            active: true,
+            chat_compatible: true,
+            canonical_model_id: "gemma-2-2b-it",
+          }],
+          runtime_servable_models: [{
+            id: modelName,
+            name: modelName,
+            provider: runtimeId.toLowerCase(),
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            active: true,
+            chat_compatible: true,
+            canonical_model_id: "gemma-2-2b-it",
+          }],
+        },
+      }),
+    });
+  });
+  await page.route("**/api/v1/system/llm-servers/active**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "success",
+        active_server: runtimeId,
+        active_model: modelName,
+        active_endpoint: "http://127.0.0.1:11434/v1",
+        config_hash: "test-hash",
+        runtime_id: runtimeId,
+        source_type: "local-runtime",
+      }),
+    });
+  });
+}
 
 async function installStreamingMockEventSource(page: import("@playwright/test").Page) {
   await page.addInitScript(({ payloads }) => {
@@ -161,6 +264,7 @@ test.describe("Cockpit streaming SSE", () => {
         body: JSON.stringify({ providers: {} }),
       });
     });
+    await registerRuntimeContractRoutes(page);
   });
 
   test("aktualizuje bąbel rozmowy po zdarzeniach SSE", async ({ page }) => {
@@ -196,6 +300,7 @@ test.describe("Cockpit streaming SSE", () => {
       undefined,
       { timeout: 10000 },
     );
+    if (!(await ensureChatRuntimeReadyOrSkip(page))) return;
     const chatHistory = page.getByTestId("cockpit-chat-history");
     await chatHistory.scrollIntoViewIfNeeded();
     const textarea = page.getByTestId("cockpit-prompt-input");

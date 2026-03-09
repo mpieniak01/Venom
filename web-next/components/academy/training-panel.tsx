@@ -19,6 +19,7 @@ import {
 } from "@/lib/academy-api";
 import { ApiError } from "@/lib/api-client";
 import { useLanguage, useTranslation } from "@/lib/i18n";
+import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 
 type SupportedEngine =
   | "unsloth"
@@ -167,7 +168,7 @@ export function TrainingPanel() {
             runtime.available,
         )
         .map((runtime) => ({
-          id: runtime.runtime_id,
+          id: normalizeRuntimeId(runtime.runtime_id),
           label: getRuntimeDisplayName(runtime.runtime_id),
         }));
       const runtimeCapabilitiesMap = (catalog.runtimes ?? []).reduce<
@@ -188,10 +189,12 @@ export function TrainingPanel() {
       setRuntimeOptions(availableRuntimes);
       setRuntimeCapabilities(runtimeCapabilitiesMap);
       const activeRuntimeId =
-        String(catalog.active?.runtime_id || catalog.active?.active_server || "").trim();
+        normalizeRuntimeId(
+          String(catalog.active?.runtime_id || catalog.active?.active_server || ""),
+        );
       const preferredRuntime =
-        runtimeOverride ||
-        selectedRuntime ||
+        normalizeRuntimeId(runtimeOverride || "") ||
+        normalizeRuntimeId(selectedRuntime) ||
         activeRuntimeId ||
         "";
       if (preferredRuntime && preferredRuntime !== selectedRuntime) {
@@ -254,7 +257,8 @@ export function TrainingPanel() {
       pushToast(response.message, "success");
       await loadJobs();
     } catch (err) {
-      pushToast(resolveAcademyApiErrorMessage(err), "error");
+      const resolved = resolveAcademyApiErrorMessage(err);
+      pushToast(resolved || t("academy.common.unknownError"), "error");
       if (!(err instanceof ApiError && err.status === 400)) {
         console.error("Failed to start training:", err);
       }

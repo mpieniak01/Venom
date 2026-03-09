@@ -19,6 +19,22 @@ describe("academy api helpers", () => {
     );
   });
 
+  it("formats structured validation detail with compatible runtimes context", () => {
+    const error = new ApiError("Request failed: 400", 400, {
+      detail: {
+        message: "Model is incompatible with runtime.",
+        requested_runtime_id: "ollama",
+        requested_base_model: "unsloth/Phi-3-mini-4k-instruct",
+        compatible_runtimes: ["vllm"],
+      },
+    });
+
+    assert.equal(
+      resolveAcademyApiErrorMessage(error),
+      "Model is incompatible with runtime. (runtime=ollama, base_model=unsloth/Phi-3-mini-4k-instruct, compatible_runtimes=vllm)",
+    );
+  });
+
   it("formats adapter activation validation detail with adapter and runtime model context", () => {
     const error = new ApiError("Request failed: 400", 400, {
       detail: {
@@ -61,6 +77,20 @@ describe("academy api helpers", () => {
     assert.equal(
       resolveAcademyApiErrorMessage(error),
       "Failed to curate dataset: curate internal error",
+    );
+  });
+
+  it("formats structured error with only compatible runtimes", () => {
+    const error = new ApiError("Request failed: 400", 400, {
+      detail: {
+        message: "No compatible runtime targets.",
+        compatible_runtimes: ["vllm", "ollama"],
+      },
+    });
+
+    assert.equal(
+      resolveAcademyApiErrorMessage(error),
+      "No compatible runtime targets. (compatible_runtimes=vllm|ollama)",
     );
   });
 

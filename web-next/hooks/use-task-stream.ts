@@ -224,6 +224,9 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
 
     const targetIds = new Set(dedupedTaskIds);
     const sources = sourcesRef.current;
+    const pollTimers = pollTimersRef.current;
+    const throttleTimers = throttleTimersRef.current;
+    const pendingUpdates = pendingUpdatesRef.current;
     const pollIntervalMs = POLLING.TASK_INTERVAL_MS || 2000;
 
     const emitEvent = (event: TaskStreamEvent) => {
@@ -235,10 +238,10 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     };
 
     const stopPolling = (taskId: string) => {
-      const timer = pollTimersRef.current.get(taskId);
+      const timer = pollTimers.get(taskId);
       if (timer) {
         globalThis.window.clearTimeout(timer);
-        pollTimersRef.current.delete(taskId);
+        pollTimers.delete(taskId);
       }
     };
 
@@ -282,11 +285,11 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           stopPolling(taskId);
         } else {
           const timer = globalThis.window.setTimeout(() => pollTask(taskId), pollIntervalMs);
-          pollTimersRef.current.set(taskId, timer);
+          pollTimers.set(taskId, timer);
         }
       } catch {
         const timer = globalThis.window.setTimeout(() => pollTask(taskId), pollIntervalMs * 2);
-        pollTimersRef.current.set(taskId, timer);
+        pollTimers.set(taskId, timer);
       }
     };
 
@@ -295,29 +298,29 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         updateStateById(taskId, patch);
         return;
       }
-      const pending = pendingUpdatesRef.current.get(taskId) ?? {};
+      const pending = pendingUpdates.get(taskId) ?? {};
       const mergedLogs = mergeLogs(pending.logs ?? [], patch.logs ?? []);
-      pendingUpdatesRef.current.set(taskId, { ...pending, ...patch, logs: mergedLogs });
+      pendingUpdates.set(taskId, { ...pending, ...patch, logs: mergedLogs });
 
-      if (throttleTimersRef.current.has(taskId)) return;
+      if (throttleTimers.has(taskId)) return;
 
       const timer = globalThis.window.setTimeout(() => {
-        throttleTimersRef.current.delete(taskId);
-        const queued = pendingUpdatesRef.current.get(taskId);
-        pendingUpdatesRef.current.delete(taskId);
+        throttleTimers.delete(taskId);
+        const queued = pendingUpdates.get(taskId);
+        pendingUpdates.delete(taskId);
         if (queued) updateStateById(taskId, queued);
       }, throttleMs);
-      throttleTimersRef.current.set(taskId, timer);
+      throttleTimers.set(taskId, timer);
     };
 
     const flushPending = (taskId: string) => {
-      const timer = throttleTimersRef.current.get(taskId);
+      const timer = throttleTimers.get(taskId);
       if (timer) {
         globalThis.window.clearTimeout(timer);
-        throttleTimersRef.current.delete(taskId);
+        throttleTimers.delete(taskId);
       }
-      const queued = pendingUpdatesRef.current.get(taskId);
-      pendingUpdatesRef.current.delete(taskId);
+      const queued = pendingUpdates.get(taskId);
+      pendingUpdates.delete(taskId);
       if (queued) updateStateById(taskId, queued);
     };
 
@@ -410,10 +413,10 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         source.close();
         sources.delete(id);
         stopPolling(id);
-        const timer = throttleTimersRef.current.get(id);
+        const timer = throttleTimers.get(id);
         if (timer) globalThis.window.clearTimeout(timer);
-        throttleTimersRef.current.delete(id);
-        pendingUpdatesRef.current.delete(id);
+        throttleTimers.delete(id);
+        pendingUpdates.delete(id);
         setStreams((prev) => {
           const next = { ...prev };
           delete next[id];
@@ -438,7 +441,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       };
       source.onerror = () => {
         updateStateById(taskId, { connected: false, error: "SSE failure, polling..." });
-        if (!pollTimersRef.current.has(taskId)) {
+        if (!pollTimers.has(taskId)) {
           pollTask(taskId);
         }
       };
@@ -446,6 +449,20 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       sources.set(taskId, source);
       pollTask(taskId);
     }
+
+    return () => {
+      sources.forEach((source, id) => {
+        source.close();
+        stopPolling(id);
+      });
+      sources.clear();
+      pollTimers.clear();
+      throttleTimers.forEach((timer) => {
+        globalThis.window.clearTimeout(timer);
+      });
+      throttleTimers.clear();
+      pendingUpdates.clear();
+    };
   }, [dedupedTaskIds, enabled, autoCloseOnFinish, throttleMs, updateStateById]);
 
   return {

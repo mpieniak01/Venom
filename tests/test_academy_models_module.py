@@ -33,6 +33,7 @@ def test_get_model_non_trainable_reason_variants():
         "Model family does not support local Academy LoRA training"
     )
     assert academy_models.get_model_non_trainable_reason("unsloth/Phi-3-mini") is None
+    assert academy_models.get_model_non_trainable_reason("gemma-3-4b-it") is None
     assert academy_models.get_model_non_trainable_reason("totally-unknown-model") == (
         "Model capability cannot be verified for Academy LoRA training"
     )
@@ -206,6 +207,39 @@ def test_runtime_compatibility_resolution_and_recommended_runtime():
     )
     assert hf_without_runtime_model == {"vllm": True, "ollama": False}
 
+    unsloth_without_ollama_family = academy_models.resolve_runtime_compatibility(
+        provider="unsloth",
+        available_runtime_ids=["vllm", "ollama"],
+        model_id="unsloth/Phi-3-mini-4k-instruct",
+        model_metadata={"runtime": ""},
+        runtime_model_families={"ollama": {"gemma-3-4b-it"}},
+    )
+    assert unsloth_without_ollama_family == {"vllm": True, "ollama": False}
+
+
+def test_assess_runtime_base_model_compatibility_incompatible_with_alternatives():
+    assessment = academy_models.assess_runtime_base_model_compatibility(
+        base_model="unsloth/Phi-3-mini-4k-instruct",
+        runtime_id="ollama",
+        available_runtime_ids=["vllm", "ollama"],
+        runtime_model_families={"ollama": {"gemma-3-4b-it"}},
+    )
+    assert assessment["is_compatible"] is False
+    assert assessment["reason_code"] == "MODEL_RUNTIME_INCOMPATIBLE"
+    assert assessment["compatible_runtimes"] == ["vllm"]
+
+
+def test_assess_runtime_base_model_compatibility_no_targets():
+    assessment = academy_models.assess_runtime_base_model_compatibility(
+        base_model="gemma-3-4b-it",
+        runtime_id="ollama",
+        available_runtime_ids=[],
+        runtime_model_families={},
+    )
+    assert assessment["is_compatible"] is False
+    assert assessment["reason_code"] == "MODEL_RUNTIME_TARGETS_UNAVAILABLE"
+    assert assessment["compatible_runtimes"] == []
+
 
 def test_discover_runtime_model_families_maps_ollama_aliases():
     families = academy_models.discover_runtime_model_families(
@@ -218,6 +252,33 @@ def test_discover_runtime_model_families_maps_ollama_aliases():
 
     assert families["ollama"] == {"gemma-3-4b-it", "phi-3-mini-4k-instruct"}
     assert families["vllm"] == {"gemma-3-4b-it"}
+
+
+def test_resolve_effective_training_base_model_prefers_local_hf_path(tmp_path):
+    model_dir = tmp_path / "gemma-3-4b-it"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_text("weights", encoding="utf-8")
+
+    resolved = academy_models.resolve_effective_training_base_model(
+        "gemma-3-4b-it",
+        local_models=[
+            {
+                "name": "gemma-3-4b-it",
+                "provider": "vllm",
+                "runtime": "vllm",
+                "path": str(model_dir),
+            }
+        ],
+    )
+    assert resolved == str(model_dir.resolve())
+
+
+def test_resolve_effective_training_base_model_falls_back_to_canonical_repo():
+    assert (
+        academy_models.resolve_effective_training_base_model("gemma-3-4b-it")
+        == "google/gemma-3-4b-it"
+    )
 
 
 def test_collect_local_trainable_models_filters_invalid_and_seen():
@@ -527,6 +588,67 @@ async def test_list_adapters_does_not_rescue_self_learning_from_run_snapshot(
 
 
 @patch("venom_core.config.SETTINGS")
+def test_purge_legacy_adapters_dry_run_lists_only_noncanonical(mock_settings, tmp_path):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+
+    legacy_dir = tmp_path / "legacy_adapter"
+    (legacy_dir / "adapter").mkdir(parents=True)
+    (legacy_dir / "adapter" / "adapter_config.json").write_text("{}", encoding="utf-8")
+
+    canonical_dir = tmp_path / "canonical_adapter"
+    (canonical_dir / "adapter").mkdir(parents=True)
+    (canonical_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_version": 2,
+                "effective_base_model": "gemma-3-4b-it",
+                "created_at": "2026-03-07T12:00:00+00:00",
+                "source_flow": "self_learning",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = academy_models.purge_legacy_adapters(mgr=None, apply=False)
+
+    assert result["mode"] == "dry-run"
+    assert result["candidates"] == ["legacy_adapter"]
+    assert result["removed"] == []
+    assert legacy_dir.exists()
+    assert canonical_dir.exists()
+
+
+@patch("venom_core.config.SETTINGS")
+def test_purge_legacy_adapters_apply_skips_active_by_default(mock_settings, tmp_path):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+
+    active_legacy = tmp_path / "active_legacy"
+    (active_legacy / "adapter").mkdir(parents=True)
+    (active_legacy / "adapter" / "adapter_config.json").write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    removable_legacy = tmp_path / "removable_legacy"
+    (removable_legacy / "adapter").mkdir(parents=True)
+    (removable_legacy / "adapter" / "adapter_config.json").write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.get_active_adapter_info.return_value = {"adapter_id": "active_legacy"}
+
+    result = academy_models.purge_legacy_adapters(mgr=mgr, apply=True)
+
+    assert result["mode"] == "apply"
+    assert result["removed"] == ["removable_legacy"]
+    assert result["skipped_active"] == ["active_legacy"]
+    assert active_legacy.exists()
+    assert not removable_legacy.exists()
+
+
+@patch("venom_core.config.SETTINGS")
 def test_activate_adapter_variants(mock_settings, tmp_path):
     mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
     mgr = MagicMock()
@@ -586,7 +708,13 @@ def test_activate_adapter_with_chat_runtime_deploy_ollama(
     mgr.create_ollama_modelfile.return_value = "venom-adapter-ok-adapter"
     mock_config_manager.get_config.return_value = {"LAST_MODEL_OLLAMA": "phi3:latest"}
 
-    with patch.object(academy_models, "SETTINGS", mock_settings):
+    with (
+        patch.object(academy_models, "SETTINGS", mock_settings),
+        patch(
+            "venom_core.services.academy.adapter_runtime_service._ensure_ollama_adapter_gguf",
+            return_value=adapter_dir / "Adapter-F16-LoRA.gguf",
+        ),
+    ):
         payload = academy_models.activate_adapter(
             mgr=mgr,
             adapter_id="ok-adapter",
@@ -1001,6 +1129,59 @@ async def test_validate_adapter_runtime_compatibility_rejects_missing_runtime_mo
             )
 
 
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
+async def test_validate_adapter_runtime_compatibility_accepts_runtime_adapter_model(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+    adapter_dir = tmp_path / "adapter-1"
+    adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter").mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        '{"metadata_version":2,"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct","effective_base_model":"Qwen/Qwen2.5-Coder-7B-Instruct","created_at":"2026-03-07T12:00:00+00:00","source_flow":"training"}',
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "venom-adapter-self_learning_test",
+                "provider": "vllm",
+                "path": str(tmp_path / "runtime-adapter"),
+            },
+            {
+                "name": "Qwen/Qwen2.5-Coder-7B-Instruct",
+                "provider": "vllm",
+                "path": str(tmp_path / "qwen-vllm"),
+            },
+        ]
+    )
+    with patch(
+        "venom_core.api.routes.academy_models.list_trainable_models",
+        AsyncMock(
+            return_value=[
+                TrainableModelInfo(
+                    model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+                    label="Qwen 2.5 Coder 7B",
+                    provider="huggingface",
+                    trainable=True,
+                    runtime_compatibility={"vllm": True, "onnx": False},
+                )
+            ]
+        ),
+    ):
+        await academy_models.validate_adapter_runtime_compatibility(
+            mgr=mgr,
+            adapter_id="adapter-1",
+            runtime_id="vllm",
+            model_id="venom-adapter-self_learning_test",
+        )
+
+
 @patch("venom_core.config.SETTINGS")
 def test_activate_adapter_rejects_ollama_deploy_on_base_model_mismatch(
     mock_settings, tmp_path
@@ -1168,6 +1349,34 @@ async def test_audit_adapters_categorizes_unknown_mismatch_and_compatible(
     assert by_id["mismatch-adapter"]["reason_code"] == "ADAPTER_METADATA_INCONSISTENT"
     assert by_id["compatible-adapter"]["category"] == "compatible"
     assert by_id["compatible-adapter"]["is_active"] is True
+
+
+@pytest.mark.asyncio
+@patch("venom_core.api.routes.academy_models.SETTINGS")
+async def test_audit_adapters_treats_runtime_adapter_model_as_compatible_selection(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/gemma-2-2b-it"
+
+    adapter_dir = tmp_path / "self_learning_adapter"
+    (adapter_dir / "adapter").mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        '{"metadata_version":2,"base_model":"unsloth/gemma-2-2b-it","effective_base_model":"unsloth/gemma-2-2b-it","created_at":"2026-03-07T12:00:00+00:00","source_flow":"training"}',
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.get_active_adapter_info.return_value = {"adapter_id": "self_learning_adapter"}
+
+    payload = academy_models.audit_adapters(
+        mgr=mgr,
+        runtime_id="ollama",
+        model_id="venom-adapter-self_learning_bdc2d5fc-f7d4-44cd-a34a-cfc892a58cd9",
+    )
+
+    by_id = {item["adapter_id"]: item for item in payload["adapters"]}
+    assert by_id["self_learning_adapter"]["category"] == "compatible"
 
 
 def test_runtime_resolution_helpers_and_model_dir_detection(tmp_path):
@@ -1364,9 +1573,15 @@ def test_activate_adapter_ollama_deploy_does_not_fallback_to_last_model_config(
         "LLM_MODEL_NAME": "legacy:last",
     }
 
-    with patch(
-        "venom_core.api.routes.academy_models.get_active_llm_runtime",
-        return_value=SimpleNamespace(provider="", model_name=""),
+    with (
+        patch(
+            "venom_core.api.routes.academy_models.get_active_llm_runtime",
+            return_value=SimpleNamespace(provider="", model_name=""),
+        ),
+        patch(
+            "venom_core.services.academy.adapter_runtime_service._ensure_ollama_adapter_gguf",
+            return_value=adapter_dir / "Adapter-F16-LoRA.gguf",
+        ),
     ):
         payload = academy_models.activate_adapter(
             mgr=mgr,
@@ -1377,8 +1592,127 @@ def test_activate_adapter_ollama_deploy_does_not_fallback_to_last_model_config(
         )
 
     assert payload["success"] is True
+    mgr.create_ollama_modelfile.assert_called_once_with(
+        version_id="ok-adapter",
+        output_name="venom-adapter-ok-adapter",
+        from_model="phi3:mini",
+        use_experimental=False,
+    )
     updates = mock_config_manager.update_config.call_args[0][0]
     assert "PREVIOUS_MODEL_OLLAMA" not in updates
+
+
+@patch("venom_core.api.routes.academy_models.compute_llm_config_hash")
+@patch("venom_core.api.routes.academy_models.config_manager")
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_ollama_deploy_uses_experimental_for_local_training_base(
+    mock_settings,
+    mock_config_manager,
+    mock_hash,
+    tmp_path,
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACTIVE_LLM_SERVER = "ollama"
+    mock_settings.LLM_MODEL_NAME = ""
+    mock_hash.return_value = "hash-ollama"
+    mgr = MagicMock()
+
+    local_training_base = tmp_path / "models" / "gemma-3-4b-it"
+    local_training_base.mkdir(parents=True)
+    (local_training_base / "config.json").write_text("{}", encoding="utf-8")
+    (local_training_base / "model-00001-of-00001.safetensors").write_text(
+        "dummy", encoding="utf-8"
+    )
+
+    adapter_dir = tmp_path / "ok-adapter" / "adapter"
+    adapter_dir.mkdir(parents=True)
+    (tmp_path / "ok-adapter" / "metadata.json").write_text(
+        (
+            '{"metadata_version":2,"base_model":"gemma-3-4b-it",'
+            '"effective_base_model":"gemma-3-4b-it","created_at":"2026-03-07T12:00:00+00:00",'
+            '"source_flow":"training","parameters":{"training_base_model":"%s"}}'
+        )
+        % str(local_training_base),
+        encoding="utf-8",
+    )
+    mgr.activate_adapter.return_value = True
+    mgr.create_ollama_modelfile.return_value = "venom-adapter-ok-adapter"
+    mock_config_manager.get_config.return_value = {}
+
+    with (
+        patch(
+            "venom_core.api.routes.academy_models.get_active_llm_runtime",
+            return_value=SimpleNamespace(provider="", model_name=""),
+        ),
+        patch(
+            "venom_core.services.academy.adapter_runtime_service._ensure_ollama_adapter_gguf",
+            return_value=adapter_dir / "Adapter-F16-LoRA.gguf",
+        ),
+    ):
+        payload = academy_models.activate_adapter(
+            mgr=mgr,
+            adapter_id="ok-adapter",
+            runtime_id="ollama",
+            model_id="gemma3:latest",
+            deploy_to_chat_runtime=True,
+        )
+
+    assert payload["success"] is True
+    mgr.create_ollama_modelfile.assert_called_once_with(
+        version_id="ok-adapter",
+        output_name="venom-adapter-ok-adapter",
+        from_model=str(local_training_base),
+        use_experimental=True,
+    )
+
+
+@patch("venom_core.api.routes.academy_models.compute_llm_config_hash")
+@patch("venom_core.api.routes.academy_models.config_manager")
+@patch("venom_core.config.SETTINGS")
+def test_activate_adapter_ollama_deploy_prepares_gguf_before_ollama_create(
+    mock_settings,
+    mock_config_manager,
+    mock_hash,
+    tmp_path,
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACTIVE_LLM_SERVER = "ollama"
+    mock_settings.LLM_MODEL_NAME = ""
+    mock_hash.return_value = "hash-ollama"
+    mgr = MagicMock()
+
+    adapter_dir = tmp_path / "ok-adapter" / "adapter"
+    adapter_dir.mkdir(parents=True)
+    (tmp_path / "ok-adapter" / "metadata.json").write_text(
+        '{"metadata_version":2,"base_model":"phi3:latest","effective_base_model":"phi3:latest","created_at":"2026-03-07T12:00:00+00:00","source_flow":"training","parameters":{"training_base_model":"phi3:latest"}}',
+        encoding="utf-8",
+    )
+    mgr.activate_adapter.return_value = True
+    mgr.create_ollama_modelfile.return_value = "venom-adapter-ok-adapter"
+    mock_config_manager.get_config.return_value = {}
+
+    with (
+        patch(
+            "venom_core.api.routes.academy_models.get_active_llm_runtime",
+            return_value=SimpleNamespace(provider="", model_name=""),
+        ),
+        patch(
+            "venom_core.services.academy.adapter_runtime_service._ensure_ollama_adapter_gguf",
+            return_value=adapter_dir / "Adapter-F16-LoRA.gguf",
+        ) as mock_prepare,
+    ):
+        payload = academy_models.activate_adapter(
+            mgr=mgr,
+            adapter_id="ok-adapter",
+            runtime_id="ollama",
+            model_id="phi3:latest",
+            deploy_to_chat_runtime=True,
+        )
+
+    assert payload["success"] is True
+    mock_prepare.assert_called_once()
+    assert mock_prepare.call_args.kwargs["adapter_dir"] == tmp_path / "ok-adapter"
+    assert mock_prepare.call_args.kwargs["from_model"] == "phi3:mini"
 
 
 def test_build_vllm_runtime_model_from_adapter_missing_adapter_path(tmp_path: Path):

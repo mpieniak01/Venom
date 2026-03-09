@@ -706,6 +706,29 @@ function RuntimePreflightSection({
   effectiveCompatibility,
   hasCompatibleTrainableModels,
 }: RuntimePreflightSectionProps) {
+  let runtimeLabel = t("academy.training.runtimeUnknown");
+  if (selectedRuntime) {
+    runtimeLabel = getRuntimeDisplayName(selectedRuntime, t);
+  }
+
+  let baseModelLabel = t("academy.selfLearning.config.noTrainableModels");
+  if (effectiveBaseModel) {
+    baseModelLabel = effectiveBaseModel;
+  } else if (hasCompatibleTrainableModels) {
+    baseModelLabel = t("academy.selfLearning.config.chooseBaseModel");
+  }
+
+  let compatibilityLabel = t("academy.selfLearning.config.preflightSelectBaseModel");
+  if (effectiveBaseModel) {
+    compatibilityLabel = t("academy.training.runtimeUnknown");
+    if (effectiveCompatibility.length > 0) {
+      compatibilityLabel = effectiveCompatibility
+        .map((runtime) => getRuntimeDisplayName(runtime, t))
+        .join(" • ");
+    }
+  }
+  const showMismatchWarning = Boolean(selectedRuntime) && !hasCompatibleTrainableModels;
+
   return (
     <div className="space-y-1 rounded-lg border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] px-3 py-2 text-xs text-[color:var(--text-primary)]">
       <p className="font-semibold text-[color:var(--text-heading)]">
@@ -713,19 +736,17 @@ function RuntimePreflightSection({
       </p>
       <p>
         <span className="text-[color:var(--text-secondary)]">{t("cockpit.models.server")}:</span>{" "}
-        {selectedRuntime ? getRuntimeDisplayName(selectedRuntime, t) : t("academy.training.runtimeUnknown")}
+        {runtimeLabel}
       </p>
       <p>
         <span className="text-[color:var(--text-secondary)]">{t("academy.selfLearning.config.baseModel")}:</span>{" "}
-        {effectiveBaseModel || t("academy.selfLearning.config.noTrainableModels")}
+        {baseModelLabel}
       </p>
       <p>
         <span className="text-[color:var(--text-secondary)]">{t("academy.training.compatibilityLabel")}:</span>{" "}
-        {effectiveCompatibility.length > 0
-          ? effectiveCompatibility.map((runtime) => getRuntimeDisplayName(runtime, t)).join(" • ")
-          : t("academy.training.runtimeUnknown")}
+        {compatibilityLabel}
       </p>
-      {!hasCompatibleTrainableModels && selectedRuntime ? (
+      {showMismatchWarning ? (
         <p className="text-amber-200">
           {t("academy.selfLearning.config.runtimeModelMismatchWarning", {
             runtime: getRuntimeDisplayName(selectedRuntime, t),

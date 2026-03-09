@@ -86,6 +86,28 @@ def test_model_manager_initialization(tmp_path):
     assert manager.active_version is None
 
 
+def test_resolve_ollama_adapter_reference_prefers_gguf_file(tmp_path):
+    manager = ModelManager(models_dir=str(tmp_path))
+    adapter_dir = tmp_path / "self_learning_x" / "adapter"
+    adapter_dir.mkdir(parents=True)
+    gguf_file = adapter_dir / "Adapter-F16-LoRA.gguf"
+    gguf_file.write_text("gguf", encoding="utf-8")
+
+    resolved = manager._resolve_ollama_adapter_reference(str(adapter_dir))
+
+    assert resolved == str(gguf_file.resolve())
+
+
+def test_resolve_ollama_adapter_reference_falls_back_to_dir(tmp_path):
+    manager = ModelManager(models_dir=str(tmp_path))
+    adapter_dir = tmp_path / "self_learning_x" / "adapter"
+    adapter_dir.mkdir(parents=True)
+
+    resolved = manager._resolve_ollama_adapter_reference(str(adapter_dir))
+
+    assert resolved == str(adapter_dir.resolve())
+
+
 def test_model_manager_register_version(tmp_path):
     """Test rejestracji nowej wersji."""
     manager = ModelManager(models_dir=str(tmp_path))

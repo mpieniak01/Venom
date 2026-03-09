@@ -94,11 +94,13 @@ export function ServicesPanel() {
     }
   }, [t]);
 
-  const fetchStorageSnapshot = useCallback(async () => {
+  const fetchStorageSnapshot = useCallback(async (forceRefresh = false) => {
     setStorageLoading(true);
     setStorageError(null);
     try {
-      const response = await fetch("/api/v1/system/storage").catch(() => {
+      const response = await fetch(
+        forceRefresh ? "/api/v1/system/storage?force_refresh=1" : "/api/v1/system/storage"
+      ).catch(() => {
         setStorageError(t("config.services.storage.apiError"));
         return null;
       });
@@ -234,7 +236,7 @@ export function ServicesPanel() {
         storageSnapshot={storageSnapshot}
         storageLoading={storageLoading}
         storageError={storageError}
-        onRefreshStorage={fetchStorageSnapshot}
+        onRefreshStorage={() => fetchStorageSnapshot(true)}
       />
 
       <ServicesHistoryCard t={t} language={language} history={history} />

@@ -22,7 +22,8 @@ NEXT_TURBO_WATCH_ENV ?= WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 C
 START_MODE ?= dev
 START_WEB_MODE ?= webpack
 ALLOW_DEGRADED_START ?= 0
-UVICORN_DEV_FLAGS ?= --reload
+BACKEND_RELOAD ?= 0
+UVICORN_DEV_FLAGS ?= --reload --reload-dir venom_core --reload-dir scripts --reload-exclude logs/\* --reload-exclude data/\* --reload-exclude models/\* --reload-exclude web-next/\* --reload-exclude .venv/\* --reload-exclude .git/\*
 UVICORN_PROD_FLAGS ?= --no-server-header
 BACKEND_LOG ?= logs/backend.log
 WEB_LOG ?= logs/web-next.log
@@ -50,6 +51,8 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		pytest e2e test-optimal test-ci-light test-fast-coverage test-light-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap \
 		test-intelligence-report \
+		runtime-maintenance-cleanup \
+		runtime-log-policy-audit runtime-logrotate-install-help \
 		api api-dev api-preprod api-stop web web-dev web-dev-turbo web-dev-turbo-debug web-preprod web-stop \
 		test-web-turbo-smoke test-web-turbo-smoke-clean \
 		startpre stoppre restartpre statuspre apipre webpre testpre ensurepreenv \
@@ -610,6 +613,27 @@ preaudit: preprod-audit
 predrill: preprod-drill
 prereadiness: preprod-readiness-check
 
+runtime-maintenance-cleanup:
+	@$(ENV_RUN) $(PYTHON_BIN) scripts/dev/runtime_maintenance_cleanup.py
+
+runtime-log-policy-audit:
+	@echo "🔎 Runtime log policy audit..."
+	@echo " - logger backend policy: daily rotation + 7 days retention (venom_core/utils/logger.py)"
+	@if [ -f /etc/logrotate.d/venom ]; then \
+		echo " - system logrotate: /etc/logrotate.d/venom [FOUND]"; \
+	else \
+		echo " - system logrotate: /etc/logrotate.d/venom [MISSING]"; \
+		echo "   use: make runtime-logrotate-install-help"; \
+	fi
+	@echo " - runtime retention marker: .venom_runtime/runtime_retention.last_run"
+	@cat .venom_runtime/runtime_retention.last_run 2>/dev/null || echo "   (missing marker)"
+
+runtime-logrotate-install-help:
+	@echo "📄 Install template for system logrotate policy:"
+	@echo "  sudo cp scripts/systemd/venom.logrotate.example /etc/logrotate.d/venom"
+	@echo "  sudo sed -i \"s|/path/to/Venom|$$(pwd)|g\" /etc/logrotate.d/venom"
+	@echo "  sudo logrotate -d /etc/logrotate.d/venom"
+
 _start:
 	@if [ ! -x "$(UVICORN)" ]; then \
 		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
@@ -626,9 +650,16 @@ _start:
 	start_ollama() { \
 		echo "▶️  Uruchamiam Ollama..."; \
 		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
-		if ! $(MAKE) --no-print-directory ollama-start >/dev/null; then \
-			echo "❌ Nie udało się wywołać 'ollama-start' (sprawdź instalację/usługę Ollama)."; \
-			return 1; \
+		if command -v timeout >/dev/null 2>&1; then \
+			if ! timeout 25s $(MAKE) --no-print-directory ollama-start >/dev/null; then \
+				echo "❌ 'ollama-start' nie zakończył się poprawnie w limicie czasu (25s)."; \
+				return 1; \
+			fi; \
+		else \
+			if ! $(MAKE) --no-print-directory ollama-start >/dev/null; then \
+				echo "❌ Nie udało się wywołać 'ollama-start' (sprawdź instalację/usługę Ollama)."; \
+				return 1; \
+			fi; \
 		fi; \
 		echo "⏳ Czekam na Ollama (/api/tags)..."; \
 		ollama_fatal=""; \
@@ -742,7 +773,7 @@ _start:
 			rm -f "$(PID_FILE)"; \
 		fi; \
 	fi; \
-	if [ -z "$$backend_reused" ]; then \
+		if [ -z "$$backend_reused" ]; then \
 		if [ -f "$(PID_FILE)" ]; then \
 			PID=$$(cat "$(PID_FILE)"); \
 			if kill -0 $$PID 2>/dev/null; then \
@@ -752,11 +783,17 @@ _start:
 				rm -f "$(PID_FILE)"; \
 			fi; \
 		fi; \
-		if [ "$(START_MODE)" = "prod" ]; then \
-			UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS)"; \
-		else \
-			UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS)"; \
-		fi; \
+			if [ "$(START_MODE)" = "prod" ]; then \
+				UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS)"; \
+			else \
+				if [ "$(BACKEND_RELOAD)" = "1" ]; then \
+					UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS)"; \
+					echo "ℹ️  Backend dev z autoreload (BACKEND_RELOAD=1)"; \
+				else \
+					UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS)"; \
+					echo "ℹ️  Backend dev w trybie stabilnym bez autoreload (BACKEND_RELOAD=0)"; \
+				fi; \
+			fi; \
 		echo "▶️  Uruchamiam Venom backend (uvicorn na $(HOST):$(PORT))"; \
 		: > $(BACKEND_LOG); \
 		$(ENV_RUN) setsid $(UVICORN) $(API_APP) $$UVICORN_FLAGS >> $(BACKEND_LOG) 2>&1 & \

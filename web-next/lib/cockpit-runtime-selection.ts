@@ -9,6 +9,18 @@ export function resolveCockpitRuntimeModelSelection(
   return runtimeModels.includes(normalizedSelection) ? normalizedSelection : "";
 }
 
+export function normalizeRuntimeId(value: string | null | undefined): string {
+  const candidate = (value || "").trim();
+  if (!candidate) {
+    return "";
+  }
+  const atIndex = candidate.indexOf("@");
+  if (atIndex <= 0) {
+    return candidate.toLowerCase();
+  }
+  return candidate.slice(0, atIndex).trim().toLowerCase();
+}
+
 type CatalogRuntimeModel = {
   name: string;
   active?: boolean;
@@ -64,15 +76,17 @@ export function resolveCockpitActiveRuntimeInfo(
 ): ActiveRuntimeInfo {
   const catalogRuntimes = catalog?.runtimes ?? [];
   const declaredRuntimeId =
-    (catalog?.active?.runtime_id || catalog?.active?.active_server || "").trim();
+    normalizeRuntimeId(catalog?.active?.runtime_id || catalog?.active?.active_server);
   const activeRuntime =
-    catalogRuntimes.find((runtime) => runtime.runtime_id === declaredRuntimeId) ??
+    catalogRuntimes.find(
+      (runtime) => normalizeRuntimeId(runtime.runtime_id) === declaredRuntimeId,
+    ) ??
     catalogRuntimes.find((runtime) => runtime.active) ??
     null;
   const activeRuntimeId =
     declaredRuntimeId ||
-    (activeRuntime?.runtime_id || "").trim() ||
-    (fallback?.runtime_id || fallback?.active_server || "").trim();
+    normalizeRuntimeId(activeRuntime?.runtime_id || "") ||
+    normalizeRuntimeId(fallback?.active_server || fallback?.runtime_id || "");
 
   if (!activeRuntimeId) {
     return fallback;
@@ -83,7 +97,7 @@ export function resolveCockpitActiveRuntimeInfo(
   const runtimeActiveModel = runtimeModels.find((model) => model.active)?.name || "";
   const activeModelFromCatalog = declaredActiveModel || runtimeActiveModel.trim();
   const fallbackMatchesActiveRuntime =
-    (fallback?.active_server || fallback?.runtime_id || "").trim() === activeRuntimeId;
+    normalizeRuntimeId(fallback?.active_server || fallback?.runtime_id || "") === activeRuntimeId;
   let resolvedActiveModel: string | null = null;
   if (activeModelFromCatalog) {
     resolvedActiveModel = activeModelFromCatalog;

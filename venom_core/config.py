@@ -354,6 +354,9 @@ class Settings(BaseSettings):
         False  # Czy uruchamiać trening lokalnie (bez Dockera)
     )
     ACADEMY_TRAINING_IMAGE: str = "unsloth/unsloth:latest"  # Obraz Docker dla treningu
+    ACADEMY_LLAMA_CPP_DIR: str = (
+        ""  # Opcjonalna ścieżka do katalogu llama.cpp (convert_lora_to_gguf.py)
+    )
     ACADEMY_MAX_UPLOAD_SIZE_MB: int = 25  # Maksymalny rozmiar pliku do uploadu (MB)
     ACADEMY_MAX_UPLOADS_PER_REQUEST: int = 10  # Maksymalna liczba plików na upload
     ACADEMY_USER_DATA_DIR: str = f"{_storage_path('./data/training')}/user_data"  # Trwały katalog danych użytkownika (konwersja)

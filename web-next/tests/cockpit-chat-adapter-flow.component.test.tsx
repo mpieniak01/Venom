@@ -11,9 +11,13 @@ const LANGUAGE_STORAGE_KEY = "venom-language";
 
 type CatalogState = {
   activeAdapterId: string | null;
+  catalogActiveAdapterId?: string | null;
 };
 
-function TestHarness(params: { onSend: (payload: string) => Promise<boolean> }) {
+function TestHarness(params: {
+  onSend: (payload: string) => Promise<boolean>;
+  onActivateModelCall?: (value: string) => void;
+}) {
   const [selectedLlmServer, setSelectedLlmServer] = useState("vllm");
   const [selectedLlmModel, setSelectedLlmModel] = useState("phi3-mini");
   const [chatMode, setChatMode] = useState<ChatMode>("normal");
@@ -48,6 +52,7 @@ function TestHarness(params: { onSend: (payload: string) => Promise<boolean> }) 
         }}
         setSelectedLlmModel={setSelectedLlmModel}
         onActivateModel={(value) => {
+          params.onActivateModelCall?.(value);
           setSelectedLlmModel(value);
           return true;
         }}
@@ -71,6 +76,8 @@ async function flushEffects() {
 
 function installFetchMock(state: CatalogState) {
   let activationCount = 0;
+  let deactivationCount = 0;
+  let deactivationUsedExplicitNoDeploy = false;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
 
@@ -81,7 +88,8 @@ function installFetchMock(state: CatalogState) {
           adapter_path: "/tmp/adapter-gemma",
           base_model: "gemma-3-4b-it",
           canonical_base_model_id: "gemma-3-4b-it",
-          is_active: state.activeAdapterId === "adapter-gemma",
+          is_active:
+            (state.catalogActiveAdapterId ?? state.activeAdapterId) === "adapter-gemma",
           compatible_runtimes: ["ollama"],
         },
       ];
@@ -211,6 +219,11 @@ function installFetchMock(state: CatalogState) {
 
     if (url.includes("/api/v1/academy/adapters/deactivate")) {
       state.activeAdapterId = null;
+      deactivationCount += 1;
+      const search = new URL(url, window.location.origin).searchParams;
+      deactivationUsedExplicitNoDeploy =
+        deactivationUsedExplicitNoDeploy ||
+        search.get("deploy_to_chat_runtime") === "false";
       return new Response(
         JSON.stringify({
           success: true,
@@ -224,6 +237,8 @@ function installFetchMock(state: CatalogState) {
   }) as typeof fetch;
   return {
     getActivationCount: () => activationCount,
+    getDeactivationCount: () => deactivationCount,
+    usedExplicitNoDeploy: () => deactivationUsedExplicitNoDeploy,
   };
 }
 
@@ -282,5 +297,75 @@ describe("ChatComposer adapter flow", () => {
     });
 
     assert.deepEqual(sendCalls, ["co to jest Venom"]);
+  });
+
+  it("switches to base profile with explicit no-adapter deploy path", async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+    const activatedModels: string[] = [];
+    const state: CatalogState = {
+      activeAdapterId: null,
+    };
+    const fetchControl = installFetchMock(state);
+
+    render(
+      <TestHarness
+        onSend={async () => true}
+        onActivateModelCall={(value) => activatedModels.push(value)}
+      />,
+    );
+    await flushEffects();
+
+    fireEvent.click(screen.getByTestId("llm-server-select"));
+    fireEvent.click(screen.getByText("OLLAMA"));
+    await flushEffects();
+
+    fireEvent.click(screen.getByTestId("llm-model-select"));
+    fireEvent.click(screen.getByText("gemma3:latest"));
+    await flushEffects();
+
+    fireEvent.click(screen.getByTestId("chat-adapter-select"));
+    const adapterOption = document.querySelector(
+      '[data-value="adapter-gemma"]',
+    ) as HTMLButtonElement | null;
+    assert.ok(adapterOption);
+    fireEvent.click(adapterOption);
+    await flushEffects();
+
+    fireEvent.click(screen.getByTestId("chat-adapter-select"));
+    const baseOption = document.querySelector(
+      '[data-value="__base_model__"]',
+    ) as HTMLButtonElement | null;
+    assert.ok(baseOption);
+    fireEvent.click(baseOption);
+    await flushEffects();
+
+    assert.equal(fetchControl.getDeactivationCount(), 1);
+    assert.equal(fetchControl.usedExplicitNoDeploy(), true);
+    assert.ok(activatedModels.includes("gemma3:latest"));
+  });
+
+  it("defaults selector to base model when runtime audit has no active adapter", async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+    const state: CatalogState = {
+      activeAdapterId: null,
+      catalogActiveAdapterId: "adapter-gemma",
+    };
+    installFetchMock(state);
+
+    render(<TestHarness onSend={async () => true} />);
+    await flushEffects();
+
+    fireEvent.click(screen.getByTestId("llm-server-select"));
+    fireEvent.click(screen.getByText("OLLAMA"));
+    await flushEffects();
+
+    fireEvent.click(screen.getByTestId("llm-model-select"));
+    fireEvent.click(screen.getByText("gemma3:latest"));
+    await flushEffects();
+
+    assert.match(
+      String(screen.getByTestId("chat-adapter-select").textContent || ""),
+      /base model/i,
+    );
   });
 });

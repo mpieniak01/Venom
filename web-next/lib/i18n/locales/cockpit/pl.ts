@@ -96,6 +96,10 @@ export const cockpitLocale = {
       providerLabel: "Serwer / Provider",
       endpointLabel: "Endpoint",
       runtimeIdLabel: "Runtime ID",
+      adapterAppliedLabel: "Adapter",
+      adapterAppliedYes: "tak (request przez adapter)",
+      adapterAppliedNo: "nie (model bazowy)",
+      adapterIdLabel: "ID adaptera",
       uiTimingsTitle: "UI timings",
       uiTimingHistory: "submit → historia",
       feedbackTitle: "Feedback",
@@ -144,6 +148,7 @@ export const cockpitLocale = {
       adapter: "Adapter",
       chooseServer: "Wybierz serwer",
       chooseModel: "Wybierz model",
+      noneSelected: "Niewybrano",
       loadingAdapters: "Ładowanie adapterów",
       adapterBase: "Model bazowy (bez adaptera)",
       adapterCompatible: "zgodny z bieżącym modelem",
@@ -155,6 +160,10 @@ export const cockpitLocale = {
       activeAdapterNone: "Brak aktywnego adaptera dla bieżącego kontekstu audytu.",
       activeAdapterSwitchHint:
         "Zmień model runtime na zgodny z bazą adaptera albo wyłącz adapter przed dalszą pracą.",
+      adapterSelectionBaseHint:
+        "Wybrano pracę bez adaptera: requesty idą na sam model bazowy.",
+      adapterSelectionAdapterHint:
+        "Wybrano adapter: requesty powinny iść przez aktywowany adapter dla tego serwera i modelu.",
       adapterIncompatible: "niekompatybilny z runtime {{runtime}}",
       adapterRuntimeNotSupported: "deploy adaptera do czatu nie jest wspierany dla runtime {{runtime}}",
       runtimeModelAuditWarning:

@@ -171,7 +171,7 @@ Publiczne grupy komend:
 - `make vllm-start`, `make vllm-stop`, `make vllm-restart`
 - `make ollama-start`, `make ollama-stop`, `make ollama-restart`
 
-5. Operacje preprod (`make/preprod.mk`)
+5. Operacje preprod (`make/preprod.mk` + targety root)
 - `make start-preprod`, `make api-preprod`, `make web-preprod`
 - aliasy: `make startpre`, `make apipre`, `make webpre`, `make testpre`
 - `make preprod-backup`, `make preprod-restore TS=<timestamp>`, `make preprod-verify TS=<timestamp>`

@@ -35,6 +35,7 @@ tests/test_knowledge_graph_service.py
 tests/test_knowledge_ttl.py
 tests/test_llm_simple_payload_service.py
 tests/test_llm_simple_route_model_resolution.py
+tests/test_make_targets_audit.py
 tests/test_memory_graph_service.py
 tests/test_models_remote_contracts.py
 tests/test_models_utils_security.py

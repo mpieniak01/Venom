@@ -60,6 +60,10 @@ preprod-drill:
 		echo "❌ Nie udało się odczytać timestamp z backupu preprod."; \
 		exit 1; \
 	fi; \
+	if ! printf '%s' "$$ts" | grep -Eq '^[0-9]{8}[-_][0-9]{6}$$'; then \
+		echo "❌ Nieprawidłowy format timestamp z backupu preprod: '$$ts'."; \
+		exit 2; \
+	fi; \
 	$(MAKE) --no-print-directory preprod-verify TS="$$ts"; \
 	echo "✅ Preprod drill zakończony (TS=$$ts)."
 

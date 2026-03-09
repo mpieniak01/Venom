@@ -2960,6 +2960,19 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_make_targets_audit.py",
+      "domain": "audit",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
+    },
+    {
       "path": "tests/test_markdown_blocks.py",
       "domain": "misc",
       "test_type": "unit",

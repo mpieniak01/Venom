@@ -7,7 +7,7 @@ TEST_ARTIFACT_CLEANUP_DAYS ?= 7
 test:
 	@echo "🧪 Uruchamiam testy w trybie CLEAN (artefakty usuwane po sesji)..."
 	@set +e; \
-	VENOM_TEST_ARTIFACT_MODE=clean VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
+	VENOM_TEST_ARTIFACT_MODE=clean VENOM_API_BASE="$${VENOM_API_BASE:-http://$${HOST_DISPLAY:-127.0.0.1}:$${PORT:-8000}}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
 	$(call handle_pytest_no_tests,test) \
 	if [ $$rc -ne 0 ]; then \
@@ -20,7 +20,7 @@ test:
 test-data:
 	@echo "🧪 Uruchamiam testy w trybie PRESERVE (artefakty zachowane)..."
 	@set +e; \
-	VENOM_TEST_ARTIFACT_MODE=preserve VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
+	VENOM_TEST_ARTIFACT_MODE=preserve VENOM_API_BASE="$${VENOM_API_BASE:-http://$${HOST_DISPLAY:-127.0.0.1}:$${PORT:-8000}}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
 	$(call handle_pytest_no_tests,test-data) \
 	if [ $$rc -ne 0 ]; then \
@@ -37,8 +37,13 @@ test-artifacts-cleanup:
 		rm -rf test-results/tmp/*; \
 		echo "✅ Usunięto wszystkie artefakty testowe"; \
 	else \
-		echo "Usuwanie artefaktów starszych niż $(TEST_ARTIFACT_CLEANUP_DAYS) dni..."; \
-		find test-results/tmp -type d -name "session-*" -mtime +$(TEST_ARTIFACT_CLEANUP_DAYS) -exec rm -rf {} + 2>/dev/null || true; \
+		days="$${TEST_ARTIFACT_CLEANUP_DAYS:-7}"; \
+		if ! printf '%s' "$$days" | grep -Eq '^[0-9]+$$'; then \
+			echo "❌ Nieprawidłowe TEST_ARTIFACT_CLEANUP_DAYS='$$days' (oczekiwano liczby całkowitej)."; \
+			exit 2; \
+		fi; \
+		echo "Usuwanie artefaktów starszych niż $$days dni..."; \
+		find test-results/tmp -type d -name "session-*" -mtime +"$$days" -exec rm -rf {} + 2>/dev/null || true; \
 		echo "✅ Usunięto stare artefakty testowe"; \
 	fi
 
@@ -239,14 +244,14 @@ sonar-reports-frontend:
 sonar-reports: sonar-reports-backend sonar-reports-frontend
 
 openapi-export:
-	python3 scripts/export_openapi.py --output openapi/openapi.json
+	@$(PYTHON_BIN) scripts/export_openapi.py --output openapi/openapi.json
 
 openapi-codegen-types: openapi-export
 	npx --yes openapi-typescript@7.10.1 openapi/openapi.json -o web-next/lib/generated/api-types.d.ts
 
 pytest:
 	@set +e; \
-	VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh; \
+	VENOM_API_BASE="$${VENOM_API_BASE:-http://$${HOST_DISPLAY:-127.0.0.1}:$${PORT:-8000}}" bash scripts/run-pytest-optimal.sh; \
 	rc=$$?; \
 	$(call handle_pytest_no_tests,pytest) \
 	if [ $$rc -ne 0 ]; then \

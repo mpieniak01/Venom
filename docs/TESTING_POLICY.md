@@ -308,6 +308,7 @@ Typical failures:
 Indicators:
 
 - Python complexity check: `ruff check venom_core --select C901`
+- dead-code heuristic audit (Python): `make audit-dead-code`
 - Sonar Cognitive Complexity rule threshold per function: `<= 15`
 - no new `Critical` maintainability issues in PR scope
 

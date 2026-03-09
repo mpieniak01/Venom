@@ -331,6 +331,7 @@ Typowe wpadki:
 Wskaźniki:
 
 - Python complexity check: `ruff check venom_core --select C901`
+- heurystyczny audyt ślepego kodu (Python): `make audit-dead-code`
 - próg Sonar dla Cognitive Complexity na funkcję: `<= 15`
 - brak nowych `Critical` maintainability w zakresie PR
 

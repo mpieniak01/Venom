@@ -1248,6 +1248,9 @@ monitor:
 env-audit:
 	@python3 scripts/dev/env_audit.py
 
+audit-dead-code:
+	@python3 scripts/dev/dead_code_audit.py
+
 security-delta-scan:
 	@python3 scripts/dev/security_delta_scan.py --out-json logs/security-delta-latest.json
 
@@ -1305,5 +1308,6 @@ help:
 	@echo ""
 	@echo "Jakość:"
 	@echo "  make pr-fast                  - hard gate (wymagane przed zakończeniem)"
+	@echo "  make audit-dead-code          - heurystyczny audyt ślepego kodu (Python)"
 	@echo "  make test-groups-check        - weryfikacja grup testów"
 	@echo "  make test-catalog-check       - weryfikacja katalogu testów"

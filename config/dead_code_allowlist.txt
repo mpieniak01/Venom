@@ -1,0 +1,6 @@
+# Dead-code audit allowlist (heuristic exceptions).
+# Format:
+# - exact symbol: path/to/file.py:symbol_name
+# - folder wildcard: path/to/dir/*:symbol_name
+#
+# Keep this list small and documented with a short reason in PR description.

@@ -615,7 +615,6 @@ export const ChatComposer = memo(
                   activateModelSelection().catch((error) => {
                     console.error("Model activation action failed:", error);
                   });
-                  return;
                 }}
                 ariaLabel={t("cockpit.actions.selectModel")}
                 buttonTestId="llm-model-select"

@@ -57,7 +57,6 @@ def _resolve_active_adapter_id(mgr: Any) -> str:
 
 def _evaluate_adapter_audit_status(
     *,
-    adapter_id: str,
     assessment: Dict[str, Any],
     base_model: str,
     runtime_local_id: str | None,
@@ -258,7 +257,6 @@ def audit_adapters(
         assessment = _assess_adapter_base_model(adapter_dir=training_dir)
         base_model = str(assessment.get("base_model") or "").strip()
         category, reason_code, message = _evaluate_adapter_audit_status(
-            adapter_id=training_dir.name,
             assessment=assessment,
             base_model=base_model,
             runtime_local_id=runtime_local_id,

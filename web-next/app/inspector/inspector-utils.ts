@@ -20,8 +20,8 @@ const CONTRACT_ERROR_TERMS = [
 
 export function sanitizeMermaidDiagram(value: string) {
   return value
-    .replace(/\r\n?/g, "\n")
-    .replace(/[^\t\n\x20-\x7E\u00A0-\uFFFF]/g, " ");
+    .replaceAll(/\r\n?/g, "\n")
+    .replaceAll(/[^\t\n\x20-\x7E\u00A0-\uFFFF]/g, " ");
 }
 
 export function decorateExecutionFailed(container: HTMLDivElement) {

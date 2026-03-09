@@ -7,7 +7,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -77,7 +77,9 @@ STORAGE_CACHE_SCHEMA_VERSION = 2
 
 
 @router.get("/system/storage", responses=SYSTEM_STORAGE_RESPONSES)
-async def get_storage_snapshot(force_refresh: bool = Query(default=False)):
+async def get_storage_snapshot(
+    force_refresh: Annotated[bool, Query()] = False,
+):
     """
     Zwraca snapshot użycia dysku oraz największe katalogi (whitelist).
     """

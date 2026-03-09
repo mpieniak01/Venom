@@ -116,6 +116,9 @@ type HistorySelectionResult = {
   diagram: string;
 };
 
+type SelectionStaleChecker = () => boolean;
+type SelectionResultApplier = (result: HistorySelectionResult) => void;
+
 async function loadHistorySelectionResult(
   requestId: string,
   defaultDiagram: string,
@@ -142,6 +145,38 @@ async function loadHistorySelectionFallback(
     return { steps: [], diagram: fallbackDiagram };
   }
   return { steps: detailSteps, diagram: buildFlowchartDiagram(detailSteps) || defaultDiagram };
+}
+
+async function handleHistorySelectionFlowError(
+  requestId: string,
+  error: unknown,
+  options: {
+    defaultDiagram: string;
+    fallbackDiagram: string;
+    isStale: SelectionStaleChecker;
+    applyResult: SelectionResultApplier;
+    setDetailError: (value: string | null) => void;
+    t: Translator;
+  },
+) {
+  if (options.isStale()) return;
+  console.error("Flow trace error:", error);
+  options.setDetailError(
+    error instanceof Error ? error.message : options.t("inspector.panels.diagram.errorRender"),
+  );
+  try {
+    const fallbackResult = await loadHistorySelectionFallback(
+      requestId,
+      options.defaultDiagram,
+      options.fallbackDiagram,
+    );
+    if (options.isStale()) return;
+    options.applyResult(fallbackResult);
+  } catch (historyError) {
+    if (options.isStale()) return;
+    console.error("Fallback detail error:", historyError);
+    options.applyResult({ steps: [], diagram: options.fallbackDiagram });
+  }
 }
 
 export function useInspectorState(t: Translator) {
@@ -440,26 +475,14 @@ export function useInspectorState(t: Translator) {
         if (isStale()) return;
         applyResult(primaryResult);
       } catch (flowError) {
-        if (isStale()) return;
-        console.error("Flow trace error:", flowError);
-        setDetailError(
-          flowError instanceof Error
-            ? flowError.message
-            : t("inspector.panels.diagram.errorRender"),
-        );
-        try {
-          const fallbackResult = await loadHistorySelectionFallback(
-            requestId,
-            defaultDiagram,
-            fallbackDiagram,
-          );
-          if (isStale()) return;
-          applyResult(fallbackResult);
-        } catch (historyError) {
-          if (isStale()) return;
-          console.error("Fallback detail error:", historyError);
-          applyResult({ steps: [], diagram: fallbackDiagram });
-        }
+        await handleHistorySelectionFlowError(requestId, flowError, {
+          defaultDiagram,
+          fallbackDiagram,
+          isStale,
+          applyResult,
+          setDetailError,
+          t,
+        });
       } finally {
         if (!isStale()) {
           setDiagramLoading(false);

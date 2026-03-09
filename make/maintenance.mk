@@ -5,6 +5,9 @@
 env-audit:
 	@python3 scripts/dev/env_audit.py
 
+make-targets-audit:
+	@$(PYTHON_BIN) scripts/dev/make_targets_audit.py --makefile Makefile --modules-dir make
+
 audit-dead-code:
 	@python3 scripts/dev/dead_code_audit.py
 

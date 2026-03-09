@@ -352,6 +352,20 @@ Indicators:
 - lightweight/system helper dependencies (for core parsing or test selection), e.g. `ripgrep`, are installed in CI-lite job
 - backend-lite run shows explicit `skipped` (not import error) for optional-dependency tests
 
+## Dead-Code Triage Procedure (heuristic audit)
+
+Use when `make audit-dead-code` reports findings.
+
+1. Confirm if the symbol is truly unused:
+- search references in repo (`rg "<symbol_name>"`)
+- verify dynamic dispatch/registration paths (decorators, string lookups, plugin maps)
+2. If truly unused, remove the symbol in the same PR.
+3. If intentionally retained, add a narrow exception to `config/dead_code_allowlist.txt`:
+- prefer exact rule `path/to/file.py:symbol`
+- use wildcard rule `dir/*:symbol` only when many equivalent cases exist
+4. Every allowlist entry must include a short rationale in PR description (owner + expected removal condition).
+5. Do not treat this audit as a release blocker by itself; it is a review signal. Block only on confirmed defects or policy violations.
+
 ## Test Artifacts Policy
 
 Do not commit test output artifacts.

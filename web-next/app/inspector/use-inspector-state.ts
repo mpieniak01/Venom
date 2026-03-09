@@ -46,7 +46,7 @@ function isRawSourceRendered(container: HTMLDivElement) {
   const svg = container.querySelector("svg");
   if (!svg) return false;
   const text = svg.textContent ?? "";
-  const normalized = text.replace(/\s+/g, " ").trim();
+  const normalized = text.replaceAll(/\s+/g, " ").trim();
   return normalized.includes("sequenceDiagram") || normalized.includes("graph TD");
 }
 
@@ -56,6 +56,54 @@ function renderPlainDiagramFallback(container: HTMLDivElement, source: string) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
   container.innerHTML = `<pre class="h-full w-full overflow-auto whitespace-pre-wrap rounded-[20px] border border-white/10 bg-[#020617] p-4 text-xs text-zinc-200">${escaped}</pre>`;
+}
+
+async function renderMermaidSource(
+  container: HTMLDivElement,
+  mermaidApi: MermaidAPI,
+  source: string,
+): Promise<boolean> {
+  container.innerHTML = `<div class="mermaid"></div>`;
+  const node = container.querySelector(".mermaid");
+  if (node) {
+    node.textContent = source;
+  }
+  await mermaidApi.run({
+    nodes: container.querySelectorAll(".mermaid"),
+  });
+  return Boolean(container.querySelector("svg")) && !isRawSourceRendered(container);
+}
+
+function diagramFromFlow(flow: Awaited<ReturnType<typeof fetchFlowTrace>>, defaultDiagram: string) {
+  const flowSteps = (flow?.steps || []) as HistoryStep[];
+  const diagramSource =
+    flow?.mermaid_diagram && flow.mermaid_diagram.trim().length > 0
+      ? flow.mermaid_diagram
+      : flowSteps.length > 0
+        ? buildSequenceDiagram(flow)
+        : defaultDiagram;
+  return { flowSteps, diagramSource };
+}
+
+function resetHistorySelectionState(
+  requestId: string,
+  setDiagramLoading: (value: boolean) => void,
+  setDetailError: (value: string | null) => void,
+  setSelectedId: (value: string) => void,
+  setSteps: (value: HistoryStep[]) => void,
+  setFocusedIndex: (value: number | null) => void,
+  setStepFilter: (value: string) => void,
+  setCopyMessage: (value: string | null) => void,
+  setMermaidError: (value: string | null) => void,
+) {
+  setDiagramLoading(true);
+  setDetailError(null);
+  setSelectedId(requestId);
+  setSteps([]);
+  setFocusedIndex(null);
+  setStepFilter("");
+  setCopyMessage(null);
+  setMermaidError(null);
 }
 
 export function useInspectorState(t: Translator) {
@@ -247,40 +295,18 @@ export function useInspectorState(t: Translator) {
       try {
         const container = svgRef.current;
         const safeDiagram = sanitizeMermaidDiagram(diagram);
-        container.innerHTML = `<div class="mermaid"></div>`;
-        const node = container.querySelector(".mermaid");
-        if (node) {
-          node.textContent = safeDiagram;
-        }
         if (!mermaidApi) {
           throw new Error("Mermaid API not ready.");
         }
-
-        try {
-          await mermaidApi.run({
-            nodes: container.querySelectorAll(".mermaid"),
-          });
-          if (!container.querySelector("svg")) {
-            throw new Error("Mermaid produced no SVG output");
-          }
-          if (isRawSourceRendered(container)) {
-            throw new Error("Mermaid rendered raw source text instead of diagram");
-          }
-        } catch (err) {
-          console.warn("Mermaid render failed, using fallback diagram:", err);
+        const rendered = await renderMermaidSource(container, mermaidApi, safeDiagram);
+        if (!rendered) {
           const fallback = sanitizeMermaidDiagram(fallbackDiagram);
-          if (node) {
-            node.textContent = fallback;
-          }
-          try {
-            await mermaidApi.run({
-              nodes: container.querySelectorAll(".mermaid"),
-            });
-            if (!container.querySelector("svg") || isRawSourceRendered(container)) {
-              renderPlainDiagramFallback(container, fallback);
-            }
-          } catch (fallbackError) {
-            console.warn("Mermaid fallback render failed, switching to plain text:", fallbackError);
+          const fallbackRendered = await renderMermaidSource(
+            container,
+            mermaidApi,
+            fallback,
+          );
+          if (!fallbackRendered) {
             renderPlainDiagramFallback(container, fallback);
           }
           if (!cancelled) {
@@ -289,7 +315,6 @@ export function useInspectorState(t: Translator) {
           }
           return;
         }
-
         decorateExecutionFailed(container);
         adjustMermaidSizing(container);
         if (!cancelled) {
@@ -340,71 +365,79 @@ export function useInspectorState(t: Translator) {
     }
   }, [refreshHistory]);
 
-  const handleHistorySelect = useCallback(async (requestId: string, force = false) => {
-    if (!force && currentDiagramRequestRef.current === requestId && !detailError) {
-      return;
-    }
-    const seq = activeSelectSeqRef.current + 1;
-    activeSelectSeqRef.current = seq;
-
-    currentDiagramRequestRef.current = requestId;
-    setDiagramLoading(true);
-    setDetailError(null);
-    setSelectedId(requestId);
-    setSteps([]);
-    setFocusedIndex(null);
-    setStepFilter("");
-    setCopyMessage(null);
-    setMermaidError(null);
-
-    try {
-      const flow = await fetchFlowTraceWithTimeout(requestId, FLOW_TRACE_TIMEOUT_MS);
-      if (!flow) {
-        throw new Error("Flow trace response is empty");
+  const handleHistorySelect = useCallback(
+    async (requestId: string, force = false) => {
+      if (!force && currentDiagramRequestRef.current === requestId && !detailError) {
+        return;
       }
-      const flowSteps = (flow.steps || []) as HistoryStep[];
-      if (activeSelectSeqRef.current !== seq) return;
-      setSteps(flowSteps);
-      let diagramSource: string | null = null;
-      if (flow.mermaid_diagram && flow.mermaid_diagram.trim().length > 0) {
-        diagramSource = flow.mermaid_diagram;
-      } else if (flowSteps.length > 0) {
-        diagramSource = buildSequenceDiagram(flow);
-      }
-      setDiagram(diagramSource ?? defaultDiagram);
-    } catch (flowError) {
-      if (activeSelectSeqRef.current !== seq) return;
-      console.error("Flow trace error:", flowError);
-      setDetailError(
-        flowError instanceof Error ? flowError.message : t("inspector.panels.diagram.errorRender"),
+      const seq = activeSelectSeqRef.current + 1;
+      activeSelectSeqRef.current = seq;
+      currentDiagramRequestRef.current = requestId;
+      resetHistorySelectionState(
+        requestId,
+        setDiagramLoading,
+        setDetailError,
+        setSelectedId,
+        setSteps,
+        setFocusedIndex,
+        setStepFilter,
+        setCopyMessage,
+        setMermaidError,
       );
+
+      const isStale = () => activeSelectSeqRef.current !== seq;
       try {
-        const detail = await fetchHistoryDetail(requestId);
-        if (!detail) {
-          throw new Error("History detail response is empty");
+        const flow = await fetchFlowTraceWithTimeout(requestId, FLOW_TRACE_TIMEOUT_MS);
+        if (!flow) {
+          throw new Error("Flow trace response is empty");
         }
-        if (activeSelectSeqRef.current !== seq) return;
-        const detailSteps = detail.steps || [];
-        setSteps(detailSteps);
-        setDiagram(detailSteps.length > 0 ? buildFlowchartDiagram(detailSteps) : defaultDiagram);
-      } catch (historyError) {
-        if (activeSelectSeqRef.current !== seq) return;
-        console.error("Fallback detail error:", historyError);
-        setSteps([]);
-        setDiagram(t("inspector.panels.diagram.fallback"));
+        if (isStale()) return;
+        const { flowSteps, diagramSource } = diagramFromFlow(flow, defaultDiagram);
+        setSteps(flowSteps);
+        setDiagram(diagramSource);
+      } catch (flowError) {
+        if (isStale()) return;
+        console.error("Flow trace error:", flowError);
+        setDetailError(
+          flowError instanceof Error
+            ? flowError.message
+            : t("inspector.panels.diagram.errorRender"),
+        );
+        try {
+          const detail = await fetchHistoryDetail(requestId);
+          if (!detail) {
+            throw new Error("History detail response is empty");
+          }
+          if (isStale()) return;
+          const detailSteps = detail.steps || [];
+          setSteps(detailSteps);
+          setDiagram(
+            detailSteps.length > 0
+              ? buildFlowchartDiagram(detailSteps)
+              : defaultDiagram,
+          );
+        } catch (historyError) {
+          if (isStale()) return;
+          console.error("Fallback detail error:", historyError);
+          setSteps([]);
+          setDiagram(t("inspector.panels.diagram.fallback"));
+        }
+      } finally {
+        if (!isStale()) {
+          setDiagramLoading(false);
+        }
       }
-    } finally {
-      if (activeSelectSeqRef.current === seq) {
-        setDiagramLoading(false);
-      }
-    }
-  }, [defaultDiagram, detailError, t]);
+    },
+    [defaultDiagram, detailError, t],
+  );
 
   useEffect(() => {
     if (historyLoading) return;
     if (!history || history.length === 0) return;
     if (selectedId) return;
-    handleHistorySelect(history[0]!.request_id);
+    const firstHistoryItem = history[0];
+    if (!firstHistoryItem) return;
+    handleHistorySelect(firstHistoryItem.request_id);
   }, [historyLoading, history, selectedId, handleHistorySelect]);
 
   useEffect(() => {

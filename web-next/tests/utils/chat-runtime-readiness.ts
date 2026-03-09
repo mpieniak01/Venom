@@ -7,7 +7,9 @@ type ReadinessResult = {
 };
 
 function isUnavailableModelLabel(label: string): boolean {
-  return /Brak modeli|No models|Wybierz model|Choose model/i.test(label);
+  return /Brak modeli|No models|Wybierz model|Choose model|Niewybrano|Not selected|Nicht ausgewählt/i.test(
+    label,
+  );
 }
 
 async function readLabel(locator: Locator): Promise<string> {

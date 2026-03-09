@@ -706,21 +706,27 @@ function RuntimePreflightSection({
   effectiveCompatibility,
   hasCompatibleTrainableModels,
 }: RuntimePreflightSectionProps) {
-  const runtimeLabel = selectedRuntime
-    ? getRuntimeDisplayName(selectedRuntime, t)
-    : t("academy.training.runtimeUnknown");
-  const baseModelLabel = effectiveBaseModel
-    ? effectiveBaseModel
-    : hasCompatibleTrainableModels
-      ? t("academy.selfLearning.config.chooseBaseModel")
-      : t("academy.selfLearning.config.noTrainableModels");
-  const compatibilityLabel = effectiveBaseModel
-    ? effectiveCompatibility.length > 0
-      ? effectiveCompatibility
-          .map((runtime) => getRuntimeDisplayName(runtime, t))
-          .join(" • ")
-      : t("academy.training.runtimeUnknown")
-    : t("academy.selfLearning.config.preflightSelectBaseModel");
+  let runtimeLabel = t("academy.training.runtimeUnknown");
+  if (selectedRuntime) {
+    runtimeLabel = getRuntimeDisplayName(selectedRuntime, t);
+  }
+
+  let baseModelLabel = t("academy.selfLearning.config.noTrainableModels");
+  if (effectiveBaseModel) {
+    baseModelLabel = effectiveBaseModel;
+  } else if (hasCompatibleTrainableModels) {
+    baseModelLabel = t("academy.selfLearning.config.chooseBaseModel");
+  }
+
+  let compatibilityLabel = t("academy.selfLearning.config.preflightSelectBaseModel");
+  if (effectiveBaseModel) {
+    compatibilityLabel = t("academy.training.runtimeUnknown");
+    if (effectiveCompatibility.length > 0) {
+      compatibilityLabel = effectiveCompatibility
+        .map((runtime) => getRuntimeDisplayName(runtime, t))
+        .join(" • ");
+    }
+  }
   const showMismatchWarning = Boolean(selectedRuntime) && !hasCompatibleTrainableModels;
 
   return (

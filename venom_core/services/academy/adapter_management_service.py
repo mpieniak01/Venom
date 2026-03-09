@@ -256,11 +256,7 @@ def activate_adapter(
     }
 
     if deploy_to_chat_runtime:
-        deploy_payload = _deploy_adapter_to_chat_runtime_with_rollback(
-            mgr=mgr,
-            adapter_id=adapter_id,
-            runtime_id=runtime_id,
-            model_id=model_id,
+        runtime_deploy_ctx = _build_runtime_deploy_ctx(
             canonical_runtime_model_id_fn=canonical_runtime_model_id_fn,
             require_trusted_adapter_base_model_fn=require_trusted_adapter_base_model_fn,
             settings_obj=settings_obj,
@@ -273,6 +269,13 @@ def activate_adapter(
             restart_vllm_runtime_fn=restart_vllm_runtime_fn,
             get_active_llm_runtime_fn=get_active_llm_runtime_fn,
             deploy_adapter_to_vllm_runtime_fn=deploy_adapter_to_vllm_runtime_fn,
+        )
+        deploy_payload = _deploy_adapter_to_chat_runtime_with_rollback(
+            mgr=mgr,
+            adapter_id=adapter_id,
+            runtime_id=runtime_id,
+            model_id=model_id,
+            runtime_deploy_ctx=runtime_deploy_ctx,
         )
         payload.update(deploy_payload)
         payload["message"] = _deploy_status_message(
@@ -310,6 +313,25 @@ def _deploy_adapter_to_chat_runtime_with_rollback(
     adapter_id: str,
     runtime_id: str | None,
     model_id: str | None,
+    runtime_deploy_ctx: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        return _runtime_service._deploy_adapter_to_chat_runtime(
+            mgr=mgr,
+            adapter_id=adapter_id,
+            runtime_id=runtime_id,
+            model_id=model_id,
+            **runtime_deploy_ctx,
+        )
+    except Exception as exc:
+        _rollback_active_adapter(mgr=mgr, adapter_id=adapter_id)
+        if isinstance(exc, (ValueError, FileNotFoundError, RuntimeError)):
+            raise
+        raise RuntimeError(f"ADAPTER_RUNTIME_DEPLOY_FAILED: {exc}") from exc
+
+
+def _build_runtime_deploy_ctx(
+    *,
     canonical_runtime_model_id_fn: Any,
     require_trusted_adapter_base_model_fn: Any,
     settings_obj: Any,
@@ -323,30 +345,20 @@ def _deploy_adapter_to_chat_runtime_with_rollback(
     get_active_llm_runtime_fn: Any,
     deploy_adapter_to_vllm_runtime_fn: Any,
 ) -> dict[str, Any]:
-    try:
-        return _runtime_service._deploy_adapter_to_chat_runtime(
-            mgr=mgr,
-            adapter_id=adapter_id,
-            runtime_id=runtime_id,
-            model_id=model_id,
-            canonical_runtime_model_id_fn=canonical_runtime_model_id_fn,
-            require_trusted_adapter_base_model_fn=require_trusted_adapter_base_model_fn,
-            settings_obj=settings_obj,
-            config_manager_obj=config_manager_obj,
-            compute_llm_config_hash_fn=compute_llm_config_hash_fn,
-            resolve_runtime_for_adapter_deploy_fn=resolve_runtime_for_adapter_deploy_fn,
-            runtime_endpoint_for_hash_fn=runtime_endpoint_for_hash_fn,
-            build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
-            is_runtime_model_dir_fn=is_runtime_model_dir_fn,
-            restart_vllm_runtime_fn=restart_vllm_runtime_fn,
-            get_active_llm_runtime_fn=get_active_llm_runtime_fn,
-            deploy_adapter_to_vllm_runtime_fn=deploy_adapter_to_vllm_runtime_fn,
-        )
-    except Exception as exc:
-        _rollback_active_adapter(mgr=mgr, adapter_id=adapter_id)
-        if isinstance(exc, (ValueError, FileNotFoundError, RuntimeError)):
-            raise
-        raise RuntimeError(f"ADAPTER_RUNTIME_DEPLOY_FAILED: {exc}") from exc
+    return {
+        "canonical_runtime_model_id_fn": canonical_runtime_model_id_fn,
+        "require_trusted_adapter_base_model_fn": require_trusted_adapter_base_model_fn,
+        "settings_obj": settings_obj,
+        "config_manager_obj": config_manager_obj,
+        "compute_llm_config_hash_fn": compute_llm_config_hash_fn,
+        "resolve_runtime_for_adapter_deploy_fn": resolve_runtime_for_adapter_deploy_fn,
+        "runtime_endpoint_for_hash_fn": runtime_endpoint_for_hash_fn,
+        "build_vllm_runtime_model_from_adapter_fn": build_vllm_runtime_model_from_adapter_fn,
+        "is_runtime_model_dir_fn": is_runtime_model_dir_fn,
+        "restart_vllm_runtime_fn": restart_vllm_runtime_fn,
+        "get_active_llm_runtime_fn": get_active_llm_runtime_fn,
+        "deploy_adapter_to_vllm_runtime_fn": deploy_adapter_to_vllm_runtime_fn,
+    }
 
 
 def _rollback_active_adapter(*, mgr: Any, adapter_id: str) -> None:

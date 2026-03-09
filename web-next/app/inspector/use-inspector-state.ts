@@ -76,34 +76,72 @@ async function renderMermaidSource(
 
 function diagramFromFlow(flow: Awaited<ReturnType<typeof fetchFlowTrace>>, defaultDiagram: string) {
   const flowSteps = (flow?.steps || []) as HistoryStep[];
-  const diagramSource =
-    flow?.mermaid_diagram && flow.mermaid_diagram.trim().length > 0
-      ? flow.mermaid_diagram
-      : flowSteps.length > 0
-        ? buildSequenceDiagram(flow)
-        : defaultDiagram;
+  let diagramSource = defaultDiagram;
+  const flowDiagram = flow?.mermaid_diagram;
+  if (flowDiagram && flowDiagram.trim().length > 0) {
+    diagramSource = flowDiagram;
+  } else if (flowSteps.length > 0) {
+    diagramSource = buildSequenceDiagram(flow);
+  }
   return { flowSteps, diagramSource };
 }
 
+type HistorySelectionSetters = {
+  setDiagramLoading: (value: boolean) => void;
+  setDetailError: (value: string | null) => void;
+  setSelectedId: (value: string) => void;
+  setSteps: (value: HistoryStep[]) => void;
+  setFocusedIndex: (value: number | null) => void;
+  setStepFilter: (value: string) => void;
+  setCopyMessage: (value: string | null) => void;
+  setMermaidError: (value: string | null) => void;
+};
+
 function resetHistorySelectionState(
   requestId: string,
-  setDiagramLoading: (value: boolean) => void,
-  setDetailError: (value: string | null) => void,
-  setSelectedId: (value: string) => void,
-  setSteps: (value: HistoryStep[]) => void,
-  setFocusedIndex: (value: number | null) => void,
-  setStepFilter: (value: string) => void,
-  setCopyMessage: (value: string | null) => void,
-  setMermaidError: (value: string | null) => void,
+  setters: HistorySelectionSetters,
 ) {
-  setDiagramLoading(true);
-  setDetailError(null);
-  setSelectedId(requestId);
-  setSteps([]);
-  setFocusedIndex(null);
-  setStepFilter("");
-  setCopyMessage(null);
-  setMermaidError(null);
+  setters.setDiagramLoading(true);
+  setters.setDetailError(null);
+  setters.setSelectedId(requestId);
+  setters.setSteps([]);
+  setters.setFocusedIndex(null);
+  setters.setStepFilter("");
+  setters.setCopyMessage(null);
+  setters.setMermaidError(null);
+}
+
+type HistorySelectionResult = {
+  steps: HistoryStep[];
+  diagram: string;
+};
+
+async function loadHistorySelectionResult(
+  requestId: string,
+  defaultDiagram: string,
+): Promise<HistorySelectionResult> {
+  const flow = await fetchFlowTraceWithTimeout(requestId, FLOW_TRACE_TIMEOUT_MS);
+  if (!flow) {
+    throw new Error("Flow trace response is empty");
+  }
+  const { flowSteps, diagramSource } = diagramFromFlow(flow, defaultDiagram);
+  return { steps: flowSteps, diagram: diagramSource };
+}
+
+async function loadHistorySelectionFallback(
+  requestId: string,
+  defaultDiagram: string,
+  fallbackDiagram: string,
+): Promise<HistorySelectionResult> {
+  const detail = await fetchHistoryDetail(requestId);
+  if (!detail) {
+    throw new Error("History detail response is empty");
+  }
+  const detailSteps = detail.steps || [];
+  if (detailSteps.length === 0) {
+    return { steps: [], diagram: fallbackDiagram };
+  }
+  return { steps: detailSteps, diagram: buildFlowchartDiagram(detailSteps) || defaultDiagram };
 }
 
 export function useInspectorState(t: Translator) {
@@ -375,26 +413,32 @@ export function useInspectorState(t: Translator) {
       currentDiagramRequestRef.current = requestId;
       resetHistorySelectionState(
         requestId,
-        setDiagramLoading,
-        setDetailError,
-        setSelectedId,
-        setSteps,
-        setFocusedIndex,
-        setStepFilter,
-        setCopyMessage,
-        setMermaidError,
+        {
+          setDiagramLoading,
+          setDetailError,
+          setSelectedId,
+          setSteps,
+          setFocusedIndex,
+          setStepFilter,
+          setCopyMessage,
+          setMermaidError,
+        },
       );
 
       const isStale = () => activeSelectSeqRef.current !== seq;
+      const applyResult = (result: HistorySelectionResult) => {
+        setSteps(result.steps);
+        setDiagram(result.diagram);
+      };
+      const fallbackDiagram = t("inspector.panels.diagram.fallback");
+
       try {
-        const flow = await fetchFlowTraceWithTimeout(requestId, FLOW_TRACE_TIMEOUT_MS);
-        if (!flow) {
-          throw new Error("Flow trace response is empty");
-        }
+        const primaryResult = await loadHistorySelectionResult(
+          requestId,
+          defaultDiagram,
+        );
         if (isStale()) return;
-        const { flowSteps, diagramSource } = diagramFromFlow(flow, defaultDiagram);
-        setSteps(flowSteps);
-        setDiagram(diagramSource);
+        applyResult(primaryResult);
       } catch (flowError) {
         if (isStale()) return;
         console.error("Flow trace error:", flowError);
@@ -404,23 +448,17 @@ export function useInspectorState(t: Translator) {
             : t("inspector.panels.diagram.errorRender"),
         );
         try {
-          const detail = await fetchHistoryDetail(requestId);
-          if (!detail) {
-            throw new Error("History detail response is empty");
-          }
-          if (isStale()) return;
-          const detailSteps = detail.steps || [];
-          setSteps(detailSteps);
-          setDiagram(
-            detailSteps.length > 0
-              ? buildFlowchartDiagram(detailSteps)
-              : defaultDiagram,
+          const fallbackResult = await loadHistorySelectionFallback(
+            requestId,
+            defaultDiagram,
+            fallbackDiagram,
           );
+          if (isStale()) return;
+          applyResult(fallbackResult);
         } catch (historyError) {
           if (isStale()) return;
           console.error("Fallback detail error:", historyError);
-          setSteps([]);
-          setDiagram(t("inspector.panels.diagram.fallback"));
+          applyResult({ steps: [], diagram: fallbackDiagram });
         }
       } finally {
         if (!isStale()) {

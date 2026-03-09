@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, NoReturn, Optional, cast
 
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -25,6 +26,9 @@ from venom_core.api.schemas.academy import (
     TrainingRequest,
     TrainingResponse,
     UploadFileInfo,
+)
+from venom_core.services.academy.adapter_metadata_service import (
+    ADAPTER_NOT_FOUND_DETAIL,
 )
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 
@@ -73,6 +77,37 @@ def _error_detail_with_reason_code(
     return detail
 
 
+def _runtime_error_detail_with_reason_code(
+    exc: RuntimeError,
+    **context: str | None,
+) -> dict[str, str]:
+    raw_detail = str(exc).strip()
+    if ":" not in raw_detail:
+        return _error_detail_with_reason_code(
+            reason_code="ADAPTER_ACTIVATION_FAILED",
+            message=raw_detail,
+            **context,
+        )
+    reason_code, message = raw_detail.split(":", 1)
+    normalized_reason = reason_code.strip()
+    normalized_message = message.strip()
+    if (
+        not normalized_reason
+        or not normalized_message
+        or not normalized_reason.replace("_", "").isalnum()
+    ):
+        return _error_detail_with_reason_code(
+            reason_code="ADAPTER_ACTIVATION_FAILED",
+            message=raw_detail,
+            **context,
+        )
+    return _error_detail_with_reason_code(
+        reason_code=normalized_reason,
+        message=normalized_message,
+        **context,
+    )
+
+
 def _collect_scope_counts(
     *,
     curator: Any,
@@ -88,6 +123,65 @@ def _collect_scope_counts(
     if request.include_task_history:
         counts["task_history"] = curator.collect_from_task_history(max_tasks=100)
     return counts
+
+
+async def _resolve_training_models_for_request(
+    *,
+    request: TrainingRequest,
+    academy: Any,
+) -> tuple[str, str]:
+    base_model = academy.academy_training.ensure_trainable_base_model(
+        request_base_model=request.base_model,
+        is_model_trainable_fn=academy._is_model_trainable,
+    )
+    validate_runtime_pair = getattr(
+        academy.academy_training,
+        "validate_runtime_compatibility_for_base_model",
+        None,
+    )
+    if callable(validate_runtime_pair):
+        await validate_runtime_pair(
+            base_model=base_model,
+            runtime_id=request.runtime_id,
+            manager=academy._get_model_manager(),
+        )
+    resolve_training_base_model = getattr(
+        academy.academy_training,
+        "resolve_training_base_model",
+        None,
+    )
+    training_base_model = base_model
+    if callable(resolve_training_base_model):
+        training_base_model = await resolve_training_base_model(
+            base_model=base_model,
+            manager=academy._get_model_manager(),
+        )
+    if not str(training_base_model or "").strip():
+        raise ValueError(
+            "MODEL_TRAINING_BASE_UNRESOLVED: Failed to resolve concrete training base model"
+        )
+    return base_model, str(training_base_model)
+
+
+def _request_runtime_base_context(request: TrainingRequest) -> dict[str, str | None]:
+    return {
+        "requested_runtime_id": str(getattr(request, "runtime_id", "") or "").strip()
+        or None,
+        "requested_base_model": str(getattr(request, "base_model", "") or "").strip()
+        or None,
+    }
+
+
+def _mark_training_start_failed(*, academy: Any, job_id: str, exc: Exception) -> None:
+    academy._update_job_in_history(
+        job_id,
+        {
+            "status": "failed",
+            "finished_at": datetime.now().isoformat(),
+            "error": str(exc),
+            "error_code": "TRAINING_START_FAILED",
+        },
+    )
 
 
 def curate_dataset_handler(
@@ -184,6 +278,7 @@ async def start_training_handler(
     req: Request,
     academy: Any,
 ) -> TrainingResponse:
+    request_context = _request_runtime_base_context(request)
     try:
         academy._ensure_academy_enabled()
         academy.require_localhost_request(req)
@@ -204,21 +299,10 @@ async def start_training_handler(
             academy_training_dir=SETTINGS.ACADEMY_TRAINING_DIR,
             dataset_required_detail=academy.DATASET_REQUIRED_DETAIL,
         )
-        base_model = academy.academy_training.ensure_trainable_base_model(
-            request_base_model=request.base_model,
-            is_model_trainable_fn=academy._is_model_trainable,
+        base_model, training_base_model = await _resolve_training_models_for_request(
+            request=request,
+            academy=academy,
         )
-        validate_runtime_pair = getattr(
-            academy.academy_training,
-            "validate_runtime_compatibility_for_base_model",
-            None,
-        )
-        if callable(validate_runtime_pair):
-            await validate_runtime_pair(
-                base_model=base_model,
-                runtime_id=request.runtime_id,
-                manager=academy._get_model_manager(),
-            )
 
         job_id = f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         output_dir = Path(SETTINGS.ACADEMY_MODELS_DIR) / job_id
@@ -229,6 +313,7 @@ async def start_training_handler(
             base_model=base_model,
             output_dir=output_dir,
             request=request,
+            training_base_model=training_base_model,
         )
         job_id = str(job_record["job_id"])
         academy._save_job_to_history(job_record)
@@ -237,7 +322,7 @@ async def start_training_handler(
         try:
             job_info = habitat.run_training_job(
                 dataset_path=dataset_path,
-                base_model=base_model,
+                base_model=training_base_model,
                 output_dir=str(output_dir),
                 lora_rank=request.lora_rank,
                 learning_rate=request.learning_rate,
@@ -247,15 +332,7 @@ async def start_training_handler(
                 job_name=job_id,
             )
         except Exception as e:
-            academy._update_job_in_history(
-                job_id,
-                {
-                    "status": "failed",
-                    "finished_at": datetime.now().isoformat(),
-                    "error": str(e),
-                    "error_code": "TRAINING_START_FAILED",
-                },
-            )
+            _mark_training_start_failed(academy=academy, job_id=job_id, exc=e)
             raise
 
         academy._update_job_in_history(
@@ -281,14 +358,7 @@ async def start_training_handler(
             status_code=400,
             detail=_value_error_detail_with_reason_code(
                 e,
-                requested_runtime_id=str(
-                    getattr(request, "runtime_id", "") or ""
-                ).strip()
-                or None,
-                requested_base_model=str(
-                    getattr(request, "base_model", "") or ""
-                ).strip()
-                or None,
+                **request_context,
             ),
         ) from e
     except HTTPException:
@@ -300,14 +370,7 @@ async def start_training_handler(
             detail=_error_detail_with_reason_code(
                 reason_code="TRAINING_START_FAILED",
                 message=f"Failed to start training: {str(e)}",
-                requested_runtime_id=str(
-                    getattr(request, "runtime_id", "") or ""
-                ).strip()
-                or None,
-                requested_base_model=str(
-                    getattr(request, "base_model", "") or ""
-                ).strip()
-                or None,
+                **request_context,
             ),
         ) from e
 
@@ -561,7 +624,7 @@ async def activate_adapter_handler(
             request=request,
             requested_runtime_id=requested_runtime_id,
         )
-        return _activate_adapter(
+        return await _activate_adapter(
             academy=academy,
             manager=manager,
             request=request,
@@ -608,7 +671,7 @@ async def _prepare_adapter_activation(
     )
 
 
-def _activate_adapter(
+async def _activate_adapter(
     *,
     academy: Any,
     manager: Any,
@@ -617,7 +680,8 @@ def _activate_adapter(
     runtime_id: str,
     model_id: str,
 ) -> Dict[str, Any]:
-    return academy.academy_models.activate_adapter(
+    return await asyncio.to_thread(
+        academy.academy_models.activate_adapter,
         mgr=manager,
         adapter_id=adapter_id,
         runtime_id=runtime_id or None,
@@ -633,7 +697,7 @@ def _raise_adapter_activation_http_exception(
     adapter_id: str,
     requested_runtime_id: str,
     requested_model_id: str,
-) -> None:
+) -> NoReturn:
     context = {
         "adapter_id": adapter_id or None,
         "requested_runtime_id": requested_runtime_id or None,
@@ -647,15 +711,23 @@ def _raise_adapter_activation_http_exception(
             detail=_value_error_detail_with_reason_code(exc, **context),
         ) from exc
     if isinstance(exc, FileNotFoundError):
-        raise HTTPException(status_code=404, detail="Adapter not found") from None
-    if isinstance(exc, RuntimeError):
+        message = str(exc).strip() or ADAPTER_NOT_FOUND_DETAIL
+        if message == ADAPTER_NOT_FOUND_DETAIL:
+            raise HTTPException(
+                status_code=404, detail=ADAPTER_NOT_FOUND_DETAIL
+            ) from None
         raise HTTPException(
             status_code=500,
             detail=_error_detail_with_reason_code(
-                reason_code="ADAPTER_ACTIVATION_FAILED",
-                message=str(exc),
+                reason_code="ADAPTER_RUNTIME_DEPLOY_ARTIFACT_MISSING",
+                message=message,
                 **context,
             ),
+        ) from exc
+    if isinstance(exc, RuntimeError):
+        raise HTTPException(
+            status_code=500,
+            detail=_runtime_error_detail_with_reason_code(exc, **context),
         ) from exc
     if isinstance(exc, HTTPException):
         raise exc

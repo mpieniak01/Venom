@@ -7,6 +7,7 @@ tests/api/test_memory_openapi_contract.py
 tests/api/test_system_api.py
 tests/api/test_system_api_dynamic.py
 tests/security/test_autonomy_enforcement.py
+tests/test_academy_adapter_runtime_service.py
 tests/test_academy_api.py
 tests/test_academy_api_contracts.py
 tests/test_academy_api_dataset_edge_cases.py
@@ -193,6 +194,7 @@ tests/test_llm_server_controller.py
 tests/test_llm_server_selection.py
 tests/test_llm_simple_logic.py
 tests/test_llm_simple_payload_service.py
+tests/test_llm_simple_route_model_resolution.py
 tests/test_llm_simple_stream.py
 tests/test_logger_utils.py
 tests/test_main_internal_helpers.py

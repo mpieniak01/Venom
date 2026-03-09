@@ -246,6 +246,21 @@ def test_runtime_model_payload_contains_alias_and_canonical_for_gemma() -> None:
     assert "gemma-3-4b-it" in payload["aliases"]
     assert payload["ownership_status"] == "unknown"
     assert payload["compatible_runtimes"] == []
+    assert payload["model_kind"] == "base_model"
+    assert payload["is_adapter_artifact"] is False
+
+
+def test_runtime_model_payload_marks_adapter_artifact() -> None:
+    payload = system_llm._runtime_model_payload(  # noqa: SLF001
+        runtime_id="ollama",
+        model_id="venom-adapter-self_learning_123:latest",
+        name="venom-adapter-self_learning_123:latest",
+        provider="ollama",
+        active=False,
+        source_type="local-runtime",
+    )
+    assert payload["model_kind"] == "adapter_artifact"
+    assert payload["is_adapter_artifact"] is True
 
 
 def test_build_model_catalog_enriches_compatible_runtimes() -> None:
@@ -273,6 +288,33 @@ def test_build_model_catalog_enriches_compatible_runtimes() -> None:
         trainable_models=trainable_models,
     )
     assert catalog["all_models"][0]["compatible_runtimes"] == ["vllm"]
+
+
+def test_build_model_catalog_inference_artifacts_come_from_explicit_flag() -> None:
+    runtime_targets = [
+        {
+            "runtime_id": "ollama",
+            "models": [
+                {
+                    "name": "gemma3:4b",
+                    "is_adapter_artifact": False,
+                    "chat_compatible": True,
+                },
+                {
+                    "name": "venom-adapter-self_learning_abc:latest",
+                    "is_adapter_artifact": True,
+                    "chat_compatible": True,
+                },
+            ],
+        }
+    ]
+    catalog = system_llm._build_model_catalog(  # noqa: SLF001
+        runtime_targets=runtime_targets,
+        trainable_models=[],
+    )
+    assert [item["name"] for item in catalog["inference_only_artifacts"]] == [
+        "venom-adapter-self_learning_abc:latest"
+    ]
 
 
 def test_runtime_target_payload_contains_adapter_deploy_capability() -> None:

@@ -4,6 +4,8 @@ import json
 import os
 import shutil
 import subprocess
+import urllib.error
+import urllib.request
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -127,6 +129,43 @@ DOCKER_AVAILABLE = _has_docker()
 DOCKER_COMPOSE_AVAILABLE = _has_docker_compose()
 
 
+def _stack_state() -> tuple[str, str]:
+    """
+    Zwraca (state, reason_code):
+    - ready
+    - stack_not_started
+    - stack_degraded
+    """
+    # 197B policy: tests oznaczone `requires_stack` muszą rozróżniać
+    # brak stacka od degradacji runtime i mapować oba przypadki na skip.
+
+    base_url = os.environ.get("VENOM_TEST_STACK_BASE", "http://127.0.0.1:8000").rstrip(
+        "/"
+    )
+    health_url = f"{base_url}/healthz"
+    active_url = f"{base_url}/api/v1/system/llm-servers/active"
+
+    try:
+        with urllib.request.urlopen(health_url, timeout=1.5) as response:
+            if response.status >= 500:
+                return ("stack_not_started", "stack_not_started")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return ("stack_not_started", "stack_not_started")
+
+    try:
+        with urllib.request.urlopen(active_url, timeout=1.5) as response:
+            if response.status >= 500:
+                return ("stack_degraded", "stack_degraded")
+            payload = json.loads(response.read().decode("utf-8") or "{}")
+            active_model = str(payload.get("active_model") or "").strip()
+            if not active_model:
+                return ("stack_degraded", "runtime_model_unavailable")
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        return ("stack_degraded", "stack_degraded")
+
+    return ("ready", "ready")
+
+
 def _resolve_skip_marker(item, *, run_integration: bool):
     if "requires_docker_compose" in item.keywords and not DOCKER_COMPOSE_AVAILABLE:
         return pytest.mark.skip(reason="pomijam - Docker Compose nie jest dostępny")
@@ -136,6 +175,11 @@ def _resolve_skip_marker(item, *, run_integration: bool):
         return pytest.mark.skip(
             reason="pomijam testy integracyjne (użyj --run-integration aby uruchomić)"
         )
+    if "requires_stack" in item.keywords:
+        # Kontrakt: dla testów zależnych od stacka brak precondition => skip (nie fail).
+        stack_state, reason_code = _stack_state()
+        if stack_state != "ready":
+            return pytest.mark.skip(reason=f"pomijam - stack niegotowy ({reason_code})")
     return None
 
 
@@ -159,6 +203,10 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "integration: test integracyjny wymagający dodatkowych zależności (uruchamiany tylko z --run-integration)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_stack: test wymaga uruchomionego stacka i gotowego modelu czatu (w przeciwnym razie skip)",
     )
 
 

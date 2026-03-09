@@ -1,6 +1,109 @@
 import { expect, Page, Route, test } from "@playwright/test";
+import { ensureChatRuntimeReadyOrSkip } from "./utils/chat-runtime-readiness";
 
 const emptyJson = JSON.stringify([]);
+
+const registerRuntimeContractRoutes = async (
+  page: Page,
+  {
+    runtimeId = "ollama",
+    modelName = "gemma2:2b",
+  }: { runtimeId?: string; modelName?: string } = {},
+) => {
+  await page.route("**/api/v1/system/llm-runtime/options**", async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "success",
+        active: {
+          runtime_id: runtimeId,
+          active_server: runtimeId,
+          active_model: modelName,
+          active_endpoint: "http://127.0.0.1:11434/v1",
+          config_hash: "test-hash",
+          source_type: "local-runtime",
+        },
+        runtimes: [
+          {
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            configured: true,
+            available: true,
+            status: "online",
+            reason: null,
+            active: true,
+            adapter_deploy_supported: true,
+            adapter_deploy_mode: "ollama_modelfile",
+            supports_native_training: false,
+            supports_adapter_import_safetensors: true,
+            supports_adapter_import_gguf: true,
+            supports_adapter_runtime_apply: true,
+            models: [
+              {
+                id: modelName,
+                name: modelName,
+                provider: runtimeId.toLowerCase(),
+                runtime_id: runtimeId,
+                source_type: "local-runtime",
+                active: true,
+                chat_compatible: true,
+                canonical_model_id: "gemma-2-2b-it",
+              },
+            ],
+          },
+        ],
+        model_catalog: {
+          all_models: [{
+            id: modelName,
+            name: modelName,
+            provider: runtimeId.toLowerCase(),
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            active: true,
+            chat_compatible: true,
+            canonical_model_id: "gemma-2-2b-it",
+          }],
+          chat_models: [{
+            id: modelName,
+            name: modelName,
+            provider: runtimeId.toLowerCase(),
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            active: true,
+            chat_compatible: true,
+            canonical_model_id: "gemma-2-2b-it",
+          }],
+          runtime_servable_models: [{
+            id: modelName,
+            name: modelName,
+            provider: runtimeId.toLowerCase(),
+            runtime_id: runtimeId,
+            source_type: "local-runtime",
+            active: true,
+            chat_compatible: true,
+            canonical_model_id: "gemma-2-2b-it",
+          }],
+        },
+      }),
+    });
+  });
+  await page.route("**/api/v1/system/llm-servers/active**", async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "success",
+        active_server: runtimeId,
+        active_model: modelName,
+        active_endpoint: "http://127.0.0.1:11434/v1",
+        config_hash: "test-hash",
+        runtime_id: runtimeId,
+        source_type: "local-runtime",
+      }),
+    });
+  });
+};
 
 const registerBaseRoutes = async (page: Page) => {
   await page.addInitScript(() => {
@@ -93,6 +196,7 @@ const registerBaseRoutes = async (page: Page) => {
       body: JSON.stringify({ providers: {} }),
     });
   });
+  await registerRuntimeContractRoutes(page);
 };
 
 type MockPayload = {
@@ -229,6 +333,7 @@ test.describe("Chat context icons", () => {
       undefined,
       { timeout: 10000 },
     );
+    if (!(await ensureChatRuntimeReadyOrSkip(page))) return;
     const chatHistory = page.getByTestId("cockpit-chat-history");
     await chatHistory.scrollIntoViewIfNeeded();
     await page.getByTestId("cockpit-prompt-input").fill("Sprawdz ikony");
@@ -289,6 +394,7 @@ test.describe("Chat context icons", () => {
       undefined,
       { timeout: 10000 },
     );
+    if (!(await ensureChatRuntimeReadyOrSkip(page))) return;
     const chatHistory = page.getByTestId("cockpit-chat-history");
     await chatHistory.scrollIntoViewIfNeeded();
     await page.getByTestId("cockpit-prompt-input").fill("Sprawdz brak ikon");

@@ -25,6 +25,7 @@ from .trainable_catalog_service import (
 )
 
 ADAPTER_RUNTIME_INCOMPATIBLE = "ADAPTER_RUNTIME_INCOMPATIBLE"
+_RUNTIME_ADAPTER_MODEL_PREFIX = "venom-adapter-"
 
 
 def _get_settings() -> Any:
@@ -80,6 +81,10 @@ def _evaluate_adapter_audit_status(
         )
 
     if runtime_local_id and selected_model_canonical:
+        # Runtime adapter exports are specialized runtime models; for audit purposes
+        # they are treated as compatible with adapter selection flow.
+        if selected_model.lower().startswith(_RUNTIME_ADAPTER_MODEL_PREFIX):
+            return category, reason_code, message
         base_canonical = _canonical_runtime_model_id(base_model)
         if base_canonical and base_canonical != selected_model_canonical:
             return (
@@ -141,7 +146,9 @@ async def validate_adapter_runtime_compatibility(
             f"got '{runtime_id}'."
         )
 
-    models_dir = Path(settings.ACADEMY_MODELS_DIR).resolve()
+    from venom_core.services.academy import adapter_runtime_service as _runtime_service
+
+    models_dir = _runtime_service._resolve_academy_models_dir(settings_obj=settings)
     adapter_dir = _resolve_adapter_dir(models_dir=models_dir, adapter_id=adapter_id)
     _require_existing_adapter_artifact(adapter_dir=adapter_dir)
     base_model = _require_trusted_adapter_base_model(
@@ -208,6 +215,8 @@ async def _assert_selected_runtime_model_compatible_with_adapter_base(
     selected_canonical = _canonical_runtime_model_id(selected_model)
     base_canonical = _canonical_runtime_model_id(base_model)
     if selected_model.lower() == adapter_runtime_model:
+        return
+    if selected_model.lower().startswith(_RUNTIME_ADAPTER_MODEL_PREFIX):
         return
     if selected_canonical == base_canonical:
         return

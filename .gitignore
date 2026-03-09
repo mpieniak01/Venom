@@ -98,6 +98,7 @@ web-next/.vercel/
 web-next/test-results/
 web-next/playwright-report/
 web-next/public/test/
+web-next/optional-modules/
 
 # runtime pid files
 .web-next.pid
@@ -111,6 +112,7 @@ locustfile.pyc
 # misc
 next-dev.log
 .pre-commit-cache/
+tools/
 
 # Local runtime artifacts
 :memory:
@@ -130,5 +132,6 @@ data/training/
 
 # Academy self-learning runtime artifacts
 data/academy/self_learning/
+data/_trash/
 MagicMock*/
 <MagicMock*/

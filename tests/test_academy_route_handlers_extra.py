@@ -412,6 +412,7 @@ async def test_start_training_handler_maps_runtime_error_to_structured_http_500(
         resolve_dataset_path=Mock(return_value="dataset.jsonl"),
         ensure_trainable_base_model=Mock(return_value="gemma-3-4b-it"),
         validate_runtime_compatibility_for_base_model=AsyncMock(return_value=None),
+        resolve_training_base_model=AsyncMock(return_value="google/gemma-3-4b-it"),
         build_job_record=Mock(
             return_value={
                 "job_id": "training_20260307_000000",
@@ -447,6 +448,13 @@ async def test_start_training_handler_maps_runtime_error_to_structured_http_500(
         "requested_runtime_id": "ollama",
         "requested_base_model": "gemma-3-4b-it",
     }
+    academy.academy_training.build_job_record.assert_called_once()
+    assert (
+        academy.academy_training.build_job_record.call_args.kwargs[
+            "training_base_model"
+        ]
+        == "google/gemma-3-4b-it"
+    )
 
 
 @pytest.mark.asyncio

@@ -43,6 +43,15 @@ function shouldUseSimpleMode(
   );
 }
 
+export function resolveEffectiveChatModelSelection(
+  selectedLlmModel: string,
+  activeModel: string | null | undefined,
+): string {
+  const selected = (selectedLlmModel || "").trim();
+  if (selected) return selected;
+  return String(activeModel || "").trim();
+}
+
 async function syncTargetServerIfNeeded(params: {
   selectedLlmServer: string;
   selectedLlmModel: string;
@@ -148,7 +157,11 @@ export function useChatSend(params: ChatSendParams) {
       setMessage(t("cockpit.chatMessages.emptyPrompt"));
       return false;
     }
-    if (selectedLlmServer && !selectedLlmModel) {
+    const effectiveSelectedModel = resolveEffectiveChatModelSelection(
+      selectedLlmModel,
+      activeServerInfo?.active_model,
+    );
+    if (selectedLlmServer && !effectiveSelectedModel) {
       setMessage(t("cockpit.chatMessages.modelSelectionRequired"));
       return false;
     }
@@ -156,7 +169,7 @@ export function useChatSend(params: ChatSendParams) {
     const switchResult = await handleRuntimeSwitch({
       parsed,
       activeServerInfo,
-      selectedLlmModel,
+      selectedLlmModel: effectiveSelectedModel,
       setActiveLlmRuntime,
       refreshActiveServer,
       setMessage,
@@ -175,7 +188,7 @@ export function useChatSend(params: ChatSendParams) {
 
     const serverOk = await syncTargetServerIfNeeded({
       selectedLlmServer,
-      selectedLlmModel,
+      selectedLlmModel: effectiveSelectedModel,
       activeServerInfo,
       setActiveLlmRuntime,
       setActiveLlmServer,
@@ -186,7 +199,7 @@ export function useChatSend(params: ChatSendParams) {
     if (!serverOk) return false;
     const modelOk = await ensureSelectedModelIsActive({
       activeServerInfo,
-      selectedLlmModel,
+      selectedLlmModel: effectiveSelectedModel,
       ensureModelActive,
       setMessage,
       t,
@@ -236,7 +249,7 @@ export function useChatSend(params: ChatSendParams) {
       trimmed,
       resolvedSession,
       generationParams,
-      selectedLlmModel,
+      selectedLlmModel: effectiveSelectedModel,
       activeServerInfo,
       sendSimpleChatStream,
       linkOptimisticRequest,

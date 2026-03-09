@@ -13,8 +13,9 @@ from fastapi import HTTPException
 from venom_core.api.schemas.academy import AcademyJobSummary
 from venom_core.services.academy.trainable_catalog_service import (
     _canonical_runtime_model_id,
+    assess_runtime_base_model_compatibility,
     discover_runtime_model_families,
-    resolve_runtime_compatibility,
+    resolve_effective_training_base_model,
 )
 
 
@@ -71,17 +72,6 @@ def ensure_trainable_base_model(
     return base_model
 
 
-def _infer_training_provider(model_id: str) -> str:
-    normalized = model_id.strip().lower()
-    if ":" in normalized:
-        return "ollama"
-    if normalized.startswith("unsloth/"):
-        return "unsloth"
-    if "/" in normalized:
-        return "huggingface"
-    return "unknown"
-
-
 async def validate_runtime_compatibility_for_base_model(
     *,
     base_model: str,
@@ -99,31 +89,64 @@ async def validate_runtime_compatibility_for_base_model(
         except Exception:
             local_models = []
         runtime_model_families = discover_runtime_model_families(local_models)
-    compatibility = resolve_runtime_compatibility(
-        provider=_infer_training_provider(base_model),
+    assessment = assess_runtime_base_model_compatibility(
+        base_model=base_model,
+        runtime_id=normalized_runtime_id,
         available_runtime_ids=["vllm", "ollama", "onnx"],
-        model_metadata={"name": base_model},
-        model_id=base_model,
         runtime_model_families=runtime_model_families,
     )
-    if compatibility.get(normalized_runtime_id):
+    if assessment["is_compatible"]:
         return
-    compatible_runtimes = [
-        runtime for runtime, allowed in compatibility.items() if bool(allowed)
-    ]
+    compatible_runtimes = list(assessment["compatible_runtimes"])
+    reason_code = str(assessment["reason_code"] or "MODEL_RUNTIME_INCOMPATIBLE")
     raise HTTPException(
         status_code=400,
         detail={
-            "error": "MODEL_RUNTIME_INCOMPATIBLE",
+            "error": reason_code,
             "message": (
-                f"Model '{base_model}' is incompatible with runtime "
-                f"'{normalized_runtime_id}'."
+                f"Model '{base_model}' is incompatible with runtime '{normalized_runtime_id}'."
+                if reason_code == "MODEL_RUNTIME_INCOMPATIBLE"
+                else f"Model '{base_model}' does not expose compatible local runtime targets."
             ),
-            "reason_code": "MODEL_RUNTIME_INCOMPATIBLE",
+            "reason_code": reason_code,
             "requested_runtime_id": normalized_runtime_id,
             "requested_base_model": base_model,
             "effective_base_model": _canonical_runtime_model_id(base_model),
             "compatible_runtimes": compatible_runtimes,
+        },
+    )
+
+
+async def resolve_training_base_model(
+    *,
+    base_model: str,
+    manager: Any | None = None,
+) -> str:
+    """Resolve selected training model to concrete local HF path or canonical repo id."""
+    local_models: list[dict[str, Any]] = []
+    if manager is not None and hasattr(manager, "list_local_models"):
+        try:
+            fetched = await manager.list_local_models()
+            if isinstance(fetched, list):
+                local_models = [item for item in fetched if isinstance(item, dict)]
+        except Exception:
+            local_models = []
+    resolved = resolve_effective_training_base_model(
+        base_model,
+        local_models=local_models,
+    )
+    if str(resolved).strip():
+        return resolved
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "error": "MODEL_TRAINING_BASE_UNRESOLVED",
+            "message": (
+                f"Failed to resolve concrete training base for model '{base_model}'. "
+                "Select a valid trainable base model."
+            ),
+            "reason_code": "MODEL_TRAINING_BASE_UNRESOLVED",
+            "requested_base_model": base_model,
         },
     )
 
@@ -134,6 +157,7 @@ def build_job_record(
     base_model: str,
     output_dir: Path,
     request: Any,
+    training_base_model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create queued training-job record persisted in history."""
     job_id = f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -147,6 +171,7 @@ def build_job_record(
             "requested_base_model": base_model,
             "effective_runtime_id": getattr(request, "runtime_id", None),
             "effective_base_model": base_model,
+            "training_base_model": training_base_model or base_model,
             "runtime_id": getattr(request, "runtime_id", None),
             "lora_rank": request.lora_rank,
             "learning_rate": request.learning_rate,

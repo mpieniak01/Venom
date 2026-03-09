@@ -9,10 +9,12 @@ import { getApiBaseUrl } from "./env";
 
 type StructuredAcademyErrorDetail = {
   message?: unknown;
+  reason_code?: unknown;
   adapter_id?: unknown;
   requested_runtime_id?: unknown;
   requested_base_model?: unknown;
   requested_model_id?: unknown;
+  compatible_runtimes?: unknown;
 };
 
 export interface DatasetStats {
@@ -257,20 +259,30 @@ export async function activateAdapter(params: {
 /**
  * Dezaktywacja adaptera (rollback do modelu bazowego)
  */
-export async function deactivateAdapter(): Promise<{
+export async function deactivateAdapter(params?: {
+  deploy_to_chat_runtime?: boolean;
+}): Promise<{
   success: boolean;
   message: string;
   rolled_back?: boolean;
   runtime_id?: string;
   chat_model?: string;
 }> {
+  const query = new URLSearchParams();
+  if (typeof params?.deploy_to_chat_runtime === "boolean") {
+    query.set("deploy_to_chat_runtime", String(params.deploy_to_chat_runtime));
+  }
+  const queryString = query.toString();
+  const url = queryString
+    ? `/api/v1/academy/adapters/deactivate?${queryString}`
+    : "/api/v1/academy/adapters/deactivate";
   return apiFetch<{
     success: boolean;
     message: string;
     rolled_back?: boolean;
     runtime_id?: string;
     chat_model?: string;
-  }>("/api/v1/academy/adapters/deactivate", {
+  }>(url, {
     method: "POST",
   });
 }
@@ -356,6 +368,8 @@ export interface RuntimeCatalogModelInfo {
   owned_by_runtime?: string | null;
   ownership_status?: "native" | "foreign" | "unknown";
   compatible_runtimes?: string[];
+  model_kind?: "base_model" | "adapter_artifact";
+  is_adapter_artifact?: boolean;
 }
 
 export interface UnifiedModelCatalogResponse {
@@ -471,25 +485,43 @@ type ParsedErrorBody = {
   errors?: unknown;
 };
 
-function formatStructuredAcademyErrorDetail(detail: StructuredAcademyErrorDetail): string | null {
-  const message = typeof detail.message === "string" ? detail.message.trim() : "";
-  if (!message) return null;
-  const adapterId =
-    typeof detail.adapter_id === "string" ? detail.adapter_id.trim() : "";
-  const requestedRuntime =
-    typeof detail.requested_runtime_id === "string" ? detail.requested_runtime_id.trim() : "";
-  const requestedBaseModel =
-    typeof detail.requested_base_model === "string" ? detail.requested_base_model.trim() : "";
-  const requestedModelId =
-    typeof detail.requested_model_id === "string" ? detail.requested_model_id.trim() : "";
-  if (!adapterId && !requestedRuntime && !requestedBaseModel && !requestedModelId) {
-    return message;
-  }
+function normalizeStructuredErrorField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function resolveStructuredErrorContext(detail: StructuredAcademyErrorDetail): {
+  contextParts: string[];
+  compatibleRuntimes: string[];
+} {
   const contextParts: string[] = [];
-  if (adapterId) contextParts.push(`adapter=${adapterId}`);
-  if (requestedRuntime) contextParts.push(`runtime=${requestedRuntime}`);
-  if (requestedBaseModel) contextParts.push(`base_model=${requestedBaseModel}`);
-  if (requestedModelId) contextParts.push(`model_id=${requestedModelId}`);
+  const fieldMap: Array<[string, unknown]> = [
+    ["adapter", detail.adapter_id],
+    ["runtime", detail.requested_runtime_id],
+    ["base_model", detail.requested_base_model],
+    ["model_id", detail.requested_model_id],
+  ];
+  for (const [label, value] of fieldMap) {
+    const normalized = normalizeStructuredErrorField(value);
+    if (normalized) {
+      contextParts.push(`${label}=${normalized}`);
+    }
+  }
+  const compatibleRuntimes = Array.isArray(detail.compatible_runtimes)
+    ? detail.compatible_runtimes
+        .map((value) => String(value || "").trim())
+        .filter((value) => value.length > 0)
+    : [];
+  return { contextParts, compatibleRuntimes };
+}
+
+function formatStructuredAcademyErrorDetail(detail: StructuredAcademyErrorDetail): string | null {
+  const message = normalizeStructuredErrorField(detail.message);
+  if (!message) return null;
+  const { contextParts, compatibleRuntimes } = resolveStructuredErrorContext(detail);
+  if (compatibleRuntimes.length > 0) {
+    contextParts.push(`compatible_runtimes=${compatibleRuntimes.join("|")}`);
+  }
+  if (contextParts.length === 0) return message;
   return `${message} (${contextParts.join(", ")})`;
 }
 

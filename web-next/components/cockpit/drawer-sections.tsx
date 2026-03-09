@@ -188,7 +188,10 @@ export function DiagnosticsSection({
 
 export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail: HistoryRequestDetail; t: (key: string, options?: Record<string, string | number>) => string }>) {
     const modelName = (historyDetail as HistoryRequestDetail & { model?: string | null }).model ?? historyDetail.llm_model ?? null;
-    if (!modelName && !historyDetail.llm_provider && !historyDetail.llm_endpoint && !historyDetail.llm_runtime_id) return null;
+    const adapterApplied = historyDetail.adapter_applied;
+    const adapterId = historyDetail.adapter_id ?? null;
+    const hasAdapterFlag = adapterApplied !== null && adapterApplied !== undefined;
+    if (!modelName && !historyDetail.llm_provider && !historyDetail.llm_endpoint && !historyDetail.llm_runtime_id && !hasAdapterFlag && !adapterId) return null;
 
     return (
         <div className="mt-4 rounded-2xl box-muted p-4">
@@ -225,6 +228,24 @@ export function ModelInfoSection({ historyDetail, t }: Readonly<{ historyDetail:
                         <span className="block truncate text-theme-muted">{t("cockpit.requestDetails.runtimeIdLabel")}</span>
                         <div className="text-sm text-theme-primary truncate font-mono" title={historyDetail.llm_runtime_id}>
                             {historyDetail.llm_runtime_id.slice(0, 8)}...
+                        </div>
+                    </div>
+                )}
+                {hasAdapterFlag && (
+                    <div className="overflow-hidden">
+                        <span className="block truncate text-theme-muted">{t("cockpit.requestDetails.adapterAppliedLabel")}</span>
+                        <div className="text-sm text-theme-primary truncate" title={String(adapterApplied)}>
+                            {adapterApplied
+                                ? t("cockpit.requestDetails.adapterAppliedYes")
+                                : t("cockpit.requestDetails.adapterAppliedNo")}
+                        </div>
+                    </div>
+                )}
+                {adapterId && (
+                    <div className="overflow-hidden">
+                        <span className="block truncate text-theme-muted">{t("cockpit.requestDetails.adapterIdLabel")}</span>
+                        <div className="text-sm text-theme-primary truncate font-mono" title={adapterId}>
+                            {adapterId}
                         </div>
                     </div>
                 )}

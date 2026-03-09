@@ -13,6 +13,15 @@ from venom_core.memory.memory_skill import MemorySkill
 from venom_core.memory.vector_store import VectorStore
 
 
+def _skip_if_embedding_fallback(memory_skill: MemorySkill) -> None:
+    """Skip tests that require real semantic embeddings when fallback mode is active."""
+    embedding_service = memory_skill.vector_store.embedding_service
+    # Trigger lazy load so fallback flag is resolved deterministically.
+    embedding_service.get_embedding("embedding availability probe")
+    if getattr(embedding_service, "_local_fallback_mode", False):
+        pytest.skip("Semantic assertions require loaded local embedding model.")
+
+
 @pytest.fixture
 def temp_db_path():
     """Fixture dla tymczasowej bazy danych."""
@@ -50,6 +59,7 @@ class TestRAGWorkflow:
 
     def test_memorize_and_recall_complex(self, memory_skill):
         """Test złożony: zapisz wiele informacji i wyszukaj właściwą."""
+        _skip_if_embedding_fallback(memory_skill)
         # Zapisz kilka różnych informacji
         memory_skill.memorize(
             "Python jest głównym językiem programowania w projekcie Venom",
@@ -180,6 +190,7 @@ class TestRAGWorkflow:
 
     def test_semantic_search_accuracy(self, memory_skill):
         """Test dokładności wyszukiwania semantycznego."""
+        _skip_if_embedding_fallback(memory_skill)
         # Zapisz informacje używając różnych sformułowań
         memory_skill.memorize(
             "Framework FastAPI jest używany do budowy REST API", category="tech"

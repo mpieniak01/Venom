@@ -92,4 +92,21 @@ describe("cockpit runtime model selection", () => {
       last_models: { ollama: "gemma3:latest", vllm: "phi3:mini" },
     });
   });
+
+  it("normalizes runtime_id with endpoint suffix from fallback to plain runtime id", () => {
+    const resolved = resolveCockpitActiveRuntimeInfo(
+      null,
+      {
+        active_server: "ollama",
+        active_model: "gemma2:2b",
+        runtime_id: "ollama@http://localhost:11434/v1",
+      },
+    );
+
+    assert.deepEqual(resolved, {
+      active_server: "ollama",
+      active_model: "gemma2:2b",
+      runtime_id: "ollama",
+    });
+  });
 });

@@ -70,7 +70,14 @@ logger.add(
     "<level>{message}</level>",
 )
 
-logger.add(LOG_DIR / "venom.log", rotation="10 MB")
+# Runtime log policy:
+# - rotate daily to keep single-file growth bounded in long-running dev sessions
+# - enforce 7-day retention as baseline maintenance contract
+logger.add(
+    LOG_DIR / "venom.log",
+    rotation="1 day",
+    retention="7 days",
+)
 
 # Dodaj custom sink dla live streaming
 logger.add(log_sink, format="{message}")

@@ -630,13 +630,39 @@ if CUDA_AVAILABLE:
 
 # Dodaj adapter LoRA
 print("\\n[2/5] Dodawanie adaptera LoRA...")
+def _select_lora_target_modules(model):
+    include_suffixes = {{"q_proj", "k_proj", "v_proj", "o_proj"}}
+    blocked_name_markers = (
+        "vision_tower",
+        "vision_model",
+        "multi_modal",
+        "multimodal",
+        "mm_projector",
+        "visual",
+    )
+    selected = []
+    for module_name, _module in model.named_modules():
+        suffix = module_name.rsplit(".", 1)[-1]
+        lowered = module_name.lower()
+        if suffix not in include_suffixes:
+            continue
+        if any(marker in lowered for marker in blocked_name_markers):
+            continue
+        selected.append(module_name)
+    # Keep explicit suffix fallback for architectures exposing only short canonical names.
+    if not selected:
+        return ["q_proj", "k_proj", "v_proj", "o_proj"]
+    return sorted(set(selected))
+
+target_modules = _select_lora_target_modules(model)
+print(f"Wybrane moduły LoRA: {{len(target_modules)}}")
 peft_config = LoraConfig(
     task_type=TaskType.CAUSAL_LM,
     inference_mode=False,
     r=LORA_RANK,
     lora_alpha=LORA_RANK * 2,
     lora_dropout=0.05,
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"] # Standard flan-t5/llama targets
+    target_modules=target_modules,
 )
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()

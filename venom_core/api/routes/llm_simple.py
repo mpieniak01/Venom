@@ -131,6 +131,46 @@ def _get_request_tracer():
     return system_deps.get_request_tracer()
 
 
+def _get_active_adapter_id() -> str | None:
+    manager = system_deps.get_model_manager()
+    if manager is None:
+        return None
+    getter = getattr(manager, "get_active_adapter_info", None)
+    if not callable(getter):
+        return None
+    try:
+        active = getter()
+    except Exception:
+        return None
+    if not isinstance(active, dict):
+        return None
+    adapter_id = str(active.get("adapter_id") or "").strip()
+    return adapter_id or None
+
+
+def _resolve_model_name_for_simple_request(
+    *,
+    request_model: str | None,
+    runtime_model: str | None,
+    active_adapter_id: str | None,
+) -> str:
+    requested = str(request_model or "").strip()
+    runtime_selected = str(runtime_model or "").strip()
+    adapter_prefix = "venom-adapter-"
+    runtime_is_adapter = runtime_selected.startswith(adapter_prefix)
+    request_is_adapter = requested.startswith(adapter_prefix)
+    if active_adapter_id:
+        expected_adapter_model = f"{adapter_prefix}{active_adapter_id}"
+        if request_is_adapter:
+            return requested
+        if runtime_is_adapter:
+            return runtime_selected
+        # Contract: when adapter is active, simple-mode should target adapter model,
+        # not silently fall back to base model.
+        return expected_adapter_model
+    return requested or runtime_selected
+
+
 def _call_tracer(request_tracer: Any, method_name: str, *args, **kwargs) -> bool:
     if not request_tracer:
         return False
@@ -159,6 +199,13 @@ def _trace_simple_request(
         session_id=request.session_id,
     ):
         return
+    adapter_prefix = "venom-adapter-"
+    adapter_applied = str(model_name or "").startswith(adapter_prefix)
+    adapter_id = (
+        str(model_name or "")[len(adapter_prefix) :].strip()
+        if adapter_applied
+        else None
+    )
     _call_tracer(
         request_tracer,
         "set_llm_metadata",
@@ -169,6 +216,8 @@ def _trace_simple_request(
         metadata={
             "config_hash": runtime.config_hash,
             "runtime_id": runtime.runtime_id,
+            "adapter_applied": adapter_applied,
+            "adapter_id": adapter_id,
         },
     )
     _call_tracer(request_tracer, "update_status", request_id, TraceStatus.PROCESSING)
@@ -853,7 +902,11 @@ async def _stream_simple_chunks_onnx(
 async def stream_simple_chat(request: SimpleChatRequest):
     await asyncio.sleep(0)
     runtime = get_active_llm_runtime()
-    model_name = request.model or runtime.model_name
+    model_name = _resolve_model_name_for_simple_request(
+        request_model=request.model,
+        runtime_model=runtime.model_name,
+        active_adapter_id=_get_active_adapter_id(),
+    )
     if not model_name:
         raise HTTPException(status_code=400, detail="Brak nazwy modelu LLM.")
     request_id: UUID = uuid4()

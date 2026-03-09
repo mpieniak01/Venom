@@ -38,6 +38,9 @@ _assert_runtime_model_available = _metadata_service._assert_runtime_model_availa
 _infer_local_runtime_provider = _metadata_service._infer_local_runtime_provider
 
 add_trainable_model_from_catalog = _catalog_service.add_trainable_model_from_catalog
+assess_runtime_base_model_compatibility = (
+    _catalog_service.assess_runtime_base_model_compatibility
+)
 build_model_label = _catalog_service.build_model_label
 classify_model_cost_tier = _catalog_service.classify_model_cost_tier
 classify_model_source_type = _catalog_service.classify_model_source_type
@@ -52,6 +55,9 @@ get_model_non_trainable_reason = _catalog_service.get_model_non_trainable_reason
 is_model_trainable = _catalog_service.is_model_trainable
 resolve_model_priority_bucket = _catalog_service.resolve_model_priority_bucket
 resolve_recommended_runtime = _catalog_service.resolve_recommended_runtime
+resolve_effective_training_base_model = (
+    _catalog_service.resolve_effective_training_base_model
+)
 resolve_runtime_compatibility = _catalog_service.resolve_runtime_compatibility
 
 _INITIAL_SETTINGS = SETTINGS
@@ -200,6 +206,21 @@ async def list_adapters(mgr: Any) -> List[AdapterInfo]:
     return await _management_service.list_adapters(
         mgr=mgr,
         settings_obj=_resolve_settings_for_call(),
+    )
+
+
+def purge_legacy_adapters(
+    *,
+    mgr: Any,
+    apply: bool = False,
+    include_active: bool = False,
+) -> Dict[str, Any]:
+    """Purge legacy adapters without canonical metadata."""
+    return _management_service.purge_legacy_adapters(
+        mgr=mgr,
+        settings_obj=_resolve_settings_for_call(),
+        apply=apply,
+        include_active=include_active,
     )
 
 

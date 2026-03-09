@@ -127,6 +127,18 @@ Rules:
 - adapters without canonical `metadata.json` are invalid artifacts and should be represented in tests as blocked/removed state, not repairable state,
 - Chat, Training, and Self-learning must all derive runtime/model selection from `/api/v1/system/llm-runtime/options`, not from separate hardcoded fixtures.
 
+Environment precondition skip contract (197B):
+
+- Test suites that require running services must classify environment state using reason codes:
+  - `stack_not_started`
+  - `stack_degraded`
+  - `runtime_model_unavailable`
+- `stack_not_started` and `stack_degraded` are precondition failures, not product regressions:
+  - E2E preflight must return skip-path (non-zero diagnostic state mapped to skip),
+  - functional E2E tests must skip when runtime/model is not ready,
+  - backend tests that require live stack must use `@pytest.mark.requires_stack` and skip when precondition is not met.
+- A red test (`fail`) is reserved for functional regression when preconditions are satisfied (`ready`).
+
 ### Level 3: PR quality gates (mandatory before merge)
 
 Goal: align with CI and Sonar expectations.

@@ -68,6 +68,7 @@ export const configLocale = {
         refresh: "Aktualisieren",
         refreshing: "Aktualisiere...",
         lastCheck: "Letzte Prüfung",
+        breakdown: "Verzeichnis-Aufschlüsselung",
         items: {
           llm_models: "LLM-Modelle",
           llm_cache: "Modell-Cache",
@@ -82,6 +83,8 @@ export const configLocale = {
           next_build: "Build: web-next/.next",
           node_modules: "Deps: node_modules",
           project_root: "Venom-Verzeichnis (Repo)",
+          project_other: "Repo: andere Verzeichnisse",
+          system_other: "System/außerhalb Repo",
           code_only: "Code (Repo, ohne Modelle/Deps/Daten)",
           dreaming: "Daten: Dreaming (Timelines)",
         },

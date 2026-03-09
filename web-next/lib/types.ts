@@ -54,6 +54,8 @@ export interface HistoryRequestDetail
     rating: "up" | "down";
     comment?: string | null;
   } | null;
+  adapter_applied?: boolean | null;
+  adapter_id?: string | null;
 }
 
 export interface HistoryStep {
@@ -131,6 +133,8 @@ export interface LlmRuntimeModelOption {
   owned_by_runtime?: string | null;
   ownership_status?: "native" | "foreign" | "unknown";
   compatible_runtimes?: string[];
+  model_kind?: "base_model" | "adapter_artifact";
+  is_adapter_artifact?: boolean;
 }
 
 export interface LlmRuntimeTargetOption {

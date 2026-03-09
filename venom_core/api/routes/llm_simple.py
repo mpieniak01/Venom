@@ -159,13 +159,15 @@ def _resolve_model_name_for_simple_request(
     adapter_prefix = "venom-adapter-"
     runtime_is_adapter = runtime_selected.startswith(adapter_prefix)
     request_is_adapter = requested.startswith(adapter_prefix)
-    if (
-        active_adapter_id
-        and runtime_is_adapter
-        and requested
-        and not request_is_adapter
-    ):
-        return runtime_selected
+    if active_adapter_id:
+        expected_adapter_model = f"{adapter_prefix}{active_adapter_id}"
+        if request_is_adapter:
+            return requested
+        if runtime_is_adapter:
+            return runtime_selected
+        # Contract: when adapter is active, simple-mode should target adapter model,
+        # not silently fall back to base model.
+        return expected_adapter_model
     return requested or runtime_selected
 
 

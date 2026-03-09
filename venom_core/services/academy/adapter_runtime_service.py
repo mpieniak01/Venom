@@ -33,6 +33,18 @@ _OLLAMA_GGUF_ADAPTER_CANDIDATES = (
     "Adapter-F16-LoRA.gguf",
     "Adapter-F32-LoRA.gguf",
 )
+_RUNTIME_ADAPTER_MODEL_PREFIX = "venom-adapter-"
+_CANONICAL_TO_OLLAMA_FROM_MODEL: Dict[str, str] = {
+    "gemma-2-2b-it": "gemma2:2b",
+    "gemma-3-4b-it": "gemma3:4b",
+    "gemma-3-1b-it": "gemma3:1b",
+    "phi-3-mini-4k-instruct": "phi3:mini",
+    "phi-3.5-mini-instruct": "phi3:mini",
+    "llama-3.2-1b-instruct": "llama3.2:1b",
+    "llama-3.2-3b-instruct": "llama3.2:3b",
+    "qwen/qwen2.5-coder-3b-instruct": "qwen2.5-coder:3b",
+    "qwen/qwen2.5-coder-7b-instruct": "qwen2.5-coder:7b",
+}
 
 
 def _get_settings() -> Any:
@@ -351,6 +363,17 @@ def _resolve_requested_runtime_model(model_id: str | None) -> str:
     return str(model_id or "").strip()
 
 
+def _resolve_ollama_from_model_alias(requested_model: str) -> str:
+    candidate = requested_model.strip()
+    if not candidate:
+        return ""
+    canonical = _canonical_runtime_model_id(candidate)
+    mapped = _CANONICAL_TO_OLLAMA_FROM_MODEL.get(canonical)
+    if mapped:
+        return mapped
+    return candidate
+
+
 def _resolve_ollama_create_from_model(
     *,
     adapter_dir: Path,
@@ -368,7 +391,7 @@ def _resolve_ollama_create_from_model(
         candidate = Path(training_base_model).expanduser().resolve()
         if is_runtime_model_dir_fn(candidate):
             return str(candidate), True
-    return requested_model, False
+    return _resolve_ollama_from_model_alias(requested_model), False
 
 
 def _resolve_hf_cache_snapshot_for_repo_id(
@@ -734,7 +757,14 @@ def _deploy_adapter_to_chat_runtime(
     adapter_base_model = deps["require_trusted_adapter_base_model_fn"](
         adapter_dir=adapter_dir,
     ).strip()
-    if adapter_base_model and requested_model:
+    requested_model_is_runtime_adapter = requested_model.lower().startswith(
+        _RUNTIME_ADAPTER_MODEL_PREFIX
+    )
+    if (
+        adapter_base_model
+        and requested_model
+        and not requested_model_is_runtime_adapter
+    ):
         adapter_canonical = deps["canonical_runtime_model_id_fn"](adapter_base_model)
         requested_canonical = deps["canonical_runtime_model_id_fn"](requested_model)
         if requested_canonical and requested_canonical != adapter_canonical:
@@ -752,9 +782,12 @@ def _deploy_adapter_to_chat_runtime(
             raise ValueError(f"ADAPTER_BASE_MODEL_MISMATCH: {message}")
 
     ollama_model_name = f"venom-adapter-{adapter_id}"
+    requested_from_model = (
+        adapter_base_model if requested_model_is_runtime_adapter else requested_model
+    )
     from_model, use_experimental = _resolve_ollama_create_from_model(
         adapter_dir=adapter_dir,
-        requested_model=requested_model,
+        requested_model=requested_from_model,
         is_runtime_model_dir_fn=deps["is_runtime_model_dir_fn"],
     )
     _ensure_ollama_adapter_gguf(

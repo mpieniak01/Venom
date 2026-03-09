@@ -1129,6 +1129,59 @@ async def test_validate_adapter_runtime_compatibility_rejects_missing_runtime_mo
             )
 
 
+@pytest.mark.asyncio
+@patch("venom_core.config.SETTINGS")
+async def test_validate_adapter_runtime_compatibility_accepts_runtime_adapter_model(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+    adapter_dir = tmp_path / "adapter-1"
+    adapter_dir.mkdir(parents=True)
+    (adapter_dir / "adapter").mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        '{"metadata_version":2,"base_model":"Qwen/Qwen2.5-Coder-7B-Instruct","effective_base_model":"Qwen/Qwen2.5-Coder-7B-Instruct","created_at":"2026-03-07T12:00:00+00:00","source_flow":"training"}',
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.list_local_models = AsyncMock(
+        return_value=[
+            {
+                "name": "venom-adapter-self_learning_test",
+                "provider": "vllm",
+                "path": str(tmp_path / "runtime-adapter"),
+            },
+            {
+                "name": "Qwen/Qwen2.5-Coder-7B-Instruct",
+                "provider": "vllm",
+                "path": str(tmp_path / "qwen-vllm"),
+            },
+        ]
+    )
+    with patch(
+        "venom_core.api.routes.academy_models.list_trainable_models",
+        AsyncMock(
+            return_value=[
+                TrainableModelInfo(
+                    model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+                    label="Qwen 2.5 Coder 7B",
+                    provider="huggingface",
+                    trainable=True,
+                    runtime_compatibility={"vllm": True, "onnx": False},
+                )
+            ]
+        ),
+    ):
+        await academy_models.validate_adapter_runtime_compatibility(
+            mgr=mgr,
+            adapter_id="adapter-1",
+            runtime_id="vllm",
+            model_id="venom-adapter-self_learning_test",
+        )
+
+
 @patch("venom_core.config.SETTINGS")
 def test_activate_adapter_rejects_ollama_deploy_on_base_model_mismatch(
     mock_settings, tmp_path
@@ -1296,6 +1349,34 @@ async def test_audit_adapters_categorizes_unknown_mismatch_and_compatible(
     assert by_id["mismatch-adapter"]["reason_code"] == "ADAPTER_METADATA_INCONSISTENT"
     assert by_id["compatible-adapter"]["category"] == "compatible"
     assert by_id["compatible-adapter"]["is_active"] is True
+
+
+@pytest.mark.asyncio
+@patch("venom_core.api.routes.academy_models.SETTINGS")
+async def test_audit_adapters_treats_runtime_adapter_model_as_compatible_selection(
+    mock_settings, tmp_path
+):
+    mock_settings.ACADEMY_MODELS_DIR = str(tmp_path)
+    mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "unsloth/gemma-2-2b-it"
+
+    adapter_dir = tmp_path / "self_learning_adapter"
+    (adapter_dir / "adapter").mkdir(parents=True)
+    (adapter_dir / "metadata.json").write_text(
+        '{"metadata_version":2,"base_model":"unsloth/gemma-2-2b-it","effective_base_model":"unsloth/gemma-2-2b-it","created_at":"2026-03-07T12:00:00+00:00","source_flow":"training"}',
+        encoding="utf-8",
+    )
+
+    mgr = MagicMock()
+    mgr.get_active_adapter_info.return_value = {"adapter_id": "self_learning_adapter"}
+
+    payload = academy_models.audit_adapters(
+        mgr=mgr,
+        runtime_id="ollama",
+        model_id="venom-adapter-self_learning_bdc2d5fc-f7d4-44cd-a34a-cfc892a58cd9",
+    )
+
+    by_id = {item["adapter_id"]: item for item in payload["adapters"]}
+    assert by_id["self_learning_adapter"]["category"] == "compatible"
 
 
 def test_runtime_resolution_helpers_and_model_dir_detection(tmp_path):
@@ -1514,7 +1595,7 @@ def test_activate_adapter_ollama_deploy_does_not_fallback_to_last_model_config(
     mgr.create_ollama_modelfile.assert_called_once_with(
         version_id="ok-adapter",
         output_name="venom-adapter-ok-adapter",
-        from_model="phi3:latest",
+        from_model="phi3:mini",
         use_experimental=False,
     )
     updates = mock_config_manager.update_config.call_args[0][0]
@@ -1631,7 +1712,7 @@ def test_activate_adapter_ollama_deploy_prepares_gguf_before_ollama_create(
     assert payload["success"] is True
     mock_prepare.assert_called_once()
     assert mock_prepare.call_args.kwargs["adapter_dir"] == tmp_path / "ok-adapter"
-    assert mock_prepare.call_args.kwargs["from_model"] == "phi3:latest"
+    assert mock_prepare.call_args.kwargs["from_model"] == "phi3:mini"
 
 
 def test_build_vllm_runtime_model_from_adapter_missing_adapter_path(tmp_path: Path):

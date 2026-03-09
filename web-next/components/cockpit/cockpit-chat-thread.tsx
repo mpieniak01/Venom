@@ -18,6 +18,7 @@ import { ConversationBubble } from "@/components/cockpit/conversation-bubble";
 import { useTranslation } from "@/lib/i18n";
 import { filterSlashSuggestions, filterAgentSuggestions } from "@/lib/slash-commands";
 import type { SlashCommand } from "@/lib/slash-commands";
+import { ApiError } from "@/lib/api-client";
 import {
   activateAdapter,
   auditAdapters,
@@ -131,7 +132,12 @@ async function switchCockpitAdapterSelection({
 }: {
   value: string;
   baseModelAdapterValue: string;
-  adapters: Array<{ adapter_id: string; adapter_path: string }>;
+  adapters: Array<{
+    adapter_id: string;
+    adapter_path: string;
+    base_model: string;
+    canonical_base_model_id?: string;
+  }>;
   applySelectedModel?: () => Promise<boolean>;
   selectedRuntimeId: string;
   selectedLlmModel: string;
@@ -147,15 +153,43 @@ async function switchCockpitAdapterSelection({
   if (!adapter) {
     return { chatModel: null };
   }
-  const activation = await activateAdapter({
-    adapter_id: adapter.adapter_id,
-    adapter_path: adapter.adapter_path,
-    runtime_id: selectedRuntimeId,
-    model_id: selectedLlmModel,
-    deploy_to_chat_runtime: true,
-  });
+  const requestedRuntime = selectedRuntimeId.trim();
+  const selectedModel = selectedLlmModel.trim();
+  const adapterBaseModel = String(
+    adapter.canonical_base_model_id || adapter.base_model || "",
+  ).trim();
+  const requestedModel = selectedModel || adapterBaseModel;
+  if (!requestedRuntime) {
+    throw new Error("ADAPTER_RUNTIME_REQUIRED: Select target runtime before adapter activation.");
+  }
+  if (!requestedModel) {
+    throw new Error("ADAPTER_RUNTIME_MODEL_REQUIRED: Select runtime model before adapter activation.");
+  }
+  const activateForModel = async (modelId: string) =>
+    activateAdapter({
+      adapter_id: adapter.adapter_id,
+      adapter_path: adapter.adapter_path,
+      runtime_id: requestedRuntime,
+      model_id: modelId,
+      deploy_to_chat_runtime: true,
+    });
+  let activation;
+  try {
+    activation = await activateForModel(requestedModel);
+  } catch (error) {
+    const shouldRetryWithAdapterBase =
+      error instanceof ApiError &&
+      error.status === 400 &&
+      Boolean(selectedModel) &&
+      Boolean(adapterBaseModel) &&
+      selectedModel !== adapterBaseModel;
+    if (!shouldRetryWithAdapterBase) {
+      throw error;
+    }
+    activation = await activateForModel(adapterBaseModel);
+  }
   return {
-    chatModel: String(activation.chat_model || "").trim() || null,
+    chatModel: String(activation.chat_model || "").trim() || requestedModel || adapterBaseModel,
   };
 }
 
@@ -177,6 +211,7 @@ function useChatAdapterSelection({
   t: ReturnType<typeof useTranslation>;
 }) {
   const baseModelAdapterValue = "__base_model__";
+  const noModelOptionValue = "__none__";
   const [adapterSelectLoading, setAdapterSelectLoading] = useState(false);
   const [adapterMutationPending, setAdapterMutationPending] = useState(false);
   const [adapterMutationError, setAdapterMutationError] = useState("");
@@ -293,7 +328,7 @@ function useChatAdapterSelection({
       try {
         setAdapterMutationError("");
         setAdapterMutationPending(true);
-        const selection = await switchCockpitAdapterSelection({
+        await switchCockpitAdapterSelection({
           value,
           baseModelAdapterValue,
           adapters,
@@ -301,8 +336,8 @@ function useChatAdapterSelection({
           selectedRuntimeId,
           selectedLlmModel,
         });
-        if (selection.chatModel) {
-          setSelectedLlmModel(selection.chatModel);
+        if (value !== baseModelAdapterValue && selectedLlmModel) {
+          setSelectedLlmModel("");
         }
         await loadAdapters();
       } catch (error) {
@@ -339,6 +374,7 @@ function useChatAdapterSelection({
     setSelectedAdapter,
     handleAdapterSelect,
     baseModelAdapterValue,
+    noModelOptionValue,
   };
 }
 
@@ -393,6 +429,7 @@ export const ChatComposer = memo(
       selectedAdapter,
       handleAdapterSelect,
       baseModelAdapterValue,
+      noModelOptionValue,
     } = useChatAdapterSelection({
       adapterDeploySupported,
       applySelectedModel: onActivateModel
@@ -554,21 +591,26 @@ export const ChatComposer = memo(
             >
               <label className={labelClassName}>{t("cockpit.models.model")}</label>
               <SelectMenu
-                value={selectedLlmModel}
+                value={selectedLlmModel || noModelOptionValue}
                 options={llmModelOptions}
                 onChange={(value) => {
-                  if (!value || value === selectedLlmModel) {
+                  const normalizedValue = value === noModelOptionValue ? "" : value;
+                  if (normalizedValue === selectedLlmModel) {
                     return;
                   }
                   const activateModelSelection = async () => {
+                    if (!normalizedValue) {
+                      setSelectedLlmModel("");
+                      return;
+                    }
                     if (selectedAdapter !== baseModelAdapterValue) {
                       await handleAdapterSelect(baseModelAdapterValue);
                     }
                     if (!onActivateModel) {
-                      setSelectedLlmModel(value);
+                      setSelectedLlmModel(normalizedValue);
                       return;
                     }
-                    await onActivateModel(value);
+                    await onActivateModel(normalizedValue);
                   };
                   activateModelSelection().catch((error) => {
                     console.error("Model activation action failed:", error);
@@ -602,7 +644,8 @@ export const ChatComposer = memo(
                 disabled={
                   adapterSelectLoading ||
                   adapterMutationPending ||
-                  adapterDeployUnsupported
+                  adapterDeployUnsupported ||
+                  !selectedRuntimeId
                 }
                 buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap"
                 menuClassName="w-full max-h-72 overflow-y-auto"

@@ -16,9 +16,9 @@ export function normalizeRuntimeId(value: string | null | undefined): string {
   }
   const atIndex = candidate.indexOf("@");
   if (atIndex <= 0) {
-    return candidate;
+    return candidate.toLowerCase();
   }
-  return candidate.slice(0, atIndex).trim();
+  return candidate.slice(0, atIndex).trim().toLowerCase();
 }
 
 type CatalogRuntimeModel = {
@@ -78,7 +78,9 @@ export function resolveCockpitActiveRuntimeInfo(
   const declaredRuntimeId =
     normalizeRuntimeId(catalog?.active?.runtime_id || catalog?.active?.active_server);
   const activeRuntime =
-    catalogRuntimes.find((runtime) => runtime.runtime_id === declaredRuntimeId) ??
+    catalogRuntimes.find(
+      (runtime) => normalizeRuntimeId(runtime.runtime_id) === declaredRuntimeId,
+    ) ??
     catalogRuntimes.find((runtime) => runtime.active) ??
     null;
   const activeRuntimeId =

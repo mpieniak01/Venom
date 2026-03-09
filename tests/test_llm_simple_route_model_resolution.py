@@ -30,3 +30,14 @@ def test_resolve_model_name_falls_back_to_runtime_when_request_missing() -> None
         active_adapter_id=None,
     )
     assert resolved == "gemma3:4b"
+
+
+def test_resolve_model_name_forces_adapter_model_when_active_adapter_exists() -> None:
+    resolved = llm_simple._resolve_model_name_for_simple_request(
+        request_model="gemma2:2b",
+        runtime_model="gemma2:2b",
+        active_adapter_id="self_learning_bdc2d5fc-f7d4-44cd-a34a-cfc892a58cd9",
+    )
+    assert (
+        resolved == "venom-adapter-self_learning_bdc2d5fc-f7d4-44cd-a34a-cfc892a58cd9"
+    )

@@ -68,6 +68,7 @@ export const configLocale = {
         refresh: "Odśwież",
         refreshing: "Odświeżam...",
         lastCheck: "Ostatnie sprawdzenie",
+        breakdown: "Rozbicie katalogów",
         items: {
           llm_models: "Modele LLM",
           llm_cache: "Modele cache",
@@ -82,6 +83,8 @@ export const configLocale = {
           next_build: "Build: web-next/.next",
           node_modules: "Deps: node_modules",
           project_root: "Katalog venom (repo)",
+          project_other: "Repo: inne katalogi",
+          system_other: "System/poza repo",
           code_only: "Kod (repo, bez modeli/deps/data)",
           dreaming: "Dane: dreaming (timelines)",
         },

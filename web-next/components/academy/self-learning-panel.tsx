@@ -20,6 +20,7 @@ import {
 import { ApiError } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toast";
 import { useTranslation } from "@/lib/i18n";
+import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
 import {
   SelfLearningConfigurator,
   type SelfLearningConfig,
@@ -104,14 +105,21 @@ export function SelfLearningPanel() {
               runtime.configured &&
               runtime.available,
           )
-          .map((runtime) => ({ id: runtime.runtime_id, label: runtime.runtime_id }));
+          .map((runtime) => ({
+            id: normalizeRuntimeId(runtime.runtime_id),
+            label: runtime.runtime_id,
+          }));
         setRuntimeOptions(availableRuntimes);
-        const activeRuntimeId = String(
-          catalog.active?.runtime_id || catalog.active?.active_server || "",
-        ).trim();
+        const activeRuntimeId = normalizeRuntimeId(
+          String(catalog.active?.runtime_id || catalog.active?.active_server || ""),
+        );
         setSelectedRuntime((prev) => {
-          if (prev && availableRuntimes.some((runtime) => runtime.id === prev)) {
-            return prev;
+          const normalizedPrev = normalizeRuntimeId(prev);
+          if (
+            normalizedPrev &&
+            availableRuntimes.some((runtime) => runtime.id === normalizedPrev)
+          ) {
+            return normalizedPrev;
           }
           if (
             activeRuntimeId &&

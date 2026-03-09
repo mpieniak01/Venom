@@ -53,7 +53,25 @@ def test_resolve_ollama_create_from_model_falls_back_to_requested_model(tmp_path
         is_runtime_model_dir_fn=lambda _path: False,
     )
 
-    assert resolved == "gemma3:latest"
+    assert resolved == "gemma3:4b"
+    assert use_experimental is False
+
+
+def test_resolve_ollama_create_from_model_maps_hf_repo_to_ollama_alias(
+    tmp_path: Path,
+):
+    adapter_dir = _make_adapter_dir(
+        tmp_path,
+        metadata={"parameters": {"training_base_model": "/tmp/not-runtime"}},
+    )
+
+    resolved, use_experimental = ars._resolve_ollama_create_from_model(
+        adapter_dir=adapter_dir,
+        requested_model="unsloth/gemma-2-2b-it",
+        is_runtime_model_dir_fn=lambda _path: False,
+    )
+
+    assert resolved == "gemma2:2b"
     assert use_experimental is False
 
 

@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from venom_core.utils.helpers import get_utc_now
 from venom_core.utils.logger import get_logger
@@ -73,20 +73,26 @@ def _detect_project_root() -> Path:
 
 PROJECT_ROOT = _detect_project_root()
 _storage_cache = TTLCache[dict](ttl_seconds=3600.0)  # Zwiększony TTL do 1h
+STORAGE_CACHE_SCHEMA_VERSION = 2
 
 
 @router.get("/system/storage", responses=SYSTEM_STORAGE_RESPONSES)
-async def get_storage_snapshot():
+async def get_storage_snapshot(force_refresh: bool = Query(default=False)):
     """
     Zwraca snapshot użycia dysku oraz największe katalogi (whitelist).
     """
     try:
         cached = _storage_cache.get()
-        if cached is not None:
+        if (
+            not force_refresh
+            and cached is not None
+            and cached.get("_schema_version") == STORAGE_CACHE_SCHEMA_VERSION
+        ):
             return cached
 
         # Wykonujemy blokujące operacje w osobnym wątku, aby nie blokować event loopa
         res = await asyncio.to_thread(_get_storage_data_sync)
+        res["_schema_version"] = STORAGE_CACHE_SCHEMA_VERSION
 
         _storage_cache.set(res)
         return res
@@ -180,6 +186,13 @@ def _normalize_timelines_items(
     return final_items
 
 
+def _item_size_bytes(item: dict[str, int | str]) -> int:
+    size_val = item.get("size_bytes", 0)
+    if isinstance(size_val, (int, float)):
+        return int(size_val)
+    return 0
+
+
 def _get_storage_data_sync() -> dict:
     """Synchronizowana wersja zbierania danych o storage."""
     disk_physical_mount = Path("/usr/lib/wsl/drivers")
@@ -194,8 +207,30 @@ def _get_storage_data_sync() -> dict:
     disk_root_mount = Path("/")
     total_root, used_root, free_root = shutil.disk_usage(str(disk_root_mount))
 
-    items, total_items_size = _collect_storage_entries()
+    items, _ = _collect_storage_entries()
     final_items = _extract_dreams_item(items)
+    tracked_project_size = sum(_item_size_bytes(item) for item in final_items)
+    repo_total_size = _compute_path_size(PROJECT_ROOT, fast_timeout=5.0)
+    project_other_size = max(0, repo_total_size - tracked_project_size)
+    if project_other_size > 0:
+        final_items.append(
+            _item_payload(
+                name="project_other",
+                path=PROJECT_ROOT,
+                size_bytes=project_other_size,
+                kind="project",
+            )
+        )
+    system_other_size = max(0, used_root - repo_total_size)
+    if system_other_size > 0:
+        final_items.append(
+            _item_payload(
+                name="system_other",
+                path=Path("/"),
+                size_bytes=system_other_size,
+                kind="system",
+            )
+        )
 
     # 3. Project Root & Code Only
     final_items.insert(
@@ -203,7 +238,7 @@ def _get_storage_data_sync() -> dict:
         _item_payload(
             name="project_root",
             path=PROJECT_ROOT,
-            size_bytes=total_items_size,
+            size_bytes=repo_total_size,
             kind="project",
         ),
     )

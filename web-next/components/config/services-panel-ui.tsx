@@ -215,6 +215,9 @@ export function ServicesStorageCard(input: Readonly<{
 }>) {
   const { t, language, storageSnapshot, storageLoading, storageError, onRefreshStorage } =
     input;
+  const storageItems = storageSnapshot?.items ?? [];
+  const totalBytes = storageSnapshot?.disk_root?.used_bytes ?? 0;
+  const itemsToRender = storageItems.filter((item) => item.name !== "project_root");
   let storageSummary = <span>{t("config.services.storage.noData")}</span>;
   if (storageSnapshot?.disk_root) {
     storageSummary = (
@@ -269,6 +272,49 @@ export function ServicesStorageCard(input: Readonly<{
           {t("config.services.storage.lastCheck")}:{" "}
           {formatStorageTimestamp(storageSnapshot.refreshed_at, language)}
         </p>
+      ) : null}
+      {itemsToRender.length > 0 ? (
+        <div className="mt-4 overflow-hidden rounded-xl border border-theme bg-gradient-to-br from-emerald-500/5 via-cyan-500/5 to-transparent">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 bg-theme-overlay-strong px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-theme-muted">
+              {t("config.services.storage.breakdown")}
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-theme-muted">
+              {t("config.services.storage.used")}
+            </span>
+          </div>
+          <div className="max-h-64 space-y-1 overflow-auto p-1">
+            {itemsToRender.map((item) => {
+              const translatedName = t(`config.services.storage.items.${item.name}`);
+              const itemLabel =
+                translatedName === `config.services.storage.items.${item.name}`
+                  ? item.name
+                  : translatedName;
+              const percent =
+                totalBytes > 0 ? Math.min((item.size_bytes / totalBytes) * 100, 100) : 0;
+              return (
+                <div
+                  key={`${item.name}-${item.path}`}
+                  className="rounded-md bg-theme-overlay/25 px-3 py-2 transition-colors hover:bg-theme-overlay-strong/40"
+                >
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-2" title={`${itemLabel} • ${item.path}`}>
+                      <p className="eyebrow truncate text-theme-secondary">{itemLabel}</p>
+                      <span className="font-mono text-[11px] text-cyan-300">{percent.toFixed(1)}%</span>
+                    </div>
+                    <p className="text-right font-mono text-xs text-theme-secondary">{formatBytes(item.size_bytes)}</p>
+                  </div>
+                  <div className="mt-1.5 h-1.5 w-full rounded-full bg-cyan-500/15">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-teal-400 shadow-[0_0_12px_rgba(45,212,191,0.45)] transition-[width] duration-700 ease-out"
+                      style={{ width: `${percent.toFixed(1)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       ) : null}
       {storageError ? <p className="mt-3 text-xs text-rose-300">{storageError}</p> : null}
     </div>

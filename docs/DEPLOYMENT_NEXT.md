@@ -135,6 +135,57 @@ make webpre
 make testpre
 ```
 
+## Makefile Module Map and Command Catalog
+
+The root `Makefile` is now a thin entrypoint and includes dedicated modules:
+
+- `make/tests.mk`
+- `make/maintenance.mk`
+- `make/preprod.mk`
+- `make/runtime.mk`
+- `make/ops.mk`
+
+Public command groups:
+
+1. Core stack lifecycle
+- `make start` - full dev stack (backend + frontend webpack-safe + active LLM runtime)
+- `make start2` - full dev stack with Turbopack frontend
+- `make stop` - stop backend + frontend + active LLM runtime helpers
+- `make status` - process status (PID/ports)
+
+2. Test and quality gates (`make/tests.mk`)
+- `make test`, `make test-data`, `make test-all`
+- `make test-unit`, `make test-smoke`, `make test-perf`
+- `make test-web-unit`, `make test-web-e2e`
+- `make pr-fast` - required local PR gate
+- `make test-fast-coverage`, `make check-new-code-coverage`
+
+3. Maintenance and environment hygiene (`make/maintenance.mk`)
+- `make make-targets-audit` - validates `.PHONY` vs defined targets
+- `make audit-dead-code` - heuristic dead-code audit (Python)
+- `make env-audit`, `make env-clean-safe`, `make env-clean-docker-safe`, `make env-clean-deep`, `make env-report-diff`
+- `make security-delta-scan`, `make security-delta-scan-strict`
+- `make mcp-clean`, `make mcp-status`
+
+4. Runtime control (`make/runtime.mk`)
+- `make vllm-start`, `make vllm-stop`, `make vllm-restart`
+- `make ollama-start`, `make ollama-stop`, `make ollama-restart`
+
+5. Preprod operations (`make/preprod.mk`)
+- `make start-preprod`, `make api-preprod`, `make web-preprod`
+- aliases: `make startpre`, `make apipre`, `make webpre`, `make testpre`
+- `make preprod-backup`, `make preprod-restore TS=<timestamp>`, `make preprod-verify TS=<timestamp>`
+- `make preprod-audit`, `make preprod-drill`, `make preprod-readiness-check`
+
+6. Operations and workspace tools (`make/ops.mk`)
+- `make modules-status`, `make modules-pull`, `make modules-branches`, `make modules-exec CMD='...'`
+- `make runtime-maintenance-cleanup`
+- `make runtime-log-policy-audit`, `make runtime-logrotate-install-help`
+- `make monitor`
+
+Canonical command list for operators remains available under:
+- `make help`
+
 ## Monitoring and Logs
 
 - `make status` – reports if processes are alive (PID + ports).

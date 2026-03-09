@@ -47,20 +47,20 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test test-data test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-turbo start-prod start-preprod stop restart status clean-ports \
-		pytest e2e test-optimal test-ci-light test-fast-coverage test-light-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
-		ci-lite-preflight ci-lite-bootstrap \
+.PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-webpack start-dev-turbo start-prod start-preprod stop restart status clean-ports \
+		pytest e2e test-optimal test-ci-lite test-fast-coverage test-light-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
+		ci-lite-preflight ci-lite-bootstrap audit-ci-lite \
 		test-intelligence-report \
 		runtime-maintenance-cleanup \
 		runtime-log-policy-audit runtime-logrotate-install-help \
 		api api-dev api-preprod api-stop web web-dev web-dev-turbo web-dev-turbo-debug web-preprod web-stop \
-		test-web-turbo-smoke test-web-turbo-smoke-clean \
+		test-web-unit test-web-e2e test-web-turbo-smoke test-web-turbo-smoke-clean \
 		startpre stoppre restartpre statuspre apipre webpre testpre ensurepreenv \
 		preprod-backup preprod-restore preprod-verify preprod-audit preprod-drill preprod-readiness-check prebackup prerestore preverify preaudit predrill prereadiness \
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
-		env-audit env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke help \
+		env-audit audit-dead-code make-targets-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke help \
 		modules-status modules-pull modules-branches modules-exec architecture-drift-check architecture-sonar-export optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
 
 lint:
@@ -756,7 +756,7 @@ monitor:
 help:
 	@echo "Venom Makefile - najczęściej używane komendy"
 	@echo ""
-	@echo "Start/Stop:"
+	@echo "Start/Stop (dev):"
 	@echo "  make start                    - start backend + frontend (webpack-safe dev) + runtime LLM"
 	@echo "  make start2                   - start backend + frontend (turbopack) + runtime LLM"
 	@echo "  make stop                     - stop backend + frontend + runtime LLM"
@@ -773,8 +773,19 @@ help:
 	@echo "  make test-web-turbo-smoke     - smoke dev:turbo"
 	@echo "  make test-web-turbo-smoke-clean - smoke dev:turbo + clean .next"
 	@echo ""
+	@echo "Preprod:"
+	@echo "  make startpre                 - start stacka preprod (readonly profile)"
+	@echo "  make preprod-backup           - backup danych preprod"
+	@echo "  make preprod-verify TS=...    - verify + smoke readonly po backupie"
+	@echo "  make preprod-readiness-check  - check gotowości preprod"
+	@echo ""
+	@echo "Runtime LLM:"
+	@echo "  make vllm-start|stop|restart  - kontrola usługi vLLM"
+	@echo "  make ollama-start|stop|restart - kontrola usługi Ollama"
+	@echo ""
 	@echo "Jakość:"
 	@echo "  make pr-fast                  - hard gate (wymagane przed zakończeniem)"
+	@echo "  make make-targets-audit       - audyt .PHONY vs zdefiniowane targety"
 	@echo "  make audit-dead-code          - heurystyczny audyt ślepego kodu (Python)"
 	@echo "  make test-groups-check        - weryfikacja grup testów"
 	@echo "  make test-catalog-check       - weryfikacja katalogu testów"

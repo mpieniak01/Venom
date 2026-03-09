@@ -91,6 +91,10 @@ def test_generate_training_script(monkeypatch):
     assert 'DATASET_PATH = "/data.jsonl"' in script
     assert "LORA_RANK = 8" in script
     assert "processing_class=tokenizer" in script
+    if "Standard Transformers Fallback" in script:
+        assert "def _select_lora_target_modules(model):" in script
+        assert "blocked_name_markers" in script
+        assert 'return ["q_proj", "k_proj", "v_proj", "o_proj"]' in script
 
 
 def test_run_training_job_rejects_missing_dataset(tmp_path, monkeypatch):

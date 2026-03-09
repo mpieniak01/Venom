@@ -640,9 +640,6 @@ _start:
 		exit 1; \
 	fi
 	@mkdir -p logs
-	@echo "🧹 Runtime maintenance: cleanup retencji (logs/data)..."
-	@$(MAKE) --no-print-directory runtime-maintenance-cleanup >/dev/null || \
-		echo "⚠️  Runtime maintenance cleanup nie powiódł się (kontynuuję start)."
 	@active_server=""; \
 	if [ -f "$(ENV_FILE)" ]; then \
 		active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' "$(ENV_FILE)" 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true); \

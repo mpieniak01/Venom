@@ -117,7 +117,12 @@ export function useCockpitSectionProps() {
   const handleActivateModel = logic.handleActivateModel;
 
   const composerRef = logic.chatUi.composerRef;
-  const onSend = useCallback(async (txt: string) => { logic.chatUi.handleSend(txt); return true; }, [logic.chatUi]);
+  const onSend = useCallback(
+    async (txt: string) => {
+      return await logic.chatUi.handleSend(txt);
+    },
+    [logic.chatUi],
+  );
   const onActivateModel = useCallback(
     async (model: string) => handleActivateModel(model),
     [handleActivateModel],
@@ -129,7 +134,7 @@ export function useCockpitSectionProps() {
       if (!normalizedValue || normalizedValue === normalizedSelected) {
         return;
       }
-      setSelectedLlmServer(normalizedValue);
+      setSelectedLlmServer(value.trim());
       setSelectedLlmModel("");
     },
     [selectedLlmServer, setSelectedLlmModel, setSelectedLlmServer],
@@ -155,13 +160,18 @@ export function useCockpitSectionProps() {
   );
   const selectedRuntimeModels = useMemo(() => {
     if (!resolvedServerId) return [];
-    const target = runtimeTargets.find((runtime) => runtime.runtime_id === resolvedServerId);
+    const target = runtimeTargets.find(
+      (runtime) => normalizeRuntimeId(runtime.runtime_id) === resolvedServerId,
+    );
     return filterRuntimeBaseModels(
       (target?.models ?? []).filter((model) => model.chat_compatible !== false),
     );
   }, [resolvedServerId, runtimeTargets]);
   const selectedRuntimeTarget = useMemo(
-    () => runtimeTargets.find((runtime) => runtime.runtime_id === resolvedServerId) ?? null,
+    () =>
+      runtimeTargets.find(
+        (runtime) => normalizeRuntimeId(runtime.runtime_id) === resolvedServerId,
+      ) ?? null,
     [resolvedServerId, runtimeTargets],
   );
   const adapterDeploySupported = Boolean(
@@ -180,6 +190,10 @@ export function useCockpitSectionProps() {
         label: formatRuntimeModelOptionLabel(model, t),
         value: model.name,
       }));
+      options.unshift({
+        label: t("cockpit.models.noneSelected"),
+        value: "__none__",
+      });
       const selected = (selectedLlmModel || "").trim();
       if (selected && !options.some((option) => option.value === selected)) {
         options.unshift({
@@ -229,14 +243,21 @@ export function useCockpitSectionProps() {
   );
 
   const selectedServerEntry = useMemo(
-    () => data.llmServers?.find((s) => s.name === normalizedSelectedLlmServer) || null,
+    () =>
+      data.llmServers?.find(
+        (s) => normalizeRuntimeId(s.name) === normalizedSelectedLlmServer,
+      ) || null,
     [data.llmServers, normalizedSelectedLlmServer],
   );
 
   const resolveServerStatus = useCallback((name?: string, fallback?: string | null) => {
-    const runtimeMatch = runtimeTargets.find((runtime) => runtime.runtime_id === name);
+    const runtimeMatch = runtimeTargets.find(
+      (runtime) => normalizeRuntimeId(runtime.runtime_id) === normalizeRuntimeId(name),
+    );
     if (runtimeMatch?.status) return runtimeMatch.status;
-    const s = data.llmServers.find(server => server.name === name);
+    const s = data.llmServers.find(
+      (server) => normalizeRuntimeId(server.name) === normalizeRuntimeId(name),
+    );
     return s?.status || fallback || "unknown";
   }, [data.llmServers, runtimeTargets]);
 
@@ -252,7 +273,7 @@ export function useCockpitSectionProps() {
   const activeServerName = data.activeServerInfo?.active_server || "unknown";
 
   const onActivateServer = useCallback(() => {
-    const selectedServer = normalizeRuntimeId(interactive.state.selectedLlmServer);
+    const selectedServer = (selectedRuntimeTarget?.runtime_id || interactive.state.selectedLlmServer || "").trim();
     const selectedModel = interactive.state.selectedLlmModel;
     if (!selectedServer) return;
     if (availableModelsForServer.length > 0 && !selectedModel) {
@@ -296,6 +317,7 @@ export function useCockpitSectionProps() {
     interactive.state.selectedLlmModel,
     interactive.state.selectedLlmServer,
     interactive.setters,
+    selectedRuntimeTarget?.runtime_id,
     t,
   ]);
 

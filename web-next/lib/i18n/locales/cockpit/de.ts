@@ -119,6 +119,7 @@ export const cockpitLocale = {
       adapter: "Adapter",
       chooseServer: "Server wählen",
       chooseModel: "Modell wählen",
+      noneSelected: "Nicht ausgewählt",
       loadingAdapters: "Adapter werden geladen",
       adapterBase: "Basismodell (ohne Adapter)",
       adapterCompatible: "mit aktuellem Modell kompatibel",

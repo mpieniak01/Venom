@@ -307,17 +307,6 @@ export function useCockpitLogic({
 
     // Sync active server from runtime state on initial load.
     useEffect(() => {
-        const normalizedSelectedServer = normalizeRuntimeId(
-            interactive.state.selectedLlmServer,
-        );
-        if (
-            interactive.state.selectedLlmServer &&
-            normalizedSelectedServer &&
-            normalizedSelectedServer !== interactive.state.selectedLlmServer
-        ) {
-            interactive.setters.setSelectedLlmServer(normalizedSelectedServer);
-            return;
-        }
         const activeServer = normalizeRuntimeId(
             data.activeServerInfo?.active_server ||
                 data.unifiedModelCatalog?.active?.active_server ||
@@ -354,18 +343,27 @@ export function useCockpitLogic({
             }
             return;
         }
-        const runtime = runtimeTargets.find((item) => item.runtime_id === effectiveServer);
+        const runtime = runtimeTargets.find(
+            (item) => normalizeRuntimeId(item.runtime_id) === effectiveServer,
+        );
         const runtimeModels = filterRuntimeBaseModels(
             (runtime?.models ?? []).filter((model) => model.chat_compatible !== false),
         )
             .map((model) => model.name);
+        const currentSelection = (interactive.state.selectedLlmModel || "").trim();
         if (runtimeModels.length === 0) {
-            if (interactive.state.selectedLlmModel) {
-                interactive.setters.setSelectedLlmModel("");
+            const fallbackModel = (activeModelFromRuntime || currentSelection).trim();
+            if (!fallbackModel) {
+                if (interactive.state.selectedLlmModel) {
+                    interactive.setters.setSelectedLlmModel("");
+                }
+                return;
+            }
+            if (fallbackModel !== currentSelection) {
+                interactive.setters.setSelectedLlmModel(fallbackModel);
             }
             return;
         }
-        const currentSelection = (interactive.state.selectedLlmModel || "").trim();
         const selectedModel = resolveCockpitRuntimeModelSelection(
             currentSelection,
             runtimeModels,
@@ -373,14 +371,7 @@ export function useCockpitLogic({
         if (selectedModel === currentSelection) {
             return;
         }
-        if (!currentSelection && effectiveServer === activeServer) {
-            const activeModel = resolveCockpitRuntimeModelSelection(
-                activeModelFromRuntime,
-                runtimeModels,
-            );
-            if (activeModel) {
-                interactive.setters.setSelectedLlmModel(activeModel);
-            }
+        if (!currentSelection) {
             return;
         }
         interactive.setters.setSelectedLlmModel(selectedModel);

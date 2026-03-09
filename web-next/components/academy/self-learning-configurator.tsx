@@ -717,11 +717,17 @@ function RuntimePreflightSection({
       </p>
       <p>
         <span className="text-[color:var(--text-secondary)]">{t("academy.selfLearning.config.baseModel")}:</span>{" "}
-        {effectiveBaseModel || t("academy.selfLearning.config.noTrainableModels")}
+        {effectiveBaseModel
+          ? effectiveBaseModel
+          : hasCompatibleTrainableModels
+            ? t("academy.selfLearning.config.chooseBaseModel")
+            : t("academy.selfLearning.config.noTrainableModels")}
       </p>
       <p>
         <span className="text-[color:var(--text-secondary)]">{t("academy.training.compatibilityLabel")}:</span>{" "}
-        {effectiveCompatibility.length > 0
+        {!effectiveBaseModel
+          ? t("academy.selfLearning.config.preflightSelectBaseModel")
+          : effectiveCompatibility.length > 0
           ? effectiveCompatibility.map((runtime) => getRuntimeDisplayName(runtime, t)).join(" • ")
           : t("academy.training.runtimeUnknown")}
       </p>

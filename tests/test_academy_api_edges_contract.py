@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from tests.helpers.academy_wiring import build_academy_app
 from venom_core.api.routes import academy as academy_routes
+from venom_core.api.routes import academy_storage
 
 
 def _make_client() -> TestClient:
@@ -230,8 +231,8 @@ def test_upload_helper_path_and_size_validations(mock_settings, tmp_path):
     assert academy_routes._is_path_within_base(inside, base) is True
     assert academy_routes._is_path_within_base(outside, base) is False
 
-    assert academy_routes._validate_file_size(1024) is True
-    assert academy_routes._validate_file_size(2 * 1024 * 1024) is False
+    assert academy_storage.validate_file_size(1024) is True
+    assert academy_storage.validate_file_size(2 * 1024 * 1024) is False
 
 
 def test_save_upload_metadata_propagates_write_error(tmp_path):
@@ -247,7 +248,7 @@ def test_save_upload_metadata_propagates_write_error(tmp_path):
 def test_delete_upload_metadata_noop_when_metadata_missing(tmp_path):
     with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
         academy_routes._delete_upload_metadata("missing-id")
-        metadata_file = academy_routes._get_uploads_metadata_file()
+        metadata_file = academy_storage.get_uploads_metadata_file()
         assert not metadata_file.exists()
 
 
@@ -259,7 +260,7 @@ def test_upload_metadata_helpers_and_hashes_roundtrip(tmp_path):
     upload_path.write_bytes(payload)
 
     with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
-        hash_from_file = academy_routes._compute_file_hash(upload_path)
+        hash_from_file = academy_storage.compute_file_hash(upload_path)
         hash_from_bytes = academy_routes._compute_bytes_hash(payload)
         assert hash_from_file == hash_from_bytes
 

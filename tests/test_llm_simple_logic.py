@@ -264,7 +264,9 @@ async def test_iter_stream_contents_parses_and_stops_on_done():
             'data: {"choices":[{"delta":{"content":"B"}}]}',
         ]
     )
-    chunks = [c async for c in llm_simple_routes._iter_stream_contents(resp)]
+    chunks: list[str] = []
+    async for packet in llm_simple_routes._iter_stream_packets(resp):
+        chunks.extend(llm_simple_routes._extract_sse_contents(packet))
     assert chunks == ["A"]
 
 

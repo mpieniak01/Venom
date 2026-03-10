@@ -231,10 +231,6 @@ def _get_uploads_dir() -> Path:
     return academy_storage.get_uploads_dir()
 
 
-def _get_uploads_metadata_file() -> Path:
-    return academy_storage.get_uploads_metadata_file()
-
-
 def _validate_file_extension(
     filename: str, *, allowed_extensions: list[str] | None = None
 ) -> bool:
@@ -242,10 +238,6 @@ def _validate_file_extension(
         filename,
         allowed_extensions=allowed_extensions,
     )
-
-
-def _validate_file_size(size_bytes: int) -> bool:
-    return academy_storage.validate_file_size(size_bytes)
 
 
 def _check_path_traversal(filename: str) -> bool:
@@ -262,10 +254,6 @@ def _save_upload_metadata(upload_info: Dict[str, Any]):
 
 def _delete_upload_metadata(file_id: str):
     academy_storage.delete_upload_metadata(file_id)
-
-
-def _compute_file_hash(file_path: Path) -> str:
-    return academy_storage.compute_file_hash(file_path)
 
 
 def _compute_bytes_hash(content: bytes) -> str:
@@ -849,7 +837,3 @@ async def preview_dataset(
 
 def _ingest_upload_file(curator, file_path: Path) -> int:
     return academy_uploads.ingest_upload_file(curator, file_path, logger=logger)
-
-
-def _validate_training_record(record: Dict[str, Any]) -> bool:
-    return academy_uploads.validate_training_record(record)

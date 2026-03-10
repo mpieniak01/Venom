@@ -251,7 +251,10 @@ class Settings(BaseSettings):
 
     # Konfiguracja Docker Sandbox
     DOCKER_IMAGE_NAME: str = "python:3.12-slim"
-    ENABLE_SANDBOX: bool = True
+    ENABLE_SANDBOX: bool = False
+    # Twarda dyrektywa bezpieczeństwa operacyjnego:
+    # kontenery sandbox są domyślnie zablokowane globalnie.
+    ALLOW_SANDBOX_CONTAINERS: bool = False
 
     # Konfiguracja Background Tasks (THE_OVERMIND)
     VENOM_PAUSE_BACKGROUND_TASKS: bool = False  # Globalny wyłącznik dla zadań w tle

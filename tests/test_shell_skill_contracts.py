@@ -50,6 +50,7 @@ def test_init_local_mode():
 def test_init_sandbox_fallback_on_docker_error(monkeypatch):
     """When DockerHabitat raises, ShellSkill falls back to local mode."""
     monkeypatch.setattr(SETTINGS, "ENABLE_SANDBOX", True)
+    monkeypatch.setattr(SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True)
     with patch(
         "venom_core.execution.skills.shell_skill.DockerHabitat",
         side_effect=RuntimeError("Docker not available"),
@@ -62,6 +63,7 @@ def test_init_sandbox_fallback_on_docker_error(monkeypatch):
 def test_init_sandbox_success(monkeypatch):
     """When DockerHabitat initialises correctly, use_sandbox stays True."""
     monkeypatch.setattr(SETTINGS, "ENABLE_SANDBOX", True)
+    monkeypatch.setattr(SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True)
     mock_habitat = MagicMock()
     with patch(
         "venom_core.execution.skills.shell_skill.DockerHabitat",
@@ -139,6 +141,7 @@ def test_run_shell_local_generic_exception(_disable_sandbox):
 def test_run_shell_sandbox_success(monkeypatch):
     """run_shell in sandbox mode delegates to habitat.execute."""
     monkeypatch.setattr(SETTINGS, "ENABLE_SANDBOX", True)
+    monkeypatch.setattr(SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True)
     mock_habitat = MagicMock()
     mock_habitat.execute.return_value = (0, "sandbox output")
     with patch(
@@ -155,6 +158,7 @@ def test_run_shell_sandbox_success(monkeypatch):
 def test_run_shell_sandbox_nonzero_exit(monkeypatch):
     """run_shell in sandbox mode propagates nonzero exit_code in message."""
     monkeypatch.setattr(SETTINGS, "ENABLE_SANDBOX", True)
+    monkeypatch.setattr(SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True)
     mock_habitat = MagicMock()
     mock_habitat.execute.return_value = (2, "some error output")
     with patch(
@@ -170,6 +174,7 @@ def test_run_shell_sandbox_nonzero_exit(monkeypatch):
 def test_run_shell_sandbox_execute_raises(monkeypatch):
     """If habitat.execute raises, safe_action returns error string."""
     monkeypatch.setattr(SETTINGS, "ENABLE_SANDBOX", True)
+    monkeypatch.setattr(SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True)
     mock_habitat = MagicMock()
     mock_habitat.execute.side_effect = RuntimeError("container crashed")
     with patch(
@@ -184,6 +189,7 @@ def test_run_shell_sandbox_execute_raises(monkeypatch):
 def test_run_shell_sandbox_habitat_none_raises(monkeypatch):
     """When use_sandbox=True but habitat=None, safe_action returns error string."""
     monkeypatch.setattr(SETTINGS, "ENABLE_SANDBOX", True)
+    monkeypatch.setattr(SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True)
     mock_habitat = MagicMock()
     with patch(
         "venom_core.execution.skills.shell_skill.DockerHabitat",

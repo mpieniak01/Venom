@@ -110,8 +110,10 @@ tests/test_documenter.py
 tests/test_dream_engine.py
 tests/test_embedding_service.py
 tests/test_energy_manager.py
+tests/test_ensure_env_file_script.py
 tests/test_env_audit.py
 tests/test_env_cleanup.py
+tests/test_env_contract_sh.py
 tests/test_env_report_diff.py
 tests/test_environment_policy.py
 tests/test_error_mappings.py
@@ -199,6 +201,7 @@ tests/test_llm_simple_stream.py
 tests/test_logger_utils.py
 tests/test_main_internal_helpers.py
 tests/test_main_setup_router_dependencies.py
+tests/test_make_targets_audit.py
 tests/test_markdown_blocks.py
 tests/test_mcp_manager.py
 tests/test_mcp_manager_skill.py
@@ -269,6 +272,7 @@ tests/test_platform_skill.py
 tests/test_policy_engine.py
 tests/test_policy_gate.py
 tests/test_port_authority.py
+tests/test_port_pids_script.py
 tests/test_preprod_mutation_guards.py
 tests/test_preprod_ops_regression.py
 tests/test_preprod_optional_modules_smoke.py

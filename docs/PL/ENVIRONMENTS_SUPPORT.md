@@ -30,7 +30,13 @@ Pliki konfiguracji środowisk:
 
 Reguła wyboru:
 - aktywny plik env wybiera `Makefile` przez eksport `ENV_FILE`
+- skrypty shell runtime rozwiązują wartości przez wspólny `scripts/lib/env_contract.sh`
+- priorytet wartości efektywnej: `make VAR=...` / eksport środowiska > wartość z `ENV_FILE` > domyślny fallback skryptu
+- klucze runtime-domain (`ACTIVE_LLM_SERVER`, `VLLM_*`, `OLLAMA_*`) mają źródło prawdy w `.env*`
 - w kontrakcie runtime nie używamy już gołego `.env` / `.env.example`
+
+Uwaga operacyjna:
+- `VLLM_ENDPOINT` w `Makefile` ma celowo pusty default; start stacka najpierw bierze wartość z `.env*`, a dopiero potem używa fallbacku skryptu (`http://127.0.0.1:8001/v1`).
 
 Kluczowe zmienne środowiskowe:
 - `ENVIRONMENT_ROLE=dev|preprod`

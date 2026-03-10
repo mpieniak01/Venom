@@ -49,7 +49,7 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-webpack start-dev-turbo start-prod start-preprod stop restart status clean-ports \
+.PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-webpack start-dev-turbo start-prod start-prod-confirm start-preprod stop restart status clean-ports \
 		pytest e2e test-optimal test-ci-lite test-fast-coverage test-light-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap audit-ci-lite \
 		test-intelligence-report \
@@ -129,9 +129,23 @@ start-dev-turbo: START_WEB_MODE=turbo
 start-dev-turbo: ensure-env-file _start
 
 start-prod: START_MODE=prod
-start-prod: ensure-env-file _start
+start-prod: start-prod-confirm ensure-env-file _start
+
+start-prod-confirm:
 	@echo "⚠️  OSTRZEŻENIE: tryb 'prod' nie jest jeszcze oficjalnie zwalidowany/rekomendowany operacyjnie."
 	@echo "⚠️  Zalecane środowiska: 'dev' (testy/prace) oraz 'preprod' (UAT + smoke read-only)."
+	@if [ "$${PROD_START_CONFIRM:-ask}" = "yes" ] || [ "$${PROD_START_CONFIRM:-ask}" = "1" ]; then \
+		echo "✅ Potwierdzenie start-prod przez PROD_START_CONFIRM."; \
+	elif [ ! -t 0 ]; then \
+		echo "❌ Brak interaktywnego terminala. Użyj: PROD_START_CONFIRM=yes make start-prod"; \
+		exit 1; \
+	else \
+		read -r -p "Czy na pewno uruchomić start-prod? [tak/nie]: " _prod_answer; \
+		case "$$_prod_answer" in \
+			tak|t|yes|y) echo "✅ Potwierdzono start-prod."; ;; \
+			*) echo "❌ Przerwano start-prod."; exit 1 ;; \
+		esac; \
+	fi
 
 
 _start:

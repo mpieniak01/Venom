@@ -39,6 +39,24 @@ env_contract_read_file_var() {
   ' "$file_path"
 }
 
+env_contract_read_file_var_if_set() {
+  local file_path="$1"
+  local key="$2"
+  if [[ ! -f "$file_path" ]]; then
+    return 1
+  fi
+  awk -F= -v k="$key" '
+    $1 == k {
+      sub(/^[^=]+=*/, "", $0)
+      gsub(/\r$/, "", $0)
+      print $0
+      found=1
+      exit
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$file_path"
+}
+
 env_contract_file_has_key() {
   local file_path="$1"
   local key="$2"
@@ -69,8 +87,7 @@ env_contract_get() {
 
   if [[ -n "$file_path" ]]; then
     local file_value
-    file_value="$(env_contract_read_file_var "$file_path" "$key")"
-    if env_contract_file_has_key "$file_path" "$key"; then
+    if file_value="$(env_contract_read_file_var_if_set "$file_path" "$key")"; then
       printf '%s' "$file_value"
       return 0
     fi

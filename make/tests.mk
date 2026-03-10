@@ -188,7 +188,9 @@ test-fast-coverage:
 		--min-coverage "$(NEW_CODE_CHANGED_LINES_MIN)" \
 		--sonar-config "sonar-project.properties"
 
-test-light-coverage: test-fast-coverage
+test-light-coverage:
+	@echo "⚠️  test-light-coverage jest aliasem kompatybilności. Użyj: make test-fast-coverage"
+	@$(MAKE) --no-print-directory test-fast-coverage
 
 check-new-code-coverage: test-fast-coverage
 	@$(MAKE) --no-print-directory check-file-coverage-floor \
@@ -236,7 +238,7 @@ agent-pr-fast:
 pr-fast-local:
 	@$(MAKE) check-new-code-coverage-local
 
-sonar-reports-backend-new-code: test-light-coverage
+sonar-reports-backend-new-code: test-fast-coverage
 
 sonar-reports-frontend:
 	$(NPM) --prefix $(WEB_DIR) run test:unit:coverage

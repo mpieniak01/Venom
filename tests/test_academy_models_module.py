@@ -1492,8 +1492,12 @@ def test_deploy_adapter_to_vllm_runtime_updates_config_and_settings(
     assert updates["VLLM_MODEL_PATH"] == str(runtime_dir)
 
 
+@patch("venom_core.config.SETTINGS")
 @patch("venom_core.api.routes.academy_models.config_manager")
-def test_rollback_chat_runtime_previous_model_missing(mock_config_manager):
+def test_rollback_chat_runtime_previous_model_missing(
+    mock_config_manager, mock_settings
+):
+    mock_settings.ACTIVE_LLM_SERVER = ""
     mock_config_manager.get_config.return_value = {}
     with patch(
         "venom_core.api.routes.academy_models.get_active_llm_runtime",
@@ -1509,12 +1513,16 @@ def test_rollback_chat_runtime_previous_model_missing(mock_config_manager):
 @patch("venom_core.api.routes.academy_models._restart_vllm_runtime")
 @patch("venom_core.api.routes.academy_models.compute_llm_config_hash")
 @patch("venom_core.api.routes.academy_models.config_manager")
+@patch("venom_core.config.SETTINGS")
 def test_rollback_chat_runtime_switches_to_vllm_when_prev_model_exists(
+    mock_settings,
     mock_config_manager,
     mock_hash,
     _mock_restart,
     tmp_path,
 ):
+    mock_settings.ACTIVE_LLM_SERVER = "vllm"
+    mock_settings.LLM_MODEL_NAME = ""
     mock_hash.return_value = "hash-rollback"
     mock_config_manager.get_config.return_value = {
         "PREVIOUS_MODEL_VLLM": "gemma-3-4b-it"

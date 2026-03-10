@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import re
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -28,6 +30,10 @@ DEFAULT_EXCLUDE_DIRS = {
     "node_modules",
 }
 IGNORE_MARKER = "dead-code: ignore"
+VULTURE_MESSAGE_SYMBOL_RE = re.compile(r"'([^']+)'")
+VULTURE_LINE_RE = re.compile(
+    r"^(?P<path>.+?):(?P<line>\d+): (?P<message>.+?)(?: \((?P<confidence>\d+)% confidence\))?$"
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,9 @@ class Finding:
     path: str
     line: int
     message: str
+    source: str = "heuristic"
+    symbol: str | None = None
+    confidence: int | None = None
 
 
 def _iter_python_files(root: Path, scan_paths: Iterable[str]) -> list[Path]:
@@ -156,14 +165,111 @@ def _load_allowlist(path: Path) -> set[str]:
     return rules
 
 
+def _extract_vulture_symbol(message: str) -> str | None:
+    match = VULTURE_MESSAGE_SYMBOL_RE.search(message)
+    if match is None:
+        return None
+    return str(match.group(1) or "").strip() or None
+
+
+def _is_vulture_allowlisted(
+    *,
+    file_path: str,
+    line: int,
+    symbol: str | None,
+    allowlist: set[str],
+) -> bool:
+    file_dir = Path(file_path).parent.as_posix()
+    line_rule = f"{file_path}:{line}"
+    wildcard_line_rule = f"{file_dir}/*:{line}"
+    if line_rule in allowlist or wildcard_line_rule in allowlist:
+        return True
+    if not symbol:
+        return False
+    exact_rule = f"{file_path}:{symbol}"
+    wildcard_rule = f"{file_dir}/*:{symbol}"
+    return exact_rule in allowlist or wildcard_rule in allowlist
+
+
 def _is_allowlisted(defn: Definition, allowlist: set[str]) -> bool:
     key_exact = f"{defn.path}:{defn.name}"
     key_wildcard = f"{Path(defn.path).parent.as_posix()}/*:{defn.name}"
     return key_exact in allowlist or key_wildcard in allowlist
 
 
+def _run_vulture(
+    *,
+    root: Path,
+    scan_paths: list[str],
+    min_confidence: int,
+    timeout_sec: int,
+    vulture_bin: str,
+) -> tuple[list[Finding], str | None, bool]:
+    cmd = [vulture_bin] if vulture_bin.strip() else [sys.executable, "-m", "vulture"]
+    cmd.extend(scan_paths)
+    cmd.extend(["--min-confidence", str(min_confidence)])
+    try:
+        completed = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=str(root),
+            timeout=max(1, timeout_sec),
+        )
+    except FileNotFoundError:
+        return [], "vulture executable not found (install in .venv).", False
+    except subprocess.TimeoutExpired:
+        return [], f"vulture timeout after {max(1, timeout_sec)}s.", True
+
+    output = "\n".join(
+        [part for part in (completed.stdout, completed.stderr) if part.strip()]
+    )
+    if completed.returncode == 1 and "No module named vulture" in output:
+        return [], "vulture is not installed in .venv.", False
+
+    findings: list[Finding] = []
+    parse_warnings: list[str] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = VULTURE_LINE_RE.match(line)
+        if match is None:
+            parse_warnings.append(line)
+            continue
+        message = str(match.group("message") or "").strip()
+        symbol = _extract_vulture_symbol(message)
+        confidence_raw = str(match.group("confidence") or "").strip()
+        confidence = int(confidence_raw) if confidence_raw.isdigit() else None
+        findings.append(
+            Finding(
+                type="vulture_unused_symbol",
+                source="vulture",
+                path=str(match.group("path") or "").strip(),
+                line=int(match.group("line") or "0"),
+                message=message,
+                symbol=symbol,
+                confidence=confidence,
+            )
+        )
+    if completed.returncode not in (0, 1, 3):
+        return [], f"vulture failed with exit={completed.returncode}.", True
+    if parse_warnings:
+        return findings, f"vulture parse warnings: {len(parse_warnings)} line(s).", True
+    return findings, None, True
+
+
 def run_audit(
-    root: Path, scan_paths: Iterable[str], allowlist: set[str]
+    *,
+    root: Path,
+    scan_paths: Iterable[str],
+    allowlist: set[str],
+    with_vulture: bool = False,
+    vulture_allowlist: set[str] | None = None,
+    vulture_min_confidence: int = 80,
+    vulture_timeout_sec: int = 30,
+    vulture_bin: str = "",
 ) -> dict[str, object]:
     py_files = _iter_python_files(root, scan_paths)
     definitions: list[Definition] = []
@@ -215,12 +321,49 @@ def run_audit(
         "findings_unreachable_statement": sum(
             1 for f in findings_sorted if f.type == "unreachable_statement"
         ),
+        "findings_vulture_unused_symbol": 0,
     }
+    vulture_report: dict[str, object] = {
+        "enabled": with_vulture,
+        "available": False,
+        "error": None,
+        "allowlist_size": len(vulture_allowlist or set()),
+        "findings_total": 0,
+    }
+    if with_vulture:
+        vulture_findings, vulture_error, vulture_available = _run_vulture(
+            root=root,
+            scan_paths=list(scan_paths),
+            min_confidence=vulture_min_confidence,
+            timeout_sec=vulture_timeout_sec,
+            vulture_bin=vulture_bin,
+        )
+        vulture_allow = vulture_allowlist or set()
+        filtered_vulture: list[Finding] = []
+        for finding in vulture_findings:
+            if _is_vulture_allowlisted(
+                file_path=finding.path,
+                line=finding.line,
+                symbol=finding.symbol,
+                allowlist=vulture_allow,
+            ):
+                continue
+            filtered_vulture.append(finding)
+        findings_sorted.extend(
+            sorted(filtered_vulture, key=lambda item: (item.path, item.line, item.type))
+        )
+        vulture_report["available"] = vulture_available
+        vulture_report["error"] = vulture_error
+        vulture_report["findings_total"] = len(filtered_vulture)
+        summary["findings_vulture_unused_symbol"] = len(filtered_vulture)
+        summary["findings_total"] = len(findings_sorted)
+
     return {
         "root": str(root),
         "scan_paths": list(scan_paths),
         "allowlist_size": len(allowlist),
         "parse_errors": parse_errors,
+        "vulture": vulture_report,
         "summary": summary,
         "findings": [asdict(f) for f in findings_sorted],
     }
@@ -235,8 +378,18 @@ def _print_text_report(report: dict[str, object], show_limit: int) -> None:
     print(
         "- findings by type: "
         f"unused_private_definition={summary['findings_unused_private_definition']}, "
-        f"unreachable_statement={summary['findings_unreachable_statement']}"
+        f"unreachable_statement={summary['findings_unreachable_statement']}, "
+        f"vulture_unused_symbol={summary['findings_vulture_unused_symbol']}"
     )
+    vulture = report.get("vulture")
+    if isinstance(vulture, dict):
+        print(
+            f"- vulture: enabled={vulture.get('enabled')} "
+            f"available={vulture.get('available')} "
+            f"findings={vulture.get('findings_total')}"
+        )
+        if vulture.get("error"):
+            print(f"  * vulture note: {vulture.get('error')}")
 
     parse_errors = report["parse_errors"]
     if parse_errors:
@@ -271,6 +424,33 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--format", choices=("text", "json"), default="text")
     parser.add_argument(
+        "--with-vulture",
+        action="store_true",
+        help="Include vulture-based analysis as an additional soft signal.",
+    )
+    parser.add_argument(
+        "--vulture-allowlist",
+        default="config/dead_code_vulture_allowlist.txt",
+        help="Allowlist for vulture findings: path.py:symbol, dir/*:symbol or path.py:line.",
+    )
+    parser.add_argument(
+        "--vulture-min-confidence",
+        type=int,
+        default=80,
+        help="Vulture minimum confidence (default: 80).",
+    )
+    parser.add_argument(
+        "--vulture-timeout-sec",
+        type=int,
+        default=30,
+        help="Vulture timeout in seconds (default: 30).",
+    )
+    parser.add_argument(
+        "--vulture-bin",
+        default="",
+        help="Optional vulture executable path (default: python -m vulture).",
+    )
+    parser.add_argument(
         "--fail-on-findings",
         action="store_true",
         help="Return exit code 1 when findings exist.",
@@ -283,7 +463,17 @@ def main() -> int:
     root = Path(args.root).resolve()
     scan_paths = [item.strip() for item in args.paths.split(",") if item.strip()]
     allowlist = _load_allowlist((root / args.allowlist).resolve())
-    report = run_audit(root, scan_paths, allowlist)
+    vulture_allowlist = _load_allowlist((root / args.vulture_allowlist).resolve())
+    report = run_audit(
+        root=root,
+        scan_paths=scan_paths,
+        allowlist=allowlist,
+        with_vulture=args.with_vulture,
+        vulture_allowlist=vulture_allowlist,
+        vulture_min_confidence=max(1, min(100, args.vulture_min_confidence)),
+        vulture_timeout_sec=max(1, args.vulture_timeout_sec),
+        vulture_bin=args.vulture_bin,
+    )
 
     if args.format == "json":
         print(json.dumps(report, indent=2))

@@ -75,13 +75,10 @@ def _resolve_runtime_for_rollback(
     active_runtime: Any,
     settings_obj: Any | None = None,
 ) -> tuple[str, str]:
-    runtime_candidate = (
-        str(getattr(active_runtime, "provider", "") or "").strip().lower()
-    )
     settings = settings_obj or _get_settings()
     runtime_candidate = (
-        runtime_candidate
-        or str(getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+        str(getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+        or str(getattr(active_runtime, "provider", "") or "").strip().lower()
     )
     runtime_local_id = _resolve_local_runtime_id(runtime_candidate)
     return runtime_local_id or "", runtime_candidate
@@ -104,13 +101,13 @@ def _resolve_current_runtime_state(
 ) -> tuple[str, str]:
     settings = settings_obj or _get_settings()
     runtime_candidate = (
-        str(getattr(active_runtime, "provider", "") or "").strip().lower()
-        or str(getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+        str(getattr(settings, "ACTIVE_LLM_SERVER", "") or "").strip().lower()
+        or str(getattr(active_runtime, "provider", "") or "").strip().lower()
     )
     runtime_local_id = _resolve_local_runtime_id(runtime_candidate) or ""
     active_model = (
-        str(getattr(active_runtime, "model_name", "") or "").strip()
-        or str(getattr(settings, "LLM_MODEL_NAME", "") or "").strip()
+        str(getattr(settings, "LLM_MODEL_NAME", "") or "").strip()
+        or str(getattr(active_runtime, "model_name", "") or "").strip()
     )
     return runtime_local_id, active_model
 

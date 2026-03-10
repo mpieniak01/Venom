@@ -55,6 +55,7 @@ tests/test_session_store.py
 tests/test_shadow_agent.py
 tests/test_sonar_change_scope_resolver.py
 tests/test_stack_manager_safety.py
+tests/test_stack_stability_audit.py
 tests/test_system_governance_runtime_contracts.py
 tests/test_tasks_stream_service.py
 tests/test_test_catalog_tools.py

@@ -1,0 +1,8 @@
+# Vulture dead-code audit allowlist (soft-signal exceptions).
+#
+# Format:
+# - path/to/file.py:symbol
+# - path/to/file.py:123
+# - directory/*:symbol
+#
+# Keep entries narrow and document rationale in PR description.

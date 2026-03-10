@@ -87,7 +87,7 @@ Zakres:
 Kontrakt nazewnictwa lane/group:
 
 - `config/pytest-groups/fast.txt` jest kanoniczną listą szybkiego zakresu backendu.
-- `config/pytest-groups/light.txt` jest aliasem kompatybilności do `fast.txt` i nie powinien być edytowany niezależnie.
+- Używaj nazewnictwa `fast` w komendach/grupach. `config/pytest-groups/light.txt` pozostaje przestarzałym aliasem kompatybilności do `fast.txt` i nie powinien być edytowany niezależnie.
 
 Kontrakt architektoniczny routerów (backend):
 
@@ -377,7 +377,12 @@ Wskaźniki:
 
 ## Procedura triage dla dead-code (audyt heurystyczny)
 
-Stosuj, gdy `make audit-dead-code` raportuje znaleziska.
+Stosuj, gdy `make audit-dead-code` albo `make audit-dead-code-full` raportuje znaleziska.
+
+Kontrakt środowiska dla narzędzi:
+- uruchamiaj wyłącznie z repozytoryjnego virtualenv: `source .venv/bin/activate`
+- ścieżka vulture jest manualna (bez gate CI): `make audit-dead-code-vulture-install`
+- nie instaluj globalnych pakietów Pythona poza `.venv`
 
 1. Potwierdź, czy symbol faktycznie jest nieużywany:
 - wyszukaj odwołania w repo (`rg "<nazwa_symbolu>"`)
@@ -388,6 +393,8 @@ Stosuj, gdy `make audit-dead-code` raportuje znaleziska.
 - wildcard `dir/*:symbol` stosuj tylko, gdy to uzasadniona grupa równoważnych przypadków
 4. Każdy wpis allowlisty musi mieć krótkie uzasadnienie w opisie PR (owner + warunek usunięcia wyjątku).
 5. Ten audyt nie jest samodzielnym blockerem release; jest sygnałem do review. Blokujemy tylko potwierdzone defekty lub naruszenia polityk.
+6. Dla wyjątków specyficznych dla vulture używaj `config/dead_code_vulture_allowlist.txt` (`path.py:symbol`, `dir/*:symbol` albo `path.py:line`).
+7. `make audit-dead-code-full` jest narzędziem manualnym operatora; nie jest domyślną bramką CI.
 
 ## Polityka artefaktów testowych
 

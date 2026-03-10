@@ -62,7 +62,7 @@ while IFS= read -r file; do
   [[ -z "$file" ]] && continue
 
   case "$file" in
-    web-next/*)
+    web-next/*|modules/*)
       frontend_changed=1
       ;;
     *)
@@ -70,7 +70,7 @@ while IFS= read -r file; do
   esac
 
   case "$file" in
-    venom_core/*|tests/*|scripts/*|config/architecture/*|config/pytest-groups/*|config/testing/*|Makefile|make/*.mk|pytest.ini|sonar-project.properties|requirements*.txt)
+    venom_core/*|tests/*|scripts/*|config/architecture/*|config/pytest-groups/*|config/testing/*|modules/*|Makefile|make/*.mk|pytest.ini|sonar-project.properties|requirements*.txt)
       backend_changed=1
       ;;
     *)

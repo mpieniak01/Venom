@@ -28,6 +28,7 @@ UVICORN_PROD_FLAGS ?= --no-server-header
 BACKEND_LOG ?= logs/backend.log
 WEB_LOG ?= logs/web-next.log
 WEB_NODE_PATH ?= $(abspath $(WEB_DIR)/node_modules)
+WEB_START_RETRIES ?= 1
 # Leave empty by default: start_stack.sh resolves from .env (VLLM_ENDPOINT)
 # and falls back to http://127.0.0.1:8001/v1 when not configured.
 VLLM_ENDPOINT ?=
@@ -50,7 +51,7 @@ SHELL := /bin/bash
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test test-data test-unit test-smoke test-perf test-all test-artifacts-cleanup install-hooks sync-sonar-new-code-group start start2 start-dev start-dev-webpack start-dev-turbo start-prod start-prod-confirm start-preprod stop restart status clean-ports \
-		pytest e2e test-optimal test-ci-lite test-fast-coverage test-light-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
+		pytest e2e test-optimal test-ci-lite test-fast-coverage check-new-code-coverage check-new-code-coverage-diagnostics check-new-code-coverage-local sonar-reports-backend-new-code pr-fast agent-pr-fast pr-fast-local \
 		ci-lite-preflight ci-lite-bootstrap audit-ci-lite \
 		test-intelligence-report \
 		runtime-maintenance-cleanup \
@@ -62,7 +63,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
-		env-audit audit-dead-code make-targets-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff test-preprod-readonly-smoke help \
+		env-audit audit-dead-code audit-dead-code-vulture-install audit-dead-code-full make-targets-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff stack-stability-audit llm-runtime-stability-audit llm-runtime-stability-cycle-start llm-runtime-stability-cycle-start2 test-preprod-readonly-smoke help \
 		modules-status modules-pull modules-branches modules-exec architecture-drift-check architecture-sonar-export optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
 
 lint:
@@ -155,7 +156,7 @@ _start:
 		PID_FILE="$(PID_FILE)" WEB_DIR="$(WEB_DIR)" WEB_PORT="$(WEB_PORT)" WEB_HOST="$(WEB_HOST)" WEB_DISPLAY="$(WEB_DISPLAY)" WEB_PID_FILE="$(WEB_PID_FILE)" \
 		START_MODE="$(START_MODE)" START_WEB_MODE="$(START_WEB_MODE)" ALLOW_DEGRADED_START="$(ALLOW_DEGRADED_START)" BACKEND_RELOAD="$(BACKEND_RELOAD)" \
 		UVICORN_DEV_FLAGS="$(UVICORN_DEV_FLAGS)" UVICORN_PROD_FLAGS="$(UVICORN_PROD_FLAGS)" BACKEND_LOG="$(BACKEND_LOG)" WEB_LOG="$(WEB_LOG)" \
-		WEB_NODE_PATH="$(WEB_NODE_PATH)" WEB_APP_VERSION="$(WEB_APP_VERSION)" \
+		WEB_NODE_PATH="$(WEB_NODE_PATH)" WEB_APP_VERSION="$(WEB_APP_VERSION)" WEB_START_RETRIES="$(WEB_START_RETRIES)" \
 		$(if $(VLLM_ENDPOINT),VLLM_ENDPOINT="$(VLLM_ENDPOINT)") VLLM_START_TIMEOUT_SEC="$(VLLM_START_TIMEOUT_SEC)" \
 		ENV_FILE="$(ENV_FILE)" ENV_EXAMPLE_FILE="$(ENV_EXAMPLE_FILE)" NPM="$(NPM)" \
 		bash scripts/dev/start_stack.sh
@@ -374,5 +375,11 @@ help:
 	@echo "  make pr-fast                  - hard gate (wymagane przed zakończeniem)"
 	@echo "  make make-targets-audit       - audyt .PHONY vs zdefiniowane targety"
 	@echo "  make audit-dead-code          - heurystyczny audyt ślepego kodu (Python)"
+	@echo "  make audit-dead-code-vulture-install - ręczna instalacja vulture do .venv"
+	@echo "  make audit-dead-code-full     - dead-code audit + sygnał vulture (soft)"
+	@echo "  make stack-stability-audit    - ręczny audyt stabilności procesów web/API + portów + manifestów modułów"
+	@echo "  make llm-runtime-stability-audit - ręczny audyt lifecycle runtime/model (ollama/vllm/onnx) na aktywnym backendzie"
+	@echo "  make llm-runtime-stability-cycle-start - cykl: make start -> audit runtime -> make stop"
+	@echo "  make llm-runtime-stability-cycle-start2 - cykl: make start2 -> audit runtime -> make stop"
 	@echo "  make test-groups-check        - weryfikacja grup testów"
 	@echo "  make test-catalog-check       - weryfikacja katalogu testów"

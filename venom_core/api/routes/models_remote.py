@@ -188,6 +188,22 @@ def _cache_put(
     remote_models_service.cache_put(cache, lock, key, payload=payload)
 
 
+def _get_openai_models_catalog_static() -> list[RemoteModelInfo]:
+    """Get static OpenAI models catalog."""
+    return [
+        RemoteModelInfo(**item)
+        for item in remote_models_service.openai_static_catalog_payload()
+    ]
+
+
+def _get_google_models_catalog_static() -> list[RemoteModelInfo]:
+    """Get static Google models catalog."""
+    return [
+        RemoteModelInfo(**item)
+        for item in remote_models_service.google_static_catalog_payload()
+    ]
+
+
 async def _fetch_openai_models_catalog_live() -> list[RemoteModelInfo]:
     models_payload = await remote_models_service.fetch_openai_models_catalog_live(
         api_key=(SETTINGS.OPENAI_API_KEY or "").strip(),

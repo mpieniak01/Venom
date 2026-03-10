@@ -103,13 +103,6 @@ def _render_group(manual_lines: list[str], auto_entries: list[str]) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def _append_auto_items(path: Path, new_items: list[str]) -> None:
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    manual_lines, auto_entries = _split_auto_section(lines)
-    merged = _dedupe_keep_order(auto_entries + new_items)
-    path.write_text(_render_group(manual_lines, merged), encoding="utf-8")
-
-
 def _sleep_total_seconds(path: str) -> float:
     file_path = Path(path)
     if not file_path.exists():

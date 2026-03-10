@@ -460,33 +460,47 @@ fi
 if [[ -z "$ui_skip" ]]; then
   start_ui_process() {
     local mode="$1"
-    if [[ "$mode" == "prod" ]]; then
-      (
-        cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run start -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-        echo $! > "../$WEB_PID_FILE"
-      )
-      return 0
-    fi
-    if [[ "$mode" == "turbo" ]]; then
-      (
-        cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 run_with_env_file setsid "$NPM" run dev:turbo -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-        echo $! > "../$WEB_PID_FILE"
-      )
-      return 0
-    fi
-    if [[ "$mode" == "turbo-debug" ]]; then
-      (
-        cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 run_with_env_file setsid "$NPM" run dev:turbo:debug -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-        echo $! > "../$WEB_PID_FILE"
-      )
-      return 0
-    fi
+    local npm_command="dev"
+    case "$mode" in
+      prod)
+        npm_command="start"
+        ;;
+      turbo)
+        npm_command="dev:turbo"
+        ;;
+      turbo-debug)
+        npm_command="dev:turbo:debug"
+        ;;
+      webpack)
+        npm_command="dev"
+        ;;
+      *)
+        echo "❌ Nieznany tryb uruchomienia UI: ${mode}" >&2
+        return 1
+        ;;
+    esac
+
     (
       cd "$WEB_DIR"
-      NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run dev -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+      export NODE_PATH="$WEB_NODE_PATH"
+      export NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION"
+      export NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}"
+      export NEXT_TELEMETRY_DISABLED=1
+      unset NEXT_DISABLE_TURBOPACK WATCHPACK_POLLING WATCHPACK_POLLING_INTERVAL CHOKIDAR_USEPOLLING
+
+      if [[ "$mode" == "prod" ]]; then
+        export NEXT_MODE=prod
+      elif [[ "$mode" == "webpack" ]]; then
+        export NEXT_MODE=dev
+        export NEXT_DISABLE_TURBOPACK=1
+      else
+        export NEXT_MODE=dev
+        export WATCHPACK_POLLING=true
+        export WATCHPACK_POLLING_INTERVAL=1000
+        export CHOKIDAR_USEPOLLING=1
+      fi
+
+      run_with_env_file setsid "$NPM" run "$npm_command" -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
       echo $! > "../$WEB_PID_FILE"
     )
   }

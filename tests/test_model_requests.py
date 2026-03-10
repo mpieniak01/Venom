@@ -1,3 +1,4 @@
+import pytest
 from pydantic import ValidationError
 
 from venom_core.api.model_schemas.model_requests import (
@@ -61,3 +62,31 @@ def test_model_registry_install_request_runs_post_init_for_huggingface():
     )
     assert req.provider == "huggingface"
     assert req.runtime == "vllm"
+
+
+def test_model_registry_install_request_rejects_huggingface_with_non_vllm_runtime():
+    with pytest.raises(
+        ValidationError, match="Runtime dla HuggingFace musi być 'vllm'"
+    ):
+        ModelRegistryInstallRequest(
+            name="google/gemma-3-4b-it",
+            provider="huggingface",
+            runtime="ollama",
+        )
+
+
+def test_model_registry_install_request_validates_ollama_runtime_contract():
+    req = ModelRegistryInstallRequest(
+        name="gemma2:2b",
+        provider="ollama",
+        runtime="ollama",
+    )
+    assert req.provider == "ollama"
+    assert req.runtime == "ollama"
+
+    with pytest.raises(ValidationError, match="Runtime dla Ollama musi być 'ollama'"):
+        ModelRegistryInstallRequest(
+            name="gemma2:2b",
+            provider="ollama",
+            runtime="vllm",
+        )

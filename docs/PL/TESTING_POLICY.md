@@ -87,7 +87,7 @@ Zakres:
 Kontrakt nazewnictwa lane/group:
 
 - `config/pytest-groups/fast.txt` jest kanoniczną listą szybkiego zakresu backendu.
-- `config/pytest-groups/light.txt` jest aliasem kompatybilności do `fast.txt` i nie powinien być edytowany niezależnie.
+- Używaj nazewnictwa `fast` w komendach/grupach. `config/pytest-groups/light.txt` pozostaje przestarzałym aliasem kompatybilności do `fast.txt` i nie powinien być edytowany niezależnie.
 
 Kontrakt architektoniczny routerów (backend):
 

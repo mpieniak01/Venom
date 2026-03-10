@@ -87,7 +87,7 @@ What it includes:
 Lane/group naming contract:
 
 - `config/pytest-groups/fast.txt` is the canonical fast-scope backend list.
-- `config/pytest-groups/light.txt` is a compatibility alias of `fast.txt` and should not be edited independently.
+- Use `fast` naming in commands/groups. `config/pytest-groups/light.txt` remains a deprecated compatibility alias of `fast.txt` and should not be edited independently.
 
 Test taxonomy model (canonical source: `config/testing/test_catalog.json`):
 

@@ -270,6 +270,7 @@ tests/test_platform_skill.py
 tests/test_policy_engine.py
 tests/test_policy_gate.py
 tests/test_port_authority.py
+tests/test_port_pids_script.py
 tests/test_preprod_mutation_guards.py
 tests/test_preprod_ops_regression.py
 tests/test_preprod_optional_modules_smoke.py

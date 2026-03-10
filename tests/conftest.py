@@ -232,6 +232,8 @@ def configure_local_settings(tmp_path_factory) -> Dict[str, Any]:
         "AI_MODE": "LOCAL",
         "ENABLE_MODEL_ROUTING": False,
         "FORCE_LOCAL_MODEL": True,
+        "ENABLE_SANDBOX": False,
+        "ALLOW_SANDBOX_CONTAINERS": False,
         # Wyłącz zadania w tle, które w testach nie są potrzebne
         "VENOM_PAUSE_BACKGROUND_TASKS": True,
         "ENABLE_AUTO_DOCUMENTATION": False,

@@ -18,6 +18,10 @@ LONG_GROUP_FILE="config/pytest-groups/long.txt"
 unset PYTEST_ADDOPTS
 unset PYTEST_MARKEXPR
 
+# Globalna polityka: testy nie uruchamiają kontenerów sandbox.
+export ENABLE_SANDBOX=false
+export ALLOW_SANDBOX_CONTAINERS=false
+
 read_group_tests() {
   local file="$1"
   grep -vE '^\s*(#|$)' "$file"

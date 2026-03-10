@@ -4,6 +4,7 @@
 echo "🛑 Zatrzymuję stos Venom (Web, Backend, LLM)..."
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_PY="$ROOT_DIR/.venv/bin/python"
+STOP_DATA_PORTS="${STOP_DATA_PORTS:-1}"
 
 kill_tree() {
     local pid="${1:-}"
@@ -40,6 +41,26 @@ stop_pid_file() {
     rm -f "$pid_file" 2>/dev/null || true
 }
 
+stop_venom_containers() {
+    if ! command -v docker >/dev/null 2>&1; then
+        return 0
+    fi
+    if ! docker info >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local ids
+    ids="$(
+        docker ps -a --format '{{.ID}} {{.Names}}' \
+            | awk '$2 ~ /^venom(-|_)/ || $2 ~ /^venom-sandbox/ || $2 ~ /^venom-hive-/ {print $1}' \
+            | tr '\n' ' '
+    )"
+    if [[ -n "${ids// }" ]]; then
+        echo "🐳 Zatrzymuję kontenery Venom: $ids"
+        docker rm -f $ids >/dev/null 2>&1 || true
+    fi
+}
+
 # 0. Zatrzymaj potencjalnie wiszące procesy startowe make
 pkill -f "make --no-print-directory _start" 2>/dev/null || true
 
@@ -72,8 +93,15 @@ pkill -9 -f "ray::" 2>/dev/null || true
 pkill -9 -f "${VENV_PY} -c from multiprocessing.spawn import spawn_main" 2>/dev/null || true
 pkill -9 -f "${VENV_PY} -c from multiprocessing.resource_tracker import main" 2>/dev/null || true
 
-# 6. Czyszczenie portów
+# 6. Kontenery Venom (w tym sandbox/queue/db uruchomione w Docker)
+echo "🐳 Zatrzymuję kontenery Venom..."
+stop_venom_containers
+
+# 7. Czyszczenie portów (API/Web/LLM + data services)
 PORTS_TO_CLEAN="8000 3000 11434 8001"
+if [[ "$STOP_DATA_PORTS" == "1" ]]; then
+    PORTS_TO_CLEAN="$PORTS_TO_CLEAN 6379 5432 3306 27017 5672 15672 6333 6334 9200"
+fi
 if command -v lsof >/dev/null 2>&1; then
     for port in $PORTS_TO_CLEAN; do
         pids=$(lsof -ti tcp:"$port" 2>/dev/null || true)

@@ -98,6 +98,43 @@ extract_url_port() {
 
 OLLAMA_PORT="$(extract_url_port "$OLLAMA_BASE_URL")"
 
+count_inotify_instances() {
+  local total=0
+  local proc_fd
+  for proc_fd in /proc/[0-9]*/fd; do
+    [[ -d "$proc_fd" ]] || continue
+    local count
+    count="$(ls -l "$proc_fd" 2>/dev/null | grep -c 'anon_inode:inotify' || true)"
+    if [[ -n "$count" ]]; then
+      total=$((total + count))
+    fi
+  done
+  printf '%s' "$total"
+}
+
+inotify_preflight_check() {
+  local max_instances
+  max_instances="$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo "")"
+  [[ "$max_instances" =~ ^[0-9]+$ ]] || return 0
+
+  local current_instances
+  current_instances="$(count_inotify_instances)"
+  [[ "$current_instances" =~ ^[0-9]+$ ]] || return 0
+
+  if (( current_instances >= max_instances )); then
+    local running_containers="n/a"
+    if command -v docker >/dev/null 2>&1; then
+      running_containers="$(docker ps -q 2>/dev/null | wc -l | tr -d '[:space:]')"
+    fi
+    echo "⚠️  Wysokie zużycie inotify: instances=${current_instances}/${max_instances}."
+    echo "⚠️  To może powodować: 'Failed to allocate directory watch: Too many open files'."
+    echo "ℹ️  Diagnoza: to zwykle limit instancji inotify (nie klasyczny ulimit -n)."
+    echo "ℹ️  running_containers=${running_containers} (jeśli Docker działa)."
+    echo "ℹ️  Rekomendacja: podnieś limit, np. 'sysctl -w fs.inotify.max_user_instances=1024'"
+    echo "ℹ️  Trwała konfiguracja: /etc/sysctl.d/99-venom-inotify.conf + 'sysctl --system'"
+  fi
+}
+
 vllm_models_url() {
   local endpoint="$1"
   if [[ "$endpoint" == */v1/models ]]; then
@@ -189,6 +226,7 @@ echo "  - OLLAMA_HEALTH_URL: ${OLLAMA_HEALTH_URL} (${ollama_health_origin})"
 echo "  - START_MODE: ${START_MODE}"
 echo "  - START_WEB_MODE: ${START_WEB_MODE}"
 echo "  - HOST: ${HOST}:${PORT}, WEB: ${WEB_HOST}:${WEB_PORT}"
+inotify_preflight_check
 
 start_ollama() {
   local make_bin
@@ -196,12 +234,12 @@ start_ollama() {
   echo "▶️  Uruchamiam Ollama..."
   mk vllm-stop >/dev/null || true
   if command -v timeout >/dev/null 2>&1; then
-    if ! timeout 25s "$make_bin" --no-print-directory ollama-start >/dev/null; then
+    if ! timeout 25s "$make_bin" --no-print-directory ollama-start >/dev/null 2>&1; then
       echo "❌ 'ollama-start' nie zakończył się poprawnie w limicie czasu (25s)."
       return 1
     fi
   else
-    if ! "$make_bin" --no-print-directory ollama-start >/dev/null; then
+    if ! "$make_bin" --no-print-directory ollama-start >/dev/null 2>&1; then
       echo "❌ Nie udało się wywołać 'ollama-start' (sprawdź instalację/usługę Ollama)."
       return 1
     fi

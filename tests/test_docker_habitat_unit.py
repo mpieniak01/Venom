@@ -376,12 +376,19 @@ def test_is_exact_container_name_match_handles_attrs_exception():
 
 
 def test_init_raises_when_docker_sdk_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        docker_habitat.SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True, raising=False
+    )
     monkeypatch.setattr(docker_habitat, "docker", None)
     with pytest.raises(RuntimeError, match="Docker SDK nie jest dostępny"):
         DockerHabitat()
 
 
 def test_init_raises_when_docker_connection_fails(monkeypatch):
+    monkeypatch.setattr(
+        docker_habitat.SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True, raising=False
+    )
+
     class FakeDocker:
         @staticmethod
         def from_env():
@@ -562,6 +569,9 @@ def test_recover_from_name_conflict_recreates_on_mount_mismatch(monkeypatch, tmp
 
 
 def test_init_initializes_container_from_get_or_create(monkeypatch):
+    monkeypatch.setattr(
+        docker_habitat.SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True, raising=False
+    )
     fake_client = SimpleNamespace()
     fake_container = SimpleNamespace(status="running")
 

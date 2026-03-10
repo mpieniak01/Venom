@@ -51,6 +51,13 @@ class DockerHabitat:
         Raises:
             RuntimeError: Jeśli Docker nie jest dostępny lub nie można uruchomić kontenera
         """
+        if not SETTINGS.ALLOW_SANDBOX_CONTAINERS:
+            error_msg = (
+                "Docker Sandbox jest globalnie wyłączony "
+                "(ALLOW_SANDBOX_CONTAINERS=false)"
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         if docker is None:
             error_msg = "Docker SDK nie jest dostępny"
             logger.error(error_msg)

@@ -31,7 +31,11 @@ class ShellSkill:
             use_sandbox: Czy używać Docker Sandbox (domyślnie True).
                         Jeśli False, komendy wykonywane są lokalnie.
         """
-        self.use_sandbox = use_sandbox and SETTINGS.ENABLE_SANDBOX
+        self.use_sandbox = (
+            use_sandbox
+            and SETTINGS.ENABLE_SANDBOX
+            and SETTINGS.ALLOW_SANDBOX_CONTAINERS
+        )
         self.habitat: Optional[DockerHabitat] = None
 
         if self.use_sandbox:
@@ -43,6 +47,11 @@ class ShellSkill:
                 logger.warning("Przełączanie na tryb lokalny")
                 self.use_sandbox = False
         else:
+            if use_sandbox and not SETTINGS.ALLOW_SANDBOX_CONTAINERS:
+                logger.warning(
+                    "Sandbox kontenerowy jest globalnie zablokowany "
+                    "(ALLOW_SANDBOX_CONTAINERS=false). Używam trybu lokalnego."
+                )
             logger.info("ShellSkill zainicjalizowany w trybie lokalnym")
 
     @kernel_function(

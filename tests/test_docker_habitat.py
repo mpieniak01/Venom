@@ -10,6 +10,12 @@ from venom_core.infrastructure.docker_habitat import DockerHabitat
 
 pytestmark = pytest.mark.requires_docker
 
+if not SETTINGS.ALLOW_SANDBOX_CONTAINERS:
+    pytest.skip(
+        "Docker sandbox tests disabled by global policy (ALLOW_SANDBOX_CONTAINERS=false)",
+        allow_module_level=True,
+    )
+
 
 @pytest.fixture(scope="module")
 def docker_habitat():

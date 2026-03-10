@@ -56,12 +56,18 @@ def _new_habitat_with_client(client) -> docker_habitat_mod.DockerHabitat:
 
 
 def test_init_raises_when_docker_sdk_missing(monkeypatch):
+    monkeypatch.setattr(
+        docker_habitat_mod.SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True, raising=False
+    )
     monkeypatch.setattr(docker_habitat_mod, "docker", None)
     with pytest.raises(RuntimeError, match="Docker SDK nie jest dostępny"):
         docker_habitat_mod.DockerHabitat()
 
 
 def test_init_raises_when_docker_daemon_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        docker_habitat_mod.SETTINGS, "ALLOW_SANDBOX_CONTAINERS", True, raising=False
+    )
     docker_stub = SimpleNamespace()
     docker_stub.from_env = MagicMock(side_effect=RuntimeError("daemon down"))
     monkeypatch.setattr(docker_habitat_mod, "docker", docker_stub)

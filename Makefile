@@ -63,7 +63,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
-		env-audit audit-dead-code audit-dead-code-vulture-install audit-dead-code-full make-targets-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff stack-stability-audit test-preprod-readonly-smoke help \
+		env-audit audit-dead-code audit-dead-code-vulture-install audit-dead-code-full make-targets-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff stack-stability-audit llm-runtime-stability-audit llm-runtime-stability-cycle-start llm-runtime-stability-cycle-start2 test-preprod-readonly-smoke help \
 		modules-status modules-pull modules-branches modules-exec architecture-drift-check architecture-sonar-export optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
 
 lint:
@@ -378,5 +378,8 @@ help:
 	@echo "  make audit-dead-code-vulture-install - ręczna instalacja vulture do .venv"
 	@echo "  make audit-dead-code-full     - dead-code audit + sygnał vulture (soft)"
 	@echo "  make stack-stability-audit    - ręczny audyt stabilności procesów web/API + portów + manifestów modułów"
+	@echo "  make llm-runtime-stability-audit - ręczny audyt lifecycle runtime/model (ollama/vllm/onnx) na aktywnym backendzie"
+	@echo "  make llm-runtime-stability-cycle-start - cykl: make start -> audit runtime -> make stop"
+	@echo "  make llm-runtime-stability-cycle-start2 - cykl: make start2 -> audit runtime -> make stop"
 	@echo "  make test-groups-check        - weryfikacja grup testów"
 	@echo "  make test-catalog-check       - weryfikacja katalogu testów"

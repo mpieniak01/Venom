@@ -39,6 +39,15 @@ env-report-diff:
 stack-stability-audit:
 	@$(PYTHON_BIN) scripts/dev/stack_stability_audit.py --env-file "$(ENV_FILE)" --backend-port "$(PORT)" --web-port "$(WEB_PORT)"
 
+llm-runtime-stability-audit:
+	@$(PYTHON_BIN) scripts/dev/llm_runtime_stability_audit.py --env-file "$(ENV_FILE)" --fail-on-errors
+
+llm-runtime-stability-cycle-start:
+	@$(PYTHON_BIN) scripts/dev/llm_runtime_stability_audit.py --env-file "$(ENV_FILE)" --stack-cycle start --fail-on-errors
+
+llm-runtime-stability-cycle-start2:
+	@$(PYTHON_BIN) scripts/dev/llm_runtime_stability_audit.py --env-file "$(ENV_FILE)" --stack-cycle start2 --fail-on-errors
+
 # =============================================================================
 # Konserwacja MCP
 # =============================================================================

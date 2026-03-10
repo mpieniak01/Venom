@@ -208,6 +208,7 @@ tests/test_skills_browser_github_shell_contracts.py
 tests/test_skills_init.py
 tests/test_sonar_agents_init.py
 tests/test_sonar_route_selection.py
+tests/test_stack_stability_audit.py
 tests/test_strategist_agent.py
 tests/test_strategy_and_routes_regression.py
 tests/test_swarm_wrapper.py

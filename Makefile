@@ -335,43 +335,16 @@ _start:
 	fi
 	@ui_skip=""; \
 	if [ ! -f $(WEB_PID_FILE) ]; then \
-		EXT_UI_PIDS=""; \
-		if command -v lsof >/dev/null 2>&1; then \
-			EXT_UI_PIDS=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
-		fi; \
-		if [ -z "$$EXT_UI_PIDS" ] && command -v fuser >/dev/null 2>&1; then \
-			EXT_UI_PIDS=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
-		fi; \
-		if [ -z "$$EXT_UI_PIDS" ] && command -v ss >/dev/null 2>&1; then \
-			EXT_UI_PIDS=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
-		fi; \
+		EXT_UI_PIDS=$$(bash scripts/dev/port_pids.sh "$(WEB_PORT)" || true); \
 		if [ -n "$$EXT_UI_PIDS" ]; then \
 			echo "⚠️  Port $(WEB_PORT) zajęty przez niezarządzany proces UI ($$EXT_UI_PIDS). Czyszczę."; \
 			kill $$EXT_UI_PIDS 2>/dev/null || true; \
 			for attempt in {1..30}; do \
-				EXT_STILL=""; \
-				if command -v lsof >/dev/null 2>&1; then \
-					EXT_STILL=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
-				fi; \
-				if [ -z "$$EXT_STILL" ] && command -v fuser >/dev/null 2>&1; then \
-					EXT_STILL=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
-				fi; \
-				if [ -z "$$EXT_STILL" ] && command -v ss >/dev/null 2>&1; then \
-					EXT_STILL=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
-				fi; \
+				EXT_STILL=$$(bash scripts/dev/port_pids.sh "$(WEB_PORT)" || true); \
 				if [ -z "$$EXT_STILL" ]; then break; fi; \
 				sleep 0.2; \
 			done; \
-			EXT_STILL=""; \
-			if command -v lsof >/dev/null 2>&1; then \
-				EXT_STILL=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
-			fi; \
-			if [ -z "$$EXT_STILL" ] && command -v fuser >/dev/null 2>&1; then \
-				EXT_STILL=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
-			fi; \
-			if [ -z "$$EXT_STILL" ] && command -v ss >/dev/null 2>&1; then \
-				EXT_STILL=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
-			fi; \
+			EXT_STILL=$$(bash scripts/dev/port_pids.sh "$(WEB_PORT)" || true); \
 			if [ -n "$$EXT_STILL" ]; then \
 				echo "❌ Nie udało się zwolnić portu $(WEB_PORT) (PID: $$EXT_STILL). Użyj: make web-stop"; \
 				exit 1; \
@@ -538,16 +511,7 @@ status:
 			echo "⚠️  WEB_PID_FILE istnieje, ale proces $$WPID nie żyje"; \
 		fi; \
 	else \
-		EXT_UI_PIDS=""; \
-		if command -v lsof >/dev/null 2>&1; then \
-			EXT_UI_PIDS=$$(lsof -ti tcp:$(WEB_PORT) 2>/dev/null || true); \
-		fi; \
-		if [ -z "$$EXT_UI_PIDS" ] && command -v fuser >/dev/null 2>&1; then \
-			EXT_UI_PIDS=$$(fuser -n tcp $(WEB_PORT) 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$$' || true); \
-		fi; \
-		if [ -z "$$EXT_UI_PIDS" ] && command -v ss >/dev/null 2>&1; then \
-			EXT_UI_PIDS=$$(ss -ltnp 2>/dev/null | awk '/:$(WEB_PORT)[[:space:]]/ { while (match($$0, /pid=[0-9]+/)) { print substr($$0, RSTART+4, RLENGTH-4); $$0 = substr($$0, RSTART+RLENGTH); } }' | sort -u || true); \
-		fi; \
+		EXT_UI_PIDS=$$(bash scripts/dev/port_pids.sh "$(WEB_PORT)" || true); \
 		if [ -n "$$EXT_UI_PIDS" ]; then \
 			echo "⚠️  UI zajmuje port $(WEB_PORT), ale bez $(WEB_PID_FILE) (PID: $$EXT_UI_PIDS)"; \
 			echo "    Użyj: make web-stop"; \
@@ -558,20 +522,10 @@ status:
 
 clean-ports:
 	@for PORT_TO_CHECK in $(PORTS_TO_CLEAN); do \
-		if command -v lsof >/dev/null 2>&1; then \
-			PIDS=$$(lsof -ti tcp:$$PORT_TO_CHECK 2>/dev/null || true); \
-			if [ -n "$$PIDS" ]; then \
-				echo "⚠️  Port $$PORT_TO_CHECK zajęty przez $$PIDS – kończę procesy"; \
-				kill $$PIDS 2>/dev/null || true; \
-			fi; \
-		elif command -v fuser >/dev/null 2>&1; then \
-			PIDS=$$(fuser -n tcp $$PORT_TO_CHECK 2>/dev/null || true); \
-			if [ -n "$$PIDS" ]; then \
-				echo "⚠️  Port $$PORT_TO_CHECK zajęty przez $$PIDS – kończę procesy (fuser)"; \
-				fuser -k -n tcp $$PORT_TO_CHECK >/dev/null 2>&1 || true; \
-			fi; \
-		else \
-			echo "ℹ️  Brak lsof/fuser – pomijam czyszczenie portu $$PORT_TO_CHECK"; \
+		PIDS=$$(bash scripts/dev/port_pids.sh "$$PORT_TO_CHECK" || true); \
+		if [ -n "$$PIDS" ]; then \
+			echo "⚠️  Port $$PORT_TO_CHECK zajęty przez $$PIDS – kończę procesy"; \
+			kill $$PIDS 2>/dev/null || true; \
 		fi; \
 	done
 

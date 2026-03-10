@@ -354,6 +354,7 @@ class Professor(BaseAgent):
 
         logger.info("Rozpoczynam ewaluację modelu w Arenie...")
         candidate_model = self._resolve_candidate_model(candidate_model)
+        _ = baseline_model
 
         if not candidate_model:
             return "❌ Brak nowego modelu do ewaluacji. Przeprowadź trening najpierw."

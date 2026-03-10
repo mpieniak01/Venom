@@ -46,7 +46,7 @@ except ImportError:  # pragma: no cover - zależność opcjonalna
                 "Zainstaluj opcjonalną zależność deploymentu."
             )
 
-        async def __aexit__(self, exc_type, exc, tb):
+        async def __aexit__(self, _exc_type, _exc, _tb):
             return None
 
     def _missing_asyncssh_connect(*args, **kwargs):

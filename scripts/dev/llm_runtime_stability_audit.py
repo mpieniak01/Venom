@@ -218,7 +218,7 @@ def _verify_active_server(
         return False, f"active_server={active_server} expected={runtime}"
     if model and strict_model:
         active_model = str(body.get("active_model") or "").strip().lower()
-        if active_model and model.strip().lower() not in {active_model}:
+        if active_model and model.strip().lower() != active_model:
             # Alias/canonical mappings may differ. Accept substring relation.
             if (
                 model.strip().lower() not in active_model

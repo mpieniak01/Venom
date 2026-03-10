@@ -396,6 +396,23 @@ Kontrakt środowiska dla narzędzi:
 6. Dla wyjątków specyficznych dla vulture używaj `config/dead_code_vulture_allowlist.txt` (`path.py:symbol`, `dir/*:symbol` albo `path.py:line`).
 7. `make audit-dead-code-full` jest narzędziem manualnym operatora; nie jest domyślną bramką CI.
 
+### Matryca komend audytu dead-code
+
+Ta matryca rozróżnia ścieżkę heurystyczną od ścieżki vulture.
+
+| Komenda | Ścieżka skryptu | Heurystyka | Vulture | Hard gate CI |
+| --- | --- | --- | --- | --- |
+| `make audit-dead-code` | `scripts/dev/dead_code_audit.py` | Tak | Nie | Nie |
+| `make audit-dead-code-vulture-install` | instalacja pip w `.venv` (`vulture==2.14`) | Nie | Nie | Nie |
+| `make audit-dead-code-full` | `scripts/dev/dead_code_audit.py --with-vulture` | Tak | Tak | Nie |
+
+Dodatkowe zasady:
+- uruchamiaj z repozytoryjnego virtualenv: `source .venv/bin/activate`
+- brak globalnej instalacji pakietów Pythona
+- allowlisty:
+  - heurystyka: `config/dead_code_allowlist.txt`
+  - vulture: `config/dead_code_vulture_allowlist.txt`
+
 ## Polityka artefaktów testowych
 
 Nie commitujemy artefaktów wyników testów.

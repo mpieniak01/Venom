@@ -384,12 +384,6 @@ async def _iter_stream_packets(resp: Any) -> AsyncIterator[dict]:
         yield packet
 
 
-async def _iter_stream_contents(resp: Any) -> AsyncIterator[str]:
-    async for packet in _iter_stream_packets(resp):
-        for content in _extract_sse_contents(packet):
-            yield content
-
-
 def _trace_first_chunk(
     request_id: UUID,
     stream_start: float,

@@ -373,6 +373,23 @@ Runtime contract for tools:
 6. For vulture-specific exceptions use `config/dead_code_vulture_allowlist.txt` (`path.py:symbol`, `dir/*:symbol`, or `path.py:line`).
 7. `make audit-dead-code-full` is an operator manual tool; it is not a default CI hard gate.
 
+### Dead-Code Audit Command Matrix
+
+Use this matrix to avoid ambiguity between heuristic and vulture paths.
+
+| Command | Script path | Heuristic findings | Vulture findings | CI hard gate |
+| --- | --- | --- | --- | --- |
+| `make audit-dead-code` | `scripts/dev/dead_code_audit.py` | Yes | No | No |
+| `make audit-dead-code-vulture-install` | `.venv` pip install (`vulture==2.14`) | No | No | No |
+| `make audit-dead-code-full` | `scripts/dev/dead_code_audit.py --with-vulture` | Yes | Yes | No |
+
+Additional notes:
+- run from repo virtualenv: `source .venv/bin/activate`
+- no global Python package installation
+- allowlists:
+  - heuristic: `config/dead_code_allowlist.txt`
+  - vulture: `config/dead_code_vulture_allowlist.txt`
+
 ## Test Artifacts Policy
 
 Do not commit test output artifacts.

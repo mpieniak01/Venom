@@ -1069,11 +1069,11 @@ def test_compute_bytes_hash_is_stable():
 
 def test_validate_training_record():
     """Test walidacji rekordu treningowego"""
-    from venom_core.api.routes.academy import _validate_training_record
+    from venom_core.api.routes.academy_uploads import validate_training_record
 
     # Valid record
     assert (
-        _validate_training_record(
+        validate_training_record(
             {
                 "instruction": "This is a valid instruction",
                 "input": "",
@@ -1085,7 +1085,7 @@ def test_validate_training_record():
 
     # Too short instruction
     assert (
-        _validate_training_record(
+        validate_training_record(
             {"instruction": "short", "input": "", "output": "This is a valid output"}
         )
         is False
@@ -1093,11 +1093,11 @@ def test_validate_training_record():
 
     # Too short output
     assert (
-        _validate_training_record(
+        validate_training_record(
             {"instruction": "This is a valid instruction", "input": "", "output": "x"}
         )
         is False
     )
 
     # Not a dict
-    assert _validate_training_record("not a dict") is False
+    assert validate_training_record("not a dict") is False

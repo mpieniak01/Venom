@@ -283,9 +283,9 @@ class HttpClientLike(Protocol):
 
     async def __aexit__(
         self,
-        exc_type: Any,
-        exc: Any,
-        tb: Any,
+        _exc_type: Any,
+        _exc: Any,
+        _tb: Any,
     ) -> Any: ...
 
     async def aget(self, url: str, **kwargs: Any) -> ResponseLike: ...

@@ -108,6 +108,7 @@ tests/test_llm_runtime_stability_audit.py
 tests/test_llm_runtime_utils.py
 tests/test_llm_server_controller.py
 tests/test_llm_server_selection.py
+tests/test_llm_simple_logic.py
 tests/test_llm_simple_payload_service.py
 tests/test_llm_simple_route_model_resolution.py
 tests/test_logger_utils.py
@@ -133,6 +134,7 @@ tests/test_model_registry_clients.py
 tests/test_model_registry_clients_additional.py
 tests/test_model_registry_providers.py
 tests/test_model_registry_split_modules.py
+tests/test_model_requests.py
 tests/test_model_router.py
 tests/test_model_services.py
 tests/test_model_validators.py
@@ -225,6 +227,7 @@ tests/test_test_skill.py
 tests/test_test_skill_local.py
 tests/test_training_metrics_parser.py
 tests/test_translation_service.py
+tests/test_update_sonar_scope_group.py
 tests/test_ux_analyst.py
 tests/test_workflow_control_api.py
 tests/test_workflow_control_contract.py

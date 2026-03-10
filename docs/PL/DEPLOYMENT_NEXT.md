@@ -166,6 +166,9 @@ Publiczne grupy komend:
 3. Maintenance i higiena środowiska (`make/maintenance.mk`)
 - `make make-targets-audit` - walidacja spójności `.PHONY` vs zdefiniowane targety
 - `make audit-dead-code` - heurystyczny audyt ślepego kodu (Python)
+- `make audit-dead-code-vulture-install` - ręczna instalacja vulture do `.venv`
+- `make audit-dead-code-full` - heurystyczny audyt ślepego kodu + sygnał vulture
+- `make stack-stability-audit` - ręczna diagnostyka: pid, porty, manifesty modułów optional
 - `make env-audit`, `make env-clean-safe`, `make env-clean-docker-safe`, `make env-clean-deep`, `make env-report-diff`
 - `make security-delta-scan`, `make security-delta-scan-strict`
 - `make mcp-clean`, `make mcp-status`

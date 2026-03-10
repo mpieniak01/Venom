@@ -30,6 +30,7 @@ BACKEND_LOG="${BACKEND_LOG:-logs/backend.log}"
 WEB_LOG="${WEB_LOG:-logs/web-next.log}"
 WEB_NODE_PATH="${WEB_NODE_PATH:-}"
 WEB_APP_VERSION="${WEB_APP_VERSION:-unknown}"
+WEB_START_RETRIES="${WEB_START_RETRIES:-1}"
 ENV_FILE_RAW="${ENV_FILE:-.env.dev}"
 ENV_EXAMPLE_FILE_RAW="${ENV_EXAMPLE_FILE:-.env.dev.example}"
 ENV_FILE="$(env_contract_resolve_file "$ENV_FILE_RAW" "$ROOT_DIR")"
@@ -116,6 +117,57 @@ if [[ ! -x "$UVICORN" ]]; then
 fi
 
 mkdir -p logs
+
+START_SUCCESS=0
+BACKEND_STARTED=0
+UI_STARTED=0
+
+kill_pid_group_graceful() {
+  local pid="${1:-}"
+  local label="${2:-process}"
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  kill -TERM -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+  for _ in {1..20}; do
+    if kill -0 "$pid" 2>/dev/null; then
+      sleep 0.2
+    else
+      return 0
+    fi
+  done
+  echo "⚠️  Wymuszam kill -9 dla ${label} (PID ${pid})"
+  kill -KILL -"$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+}
+
+cleanup_partial_start() {
+  if [[ "$START_SUCCESS" == "1" ]]; then
+    return 0
+  fi
+  if [[ "$UI_STARTED" == "1" && -f "$WEB_PID_FILE" ]]; then
+    local wpid
+    wpid="$(cat "$WEB_PID_FILE" 2>/dev/null || true)"
+    if [[ -n "$wpid" ]]; then
+      echo "🧹 Cleanup: zatrzymuję częściowo uruchomiony UI (PID ${wpid})"
+      kill_pid_group_graceful "$wpid" "UI"
+    fi
+    rm -f "$WEB_PID_FILE"
+  fi
+  if [[ "$BACKEND_STARTED" == "1" && -f "$PID_FILE" ]]; then
+    local bpid
+    bpid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [[ -n "$bpid" ]]; then
+      echo "🧹 Cleanup: zatrzymuję częściowo uruchomiony backend (PID ${bpid})"
+      kill_pid_group_graceful "$bpid" "backend"
+    fi
+    rm -f "$PID_FILE"
+  fi
+}
+
+trap cleanup_partial_start EXIT INT TERM
 
 active_server=""
 active_server="$(env_contract_get ACTIVE_LLM_SERVER "" "$ENV_FILE")"
@@ -311,6 +363,7 @@ if [[ -z "$backend_reused" ]]; then
   : > "$BACKEND_LOG"
   run_with_env_file setsid "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
   echo $! > "$PID_FILE"
+  BACKEND_STARTED=1
   echo "✅ Venom backend wystartował z PID $(cat "$PID_FILE")"
 
   echo "⏳ Czekam na backend (/api/v1/system/status)..."
@@ -341,6 +394,7 @@ if [[ -z "$backend_reused" ]]; then
       bpid="$(cat "$PID_FILE")"
       kill "$bpid" 2>/dev/null || true
       rm -f "$PID_FILE"
+      BACKEND_STARTED=0
     fi
     mk vllm-stop >/dev/null || true
     mk ollama-stop >/dev/null || true
@@ -404,6 +458,39 @@ if [[ -f "$WEB_PID_FILE" ]]; then
 fi
 
 if [[ -z "$ui_skip" ]]; then
+  start_ui_process() {
+    local mode="$1"
+    if [[ "$mode" == "prod" ]]; then
+      (
+        cd "$WEB_DIR"
+        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run start -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+        echo $! > "../$WEB_PID_FILE"
+      )
+      return 0
+    fi
+    if [[ "$mode" == "turbo" ]]; then
+      (
+        cd "$WEB_DIR"
+        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 run_with_env_file setsid "$NPM" run dev:turbo -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+        echo $! > "../$WEB_PID_FILE"
+      )
+      return 0
+    fi
+    if [[ "$mode" == "turbo-debug" ]]; then
+      (
+        cd "$WEB_DIR"
+        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 run_with_env_file setsid "$NPM" run dev:turbo:debug -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+        echo $! > "../$WEB_PID_FILE"
+      )
+      return 0
+    fi
+    (
+      cd "$WEB_DIR"
+      NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run dev -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+      echo $! > "../$WEB_PID_FILE"
+    )
+  }
+
   wait_for_ui_ready() {
     local pid="$1"
     local failure_label="$2"
@@ -441,11 +528,7 @@ if [[ -z "$ui_skip" ]]; then
       exit 1
     fi
     echo "▶️  Uruchamiam UI (Next.js start, host ${WEB_HOST}, port ${WEB_PORT})"
-    (
-      cd "$WEB_DIR"
-      NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run start -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-      echo $! > "../$WEB_PID_FILE"
-    )
+    start_ui_process "prod"
   else
     if [[ "$START_WEB_MODE" != "webpack" && "$START_WEB_MODE" != "turbo" && "$START_WEB_MODE" != "turbo-debug" ]]; then
       echo "❌ Nieznany START_WEB_MODE='${START_WEB_MODE}' (dozwolone: webpack|turbo|turbo-debug)"
@@ -453,60 +536,57 @@ if [[ -z "$ui_skip" ]]; then
     fi
     if [[ "$START_WEB_MODE" == "turbo" ]]; then
       echo "▶️  Uruchamiam UI (Next.js dev:turbo, host ${WEB_HOST}, port ${WEB_PORT})"
-      (
-        cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 run_with_env_file setsid "$NPM" run dev:turbo -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-        echo $! > "../$WEB_PID_FILE"
-      )
+      start_ui_process "turbo"
     elif [[ "$START_WEB_MODE" == "turbo-debug" ]]; then
       echo "▶️  Uruchamiam UI (Next.js dev:turbo:debug, host ${WEB_HOST}, port ${WEB_PORT})"
-      (
-        cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 run_with_env_file setsid "$NPM" run dev:turbo:debug -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-        echo $! > "../$WEB_PID_FILE"
-      )
+      start_ui_process "turbo-debug"
     else
       echo "▶️  Uruchamiam UI (Next.js dev, host ${WEB_HOST}, port ${WEB_PORT})"
-      (
-        cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run dev -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-        echo $! > "../$WEB_PID_FILE"
-      )
+      start_ui_process "webpack"
     fi
   fi
 
-  wpid="$(cat "$WEB_PID_FILE")"
-  ui_ready="$(wait_for_ui_ready "$wpid" "❌ UI (Next.js)")"
   effective_web_mode="$START_WEB_MODE"
+  ui_ready=""
+  max_attempts=$((WEB_START_RETRIES + 1))
+  for attempt in $(seq 1 "$max_attempts"); do
+    wpid="$(cat "$WEB_PID_FILE")"
+    UI_STARTED=1
+    ui_ready="$(wait_for_ui_ready "$wpid" "❌ UI (Next.js)")"
+    if [[ -n "$ui_ready" ]]; then
+      break
+    fi
 
-  if [[ -z "$ui_ready" ]]; then
-    echo "❌ UI (Next.js) nie wystartował poprawnie na porcie ${WEB_PORT}"
-    kill -TERM -"$wpid" 2>/dev/null || kill "$wpid" 2>/dev/null || true
+    echo "⚠️  UI (Next.js) nie wystartował poprawnie (próba ${attempt}/${max_attempts})."
+    kill_pid_group_graceful "$wpid" "UI"
     rm -f "$WEB_PID_FILE"
+    UI_STARTED=0
 
-    if [[ "$START_MODE" == "dev" ]] && { [[ "$START_WEB_MODE" == "turbo" ]] || [[ "$START_WEB_MODE" == "turbo-debug" ]]; } && [[ -f "$WEB_LOG" ]] && grep -Eiq "Too many open files|Failed to allocate directory watch" "$WEB_LOG"; then
+    should_retry_same_mode=0
+    if [[ "$attempt" -lt "$max_attempts" ]]; then
+      should_retry_same_mode=1
+    fi
+
+    if [[ "$START_MODE" == "dev" ]] && { [[ "$effective_web_mode" == "turbo" ]] || [[ "$effective_web_mode" == "turbo-debug" ]]; } && [[ -f "$WEB_LOG" ]] && grep -Eiq "Too many open files|Failed to allocate directory watch" "$WEB_LOG"; then
       echo "⚠️  Turbopack nie wystartował przez błąd watchera. Przełączam UI na fallback webpack."
       : > "$WEB_LOG"
-      (
-        cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run dev -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
-        echo $! > "../$WEB_PID_FILE"
-      )
-      wpid="$(cat "$WEB_PID_FILE")"
+      start_ui_process "webpack"
       effective_web_mode="webpack"
-      ui_ready="$(wait_for_ui_ready "$wpid" "❌ UI fallback (webpack)")"
+      continue
     fi
 
-    if [[ -z "$ui_ready" ]]; then
-      if [[ -f "$PID_FILE" ]]; then
-        bpid="$(cat "$PID_FILE")"
-        kill "$bpid" 2>/dev/null || true
-        rm -f "$PID_FILE"
-      fi
-      mk vllm-stop >/dev/null || true
-      mk ollama-stop >/dev/null || true
-      exit 1
+    if [[ "$should_retry_same_mode" -eq 1 ]]; then
+      echo "🔁 Ponawiam start UI w tym samym trybie (${effective_web_mode})."
+      : > "$WEB_LOG"
+      start_ui_process "$effective_web_mode"
+      continue
     fi
+  done
+
+  if [[ -z "$ui_ready" ]]; then
+    mk vllm-stop >/dev/null || true
+    mk ollama-stop >/dev/null || true
+    exit 1
   fi
 
   if [[ "$START_MODE" == "dev" ]]; then
@@ -524,8 +604,9 @@ if [[ -z "$ui_skip" ]]; then
       echo "❌ UI nie potwierdził oczekiwanego bundlera '${expected_bundler}' w logach."
       echo "ℹ️  Ostatnie logi UI:"
       tail -n 60 "$WEB_LOG" || true
-      kill "$wpid" 2>/dev/null || true
+      kill_pid_group_graceful "$wpid" "UI"
       rm -f "$WEB_PID_FILE"
+      UI_STARTED=0
       exit 1
     fi
   fi
@@ -534,3 +615,4 @@ if [[ -z "$ui_skip" ]]; then
 fi
 
 echo "🚀 Gotowe: backend http://${HOST_DISPLAY}:${PORT}, dashboard http://${WEB_DISPLAY}:${WEB_PORT}"
+START_SUCCESS=1

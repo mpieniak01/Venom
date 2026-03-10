@@ -166,6 +166,9 @@ Public command groups:
 3. Maintenance and environment hygiene (`make/maintenance.mk`)
 - `make make-targets-audit` - validates `.PHONY` vs defined targets
 - `make audit-dead-code` - heuristic dead-code audit (Python)
+- `make audit-dead-code-vulture-install` - manual install of vulture into `.venv`
+- `make audit-dead-code-full` - heuristic dead-code audit + vulture soft-signal
+- `make stack-stability-audit` - manual diagnostics: pid files, bound ports, optional module manifests
 - `make env-audit`, `make env-clean-safe`, `make env-clean-docker-safe`, `make env-clean-deep`, `make env-report-diff`
 - `make security-delta-scan`, `make security-delta-scan-strict`
 - `make mcp-clean`, `make mcp-status`

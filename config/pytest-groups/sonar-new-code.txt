@@ -58,6 +58,7 @@ tests/test_core_skill.py
 tests/test_creative_director_agent.py
 tests/test_critic_agent.py
 tests/test_dataset_curator.py
+tests/test_dead_code_audit.py
 tests/test_designer_agent.py
 tests/test_devops_agent.py
 tests/test_dispatcher_audit_regression.py

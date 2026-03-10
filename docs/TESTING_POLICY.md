@@ -87,7 +87,7 @@ What it includes:
 Lane/group naming contract:
 
 - `config/pytest-groups/fast.txt` is the canonical fast-scope backend list.
-- `config/pytest-groups/light.txt` is a compatibility alias of `fast.txt` and should not be edited independently.
+- Use `fast` naming in commands/groups. `config/pytest-groups/light.txt` remains a deprecated compatibility alias of `fast.txt` and should not be edited independently.
 
 Test taxonomy model (canonical source: `config/testing/test_catalog.json`):
 
@@ -354,7 +354,12 @@ Indicators:
 
 ## Dead-Code Triage Procedure (heuristic audit)
 
-Use when `make audit-dead-code` reports findings.
+Use when `make audit-dead-code` or `make audit-dead-code-full` reports findings.
+
+Runtime contract for tools:
+- run from repository virtualenv only: `source .venv/bin/activate`
+- vulture path is manual-only (not CI gate): `make audit-dead-code-vulture-install`
+- do not install global Python packages outside `.venv`
 
 1. Confirm if the symbol is truly unused:
 - search references in repo (`rg "<symbol_name>"`)
@@ -365,6 +370,8 @@ Use when `make audit-dead-code` reports findings.
 - use wildcard rule `dir/*:symbol` only when many equivalent cases exist
 4. Every allowlist entry must include a short rationale in PR description (owner + expected removal condition).
 5. Do not treat this audit as a release blocker by itself; it is a review signal. Block only on confirmed defects or policy violations.
+6. For vulture-specific exceptions use `config/dead_code_vulture_allowlist.txt` (`path.py:symbol`, `dir/*:symbol`, or `path.py:line`).
+7. `make audit-dead-code-full` is an operator manual tool; it is not a default CI hard gate.
 
 ## Test Artifacts Policy
 

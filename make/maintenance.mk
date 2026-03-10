@@ -11,6 +11,12 @@ make-targets-audit:
 audit-dead-code:
 	@$(PYTHON_BIN) scripts/dev/dead_code_audit.py
 
+audit-dead-code-vulture-install:
+	@$(PYTHON_BIN) -m pip install "vulture==2.14"
+
+audit-dead-code-full:
+	@$(PYTHON_BIN) scripts/dev/dead_code_audit.py --with-vulture
+
 security-delta-scan:
 	@$(PYTHON_BIN) scripts/dev/security_delta_scan.py --out-json logs/security-delta-latest.json
 
@@ -29,6 +35,18 @@ env-clean-deep:
 
 env-report-diff:
 	@$(PYTHON_BIN) scripts/dev/env_report_diff.py
+
+stack-stability-audit:
+	@$(PYTHON_BIN) scripts/dev/stack_stability_audit.py --env-file "$(ENV_FILE)" --backend-port "$(PORT)" --web-port "$(WEB_PORT)"
+
+llm-runtime-stability-audit:
+	@$(PYTHON_BIN) scripts/dev/llm_runtime_stability_audit.py --env-file "$(ENV_FILE)" --fail-on-errors
+
+llm-runtime-stability-cycle-start:
+	@$(PYTHON_BIN) scripts/dev/llm_runtime_stability_audit.py --env-file "$(ENV_FILE)" --stack-cycle start --fail-on-errors
+
+llm-runtime-stability-cycle-start2:
+	@$(PYTHON_BIN) scripts/dev/llm_runtime_stability_audit.py --env-file "$(ENV_FILE)" --stack-cycle start2 --fail-on-errors
 
 # =============================================================================
 # Konserwacja MCP

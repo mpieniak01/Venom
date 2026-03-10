@@ -1514,6 +1514,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_dead_code_audit.py",
+      "domain": "audit",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_designer_agent.py",
       "domain": "agents",
       "test_type": "unit",
@@ -1725,14 +1739,14 @@
       "path": "tests/test_ensure_env_file_script.py",
       "domain": "environment",
       "test_type": "unit",
-      "intent": "regression",
+      "intent": "legacy_coverage",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
         "ci-lite",
         "release"
       ],
-      "legacy_targeted": false,
+      "legacy_targeted": true,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
@@ -2842,6 +2856,20 @@
       "domain": "runtime",
       "test_type": "route_contract",
       "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_llm_runtime_stability_audit.py",
+      "domain": "runtime",
+      "test_type": "unit",
+      "intent": "regression",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -4009,16 +4037,16 @@
     },
     {
       "path": "tests/test_port_pids_script.py",
-      "domain": "misc",
+      "domain": "testing_tooling",
       "test_type": "unit",
-      "intent": "regression",
+      "intent": "legacy_coverage",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
         "ci-lite",
         "release"
       ],
-      "legacy_targeted": false,
+      "legacy_targeted": true,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
@@ -4895,6 +4923,20 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
+    },
+    {
+      "path": "tests/test_stack_stability_audit.py",
+      "domain": "audit",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "new-code",
         "ci-lite",
         "release"
       ],

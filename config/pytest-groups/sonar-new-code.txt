@@ -58,6 +58,7 @@ tests/test_core_skill.py
 tests/test_creative_director_agent.py
 tests/test_critic_agent.py
 tests/test_dataset_curator.py
+tests/test_dead_code_audit.py
 tests/test_designer_agent.py
 tests/test_devops_agent.py
 tests/test_dispatcher_audit_regression.py
@@ -103,6 +104,7 @@ tests/test_knowledge_graph_service.py
 tests/test_lessons_manager.py
 tests/test_llm_runtime_activation_api.py
 tests/test_llm_runtime_options_api.py
+tests/test_llm_runtime_stability_audit.py
 tests/test_llm_runtime_utils.py
 tests/test_llm_server_controller.py
 tests/test_llm_server_selection.py
@@ -207,6 +209,7 @@ tests/test_skills_browser_github_shell_contracts.py
 tests/test_skills_init.py
 tests/test_sonar_agents_init.py
 tests/test_sonar_route_selection.py
+tests/test_stack_stability_audit.py
 tests/test_strategist_agent.py
 tests/test_strategy_and_routes_regression.py
 tests/test_swarm_wrapper.py

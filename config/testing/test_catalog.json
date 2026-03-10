@@ -3399,12 +3399,14 @@
       "domain": "models",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Fast-safe unit coverage for model request schema/regression in changed scope."
     },
     {
       "path": "tests/test_model_router.py",

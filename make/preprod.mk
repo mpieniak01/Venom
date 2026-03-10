@@ -17,15 +17,7 @@ testpre: test-preprod-readonly-smoke
 ensurepreenv: ensure-preprod-env-file
 
 ensure-env-file:
-	@if [ ! -f "$(ENV_FILE)" ]; then \
-		if [ -f "$(ENV_EXAMPLE_FILE)" ]; then \
-			cp "$(ENV_EXAMPLE_FILE)" "$(ENV_FILE)"; \
-			echo "ℹ️  Utworzono $(ENV_FILE) na podstawie $(ENV_EXAMPLE_FILE)."; \
-			echo "ℹ️  Uzupełnij klucze/secrets w $(ENV_FILE) (jeśli wymagane) i uruchom ponownie start."; \
-		else \
-			echo "⚠️  Brak $(ENV_FILE) i $(ENV_EXAMPLE_FILE). Start użyje wartości domyślnych tam, gdzie to możliwe."; \
-		fi; \
-	fi
+	@bash scripts/dev/ensure_env_file.sh "$(ENV_FILE)" "$(ENV_EXAMPLE_FILE)"
 
 ensure-preprod-env-file:
 	@$(PREPROD_ENV_BASE) \

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../lib/env_contract.sh
+source "$ROOT_DIR/scripts/lib/env_contract.sh"
+
 mk() {
   "${MAKE_BIN:-make}" --no-print-directory "$@"
 }
@@ -26,12 +30,27 @@ BACKEND_LOG="${BACKEND_LOG:-logs/backend.log}"
 WEB_LOG="${WEB_LOG:-logs/web-next.log}"
 WEB_NODE_PATH="${WEB_NODE_PATH:-}"
 WEB_APP_VERSION="${WEB_APP_VERSION:-unknown}"
-VLLM_ENDPOINT="${VLLM_ENDPOINT:-http://127.0.0.1:8001}"
+ENV_FILE_RAW="${ENV_FILE:-.env.dev}"
+ENV_EXAMPLE_FILE_RAW="${ENV_EXAMPLE_FILE:-.env.dev.example}"
+ENV_FILE="$(env_contract_resolve_file "$ENV_FILE_RAW" "$ROOT_DIR")"
+ENV_EXAMPLE_FILE="$(env_contract_resolve_file "$ENV_EXAMPLE_FILE_RAW" "$ROOT_DIR")"
+VLLM_ENDPOINT="$(env_contract_get VLLM_ENDPOINT "http://127.0.0.1:8001/v1" "$ENV_FILE")"
 VLLM_START_TIMEOUT_SEC="${VLLM_START_TIMEOUT_SEC:-240}"
-ENV_FILE="${ENV_FILE:-.env.dev}"
-ENV_EXAMPLE_FILE="${ENV_EXAMPLE_FILE:-.env.dev.example}"
 NPM="${NPM:-npm}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+vllm_models_url() {
+  local endpoint="$1"
+  if [[ "$endpoint" == */v1/models ]]; then
+    printf '%s' "$endpoint"
+  elif [[ "$endpoint" == */v1 ]]; then
+    printf '%s/models' "$endpoint"
+  elif [[ "$endpoint" == */v1/ ]]; then
+    printf '%smodels' "$endpoint"
+  else
+    printf '%s/v1/models' "${endpoint%/}"
+  fi
+}
 
 if [[ ! -x "$UVICORN" ]]; then
   echo "❌ Nie znaleziono uvicorn w $UVICORN. Czy środowisko .venv jest zainstalowane?"
@@ -41,12 +60,31 @@ fi
 mkdir -p logs
 
 active_server=""
-if [[ -f "$ENV_FILE" ]]; then
-  active_server="$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $2}' "$ENV_FILE" 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true)"
-elif [[ -f "$ENV_EXAMPLE_FILE" ]]; then
-  active_server="$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $2}' "$ENV_EXAMPLE_FILE" 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true)"
+active_server="$(env_contract_get ACTIVE_LLM_SERVER "" "$ENV_FILE")"
+if [[ -z "$active_server" ]]; then
+  active_server="$(env_contract_get ACTIVE_LLM_SERVER "" "$ENV_EXAMPLE_FILE")"
 fi
+active_server="$(printf '%s' "$active_server" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
 [[ -z "$active_server" ]] && active_server="ollama"
+
+active_server_origin="$(env_contract_origin ACTIVE_LLM_SERVER "$ENV_FILE" "")"
+if [[ "$active_server_origin" == "empty" ]]; then
+  if [[ -n "$(env_contract_read_file_var "$ENV_EXAMPLE_FILE" ACTIVE_LLM_SERVER)" ]]; then
+    active_server_origin="example_file"
+  else
+    active_server_origin="default"
+  fi
+fi
+vllm_endpoint_origin="$(env_contract_origin VLLM_ENDPOINT "$ENV_FILE" "http://127.0.0.1:8001/v1")"
+
+echo "🧭 Effective config:"
+echo "  - ENV_FILE: ${ENV_FILE}"
+echo "  - ENV_EXAMPLE_FILE: ${ENV_EXAMPLE_FILE}"
+echo "  - ACTIVE_LLM_SERVER: ${active_server} (${active_server_origin})"
+echo "  - VLLM_ENDPOINT: ${VLLM_ENDPOINT} (${vllm_endpoint_origin})"
+echo "  - START_MODE: ${START_MODE}"
+echo "  - START_WEB_MODE: ${START_WEB_MODE}"
+echo "  - HOST: ${HOST}:${PORT}, WEB: ${WEB_HOST}:${WEB_PORT}"
 
 start_ollama() {
   echo "▶️  Uruchamiam Ollama..."
@@ -87,6 +125,8 @@ start_ollama() {
 }
 
 start_vllm() {
+  local models_url
+  models_url="$(vllm_models_url "$VLLM_ENDPOINT")"
   echo "▶️  Uruchamiam vLLM..."
   mk ollama-stop >/dev/null || true
   if ! mk vllm-start; then
@@ -96,7 +136,7 @@ start_vllm() {
 
   echo "⏳ Czekam na vLLM (/v1/models)..."
   for _ in $(seq 1 "$VLLM_START_TIMEOUT_SEC"); do
-    if curl -fsS "$VLLM_ENDPOINT/v1/models" >/dev/null 2>&1; then
+    if curl -fsS "$models_url" >/dev/null 2>&1; then
       echo "✅ vLLM gotowy"
       return 0
     fi

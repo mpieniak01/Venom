@@ -285,9 +285,9 @@
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
-      "path": "tests/test_academy_api.py",
+      "path": "tests/test_academy_adapter_runtime_service.py",
       "domain": "academy",
-      "test_type": "route_contract",
+      "test_type": "service_contract",
       "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
@@ -299,9 +299,9 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
-      "path": "tests/test_academy_adapter_runtime_service.py",
+      "path": "tests/test_academy_api.py",
       "domain": "academy",
-      "test_type": "service_contract",
+      "test_type": "route_contract",
       "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
@@ -1722,6 +1722,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_ensure_env_file_script.py",
+      "domain": "environment",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_env_audit.py",
       "domain": "environment",
       "test_type": "unit",
@@ -1746,6 +1760,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
+    },
+    {
+      "path": "tests/test_env_contract_sh.py",
+      "domain": "environment",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_env_report_diff.py",
@@ -2903,7 +2931,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Fast deterministic regression check for explicit SimpleMode model resolution."
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
       "path": "tests/test_llm_simple_stream.py",

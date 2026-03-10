@@ -110,8 +110,10 @@ tests/test_documenter.py
 tests/test_dream_engine.py
 tests/test_embedding_service.py
 tests/test_energy_manager.py
+tests/test_ensure_env_file_script.py
 tests/test_env_audit.py
 tests/test_env_cleanup.py
+tests/test_env_contract_sh.py
 tests/test_env_report_diff.py
 tests/test_environment_policy.py
 tests/test_error_mappings.py

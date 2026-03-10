@@ -73,8 +73,11 @@ Interpretation rules:
 ## Launch Modes
 
 Environment selection contract:
-- `Makefile` is the single source of truth for active env file.
-- `ENV_FILE` and `ENV_EXAMPLE_FILE` are exported by `make` to backend/api/web processes.
+- `Makefile` selects active env files and exports `ENV_FILE` / `ENV_EXAMPLE_FILE` to runtime scripts.
+- Runtime scripts (`start_stack.sh`, `vllm_service.sh`, `ollama_service.sh`) use shared loader `scripts/lib/env_contract.sh`.
+- Effective value priority in runtime scripts: `make VAR=...` (or exported shell env) > value from `ENV_FILE` > script default.
+- Runtime-domain values (`ACTIVE_LLM_SERVER`, `VLLM_*`, `OLLAMA_*`) should be maintained in `.env*`; `Makefile` keeps operator/lifecycle defaults.
+- No bare `.env` / `.env.example` in runtime contract.
 
 ### Development (`make start` / `make start-dev`)
 Config file:
@@ -172,10 +175,13 @@ Public command groups:
 - `make ollama-start`, `make ollama-stop`, `make ollama-restart`
 
 5. Preprod operations (`make/preprod.mk` + root targets)
-- `make start-preprod`, `make api-preprod`, `make web-preprod`
+- `make ensure-preprod-env-file`, `make start-preprod`, `make api-preprod`, `make web-preprod`
 - aliases: `make startpre`, `make apipre`, `make webpre`, `make testpre`
 - `make preprod-backup`, `make preprod-restore TS=<timestamp>`, `make preprod-verify TS=<timestamp>`
 - `make preprod-audit`, `make preprod-drill`, `make preprod-readiness-check`
+
+Internal helper used by preprod wrappers:
+- `make ensure-env-file` delegates env file bootstrap to `scripts/dev/ensure_env_file.sh`.
 
 6. Operations and workspace tools (`make/ops.mk`)
 - `make modules-status`, `make modules-pull`, `make modules-branches`, `make modules-exec CMD='...'`

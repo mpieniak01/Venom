@@ -30,7 +30,13 @@ Environment config files:
 
 Selection rule:
 - active env file is selected by `Makefile` via exported `ENV_FILE`
+- runtime shell scripts resolve values with shared `scripts/lib/env_contract.sh`
+- effective priority: `make VAR=...` / exported env > value from `ENV_FILE` > script default
+- runtime-domain keys (`ACTIVE_LLM_SERVER`, `VLLM_*`, `OLLAMA_*`) belong to `.env*` as source-of-truth
 - no bare `.env` / `.env.example` in runtime contract
+
+Operational note:
+- `VLLM_ENDPOINT` in `Makefile` intentionally defaults to empty; stack startup resolves it from `.env*` and only then falls back to script default (`http://127.0.0.1:8001/v1`).
 
 Key environment variables:
 - `ENVIRONMENT_ROLE=dev|preprod`

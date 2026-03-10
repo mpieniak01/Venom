@@ -65,6 +65,8 @@ tests/test_docker_habitat.py
 tests/test_docker_habitat_contracts.py
 tests/test_docker_habitat_unit.py
 tests/test_docs_skill.py
+tests/test_ensure_env_file_script.py
+tests/test_env_contract_sh.py
 tests/test_environment_policy.py
 tests/test_error_mappings.py
 tests/test_executive_agent_roi.py

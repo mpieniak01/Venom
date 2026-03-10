@@ -28,7 +28,9 @@ UVICORN_PROD_FLAGS ?= --no-server-header
 BACKEND_LOG ?= logs/backend.log
 WEB_LOG ?= logs/web-next.log
 WEB_NODE_PATH ?= $(abspath $(WEB_DIR)/node_modules)
-VLLM_ENDPOINT ?= http://127.0.0.1:8001
+# Leave empty by default: start_stack.sh resolves from .env (VLLM_ENDPOINT)
+# and falls back to http://127.0.0.1:8001/v1 when not configured.
+VLLM_ENDPOINT ?=
 VLLM_START_TIMEOUT_SEC ?= 240
 ENV_FILE ?= .env.dev
 ENV_EXAMPLE_FILE ?= .env.dev.example

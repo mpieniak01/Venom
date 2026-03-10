@@ -20,7 +20,7 @@ def _load_module():
     return module
 
 
-def test_append_auto_items_keeps_entries_in_auto_section(tmp_path):
+def test_main_keeps_existing_auto_items_in_auto_section(monkeypatch, tmp_path):
     module = _load_module()
     group_path = tmp_path / "sonar-new-code.txt"
     group_path.write_text(
@@ -37,7 +37,16 @@ def test_append_auto_items_keeps_entries_in_auto_section(tmp_path):
         encoding="utf-8",
     )
 
-    module._append_auto_items(group_path, ["tests/test_auto2.py"])
+    monkeypatch.setattr(module, "GROUP_PATH", group_path)
+    monkeypatch.setattr(module, "_git_staged_files", lambda: ["venom_core/core/x.py"])
+
+    class Resolver:
+        def resolve_candidates_from_changed_files(self, staged):
+            return ["tests/test_auto2.py"]
+
+    monkeypatch.setattr(module, "_load_resolver_module", lambda: Resolver())
+    assert module.main([]) == 0
+
     lines = group_path.read_text(encoding="utf-8").splitlines()
 
     auto_header_idx = lines.index(module.AUTO_SECTION_HEADER)

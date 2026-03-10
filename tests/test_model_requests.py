@@ -1,6 +1,10 @@
+import pytest
 from pydantic import ValidationError
 
-from venom_core.api.model_schemas.model_requests import OnnxBuildRequest
+from venom_core.api.model_schemas.model_requests import (
+    ModelRegistryInstallRequest,
+    OnnxBuildRequest,
+)
 from venom_core.api.model_schemas.model_validators import validate_runtime
 
 
@@ -48,3 +52,41 @@ def test_validate_runtime_rejects_unknown_runtime():
         assert False, "expected ValueError"
     except ValueError as exc:
         assert "Runtime musi być 'vllm', 'ollama' lub 'onnx'" in str(exc)
+
+
+def test_model_registry_install_request_runs_post_init_for_huggingface():
+    req = ModelRegistryInstallRequest(
+        name="google/gemma-3-4b-it",
+        provider="huggingface",
+        runtime="vllm",
+    )
+    assert req.provider == "huggingface"
+    assert req.runtime == "vllm"
+
+
+def test_model_registry_install_request_rejects_huggingface_with_non_vllm_runtime():
+    with pytest.raises(
+        ValidationError, match="Runtime dla HuggingFace musi być 'vllm'"
+    ):
+        ModelRegistryInstallRequest(
+            name="google/gemma-3-4b-it",
+            provider="huggingface",
+            runtime="ollama",
+        )
+
+
+def test_model_registry_install_request_validates_ollama_runtime_contract():
+    req = ModelRegistryInstallRequest(
+        name="gemma2:2b",
+        provider="ollama",
+        runtime="ollama",
+    )
+    assert req.provider == "ollama"
+    assert req.runtime == "ollama"
+
+    with pytest.raises(ValidationError, match="Runtime dla Ollama musi być 'ollama'"):
+        ModelRegistryInstallRequest(
+            name="gemma2:2b",
+            provider="ollama",
+            runtime="vllm",
+        )

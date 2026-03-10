@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from venom_core.api.routes import academy as academy_routes
+from venom_core.api.routes import academy_storage, academy_uploads
 
 # ==================== Ingest File Edge Cases ====================
 
@@ -199,43 +200,41 @@ def test_ingest_markdown_with_odd_sections(tmp_path):
 
 def test_validate_training_record_missing_fields():
     """Test walidacji rekordu bez wymaganych pól"""
-    from venom_core.api.routes.academy import _validate_training_record
-
     # Brak instruction
-    assert not _validate_training_record({"input": "", "output": "test output here"})
+    assert not academy_uploads.validate_training_record(
+        {"input": "", "output": "test output here"}
+    )
 
     # Brak output
-    assert not _validate_training_record(
+    assert not academy_uploads.validate_training_record(
         {"instruction": "test instruction", "input": ""}
     )
 
     # Puste instruction
-    assert not _validate_training_record(
+    assert not academy_uploads.validate_training_record(
         {"instruction": "", "input": "", "output": "test output here"}
     )
 
     # Puste output
-    assert not _validate_training_record(
+    assert not academy_uploads.validate_training_record(
         {"instruction": "test instruction", "input": "", "output": ""}
     )
 
     # Too short instruction (< 10 chars)
-    assert not _validate_training_record(
+    assert not academy_uploads.validate_training_record(
         {"instruction": "short", "input": "", "output": "test output here"}
     )
 
     # Too short output (< 10 chars)
-    assert not _validate_training_record(
+    assert not academy_uploads.validate_training_record(
         {"instruction": "test instruction", "input": "", "output": "short"}
     )
 
 
 def test_validate_training_record_valid():
     """Test walidacji poprawnego rekordu"""
-    from venom_core.api.routes.academy import _validate_training_record
-
     # Poprawny rekord (obie wartości >= 10 chars)
-    result = _validate_training_record(
+    result = academy_uploads.validate_training_record(
         {
             "instruction": "test instruction here",
             "input": "",
@@ -245,7 +244,7 @@ def test_validate_training_record_valid():
     assert result is True
 
     # Z inputem
-    result = _validate_training_record(
+    result = academy_uploads.validate_training_record(
         {
             "instruction": "test instruction here",
             "input": "context info",
@@ -323,7 +322,7 @@ def test_delete_upload_metadata_cleanup_temp_on_replace_error(tmp_path):
     """Przy błędzie replace plik tymczasowy powinien zostać posprzątany."""
     with patch("venom_core.config.SETTINGS.ACADEMY_TRAINING_DIR", str(tmp_path)):
         academy_routes._save_upload_metadata({"id": "x", "name": "x"})
-        metadata_file = academy_routes._get_uploads_metadata_file()
+        metadata_file = academy_storage.get_uploads_metadata_file()
         tmp_file = metadata_file.with_suffix(".tmp")
 
         with patch("pathlib.Path.replace", side_effect=OSError("replace-fail")):

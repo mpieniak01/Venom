@@ -56,8 +56,9 @@ class ModelRegistryInstallRequest(BaseModel):
     def validate_runtime(cls, v):
         return validate_runtime(v)
 
-    def model_post_init(self, __context):
+    def model_post_init(self, _context):
         """Validate model name format based on provider."""
+        _ = _context
         if self.provider == "huggingface":
             validate_huggingface_model_name(self.name)
             if self.runtime != "vllm":

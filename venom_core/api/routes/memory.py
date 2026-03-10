@@ -32,37 +32,10 @@ from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager as _config_manager
 from venom_core.services.memory_graph_service import MemoryGraphPayloadOptions
 from venom_core.services.memory_graph_service import (
-    append_flow_edges as _append_flow_edges_svc,
-)
-from venom_core.services.memory_graph_service import (
     build_ingest_metadata as _build_ingest_metadata_svc,
 )
 from venom_core.services.memory_graph_service import (
-    build_memory_graph_filters as _build_memory_graph_filters_svc,
-)
-from venom_core.services.memory_graph_service import (
     build_memory_graph_payload as _build_memory_graph_payload_svc,
-)
-from venom_core.services.memory_graph_service import (
-    build_memory_node as _build_memory_node_svc,
-)
-from venom_core.services.memory_graph_service import (
-    build_relation_edges as _build_relation_edges_svc,
-)
-from venom_core.services.memory_graph_service import (
-    collect_lesson_graph as _collect_lesson_graph_svc,
-)
-from venom_core.services.memory_graph_service import (
-    ensure_session_node as _ensure_session_node_svc,
-)
-from venom_core.services.memory_graph_service import (
-    ensure_user_node as _ensure_user_node_svc,
-)
-from venom_core.services.memory_graph_service import (
-    increment_memory_view_counter as _increment_memory_view_counter_svc,
-)
-from venom_core.services.memory_graph_service import (
-    memory_view_counter_snapshot as _memory_view_counter_snapshot_svc,
 )
 from venom_core.services.memory_graph_service import (
     raise_memory_http_error as _raise_memory_http_error_svc,
@@ -120,21 +93,6 @@ def set_dependencies(
         api_deps.set_session_store(session_store)
 
 
-def _ensure_vector_store():
-    """Pomocnik do pobierania vector store (używany w testach)."""
-    from venom_core.api.dependencies import get_vector_store
-    from venom_core.memory.vector_store import VectorStore
-
-    try:
-        return get_vector_store()
-    except Exception:
-        if _vector_store:
-            return _vector_store
-        # W teście, jeśli nikt jeszcze nie ustawiał, stwórz nową instancję
-        # (EmbeddingService i tak użyje cache'u)
-        return VectorStore()
-
-
 def _require_nonempty(value: str, detail: str) -> None:
     _require_nonempty_svc(value, detail)
 
@@ -147,62 +105,8 @@ def _raise_memory_http_error(exc: Exception, *, context: str) -> None:
     _raise_memory_http_error_svc(exc, context=context, logger=logger)
 
 
-def _build_memory_graph_filters(
-    session_id: str, only_pinned: bool
-) -> dict[str, object]:
-    return _build_memory_graph_filters_svc(session_id, only_pinned)
-
-
-def _increment_memory_view_counter(view: str) -> None:
-    _increment_memory_view_counter_svc(view)
-
-
-def _memory_view_counter_snapshot() -> dict[str, int]:
-    return _memory_view_counter_snapshot_svc()
-
-
-def _build_memory_node(entry: dict[str, Any]) -> dict[str, Any]:
-    return _build_memory_node_svc(entry, default_user_id=DEFAULT_USER_ID)
-
-
 async def _resolve_maybe_await(value: Any) -> Any:
     return await _resolve_maybe_await_svc(value)
-
-
-def _ensure_session_node(
-    session_nodes: dict[str, dict[str, Any]], session_id: str | None
-) -> None:
-    _ensure_session_node_svc(session_nodes, session_id)
-
-
-def _ensure_user_node(
-    user_nodes: dict[str, dict[str, Any]], user_id: str | None
-) -> None:
-    _ensure_user_node_svc(user_nodes, user_id)
-
-
-def _build_relation_edges(
-    node_id: str, session_id: str | None, user_id: str | None
-) -> list[dict[str, Any]]:
-    return _build_relation_edges_svc(node_id, session_id, user_id)
-
-
-def _collect_lesson_graph(
-    lessons_store: LessonsStore | None, limit: int
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    return _collect_lesson_graph_svc(
-        lessons_store,
-        limit,
-        allow_fallback=is_testing_mode(),
-        logger=logger,
-        default_user_id=DEFAULT_USER_ID,
-    )
-
-
-def _append_flow_edges(
-    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
-) -> None:
-    _append_flow_edges_svc(nodes, edges)
 
 
 @router.post(

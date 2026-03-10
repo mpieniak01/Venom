@@ -33,11 +33,6 @@ logger = get_logger(__name__)
 DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS = 60
 
 
-def _is_valid_benchmark_id(value: str) -> bool:
-    """Waliduje benchmark_id jako kanoniczny UUID."""
-    return _normalize_benchmark_id(value) is not None
-
-
 def _normalize_benchmark_id(value: str) -> Optional[str]:
     """Zwraca benchmark_id w postaci kanonicznej UUID lub None."""
     try:

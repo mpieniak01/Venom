@@ -375,6 +375,20 @@ Wskaźniki:
 - lekkie zależności systemowe pomocne dla szybkich bramek (np. `ripgrep`) są instalowane w jobie CI-lite
 - backend-lite pokazuje jawne `skipped` (a nie import error) dla testów optional-dependency
 
+## Procedura triage dla dead-code (audyt heurystyczny)
+
+Stosuj, gdy `make audit-dead-code` raportuje znaleziska.
+
+1. Potwierdź, czy symbol faktycznie jest nieużywany:
+- wyszukaj odwołania w repo (`rg "<nazwa_symbolu>"`)
+- sprawdź ścieżki dynamiczne (dekoratory, lookup po stringu, mapy pluginów/rejestry)
+2. Jeśli symbol jest faktycznie martwy, usuń go w tym samym PR.
+3. Jeśli musi pozostać, dodaj możliwie wąski wyjątek do `config/dead_code_allowlist.txt`:
+- preferuj regułę dokładną `path/to/file.py:symbol`
+- wildcard `dir/*:symbol` stosuj tylko, gdy to uzasadniona grupa równoważnych przypadków
+4. Każdy wpis allowlisty musi mieć krótkie uzasadnienie w opisie PR (owner + warunek usunięcia wyjątku).
+5. Ten audyt nie jest samodzielnym blockerem release; jest sygnałem do review. Blokujemy tylko potwierdzone defekty lub naruszenia polityk.
+
 ## Polityka artefaktów testowych
 
 Nie commitujemy artefaktów wyników testów.

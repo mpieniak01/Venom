@@ -3,14 +3,20 @@ set -euo pipefail
 
 ACTION="${1:-}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../lib/env_contract.sh
+source "$ROOT_DIR/scripts/lib/env_contract.sh"
+
 LOG_DIR="$ROOT_DIR/logs"
 PID_FILE="$LOG_DIR/ollama.pid"
 LOG_FILE="$LOG_DIR/ollama.log"
-HEALTH_URL="${OLLAMA_HEALTH_URL:-http://localhost:11434/api/tags}"
+ENV_FILE_RAW="${ENV_FILE:-.env.dev}"
+ENV_FILE="$(env_contract_resolve_file "$ENV_FILE_RAW" "$ROOT_DIR")"
+OLLAMA_BASE_URL="$(env_contract_get OLLAMA_BASE_URL "http://localhost:11434" "$ENV_FILE")"
+HEALTH_URL="$(env_contract_get OLLAMA_HEALTH_URL "${OLLAMA_BASE_URL%/}/api/tags" "$ENV_FILE")"
 OLLAMA_BIN="$(command -v ollama || true)"
 SYSTEMCTL_BIN="$(command -v systemctl || true)"
-SYSTEMD_UNIT="${OLLAMA_SYSTEMD_UNIT:-ollama.service}"
-SYSTEMD_SCOPE="${OLLAMA_SYSTEMD_SCOPE:-system}"
+SYSTEMD_UNIT="$(env_contract_get OLLAMA_SYSTEMD_UNIT "ollama.service" "$ENV_FILE")"
+SYSTEMD_SCOPE="$(env_contract_get OLLAMA_SYSTEMD_SCOPE "system" "$ENV_FILE")"
 SYSTEMD_SCOPE_ARGS=()
 if [[ "$SYSTEMD_SCOPE" == "user" ]]; then
   SYSTEMD_SCOPE_ARGS=(--user)
@@ -34,6 +40,8 @@ is_systemd_active() {
 }
 
 start() {
+  echo "🧭 Ollama config: base_url=${OLLAMA_BASE_URL}, health_url=${HEALTH_URL}, env_file=${ENV_FILE}"
+
   if is_healthy; then
     if [[ "$USE_SYSTEMD" == "true" ]]; then
       echo "Ollama już odpowiada na $HEALTH_URL (systemd active, pomijam start)"
@@ -86,7 +94,7 @@ stop() {
   fi
 
   # Explicitly unload model if Ollama is still running (e.g. managed externally)
-  if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+  if curl -s "$HEALTH_URL" >/dev/null 2>&1; then
       echo "Zwalniam modelem z VRAM (unload)..."
       # Pobierz listę załadowanych modeli i wyślij unload dla każdego (lub próbuj z pustym promptem)
       # Najprostszy sposób to wysłanie pustego promptu z keep_alive: 0 do aktywnego modelu
@@ -94,10 +102,10 @@ stop() {
       # Ale skrypt bash nie ma łatwego dostępu do pydantic settings.
       # Spróbujemy pobić wszystkie załadowane modele przez /api/generate z keep_alive:0
       local loaded_models
-      loaded_models=$(curl -s http://localhost:11434/api/ps | grep -oP '"name":"\K[^"]+' || true)
+      loaded_models=$(curl -s "${OLLAMA_BASE_URL%/}/api/ps" | grep -oP '"name":"\K[^"]+' || true)
       for m in $loaded_models; do
           echo "Wyładowuję model: $m"
-          curl -s -X POST http://localhost:11434/api/generate -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null 2>&1 || true
+          curl -s -X POST "${OLLAMA_BASE_URL%/}/api/generate" -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null 2>&1 || true
       done
   fi
 

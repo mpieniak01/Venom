@@ -40,6 +40,44 @@ OLLAMA_HEALTH_URL="$(env_contract_get OLLAMA_HEALTH_URL "${OLLAMA_BASE_URL%/}/ap
 VLLM_START_TIMEOUT_SEC="${VLLM_START_TIMEOUT_SEC:-240}"
 NPM="${NPM:-npm}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+if [[ "$PYTHON_BIN" != /* ]]; then
+  candidate_python="$ROOT_DIR/$PYTHON_BIN"
+  if [[ -e "$candidate_python" ]]; then
+    PYTHON_BIN="$candidate_python"
+  fi
+fi
+
+if ! "$PYTHON_BIN" -c "import sys; print(sys.version_info[0])" >/dev/null 2>&1; then
+  fallback_python="$(command -v python3 || true)"
+  if [[ -n "$fallback_python" ]] && "$fallback_python" -c "import sys; print(sys.version_info[0])" >/dev/null 2>&1; then
+    echo "⚠️  PYTHON_BIN='$PYTHON_BIN' jest nieużywalny. Używam fallback: $fallback_python"
+    PYTHON_BIN="$fallback_python"
+  else
+    echo "❌ Nie znaleziono działającego interpretera Python (PYTHON_BIN='$PYTHON_BIN', brak poprawnego python3 w PATH)."
+    exit 1
+  fi
+fi
+
+DOTENV_AVAILABLE="0"
+if "$PYTHON_BIN" -c "import dotenv" >/dev/null 2>&1; then
+  DOTENV_AVAILABLE="1"
+else
+  echo "⚠️  Brak modułu 'python-dotenv' dla $PYTHON_BIN. Używam fallback: source '$ENV_FILE'."
+fi
+
+run_with_env_file() {
+  if [[ "$DOTENV_AVAILABLE" == "1" ]]; then
+    "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run -- "$@"
+  else
+    (
+      set -a
+      # shellcheck disable=SC1090
+      source "$ENV_FILE"
+      set +a
+      "$@"
+    )
+  fi
+}
 
 extract_url_port() {
   local url="$1"
@@ -81,26 +119,18 @@ mkdir -p logs
 
 active_server=""
 active_server="$(env_contract_get ACTIVE_LLM_SERVER "" "$ENV_FILE")"
-if [[ -z "$active_server" ]]; then
-  active_server="$(env_contract_get ACTIVE_LLM_SERVER "" "$ENV_EXAMPLE_FILE")"
-fi
 active_server="$(printf '%s' "$active_server" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
 [[ -z "$active_server" ]] && active_server="ollama"
 
 active_server_origin="$(env_contract_origin ACTIVE_LLM_SERVER "$ENV_FILE" "")"
 if [[ "$active_server_origin" == "empty" ]]; then
-  if [[ -n "$(env_contract_read_file_var "$ENV_EXAMPLE_FILE" ACTIVE_LLM_SERVER)" ]]; then
-    active_server_origin="example_file"
-  else
-    active_server_origin="default"
-  fi
+  active_server_origin="default"
 fi
 vllm_endpoint_origin="$(env_contract_origin VLLM_ENDPOINT "$ENV_FILE" "http://127.0.0.1:8001/v1")"
 ollama_health_origin="$(env_contract_origin OLLAMA_HEALTH_URL "$ENV_FILE" "${OLLAMA_BASE_URL%/}/api/tags")"
 
 echo "🧭 Effective config:"
 echo "  - ENV_FILE: ${ENV_FILE}"
-echo "  - ENV_EXAMPLE_FILE: ${ENV_EXAMPLE_FILE}"
 echo "  - ACTIVE_LLM_SERVER: ${active_server} (${active_server_origin})"
 echo "  - VLLM_ENDPOINT: ${VLLM_ENDPOINT} (${vllm_endpoint_origin})"
 echo "  - OLLAMA_HEALTH_URL: ${OLLAMA_HEALTH_URL} (${ollama_health_origin})"
@@ -279,7 +309,7 @@ if [[ -z "$backend_reused" ]]; then
 
   echo "▶️  Uruchamiam Venom backend (uvicorn na ${HOST}:${PORT})"
   : > "$BACKEND_LOG"
-  "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run -- setsid "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
+  run_with_env_file setsid "$UVICORN" "$API_APP" $uvicorn_flags >> "$BACKEND_LOG" 2>&1 &
   echo $! > "$PID_FILE"
   echo "✅ Venom backend wystartował z PID $(cat "$PID_FILE")"
 
@@ -413,7 +443,7 @@ if [[ -z "$ui_skip" ]]; then
     echo "▶️  Uruchamiam UI (Next.js start, host ${WEB_HOST}, port ${WEB_PORT})"
     (
       cd "$WEB_DIR"
-      NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run -- setsid "$NPM" run start -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+      NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run start -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
       echo $! > "../$WEB_PID_FILE"
     )
   else
@@ -425,21 +455,21 @@ if [[ -z "$ui_skip" ]]; then
       echo "▶️  Uruchamiam UI (Next.js dev:turbo, host ${WEB_HOST}, port ${WEB_PORT})"
       (
         cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run -- setsid "$NPM" run dev:turbo -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 run_with_env_file setsid "$NPM" run dev:turbo -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
         echo $! > "../$WEB_PID_FILE"
       )
     elif [[ "$START_WEB_MODE" == "turbo-debug" ]]; then
       echo "▶️  Uruchamiam UI (Next.js dev:turbo:debug, host ${WEB_HOST}, port ${WEB_PORT})"
       (
         cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run -- setsid "$NPM" run dev:turbo:debug -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_TELEMETRY_DISABLED=1 WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 CHOKIDAR_USEPOLLING=1 run_with_env_file setsid "$NPM" run dev:turbo:debug -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
         echo $! > "../$WEB_PID_FILE"
       )
     else
       echo "▶️  Uruchamiam UI (Next.js dev, host ${WEB_HOST}, port ${WEB_PORT})"
       (
         cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run -- setsid "$NPM" run dev -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run dev -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
         echo $! > "../$WEB_PID_FILE"
       )
     fi
@@ -459,7 +489,7 @@ if [[ -z "$ui_skip" ]]; then
       : > "$WEB_LOG"
       (
         cd "$WEB_DIR"
-        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 "$PYTHON_BIN" -m dotenv -f "$ENV_FILE" run -- setsid "$NPM" run dev -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
+        NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1 run_with_env_file setsid "$NPM" run dev -- --hostname "$WEB_HOST" --port "$WEB_PORT" >> "../$WEB_LOG" 2>&1 &
         echo $! > "../$WEB_PID_FILE"
       )
       wpid="$(cat "$WEB_PID_FILE")"

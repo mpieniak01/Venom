@@ -1,15 +1,19 @@
-start-preprod:
-	$(PREPROD_ENV_READONLY) \
-		$(MAKE) --no-print-directory ensure-env-file
-	$(PREPROD_ENV_READONLY) \
-		$(MAKE) --no-print-directory START_MODE=prod _start
+start-preprod: ENV_FILE=.env.preprod
+start-preprod: ENV_EXAMPLE_FILE=.env.preprod.example
+start-preprod: START_MODE=prod
+start-preprod: START_WEB_MODE=webpack
+start-preprod: export ENVIRONMENT_ROLE=preprod
+start-preprod: export DB_SCHEMA=preprod
+start-preprod: export CACHE_NAMESPACE=preprod
+start-preprod: export QUEUE_NAMESPACE=preprod
+start-preprod: export STORAGE_PREFIX=preprod
+start-preprod: export ALLOW_DATA_MUTATION=0
+start-preprod: ensure-env-file _start
 
 # Preprod aliases (short commands)
 startpre: start-preprod
 stoppre: stop
-restartpre:
-	$(MAKE) --no-print-directory stoppre
-	$(MAKE) --no-print-directory startpre
+restartpre: stoppre startpre
 statuspre: status
 apipre: api-preprod
 webpre: web-preprod
@@ -19,9 +23,9 @@ ensurepreenv: ensure-preprod-env-file
 ensure-env-file:
 	@bash scripts/dev/ensure_env_file.sh "$(ENV_FILE)" "$(ENV_EXAMPLE_FILE)"
 
-ensure-preprod-env-file:
-	@$(PREPROD_ENV_BASE) \
-		$(MAKE) --no-print-directory ensure-env-file
+ensure-preprod-env-file: ENV_FILE=.env.preprod
+ensure-preprod-env-file: ENV_EXAMPLE_FILE=.env.preprod.example
+ensure-preprod-env-file: ensure-env-file
 
 preprod-backup:
 	@$(PREPROD_ENV_READONLY) \
@@ -34,7 +38,8 @@ preprod-restore:
 preprod-verify:
 	@$(PREPROD_ENV_READONLY) \
 		bash scripts/preprod/backup_restore.sh verify "$${TS:-}"
-	@$(MAKE) --no-print-directory test-preprod-readonly-smoke
+	@$(PREPROD_ENV_READONLY) \
+		$(PYTEST_BIN) -q tests/test_preprod_readonly_smoke.py tests/test_preprod_optional_modules_smoke.py -m smoke
 
 preprod-audit:
 	@bash scripts/preprod/audit_log.sh \
@@ -45,7 +50,7 @@ preprod-audit:
 
 preprod-drill:
 	@set -e; \
-	backup_out="$$( $(MAKE) --no-print-directory preprod-backup )"; \
+	backup_out="$$( $(PREPROD_ENV_READONLY) bash scripts/preprod/backup_restore.sh backup )"; \
 	echo "$$backup_out"; \
 	ts="$$(printf '%s\n' "$$backup_out" | sed -n 's/^Backup timestamp:[[:space:]]*//p' | tail -n 1)"; \
 	if [ -z "$$ts" ]; then \
@@ -56,7 +61,8 @@ preprod-drill:
 		echo "❌ Nieprawidłowy format timestamp z backupu preprod: '$$ts'."; \
 		exit 2; \
 	fi; \
-	$(MAKE) --no-print-directory preprod-verify TS="$$ts"; \
+	$(PREPROD_ENV_READONLY) bash scripts/preprod/backup_restore.sh verify "$$ts"; \
+	$(PREPROD_ENV_READONLY) $(PYTEST_BIN) -q tests/test_preprod_readonly_smoke.py tests/test_preprod_optional_modules_smoke.py -m smoke; \
 	echo "✅ Preprod drill zakończony (TS=$$ts)."
 
 preprod-readiness-check:

@@ -39,13 +39,30 @@ env_contract_read_file_var() {
   ' "$file_path"
 }
 
+env_contract_file_has_key() {
+  local file_path="$1"
+  local key="$2"
+  if [[ ! -f "$file_path" ]]; then
+    return 1
+  fi
+  awk -F= -v k="$key" '
+    $1 == k { found=1; exit }
+    END { exit(found ? 0 : 1) }
+  ' "$file_path"
+}
+
 env_contract_get() {
   local key="$1"
   local default_value="${2-}"
   local file_path="${3-}"
   local env_value="${!key-}"
+  local env_is_set=0
 
-  if [[ -n "$env_value" ]]; then
+  if [[ "${!key+x}" == "x" ]]; then
+    env_is_set=1
+  fi
+
+  if [[ "$env_is_set" -eq 1 ]]; then
     printf '%s' "$env_value"
     return 0
   fi
@@ -53,7 +70,7 @@ env_contract_get() {
   if [[ -n "$file_path" ]]; then
     local file_value
     file_value="$(env_contract_read_file_var "$file_path" "$key")"
-    if [[ -n "$file_value" ]]; then
+    if env_contract_file_has_key "$file_path" "$key"; then
       printf '%s' "$file_value"
       return 0
     fi
@@ -66,17 +83,19 @@ env_contract_origin() {
   local key="$1"
   local file_path="${2-}"
   local default_value="${3-}"
-  local env_value="${!key-}"
+  local env_is_set=0
 
-  if [[ -n "$env_value" ]]; then
+  if [[ "${!key+x}" == "x" ]]; then
+    env_is_set=1
+  fi
+
+  if [[ "$env_is_set" -eq 1 ]]; then
     printf 'env'
     return 0
   fi
 
   if [[ -n "$file_path" ]]; then
-    local file_value
-    file_value="$(env_contract_read_file_var "$file_path" "$key")"
-    if [[ -n "$file_value" ]]; then
+    if env_contract_file_has_key "$file_path" "$key"; then
       printf 'file'
       return 0
     fi

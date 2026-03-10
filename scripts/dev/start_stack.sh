@@ -35,9 +35,29 @@ ENV_EXAMPLE_FILE_RAW="${ENV_EXAMPLE_FILE:-.env.dev.example}"
 ENV_FILE="$(env_contract_resolve_file "$ENV_FILE_RAW" "$ROOT_DIR")"
 ENV_EXAMPLE_FILE="$(env_contract_resolve_file "$ENV_EXAMPLE_FILE_RAW" "$ROOT_DIR")"
 VLLM_ENDPOINT="$(env_contract_get VLLM_ENDPOINT "http://127.0.0.1:8001/v1" "$ENV_FILE")"
+OLLAMA_BASE_URL="$(env_contract_get OLLAMA_BASE_URL "http://localhost:11434" "$ENV_FILE")"
+OLLAMA_HEALTH_URL="$(env_contract_get OLLAMA_HEALTH_URL "${OLLAMA_BASE_URL%/}/api/tags" "$ENV_FILE")"
 VLLM_START_TIMEOUT_SEC="${VLLM_START_TIMEOUT_SEC:-240}"
 NPM="${NPM:-npm}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+extract_url_port() {
+  local url="$1"
+  local scheme="${url%%://*}"
+  local rest="${url#*://}"
+  rest="${rest%%/*}"
+  if [[ "$rest" == *:* ]]; then
+    printf '%s' "${rest##*:}"
+    return 0
+  fi
+  if [[ "$scheme" == "https" ]]; then
+    printf '443'
+  else
+    printf '80'
+  fi
+}
+
+OLLAMA_PORT="$(extract_url_port "$OLLAMA_BASE_URL")"
 
 vllm_models_url() {
   local endpoint="$1"
@@ -76,39 +96,43 @@ if [[ "$active_server_origin" == "empty" ]]; then
   fi
 fi
 vllm_endpoint_origin="$(env_contract_origin VLLM_ENDPOINT "$ENV_FILE" "http://127.0.0.1:8001/v1")"
+ollama_health_origin="$(env_contract_origin OLLAMA_HEALTH_URL "$ENV_FILE" "${OLLAMA_BASE_URL%/}/api/tags")"
 
 echo "🧭 Effective config:"
 echo "  - ENV_FILE: ${ENV_FILE}"
 echo "  - ENV_EXAMPLE_FILE: ${ENV_EXAMPLE_FILE}"
 echo "  - ACTIVE_LLM_SERVER: ${active_server} (${active_server_origin})"
 echo "  - VLLM_ENDPOINT: ${VLLM_ENDPOINT} (${vllm_endpoint_origin})"
+echo "  - OLLAMA_HEALTH_URL: ${OLLAMA_HEALTH_URL} (${ollama_health_origin})"
 echo "  - START_MODE: ${START_MODE}"
 echo "  - START_WEB_MODE: ${START_WEB_MODE}"
 echo "  - HOST: ${HOST}:${PORT}, WEB: ${WEB_HOST}:${WEB_PORT}"
 
 start_ollama() {
+  local make_bin
+  make_bin="${MAKE_BIN:-make}"
   echo "▶️  Uruchamiam Ollama..."
   mk vllm-stop >/dev/null || true
   if command -v timeout >/dev/null 2>&1; then
-    if ! timeout 25s mk ollama-start >/dev/null; then
+    if ! timeout 25s "$make_bin" --no-print-directory ollama-start >/dev/null; then
       echo "❌ 'ollama-start' nie zakończył się poprawnie w limicie czasu (25s)."
       return 1
     fi
   else
-    if ! mk ollama-start >/dev/null; then
+    if ! "$make_bin" --no-print-directory ollama-start >/dev/null; then
       echo "❌ Nie udało się wywołać 'ollama-start' (sprawdź instalację/usługę Ollama)."
       return 1
     fi
   fi
 
-  echo "⏳ Czekam na Ollama (/api/tags)..."
+  echo "⏳ Czekam na Ollama (${OLLAMA_HEALTH_URL})..."
   local ollama_fatal=""
   for _ in {1..90}; do
-    if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then
+    if curl -fsS "$OLLAMA_HEALTH_URL" >/dev/null 2>&1; then
       echo "✅ Ollama gotowy"
       return 0
     fi
-    if [[ -f logs/ollama.log ]] && grep -Eiq "Error: listen tcp .*:11434|operation not permitted|address already in use" logs/ollama.log; then
+    if [[ -f logs/ollama.log ]] && grep -Eiq "Error: listen tcp .*:${OLLAMA_PORT}|operation not permitted|address already in use" logs/ollama.log; then
       echo "❌ Ollama zakończyła start błędem (sprawdź logs/ollama.log)"
       ollama_fatal="yes"
       break
@@ -372,10 +396,20 @@ if [[ -z "$ui_skip" ]]; then
   : > "$WEB_LOG"
   if [[ "$START_MODE" == "prod" ]]; then
     echo "🛠  Buduję Next.js (npm run build)"
-    (
+    if ! (
       cd "$WEB_DIR"
       NODE_PATH="$WEB_NODE_PATH" NEXT_PUBLIC_APP_VERSION="$WEB_APP_VERSION" NEXT_PUBLIC_ENVIRONMENT_ROLE="${ENVIRONMENT_ROLE:-dev}" NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1 "$NPM" run build >/dev/null 2>&1
-    )
+    ); then
+      echo "❌ Build UI (Next.js) nie powiódł się (tryb prod)." >&2
+      if [[ -f "$PID_FILE" ]]; then
+        bpid="$(cat "$PID_FILE")"
+        kill "$bpid" 2>/dev/null || true
+        rm -f "$PID_FILE"
+      fi
+      mk vllm-stop >/dev/null || true
+      mk ollama-stop >/dev/null || true
+      exit 1
+    fi
     echo "▶️  Uruchamiam UI (Next.js start, host ${WEB_HOST}, port ${WEB_PORT})"
     (
       cd "$WEB_DIR"

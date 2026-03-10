@@ -114,36 +114,35 @@ endef
 
 start: start-dev
 
-start-dev:
-	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=webpack _start
+start-dev: START_MODE=dev
+start-dev: START_WEB_MODE=webpack
+start-dev: ensure-env-file _start
 
 start2: start-dev-turbo
 
-start-dev-webpack:
-	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=webpack _start
+start-dev-webpack: START_MODE=dev
+start-dev-webpack: START_WEB_MODE=webpack
+start-dev-webpack: ensure-env-file _start
 
-start-dev-turbo:
-	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory START_MODE=dev START_WEB_MODE=turbo _start
+start-dev-turbo: START_MODE=dev
+start-dev-turbo: START_WEB_MODE=turbo
+start-dev-turbo: ensure-env-file _start
 
-start-prod:
+start-prod: START_MODE=prod
+start-prod: ensure-env-file _start
 	@echo "⚠️  OSTRZEŻENIE: tryb 'prod' nie jest jeszcze oficjalnie zwalidowany/rekomendowany operacyjnie."
 	@echo "⚠️  Zalecane środowiska: 'dev' (testy/prace) oraz 'preprod' (UAT + smoke read-only)."
-	$(MAKE) --no-print-directory ensure-env-file
-	$(MAKE) --no-print-directory START_MODE=prod _start
 
 
 _start:
-	@MAKE_BIN="$(MAKE)" \
+	@MAKE_BIN="$${MAKE:-make}" \
 		PYTHON_BIN="$(PYTHON_BIN)" \
 		UVICORN="$(UVICORN)" API_APP="$(API_APP)" HOST="$(HOST)" HOST_DISPLAY="$(HOST_DISPLAY)" PORT="$(PORT)" \
 		PID_FILE="$(PID_FILE)" WEB_DIR="$(WEB_DIR)" WEB_PORT="$(WEB_PORT)" WEB_HOST="$(WEB_HOST)" WEB_DISPLAY="$(WEB_DISPLAY)" WEB_PID_FILE="$(WEB_PID_FILE)" \
 		START_MODE="$(START_MODE)" START_WEB_MODE="$(START_WEB_MODE)" ALLOW_DEGRADED_START="$(ALLOW_DEGRADED_START)" BACKEND_RELOAD="$(BACKEND_RELOAD)" \
 		UVICORN_DEV_FLAGS="$(UVICORN_DEV_FLAGS)" UVICORN_PROD_FLAGS="$(UVICORN_PROD_FLAGS)" BACKEND_LOG="$(BACKEND_LOG)" WEB_LOG="$(WEB_LOG)" \
 		WEB_NODE_PATH="$(WEB_NODE_PATH)" WEB_APP_VERSION="$(WEB_APP_VERSION)" \
-		VLLM_ENDPOINT="$(VLLM_ENDPOINT)" VLLM_START_TIMEOUT_SEC="$(VLLM_START_TIMEOUT_SEC)" \
+		$(if $(VLLM_ENDPOINT),VLLM_ENDPOINT="$(VLLM_ENDPOINT)") VLLM_START_TIMEOUT_SEC="$(VLLM_START_TIMEOUT_SEC)" \
 		ENV_FILE="$(ENV_FILE)" ENV_EXAMPLE_FILE="$(ENV_EXAMPLE_FILE)" NPM="$(NPM)" \
 		bash scripts/dev/start_stack.sh
 
@@ -224,9 +223,15 @@ api-dev:
 	@echo "📡 Backend: http://$(HOST):$(PORT)"
 	@echo "🔄 Autoreload: aktywny (zmiana plików → restart)"
 
-api-preprod:
-	$(PREPROD_ENV_READONLY) \
-		$(MAKE) --no-print-directory api
+api-preprod: ENV_FILE=.env.preprod
+api-preprod: ENV_EXAMPLE_FILE=.env.preprod.example
+api-preprod: export ENVIRONMENT_ROLE=preprod
+api-preprod: export DB_SCHEMA=preprod
+api-preprod: export CACHE_NAMESPACE=preprod
+api-preprod: export QUEUE_NAMESPACE=preprod
+api-preprod: export STORAGE_PREFIX=preprod
+api-preprod: export ALLOW_DATA_MUTATION=0
+api-preprod: api
 
 # Zatrzymaj tylko backend
 api-stop:
@@ -284,9 +289,15 @@ web-dev-turbo:
 web-dev-turbo-debug:
 	$(call start_web_turbo_target,Next.js dev:turbo:debug,dev:turbo:debug,🧪 Debug turbo: NEXT_DEBUG + --trace-warnings,)
 
-web-preprod:
-	$(PREPROD_ENV_READONLY) \
-		$(MAKE) --no-print-directory web
+web-preprod: ENV_FILE=.env.preprod
+web-preprod: ENV_EXAMPLE_FILE=.env.preprod.example
+web-preprod: export ENVIRONMENT_ROLE=preprod
+web-preprod: export DB_SCHEMA=preprod
+web-preprod: export CACHE_NAMESPACE=preprod
+web-preprod: export QUEUE_NAMESPACE=preprod
+web-preprod: export STORAGE_PREFIX=preprod
+web-preprod: export ALLOW_DATA_MUTATION=0
+web-preprod: web
 
 # Zatrzymaj tylko frontend
 web-stop:

@@ -48,6 +48,14 @@ def test_env_contract_get_precedence(tmp_path: Path) -> None:
     assert from_default.returncode == 0, from_default.stderr
     assert from_default.stdout == "default-value"
 
+    from_env_empty = _run_env_contract(
+        script,
+        f'printf "%s" "$(env_contract_get TEST_KEY default-value "{env_file}")"',
+        {"TEST_KEY": ""},
+    )
+    assert from_env_empty.returncode == 0, from_env_empty.stderr
+    assert from_env_empty.stdout == ""
+
 
 def test_env_contract_origin_reports_source(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
@@ -76,6 +84,14 @@ def test_env_contract_origin_reports_source(tmp_path: Path) -> None:
     )
     assert from_default.returncode == 0, from_default.stderr
     assert from_default.stdout == "default"
+
+    from_env_empty = _run_env_contract(
+        script,
+        f'printf "%s" "$(env_contract_origin ORIGIN_KEY "{env_file}" "fallback")"',
+        {"ORIGIN_KEY": ""},
+    )
+    assert from_env_empty.returncode == 0, from_env_empty.stderr
+    assert from_env_empty.stdout == "env"
 
 
 def test_env_contract_resolve_file_paths(tmp_path: Path) -> None:

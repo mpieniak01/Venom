@@ -6,7 +6,7 @@ import pytest
 from pydantic_settings import BaseSettings
 
 from tests.helpers.url_fixtures import LOCALHOST_11434_V1
-from venom_core.execution.kernel_builder import KernelBuilder
+from venom_core.execution.kernel_builder import KernelBuilder, _safe_find_spec
 
 
 class MockSettings(BaseSettings):
@@ -234,3 +234,71 @@ def test_register_google_service_registers_connector(monkeypatch):
         api_key="test-google-key",
     )
     kernel.add_service.assert_called_once_with(fake_service)
+
+
+def test_safe_find_spec_returns_none_on_internal_error(monkeypatch):
+    import venom_core.execution.kernel_builder as kbmod
+
+    monkeypatch.setattr(
+        kbmod.importlib.util,
+        "find_spec",
+        lambda _name: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    assert _safe_find_spec("x.any") is None
+
+
+def test_register_google_service_requires_key_when_google_available(monkeypatch):
+    from semantic_kernel import Kernel
+
+    import venom_core.execution.kernel_builder as kbmod
+
+    class GoogleSettings(MockSettings):
+        GOOGLE_API_KEY: str = ""
+
+    settings = GoogleSettings(LLM_SERVICE_TYPE="google", LLM_MODEL_NAME="gemini-x")
+    builder = KernelBuilder(settings=settings)
+    kernel = MagicMock(spec=Kernel)
+
+    monkeypatch.setattr(kbmod, "GOOGLE_AVAILABLE", True)
+    monkeypatch.setattr(kbmod, "SK_GOOGLE_CONNECTOR_AVAILABLE", True)
+    monkeypatch.setattr(kbmod, "GoogleAIChatCompletion", MagicMock())
+
+    with pytest.raises(ValueError, match="GOOGLE_API_KEY"):
+        builder._register_google_service(kernel, "google", "gemini-x", False)
+
+
+def test_register_google_service_requires_sk_connector(monkeypatch):
+    from semantic_kernel import Kernel
+
+    import venom_core.execution.kernel_builder as kbmod
+
+    class GoogleSettings(MockSettings):
+        GOOGLE_API_KEY: str = "test-google-key"
+
+    settings = GoogleSettings(LLM_SERVICE_TYPE="google", LLM_MODEL_NAME="gemini-x")
+    builder = KernelBuilder(settings=settings)
+    kernel = MagicMock(spec=Kernel)
+
+    monkeypatch.setattr(kbmod, "GOOGLE_AVAILABLE", True)
+    monkeypatch.setattr(kbmod, "SK_GOOGLE_CONNECTOR_AVAILABLE", False)
+
+    with pytest.raises(ValueError, match="Connector GoogleAIChatCompletion"):
+        builder._register_google_service(kernel, "google", "gemini-x", False)
+
+
+def test_register_all_services_logs_openai_registration_failure(monkeypatch):
+    settings = MockSettings(
+        LLM_SERVICE_TYPE="local",
+        OPENAI_API_KEY="sk-test-key",
+    )
+    builder = KernelBuilder(settings=settings, enable_multi_service=True)
+
+    def _raise_on_openai(kernel, service_type, **kwargs):  # type: ignore[no-untyped-def]
+        del kernel, kwargs
+        if service_type == "openai":
+            raise RuntimeError("openai-fail")
+        return None
+
+    monkeypatch.setattr(builder, "_register_service", _raise_on_openai)
+    kernel = MagicMock()
+    builder._register_all_services(kernel)

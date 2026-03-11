@@ -246,3 +246,39 @@ def test_load_router_returns_none_when_attr_is_not_router(
 
     monkeypatch.setattr(module_registry.importlib, "import_module", _fake_import)
     assert module_registry._load_router("x_invalid_router_mod:not_router") is None
+
+
+def test_parse_version_handles_empty_tokens_and_invalid_tail() -> None:
+    assert module_registry._parse_version("1..2.alpha") == (1, 2)
+    assert module_registry._parse_version("..") == ()
+
+
+def test_is_compatible_fallback_when_versions_are_non_semver() -> None:
+    manifest = module_registry.ApiModuleManifest(
+        module_id="x",
+        router_import="x_mod:router",
+        data_policy=module_registry.parse_module_data_policy_payload(
+            module_id="x",
+            payload={
+                "storage_mode": "core_prefixed",
+                "mutation_guard": "core_environment_policy",
+                "state_files": ["runtime-state.json"],
+            },
+        )[0],
+        module_api_version="v-next",
+    )
+    settings = _Settings()
+    settings.CORE_MODULE_API_VERSION = "1.0.0"
+    assert module_registry._is_compatible(manifest, settings) is False
+
+
+def test_parse_manifest_file_returns_none_on_invalid_json(tmp_path: Path) -> None:
+    broken = tmp_path / "broken.json"
+    broken.write_text("{ invalid", encoding="utf-8")
+    assert module_registry._parse_manifest_file(str(broken)) is None
+
+
+def test_validate_optional_modules_config_ignores_empty_items() -> None:
+    settings = _Settings()
+    settings.API_OPTIONAL_MODULES = " , , "
+    assert module_registry.validate_optional_modules_config(settings) == []

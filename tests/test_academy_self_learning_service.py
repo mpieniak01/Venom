@@ -12,9 +12,17 @@ import pytest
 from venom_core.config import SETTINGS
 from venom_core.services.academy.self_learning_service import (
     DEFAULT_EVALUATION_BASELINES,
+    LlmConfig,
     RagConfig,
+    RunLimits,
+    SelfLearningRun,
     SelfLearningService,
+    _clamp01,
+    _is_valid_uuid,
     _normalize_evaluation_baseline_payload,
+    _safe_int,
+    _sha256_bytes,
+    _utc_now_iso,
 )
 
 
@@ -64,6 +72,43 @@ class DummyModelManagerWithUnload(DummyModelManager):
     async def unload_all(self):
         self.unload_calls += 1
         return True
+
+
+def test_self_learning_helper_primitives_cover_edge_cases() -> None:
+    assert _clamp01(-1.0) == 0.0
+    assert _clamp01(0.5) == 0.5
+    assert _clamp01(2.0) == 1.0
+    assert _safe_int("7", 0) == 7
+    assert _safe_int("x", 9) == 9
+    assert _safe_int(None, 11) == 11
+    assert _sha256_bytes(b"abc") == (
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    )
+
+
+def test_self_learning_uuid_and_time_helpers() -> None:
+    assert _is_valid_uuid("550e8400-e29b-41d4-a716-446655440000") is True
+    assert _is_valid_uuid("not-a-uuid") is False
+    assert "+00:00" in _utc_now_iso()
+
+
+def test_run_limits_and_self_learning_run_to_dict() -> None:
+    limits = RunLimits(max_file_size_kb=2, max_total_size_mb=1)
+    assert limits.max_file_size_bytes == 2048
+    assert limits.max_total_size_bytes == 1024 * 1024
+
+    run = SelfLearningRun(
+        run_id="r1",
+        mode="rag_index",
+        sources=["docs"],
+        limits=limits,
+        llm_config=LlmConfig(),
+        rag_config=RagConfig(),
+    )
+    payload = run.to_dict()
+    assert payload["run_id"] == "r1"
+    assert payload["limits"]["max_file_size_kb"] == 2
+    assert payload["rag_config"]["collection"] == "default"
 
 
 async def _wait_terminal(

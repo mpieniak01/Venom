@@ -1,11 +1,29 @@
 """Helpers for consistent autonomy permission enforcement across mutating paths."""
 
+from typing import Any
+
 from venom_core.core.permission_guard import permission_guard
 from venom_core.core.policy_autonomy_contract import (
+    EnforcementBlockPayload,
     build_autonomy_block_payload,
     to_audit_details,
 )
 from venom_core.services.audit_stream import get_audit_stream
+
+
+class AutonomyPermissionDenied(PermissionError):
+    """PermissionError carrying canonical autonomy deny payload for UI/API mapping."""
+
+    def __init__(self, payload: EnforcementBlockPayload):
+        super().__init__(payload.user_message)
+        self.payload = payload
+        self.decision = payload.decision.value
+        self.reason_code = payload.reason_code or "AUTONOMY_PERMISSION_DENIED"
+        self.user_message = payload.user_message
+        self.technical_context: dict[str, Any] = payload.technical_context.model_dump(
+            exclude_none=True
+        )
+        self.tags = list(payload.tags)
 
 
 def _deny(
@@ -37,7 +55,7 @@ def _deny(
         status="blocked",
         details=details,
     )
-    raise PermissionError(message)
+    raise AutonomyPermissionDenied(payload)
 
 
 def require_file_write_permission() -> None:

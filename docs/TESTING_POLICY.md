@@ -240,6 +240,31 @@ make pytest
 ```
 
 `make pytest` runs backend groups in order: `heavy` -> `long` -> `fast`.
+Default selection policy:
+- `heavy`: includes performance tests, excludes only `manual_llm`.
+- `long` and `fast`: exclude `performance` and `manual_llm`.
+- explicit long-running manual exclusions are read from:
+  `config/pytest-groups/manual-long-running.txt`
+Automatic regression execution excludes manual LLM and performance tests by default using:
+- `not performance and not manual_llm`
+
+Manual/operator-only LLM checks:
+
+```bash
+make test-llm-manual
+```
+
+Manual performance checks:
+
+```bash
+make test-perf
+```
+
+Duration audit for long/heavy (>120s):
+
+```bash
+make test-duration-audit
+```
 
 Frontend:
 
@@ -266,6 +291,10 @@ Performance/latency scenarios:
 - `npm --prefix web-next run test:perf`
 - `pytest tests/perf/test_chat_pipeline.py -m performance`
 - `./scripts/run-locust.sh`
+
+Notes:
+- Environment-configuration and LLM runtime stress/latency verification are manual by policy.
+- Regression gates should validate deterministic product behavior, not benchmark throughput.
 
 ## CI and Sonar Gates (reference)
 

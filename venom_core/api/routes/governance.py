@@ -1,6 +1,6 @@
 """Moduł: routes/governance - API endpointy dla Provider Governance."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -173,7 +173,10 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
         500: RESP_500_INTERNAL,
     },
 )
-def reset_usage(req: Request, scope: Optional[str] = None) -> Dict[str, Any]:
+def reset_usage(
+    req: Request = cast(Request, None),
+    scope: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Endpoint resetowania liczników zużycia.
 

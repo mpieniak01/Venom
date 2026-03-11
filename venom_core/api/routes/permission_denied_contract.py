@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from typing import Any, NoReturn
 
@@ -14,6 +15,7 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 DEFAULT_AUDIT_ACTOR = "api.route"
+DEFAULT_TRUSTED_IDENTITY_HOSTS = "127.0.0.1,::1,localhost"
 
 
 def build_permission_denied_detail(
@@ -63,22 +65,45 @@ def _read_header_value(headers: Any, header: str) -> Any:
     return None
 
 
+def _client_host_from_request(request: Request | None) -> str:
+    if request is None:
+        return ""
+    return str(getattr(getattr(request, "client", None), "host", "")).strip()
+
+
+def _trusted_identity_hosts() -> set[str]:
+    raw = os.getenv(
+        "AUDIT_TRUSTED_IDENTITY_HOSTS",
+        DEFAULT_TRUSTED_IDENTITY_HOSTS,
+    )
+    hosts = {item.strip().lower() for item in raw.split(",") if item.strip()}
+    return hosts or {"127.0.0.1", "::1", "localhost"}
+
+
+def _is_trusted_identity_source(request: Request | None) -> bool:
+    client_host = _client_host_from_request(request).lower()
+    if not client_host:
+        return False
+    return client_host in _trusted_identity_hosts()
+
+
 def resolve_actor_from_request(request: Request | None) -> str:
     """Resolve audit actor from request metadata (user headers first, then client host)."""
     if request is None:
         return DEFAULT_AUDIT_ACTOR
-    try:
-        headers = getattr(request, "headers", None)
-        for header in ("x-authenticated-user", "x-user"):
-            raw_value = _read_header_value(headers, header)
-            header_value = raw_value.strip() if isinstance(raw_value, str) else ""
-            if header_value:
-                return header_value
-    except Exception:
-        # Defensive fallback for non-standard request test doubles.
-        pass
+    if _is_trusted_identity_source(request):
+        try:
+            headers = getattr(request, "headers", None)
+            for header in ("x-authenticated-user", "x-user"):
+                raw_value = _read_header_value(headers, header)
+                header_value = raw_value.strip() if isinstance(raw_value, str) else ""
+                if header_value:
+                    return header_value
+        except Exception:
+            # Defensive fallback for non-standard request test doubles.
+            pass
 
-    client_host = str(getattr(getattr(request, "client", None), "host", "")).strip()
+    client_host = _client_host_from_request(request)
     if client_host:
         return f"client:{client_host}"
     return DEFAULT_AUDIT_ACTOR

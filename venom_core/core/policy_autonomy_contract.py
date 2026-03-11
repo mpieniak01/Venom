@@ -25,6 +25,7 @@ class EnforcementTechnicalContext(BaseModel):
     current_autonomy_level_name: str
     required_level: int | None = None
     required_level_name: str | None = None
+    skill_name: str | None = None
     operation: str | None = None
     phase: str | None = None
     provider: str | None = None
@@ -113,6 +114,7 @@ def build_autonomy_block_payload(
         current_autonomy_level_name=current_level_name,
         required_level=required_level,
         required_level_name=required_level_name,
+        skill_name=skill_name,
         operation=operation,
         phase="autonomy_enforcement",
         session_id=session_id,

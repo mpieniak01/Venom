@@ -24,8 +24,9 @@ Applies to:
 
 Interpretation:
 
-- `decision=block`: terminal deny for this operation (`technical_context.terminal=true`, `retryable=false`).
+- `decision=block`: operation denied by policy/autonomy. For autonomy hard-mode denies, treat as terminal (`technical_context.terminal=true`, `retryable=false`).
 - `decision=degraded_allow`: operation was allowed in soft mode; treat as policy drift signal.
+- Route-level `PERMISSION_DENIED` can be retryable after fixing preconditions (localhost/admin header/token).
 
 ## 3. Audit stream checks
 

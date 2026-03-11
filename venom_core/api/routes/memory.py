@@ -226,7 +226,7 @@ def clear_session_memory(
     vector_store: Annotated[Any, Depends(get_vector_store)],
     state_manager: Annotated[Any, Depends(get_state_manager)],
     session_store: Annotated[Any, Depends(get_session_store)],
-    req: Request = None,
+    req: Request,
 ):
     """
     Czyści pamięć sesyjną: wektory z tagiem session_id oraz historię/streszczenia w StateManager.
@@ -303,7 +303,7 @@ def get_session_memory(
 )
 def clear_global_memory(
     vector_store: Annotated[Any, Depends(get_vector_store)],
-    req: Request = None,
+    req: Request,
 ):
     """
     Czyści pamięć globalną (preferencje/fakty globalne użytkownika).
@@ -451,7 +451,7 @@ def pin_memory_entry(
 def delete_memory_entry(
     entry_id: str,
     vector_store: Annotated[Any, Depends(get_vector_store)],
-    req: Request = None,
+    req: Request,
 ):
     """
     Usuwa wpis pamięci (oraz wszystkie jego fragmenty).
@@ -493,7 +493,7 @@ def delete_memory_entry(
         500: {"description": "Błąd podczas czyszczenia Semantic Cache"},
     },
 )
-def flush_semantic_cache(req: Request = None):
+def flush_semantic_cache(req: Request):
     """
     Czyści Semantic Cache (kolekcja hidden_prompts).
     Usuwa wszystkie zapamiętane pary prompt-odpowiedź używane do semantycznego cache'owania.
@@ -565,11 +565,12 @@ async def prune_latest_lessons(
     count: Annotated[
         int, Query(ge=1, description="Liczba najnowszych lekcji do usunięcia")
     ],
+    req: Request,
 ):
     """Alias dla knowledge/lessons/prune/latest"""
     from venom_core.api.routes.knowledge import prune_latest_lessons as knowledge_prune
 
-    result = knowledge_prune(count=count, lessons_store=lessons_store)
+    result = knowledge_prune(count=count, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 
@@ -582,13 +583,14 @@ async def prune_lessons_by_range(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     start: Annotated[str, Query(description="Data początkowa")],
     end: Annotated[str, Query(description="Data końcowa")],
+    req: Request,
 ):
     """Alias dla knowledge/lessons/prune/range"""
     from venom_core.api.routes.knowledge import (
         prune_lessons_by_range as knowledge_prune,
     )
 
-    result = knowledge_prune(start=start, end=end, lessons_store=lessons_store)
+    result = knowledge_prune(start=start, end=end, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 
@@ -600,11 +602,12 @@ async def prune_lessons_by_range(
 async def prune_lessons_by_tag(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     tag: Annotated[str, Query(description="Tag do usunięcia")],
+    req: Request,
 ):
     """Alias dla knowledge/lessons/prune/tag"""
     from venom_core.api.routes.knowledge import prune_lessons_by_tag as knowledge_prune
 
-    result = knowledge_prune(tag=tag, lessons_store=lessons_store)
+    result = knowledge_prune(tag=tag, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 
@@ -616,11 +619,12 @@ async def prune_lessons_by_tag(
 async def prune_lessons_by_ttl(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     days: Annotated[int, Query(ge=1, description="Dni retencji")],
+    req: Request,
 ):
     """Alias dla knowledge/lessons/prune/ttl"""
     from venom_core.api.routes.knowledge import prune_lessons_by_ttl as knowledge_prune
 
-    result = knowledge_prune(days=days, lessons_store=lessons_store)
+    result = knowledge_prune(days=days, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 
@@ -631,6 +635,7 @@ async def prune_lessons_by_ttl(
 )
 async def purge_all_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    req: Request,
     force: Annotated[
         bool, Query(description="Wymagane potwierdzenie dla operacji nuklearnej")
     ] = False,
@@ -638,7 +643,7 @@ async def purge_all_lessons(
     """Alias dla knowledge/lessons/purge"""
     from venom_core.api.routes.knowledge import purge_all_lessons as knowledge_purge
 
-    result = knowledge_purge(force=force, lessons_store=lessons_store)
+    result = knowledge_purge(force=force, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 

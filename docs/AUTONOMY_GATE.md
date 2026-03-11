@@ -149,32 +149,16 @@ Notes:
 
 #### 1. Autonomy Selector
 
-In `index.html`:
+In Next.js cockpit/layout UI:
 
-```html
-<select id="autonomyLevel" class="autonomy-select">
-    <option value="0" data-color="green">🟢 ISOLATED</option>
-    <option value="10" data-color="blue">🔵 CONNECTED</option>
-    <option value="20" data-color="yellow">🟡 FUNDED</option>
-    <option value="30" data-color="orange">🟠 BUILDER</option>
-    <option value="40" data-color="red">🔴 ROOT</option>
-</select>
-```
+- Sidebar autonomy selector (`web-next/components/layout/sidebar-sections.tsx`)
+- Mobile autonomy selector (`web-next/components/layout/mobile-nav.tsx`)
+- Shared autonomy state logic (`web-next/components/layout/use-sidebar-logic.ts`)
 
 #### 2. Dynamic Theming
 
-Body element has theme class:
-
-```html
-<body class="theme-isolated" id="venomBody">
-```
-
-Theme classes define colors:
-- `.theme-isolated` - green
-- `.theme-connected` - blue
-- `.theme-funded` - yellow
-- `.theme-builder` - orange
-- `.theme-root` - red
+Autonomy state is reflected in cockpit/layout UI state and translated labels.
+The UI presents backend autonomy level and risk context, but does not execute autonomy policy decisions.
 
 #### 3. Error Handling
 
@@ -307,8 +291,11 @@ Key tests:
 ## 📚 References
 
 - **Backend Code**: `venom_core/core/permission_guard.py`
-- **Frontend Code**: `web/static/js/app.js` (AutonomyGate section)
+- **Frontend Code**:
+  - `web-next/components/layout/sidebar-sections.tsx`
+  - `web-next/components/layout/mobile-nav.tsx`
+  - `web-next/components/layout/use-sidebar-logic.ts`
 - **Configuration**: `config/autonomy_matrix.yaml`, `config/skill_permissions.yaml`
 - **Tests**: `tests/test_permission_guard.py`
-- **API**: `venom_core/api/routes/system.py` (`/api/v1/system/autonomy` endpoints)
+- **API**: `venom_core/api/routes/system_governance.py` (`/api/v1/system/autonomy` endpoints)
 - **Runbook**: `docs/runbooks/policy-autonomy-deny-triage.md`

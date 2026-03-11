@@ -145,32 +145,16 @@ Uwagi:
 
 #### 1. Selektor Autonomii
 
-W `index.html`:
+W UI Next.js (cockpit/layout):
 
-```html
-<select id="autonomyLevel" class="autonomy-select">
-    <option value="0" data-color="green">🟢 ISOLATED</option>
-    <option value="10" data-color="blue">🔵 CONNECTED</option>
-    <option value="20" data-color="yellow">🟡 FUNDED</option>
-    <option value="30" data-color="orange">🟠 BUILDER</option>
-    <option value="40" data-color="red">🔴 ROOT</option>
-</select>
-```
+- Selektor autonomii w sidebar (`web-next/components/layout/sidebar-sections.tsx`)
+- Selektor autonomii w widoku mobile (`web-next/components/layout/mobile-nav.tsx`)
+- Wspólna logika stanu autonomii (`web-next/components/layout/use-sidebar-logic.ts`)
 
 #### 2. Dynamiczne Tematowanie
 
-Body element ma klasę tematyczną:
-
-```html
-<body class="theme-isolated" id="venomBody">
-```
-
-Klasy tematyczne definiują kolory:
-- `.theme-isolated` - zielony
-- `.theme-connected` - niebieski
-- `.theme-funded` - żółty
-- `.theme-builder` - pomarańczowy
-- `.theme-root` - czerwony
+Stan autonomii jest prezentowany przez stan UI i etykiety i18n w cockpit/layout.
+UI pokazuje poziom i ryzyko z backendu, ale nie egzekwuje lokalnie decyzji policy/autonomy.
 
 #### 3. Obsługa Błędów
 
@@ -303,8 +287,11 @@ Kluczowe testy:
 ## 📚 Referencje
 
 - **Kod Backend**: `venom_core/core/permission_guard.py`
-- **Kod Frontend**: `web/static/js/app.js` (sekcja AutonomyGate)
+- **Kod Frontend**:
+  - `web-next/components/layout/sidebar-sections.tsx`
+  - `web-next/components/layout/mobile-nav.tsx`
+  - `web-next/components/layout/use-sidebar-logic.ts`
 - **Konfiguracja**: `config/autonomy_matrix.yaml`, `config/skill_permissions.yaml`
 - **Testy**: `tests/test_permission_guard.py`
-- **API**: `venom_core/api/routes/system.py` (endpointy `/api/v1/system/autonomy`)
+- **API**: `venom_core/api/routes/system_governance.py` (endpointy `/api/v1/system/autonomy`)
 - **Runbook**: `docs/PL/runbooks/policy-autonomy-deny-triage.md`

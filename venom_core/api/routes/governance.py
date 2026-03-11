@@ -173,7 +173,7 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
         500: RESP_500_INTERNAL,
     },
 )
-def reset_usage(scope: Optional[str] = None, req: Request = None) -> Dict[str, Any]:
+def reset_usage(req: Request, scope: Optional[str] = None) -> Dict[str, Any]:
     """
     Endpoint resetowania liczników zużycia.
 

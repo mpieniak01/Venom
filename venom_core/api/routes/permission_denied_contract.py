@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NoReturn
 
 from fastapi import HTTPException
 from starlette.requests import Request
@@ -13,6 +13,7 @@ from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+DEFAULT_AUDIT_ACTOR = "api.route"
 
 
 def build_permission_denied_detail(
@@ -47,21 +48,29 @@ def _resolve_audit_actor(actor: str | None) -> str:
     value = str(actor or "").strip()
     if value:
         return value
-    return "api.route"
+    return DEFAULT_AUDIT_ACTOR
+
+
+def _read_header_value(headers: Any, header: str) -> Any:
+    """Read header value from Mapping-like headers object."""
+    if headers is None:
+        return None
+    if isinstance(headers, Mapping):
+        return headers.get(header)
+    getter = getattr(headers, "get", None)
+    if callable(getter):
+        return getter(header)
+    return None
 
 
 def resolve_actor_from_request(request: Request | None) -> str:
     """Resolve audit actor from request metadata (user headers first, then client host)."""
     if request is None:
-        return "api.route"
+        return DEFAULT_AUDIT_ACTOR
     try:
         headers = getattr(request, "headers", None)
         for header in ("x-authenticated-user", "x-user"):
-            raw_value: Any = None
-            if isinstance(headers, Mapping):
-                raw_value = headers.get(header)
-            elif hasattr(headers, "get"):
-                raw_value = headers.get(header)
+            raw_value = _read_header_value(headers, header)
             header_value = raw_value.strip() if isinstance(raw_value, str) else ""
             if header_value:
                 return header_value
@@ -72,7 +81,7 @@ def resolve_actor_from_request(request: Request | None) -> str:
     client_host = str(getattr(getattr(request, "client", None), "host", "")).strip()
     if client_host:
         return f"client:{client_host}"
-    return "api.route"
+    return DEFAULT_AUDIT_ACTOR
 
 
 def publish_permission_denied_audit(
@@ -104,7 +113,7 @@ def raise_permission_denied_http(
     *,
     operation: str | None = None,
     actor: str | None = None,
-) -> None:
+) -> NoReturn:
     """Raise HTTP 403 with canonical deny payload."""
     detail = build_permission_denied_detail(exc, operation=operation)
     try:

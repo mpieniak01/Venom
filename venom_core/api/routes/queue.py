@@ -138,7 +138,7 @@ async def resume_queue():
     response_model=QueueActionResponse,
     responses=QUEUE_BASE_RESPONSES,
 )
-async def purge_queue(req: Request = None):
+async def purge_queue(req: Request):
     """
     Czyści kolejkę - usuwa wszystkie oczekujące zadania.
 
@@ -177,7 +177,7 @@ async def purge_queue(req: Request = None):
     response_model=QueueActionResponse,
     responses=QUEUE_BASE_RESPONSES,
 )
-async def emergency_stop(req: Request = None):
+async def emergency_stop(req: Request):
     """
     Awaryjne zatrzymanie systemu - anuluje wszystkie zadania i czyści kolejkę.
 

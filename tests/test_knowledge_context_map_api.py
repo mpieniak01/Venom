@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from venom_core.api.dependencies import (
+    get_graph_store,
     get_lessons_store,
     get_session_store,
     get_vector_store,
@@ -52,10 +53,18 @@ class DummyVectorStore:
         return filtered[:limit]
 
 
+class DummyGraphStore:
+    def get_graph_summary(self):
+        return {"total_nodes": 3, "total_edges": 2}
+
+
 def _build_client(
     tmp_path: Path,
-) -> tuple[TestClient, DummyVectorStore, LessonsStore, SessionStore]:
+    *,
+    client_host: str = "testclient",
+) -> tuple[TestClient, DummyVectorStore, LessonsStore, SessionStore, DummyGraphStore]:
     vector_store = DummyVectorStore()
+    graph_store = DummyGraphStore()
     lessons_store = LessonsStore(
         storage_path=str(tmp_path / "lessons.json"),
         vector_store=None,
@@ -64,14 +73,15 @@ def _build_client(
     session_store = SessionStore(store_path=str(tmp_path / "session_store.json"))
 
     app.dependency_overrides[get_vector_store] = lambda: vector_store
+    app.dependency_overrides[get_graph_store] = lambda: graph_store
     app.dependency_overrides[get_lessons_store] = lambda: lessons_store
     app.dependency_overrides[get_session_store] = lambda: session_store
-    client = TestClient(app)
-    return client, vector_store, lessons_store, session_store
+    client = TestClient(app, client=(client_host, 50000))
+    return client, vector_store, lessons_store, session_store, graph_store
 
 
 def test_memory_ingest_stores_contract_metadata(tmp_path: Path):
-    client, vector_store, _, _ = _build_client(tmp_path)
+    client, vector_store, _, _, _ = _build_client(tmp_path)
     try:
         response = client.post(
             "/api/v1/memory/ingest",
@@ -94,7 +104,7 @@ def test_memory_ingest_stores_contract_metadata(tmp_path: Path):
 
 
 def test_knowledge_context_map_returns_session_lesson_and_memory(tmp_path: Path):
-    client, vector_store, lessons_store, session_store = _build_client(tmp_path)
+    client, vector_store, lessons_store, session_store, _ = _build_client(tmp_path)
     try:
         session_store.append_message(
             "sess-1",
@@ -130,6 +140,138 @@ def test_knowledge_context_map_returns_session_lesson_and_memory(tmp_path: Path)
         relations = {link["relation"] for link in payload["links"]}
         assert "session->lesson" in relations
         assert "session->memory_entry" in relations
+    finally:
+        client.close()
+        app.dependency_overrides = {}
+
+
+def test_knowledge_entries_federated_filtering_by_source_and_tag(tmp_path: Path):
+    client, vector_store, lessons_store, session_store, _ = _build_client(tmp_path)
+    try:
+        session_store.append_message(
+            "sess-2",
+            {
+                "role": "user",
+                "content": "co to ttl",
+                "request_id": "req-2",
+                "timestamp": "2026-03-01T10:00:00+00:00",
+            },
+        )
+        lesson = Lesson(
+            situation="s",
+            action="a",
+            result="r",
+            feedback="f",
+            tags=["python", "ttl"],
+            metadata={"session_id": "sess-2", "task_id": "req-2"},
+        )
+        lessons_store.add_lesson(lesson)
+        vector_store.upsert(
+            text="entry vector",
+            metadata={"session_id": "sess-2"},
+            collection_name="default",
+        )
+
+        response = client.get(
+            "/api/v1/knowledge/entries?session_id=sess-2&source=lesson&tags=ttl&limit=50"
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "success"
+        assert payload["count"] == 1
+        entry = payload["entries"][0]
+        assert entry["source_meta"]["origin"] == "lesson"
+        assert "ttl" in entry["tags"]
+        assert entry["session_id"] == "sess-2"
+    finally:
+        client.close()
+        app.dependency_overrides = {}
+
+
+def test_knowledge_entries_rejects_invalid_time_window(tmp_path: Path):
+    client, _, _, _, _ = _build_client(tmp_path)
+    try:
+        response = client.get(
+            "/api/v1/knowledge/entries?created_from=2026-03-10T12:00:00Z&created_to=not-an-iso"
+        )
+        assert response.status_code == 400
+        assert "created_to" in str(response.json()["detail"])
+
+        response = client.get(
+            "/api/v1/knowledge/entries?created_from=2026-03-11T12:00:00Z&created_to=2026-03-10T12:00:00Z"
+        )
+        assert response.status_code == 400
+        assert "created_from > created_to" in str(response.json()["detail"])
+
+        # aware vs naive datetime should not raise TypeError (500),
+        # only deterministic 400 for invalid time window.
+        response = client.get(
+            "/api/v1/knowledge/entries?created_from=2026-03-11T12:00:00Z&created_to=2026-03-10T12:00:00"
+        )
+        assert response.status_code == 400
+        assert "created_from > created_to" in str(response.json()["detail"])
+    finally:
+        client.close()
+        app.dependency_overrides = {}
+
+
+def test_knowledge_entries_denies_non_localhost_client(tmp_path: Path):
+    client, _, _, _, _ = _build_client(tmp_path, client_host="10.20.30.40")
+    try:
+        response = client.get("/api/v1/knowledge/entries?session_id=sess-1")
+        assert response.status_code == 403
+        detail = response.json().get("detail", {})
+        assert detail.get("reason_code") == "PERMISSION_DENIED"
+        assert (
+            detail.get("technical_context", {}).get("operation")
+            == "knowledge.entries.list"
+        )
+    finally:
+        client.close()
+        app.dependency_overrides = {}
+
+
+def test_knowledge_context_map_skips_expired_lesson_and_memory_records(tmp_path: Path):
+    client, vector_store, lessons_store, session_store, _ = _build_client(tmp_path)
+    try:
+        session_store.append_message(
+            "sess-exp",
+            {
+                "role": "user",
+                "content": "hello",
+                "request_id": "req-exp",
+                "timestamp": "2026-03-01T10:00:00+00:00",
+            },
+        )
+
+        lesson = Lesson(
+            situation="s",
+            action="a",
+            result="r",
+            feedback="f",
+            metadata={
+                "session_id": "sess-exp",
+                "task_id": "req-exp",
+                "retention_expires_at": "2020-01-01T00:00:00+00:00",
+            },
+        )
+        lessons_store.add_lesson(lesson)
+        vector_store.upsert(
+            text="expired memory",
+            metadata={
+                "session_id": "sess-exp",
+                "retention_expires_at": "2020-01-01T00:00:00+00:00",
+            },
+            collection_name="default",
+        )
+
+        response = client.get("/api/v1/knowledge/context-map/sess-exp")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["session_id"] == "sess-exp"
+        relations = {link["relation"] for link in payload["links"]}
+        assert "session->lesson" not in relations
+        assert "session->memory_entry" not in relations
     finally:
         client.close()
         app.dependency_overrides = {}

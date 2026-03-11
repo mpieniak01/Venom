@@ -563,6 +563,49 @@ export interface LessonsResponse {
   lessons: Lesson[];
 }
 
+export type KnowledgeEntryScope = "session" | "global" | "task";
+
+export type KnowledgeSourceOrigin =
+  | "session"
+  | "lesson"
+  | "vector"
+  | "graph"
+  | "training"
+  | "external";
+
+export interface KnowledgeSourceMeta {
+  origin: KnowledgeSourceOrigin;
+  provenance: Record<string, unknown>;
+  reason_code?: string | null;
+}
+
+export interface KnowledgeEntry {
+  entry_id: string;
+  entry_type: string;
+  scope: KnowledgeEntryScope;
+  source: string;
+  content: string;
+  summary?: string | null;
+  tags: string[];
+  session_id?: string | null;
+  task_id?: string | null;
+  request_id?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  ttl_at?: string | null;
+  confidence?: number | null;
+  quality_score?: number | null;
+  version?: string;
+  source_meta: KnowledgeSourceMeta;
+  metadata?: Record<string, unknown>;
+}
+
+export interface KnowledgeEntriesResponse {
+  status?: string;
+  count: number;
+  entries: KnowledgeEntry[];
+}
+
 export interface GraphScanResponse {
   status?: string;
   message?: string;

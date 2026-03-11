@@ -18,6 +18,23 @@ from venom_core.core.knowledge_contract import (
 from venom_core.memory.lessons_store import LessonsStore
 
 
+def _is_record_expired(record: KnowledgeRecordV1) -> bool:
+    expires_at_raw = (record.retention.expires_at or "").strip()
+    if not expires_at_raw:
+        return False
+    try:
+        expires_at = datetime.fromisoformat(expires_at_raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at <= datetime.now(timezone.utc)
+
+
+def _filter_not_expired(records: list[KnowledgeRecordV1]) -> list[KnowledgeRecordV1]:
+    return [record for record in records if not _is_record_expired(record)]
+
+
 def read_session_records(
     session_id: str, session_store: Any
 ) -> list[KnowledgeRecordV1]:
@@ -124,13 +141,17 @@ def build_knowledge_context_map(
     related_task_ids = {
         rec.task_id for rec in session_records if rec.task_id and rec.task_id.strip()
     }
-    lesson_records = read_lesson_records(
-        lessons_store=lessons_store,
-        session_id=session_id,
-        related_task_ids=related_task_ids,
-        limit=limit,
+    lesson_records = _filter_not_expired(
+        read_lesson_records(
+            lessons_store=lessons_store,
+            session_id=session_id,
+            related_task_ids=related_task_ids,
+            limit=limit,
+        )
     )
-    memory_records = read_memory_records(vector_store, session_id, limit)
+    memory_records = _filter_not_expired(
+        read_memory_records(vector_store, session_id, limit)
+    )
     records = session_records + lesson_records + memory_records
     links = build_context_links(session_id, records, related_task_ids)
     return KnowledgeContextMapV1(session_id=session_id, records=records, links=links)

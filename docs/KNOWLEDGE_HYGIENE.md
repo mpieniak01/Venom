@@ -54,7 +54,7 @@ class TaskRequest(BaseModel):
 #### 1. Delete N latest lessons
 
 ```bash
-curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/latest?count=5"
+curl -X DELETE "http://localhost:8000/api/v1/lessons/prune/latest?count=5"
 ```
 
 **Parameters:**
@@ -72,7 +72,7 @@ curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/latest?count=5
 #### 2. Delete lessons by time range
 
 ```bash
-curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/range?start=2024-01-01T00:00:00&end=2024-01-31T23:59:59"
+curl -X DELETE "http://localhost:8000/api/v1/lessons/prune/range?start=2024-01-01T00:00:00&end=2024-01-31T23:59:59"
 ```
 
 **Parameters:**
@@ -98,7 +98,7 @@ curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/range?start=20
 #### 3. Delete lessons by tag
 
 ```bash
-curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/tag?tag=error"
+curl -X DELETE "http://localhost:8000/api/v1/lessons/prune/tag?tag=error"
 ```
 
 **Parameters:**
@@ -117,7 +117,7 @@ curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/tag?tag=error"
 #### 4. Purge all lessons (NUCLEAR)
 
 ```bash
-curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/purge?force=true"
+curl -X DELETE "http://localhost:8000/api/v1/lessons/purge?force=true"
 ```
 
 **Parameters:**
@@ -137,7 +137,7 @@ curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/purge?force=true"
 #### 5. TTL - delete lessons older than N days
 
 ```bash
-curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/ttl?days=30"
+curl -X DELETE "http://localhost:8000/api/v1/lessons/prune/ttl?days=30"
 ```
 
 **Parameters:**
@@ -156,7 +156,7 @@ curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/ttl?days=30"
 #### 6. Lesson deduplication
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/memory/lessons/dedupe"
+curl -X POST "http://localhost:8000/api/v1/lessons/dedupe"
 ```
 
 **Sample response:**
@@ -171,8 +171,8 @@ curl -X POST "http://localhost:8000/api/v1/memory/lessons/dedupe"
 #### 7. Global learning switch
 
 ```bash
-curl "http://localhost:8000/api/v1/memory/lessons/learning/status"
-curl -X POST "http://localhost:8000/api/v1/memory/lessons/learning/toggle" \
+curl "http://localhost:8000/api/v1/lessons/learning/status"
+curl -X POST "http://localhost:8000/api/v1/lessons/learning/toggle" \
   -H "Content-Type: application/json" \
   -d '{"enabled": false}'
 ```
@@ -184,6 +184,50 @@ curl -X POST "http://localhost:8000/api/v1/memory/lessons/learning/toggle" \
   "enabled": false
 }
 ```
+
+## Federated Knowledge View (200B)
+
+### Endpoint
+
+```bash
+curl "http://localhost:8000/api/v1/knowledge/entries?limit=50&scope=session&source=lesson&session_id=session-123"
+```
+
+### Supported filters
+
+- `scope`: `session|task|global`
+- `source`: `session|lesson|vector|graph|training|external`
+- `session_id`
+- `tags` (comma-separated)
+- `created_from`, `created_to` (ISO-8601)
+- `limit` (1..1000)
+
+### Response contract (short)
+
+```json
+{
+  "count": 1,
+  "entries": [
+    {
+      "entry_id": "lesson:abc",
+      "scope": "task",
+      "source_meta": {
+        "origin": "lesson"
+      }
+    }
+  ]
+}
+```
+
+## Lessons Mutation Contract and Audit
+
+- Lessons mutation endpoints return canonical `mutation` payload:
+  - `target`, `action`, `source`, `affected_count`, `scope`, `filter`.
+- Successful mutations publish audit event:
+  - `source=knowledge.lessons`,
+  - `action=mutation.applied`,
+  - `context=knowledge.lessons.<operation>`.
+- Denied mutations reuse canonical 200A deny contract (`HTTP 403`) and audit stream event from route guard (`api.permission`).
 
 ## Usage Examples
 
@@ -200,7 +244,7 @@ end_time = datetime.now()
 start_time = end_time - timedelta(hours=2)
 
 response = requests.delete(
-    "http://localhost:8000/api/v1/memory/lessons/prune/range",
+    "http://localhost:8000/api/v1/lessons/prune/range",
     params={
         "start": start_time.isoformat(),
         "end": end_time.isoformat()
@@ -212,14 +256,14 @@ print(f"Deleted {response.json()['deleted']} test lessons")
 ### Scenario 2: Remove erroneous lessons
 
 ```bash
-curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/tag?tag=error"
+curl -X DELETE "http://localhost:8000/api/v1/lessons/prune/tag?tag=error"
 ```
 
 ### Scenario 3: Reset before a new release
 
 ```bash
 # WARNING: This removes EVERYTHING!
-curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/purge?force=true"
+curl -X DELETE "http://localhost:8000/api/v1/lessons/purge?force=true"
 ```
 
 ## Security
@@ -263,7 +307,7 @@ python -m pytest tests/test_knowledge_hygiene.py -v
    ```bash
    # Add test lessons
    # Then delete them
-   curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/latest?count=1"
+   curl -X DELETE "http://localhost:8000/api/v1/lessons/prune/latest?count=1"
    ```
 
 ## Troubleshooting

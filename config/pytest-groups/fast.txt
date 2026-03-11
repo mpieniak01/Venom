@@ -180,6 +180,7 @@ tests/test_knowledge_adapters.py
 tests/test_knowledge_context_map_api.py
 tests/test_knowledge_context_service.py
 tests/test_knowledge_contract.py
+tests/test_knowledge_entries_service.py
 tests/test_knowledge_graph_api_limit.py
 tests/test_knowledge_graph_service.py
 tests/test_knowledge_hygiene.py

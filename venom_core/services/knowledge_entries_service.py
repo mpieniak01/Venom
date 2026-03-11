@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from venom_core.api.schemas.knowledge import (
@@ -56,6 +56,18 @@ def _scope_for_record(record: KnowledgeRecordV1) -> KnowledgeEntryScope:
 
 def _to_entry(record: KnowledgeRecordV1) -> KnowledgeEntry:
     metadata = dict(record.metadata or {})
+    scope = _scope_for_record(record)
+    metadata.setdefault(
+        "retention_profile",
+        {
+            "mode": "configurable",
+            "scope": scope.value,
+            "ttl_days": record.retention.ttl_days,
+        },
+    )
+    metadata.setdefault("retention_scope", scope.value)
+    metadata.setdefault("retention_ttl_days", record.retention.ttl_days)
+    metadata.setdefault("retention_expires_at", record.retention.expires_at)
     tags_raw = metadata.get("tags")
     tags = [str(tag).strip() for tag in tags_raw] if isinstance(tags_raw, list) else []
     tags = [tag for tag in tags if tag]
@@ -68,7 +80,7 @@ def _to_entry(record: KnowledgeRecordV1) -> KnowledgeEntry:
     return KnowledgeEntry(
         entry_id=record.record_id,
         entry_type=record.kind.value,
-        scope=_scope_for_record(record),
+        scope=scope,
         source=source_name,
         content=record.content,
         summary=metadata.get("summary"),
@@ -173,6 +185,8 @@ def _entry_matches(
     created_from: datetime | None,
     created_to: datetime | None,
 ) -> bool:
+    if _is_expired(entry):
+        return False
     if query.scope and entry.scope != query.scope:
         return False
     if query.source and entry.source_meta.origin != query.source:
@@ -184,6 +198,19 @@ def _entry_matches(
     if not _matches_time_window(entry, created_from, created_to):
         return False
     return True
+
+
+def _is_expired(entry: KnowledgeEntry, now: datetime | None = None) -> bool:
+    ttl_at_raw = (entry.ttl_at or "").strip()
+    if not ttl_at_raw:
+        return False
+    ttl_at = parse_iso_datetime(ttl_at_raw)
+    if ttl_at is None:
+        return False
+    compare_now = now or datetime.now(timezone.utc)
+    if ttl_at.tzinfo is None:
+        ttl_at = ttl_at.replace(tzinfo=timezone.utc)
+    return ttl_at <= compare_now
 
 
 def _filter_entries(

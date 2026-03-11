@@ -23,6 +23,35 @@ class _VectorStore:
         return [entry][:limit]
 
 
+class _VectorStoreExpired:
+    def list_entries(
+        self, limit=200, metadata_filters=None, collection_name=None, entry_id=None
+    ):
+        del metadata_filters, collection_name, entry_id
+        return [
+            {
+                "id": "vec-expired",
+                "text": "expired",
+                "metadata": {
+                    "session_id": "s-1",
+                    "retention_scope": "session",
+                    "retention_expires_at": "2020-01-01T00:00:00+00:00",
+                    "retention_ttl_days": 1,
+                },
+            },
+            {
+                "id": "vec-active",
+                "text": "active",
+                "metadata": {
+                    "session_id": "s-1",
+                    "retention_scope": "session",
+                    "retention_expires_at": "2999-01-01T00:00:00+00:00",
+                    "retention_ttl_days": 365000,
+                },
+            },
+        ][:limit]
+
+
 class _Lesson:
     def to_dict(self):
         return {
@@ -84,3 +113,26 @@ def test_list_federated_knowledge_entries_filter_scope_task(tmp_path):
     )
     assert entries
     assert all(entry.scope == KnowledgeEntryScope.TASK for entry in entries)
+
+
+def test_list_federated_knowledge_entries_filters_expired_and_emits_retention_profile(
+    tmp_path,
+):
+    session_store = SessionStore(store_path=str(tmp_path / "session_store.json"))
+    entries = list_federated_knowledge_entries(
+        session_store=session_store,
+        lessons_store=_LessonsStore(),
+        vector_store=_VectorStoreExpired(),
+        graph_store=_GraphStore(),
+        query=KnowledgeEntriesQuery(source=KnowledgeSourceOrigin.VECTOR, limit=20),
+    )
+
+    ids = {entry.entry_id for entry in entries}
+    assert "memory:vec-active" in ids
+    assert "memory:vec-expired" not in ids
+
+    active = next(entry for entry in entries if entry.entry_id == "memory:vec-active")
+    retention_profile = active.metadata.get("retention_profile")
+    assert isinstance(retention_profile, dict)
+    assert retention_profile.get("mode") == "configurable"
+    assert retention_profile.get("scope") == "session"

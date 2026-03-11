@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from venom_core.core.autonomy_enforcement import AutonomyPermissionDenied
 from venom_core.core.models import TaskRequest
 from venom_core.core.orchestrator.task_pipeline.context_builder import ContextBuilder
 from venom_core.core.orchestrator.task_pipeline.execution_strategy import (
@@ -15,6 +16,7 @@ from venom_core.core.orchestrator.task_pipeline.execution_strategy import (
 )
 from venom_core.core.orchestrator.task_pipeline.result_processor import ResultProcessor
 from venom_core.core.orchestrator.task_pipeline.task_validator import TaskValidator
+from venom_core.core.policy_autonomy_contract import build_autonomy_block_payload
 
 # ---------------------------------------------------------------------------
 # Helpers / shared fixtures
@@ -464,6 +466,39 @@ class TestResultProcessorProcessError:
         from venom_core.core.tracer import TraceStatus
 
         tracer.update_status.assert_called_once_with(task_id, TraceStatus.FAILED)
+
+    async def test_process_error_maps_autonomy_denied_to_canonical_payload(self):
+        """process_error should map autonomy deny to canonical runtime/session context."""
+        orch = _make_orch()
+        update_calls: list[tuple[object, dict]] = []
+        orch.state_manager.update_context = lambda tid, payload: update_calls.append(
+            (tid, payload)
+        )
+        rp = ResultProcessor(orch)
+        task_id = uuid4()
+        request = TaskRequest(content="x", session_id="session-1")
+        payload = build_autonomy_block_payload(
+            user_message="AutonomyViolation: Brak uprawnień do shella",
+            operation="shell_execution",
+            required_level=40,
+            required_level_name="ROOT",
+            task_id=str(task_id),
+            session_id="session-1",
+        )
+        exc = AutonomyPermissionDenied(payload)
+
+        await rp.process_error(task_id, exc, request)
+
+        assert task_id in orch._errors_set
+        assert orch._errors_set[task_id]["error_code"] == "AUTONOMY_PERMISSION_DENIED"
+        assert orch._errors_set[task_id]["stage"] == "autonomy_enforcement"
+        assert update_calls
+        update_payload = update_calls[-1][1]
+        assert update_payload["policy_blocked"] is True
+        assert update_payload["decision"] == "block"
+        assert update_payload["reason_code"] == "AUTONOMY_PERMISSION_DENIED"
+        assert update_payload["technical_context"]["operation"] == "shell_execution"
+        orch._append_session_history.assert_called()
 
 
 @pytest.mark.asyncio

@@ -125,6 +125,8 @@ def test_knowledge_lessons_routes(mock_app):
     resp = mock_app.client.delete("/api/v1/lessons/prune/latest?count=1")
     assert resp.status_code == 200
     assert resp.json()["deleted"] == 1
+    assert resp.json()["mutation"]["action"] == "prune_latest"
+    assert resp.json()["mutation"]["source"] == "lesson"
 
 
 # --- Tasks Tests ---
@@ -374,14 +376,17 @@ def test_memory_pruning_endpoints(mock_app):
     )
     assert resp.status_code == 200
     assert resp.json()["deleted"] == 5
+    assert resp.json()["mutation"]["action"] == "prune_range"
 
     # Test Prune Tag
     resp = mock_app.client.delete("/api/v1/lessons/prune/tag?tag=test")
     assert resp.status_code == 200
+    assert resp.json()["mutation"]["action"] == "prune_tag"
 
     # Test Prune TTL
     resp = mock_app.client.delete("/api/v1/lessons/prune/ttl?days=30")
     assert resp.status_code == 200
+    assert resp.json()["mutation"]["action"] == "prune_ttl"
 
     # Test Purge (Force=False)
     resp = mock_app.client.delete("/api/v1/lessons/purge")
@@ -390,3 +395,4 @@ def test_memory_pruning_endpoints(mock_app):
     # Test Purge (Force=True)
     resp = mock_app.client.delete("/api/v1/lessons/purge?force=true")
     assert resp.status_code == 200
+    assert resp.json()["mutation"]["action"] == "purge"

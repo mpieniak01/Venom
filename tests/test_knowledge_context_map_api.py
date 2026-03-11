@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from venom_core.api.dependencies import (
+    get_graph_store,
     get_lessons_store,
     get_session_store,
     get_vector_store,
@@ -52,10 +53,16 @@ class DummyVectorStore:
         return filtered[:limit]
 
 
+class DummyGraphStore:
+    def get_graph_summary(self):
+        return {"total_nodes": 3, "total_edges": 2}
+
+
 def _build_client(
     tmp_path: Path,
-) -> tuple[TestClient, DummyVectorStore, LessonsStore, SessionStore]:
+) -> tuple[TestClient, DummyVectorStore, LessonsStore, SessionStore, DummyGraphStore]:
     vector_store = DummyVectorStore()
+    graph_store = DummyGraphStore()
     lessons_store = LessonsStore(
         storage_path=str(tmp_path / "lessons.json"),
         vector_store=None,
@@ -64,14 +71,15 @@ def _build_client(
     session_store = SessionStore(store_path=str(tmp_path / "session_store.json"))
 
     app.dependency_overrides[get_vector_store] = lambda: vector_store
+    app.dependency_overrides[get_graph_store] = lambda: graph_store
     app.dependency_overrides[get_lessons_store] = lambda: lessons_store
     app.dependency_overrides[get_session_store] = lambda: session_store
     client = TestClient(app)
-    return client, vector_store, lessons_store, session_store
+    return client, vector_store, lessons_store, session_store, graph_store
 
 
 def test_memory_ingest_stores_contract_metadata(tmp_path: Path):
-    client, vector_store, _, _ = _build_client(tmp_path)
+    client, vector_store, _, _, _ = _build_client(tmp_path)
     try:
         response = client.post(
             "/api/v1/memory/ingest",
@@ -94,7 +102,7 @@ def test_memory_ingest_stores_contract_metadata(tmp_path: Path):
 
 
 def test_knowledge_context_map_returns_session_lesson_and_memory(tmp_path: Path):
-    client, vector_store, lessons_store, session_store = _build_client(tmp_path)
+    client, vector_store, lessons_store, session_store, _ = _build_client(tmp_path)
     try:
         session_store.append_message(
             "sess-1",
@@ -130,6 +138,49 @@ def test_knowledge_context_map_returns_session_lesson_and_memory(tmp_path: Path)
         relations = {link["relation"] for link in payload["links"]}
         assert "session->lesson" in relations
         assert "session->memory_entry" in relations
+    finally:
+        client.close()
+        app.dependency_overrides = {}
+
+
+def test_knowledge_entries_federated_filtering_by_source_and_tag(tmp_path: Path):
+    client, vector_store, lessons_store, session_store, _ = _build_client(tmp_path)
+    try:
+        session_store.append_message(
+            "sess-2",
+            {
+                "role": "user",
+                "content": "co to ttl",
+                "request_id": "req-2",
+                "timestamp": "2026-03-01T10:00:00+00:00",
+            },
+        )
+        lesson = Lesson(
+            situation="s",
+            action="a",
+            result="r",
+            feedback="f",
+            tags=["python", "ttl"],
+            metadata={"session_id": "sess-2", "task_id": "req-2"},
+        )
+        lessons_store.add_lesson(lesson)
+        vector_store.upsert(
+            text="entry vector",
+            metadata={"session_id": "sess-2"},
+            collection_name="default",
+        )
+
+        response = client.get(
+            "/api/v1/knowledge/entries?session_id=sess-2&source=lesson&tags=ttl&limit=50"
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "success"
+        assert payload["count"] == 1
+        entry = payload["entries"][0]
+        assert entry["source_meta"]["origin"] == "lesson"
+        assert "ttl" in entry["tags"]
+        assert entry["session_id"] == "sess-2"
     finally:
         client.close()
         app.dependency_overrides = {}

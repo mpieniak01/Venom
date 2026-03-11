@@ -16,13 +16,22 @@ from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
     resolve_actor_from_request,
 )
-from venom_core.api.schemas.knowledge import LearningToggleRequest
+from venom_core.api.schemas.knowledge import (
+    KnowledgeEntriesResponse,
+    KnowledgeEntryScope,
+    KnowledgeSourceOrigin,
+    LearningToggleRequest,
+)
 from venom_core.config import SETTINGS
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager
 from venom_core.services.knowledge_context_service import (
     build_knowledge_context_map as _build_knowledge_context_map,
+)
+from venom_core.services.knowledge_entries_service import (
+    KnowledgeEntriesQuery,
+    list_federated_knowledge_entries,
 )
 from venom_core.services.knowledge_graph_service import (
     build_graph_edges as _build_graph_edges,
@@ -454,6 +463,75 @@ def get_knowledge_context_map(
         raise
     except Exception as exc:
         logger.exception("Błąd podczas budowy knowledge context map")
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
+
+
+@router.get(
+    "/knowledge/entries",
+    response_model=KnowledgeEntriesResponse,
+    responses=INTERNAL_ERROR_RESPONSES,
+)
+def get_knowledge_entries(
+    session_store: Annotated[Any, Depends(get_session_store)],
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    vector_store: Annotated[Any, Depends(get_vector_store)],
+    graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+    req: Request = cast(Request, None),
+    session_id: Annotated[str | None, Query(description="Filtr po session_id")] = None,
+    scope: Annotated[
+        KnowledgeEntryScope | None,
+        Query(description="Filtr zakresu wpisów: session/global/task"),
+    ] = None,
+    source: Annotated[
+        KnowledgeSourceOrigin | None,
+        Query(
+            description="Filtr źródła: session/lesson/vector/graph/training/external"
+        ),
+    ] = None,
+    tags: Annotated[
+        str | None,
+        Query(description="Lista tagów oddzielona przecinkami (OR logic)"),
+    ] = None,
+    created_from: Annotated[
+        str | None,
+        Query(description="Początek okna czasowego ISO-8601"),
+    ] = None,
+    created_to: Annotated[
+        str | None,
+        Query(description="Koniec okna czasowego ISO-8601"),
+    ] = None,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=1000, description="Maksymalna liczba wpisów"),
+    ] = 200,
+):
+    parsed_tags = [item.strip() for item in (tags or "").split(",") if item.strip()]
+    query = KnowledgeEntriesQuery(
+        session_id=session_id,
+        scope=scope,
+        source=source,
+        tags=parsed_tags,
+        created_from=created_from,
+        created_to=created_to,
+        limit=limit,
+    )
+    try:
+        entries = list_federated_knowledge_entries(
+            session_store=session_store,
+            lessons_store=lessons_store,
+            vector_store=vector_store,
+            graph_store=graph_store,
+            query=query,
+        )
+        return KnowledgeEntriesResponse(count=len(entries), entries=entries)
+    except PermissionError as e:
+        raise_permission_denied_http(
+            e,
+            operation="knowledge.entries.list",
+            actor=resolve_actor_from_request(req),
+        )
+    except Exception as exc:
+        logger.exception("Błąd podczas pobierania federowanych wpisów wiedzy")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
 
 

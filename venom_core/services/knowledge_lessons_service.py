@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Protocol
 
+from venom_core.api.schemas.knowledge import KnowledgeEntryScope, KnowledgeSourceOrigin
+
 
 class LoggerLike(Protocol):
     def info(self, msg: str, *args: object) -> None: ...
@@ -28,6 +30,23 @@ class LessonsStoreLike(Protocol):
     def dedupe_lessons(self) -> int: ...
 
 
+def _mutation_payload(
+    *,
+    action: str,
+    affected_count: int,
+    filter_payload: dict[str, Any] | None = None,
+    scope: KnowledgeEntryScope = KnowledgeEntryScope.TASK,
+) -> dict[str, Any]:
+    return {
+        "target": "knowledge_entry",
+        "action": action,
+        "source": KnowledgeSourceOrigin.LESSON.value,
+        "affected_count": affected_count,
+        "scope": scope.value,
+        "filter": filter_payload or {},
+    }
+
+
 def prune_latest_lessons(
     *, lessons_store: LessonsStoreLike, count: int, logger: LoggerLike
 ) -> dict[str, Any]:
@@ -37,6 +56,11 @@ def prune_latest_lessons(
         "status": "success",
         "message": f"Usunięto {deleted} najnowszych lekcji",
         "deleted": deleted,
+        "mutation": _mutation_payload(
+            action="prune_latest",
+            affected_count=deleted,
+            filter_payload={"count": count},
+        ),
     }
 
 
@@ -65,6 +89,11 @@ def prune_lessons_by_range(
         "deleted": deleted,
         "start": start,
         "end": end,
+        "mutation": _mutation_payload(
+            action="prune_range",
+            affected_count=deleted,
+            filter_payload={"start": start, "end": end},
+        ),
     }
 
 
@@ -78,6 +107,11 @@ def prune_lessons_by_tag(
         "message": f"Usunięto {deleted} lekcji z tagiem '{tag}'",
         "deleted": deleted,
         "tag": tag,
+        "mutation": _mutation_payload(
+            action="prune_tag",
+            affected_count=deleted,
+            filter_payload={"tag": tag},
+        ),
     }
 
 
@@ -93,6 +127,12 @@ def purge_all_lessons(
         "status": "success",
         "message": f"💣 Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)",
         "deleted": lesson_count,
+        "mutation": _mutation_payload(
+            action="purge",
+            affected_count=lesson_count,
+            filter_payload={"force": True},
+            scope=KnowledgeEntryScope.GLOBAL,
+        ),
     }
 
 
@@ -105,6 +145,11 @@ def prune_lessons_by_ttl(
         "message": f"Usunięto {deleted} lekcji starszych niż {days} dni",
         "deleted": deleted,
         "days": days,
+        "mutation": _mutation_payload(
+            action="prune_ttl",
+            affected_count=deleted,
+            filter_payload={"days": days},
+        ),
     }
 
 
@@ -114,4 +159,8 @@ def dedupe_lessons(*, lessons_store: LessonsStoreLike) -> dict[str, Any]:
         "status": "success",
         "message": f"Usunięto {removed} zduplikowanych lekcji",
         "removed": removed,
+        "mutation": _mutation_payload(
+            action="dedupe",
+            affected_count=removed,
+        ),
     }

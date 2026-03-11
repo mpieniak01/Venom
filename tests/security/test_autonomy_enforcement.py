@@ -67,6 +67,10 @@ def test_autonomy_block_publishes_audit_entry():
     entry = entries[0]
     assert entry.source == "core.autonomy"
     assert entry.status == "blocked"
+    assert entry.details["decision"] == "block"
+    assert entry.details["reason_code"] == "AUTONOMY_PERMISSION_DENIED"
+    assert "autonomy" in entry.details["tags"]
     assert entry.details["operation"] == "core_patch"
-    assert entry.details["current_level"] == 0
-    assert entry.details["current_level_name"] == "ISOLATED"
+    assert entry.details["current_autonomy_level"] == 0
+    assert entry.details["current_autonomy_level_name"] == "ISOLATED"
+    assert isinstance(entry.details["technical_context"], dict)

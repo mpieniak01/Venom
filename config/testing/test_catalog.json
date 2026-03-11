@@ -3406,7 +3406,7 @@
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Fast-safe unit coverage for model request schema/regression in changed scope."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_model_router.py",
@@ -3987,6 +3987,18 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_policy_autonomy_contract.py",
+      "domain": "governance",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Default release-lane regression coverage."
+    },
+    {
       "path": "tests/test_policy_engine.py",
       "domain": "governance",
       "test_type": "unit",
@@ -4041,17 +4053,17 @@
     },
     {
       "path": "tests/test_port_pids_script.py",
-      "domain": "testing_tooling",
+      "domain": "environment",
       "test_type": "unit",
-      "intent": "legacy_coverage",
+      "intent": "regression",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
         "ci-lite",
         "release"
       ],
-      "legacy_targeted": true,
-      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+      "legacy_targeted": false,
+      "rationale": "Port/PID safety regression for stack lifecycle tooling."
     },
     {
       "path": "tests/test_preprod_mutation_guards.py",
@@ -4940,8 +4952,8 @@
       "intent": "regression",
       "primary_lane": "ci-lite",
       "allowed_lanes": [
-        "new-code",
         "ci-lite",
+        "new-code",
         "release"
       ],
       "legacy_targeted": false,

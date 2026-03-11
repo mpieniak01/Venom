@@ -1,6 +1,10 @@
 """Helpers for consistent autonomy permission enforcement across mutating paths."""
 
 from venom_core.core.permission_guard import permission_guard
+from venom_core.core.policy_autonomy_contract import (
+    build_autonomy_block_payload,
+    to_audit_details,
+)
 from venom_core.services.audit_stream import get_audit_stream
 
 
@@ -14,22 +18,18 @@ def _deny(
     task_id: str | None = None,
     session_id: str | None = None,
 ) -> None:
-    current_level = permission_guard.get_current_level()
-    details = {
-        "operation": operation,
-        "current_level": current_level,
-        "current_level_name": permission_guard.get_current_level_name(),
-    }
-    if required_level is not None:
-        details["required_level"] = required_level
-    if required_level_name:
-        details["required_level_name"] = required_level_name
+    payload = build_autonomy_block_payload(
+        user_message=message,
+        operation=operation,
+        required_level=required_level,
+        required_level_name=required_level_name,
+        skill_name=skill_name,
+        task_id=task_id,
+        session_id=session_id,
+    )
+    details = to_audit_details(payload)
     if skill_name:
         details["skill_name"] = skill_name
-    if task_id:
-        details["task_id"] = task_id
-    if session_id:
-        details["session_id"] = session_id
     get_audit_stream().publish(
         source="core.autonomy",
         action="autonomy.blocked",

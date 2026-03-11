@@ -174,6 +174,10 @@ def test_audit_stream_ingest_token_guard(monkeypatch) -> None:
         },
     )
     assert forbidden.status_code == 403
+    detail = forbidden.json()["detail"]
+    assert detail["reason_code"] == "PERMISSION_DENIED"
+    assert detail["decision"] == "block"
+    assert detail["technical_context"]["operation"] == "audit.stream.publish"
 
     allowed = client.post(
         "/api/v1/audit/stream",

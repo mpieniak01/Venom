@@ -6,9 +6,12 @@ import os
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, Query
 from pydantic import BaseModel, Field
 
+from venom_core.api.routes.permission_denied_contract import (
+    raise_permission_denied_http,
+)
 from venom_core.services.audit_stream import AuditStreamEntry, get_audit_stream
 
 router = APIRouter(prefix="/api/v1/audit", tags=["audit"])
@@ -188,7 +191,11 @@ async def publish_audit_stream_entry(
 ) -> AuditStreamPublishResponse:
     required_token = _required_ingest_token()
     if required_token and (x_venom_audit_token or "") != required_token:
-        raise HTTPException(status_code=403, detail="audit_stream_ingest_forbidden")
+        raise_permission_denied_http(
+            PermissionError("audit_stream_ingest_forbidden"),
+            operation="audit.stream.publish",
+            actor="audit.ingest",
+        )
 
     stream = get_audit_stream()
     entry = stream.publish(

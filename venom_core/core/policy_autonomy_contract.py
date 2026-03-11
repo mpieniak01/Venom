@@ -34,6 +34,9 @@ class EnforcementTechnicalContext(BaseModel):
     intent: str | None = None
     session_id: str | None = None
     task_id: str | None = None
+    enforcement_mode: str | None = None
+    terminal: bool | None = None
+    retryable: bool | None = None
 
 
 class EnforcementBlockPayload(BaseModel):
@@ -93,11 +96,15 @@ def build_autonomy_block_payload(
     *,
     user_message: str,
     operation: str,
+    decision: EnforcementDecision = EnforcementDecision.BLOCK,
     required_level: int | None = None,
     required_level_name: str | None = None,
     skill_name: str | None = None,
     task_id: str | None = None,
     session_id: str | None = None,
+    enforcement_mode: str | None = None,
+    terminal: bool | None = None,
+    retryable: bool | None = False,
 ) -> EnforcementBlockPayload:
     """Build canonical payload for autonomy deny events."""
     current_level, current_level_name = _current_autonomy_context()
@@ -110,11 +117,19 @@ def build_autonomy_block_payload(
         phase="autonomy_enforcement",
         session_id=session_id,
         task_id=task_id,
+        enforcement_mode=enforcement_mode,
+        terminal=terminal,
+        retryable=retryable,
     )
-    tags = ["autonomy", "blocked", operation]
+    tags = ["autonomy", operation]
+    if decision == EnforcementDecision.BLOCK:
+        tags.append("blocked")
+    elif decision == EnforcementDecision.DEGRADED_ALLOW:
+        tags.append("degraded_allow")
     if skill_name:
         tags.append(f"skill:{skill_name}")
     return EnforcementBlockPayload(
+        decision=decision,
         reason_code="AUTONOMY_PERMISSION_DENIED",
         user_message=user_message,
         technical_context=technical_context,

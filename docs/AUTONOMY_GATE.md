@@ -140,6 +140,10 @@ Notes:
   - `action=policy.blocked.route` or `action=autonomy.blocked`
   - `status=blocked`
   - `details` equal to deny payload.
+- Autonomy enforcement mode is backend-controlled (`AUTONOMY_ENFORCEMENT_MODE=hard|soft`):
+  - `hard` (default): decision=`block`, operation is terminated, `technical_context.terminal=true`, `technical_context.retryable=false`.
+  - `soft`: decision=`degraded_allow`, operation is allowed with warning, audit action=`autonomy.degraded_allow`, status=`degraded`.
+- UI is not an autonomy execution gate. UI only presents backend decision (`decision`, `reason_code`, `user_message`, `technical_context`).
 
 ### Frontend
 
@@ -307,3 +311,4 @@ Key tests:
 - **Configuration**: `config/autonomy_matrix.yaml`, `config/skill_permissions.yaml`
 - **Tests**: `tests/test_permission_guard.py`
 - **API**: `venom_core/api/routes/system.py` (`/api/v1/system/autonomy` endpoints)
+- **Runbook**: `docs/runbooks/policy-autonomy-deny-triage.md`

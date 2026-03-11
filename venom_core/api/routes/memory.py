@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from venom_core.api.dependencies import (
     get_lessons_store,
@@ -14,6 +14,7 @@ from venom_core.api.dependencies import (
 from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
+    resolve_actor_from_request,
 )
 from venom_core.api.schemas.memory import (
     CacheFlushResponse,
@@ -225,6 +226,7 @@ def clear_session_memory(
     vector_store: Annotated[Any, Depends(get_vector_store)],
     state_manager: Annotated[Any, Depends(get_state_manager)],
     session_store: Annotated[Any, Depends(get_session_store)],
+    req: Request = None,
 ):
     """
     Czyści pamięć sesyjną: wektory z tagiem session_id oraz historię/streszczenia w StateManager.
@@ -234,7 +236,11 @@ def clear_session_memory(
     try:
         ensure_data_mutation_allowed("memory.clear_session")
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="memory.clear_session")
+        raise_permission_denied_http(
+            e,
+            operation="memory.clear_session",
+            actor=resolve_actor_from_request(req),
+        )
 
     deleted_vectors = 0
     try:
@@ -295,14 +301,21 @@ def get_session_memory(
         500: {"description": "Błąd podczas czyszczenia pamięci globalnej"},
     },
 )
-def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_store)]):
+def clear_global_memory(
+    vector_store: Annotated[Any, Depends(get_vector_store)],
+    req: Request = None,
+):
     """
     Czyści pamięć globalną (preferencje/fakty globalne użytkownika).
     """
     try:
         ensure_data_mutation_allowed("memory.clear_global")
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="memory.clear_global")
+        raise_permission_denied_http(
+            e,
+            operation="memory.clear_global",
+            actor=resolve_actor_from_request(req),
+        )
     try:
         deleted = vector_store.delete_by_metadata({"user_id": DEFAULT_USER_ID})
         # Jeśli nie znaleziono nic do usunięcia (np. stare wpisy bez metadanych user_id),
@@ -438,6 +451,7 @@ def pin_memory_entry(
 def delete_memory_entry(
     entry_id: str,
     vector_store: Annotated[Any, Depends(get_vector_store)],
+    req: Request = None,
 ):
     """
     Usuwa wpis pamięci (oraz wszystkie jego fragmenty).
@@ -445,7 +459,11 @@ def delete_memory_entry(
     try:
         ensure_data_mutation_allowed("memory.delete_entry")
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="memory.delete_entry")
+        raise_permission_denied_http(
+            e,
+            operation="memory.delete_entry",
+            actor=resolve_actor_from_request(req),
+        )
     try:
         deleted = vector_store.delete_entry(entry_id)
         if deleted == 0:
@@ -475,7 +493,7 @@ def delete_memory_entry(
         500: {"description": "Błąd podczas czyszczenia Semantic Cache"},
     },
 )
-def flush_semantic_cache():
+def flush_semantic_cache(req: Request = None):
     """
     Czyści Semantic Cache (kolekcja hidden_prompts).
     Usuwa wszystkie zapamiętane pary prompt-odpowiedź używane do semantycznego cache'owania.
@@ -483,7 +501,11 @@ def flush_semantic_cache():
     try:
         ensure_data_mutation_allowed("memory.flush_semantic_cache")
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="memory.flush_semantic_cache")
+        raise_permission_denied_http(
+            e,
+            operation="memory.flush_semantic_cache",
+            actor=resolve_actor_from_request(req),
+        )
     try:
         from venom_core.core.orchestrator.constants import (
             SEMANTIC_CACHE_COLLECTION_NAME,

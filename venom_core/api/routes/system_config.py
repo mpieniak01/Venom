@@ -3,7 +3,8 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from venom_core.api.routes.permission_denied_contract import (
-    build_permission_denied_detail,
+    raise_permission_denied_http,
+    resolve_actor_from_request,
 )
 from venom_core.api.schemas.system import (
     ConfigBackupsResponse,
@@ -29,11 +30,11 @@ def require_localhost_request(req: Request) -> None:
             "Próba dostępu do endpointu administracyjnego z nieautoryzowanego hosta: %s",
             client_host,
         )
-        detail = build_permission_denied_detail(
+        raise_permission_denied_http(
             PermissionError("Access denied"),
             operation="system.config.localhost_guard",
+            actor=resolve_actor_from_request(req),
         )
-        raise HTTPException(status_code=403, detail=detail)
 
 
 @router.get(

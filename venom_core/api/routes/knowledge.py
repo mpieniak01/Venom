@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from venom_core.api.dependencies import (
     get_graph_store,
@@ -14,6 +14,7 @@ from venom_core.api.dependencies import (
 from venom_core.api.routes.graph_view_utils import apply_graph_view
 from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
+    resolve_actor_from_request,
 )
 from venom_core.api.schemas.knowledge import LearningToggleRequest
 from venom_core.config import SETTINGS
@@ -92,11 +93,18 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-def _enforce_mutation_allowed(operation_name: str) -> None:
+def _enforce_mutation_allowed(
+    operation_name: str,
+    req: Request = None,
+) -> None:
     try:
         ensure_data_mutation_allowed(operation_name)
     except PermissionError as e:
-        raise_permission_denied_http(e, operation=operation_name)
+        raise_permission_denied_http(
+            e,
+            operation=operation_name,
+            actor=resolve_actor_from_request(req),
+        )
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -452,6 +460,7 @@ def get_knowledge_context_map(
 @router.get("/graph/summary", responses=INTERNAL_ERROR_RESPONSES)
 def get_graph_summary(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+    req: Request = None,
 ):
     """
     Zwraca podsumowanie grafu kodu.
@@ -497,7 +506,11 @@ def get_graph_summary(
             "lastUpdated": last_updated,
         }
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="knowledge.graph.summary")
+        raise_permission_denied_http(
+            e,
+            operation="knowledge.graph.summary",
+            actor=resolve_actor_from_request(req),
+        )
     except Exception as e:
         logger.exception("Błąd podczas pobierania podsumowania grafu")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -505,7 +518,9 @@ def get_graph_summary(
 
 @router.get("/graph/file/{file_path:path}", responses=GRAPH_FILE_ROUTE_RESPONSES)
 def get_file_graph_info(
-    file_path: str, graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]
+    file_path: str,
+    graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+    req: Request = None,
 ):
     """
     Zwraca informacje o pliku w grafie.
@@ -531,7 +546,11 @@ def get_file_graph_info(
     except HTTPException:
         raise
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="knowledge.graph.file_info")
+        raise_permission_denied_http(
+            e,
+            operation="knowledge.graph.file_info",
+            actor=resolve_actor_from_request(req),
+        )
     except Exception as e:
         logger.exception("Błąd podczas pobierania informacji o pliku z grafu")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -539,7 +558,9 @@ def get_file_graph_info(
 
 @router.get("/graph/impact/{file_path:path}", responses=GRAPH_FILE_ROUTE_RESPONSES)
 def get_impact_analysis(
-    file_path: str, graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]
+    file_path: str,
+    graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+    req: Request = None,
 ):
     """
     Analizuje wpływ zmian w pliku.
@@ -565,7 +586,11 @@ def get_impact_analysis(
     except HTTPException:
         raise
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="knowledge.graph.impact")
+        raise_permission_denied_http(
+            e,
+            operation="knowledge.graph.impact",
+            actor=resolve_actor_from_request(req),
+        )
     except Exception as e:
         logger.exception("Błąd podczas analizy wpływu pliku w grafie")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -574,6 +599,7 @@ def get_impact_analysis(
 @router.post("/graph/scan", responses=INTERNAL_ERROR_RESPONSES)
 def trigger_graph_scan(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+    req: Request = None,
 ):
     """
     Uruchamia skanowanie grafu kodu.
@@ -596,7 +622,11 @@ def trigger_graph_scan(
             "stats": stats,
         }
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="knowledge.graph.scan")
+        raise_permission_denied_http(
+            e,
+            operation="knowledge.graph.scan",
+            actor=resolve_actor_from_request(req),
+        )
     except Exception as e:
         logger.exception("Błąd podczas uruchamiania skanowania grafu")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -607,6 +637,7 @@ def get_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     limit: int = 10,
     tags: Optional[str] = None,
+    req: Request = None,
 ):
     """
     Pobiera listę lekcji.
@@ -637,7 +668,11 @@ def get_lessons(
             "lessons": lessons_data,
         }
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="knowledge.lessons.list")
+        raise_permission_denied_http(
+            e,
+            operation="knowledge.lessons.list",
+            actor=resolve_actor_from_request(req),
+        )
     except Exception as e:
         logger.exception("Błąd podczas pobierania lekcji")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
@@ -646,6 +681,7 @@ def get_lessons(
 @router.get("/lessons/stats", responses=LESSONS_READ_RESPONSES)
 def get_lessons_stats(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    req: Request = None,
 ):
     """
     Zwraca statystyki magazynu lekcji.
@@ -660,7 +696,11 @@ def get_lessons_stats(
         stats = lessons_store.get_statistics()
         return {"status": "success", "stats": stats}
     except PermissionError as e:
-        raise_permission_denied_http(e, operation="knowledge.lessons.stats")
+        raise_permission_denied_http(
+            e,
+            operation="knowledge.lessons.stats",
+            actor=resolve_actor_from_request(req),
+        )
     except Exception as e:
         logger.exception("Błąd podczas pobierania statystyk lekcji")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
@@ -676,11 +716,12 @@ def prune_latest_lessons(
         int,
         Query(..., ge=1, description="Liczba najnowszych lekcji do usunięcia"),
     ],
+    req: Request = None,
 ):
     """
     Usuwa n najnowszych lekcji z magazynu.
     """
-    _enforce_mutation_allowed("knowledge.lessons.prune_latest")
+    _enforce_mutation_allowed("knowledge.lessons.prune_latest", req=req)
     try:
         return _prune_latest_lessons_service(
             lessons_store=lessons_store,
@@ -711,11 +752,12 @@ def prune_lessons_by_range(
             description="Data końcowa w formacie ISO 8601 (np. 2024-01-31T23:59:59)",
         ),
     ],
+    req: Request = None,
 ):
     """
     Usuwa lekcje z podanego zakresu czasu.
     """
-    _enforce_mutation_allowed("knowledge.lessons.prune_range")
+    _enforce_mutation_allowed("knowledge.lessons.prune_range", req=req)
     try:
         start_dt, end_dt = _parse_iso_range_service(start=start, end=end)
     except ValueError as e:
@@ -744,11 +786,12 @@ def prune_lessons_by_range(
 def prune_lessons_by_tag(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     tag: Annotated[str, Query(..., description="Tag do wyszukania i usunięcia")],
+    req: Request = None,
 ):
     """
     Usuwa lekcje zawierające dany tag.
     """
-    _enforce_mutation_allowed("knowledge.lessons.prune_tag")
+    _enforce_mutation_allowed("knowledge.lessons.prune_tag", req=req)
     try:
         return _prune_lessons_by_tag_service(
             lessons_store=lessons_store,
@@ -768,6 +811,7 @@ def purge_all_lessons(
     force: Annotated[
         bool, Query(description="Wymagane potwierdzenie dla operacji nuklearnej")
     ] = False,
+    req: Request = None,
 ):
     """
     Czyści całą bazę lekcji (opcja nuklearna).
@@ -778,7 +822,7 @@ def purge_all_lessons(
             detail="Operacja wymaga potwierdzenia. Ustaw parametr force=true",
         )
 
-    _enforce_mutation_allowed("knowledge.lessons.purge")
+    _enforce_mutation_allowed("knowledge.lessons.purge", req=req)
     try:
         return _purge_all_lessons_service(
             lessons_store=lessons_store,
@@ -797,9 +841,10 @@ def purge_all_lessons(
 def prune_lessons_by_ttl(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     days: Annotated[int, Query(..., ge=1, description="Liczba dni retencji (TTL)")],
+    req: Request = None,
 ):
     """Usuwa lekcje starsze niż TTL w dniach."""
-    _enforce_mutation_allowed("knowledge.lessons.prune_ttl")
+    _enforce_mutation_allowed("knowledge.lessons.prune_ttl", req=req)
     try:
         return _prune_lessons_by_ttl_service(
             lessons_store=lessons_store,
@@ -815,9 +860,10 @@ def prune_lessons_by_ttl(
 @router.post("/lessons/dedupe", responses=INTERNAL_ERROR_RESPONSES)
 def dedupe_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    req: Request = None,
 ):
     """Deduplikuje lekcje na podstawie podpisu treści."""
-    _enforce_mutation_allowed("knowledge.lessons.dedupe")
+    _enforce_mutation_allowed("knowledge.lessons.dedupe", req=req)
     try:
         return _dedupe_lessons_service(lessons_store=lessons_store)
     except Exception as e:

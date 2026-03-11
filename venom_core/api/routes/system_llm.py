@@ -16,6 +16,9 @@ from fastapi import APIRouter, HTTPException
 
 from venom_core.api.routes import system_deps
 from venom_core.api.routes.models_utils import infer_model_provider
+from venom_core.api.routes.permission_denied_contract import (
+    raise_permission_denied_http,
+)
 from venom_core.api.schemas.system_llm import (
     ActiveLlmServerRequest,
     LlmRuntimeActivateRequest,
@@ -185,12 +188,12 @@ def _ensure_server_allowed(server_name: str) -> None:
     allowed = _allowed_local_servers()
     if server_name not in allowed:
         profile = _runtime_profile_name()
-        raise HTTPException(
-            status_code=403,
-            detail=(
+        raise_permission_denied_http(
+            PermissionError(
                 f"Serwer LLM '{server_name}' jest niedostępny w profilu '{profile}'. "
                 f"Dozwolone: {', '.join(sorted(allowed)) or 'brak'}."
             ),
+            operation="system.llm.server_allowed",
         )
     if server_name not in _installed_local_servers():
         raise HTTPException(

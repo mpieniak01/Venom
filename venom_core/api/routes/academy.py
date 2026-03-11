@@ -20,6 +20,8 @@ from venom_core.api.routes import (
 )
 from venom_core.api.routes.permission_denied_contract import (
     build_permission_denied_detail,
+    publish_permission_denied_audit,
+    resolve_actor_from_request,
 )
 from venom_core.api.schemas.academy import (
     AcademyJobsListResponse,
@@ -167,6 +169,7 @@ def require_localhost_request(req: Request) -> None:
             PermissionError("Access denied"),
             operation="academy.localhost_guard",
         )
+        publish_permission_denied_audit(detail, actor=resolve_actor_from_request(req))
         raise AcademyRouteError(status_code=403, detail=detail)
 
 

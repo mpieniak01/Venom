@@ -113,6 +113,20 @@ def test_require_localhost_request_blocks_remote():
     )
 
 
+def test_require_localhost_request_blocks_remote_publishes_policy_audit():
+    req = SimpleNamespace(client=SimpleNamespace(host="10.10.10.11"))
+    with patch("venom_core.api.routes.academy.publish_permission_denied_audit") as pub:
+        with pytest.raises(academy_routes.AcademyRouteError):
+            academy_routes.require_localhost_request(req)
+
+    pub.assert_called_once()
+    args, kwargs = pub.call_args
+    detail = args[0]
+    assert detail["reason_code"] == "PERMISSION_DENIED"
+    assert detail["technical_context"]["operation"] == "academy.localhost_guard"
+    assert kwargs["actor"] == "client:10.10.10.11"
+
+
 @patch("venom_core.config.SETTINGS")
 def test_get_training_status_runtime_error_returns_500(mock_settings, client_with_deps):
     mock_settings.ENABLE_ACADEMY = True

@@ -5,13 +5,19 @@ import subprocess
 import pytest
 
 import venom_core.execution.skills.docs_skill as docs_skill_module
+from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.docs_skill import DocsSkill
 
 
 @pytest.fixture
 def docs_skill(tmp_path):
     """Fixture dla DocsSkill z tymczasowym katalogiem."""
-    return DocsSkill(workspace_root=str(tmp_path))
+    previous_level = permission_guard.get_current_level()
+    permission_guard.set_level(40)
+    try:
+        yield DocsSkill(workspace_root=str(tmp_path))
+    finally:
+        permission_guard.set_level(previous_level)
 
 
 def test_docs_skill_initialization(docs_skill):
@@ -101,6 +107,20 @@ async def test_build_docs_without_config(docs_skill):
 
     assert "❌" in result
     assert "mkdocs.yml" in result
+
+
+@pytest.mark.asyncio
+async def test_build_docs_blocked_without_shell_permission(tmp_path):
+    skill = DocsSkill(workspace_root=str(tmp_path))
+    previous_level = permission_guard.get_current_level()
+    permission_guard.set_level(0)
+    try:
+        result = await skill.build_docs_site()
+    finally:
+        permission_guard.set_level(previous_level)
+
+    assert "AutonomyViolation" in result
+    assert "Brak uprawnień do shella" in result
 
 
 @pytest.mark.asyncio

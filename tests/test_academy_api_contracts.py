@@ -106,6 +106,25 @@ def test_require_localhost_request_blocks_remote():
     with pytest.raises(academy_routes.AcademyRouteError) as exc:
         academy_routes.require_localhost_request(req)
     assert exc.value.status_code == 403
+    assert exc.value.detail["decision"] == "block"
+    assert exc.value.detail["reason_code"] == "PERMISSION_DENIED"
+    assert (
+        exc.value.detail["technical_context"]["operation"] == "academy.localhost_guard"
+    )
+
+
+def test_require_localhost_request_blocks_remote_publishes_policy_audit():
+    req = SimpleNamespace(client=SimpleNamespace(host="10.10.10.11"))
+    with patch("venom_core.api.routes.academy.publish_permission_denied_audit") as pub:
+        with pytest.raises(academy_routes.AcademyRouteError):
+            academy_routes.require_localhost_request(req)
+
+    pub.assert_called_once()
+    args, kwargs = pub.call_args
+    detail = args[0]
+    assert detail["reason_code"] == "PERMISSION_DENIED"
+    assert detail["technical_context"]["operation"] == "academy.localhost_guard"
+    assert kwargs["actor"] == "client:10.10.10.11"
 
 
 @patch("venom_core.config.SETTINGS")

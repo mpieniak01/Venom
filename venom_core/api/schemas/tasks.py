@@ -117,12 +117,14 @@ class TaskResponse(BaseModel):
 
     task_id: UUID
     status: str
+    decision: str = "allow"
     llm_provider: str | None = None
     llm_model: str | None = None
     llm_endpoint: str | None = None
     policy_blocked: bool = False
     reason_code: str | None = None
     user_message: str | None = None
+    technical_context: dict | None = None
 
 
 class HistoryRequestSummary(BaseModel):

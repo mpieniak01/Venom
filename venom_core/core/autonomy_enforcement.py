@@ -1,7 +1,34 @@
 """Helpers for consistent autonomy permission enforcement across mutating paths."""
 
+import os
+from typing import Any
+
 from venom_core.core.permission_guard import permission_guard
+from venom_core.core.policy_autonomy_contract import (
+    EnforcementBlockPayload,
+    EnforcementDecision,
+    build_autonomy_block_payload,
+    to_audit_details,
+)
 from venom_core.services.audit_stream import get_audit_stream
+from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class AutonomyPermissionDenied(PermissionError):
+    """PermissionError carrying canonical autonomy deny payload for UI/API mapping."""
+
+    def __init__(self, payload: EnforcementBlockPayload):
+        super().__init__(payload.user_message)
+        self.payload = payload
+        self.decision = payload.decision.value
+        self.reason_code = payload.reason_code or "AUTONOMY_PERMISSION_DENIED"
+        self.user_message = payload.user_message
+        self.technical_context: dict[str, Any] = payload.technical_context.model_dump(
+            exclude_none=True
+        )
+        self.tags = list(payload.tags)
 
 
 def _deny(
@@ -14,30 +41,40 @@ def _deny(
     task_id: str | None = None,
     session_id: str | None = None,
 ) -> None:
-    current_level = permission_guard.get_current_level()
-    details = {
-        "operation": operation,
-        "current_level": current_level,
-        "current_level_name": permission_guard.get_current_level_name(),
-    }
-    if required_level is not None:
-        details["required_level"] = required_level
-    if required_level_name:
-        details["required_level_name"] = required_level_name
-    if skill_name:
-        details["skill_name"] = skill_name
-    if task_id:
-        details["task_id"] = task_id
-    if session_id:
-        details["session_id"] = session_id
+    mode = os.getenv("AUTONOMY_ENFORCEMENT_MODE", "hard").strip().lower()
+    normalized_mode = "soft" if mode == "soft" else "hard"
+    is_hard = normalized_mode == "hard"
+    payload = build_autonomy_block_payload(
+        user_message=message,
+        operation=operation,
+        decision=(
+            EnforcementDecision.BLOCK if is_hard else EnforcementDecision.DEGRADED_ALLOW
+        ),
+        required_level=required_level,
+        required_level_name=required_level_name,
+        skill_name=skill_name,
+        task_id=task_id,
+        session_id=session_id,
+        enforcement_mode=normalized_mode,
+        terminal=is_hard,
+        retryable=False,
+    )
+    details = to_audit_details(payload)
     get_audit_stream().publish(
         source="core.autonomy",
-        action="autonomy.blocked",
+        action="autonomy.blocked" if is_hard else "autonomy.degraded_allow",
         actor="system",
-        status="blocked",
+        status="blocked" if is_hard else "degraded",
         details=details,
     )
-    raise PermissionError(message)
+    if not is_hard:
+        logger.warning(
+            "Autonomy soft-gate: allow with warning (operation=%s, level=%s)",
+            operation,
+            permission_guard.get_current_level_name(),
+        )
+        return
+    raise AutonomyPermissionDenied(payload)
 
 
 def require_file_write_permission() -> None:

@@ -346,6 +346,7 @@ def _submit_onnx_task(
     return TaskResponse(
         task_id=task.id,
         status=TaskStatus.PENDING.value,
+        decision="allow",
         llm_provider=runtime.provider,
         llm_model=runtime.model_name,
         llm_endpoint=runtime.endpoint,

@@ -12,7 +12,7 @@ import pytest
 
 from .chat_pipeline import API_BASE, is_backend_available
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.performance]
+pytestmark = [pytest.mark.asyncio, pytest.mark.performance, pytest.mark.manual_llm]
 
 MODEL_NAME = os.getenv("VENOM_LLM_MODEL", "gemma3")
 REPEATS = int(os.getenv("VENOM_LLM_REPEATS", "3"))
@@ -42,7 +42,13 @@ async def _stream_simple_once(prompt: str, model: str) -> Tuple[float, float]:
     start = time.perf_counter()
     first_token_time = None
     had_chunk = False
-    async with httpx.AsyncClient(timeout=None) as client:
+    stream_timeout_cfg = httpx.Timeout(
+        connect=10.0,
+        read=STREAM_TIMEOUT,
+        write=10.0,
+        pool=10.0,
+    )
+    async with httpx.AsyncClient(timeout=stream_timeout_cfg) as client:
         try:
             async with client.stream(
                 "POST",
@@ -50,23 +56,27 @@ async def _stream_simple_once(prompt: str, model: str) -> Tuple[float, float]:
                 json={"content": prompt, "model": model},
             ) as response:
                 response.raise_for_status()
-                async for chunk in response.aiter_text():
-                    if not chunk:
-                        continue
-                    had_chunk = True
-                    elapsed = time.perf_counter() - start
-                    if first_token_time is None:
-                        first_token_time = elapsed
-                    if elapsed > STREAM_TIMEOUT:
-                        raise TimeoutError(
-                            f"Streaming przekroczył timeout {STREAM_TIMEOUT}s.",
-                        )
+                # Hard guard: prevents infinite wait when stream opens but no chunks arrive.
+                async with asyncio.timeout(STREAM_TIMEOUT + 5):
+                    async for chunk in response.aiter_text():
+                        if not chunk:
+                            continue
+                        had_chunk = True
+                        elapsed = time.perf_counter() - start
+                        if first_token_time is None:
+                            first_token_time = elapsed
+                        if elapsed > STREAM_TIMEOUT:
+                            raise TimeoutError(
+                                f"Streaming przekroczył timeout {STREAM_TIMEOUT}s.",
+                            )
         except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ReadTimeout):
             if had_chunk:
                 total_time = time.perf_counter() - start
                 if first_token_time is None:
                     first_token_time = total_time
                 return first_token_time, total_time
+            raise
+        except TimeoutError:
             raise
 
     total_time = time.perf_counter() - start

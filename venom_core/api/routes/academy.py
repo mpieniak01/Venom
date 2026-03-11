@@ -18,6 +18,11 @@ from venom_core.api.routes import (
     academy_training,
     academy_uploads,
 )
+from venom_core.api.routes.permission_denied_contract import (
+    build_permission_denied_detail,
+    publish_permission_denied_audit,
+    resolve_actor_from_request,
+)
 from venom_core.api.schemas.academy import (
     AcademyJobsListResponse,
     AcademyJobSummary,
@@ -85,7 +90,7 @@ RESP_404_FILE_NOT_FOUND = {"description": "Requested file was not found."}
 
 
 class AcademyRouteError(Exception):
-    def __init__(self, status_code: int, detail: str):
+    def __init__(self, status_code: int, detail: Any):
         self.status_code = status_code
         self.detail = detail
         super().__init__(detail)
@@ -160,7 +165,12 @@ def require_localhost_request(req: Request) -> None:
             "Próba dostępu do endpointu administracyjnego Academy z hosta: %s",
             client_host,
         )
-        raise AcademyRouteError(status_code=403, detail="Access denied")
+        detail = build_permission_denied_detail(
+            PermissionError("Access denied"),
+            operation="academy.localhost_guard",
+        )
+        publish_permission_denied_audit(detail, actor=resolve_actor_from_request(req))
+        raise AcademyRouteError(status_code=403, detail=detail)
 
 
 def _academy_module() -> Any:

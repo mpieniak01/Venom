@@ -1,9 +1,13 @@
 """Moduł: routes/governance - API endpointy dla Provider Governance."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from venom_core.api.routes.permission_denied_contract import (
+    raise_permission_denied_http,
+    resolve_actor_from_request,
+)
 from venom_core.api.schemas.governance import (
     GovernanceStatusResponse,
     LimitsConfigResponse,
@@ -169,7 +173,10 @@ def update_limit(request: UpdateLimitRequest) -> Dict[str, Any]:
         500: RESP_500_INTERNAL,
     },
 )
-def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
+def reset_usage(
+    req: Request = cast(Request, None),
+    scope: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Endpoint resetowania liczników zużycia.
 
@@ -186,7 +193,11 @@ def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
         )
 
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(
+            e,
+            operation="governance.reset_usage",
+            actor=resolve_actor_from_request(req),
+        )
     except Exception as e:
         logger.exception("Błąd podczas resetowania liczników")
         raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL) from e

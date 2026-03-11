@@ -271,6 +271,7 @@ tests/test_parse_intent.py
 tests/test_permission_guard.py
 tests/test_persona_factory.py
 tests/test_platform_skill.py
+tests/test_policy_autonomy_contract.py
 tests/test_policy_engine.py
 tests/test_policy_gate.py
 tests/test_port_authority.py

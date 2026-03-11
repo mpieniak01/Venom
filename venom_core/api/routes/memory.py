@@ -1,8 +1,8 @@
 """Moduł: routes/memory - Endpointy API dla pamięci wektorowej."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from venom_core.api.dependencies import (
     get_lessons_store,
@@ -12,6 +12,10 @@ from venom_core.api.dependencies import (
     is_testing_mode,
 )
 from venom_core.api.routes.graph_view_utils import apply_graph_view
+from venom_core.api.routes.permission_denied_contract import (
+    raise_permission_denied_http,
+    resolve_actor_from_request,
+)
 from venom_core.api.schemas.memory import (
     CacheFlushResponse,
     GlobalMemoryClearResponse,
@@ -222,6 +226,7 @@ def clear_session_memory(
     vector_store: Annotated[Any, Depends(get_vector_store)],
     state_manager: Annotated[Any, Depends(get_state_manager)],
     session_store: Annotated[Any, Depends(get_session_store)],
+    req: Request = cast(Request, None),
 ):
     """
     Czyści pamięć sesyjną: wektory z tagiem session_id oraz historię/streszczenia w StateManager.
@@ -231,7 +236,11 @@ def clear_session_memory(
     try:
         ensure_data_mutation_allowed("memory.clear_session")
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(
+            e,
+            operation="memory.clear_session",
+            actor=resolve_actor_from_request(req),
+        )
 
     deleted_vectors = 0
     try:
@@ -292,14 +301,21 @@ def get_session_memory(
         500: {"description": "Błąd podczas czyszczenia pamięci globalnej"},
     },
 )
-def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_store)]):
+def clear_global_memory(
+    vector_store: Annotated[Any, Depends(get_vector_store)],
+    req: Request = cast(Request, None),
+):
     """
     Czyści pamięć globalną (preferencje/fakty globalne użytkownika).
     """
     try:
         ensure_data_mutation_allowed("memory.clear_global")
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(
+            e,
+            operation="memory.clear_global",
+            actor=resolve_actor_from_request(req),
+        )
     try:
         deleted = vector_store.delete_by_metadata({"user_id": DEFAULT_USER_ID})
         # Jeśli nie znaleziono nic do usunięcia (np. stare wpisy bez metadanych user_id),
@@ -435,6 +451,7 @@ def pin_memory_entry(
 def delete_memory_entry(
     entry_id: str,
     vector_store: Annotated[Any, Depends(get_vector_store)],
+    req: Request = cast(Request, None),
 ):
     """
     Usuwa wpis pamięci (oraz wszystkie jego fragmenty).
@@ -442,7 +459,11 @@ def delete_memory_entry(
     try:
         ensure_data_mutation_allowed("memory.delete_entry")
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(
+            e,
+            operation="memory.delete_entry",
+            actor=resolve_actor_from_request(req),
+        )
     try:
         deleted = vector_store.delete_entry(entry_id)
         if deleted == 0:
@@ -472,7 +493,7 @@ def delete_memory_entry(
         500: {"description": "Błąd podczas czyszczenia Semantic Cache"},
     },
 )
-def flush_semantic_cache():
+def flush_semantic_cache(req: Request = cast(Request, None)):
     """
     Czyści Semantic Cache (kolekcja hidden_prompts).
     Usuwa wszystkie zapamiętane pary prompt-odpowiedź używane do semantycznego cache'owania.
@@ -480,7 +501,11 @@ def flush_semantic_cache():
     try:
         ensure_data_mutation_allowed("memory.flush_semantic_cache")
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(
+            e,
+            operation="memory.flush_semantic_cache",
+            actor=resolve_actor_from_request(req),
+        )
     try:
         from venom_core.core.orchestrator.constants import (
             SEMANTIC_CACHE_COLLECTION_NAME,
@@ -540,11 +565,12 @@ async def prune_latest_lessons(
     count: Annotated[
         int, Query(ge=1, description="Liczba najnowszych lekcji do usunięcia")
     ],
+    req: Request = cast(Request, None),
 ):
     """Alias dla knowledge/lessons/prune/latest"""
     from venom_core.api.routes.knowledge import prune_latest_lessons as knowledge_prune
 
-    result = knowledge_prune(count=count, lessons_store=lessons_store)
+    result = knowledge_prune(count=count, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 
@@ -557,13 +583,14 @@ async def prune_lessons_by_range(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     start: Annotated[str, Query(description="Data początkowa")],
     end: Annotated[str, Query(description="Data końcowa")],
+    req: Request = cast(Request, None),
 ):
     """Alias dla knowledge/lessons/prune/range"""
     from venom_core.api.routes.knowledge import (
         prune_lessons_by_range as knowledge_prune,
     )
 
-    result = knowledge_prune(start=start, end=end, lessons_store=lessons_store)
+    result = knowledge_prune(start=start, end=end, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 
@@ -575,11 +602,12 @@ async def prune_lessons_by_range(
 async def prune_lessons_by_tag(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     tag: Annotated[str, Query(description="Tag do usunięcia")],
+    req: Request = cast(Request, None),
 ):
     """Alias dla knowledge/lessons/prune/tag"""
     from venom_core.api.routes.knowledge import prune_lessons_by_tag as knowledge_prune
 
-    result = knowledge_prune(tag=tag, lessons_store=lessons_store)
+    result = knowledge_prune(tag=tag, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 
@@ -591,11 +619,12 @@ async def prune_lessons_by_tag(
 async def prune_lessons_by_ttl(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     days: Annotated[int, Query(ge=1, description="Dni retencji")],
+    req: Request = cast(Request, None),
 ):
     """Alias dla knowledge/lessons/prune/ttl"""
     from venom_core.api.routes.knowledge import prune_lessons_by_ttl as knowledge_prune
 
-    result = knowledge_prune(days=days, lessons_store=lessons_store)
+    result = knowledge_prune(days=days, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 
@@ -606,6 +635,7 @@ async def prune_lessons_by_ttl(
 )
 async def purge_all_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    req: Request = cast(Request, None),
     force: Annotated[
         bool, Query(description="Wymagane potwierdzenie dla operacji nuklearnej")
     ] = False,
@@ -613,7 +643,7 @@ async def purge_all_lessons(
     """Alias dla knowledge/lessons/purge"""
     from venom_core.api.routes.knowledge import purge_all_lessons as knowledge_purge
 
-    result = knowledge_purge(force=force, lessons_store=lessons_store)
+    result = knowledge_purge(force=force, lessons_store=lessons_store, req=req)
     return await _resolve_maybe_await(result)
 
 

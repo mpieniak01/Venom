@@ -60,6 +60,20 @@ test-preprod-readonly-smoke:
 test-perf:
 	pytest -m performance
 
+test-llm-manual:
+	@echo "🧪 Manual LLM/runtime tests (operator-triggered only)"
+	pytest -m manual_llm
+
+test-duration-audit:
+	@echo "🕒 Duration audit (>120s) for long/heavy groups"
+	@echo "Long group:"
+	@pytest -q -n 1 $$(grep -vE '^\s*(#|$$)' config/pytest-groups/long.txt) --durations=0 --durations-min=120 || true
+	@echo ""
+	@echo "Heavy group:"
+	@pytest -q -n 1 $$(grep -vE '^\s*(#|$$)' config/pytest-groups/heavy.txt) --durations=0 --durations-min=120 || true
+	@echo ""
+	@echo "Manual exclusion list: config/pytest-groups/manual-long-running.txt"
+
 test-web-unit:
 	$(NPM) --prefix $(WEB_DIR) run test:unit
 

@@ -72,8 +72,8 @@ def test_deny_publishes_optional_audit_details(monkeypatch):
     assert entries
     details = entries[0].details
     assert details["operation"] == "custom_operation"
-    assert details["current_level"] == 20
-    assert details["current_level_name"] == "BUILDER"
+    assert details["current_autonomy_level"] == 20
+    assert details["current_autonomy_level_name"] == "BUILDER"
     assert details["required_level"] == 30
     assert details["required_level_name"] == "EXECUTOR"
     assert details["skill_name"] == "mcp_skill"

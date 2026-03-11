@@ -24,6 +24,7 @@ tests/test_agents_skill_manager_paths.py
 tests/test_agents_strategy_ux_contracts.py
 tests/test_analyst_agent.py
 tests/test_api_contracts_stability.py
+tests/test_api_queue_runtime_contracts.py
 tests/test_api_routes_contract_matrix.py
 tests/test_api_routes_import_guard.py
 tests/test_architect_agent.py
@@ -165,9 +166,11 @@ tests/test_orchestrator_flows_regression.py
 tests/test_parallel_skill.py
 tests/test_persona_factory.py
 tests/test_platform_skill.py
+tests/test_policy_autonomy_contract.py
 tests/test_policy_gate_integration.py
 tests/test_port_authority.py
 tests/test_port_pids_script.py
+tests/test_preprod_mutation_guards.py
 tests/test_preprod_ops_regression.py
 tests/test_preprod_optional_modules_smoke.py
 tests/test_preprod_readiness_check.py

@@ -298,6 +298,12 @@ async def test_set_active_llm_server_rejects_vllm_for_light_profile():
         with pytest.raises(system_routes.HTTPException) as exc:
             await system_routes.set_active_llm_server(request)
         assert exc.value.status_code == 403
+        assert exc.value.detail["decision"] == "block"
+        assert exc.value.detail["reason_code"] == "PERMISSION_DENIED"
+        assert (
+            exc.value.detail["technical_context"]["operation"]
+            == "system.llm.server_allowed"
+        )
     finally:
         _restore_settings(original)
 

@@ -5,6 +5,7 @@ Uwaga: Te testy wymagają działającego środowiska LLM (vLLM lub Ollama).
 Jeśli środowisko nie jest dostępne, testy będą pominięte (skip).
 """
 
+import asyncio
 import re
 
 import httpx
@@ -12,6 +13,8 @@ import pytest
 
 from venom_core.config import SETTINGS
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
+
+pytestmark = [pytest.mark.manual_llm]
 
 
 def _local_llm_available() -> bool:
@@ -30,6 +33,7 @@ def _local_llm_available() -> bool:
 
 
 LOCAL_LLM_AVAILABLE = _local_llm_available()
+GENERATION_CALL_TIMEOUT_S = 45
 
 
 def _is_runtime_connectivity_error(exc: Exception) -> bool:
@@ -41,6 +45,18 @@ def _is_runtime_connectivity_error(exc: Exception) -> bool:
         "connecterror",
     )
     return any(marker in text for marker in markers)
+
+
+async def _call_with_timeout(chat_service, chat_history, settings):
+    try:
+        async with asyncio.timeout(GENERATION_CALL_TIMEOUT_S):
+            return await chat_service.get_chat_message_content(
+                chat_history=chat_history, settings=settings
+            )
+    except TimeoutError as exc:
+        pytest.skip(
+            f"Lokalny runtime przekroczył timeout {GENERATION_CALL_TIMEOUT_S}s: {exc}"
+        )
 
 
 class TestGenerationParamsIntegration:
@@ -93,8 +109,8 @@ class TestGenerationParamsIntegration:
                 ChatMessageContent(role=AuthorRole.USER, content=prompt)
             )
             try:
-                response = await chat_service_low.get_chat_message_content(
-                    chat_history=chat_history, settings=settings_low
+                response = await _call_with_timeout(
+                    chat_service_low, chat_history, settings_low
                 )
             except Exception as exc:
                 if _is_runtime_connectivity_error(exc):
@@ -174,8 +190,8 @@ class TestGenerationParamsIntegration:
             ChatMessageContent(role=AuthorRole.USER, content=prompt)
         )
         try:
-            response_short = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=settings_short
+            response_short = await _call_with_timeout(
+                chat_service, chat_history, settings_short
             )
         except Exception as exc:
             if _is_runtime_connectivity_error(exc):
@@ -197,8 +213,8 @@ class TestGenerationParamsIntegration:
             ChatMessageContent(role=AuthorRole.USER, content=prompt)
         )
         try:
-            response_long = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=settings_long
+            response_long = await _call_with_timeout(
+                chat_service, chat_history, settings_long
             )
         except Exception as exc:
             if _is_runtime_connectivity_error(exc):

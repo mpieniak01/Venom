@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
 from venom_core.core import metrics as metrics_module
+from venom_core.core.autonomy_enforcement import AutonomyPermissionDenied
 from venom_core.core.models import TaskRequest, TaskStatus
 from venom_core.core.tracer import TraceStatus
 from venom_core.utils.helpers import get_utc_now_iso
@@ -151,16 +152,53 @@ class ResultProcessor:
                 existing_error = runtime_ctx.get("error")
 
         error_details = self._extract_error_details(exc, request, context)
+        autonomy_block = self._extract_autonomy_block_payload(exc)
 
         if not (isinstance(existing_error, dict) and existing_error.get("error_code")):
-            envelope = self.orch._build_error_envelope(
-                error_code="agent_error",
-                error_message=str(exc) or "Unhandled agent error",
-                error_details=error_details,
-                stage="agent_runtime",
-                retryable=False,
-            )
+            if autonomy_block is None:
+                envelope = self.orch._build_error_envelope(
+                    error_code="agent_error",
+                    error_message=str(exc) or "Unhandled agent error",
+                    error_details=error_details,
+                    stage="agent_runtime",
+                    retryable=False,
+                )
+            else:
+                envelope = self.orch._build_error_envelope(
+                    error_code=autonomy_block["reason_code"],
+                    error_message=autonomy_block["user_message"],
+                    error_details={
+                        **error_details,
+                        "decision": autonomy_block["decision"],
+                        "technical_context": autonomy_block["technical_context"],
+                        "tags": autonomy_block["tags"],
+                    },
+                    stage="autonomy_enforcement",
+                    retryable=False,
+                    error_class="AutonomyViolation",
+                )
             self.orch._set_runtime_error(task_id, envelope)
+
+        if autonomy_block is not None:
+            self.orch.state_manager.update_context(
+                task_id,
+                {
+                    "policy_blocked": True,
+                    "decision": autonomy_block["decision"],
+                    "reason_code": autonomy_block["reason_code"],
+                    "user_message": autonomy_block["user_message"],
+                    "technical_context": autonomy_block["technical_context"],
+                },
+            )
+            self.orch._append_session_history(
+                task_id,
+                role="assistant",
+                content=autonomy_block["user_message"],
+                session_id=getattr(request, "session_id", None),
+                policy_blocked=True,
+                reason_code=autonomy_block["reason_code"],
+                user_message=autonomy_block["user_message"],
+            )
 
         if self.orch.request_tracer:
             self.orch.request_tracer.update_status(task_id, TraceStatus.FAILED)
@@ -188,6 +226,18 @@ class ResultProcessor:
         await self.orch.state_manager.update_status(
             task_id, TaskStatus.FAILED, result=f"Błąd: {exc}"
         )
+
+    @staticmethod
+    def _extract_autonomy_block_payload(exc: Exception) -> dict[str, Any] | None:
+        if not isinstance(exc, AutonomyPermissionDenied):
+            return None
+        return {
+            "decision": exc.decision,
+            "reason_code": exc.reason_code,
+            "user_message": exc.user_message,
+            "technical_context": dict(exc.technical_context),
+            "tags": list(exc.tags),
+        }
 
     async def _log_agent_action(
         self, task_id: UUID, agent_name: str, intent: str, result: Any

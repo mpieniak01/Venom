@@ -1,0 +1,3 @@
+# Manual long-running tests excluded from automatic make test/make test-all.
+# One path per line. Keep synchronized with periodic duration audit.
+tests/perf/test_learning_logs_integrity_e2e.py

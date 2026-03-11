@@ -1391,6 +1391,46 @@ def test_evaluate_llm_run_handles_non_dict_task_distribution(tmp_path: Path):
     assert payload["metrics"]["fix_success_rate"] >= 0.0
 
 
+def test_update_evaluation_baselines_persists_payload(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path / "repo"),
+    )
+    updated = service.update_evaluation_baselines(
+        {
+            "llm_finetune": {
+                "repo_qa_accuracy": 0.61,
+                "code_localization_accuracy": 0.52,
+                "fix_success_rate": 0.37,
+                "hallucination_rate_max": 0.28,
+            }
+        }
+    )
+    assert updated["llm_finetune"]["repo_qa_accuracy"] == 0.61
+    baseline_file = Path(service.storage_dir) / "evaluation_baselines.json"
+    assert baseline_file.exists()
+    on_disk = json.loads(baseline_file.read_text(encoding="utf-8"))
+    assert on_disk["llm_finetune"]["fix_success_rate"] == 0.37
+
+
+def test_update_evaluation_baselines_rejects_out_of_range(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path / "repo"),
+    )
+    with pytest.raises(ValueError, match="EVALUATION_BASELINE_INVALID"):
+        service.update_evaluation_baselines(
+            {
+                "rag_index": {
+                    "repo_qa_accuracy": 1.2,
+                    "code_localization_accuracy": 0.55,
+                    "fix_success_rate": 0.3,
+                    "hallucination_rate_max": 0.3,
+                }
+            }
+        )
+
+
 @pytest.mark.asyncio
 async def test_rag_index_run_writes_proxy_evaluation_artifact(tmp_path: Path):
     repo_root = tmp_path / "repo"

@@ -9,6 +9,8 @@ from fastapi import APIRouter, HTTPException, Query
 from venom_core.api.schemas.academy_self_learning import (
     SelfLearningCapabilitiesResponse,
     SelfLearningDeleteResponse,
+    SelfLearningEvaluationBaselineResponse,
+    SelfLearningEvaluationBaselineUpdateRequest,
     SelfLearningListResponse,
     SelfLearningRunStatusResponse,
     SelfLearningStartRequest,
@@ -269,5 +271,65 @@ def delete_self_learning_run(run_id: str) -> SelfLearningDeleteResponse:
                 reason_code="SELF_LEARNING_DELETE_FAILED",
                 message=f"Failed to delete self-learning run: {str(exc)}",
                 run_id=run_id,
+            ),
+        ) from exc
+
+
+@router.get(
+    "/evaluation/baseline",
+    responses={
+        500: {"description": INTERNAL_ERROR_DETAIL},
+        503: {"description": SERVICE_UNAVAILABLE_DETAIL},
+    },
+)
+def get_self_learning_evaluation_baseline() -> SelfLearningEvaluationBaselineResponse:
+    if _self_learning_service is None:
+        raise HTTPException(status_code=503, detail=SERVICE_UNAVAILABLE_DETAIL)
+    try:
+        payload = _self_learning_service.get_evaluation_baselines()
+        return SelfLearningEvaluationBaselineResponse(**payload)
+    except Exception as exc:
+        logger.exception("Failed to get self-learning evaluation baseline")
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="SELF_LEARNING_EVAL_BASELINE_GET_FAILED",
+                message=f"Failed to get self-learning evaluation baseline: {str(exc)}",
+            ),
+        ) from exc
+
+
+@router.put(
+    "/evaluation/baseline",
+    responses={
+        400: {"description": "Invalid request payload."},
+        500: {"description": INTERNAL_ERROR_DETAIL},
+        503: {"description": SERVICE_UNAVAILABLE_DETAIL},
+    },
+)
+def update_self_learning_evaluation_baseline(
+    request: SelfLearningEvaluationBaselineUpdateRequest,
+) -> SelfLearningEvaluationBaselineResponse:
+    if _self_learning_service is None:
+        raise HTTPException(status_code=503, detail=SERVICE_UNAVAILABLE_DETAIL)
+    try:
+        payload = _self_learning_service.update_evaluation_baselines(
+            request.model_dump()
+        )
+        return SelfLearningEvaluationBaselineResponse(**payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=_value_error_detail_with_reason_code(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to update self-learning evaluation baseline")
+        raise HTTPException(
+            status_code=500,
+            detail=_error_detail_with_reason_code(
+                reason_code="SELF_LEARNING_EVAL_BASELINE_UPDATE_FAILED",
+                message=(
+                    f"Failed to update self-learning evaluation baseline: {str(exc)}"
+                ),
             ),
         ) from exc

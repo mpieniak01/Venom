@@ -1414,6 +1414,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/academy/self-learning/evaluation/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Self Learning Evaluation Baseline */
+        get: operations["get_self_learning_evaluation_baseline_api_v1_academy_self_learning_evaluation_baseline_get"];
+        /** Update Self Learning Evaluation Baseline */
+        put: operations["update_self_learning_evaluation_baseline_api_v1_academy_self_learning_evaluation_baseline_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/llm/simple/stream": {
         parameters: {
             query?: never;
@@ -7052,6 +7070,36 @@ export interface components {
             };
         };
         /**
+         * SelfLearningEvaluationBaseline
+         * @description Thresholds used for promote/reject decision.
+         */
+        SelfLearningEvaluationBaseline: {
+            /** Repo Qa Accuracy */
+            repo_qa_accuracy: number;
+            /** Code Localization Accuracy */
+            code_localization_accuracy: number;
+            /** Fix Success Rate */
+            fix_success_rate: number;
+            /** Hallucination Rate Max */
+            hallucination_rate_max: number;
+        };
+        /**
+         * SelfLearningEvaluationBaselineResponse
+         * @description Current configured baselines for eval harness.
+         */
+        SelfLearningEvaluationBaselineResponse: {
+            llm_finetune: components["schemas"]["SelfLearningEvaluationBaseline"];
+            rag_index: components["schemas"]["SelfLearningEvaluationBaseline"];
+        };
+        /**
+         * SelfLearningEvaluationBaselineUpdateRequest
+         * @description Partial update for eval harness baselines.
+         */
+        SelfLearningEvaluationBaselineUpdateRequest: {
+            llm_finetune?: components["schemas"]["SelfLearningEvaluationBaseline"] | null;
+            rag_index?: components["schemas"]["SelfLearningEvaluationBaseline"] | null;
+        };
+        /**
          * SelfLearningLimits
          * @description Safety limits for source discovery and parsing.
          */
@@ -11019,6 +11067,94 @@ export interface operations {
             };
             /** @description Self-learning run not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Failed to process self-learning request */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SelfLearningService is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_self_learning_evaluation_baseline_api_v1_academy_self_learning_evaluation_baseline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfLearningEvaluationBaselineResponse"];
+                };
+            };
+            /** @description Failed to process self-learning request */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SelfLearningService is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_self_learning_evaluation_baseline_api_v1_academy_self_learning_evaluation_baseline_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelfLearningEvaluationBaselineUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfLearningEvaluationBaselineResponse"];
+                };
+            };
+            /** @description Invalid request payload. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

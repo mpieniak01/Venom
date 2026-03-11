@@ -3246,6 +3246,81 @@
         }
       }
     },
+    "/api/v1/academy/self-learning/evaluation/baseline": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Get Self Learning Evaluation Baseline",
+        "operationId": "get_self_learning_evaluation_baseline_api_v1_academy_self_learning_evaluation_baseline_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfLearningEvaluationBaselineResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to process self-learning request"
+          },
+          "503": {
+            "description": "SelfLearningService is unavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Update Self Learning Evaluation Baseline",
+        "operationId": "update_self_learning_evaluation_baseline_api_v1_academy_self_learning_evaluation_baseline_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfLearningEvaluationBaselineUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfLearningEvaluationBaselineResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request payload."
+          },
+          "500": {
+            "description": "Failed to process self-learning request"
+          },
+          "503": {
+            "description": "SelfLearningService is unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/llm/simple/stream": {
       "post": {
         "tags": [
@@ -16167,6 +16242,87 @@
         ],
         "title": "SelfLearningEmbeddingProfile",
         "description": "Embedding runtime profile available for RAG indexing."
+      },
+      "SelfLearningEvaluationBaseline": {
+        "properties": {
+          "repo_qa_accuracy": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Repo Qa Accuracy"
+          },
+          "code_localization_accuracy": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Code Localization Accuracy"
+          },
+          "fix_success_rate": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Fix Success Rate"
+          },
+          "hallucination_rate_max": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Hallucination Rate Max"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_qa_accuracy",
+          "code_localization_accuracy",
+          "fix_success_rate",
+          "hallucination_rate_max"
+        ],
+        "title": "SelfLearningEvaluationBaseline",
+        "description": "Thresholds used for promote/reject decision."
+      },
+      "SelfLearningEvaluationBaselineResponse": {
+        "properties": {
+          "llm_finetune": {
+            "$ref": "#/components/schemas/SelfLearningEvaluationBaseline"
+          },
+          "rag_index": {
+            "$ref": "#/components/schemas/SelfLearningEvaluationBaseline"
+          }
+        },
+        "type": "object",
+        "required": [
+          "llm_finetune",
+          "rag_index"
+        ],
+        "title": "SelfLearningEvaluationBaselineResponse",
+        "description": "Current configured baselines for eval harness."
+      },
+      "SelfLearningEvaluationBaselineUpdateRequest": {
+        "properties": {
+          "llm_finetune": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelfLearningEvaluationBaseline"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rag_index": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelfLearningEvaluationBaseline"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "SelfLearningEvaluationBaselineUpdateRequest",
+        "description": "Partial update for eval harness baselines."
       },
       "SelfLearningLimits": {
         "properties": {

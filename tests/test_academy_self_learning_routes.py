@@ -66,6 +66,23 @@ def mock_service():
             "default_embedding_profile_id": "local:default",
         }
     )
+    service.get_evaluation_baselines.return_value = {
+        "llm_finetune": {
+            "repo_qa_accuracy": 0.55,
+            "code_localization_accuracy": 0.45,
+            "fix_success_rate": 0.25,
+            "hallucination_rate_max": 0.35,
+        },
+        "rag_index": {
+            "repo_qa_accuracy": 0.6,
+            "code_localization_accuracy": 0.55,
+            "fix_success_rate": 0.3,
+            "hallucination_rate_max": 0.3,
+        },
+    }
+    service.update_evaluation_baselines.return_value = (
+        service.get_evaluation_baselines.return_value
+    )
     return service
 
 
@@ -202,6 +219,54 @@ def test_get_self_learning_capabilities(client: TestClient):
     payload = response.json()
     assert "default_base_model" not in payload
     assert payload["embedding_profiles"][0]["profile_id"] == "local:default"
+
+
+def test_get_self_learning_evaluation_baseline(client: TestClient):
+    response = client.get("/api/v1/academy/self-learning/evaluation/baseline")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["llm_finetune"]["repo_qa_accuracy"] == 0.55
+    assert payload["rag_index"]["hallucination_rate_max"] == 0.3
+
+
+def test_update_self_learning_evaluation_baseline(
+    client: TestClient, mock_service: MagicMock
+):
+    response = client.put(
+        "/api/v1/academy/self-learning/evaluation/baseline",
+        json={
+            "llm_finetune": {
+                "repo_qa_accuracy": 0.61,
+                "code_localization_accuracy": 0.52,
+                "fix_success_rate": 0.37,
+                "hallucination_rate_max": 0.28,
+            }
+        },
+    )
+    assert response.status_code == 200
+    mock_service.update_evaluation_baselines.assert_called_once()
+
+
+def test_update_self_learning_evaluation_baseline_validation_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.update_evaluation_baselines.side_effect = ValueError(
+        "EVALUATION_BASELINE_INVALID: bad baseline"
+    )
+    response = client.put(
+        "/api/v1/academy/self-learning/evaluation/baseline",
+        json={
+            "llm_finetune": {
+                "repo_qa_accuracy": 0.92,
+                "code_localization_accuracy": 0.52,
+                "fix_success_rate": 0.37,
+                "hallucination_rate_max": 0.28,
+            }
+        },
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "EVALUATION_BASELINE_INVALID"
 
 
 def test_get_self_learning_status_not_found(

@@ -981,6 +981,23 @@ export interface SelfLearningCapabilitiesResponse {
   default_embedding_profile_id?: string | null;
 }
 
+export interface SelfLearningEvaluationBaseline {
+  repo_qa_accuracy: number;
+  code_localization_accuracy: number;
+  fix_success_rate: number;
+  hallucination_rate_max: number;
+}
+
+export interface SelfLearningEvaluationBaselineResponse {
+  llm_finetune: SelfLearningEvaluationBaseline;
+  rag_index: SelfLearningEvaluationBaseline;
+}
+
+export interface SelfLearningEvaluationBaselineUpdateRequest {
+  llm_finetune?: SelfLearningEvaluationBaseline | null;
+  rag_index?: SelfLearningEvaluationBaseline | null;
+}
+
 export interface SelfLearningStartRequest {
   mode: SelfLearningMode;
   sources: SelfLearningSource[];
@@ -1064,4 +1081,22 @@ export async function clearAllSelfLearningRuns(): Promise<SelfLearningDeleteResp
 
 export async function getSelfLearningCapabilities(): Promise<SelfLearningCapabilitiesResponse> {
   return apiFetch<SelfLearningCapabilitiesResponse>("/api/v1/academy/self-learning/capabilities");
+}
+
+export async function getSelfLearningEvaluationBaseline(): Promise<SelfLearningEvaluationBaselineResponse> {
+  return apiFetch<SelfLearningEvaluationBaselineResponse>(
+    "/api/v1/academy/self-learning/evaluation/baseline"
+  );
+}
+
+export async function updateSelfLearningEvaluationBaseline(
+  payload: SelfLearningEvaluationBaselineUpdateRequest
+): Promise<SelfLearningEvaluationBaselineResponse> {
+  return apiFetch<SelfLearningEvaluationBaselineResponse>(
+    "/api/v1/academy/self-learning/evaluation/baseline",
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }
+  );
 }

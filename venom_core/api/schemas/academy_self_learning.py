@@ -158,3 +158,26 @@ class SelfLearningCapabilitiesResponse(BaseModel):
     trainable_models: list[SelfLearningTrainableModelInfo] = Field(default_factory=list)
     embedding_profiles: list[SelfLearningEmbeddingProfile] = Field(default_factory=list)
     default_embedding_profile_id: str | None = None
+
+
+class SelfLearningEvaluationBaseline(BaseModel):
+    """Thresholds used for promote/reject decision."""
+
+    repo_qa_accuracy: float = Field(ge=0.0, le=1.0)
+    code_localization_accuracy: float = Field(ge=0.0, le=1.0)
+    fix_success_rate: float = Field(ge=0.0, le=1.0)
+    hallucination_rate_max: float = Field(ge=0.0, le=1.0)
+
+
+class SelfLearningEvaluationBaselineResponse(BaseModel):
+    """Current configured baselines for eval harness."""
+
+    llm_finetune: SelfLearningEvaluationBaseline
+    rag_index: SelfLearningEvaluationBaseline
+
+
+class SelfLearningEvaluationBaselineUpdateRequest(BaseModel):
+    """Partial update for eval harness baselines."""
+
+    llm_finetune: SelfLearningEvaluationBaseline | None = None
+    rag_index: SelfLearningEvaluationBaseline | None = None

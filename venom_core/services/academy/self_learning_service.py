@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import inspect
 import json
@@ -113,9 +114,56 @@ _LOW_RAM_AVAILABLE_GB = 8.0
 _CRITICAL_RAM_AVAILABLE_GB = 2.0
 _CRITICAL_RAM_USAGE_PERCENT = 92.0
 
+DEFAULT_EVALUATION_BASELINES: dict[str, dict[str, float]] = {
+    "llm_finetune": {
+        "repo_qa_accuracy": 0.55,
+        "code_localization_accuracy": 0.45,
+        "fix_success_rate": 0.25,
+        "hallucination_rate_max": 0.35,
+    },
+    "rag_index": {
+        "repo_qa_accuracy": 0.6,
+        "code_localization_accuracy": 0.55,
+        "fix_success_rate": 0.3,
+        "hallucination_rate_max": 0.3,
+    },
+}
+
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
+
+
+def _normalize_evaluation_baseline_payload(
+    payload: dict[str, Any] | None,
+) -> dict[str, float] | None:
+    if payload is None:
+        return None
+    required_keys = {
+        "repo_qa_accuracy",
+        "code_localization_accuracy",
+        "fix_success_rate",
+        "hallucination_rate_max",
+    }
+    normalized: dict[str, float] = {}
+    for key in required_keys:
+        if key not in payload:
+            raise ValueError(
+                f"EVALUATION_BASELINE_INVALID: Missing baseline field '{key}'."
+            )
+        raw_value = payload.get(key)
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"EVALUATION_BASELINE_INVALID: Baseline field '{key}' must be numeric."
+            ) from exc
+        if value < 0.0 or value > 1.0:
+            raise ValueError(
+                f"EVALUATION_BASELINE_INVALID: Baseline field '{key}' must be in [0, 1]."
+            )
+        normalized[key] = round(value, 4)
+    return normalized
 
 
 _SOURCE_PATHS: dict[SelfLearningSource, tuple[str, ...]] = {
@@ -342,7 +390,9 @@ class SelfLearningService:
         self._last_log_snapshot_at: dict[str, float] = {}
         self._runs_log_file = self.storage_dir / "runs.jsonl"
         self._index_manifest_file = self.storage_dir / "index_manifest.json"
+        self._evaluation_baselines_file = self.storage_dir / "evaluation_baselines.json"
         self._index_manifest = self._load_index_manifest()
+        self._evaluation_baselines = self._load_evaluation_baselines()
         self._load_persisted_runs()
 
     def set_runtime_dependencies(
@@ -469,6 +519,21 @@ class SelfLearningService:
             self._refresh_live_run_state(run)
         runs.sort(key=lambda item: item.created_at, reverse=True)
         return [run.to_dict() for run in runs[:limit]]
+
+    def get_evaluation_baselines(self) -> dict[str, dict[str, float]]:
+        return copy.deepcopy(self._evaluation_baselines)
+
+    def update_evaluation_baselines(
+        self, updates: dict[str, dict[str, Any] | None]
+    ) -> dict[str, dict[str, float]]:
+        next_payload = copy.deepcopy(self._evaluation_baselines)
+        for mode in ("llm_finetune", "rag_index"):
+            candidate = _normalize_evaluation_baseline_payload(updates.get(mode))
+            if candidate is not None:
+                next_payload[mode] = candidate
+        self._evaluation_baselines = next_payload
+        self._save_evaluation_baselines(next_payload)
+        return self.get_evaluation_baselines()
 
     def _refresh_live_run_state(self, run: SelfLearningRun) -> None:
         if run.status not in {"pending", "running"}:
@@ -1931,12 +1996,7 @@ class SelfLearningService:
             1.0 - ((qa_accuracy * 0.65) + (code_localization_accuracy * 0.35))
         )
 
-        baseline = {
-            "repo_qa_accuracy": 0.55,
-            "code_localization_accuracy": 0.45,
-            "fix_success_rate": 0.25,
-            "hallucination_rate_max": 0.35,
-        }
+        baseline = self._evaluation_baselines["llm_finetune"]
         return self._finalize_evaluation_payload(
             run=run,
             metrics={
@@ -1968,12 +2028,7 @@ class SelfLearningService:
             1.0 - ((qa_accuracy * 0.6) + (code_localization_accuracy * 0.4))
         )
 
-        baseline = {
-            "repo_qa_accuracy": 0.6,
-            "code_localization_accuracy": 0.55,
-            "fix_success_rate": 0.3,
-            "hallucination_rate_max": 0.3,
-        }
+        baseline = self._evaluation_baselines["rag_index"]
         return self._finalize_evaluation_payload(
             run=run,
             metrics={
@@ -1983,6 +2038,42 @@ class SelfLearningService:
                 "hallucination_rate": round(hallucination_rate, 4),
             },
             baseline=baseline,
+        )
+
+    def _load_evaluation_baselines(self) -> dict[str, dict[str, float]]:
+        if not self._evaluation_baselines_file.exists():
+            return copy.deepcopy(DEFAULT_EVALUATION_BASELINES)
+        try:
+            payload = json.loads(
+                self._evaluation_baselines_file.read_text(encoding="utf-8")
+            )
+            if not isinstance(payload, dict):
+                return copy.deepcopy(DEFAULT_EVALUATION_BASELINES)
+            normalized: dict[str, dict[str, float]] = {}
+            for mode in ("llm_finetune", "rag_index"):
+                raw_mode_payload = payload.get(mode)
+                if not isinstance(raw_mode_payload, dict):
+                    normalized[mode] = copy.deepcopy(DEFAULT_EVALUATION_BASELINES[mode])
+                    continue
+                try:
+                    normalized_payload = _normalize_evaluation_baseline_payload(
+                        raw_mode_payload
+                    )
+                except ValueError:
+                    normalized_payload = None
+                if normalized_payload is None:
+                    normalized[mode] = copy.deepcopy(DEFAULT_EVALUATION_BASELINES[mode])
+                else:
+                    normalized[mode] = normalized_payload
+            return normalized
+        except Exception:
+            return copy.deepcopy(DEFAULT_EVALUATION_BASELINES)
+
+    def _save_evaluation_baselines(self, payload: dict[str, dict[str, float]]) -> None:
+        self._evaluation_baselines_file.parent.mkdir(parents=True, exist_ok=True)
+        self._evaluation_baselines_file.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
         )
 
     def _read_dataset_report(self, run: SelfLearningRun) -> dict[str, Any]:

@@ -4073,14 +4073,14 @@
       "path": "tests/test_port_pids_script.py",
       "domain": "testing_tooling",
       "test_type": "unit",
-      "intent": "legacy_coverage",
+      "intent": "regression",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
         "ci-lite",
         "release"
       ],
-      "legacy_targeted": true,
+      "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {

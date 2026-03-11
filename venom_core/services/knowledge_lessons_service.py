@@ -34,13 +34,15 @@ def _mutation_payload(
     *,
     action: str,
     affected_count: int,
+    target: str = "knowledge_entry",
+    source: str = KnowledgeSourceOrigin.LESSON.value,
     filter_payload: dict[str, Any] | None = None,
     scope: KnowledgeEntryScope = KnowledgeEntryScope.TASK,
 ) -> dict[str, Any]:
     return {
-        "target": "knowledge_entry",
+        "target": target,
         "action": action,
-        "source": KnowledgeSourceOrigin.LESSON.value,
+        "source": source,
         "affected_count": affected_count,
         "scope": scope.value,
         "filter": filter_payload or {},

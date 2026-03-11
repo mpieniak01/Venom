@@ -60,6 +60,8 @@ class DummyGraphStore:
 
 def _build_client(
     tmp_path: Path,
+    *,
+    client_host: str = "testclient",
 ) -> tuple[TestClient, DummyVectorStore, LessonsStore, SessionStore, DummyGraphStore]:
     vector_store = DummyVectorStore()
     graph_store = DummyGraphStore()
@@ -74,7 +76,7 @@ def _build_client(
     app.dependency_overrides[get_graph_store] = lambda: graph_store
     app.dependency_overrides[get_lessons_store] = lambda: lessons_store
     app.dependency_overrides[get_session_store] = lambda: session_store
-    client = TestClient(app)
+    client = TestClient(app, client=(client_host, 50000))
     return client, vector_store, lessons_store, session_store, graph_store
 
 
@@ -200,6 +202,30 @@ def test_knowledge_entries_rejects_invalid_time_window(tmp_path: Path):
         )
         assert response.status_code == 400
         assert "created_from > created_to" in str(response.json()["detail"])
+
+        # aware vs naive datetime should not raise TypeError (500),
+        # only deterministic 400 for invalid time window.
+        response = client.get(
+            "/api/v1/knowledge/entries?created_from=2026-03-11T12:00:00Z&created_to=2026-03-10T12:00:00"
+        )
+        assert response.status_code == 400
+        assert "created_from > created_to" in str(response.json()["detail"])
+    finally:
+        client.close()
+        app.dependency_overrides = {}
+
+
+def test_knowledge_entries_denies_non_localhost_client(tmp_path: Path):
+    client, _, _, _, _ = _build_client(tmp_path, client_host="10.20.30.40")
+    try:
+        response = client.get("/api/v1/knowledge/entries?session_id=sess-1")
+        assert response.status_code == 403
+        detail = response.json().get("detail", {})
+        assert detail.get("reason_code") == "PERMISSION_DENIED"
+        assert (
+            detail.get("technical_context", {}).get("operation")
+            == "knowledge.entries.list"
+        )
     finally:
         client.close()
         app.dependency_overrides = {}

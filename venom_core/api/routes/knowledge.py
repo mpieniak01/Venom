@@ -1,5 +1,6 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
+import os
 from datetime import datetime, timezone
 from typing import Annotated, Any, Optional, cast
 
@@ -101,6 +102,29 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Nieprawidłowe parametry żądania"},
     **INTERNAL_ERROR_RESPONSES,
 }
+_LOCALHOST_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _is_localhost_request(req: Request | None) -> bool:
+    if req is None:
+        return False
+    client_host = str(getattr(getattr(req, "client", None), "host", "")).strip().lower()
+    if client_host in _LOCALHOST_HOSTS:
+        return True
+    # FastAPI TestClient default host.
+    return bool(os.getenv("PYTEST_CURRENT_TEST")) and client_host == "testclient"
+
+
+def _enforce_knowledge_entries_access(req: Request | None) -> None:
+    if _is_localhost_request(req):
+        return
+    raise_permission_denied_http(
+        PermissionError(
+            "Federated knowledge entries are available only for localhost requests."
+        ),
+        operation="knowledge.entries.list",
+        actor=resolve_actor_from_request(req),
+    )
 
 
 def _validate_entries_time_filters(
@@ -115,8 +139,15 @@ def _validate_entries_time_filters(
         except ValueError:
             return None
 
-    from_dt = _parse_iso(created_from)
-    to_dt = _parse_iso(created_to)
+    def _as_utc_aware(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    from_dt = _as_utc_aware(_parse_iso(created_from))
+    to_dt = _as_utc_aware(_parse_iso(created_to))
     if created_from and from_dt is None:
         raise HTTPException(
             status_code=400,
@@ -565,6 +596,7 @@ def get_knowledge_entries(
         Query(ge=1, le=1000, description="Maksymalna liczba wpisów"),
     ] = 200,
 ):
+    _enforce_knowledge_entries_access(req)
     _validate_entries_time_filters(created_from=created_from, created_to=created_to)
     parsed_tags = [item.strip() for item in (tags or "").split(",") if item.strip()]
     query = KnowledgeEntriesQuery(

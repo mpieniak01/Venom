@@ -1,6 +1,8 @@
 """Testy jednostkowe dla EmbeddingService."""
 
-from types import SimpleNamespace
+import builtins
+import sys
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -146,3 +148,61 @@ def test_clear_cache_invokes_cache_clear():
     service.clear_cache()
     info = service._get_embedding_cached.cache_info()
     assert info.hits >= 0 and info.misses >= 0
+
+
+def test_local_model_name_falls_back_to_default_when_blank(monkeypatch):
+    monkeypatch.setenv("EMBEDDING_MODEL", "   ")
+    service = EmbeddingService(service_type="local")
+    assert service.local_model_name
+
+
+def test_ensure_model_loaded_local_success_with_stub(monkeypatch):
+    class DummySentenceTransformer:
+        def __init__(self, model_name: str) -> None:
+            self.model_name = model_name
+
+    fake_module = ModuleType("sentence_transformers")
+    fake_module.SentenceTransformer = DummySentenceTransformer
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+
+    service = EmbeddingService(service_type="local")
+    service._ensure_model_loaded()
+    assert service._model is not None
+    assert service._local_fallback_mode is False
+
+
+def test_ensure_model_loaded_local_import_error(monkeypatch):
+    original_import = builtins.__import__
+
+    def _fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "sentence_transformers":
+            raise ImportError("missing")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    service = EmbeddingService(service_type="local")
+    with pytest.raises(ImportError):
+        service._ensure_model_loaded()
+
+
+def test_ensure_model_loaded_local_sets_fallback_on_model_error(monkeypatch):
+    class BrokenSentenceTransformer:
+        def __init__(self, _model_name: str) -> None:
+            raise RuntimeError("broken model")
+
+    fake_module = ModuleType("sentence_transformers")
+    fake_module.SentenceTransformer = BrokenSentenceTransformer
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+
+    service = EmbeddingService(service_type="local")
+    service._ensure_model_loaded()
+    assert service._local_fallback_mode is True
+
+
+def test_ensure_model_loaded_openai_requires_api_key(monkeypatch):
+    from venom_core.memory import embedding_service as emb_module
+
+    monkeypatch.setattr(emb_module.SETTINGS, "OPENAI_API_KEY", "", raising=False)
+    service = EmbeddingService(service_type="openai")
+    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+        service._ensure_model_loaded()

@@ -51,6 +51,9 @@ ALLOWED_LAYER_IMPORTS: dict[str, set[str]] = {
         "venom_core.core.metrics",
         "venom_core.core.provider_observability",
     },
+    "venom_core/api/routes/permission_denied_contract.py": {
+        "venom_core.core.autonomy_enforcement"
+    },
     "venom_core/api/routes/queue.py": {"venom_core.core.environment_policy"},
     "venom_core/api/routes/system_governance.py": {"venom_core.core.permission_guard"},
     "venom_core/api/routes/system_metrics.py": {"venom_core.core"},

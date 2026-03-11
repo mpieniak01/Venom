@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -57,6 +59,110 @@ async def test_restart_runtime_after_activation_paths(monkeypatch: pytest.Monkey
     monkeypatch.setitem(sys.modules, module.__name__, module)
     await model_registry_runtime.restart_runtime_after_activation(
         "ollama", settings=object()
+    )
+
+
+@pytest.mark.asyncio
+async def test_activate_model_and_metadata_branches(monkeypatch: pytest.MonkeyPatch):
+    original_ensure = model_registry_runtime.ensure_model_metadata_for_activation
+    registry = SimpleNamespace(
+        manifest={"m1": SimpleNamespace()},
+        providers={},
+        _save_manifest=lambda: None,
+    )
+
+    monkeypatch.setattr(
+        model_registry_runtime,
+        "ensure_model_metadata_for_activation",
+        AsyncMock(return_value=False),
+    )
+    assert (
+        await model_registry_runtime.activate_model(registry, "m1", "ollama") is False
+    )
+
+    monkeypatch.setattr(
+        model_registry_runtime,
+        "ensure_model_metadata_for_activation",
+        AsyncMock(return_value=True),
+    )
+    registry.manifest = {}
+    assert (
+        await model_registry_runtime.activate_model(registry, "m1", "ollama") is False
+    )
+
+    registry.manifest = {"m1": SimpleNamespace()}
+    monkeypatch.setattr(
+        model_registry_runtime,
+        "apply_model_activation_config",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    assert (
+        await model_registry_runtime.activate_model(registry, "m1", "ollama") is False
+    )
+
+    monkeypatch.setattr(
+        model_registry_runtime,
+        "apply_model_activation_config",
+        lambda *_a, **_k: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        model_registry_runtime,
+        "restart_runtime_after_activation",
+        AsyncMock(return_value=None),
+    )
+    assert await model_registry_runtime.activate_model(registry, "m1", "ollama") is True
+
+    # ensure_model_metadata_for_activation branches
+    monkeypatch.setattr(
+        model_registry_runtime,
+        "ensure_model_metadata_for_activation",
+        original_ensure,
+    )
+    registry_meta = SimpleNamespace(manifest={"m1": SimpleNamespace()}, providers={})
+    assert await model_registry_runtime.ensure_model_metadata_for_activation(
+        registry_meta, "m1", "ollama"
+    )
+    registry_meta = SimpleNamespace(manifest={}, providers={})
+    assert (
+        await model_registry_runtime.ensure_model_metadata_for_activation(
+            registry_meta, "m1", "vllm"
+        )
+        is False
+    )
+    assert (
+        await model_registry_runtime.ensure_model_metadata_for_activation(
+            registry_meta, "m1", "ollama"
+        )
+        is False
+    )
+
+    provider = SimpleNamespace(get_model_info=AsyncMock(return_value=None))
+    saved = {"count": 0}
+    registry_meta = SimpleNamespace(
+        manifest={},
+        providers={model_registry_providers.ModelProvider.OLLAMA: provider},
+        _save_manifest=lambda: saved.__setitem__("count", saved["count"] + 1),
+    )
+    assert (
+        await model_registry_runtime.ensure_model_metadata_for_activation(
+            registry_meta, "m1", "ollama"
+        )
+        is False
+    )
+
+    provider.get_model_info = AsyncMock(return_value=SimpleNamespace(local_path=None))
+    assert await model_registry_runtime.ensure_model_metadata_for_activation(
+        registry_meta, "m1", "ollama"
+    )
+    assert "m1" in registry_meta.manifest
+    assert saved["count"] == 1
+
+    provider.get_model_info = AsyncMock(side_effect=RuntimeError("down"))
+    assert (
+        await model_registry_runtime.ensure_model_metadata_for_activation(
+            registry_meta, "m2", "ollama"
+        )
+        is False
     )
 
 
@@ -302,3 +408,204 @@ async def test_context_builder_add_hidden_prompts_and_perf_shortcut(monkeypatch)
     await builder.complete_perf_test_task("task-4")
     assert state.statuses
     assert tracer.steps
+
+
+@pytest.mark.asyncio
+async def test_runtime_stack_initializers_cover_success_paths(monkeypatch):
+    logger = MagicMock()
+
+    class _GraphStore:
+        def __init__(self):
+            self.loaded = False
+
+        def load_graph(self):
+            self.loaded = True
+
+    class _LessonsStore:
+        def __init__(self, vector_store=None):
+            self.vector_store = vector_store
+            self.lessons = ["l1"]
+
+    orchestrator = SimpleNamespace(lessons_store=None)
+    vector_store, graph_store, lessons_store = runtime_stack.initialize_memory_stores(
+        logger=logger,
+        vector_store_cls=lambda: {"ok": True},
+        graph_store_cls=_GraphStore,
+        lessons_store_cls=_LessonsStore,
+        orchestrator=orchestrator,
+    )
+    assert vector_store == {"ok": True}
+    assert graph_store.loaded is True
+    assert lessons_store.lessons == ["l1"]
+    assert orchestrator.lessons_store is lessons_store
+
+    engine = runtime_stack.initialize_audio_engine_if_enabled(
+        settings=SimpleNamespace(
+            ENABLE_AUDIO_INTERFACE=True,
+            WHISPER_MODEL_SIZE="tiny",
+            TTS_MODEL_PATH="tts",
+            AUDIO_DEVICE="cpu",
+        ),
+        logger=logger,
+        audio_engine_cls=lambda **kwargs: kwargs,
+    )
+    assert engine["device"] == "cpu"
+
+    class _Bridge:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def connect(self):
+            return True
+
+    bridge = await runtime_stack.initialize_hardware_bridge_if_enabled(
+        settings=SimpleNamespace(
+            ENABLE_IOT_BRIDGE=True,
+            RIDER_PI_PASSWORD=SimpleNamespace(get_secret_value=lambda: "pw"),
+            RIDER_PI_HOST="localhost",
+            RIDER_PI_PORT=22,
+            RIDER_PI_USERNAME="user",
+            RIDER_PI_PROTOCOL="ssh",
+        ),
+        logger=logger,
+        extract_secret_value_fn=lambda s: s.get_secret_value(),
+        hardware_bridge_cls=_Bridge,
+    )
+    assert bridge.kwargs["password"] == "pw"
+
+    kernel_module = ModuleType("venom_core.execution.kernel_builder")
+
+    class _KernelBuilder:
+        def build_kernel(self):
+            return {"kernel": True}
+
+    kernel_module.KernelBuilder = _KernelBuilder
+    monkeypatch.setitem(sys.modules, kernel_module.__name__, kernel_module)
+
+    operator = runtime_stack.initialize_operator_agent_if_possible(
+        settings=SimpleNamespace(ENABLE_AUDIO_INTERFACE=True),
+        logger=logger,
+        current_audio_engine=engine,
+        current_hardware_bridge=bridge,
+        operator_agent_cls=lambda **kwargs: kwargs,
+    )
+    assert operator["kernel"]["kernel"] is True
+
+    handler = runtime_stack.initialize_audio_stream_handler_if_possible(
+        settings=SimpleNamespace(VAD_THRESHOLD=0.1, SILENCE_DURATION=0.2),
+        logger=logger,
+        current_audio_engine=engine,
+        current_operator_agent=operator,
+        audio_stream_handler_cls=lambda **kwargs: kwargs,
+    )
+    assert handler["silence_duration"] == 0.2
+
+
+@pytest.mark.asyncio
+async def test_runtime_stack_scheduler_documenter_and_shadow_disabled():
+    logger = MagicMock()
+    job_ids: list[str] = []
+
+    class _Scheduler:
+        def __init__(self, event_broadcaster=None):
+            self.event_broadcaster = event_broadcaster
+
+        async def start(self):
+            return None
+
+        def add_interval_job(self, *, func, minutes, job_id, description):
+            assert callable(func)
+            assert minutes >= 1
+            assert description
+            job_ids.append(job_id)
+
+    class _AsyncioModule:
+        @staticmethod
+        async def to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        @staticmethod
+        def create_task(coro):
+            import asyncio
+
+            return asyncio.create_task(coro)
+
+    class _JobModule:
+        @staticmethod
+        async def consolidate_memory(_event_broadcaster):
+            return None
+
+        @staticmethod
+        async def check_health(_event_broadcaster):
+            return None
+
+        @staticmethod
+        def cleanup_runtime_files(*args, **kwargs):  # noqa: ARG004
+            return None
+
+        @staticmethod
+        def should_run_runtime_retention_now(*args, **kwargs):  # noqa: ARG004
+            return False
+
+    scheduler, startup_task = await runtime_stack.initialize_background_scheduler(
+        settings=SimpleNamespace(
+            ENABLE_MEMORY_CONSOLIDATION=True,
+            MEMORY_CONSOLIDATION_INTERVAL_MINUTES=5,
+            ENABLE_HEALTH_CHECKS=True,
+            HEALTH_CHECK_INTERVAL_MINUTES=5,
+            ENABLE_RUNTIME_RETENTION_CLEANUP=True,
+            RUNTIME_RETENTION_DAYS=7,
+            RUNTIME_RETENTION_TARGETS=["logs"],
+            REPO_ROOT=".",
+            RUNTIME_RETENTION_INTERVAL_MINUTES=60,
+        ),
+        logger=logger,
+        event_broadcaster=object(),
+        vector_store={"ok": True},
+        request_tracer=SimpleNamespace(clear_old_traces=lambda days=7: days),
+        background_scheduler_cls=_Scheduler,
+        job_scheduler_module=_JobModule,
+        asyncio_module=_AsyncioModule,
+        clear_startup_runtime_retention_task=lambda: None,
+    )
+    assert scheduler is not None
+    assert startup_task is None
+    assert {"consolidate_memory", "check_health", "cleanup_traces"} <= set(job_ids)
+
+    class _Documenter:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def handle_code_change(self, *_args, **_kwargs):
+            return None
+
+    class _Watcher:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def start(self):
+            return None
+
+    documenter, watcher = await runtime_stack.initialize_documenter_and_watcher(
+        workspace_path=Path("."),
+        git_skill=object(),
+        skill_manager=object(),
+        event_broadcaster=object(),
+        logger=logger,
+        documenter_agent_cls=_Documenter,
+        file_watcher_cls=_Watcher,
+    )
+    assert documenter is not None
+    assert watcher is not None
+
+    shadow, desktop_sensor, notifier = await runtime_stack.initialize_shadow_stack(
+        settings=SimpleNamespace(ENABLE_PROACTIVE_MODE=False),
+        logger=logger,
+        orchestrator=SimpleNamespace(goal_store=None),
+        lessons_store=None,
+        event_broadcaster=SimpleNamespace(broadcast_event=AsyncMock(return_value=None)),
+        system_log_event_type="system.log",
+    )
+    assert shadow is None
+    assert desktop_sensor is None
+    assert notifier is None

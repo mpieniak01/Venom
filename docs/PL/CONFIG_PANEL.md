@@ -70,7 +70,7 @@ Kanoniczny techniczny strumień audytu w core:
 - Ujednolicona ścieżka odczytu dla panelu audytu w konfiguracji
 - Zakres techniczny/API (oddzielony od logów produktowych modułów)
 
-#### API Endpoints (`venom_core/api/routes/system.py`, `venom_core/api/routes/audit_stream.py`)
+#### API Endpoints (`venom_core/api/routes/system_runtime.py`, `venom_core/api/routes/system_config.py`, `venom_core/api/routes/system_governance.py`, `venom_core/api/routes/audit_stream.py`)
 
 **Runtime:**
 ```

@@ -113,36 +113,48 @@ GET /api/v1/system/autonomy/levels
 
 > **Ostrzeżenie dotyczące bezpieczeństwa:** Endpointy kontroli autonomii powinny być chronione autentykacją i ograniczone do localhost lub zaufanych sieci. Nieograniczony dostęp pozwala dowolnemu wywołującemu na podniesienie poziomu autonomii do ROOT, co omija wszystkie kontrole uprawnień dotyczące dostępu do sieci, zapisu plików i wykonywania komend shell.
 
+#### 4. Kanoniczny payload blokady (policy/autonomy)
+
+Mutujące trasy i guardowane ścieżki runtime używają jednego kontraktu blokady `HTTP 403`:
+
+```json
+{
+  "decision": "block",
+  "reason_code": "PERMISSION_DENIED",
+  "user_message": "Access denied",
+  "technical_context": {
+    "operation": "system.config.localhost_guard"
+  },
+  "tags": ["permission", "blocked"]
+}
+```
+
+Uwagi:
+- Dla blokad autonomii `reason_code` ma wartość `AUTONOMY_PERMISSION_DENIED`.
+- Helper blokad route-level publikuje kanoniczne eventy audytu:
+  - `source=api.permission`
+  - `action=policy.blocked.route` lub `action=autonomy.blocked`
+  - `status=blocked`
+  - `details` zgodne z payloadem blokady.
+- Tryb egzekwowania autonomii steruje backend (`AUTONOMY_ENFORCEMENT_MODE=hard|soft`):
+  - `hard` (domyślnie): `decision=block`, operacja jest terminalnie blokowana, `technical_context.terminal=true`, `technical_context.retryable=false`.
+  - `soft`: `decision=degraded_allow`, operacja przechodzi z ostrzeżeniem, audyt: `action=autonomy.degraded_allow`, `status=degraded`.
+- UI nie jest warstwą egzekucji autonomii. UI tylko prezentuje decyzję backendu (`decision`, `reason_code`, `user_message`, `technical_context`).
+
 ### Frontend
 
 #### 1. Selektor Autonomii
 
-W `index.html`:
+W UI Next.js (cockpit/layout):
 
-```html
-<select id="autonomyLevel" class="autonomy-select">
-    <option value="0" data-color="green">🟢 ISOLATED</option>
-    <option value="10" data-color="blue">🔵 CONNECTED</option>
-    <option value="20" data-color="yellow">🟡 FUNDED</option>
-    <option value="30" data-color="orange">🟠 BUILDER</option>
-    <option value="40" data-color="red">🔴 ROOT</option>
-</select>
-```
+- Selektor autonomii w sidebar (`web-next/components/layout/sidebar-sections.tsx`)
+- Selektor autonomii w widoku mobile (`web-next/components/layout/mobile-nav.tsx`)
+- Wspólna logika stanu autonomii (`web-next/components/layout/use-sidebar-logic.ts`)
 
 #### 2. Dynamiczne Tematowanie
 
-Body element ma klasę tematyczną:
-
-```html
-<body class="theme-isolated" id="venomBody">
-```
-
-Klasy tematyczne definiują kolory:
-- `.theme-isolated` - zielony
-- `.theme-connected` - niebieski
-- `.theme-funded` - żółty
-- `.theme-builder` - pomarańczowy
-- `.theme-root` - czerwony
+Stan autonomii jest prezentowany przez stan UI i etykiety i18n w cockpit/layout.
+UI pokazuje poziom i ryzyko z backendu, ale nie egzekwuje lokalnie decyzji policy/autonomy.
 
 #### 3. Obsługa Błędów
 
@@ -275,7 +287,11 @@ Kluczowe testy:
 ## 📚 Referencje
 
 - **Kod Backend**: `venom_core/core/permission_guard.py`
-- **Kod Frontend**: `web/static/js/app.js` (sekcja AutonomyGate)
+- **Kod Frontend**:
+  - `web-next/components/layout/sidebar-sections.tsx`
+  - `web-next/components/layout/mobile-nav.tsx`
+  - `web-next/components/layout/use-sidebar-logic.ts`
 - **Konfiguracja**: `config/autonomy_matrix.yaml`, `config/skill_permissions.yaml`
 - **Testy**: `tests/test_permission_guard.py`
-- **API**: `venom_core/api/routes/system.py` (endpointy `/api/v1/system/autonomy`)
+- **API**: `venom_core/api/routes/system_governance.py` (endpointy `/api/v1/system/autonomy`)
+- **Runbook**: `docs/PL/runbooks/policy-autonomy-deny-triage.md`

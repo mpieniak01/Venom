@@ -176,6 +176,11 @@ def test_require_localhost_request_handles_missing_client():
     with pytest.raises(Exception) as exc:
         academy_routes.require_localhost_request(req)
     assert "Access denied" in str(exc.value)
+    if hasattr(exc.value, "detail"):
+        detail = exc.value.detail
+        assert detail["decision"] == "block"
+        assert detail["reason_code"] == "PERMISSION_DENIED"
+        assert detail["technical_context"]["operation"] == "academy.localhost_guard"
 
 
 def test_save_finished_job_metadata_logs_without_user_data(tmp_path):

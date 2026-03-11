@@ -567,3 +567,90 @@ async def test_operations_error_paths_extra():
     )
     await operations._remove_model_task(registry, op2, ModelProvider.OLLAMA)
     assert op2.status == OperationStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_runtime_activate_model_branches(monkeypatch: pytest.MonkeyPatch):
+    registry = SimpleNamespace(
+        manifest={"m1": SimpleNamespace()},
+        providers={},
+        _save_manifest=Mock(),
+    )
+
+    monkeypatch.setattr(
+        runtime,
+        "ensure_model_metadata_for_activation",
+        AsyncMock(return_value=False),
+    )
+    assert await runtime.activate_model(registry, "m1", "ollama") is False
+
+    monkeypatch.setattr(
+        runtime,
+        "ensure_model_metadata_for_activation",
+        AsyncMock(return_value=True),
+    )
+    registry.manifest = {}
+    assert await runtime.activate_model(registry, "m1", "ollama") is False
+
+    registry.manifest = {"m1": SimpleNamespace()}
+    monkeypatch.setattr(
+        runtime, "apply_model_activation_config", Mock(side_effect=RuntimeError("boom"))
+    )
+    assert await runtime.activate_model(registry, "m1", "ollama") is False
+
+    monkeypatch.setattr(
+        runtime, "apply_model_activation_config", Mock(return_value=SimpleNamespace())
+    )
+    monkeypatch.setattr(
+        runtime, "restart_runtime_after_activation", AsyncMock(return_value=None)
+    )
+    assert await runtime.activate_model(registry, "m1", "ollama") is True
+
+
+@pytest.mark.asyncio
+async def test_runtime_ensure_model_metadata_activation_branches():
+    # already in manifest
+    registry = SimpleNamespace(manifest={"m1": SimpleNamespace()}, providers={})
+    assert await runtime.ensure_model_metadata_for_activation(registry, "m1", "ollama")
+
+    # missing model outside ollama runtime
+    registry = SimpleNamespace(manifest={}, providers={})
+    assert (
+        await runtime.ensure_model_metadata_for_activation(registry, "m1", "vllm")
+        is False
+    )
+
+    # ollama runtime without provider
+    assert (
+        await runtime.ensure_model_metadata_for_activation(registry, "m1", "ollama")
+        is False
+    )
+
+    provider = SimpleNamespace(get_model_info=AsyncMock(return_value=None))
+    registry = SimpleNamespace(
+        manifest={},
+        providers={ModelProvider.OLLAMA: provider},
+        _save_manifest=Mock(),
+    )
+    assert (
+        await runtime.ensure_model_metadata_for_activation(registry, "m1", "ollama")
+        is False
+    )
+
+    provider.get_model_info = AsyncMock(
+        return_value=ModelMetadata(
+            name="m1",
+            provider=ModelProvider.OLLAMA,
+            display_name="M1",
+            runtime="ollama",
+        )
+    )
+    assert await runtime.ensure_model_metadata_for_activation(registry, "m1", "ollama")
+    assert "m1" in registry.manifest
+    registry._save_manifest.assert_called_once()
+
+    provider.get_model_info = AsyncMock(side_effect=RuntimeError("down"))
+    assert (
+        await runtime.ensure_model_metadata_for_activation(registry, "m2", "ollama")
+        is False
+    )

@@ -163,9 +163,12 @@ async def test_policy_gate_enabled_block_before_provider(mock_orchestrator):
                     == mock_orchestrator.state_manager.create_task.return_value.id
                 )
                 assert response.policy_blocked is True
+                assert response.decision == "block"
                 assert response.reason_code == "POLICY_UNSAFE_CONTENT"
                 assert response.user_message == "Unsafe content detected"
                 assert response.status == TaskStatus.FAILED
+                assert isinstance(response.technical_context, dict)
+                assert response.technical_context["phase"] == "before_provider"
 
                 # Verify task was marked as failed
                 mock_orchestrator.state_manager.update_status.assert_called_once()
@@ -174,10 +177,15 @@ async def test_policy_gate_enabled_block_before_provider(mock_orchestrator):
                 )[0]
                 assert entry.source == "core.policy"
                 assert entry.status == "blocked"
+                assert entry.details["decision"] == "block"
                 assert entry.details["reason_code"] == "POLICY_UNSAFE_CONTENT"
+                assert entry.details["operation"] == "provider_selection"
+                assert entry.details["phase"] == "before_provider"
+                assert "policy" in entry.details["tags"]
                 assert entry.details["task_id"] == str(response.task_id)
                 assert isinstance(entry.details["current_autonomy_level"], int)
                 assert entry.details["current_autonomy_level_name"]
+                assert isinstance(entry.details["technical_context"], dict)
 
 
 @pytest.mark.asyncio
@@ -226,14 +234,18 @@ async def test_policy_gate_enabled_block_before_tool_emits_audit(mock_orchestrat
             )[0]
             assert entry.source == "core.policy"
             assert entry.status == "blocked"
+            assert entry.details["decision"] == "block"
             assert entry.details["reason_code"] == "POLICY_TOOL_RESTRICTED"
             assert entry.details["intent"] == "RESEARCH"
-            assert entry.details["planned_provider"] == "openai"
+            assert entry.details["provider"] == "openai"
             assert entry.details["forced_tool"] == "browser"
+            assert entry.details["operation"] == "tool_execution"
+            assert entry.details["phase"] == "before_tool"
             assert entry.details["session_id"] == "session-1"
             assert entry.details["task_id"] == str(task_id)
             assert isinstance(entry.details["current_autonomy_level"], int)
             assert entry.details["current_autonomy_level_name"]
+            assert isinstance(entry.details["technical_context"], dict)
 
 
 @pytest.mark.asyncio

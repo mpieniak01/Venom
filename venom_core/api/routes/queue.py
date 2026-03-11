@@ -1,10 +1,14 @@
 """Moduł: routes/queue - Endpointy API dla zarządzania kolejką zadań."""
 
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from venom_core.api.routes.permission_denied_contract import (
+    raise_permission_denied_http,
+    resolve_actor_from_request,
+)
 from venom_core.api.schemas.queue import QueueActionResponse, QueueStatusResponse
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.utils.logger import get_logger
@@ -134,7 +138,7 @@ async def resume_queue():
     response_model=QueueActionResponse,
     responses=QUEUE_BASE_RESPONSES,
 )
-async def purge_queue():
+async def purge_queue(req: Request = cast(Request, None)):
     """
     Czyści kolejkę - usuwa wszystkie oczekujące zadania.
 
@@ -156,7 +160,11 @@ async def purge_queue():
         )
         return result
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(
+            e,
+            operation="queue.purge",
+            actor=resolve_actor_from_request(req),
+        )
     except Exception as e:
         logger.exception("Błąd podczas czyszczenia kolejki")
         raise HTTPException(
@@ -169,7 +177,7 @@ async def purge_queue():
     response_model=QueueActionResponse,
     responses=QUEUE_BASE_RESPONSES,
 )
-async def emergency_stop():
+async def emergency_stop(req: Request = cast(Request, None)):
     """
     Awaryjne zatrzymanie systemu - anuluje wszystkie zadania i czyści kolejkę.
 
@@ -188,7 +196,11 @@ async def emergency_stop():
         logger.error("🚨 Emergency Stop wywołany przez API")
         return result
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(
+            e,
+            operation="queue.emergency_stop",
+            actor=resolve_actor_from_request(req),
+        )
     except Exception as e:
         logger.exception("Błąd podczas Emergency Stop")
         raise HTTPException(

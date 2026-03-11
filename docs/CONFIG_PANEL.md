@@ -71,7 +71,7 @@ Canonical technical audit stream in core:
 - Unified read path for configuration audit UI
 - Technical/API scope (separate from product-specific module logs)
 
-#### API Endpoints (`venom_core/api/routes/system.py`, `venom_core/api/routes/audit_stream.py`)
+#### API Endpoints (`venom_core/api/routes/system_runtime.py`, `venom_core/api/routes/system_config.py`, `venom_core/api/routes/system_governance.py`, `venom_core/api/routes/audit_stream.py`)
 
 **Runtime:**
 ```

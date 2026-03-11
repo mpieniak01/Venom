@@ -67,6 +67,31 @@ def test_autonomy_block_publishes_audit_entry():
     entry = entries[0]
     assert entry.source == "core.autonomy"
     assert entry.status == "blocked"
+    assert entry.details["decision"] == "block"
+    assert entry.details["reason_code"] == "AUTONOMY_PERMISSION_DENIED"
+    assert "autonomy" in entry.details["tags"]
     assert entry.details["operation"] == "core_patch"
-    assert entry.details["current_level"] == 0
-    assert entry.details["current_level_name"] == "ISOLATED"
+    assert entry.details["current_autonomy_level"] == 0
+    assert entry.details["current_autonomy_level_name"] == "ISOLATED"
+    assert isinstance(entry.details["technical_context"], dict)
+
+
+def test_autonomy_soft_mode_allows_with_degraded_audit(monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTONOMY_ENFORCEMENT_MODE", "soft")
+    skill = CoreSkill(backup_dir=str(tmp_path / "backups"))
+    target = tmp_path / "soft_mode.py"
+    target.write_text("print('before')", encoding="utf-8")
+
+    skill.hot_patch(str(target), "print('soft-allowed')")
+
+    entries = get_audit_stream().get_entries(action="autonomy.degraded_allow", limit=5)
+    assert entries
+    entry = entries[0]
+    assert entry.source == "core.autonomy"
+    assert entry.status == "degraded"
+    assert entry.details["decision"] == "degraded_allow"
+    assert entry.details["reason_code"] == "AUTONOMY_PERMISSION_DENIED"
+    assert entry.details["operation"] == "core_patch"
+    assert entry.details["enforcement_mode"] == "soft"
+    assert entry.details["terminal"] is False
+    assert entry.details["retryable"] is False

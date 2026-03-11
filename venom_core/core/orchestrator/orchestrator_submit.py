@@ -10,7 +10,10 @@ from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
 from venom_core.core import routing_integration
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
-from venom_core.core.permission_guard import permission_guard
+from venom_core.core.policy_autonomy_contract import (
+    build_policy_block_payload,
+    to_audit_details,
+)
 from venom_core.core.policy_gate import (
     PolicyDecision,
     PolicyEvaluationContext,
@@ -87,28 +90,29 @@ async def _check_policy_before_provider(
 
     # Zadanie zostało zablokowane
     logger.warning(f"Policy gate blocked task {task.id}: {policy_result.reason_code}")
-    current_level = permission_guard.get_current_level()
     reason_code = (
         getattr(policy_result.reason_code, "value", policy_result.reason_code)
         if policy_result.reason_code
         else None
+    )
+    payload = build_policy_block_payload(
+        reason_code=reason_code,
+        user_message=policy_result.message,
+        phase="before_provider",
+        operation="provider_selection",
+        task_id=str(task.id),
+        intent=getattr(policy_context, "intent", None),
+        planned_provider=getattr(policy_context, "planned_provider", None),
+        forced_provider=getattr(policy_context, "forced_provider", None),
+        forced_tool=getattr(policy_context, "forced_tool", None),
+        session_id=getattr(policy_context, "session_id", None),
     )
     get_audit_stream().publish(
         source="core.policy",
         action="policy.blocked.before_provider",
         actor="system",
         status="blocked",
-        details={
-            "reason_code": reason_code,
-            "intent": getattr(policy_context, "intent", None),
-            "planned_provider": getattr(policy_context, "planned_provider", None),
-            "forced_tool": getattr(policy_context, "forced_tool", None),
-            "forced_provider": getattr(policy_context, "forced_provider", None),
-            "session_id": getattr(policy_context, "session_id", None),
-            "task_id": str(task.id),
-            "current_autonomy_level": current_level,
-            "current_autonomy_level_name": permission_guard.get_current_level_name(),
-        },
+        details=to_audit_details(payload),
     )
     orch.state_manager.add_log(
         task.id, f"🚫 Policy gate blocked: {policy_result.message}"
@@ -123,6 +127,9 @@ async def _check_policy_before_provider(
             if policy_result.reason_code
             else None,
             "user_message": policy_result.message,
+            "technical_context": payload.technical_context.model_dump(
+                exclude_none=True
+            ),
         },
     )
 
@@ -162,11 +169,13 @@ async def _check_policy_before_provider(
     return TaskResponse(
         task_id=task.id,
         status=TaskStatus.FAILED,
+        decision=payload.decision.value,
         policy_blocked=True,
         reason_code=policy_result.reason_code.value
         if policy_result.reason_code
         else None,
         user_message=policy_result.message,
+        technical_context=payload.technical_context.model_dump(exclude_none=True),
     )
 
 
@@ -442,6 +451,7 @@ def _build_task_response(task, runtime_info) -> TaskResponse:
     return TaskResponse(
         task_id=task.id,
         status=task.status,
+        decision="allow",
         llm_provider=runtime_info.provider,
         llm_model=runtime_info.model_name,
         llm_endpoint=runtime_info.endpoint,

@@ -152,6 +152,10 @@ def _normalize_evaluation_baseline_payload(
                 f"EVALUATION_BASELINE_INVALID: Missing baseline field '{key}'."
             )
         raw_value = payload.get(key)
+        if raw_value is None:
+            raise ValueError(
+                f"EVALUATION_BASELINE_INVALID: Baseline field '{key}' must be numeric."
+            )
         try:
             value = float(raw_value)
         except (TypeError, ValueError) as exc:

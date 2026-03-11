@@ -263,6 +263,31 @@ make pytest
 ```
 
 `make pytest` uruchamia grupy backendu w kolejności: `heavy` -> `long` -> `fast`.
+Domyślna polityka selekcji:
+- `heavy`: zawiera testy performance, wyklucza tylko `manual_llm`.
+- `long` i `fast`: wykluczają `performance` oraz `manual_llm`.
+- jawna lista testów długich/manualnych jest czytana z:
+  `config/pytest-groups/manual-long-running.txt`
+Automatyczna regresja domyślnie wyklucza testy manualne LLM i wydajności:
+- `not performance and not manual_llm`
+
+Manualne testy operatora dla LLM:
+
+```bash
+make test-llm-manual
+```
+
+Manualne testy wydajności:
+
+```bash
+make test-perf
+```
+
+Audyt czasu long/heavy (>120s):
+
+```bash
+make test-duration-audit
+```
 
 Frontend:
 
@@ -289,6 +314,10 @@ Scenariusze performance/latency:
 - `npm --prefix web-next run test:perf`
 - `pytest tests/perf/test_chat_pipeline.py -m performance`
 - `./scripts/run-locust.sh`
+
+Uwagi:
+- Testy konfiguracji środowiska oraz testy obciążeniowe/latency LLM są manualne (nie są częścią automatycznej regresji).
+- Bramki regresyjne mają potwierdzać deterministyczne zachowanie produktu, a nie przepustowość benchmarkową.
 
 ## CI i Sonar (referencja)
 

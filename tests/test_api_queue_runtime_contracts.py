@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -92,10 +92,46 @@ async def test_queue_mutation_blocked_in_preprod(
     with pytest.raises(HTTPException) as exc:
         await queue_routes.purge_queue()
     assert exc.value.status_code == 403
+    assert isinstance(exc.value.detail, dict)
+    assert exc.value.detail["decision"] == "block"
+    assert exc.value.detail["reason_code"] == "PERMISSION_DENIED"
+    assert exc.value.detail["technical_context"]["operation"] == "queue.purge"
 
     with pytest.raises(HTTPException) as exc:
         await queue_routes.emergency_stop()
     assert exc.value.status_code == 403
+    assert isinstance(exc.value.detail, dict)
+    assert exc.value.detail["decision"] == "block"
+    assert exc.value.detail["reason_code"] == "PERMISSION_DENIED"
+    assert exc.value.detail["technical_context"]["operation"] == "queue.emergency_stop"
+
+
+@pytest.mark.asyncio
+async def test_queue_mutation_blocked_publishes_request_actor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    orchestrator = MagicMock()
+    orchestrator.purge_queue = AsyncMock(return_value={"removed": 1})
+    queue_routes.set_dependencies(orchestrator)
+    monkeypatch.setattr(
+        queue_routes,
+        "ensure_data_mutation_allowed",
+        lambda _name: (_ for _ in ()).throw(PermissionError("blocked")),
+    )
+    req = SimpleNamespace(
+        headers={"x-user": "bob"},
+        client=SimpleNamespace(host="127.0.0.1"),
+    )
+    audit_stream = MagicMock()
+    with patch(
+        "venom_core.api.routes.permission_denied_contract.get_audit_stream",
+        return_value=audit_stream,
+    ):
+        with pytest.raises(HTTPException):
+            await queue_routes.purge_queue(req=req)
+
+    audit_stream.publish.assert_called_once()
+    assert audit_stream.publish.call_args.kwargs["actor"] == "bob"
 
 
 def test_strategy_routes_success_and_errors() -> None:

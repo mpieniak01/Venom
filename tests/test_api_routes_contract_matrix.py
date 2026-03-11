@@ -1912,6 +1912,12 @@ class TestSystemConfig:
         with pytest.raises(HTTPException) as exc_info:
             require_localhost_request(mock_req)
         assert exc_info.value.status_code == 403
+        assert exc_info.value.detail["decision"] == "block"
+        assert exc_info.value.detail["reason_code"] == "PERMISSION_DENIED"
+        assert (
+            exc_info.value.detail["technical_context"]["operation"]
+            == "system.config.localhost_guard"
+        )
 
     def test_require_localhost_request_denies_no_client(self):
         """Test require_localhost_request raises 403 when client is None."""
@@ -1924,3 +1930,128 @@ class TestSystemConfig:
         with pytest.raises(HTTPException) as exc_info:
             require_localhost_request(mock_req)
         assert exc_info.value.status_code == 403
+        assert exc_info.value.detail["decision"] == "block"
+        assert exc_info.value.detail["reason_code"] == "PERMISSION_DENIED"
+        assert (
+            exc_info.value.detail["technical_context"]["operation"]
+            == "system.config.localhost_guard"
+        )
+
+    def test_require_localhost_request_denies_remote_publishes_policy_audit(self):
+        from fastapi import HTTPException
+
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+        from venom_core.api.routes.system_config import require_localhost_request
+
+        mock_req = MagicMock()
+        mock_req.client = SimpleNamespace(host="10.0.0.2")
+        audit_stream = MagicMock()
+        with patch.object(denied_mod, "get_audit_stream", return_value=audit_stream):
+            with pytest.raises(HTTPException) as exc_info:
+                require_localhost_request(mock_req)
+
+        assert exc_info.value.status_code == 403
+        audit_stream.publish.assert_called_once()
+        call_kwargs = audit_stream.publish.call_args.kwargs
+        assert call_kwargs["source"] == "api.permission"
+        assert call_kwargs["action"] == "policy.blocked.route"
+        assert call_kwargs["actor"] == "client:10.0.0.2"
+        assert call_kwargs["status"] == "blocked"
+        assert call_kwargs["context"] == "system.config.localhost_guard"
+        assert (
+            call_kwargs["details"]["technical_context"]["operation"]
+            == "system.config.localhost_guard"
+        )
+
+    def test_raise_permission_denied_http_publishes_policy_audit(self):
+        from fastapi import HTTPException
+
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+
+        audit_stream = MagicMock()
+        with patch.object(denied_mod, "get_audit_stream", return_value=audit_stream):
+            with pytest.raises(HTTPException) as exc_info:
+                denied_mod.raise_permission_denied_http(
+                    PermissionError("blocked"),
+                    operation="route.policy.test",
+                )
+
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.detail["reason_code"] == "PERMISSION_DENIED"
+        audit_stream.publish.assert_called_once()
+        call_kwargs = audit_stream.publish.call_args.kwargs
+        assert call_kwargs["source"] == "api.permission"
+        assert call_kwargs["action"] == "policy.blocked.route"
+        assert call_kwargs["actor"] == "api.route"
+        assert call_kwargs["status"] == "blocked"
+        assert call_kwargs["context"] == "route.policy.test"
+
+    def test_raise_permission_denied_http_publishes_autonomy_audit(self):
+        from fastapi import HTTPException
+
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+        from venom_core.core.autonomy_enforcement import AutonomyPermissionDenied
+        from venom_core.core.policy_autonomy_contract import (
+            build_autonomy_block_payload,
+        )
+
+        payload = build_autonomy_block_payload(
+            user_message="Autonomy blocked",
+            operation="route.autonomy.test",
+            required_level=40,
+            required_level_name="ROOT",
+            task_id="task-audit",
+            session_id="session-audit",
+        )
+        exc = AutonomyPermissionDenied(payload)
+        audit_stream = MagicMock()
+        with patch.object(denied_mod, "get_audit_stream", return_value=audit_stream):
+            with pytest.raises(HTTPException) as exc_info:
+                denied_mod.raise_permission_denied_http(
+                    exc,
+                    operation="route.autonomy.test",
+                )
+
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.detail["reason_code"] == "AUTONOMY_PERMISSION_DENIED"
+        audit_stream.publish.assert_called_once()
+        call_kwargs = audit_stream.publish.call_args.kwargs
+        assert call_kwargs["action"] == "autonomy.blocked"
+        assert call_kwargs["actor"] == "api.route"
+        assert call_kwargs["context"] == "route.autonomy.test"
+
+    def test_resolve_actor_from_request_prefers_authenticated_header_for_trusted_host(
+        self,
+    ):
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+
+        request = MagicMock()
+        request.headers = {"x-authenticated-user": "alice", "x-user": "bob"}
+        request.client = SimpleNamespace(host="127.0.0.1")
+        assert denied_mod.resolve_actor_from_request(request) == "alice"
+
+    def test_resolve_actor_from_request_uses_x_user_fallback_for_trusted_host(self):
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+
+        request = MagicMock()
+        request.headers = {"x-user": "bob"}
+        request.client = SimpleNamespace(host="127.0.0.1")
+        assert denied_mod.resolve_actor_from_request(request) == "bob"
+
+    def test_resolve_actor_from_request_ignores_identity_headers_for_untrusted_host(
+        self,
+    ):
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+
+        request = MagicMock()
+        request.headers = {"x-authenticated-user": "alice", "x-user": "bob"}
+        request.client = SimpleNamespace(host="10.1.2.4")
+        assert denied_mod.resolve_actor_from_request(request) == "client:10.1.2.4"
+
+    def test_resolve_actor_from_request_uses_client_host_when_no_headers(self):
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+
+        request = MagicMock()
+        request.headers = {}
+        request.client = SimpleNamespace(host="10.1.2.5")
+        assert denied_mod.resolve_actor_from_request(request) == "client:10.1.2.5"

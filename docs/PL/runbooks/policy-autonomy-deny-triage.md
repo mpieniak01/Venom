@@ -24,8 +24,9 @@ Dotyczy:
 
 Interpretacja:
 
-- `decision=block`: terminalna blokada tej operacji (`technical_context.terminal=true`, `retryable=false`).
+- `decision=block`: operacja została zablokowana przez policy/autonomy. Dla blokad autonomii w trybie hard traktuj jako terminalne (`technical_context.terminal=true`, `retryable=false`).
 - `decision=degraded_allow`: operacja przeszła w trybie miękkim; traktuj jako sygnał driftu polityki.
+- Route-level `PERMISSION_DENIED` może być retryable po spełnieniu preconditions (localhost/admin header/token).
 
 ## 3. Kontrola audit stream
 

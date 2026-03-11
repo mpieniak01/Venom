@@ -37,7 +37,7 @@ def test_governance_permission_denied_audit_actor_from_request(
     )
     req = SimpleNamespace(
         headers={"x-authenticated-user": "alice"},
-        client=SimpleNamespace(host="10.20.30.40"),
+        client=SimpleNamespace(host="127.0.0.1"),
     )
     audit_stream = MagicMock()
     with patch(

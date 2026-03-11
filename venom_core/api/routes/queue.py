@@ -1,6 +1,6 @@
 """Moduł: routes/queue - Endpointy API dla zarządzania kolejką zadań."""
 
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
@@ -138,7 +138,7 @@ async def resume_queue():
     response_model=QueueActionResponse,
     responses=QUEUE_BASE_RESPONSES,
 )
-async def purge_queue(req: Request):
+async def purge_queue(req: Request = cast(Request, None)):
     """
     Czyści kolejkę - usuwa wszystkie oczekujące zadania.
 
@@ -177,7 +177,7 @@ async def purge_queue(req: Request):
     response_model=QueueActionResponse,
     responses=QUEUE_BASE_RESPONSES,
 )
-async def emergency_stop(req: Request):
+async def emergency_stop(req: Request = cast(Request, None)):
     """
     Awaryjne zatrzymanie systemu - anuluje wszystkie zadania i czyści kolejkę.
 

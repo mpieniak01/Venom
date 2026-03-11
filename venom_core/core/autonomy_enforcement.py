@@ -41,7 +41,7 @@ def _deny(
     task_id: str | None = None,
     session_id: str | None = None,
 ) -> None:
-    mode = str(os.getenv("AUTONOMY_ENFORCEMENT_MODE", "hard") or "hard").strip().lower()
+    mode = os.getenv("AUTONOMY_ENFORCEMENT_MODE", "hard").strip().lower()
     normalized_mode = "soft" if mode == "soft" else "hard"
     is_hard = normalized_mode == "hard"
     payload = build_autonomy_block_payload(
@@ -60,8 +60,6 @@ def _deny(
         retryable=False,
     )
     details = to_audit_details(payload)
-    if skill_name:
-        details["skill_name"] = skill_name
     get_audit_stream().publish(
         source="core.autonomy",
         action="autonomy.blocked" if is_hard else "autonomy.degraded_allow",

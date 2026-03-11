@@ -1,7 +1,7 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
 from datetime import datetime, timezone
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Optional, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -95,7 +95,7 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 def _enforce_mutation_allowed(
     operation_name: str,
-    req: Request,
+    req: Request = cast(Request, None),
 ) -> None:
     try:
         ensure_data_mutation_allowed(operation_name)
@@ -460,7 +460,7 @@ def get_knowledge_context_map(
 @router.get("/graph/summary", responses=INTERNAL_ERROR_RESPONSES)
 def get_graph_summary(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """
     Zwraca podsumowanie grafu kodu.
@@ -520,7 +520,7 @@ def get_graph_summary(
 def get_file_graph_info(
     file_path: str,
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """
     Zwraca informacje o pliku w grafie.
@@ -560,7 +560,7 @@ def get_file_graph_info(
 def get_impact_analysis(
     file_path: str,
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """
     Analizuje wpływ zmian w pliku.
@@ -599,7 +599,7 @@ def get_impact_analysis(
 @router.post("/graph/scan", responses=INTERNAL_ERROR_RESPONSES)
 def trigger_graph_scan(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """
     Uruchamia skanowanie grafu kodu.
@@ -635,7 +635,7 @@ def trigger_graph_scan(
 @router.get("/lessons", responses=LESSONS_READ_RESPONSES)
 def get_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    req: Request,
+    req: Request = cast(Request, None),
     limit: int = 10,
     tags: Optional[str] = None,
 ):
@@ -681,7 +681,7 @@ def get_lessons(
 @router.get("/lessons/stats", responses=LESSONS_READ_RESPONSES)
 def get_lessons_stats(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """
     Zwraca statystyki magazynu lekcji.
@@ -716,7 +716,7 @@ def prune_latest_lessons(
         int,
         Query(..., ge=1, description="Liczba najnowszych lekcji do usunięcia"),
     ],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """
     Usuwa n najnowszych lekcji z magazynu.
@@ -752,7 +752,7 @@ def prune_lessons_by_range(
             description="Data końcowa w formacie ISO 8601 (np. 2024-01-31T23:59:59)",
         ),
     ],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """
     Usuwa lekcje z podanego zakresu czasu.
@@ -786,7 +786,7 @@ def prune_lessons_by_range(
 def prune_lessons_by_tag(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     tag: Annotated[str, Query(..., description="Tag do wyszukania i usunięcia")],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """
     Usuwa lekcje zawierające dany tag.
@@ -808,7 +808,7 @@ def prune_lessons_by_tag(
 @router.delete("/lessons/purge", responses=LESSONS_MUTATION_RESPONSES)
 def purge_all_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    req: Request,
+    req: Request = cast(Request, None),
     force: Annotated[
         bool, Query(description="Wymagane potwierdzenie dla operacji nuklearnej")
     ] = False,
@@ -841,7 +841,7 @@ def purge_all_lessons(
 def prune_lessons_by_ttl(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     days: Annotated[int, Query(..., ge=1, description="Liczba dni retencji (TTL)")],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """Usuwa lekcje starsze niż TTL w dniach."""
     _enforce_mutation_allowed("knowledge.lessons.prune_ttl", req=req)
@@ -860,7 +860,7 @@ def prune_lessons_by_ttl(
 @router.post("/lessons/dedupe", responses=INTERNAL_ERROR_RESPONSES)
 def dedupe_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    req: Request,
+    req: Request = cast(Request, None),
 ):
     """Deduplikuje lekcje na podstawie podpisu treści."""
     _enforce_mutation_allowed("knowledge.lessons.dedupe", req=req)

@@ -120,7 +120,7 @@ async def test_queue_mutation_blocked_publishes_request_actor(
     )
     req = SimpleNamespace(
         headers={"x-user": "bob"},
-        client=SimpleNamespace(host="10.0.0.9"),
+        client=SimpleNamespace(host="127.0.0.1"),
     )
     audit_stream = MagicMock()
     with patch(

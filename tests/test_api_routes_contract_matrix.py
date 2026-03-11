@@ -2020,21 +2020,33 @@ class TestSystemConfig:
         assert call_kwargs["actor"] == "api.route"
         assert call_kwargs["context"] == "route.autonomy.test"
 
-    def test_resolve_actor_from_request_prefers_authenticated_header(self):
+    def test_resolve_actor_from_request_prefers_authenticated_header_for_trusted_host(
+        self,
+    ):
         from venom_core.api.routes import permission_denied_contract as denied_mod
 
         request = MagicMock()
         request.headers = {"x-authenticated-user": "alice", "x-user": "bob"}
-        request.client = SimpleNamespace(host="10.1.2.3")
+        request.client = SimpleNamespace(host="127.0.0.1")
         assert denied_mod.resolve_actor_from_request(request) == "alice"
 
-    def test_resolve_actor_from_request_uses_x_user_fallback(self):
+    def test_resolve_actor_from_request_uses_x_user_fallback_for_trusted_host(self):
         from venom_core.api.routes import permission_denied_contract as denied_mod
 
         request = MagicMock()
         request.headers = {"x-user": "bob"}
-        request.client = SimpleNamespace(host="10.1.2.4")
+        request.client = SimpleNamespace(host="127.0.0.1")
         assert denied_mod.resolve_actor_from_request(request) == "bob"
+
+    def test_resolve_actor_from_request_ignores_identity_headers_for_untrusted_host(
+        self,
+    ):
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+
+        request = MagicMock()
+        request.headers = {"x-authenticated-user": "alice", "x-user": "bob"}
+        request.client = SimpleNamespace(host="10.1.2.4")
+        assert denied_mod.resolve_actor_from_request(request) == "client:10.1.2.4"
 
     def test_resolve_actor_from_request_uses_client_host_when_no_headers(self):
         from venom_core.api.routes import permission_denied_contract as denied_mod

@@ -12,6 +12,9 @@ from venom_core.api.dependencies import (
     get_vector_store,
 )
 from venom_core.api.routes.graph_view_utils import apply_graph_view
+from venom_core.api.routes.permission_denied_contract import (
+    raise_permission_denied_http,
+)
 from venom_core.api.schemas.knowledge import LearningToggleRequest
 from venom_core.config import SETTINGS
 from venom_core.memory.graph_store import CodeGraphStore
@@ -93,7 +96,7 @@ def _enforce_mutation_allowed(operation_name: str) -> None:
     try:
         ensure_data_mutation_allowed(operation_name)
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation=operation_name)
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -494,7 +497,7 @@ def get_graph_summary(
             "lastUpdated": last_updated,
         }
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="knowledge.graph.summary")
     except Exception as e:
         logger.exception("Błąd podczas pobierania podsumowania grafu")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -528,7 +531,7 @@ def get_file_graph_info(
     except HTTPException:
         raise
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="knowledge.graph.file_info")
     except Exception as e:
         logger.exception("Błąd podczas pobierania informacji o pliku z grafu")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -562,7 +565,7 @@ def get_impact_analysis(
     except HTTPException:
         raise
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="knowledge.graph.impact")
     except Exception as e:
         logger.exception("Błąd podczas analizy wpływu pliku w grafie")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -593,7 +596,7 @@ def trigger_graph_scan(
             "stats": stats,
         }
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="knowledge.graph.scan")
     except Exception as e:
         logger.exception("Błąd podczas uruchamiania skanowania grafu")
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
@@ -634,7 +637,7 @@ def get_lessons(
             "lessons": lessons_data,
         }
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="knowledge.lessons.list")
     except Exception as e:
         logger.exception("Błąd podczas pobierania lekcji")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
@@ -657,7 +660,7 @@ def get_lessons_stats(
         stats = lessons_store.get_statistics()
         return {"status": "success", "stats": stats}
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="knowledge.lessons.stats")
     except Exception as e:
         logger.exception("Błąd podczas pobierania statystyk lekcji")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

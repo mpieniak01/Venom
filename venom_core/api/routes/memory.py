@@ -12,6 +12,9 @@ from venom_core.api.dependencies import (
     is_testing_mode,
 )
 from venom_core.api.routes.graph_view_utils import apply_graph_view
+from venom_core.api.routes.permission_denied_contract import (
+    raise_permission_denied_http,
+)
 from venom_core.api.schemas.memory import (
     CacheFlushResponse,
     GlobalMemoryClearResponse,
@@ -231,7 +234,7 @@ def clear_session_memory(
     try:
         ensure_data_mutation_allowed("memory.clear_session")
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="memory.clear_session")
 
     deleted_vectors = 0
     try:
@@ -299,7 +302,7 @@ def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_store)])
     try:
         ensure_data_mutation_allowed("memory.clear_global")
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="memory.clear_global")
     try:
         deleted = vector_store.delete_by_metadata({"user_id": DEFAULT_USER_ID})
         # Jeśli nie znaleziono nic do usunięcia (np. stare wpisy bez metadanych user_id),
@@ -442,7 +445,7 @@ def delete_memory_entry(
     try:
         ensure_data_mutation_allowed("memory.delete_entry")
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="memory.delete_entry")
     try:
         deleted = vector_store.delete_entry(entry_id)
         if deleted == 0:
@@ -480,7 +483,7 @@ def flush_semantic_cache():
     try:
         ensure_data_mutation_allowed("memory.flush_semantic_cache")
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="memory.flush_semantic_cache")
     try:
         from venom_core.core.orchestrator.constants import (
             SEMANTIC_CACHE_COLLECTION_NAME,

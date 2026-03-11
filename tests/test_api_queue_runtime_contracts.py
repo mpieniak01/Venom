@@ -92,10 +92,18 @@ async def test_queue_mutation_blocked_in_preprod(
     with pytest.raises(HTTPException) as exc:
         await queue_routes.purge_queue()
     assert exc.value.status_code == 403
+    assert isinstance(exc.value.detail, dict)
+    assert exc.value.detail["decision"] == "block"
+    assert exc.value.detail["reason_code"] == "PERMISSION_DENIED"
+    assert exc.value.detail["technical_context"]["operation"] == "queue.purge"
 
     with pytest.raises(HTTPException) as exc:
         await queue_routes.emergency_stop()
     assert exc.value.status_code == 403
+    assert isinstance(exc.value.detail, dict)
+    assert exc.value.detail["decision"] == "block"
+    assert exc.value.detail["reason_code"] == "PERMISSION_DENIED"
+    assert exc.value.detail["technical_context"]["operation"] == "queue.emergency_stop"
 
 
 def test_strategy_routes_success_and_errors() -> None:

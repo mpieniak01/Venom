@@ -15,3 +15,10 @@ def test_governance_permission_denied_branch(monkeypatch: pytest.MonkeyPatch):
     with pytest.raises(HTTPException) as exc_info:
         governance.reset_usage()
     assert exc_info.value.status_code == 403
+    assert isinstance(exc_info.value.detail, dict)
+    assert exc_info.value.detail["decision"] == "block"
+    assert exc_info.value.detail["reason_code"] == "PERMISSION_DENIED"
+    assert (
+        exc_info.value.detail["technical_context"]["operation"]
+        == "governance.reset_usage"
+    )

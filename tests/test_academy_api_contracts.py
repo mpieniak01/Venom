@@ -106,6 +106,11 @@ def test_require_localhost_request_blocks_remote():
     with pytest.raises(academy_routes.AcademyRouteError) as exc:
         academy_routes.require_localhost_request(req)
     assert exc.value.status_code == 403
+    assert exc.value.detail["decision"] == "block"
+    assert exc.value.detail["reason_code"] == "PERMISSION_DENIED"
+    assert (
+        exc.value.detail["technical_context"]["operation"] == "academy.localhost_guard"
+    )
 
 
 @patch("venom_core.config.SETTINGS")

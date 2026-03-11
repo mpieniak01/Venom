@@ -5,6 +5,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
+from venom_core.api.routes.permission_denied_contract import (
+    raise_permission_denied_http,
+)
 from venom_core.api.schemas.queue import QueueActionResponse, QueueStatusResponse
 from venom_core.core.environment_policy import ensure_data_mutation_allowed
 from venom_core.utils.logger import get_logger
@@ -156,7 +159,7 @@ async def purge_queue():
         )
         return result
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="queue.purge")
     except Exception as e:
         logger.exception("Błąd podczas czyszczenia kolejki")
         raise HTTPException(
@@ -188,7 +191,7 @@ async def emergency_stop():
         logger.error("🚨 Emergency Stop wywołany przez API")
         return result
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="queue.emergency_stop")
     except Exception as e:
         logger.exception("Błąd podczas Emergency Stop")
         raise HTTPException(

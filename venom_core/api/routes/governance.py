@@ -4,6 +4,9 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 
+from venom_core.api.routes.permission_denied_contract import (
+    raise_permission_denied_http,
+)
 from venom_core.api.schemas.governance import (
     GovernanceStatusResponse,
     LimitsConfigResponse,
@@ -186,7 +189,7 @@ def reset_usage(scope: Optional[str] = None) -> Dict[str, Any]:
         )
 
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+        raise_permission_denied_http(e, operation="governance.reset_usage")
     except Exception as e:
         logger.exception("Błąd podczas resetowania liczników")
         raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL) from e

@@ -28,9 +28,17 @@ def test_memory_mutation_endpoints_blocked(monkeypatch):
 
     resp = client.delete("/api/v1/memory/global")
     assert resp.status_code == 403
+    detail = resp.json()["detail"]
+    assert detail["decision"] == "block"
+    assert detail["reason_code"] == "PERMISSION_DENIED"
+    assert detail["technical_context"]["operation"] == "memory.clear_global"
 
     resp = client.delete("/api/v1/memory/session/sess-1")
     assert resp.status_code == 403
+    detail = resp.json()["detail"]
+    assert detail["decision"] == "block"
+    assert detail["reason_code"] == "PERMISSION_DENIED"
+    assert detail["technical_context"]["operation"] == "memory.clear_session"
 
 
 def test_knowledge_mutation_endpoints_blocked(monkeypatch):
@@ -44,12 +52,20 @@ def test_knowledge_mutation_endpoints_blocked(monkeypatch):
 
     resp = client.delete("/api/v1/lessons/prune/latest?count=1")
     assert resp.status_code == 403
+    detail = resp.json()["detail"]
+    assert detail["decision"] == "block"
+    assert detail["reason_code"] == "PERMISSION_DENIED"
+    assert detail["technical_context"]["operation"] == "knowledge.lessons.prune_latest"
 
     resp = client.delete("/api/v1/lessons/prune/ttl?days=3")
     assert resp.status_code == 403
 
     resp = client.post("/api/v1/lessons/dedupe")
     assert resp.status_code == 403
+    detail = resp.json()["detail"]
+    assert detail["decision"] == "block"
+    assert detail["reason_code"] == "PERMISSION_DENIED"
+    assert detail["technical_context"]["operation"] == "knowledge.lessons.dedupe"
 
 
 def test_governance_reset_usage_blocked(monkeypatch):
@@ -60,3 +76,7 @@ def test_governance_reset_usage_blocked(monkeypatch):
     monkeypatch.setattr(governance_routes, "ensure_data_mutation_allowed", _blocked)
     resp = client.post("/api/v1/governance/reset-usage")
     assert resp.status_code == 403
+    detail = resp.json()["detail"]
+    assert detail["decision"] == "block"
+    assert detail["reason_code"] == "PERMISSION_DENIED"
+    assert detail["technical_context"]["operation"] == "governance.reset_usage"

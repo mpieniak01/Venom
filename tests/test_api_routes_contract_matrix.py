@@ -1912,6 +1912,12 @@ class TestSystemConfig:
         with pytest.raises(HTTPException) as exc_info:
             require_localhost_request(mock_req)
         assert exc_info.value.status_code == 403
+        assert exc_info.value.detail["decision"] == "block"
+        assert exc_info.value.detail["reason_code"] == "PERMISSION_DENIED"
+        assert (
+            exc_info.value.detail["technical_context"]["operation"]
+            == "system.config.localhost_guard"
+        )
 
     def test_require_localhost_request_denies_no_client(self):
         """Test require_localhost_request raises 403 when client is None."""
@@ -1924,3 +1930,9 @@ class TestSystemConfig:
         with pytest.raises(HTTPException) as exc_info:
             require_localhost_request(mock_req)
         assert exc_info.value.status_code == 403
+        assert exc_info.value.detail["decision"] == "block"
+        assert exc_info.value.detail["reason_code"] == "PERMISSION_DENIED"
+        assert (
+            exc_info.value.detail["technical_context"]["operation"]
+            == "system.config.localhost_guard"
+        )

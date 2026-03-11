@@ -9,6 +9,7 @@ from typing import Annotated, Optional
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
+from venom_core.core.autonomy_enforcement import require_shell_permission
 from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
@@ -245,6 +246,7 @@ class DocsSkill:
             Komunikat o wyniku operacji
         """
         try:
+            require_shell_permission()
             logger.info("Budowanie strony dokumentacji...")
 
             # Sprawdź czy mkdocs.yml istnieje

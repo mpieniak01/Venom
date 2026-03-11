@@ -100,7 +100,9 @@ tests/test_intent_embedding_router_edges.py
 tests/test_intent_manager_contracts.py
 tests/test_issue_handler_flow_light.py
 tests/test_jobs_scheduler_cleanup.py
+tests/test_knowledge_context_map_api.py
 tests/test_knowledge_context_service.py
+tests/test_knowledge_entries_service.py
 tests/test_knowledge_graph_service.py
 tests/test_lessons_manager.py
 tests/test_llm_runtime_activation_api.py

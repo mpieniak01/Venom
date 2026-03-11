@@ -165,6 +165,27 @@ def _matches_tags(entry: KnowledgeEntry, expected_tags: set[str]) -> bool:
     return bool(entry_tags.intersection(expected_tags))
 
 
+def _entry_matches(
+    *,
+    entry: KnowledgeEntry,
+    query: KnowledgeEntriesQuery,
+    expected_tags: set[str],
+    created_from: datetime | None,
+    created_to: datetime | None,
+) -> bool:
+    if query.scope and entry.scope != query.scope:
+        return False
+    if query.source and entry.source_meta.origin != query.source:
+        return False
+    if query.session_id and entry.session_id != query.session_id:
+        return False
+    if not _matches_tags(entry, expected_tags):
+        return False
+    if not _matches_time_window(entry, created_from, created_to):
+        return False
+    return True
+
+
 def _filter_entries(
     entries: list[KnowledgeEntry], query: KnowledgeEntriesQuery
 ) -> list[KnowledgeEntry]:
@@ -177,21 +198,51 @@ def _filter_entries(
         for tag in (query.tags or [])
         if isinstance(tag, str) and tag.strip()
     }
-    filtered: list[KnowledgeEntry] = []
-    for entry in entries:
-        if query.scope and entry.scope != query.scope:
-            continue
-        if query.source and entry.source_meta.origin != query.source:
-            continue
-        if query.session_id and entry.session_id != query.session_id:
-            continue
-        if not _matches_tags(entry, expected_tags):
-            continue
-        if not _matches_time_window(entry, created_from, created_to):
-            continue
-        filtered.append(entry)
+    filtered = [
+        entry
+        for entry in entries
+        if _entry_matches(
+            entry=entry,
+            query=query,
+            expected_tags=expected_tags,
+            created_from=created_from,
+            created_to=created_to,
+        )
+    ]
     filtered.sort(key=lambda item: item.created_at, reverse=True)
     return filtered[: query.limit]
+
+
+def _read_lesson_records(
+    query: KnowledgeEntriesQuery, lessons_store: Any
+) -> list[KnowledgeRecordV1]:
+    if lessons_store is None:
+        return []
+    if query.session_id:
+        return read_lesson_records(
+            lessons_store=lessons_store,
+            session_id=query.session_id,
+            related_task_ids=set(),
+            limit=query.limit,
+        )
+    return [
+        from_lesson(lesson)
+        for lesson in lessons_store.get_all_lessons(limit=query.limit)
+    ]
+
+
+def _read_vector_records(
+    query: KnowledgeEntriesQuery, vector_store: Any
+) -> list[KnowledgeRecordV1]:
+    if vector_store is None:
+        return []
+    if query.session_id:
+        return read_memory_records(vector_store, query.session_id, query.limit)
+    records: list[KnowledgeRecordV1] = []
+    for entry in vector_store.list_entries(limit=query.limit):
+        if isinstance(entry, dict):
+            records.append(from_vector_entry(entry))
+    return records
 
 
 def list_federated_knowledge_entries(
@@ -205,30 +256,8 @@ def list_federated_knowledge_entries(
     records: list[KnowledgeRecordV1] = []
     for session_id in _collect_session_ids(session_store, query.session_id):
         records.extend(read_session_records(session_id, session_store))
-
-    if lessons_store is not None:
-        if query.session_id:
-            records.extend(
-                read_lesson_records(
-                    lessons_store=lessons_store,
-                    session_id=query.session_id,
-                    related_task_ids=set(),
-                    limit=query.limit,
-                )
-            )
-        else:
-            for lesson in lessons_store.get_all_lessons(limit=query.limit):
-                records.append(from_lesson(lesson))
-
-    if vector_store is not None:
-        if query.session_id:
-            records.extend(
-                read_memory_records(vector_store, query.session_id, query.limit)
-            )
-        else:
-            for entry in vector_store.list_entries(limit=query.limit):
-                if isinstance(entry, dict):
-                    records.append(from_vector_entry(entry))
+    records.extend(_read_lesson_records(query, lessons_store))
+    records.extend(_read_vector_records(query, vector_store))
 
     entries = [_to_entry(record) for record in records]
     _append_graph_entry(entries, graph_store)

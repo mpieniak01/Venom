@@ -68,6 +68,37 @@ def test_knowledge_mutation_endpoints_blocked(monkeypatch):
     assert detail["technical_context"]["operation"] == "knowledge.lessons.dedupe"
 
 
+def test_knowledge_mutation_success_publishes_audit(monkeypatch):
+    app = FastAPI()
+    app.include_router(knowledge_routes.router)
+    client = TestClient(app)
+
+    lessons_store = MagicMock()
+    lessons_store.delete_last_n.return_value = 2
+    knowledge_routes.set_dependencies(lessons_store=lessons_store)
+    monkeypatch.setattr(
+        knowledge_routes, "ensure_data_mutation_allowed", lambda _op: None
+    )
+
+    audit_stream = MagicMock()
+    monkeypatch.setattr(knowledge_routes, "get_audit_stream", lambda: audit_stream)
+
+    resp = client.delete("/api/v1/lessons/prune/latest?count=2")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["mutation"]["action"] == "prune_latest"
+
+    audit_stream.publish.assert_called_once()
+    call = audit_stream.publish.call_args.kwargs
+    assert call["source"] == "knowledge.lessons"
+    assert call["action"] == "mutation.applied"
+    assert call["status"] == "success"
+    assert call["context"] == "knowledge.lessons.prune_latest"
+    assert call["details"]["mutation"]["action"] == "prune_latest"
+    assert call["details"]["mutation"]["source"] == "lesson"
+    assert call["details"]["deleted"] == 2
+
+
 def test_governance_reset_usage_blocked(monkeypatch):
     app = FastAPI()
     app.include_router(governance_routes.router)

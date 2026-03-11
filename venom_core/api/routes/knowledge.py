@@ -25,6 +25,7 @@ from venom_core.api.schemas.knowledge import (
 from venom_core.config import SETTINGS
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
+from venom_core.services.audit_stream import get_audit_stream
 from venom_core.services.config_manager import config_manager
 from venom_core.services.knowledge_context_service import (
     build_knowledge_context_map as _build_knowledge_context_map,
@@ -145,6 +146,34 @@ def _enforce_mutation_allowed(
             operation=operation_name,
             actor=resolve_actor_from_request(req),
         )
+
+
+def _publish_lessons_mutation_audit(
+    *,
+    operation: str,
+    req: Request = cast(Request, None),
+    result: dict[str, Any],
+) -> None:
+    mutation = result.get("mutation") if isinstance(result, dict) else {}
+    details: dict[str, Any] = {
+        "operation": operation,
+        "mutation": mutation if isinstance(mutation, dict) else {},
+    }
+    if "deleted" in result:
+        details["deleted"] = result.get("deleted")
+    if "removed" in result:
+        details["removed"] = result.get("removed")
+    try:
+        get_audit_stream().publish(
+            source="knowledge.lessons",
+            action="mutation.applied",
+            actor=resolve_actor_from_request(req),
+            status="success",
+            context=operation,
+            details=details,
+        )
+    except Exception as exc:  # pragma: no cover - defensive path
+        logger.warning("Nie udało się opublikować audytu mutacji lessons: %s", exc)
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -833,11 +862,17 @@ def prune_latest_lessons(
     """
     _enforce_mutation_allowed("knowledge.lessons.prune_latest", req=req)
     try:
-        return _prune_latest_lessons_service(
+        result = _prune_latest_lessons_service(
             lessons_store=lessons_store,
             count=count,
             logger=logger,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.prune_latest",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas usuwania najnowszych lekcji")
         raise HTTPException(
@@ -877,7 +912,7 @@ def prune_lessons_by_range(
         ) from e
 
     try:
-        return _prune_lessons_by_range_service(
+        result = _prune_lessons_by_range_service(
             lessons_store=lessons_store,
             start=start,
             end=end,
@@ -885,6 +920,12 @@ def prune_lessons_by_range(
             end_dt=end_dt,
             logger=logger,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.prune_range",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas usuwania lekcji po zakresie czasu")
         raise HTTPException(
@@ -903,11 +944,17 @@ def prune_lessons_by_tag(
     """
     _enforce_mutation_allowed("knowledge.lessons.prune_tag", req=req)
     try:
-        return _prune_lessons_by_tag_service(
+        result = _prune_lessons_by_tag_service(
             lessons_store=lessons_store,
             tag=tag,
             logger=logger,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.prune_tag",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas usuwania lekcji po tagu")
         raise HTTPException(
@@ -934,10 +981,16 @@ def purge_all_lessons(
 
     _enforce_mutation_allowed("knowledge.lessons.purge", req=req)
     try:
-        return _purge_all_lessons_service(
+        result = _purge_all_lessons_service(
             lessons_store=lessons_store,
             logger=logger,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.purge",
+            req=req,
+            result=result,
+        )
+        return result
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
@@ -956,10 +1009,16 @@ def prune_lessons_by_ttl(
     """Usuwa lekcje starsze niż TTL w dniach."""
     _enforce_mutation_allowed("knowledge.lessons.prune_ttl", req=req)
     try:
-        return _prune_lessons_by_ttl_service(
+        result = _prune_lessons_by_ttl_service(
             lessons_store=lessons_store,
             days=days,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.prune_ttl",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas usuwania lekcji po TTL")
         raise HTTPException(
@@ -975,7 +1034,13 @@ def dedupe_lessons(
     """Deduplikuje lekcje na podstawie podpisu treści."""
     _enforce_mutation_allowed("knowledge.lessons.dedupe", req=req)
     try:
-        return _dedupe_lessons_service(lessons_store=lessons_store)
+        result = _dedupe_lessons_service(lessons_store=lessons_store)
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.dedupe",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas deduplikacji lekcji")
         raise HTTPException(

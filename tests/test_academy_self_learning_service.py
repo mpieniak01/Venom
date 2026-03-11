@@ -11,8 +11,10 @@ import pytest
 
 from venom_core.config import SETTINGS
 from venom_core.services.academy.self_learning_service import (
+    DEFAULT_EVALUATION_BASELINES,
     RagConfig,
     SelfLearningService,
+    _normalize_evaluation_baseline_payload,
 )
 
 
@@ -1429,6 +1431,60 @@ def test_update_evaluation_baselines_rejects_out_of_range(tmp_path: Path):
                 }
             }
         )
+
+
+def test_normalize_evaluation_baseline_payload_validation_errors() -> None:
+    assert _normalize_evaluation_baseline_payload(None) is None
+    with pytest.raises(ValueError, match="Missing baseline field"):
+        _normalize_evaluation_baseline_payload({"repo_qa_accuracy": 0.1})
+    with pytest.raises(ValueError, match="must be numeric"):
+        _normalize_evaluation_baseline_payload(
+            {
+                "repo_qa_accuracy": "x",
+                "code_localization_accuracy": 0.2,
+                "fix_success_rate": 0.3,
+                "hallucination_rate_max": 0.4,
+            }
+        )
+
+
+def test_load_evaluation_baselines_fallback_for_invalid_file(tmp_path: Path):
+    storage_dir = tmp_path / "storage"
+    storage_dir.mkdir(parents=True)
+    (storage_dir / "evaluation_baselines.json").write_text("{invalid", encoding="utf-8")
+    service = SelfLearningService(
+        storage_dir=str(storage_dir),
+        repo_root=str(tmp_path / "repo"),
+    )
+    payload = service.get_evaluation_baselines()
+    assert payload == DEFAULT_EVALUATION_BASELINES
+
+
+def test_load_evaluation_baselines_fallback_for_invalid_mode_payload(tmp_path: Path):
+    storage_dir = tmp_path / "storage"
+    storage_dir.mkdir(parents=True)
+    (storage_dir / "evaluation_baselines.json").write_text(
+        json.dumps({"llm_finetune": {"repo_qa_accuracy": 0.8}}),
+        encoding="utf-8",
+    )
+    service = SelfLearningService(
+        storage_dir=str(storage_dir),
+        repo_root=str(tmp_path / "repo"),
+    )
+    payload = service.get_evaluation_baselines()
+    assert payload["llm_finetune"] == DEFAULT_EVALUATION_BASELINES["llm_finetune"]
+    assert payload["rag_index"] == DEFAULT_EVALUATION_BASELINES["rag_index"]
+
+
+def test_get_evaluation_baselines_returns_copy(tmp_path: Path):
+    service = SelfLearningService(
+        storage_dir=str(tmp_path / "storage"),
+        repo_root=str(tmp_path / "repo"),
+    )
+    payload = service.get_evaluation_baselines()
+    payload["llm_finetune"]["repo_qa_accuracy"] = 0.01
+    payload2 = service.get_evaluation_baselines()
+    assert payload2["llm_finetune"]["repo_qa_accuracy"] != 0.01
 
 
 @pytest.mark.asyncio

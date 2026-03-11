@@ -269,6 +269,60 @@ def test_update_self_learning_evaluation_baseline_validation_error(
     assert detail["reason_code"] == "EVALUATION_BASELINE_INVALID"
 
 
+def test_get_self_learning_evaluation_baseline_internal_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.get_evaluation_baselines.side_effect = RuntimeError("boom")
+    response = client.get("/api/v1/academy/self-learning/evaluation/baseline")
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "SELF_LEARNING_EVAL_BASELINE_GET_FAILED"
+
+
+def test_update_self_learning_evaluation_baseline_internal_error(
+    client: TestClient, mock_service: MagicMock
+):
+    mock_service.update_evaluation_baselines.side_effect = RuntimeError("boom")
+    response = client.put(
+        "/api/v1/academy/self-learning/evaluation/baseline",
+        json={
+            "llm_finetune": {
+                "repo_qa_accuracy": 0.62,
+                "code_localization_accuracy": 0.52,
+                "fix_success_rate": 0.37,
+                "hallucination_rate_max": 0.28,
+            }
+        },
+    )
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["reason_code"] == "SELF_LEARNING_EVAL_BASELINE_UPDATE_FAILED"
+
+
+def test_self_learning_evaluation_baseline_routes_require_service(
+    mock_service: MagicMock,
+):
+    app = FastAPI()
+    routes.set_dependencies(self_learning_service=None)
+    app.include_router(routes.router)
+    client = TestClient(app)
+
+    get_response = client.get("/api/v1/academy/self-learning/evaluation/baseline")
+    put_response = client.put(
+        "/api/v1/academy/self-learning/evaluation/baseline",
+        json={
+            "llm_finetune": {
+                "repo_qa_accuracy": 0.62,
+                "code_localization_accuracy": 0.52,
+                "fix_success_rate": 0.37,
+                "hallucination_rate_max": 0.28,
+            }
+        },
+    )
+    assert get_response.status_code == 503
+    assert put_response.status_code == 503
+
+
 def test_get_self_learning_status_not_found(
     client: TestClient, mock_service: MagicMock
 ):

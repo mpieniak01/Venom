@@ -6,11 +6,14 @@ import {
   clearAllSelfLearningRuns,
   deleteSelfLearningRun,
   getSelfLearningCapabilities,
+  getSelfLearningEvaluationBaseline,
   getUnifiedModelCatalog,
   getSelfLearningRunStatus,
   listSelfLearningRuns,
   resolveAcademyApiErrorMessage,
   startSelfLearning,
+  updateSelfLearningEvaluationBaseline,
+  type SelfLearningEvaluationBaselineResponse,
   type SelfLearningEmbeddingProfile,
   type SelfLearningRunStatus,
   type SelfLearningStartRequest,
@@ -18,6 +21,7 @@ import {
   type SelfLearningTrainableModelInfo,
 } from "@/lib/academy-api";
 import { ApiError } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useTranslation } from "@/lib/i18n";
 import { normalizeRuntimeId } from "@/lib/cockpit-runtime-selection";
@@ -29,6 +33,12 @@ import { SelfLearningConsole } from "./self-learning-console";
 import { SelfLearningHistory } from "./self-learning-history";
 
 const POLL_INTERVAL_MS = 2000;
+const BASELINE_FIELDS = [
+  "repo_qa_accuracy",
+  "code_localization_accuracy",
+  "fix_success_rate",
+  "hallucination_rate_max",
+] as const;
 
 const TERMINAL_STATUSES: ReadonlySet<SelfLearningStatus> = new Set([
   "completed",
@@ -65,6 +75,9 @@ export function SelfLearningPanel() {
   const [runtimeModelAuditIssuesCount, setRuntimeModelAuditIssuesCount] = useState(0);
   const [embeddingProfiles, setEmbeddingProfiles] = useState<SelfLearningEmbeddingProfile[]>([]);
   const [defaultEmbeddingProfileId, setDefaultEmbeddingProfileId] = useState<string | null>(null);
+  const [evaluationBaseline, setEvaluationBaseline] = useState<SelfLearningEvaluationBaselineResponse | null>(null);
+  const [baselineDraft, setBaselineDraft] = useState<Record<string, string>>({});
+  const [baselineSaving, setBaselineSaving] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollFailuresRef = useRef(0);
@@ -143,6 +156,31 @@ export function SelfLearningPanel() {
     }
   }, []);
 
+  const loadEvaluationBaseline = useCallback(async () => {
+    try {
+      const payload = await getSelfLearningEvaluationBaseline();
+      setEvaluationBaseline(payload);
+      setBaselineDraft({
+        "llm_finetune.repo_qa_accuracy": String(payload.llm_finetune.repo_qa_accuracy),
+        "llm_finetune.code_localization_accuracy": String(
+          payload.llm_finetune.code_localization_accuracy
+        ),
+        "llm_finetune.fix_success_rate": String(payload.llm_finetune.fix_success_rate),
+        "llm_finetune.hallucination_rate_max": String(
+          payload.llm_finetune.hallucination_rate_max
+        ),
+        "rag_index.repo_qa_accuracy": String(payload.rag_index.repo_qa_accuracy),
+        "rag_index.code_localization_accuracy": String(
+          payload.rag_index.code_localization_accuracy
+        ),
+        "rag_index.fix_success_rate": String(payload.rag_index.fix_success_rate),
+        "rag_index.hallucination_rate_max": String(payload.rag_index.hallucination_rate_max),
+      });
+    } catch (error) {
+      console.error("Failed to load self-learning evaluation baseline", error);
+    }
+  }, []);
+
   const resolveSelfLearningStartError = useCallback(
     (error: unknown): string =>
       resolveSelfLearningStartErrorMessage(error, t("academy.common.unknownError")),
@@ -203,12 +241,59 @@ export function SelfLearningPanel() {
     const initialize = async () => {
       await loadHistory();
       await loadCapabilities();
+      await loadEvaluationBaseline();
     };
     initialize().catch((error) => {
       console.error("Failed to initialize self-learning panel", error);
     });
     return () => stopPolling();
-  }, [loadCapabilities, loadHistory, stopPolling]);
+  }, [loadCapabilities, loadEvaluationBaseline, loadHistory, stopPolling]);
+
+  const handleBaselineChange = useCallback((key: string, value: string) => {
+    setBaselineDraft((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handleSaveBaseline = useCallback(async () => {
+    try {
+      setBaselineSaving(true);
+      const parseValue = (key: string): number => {
+        const parsed = Number(baselineDraft[key]);
+        if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+          throw new Error(`${key} must be between 0 and 1`);
+        }
+        return parsed;
+      };
+      const payload = {
+        llm_finetune: {
+          repo_qa_accuracy: parseValue("llm_finetune.repo_qa_accuracy"),
+          code_localization_accuracy: parseValue(
+            "llm_finetune.code_localization_accuracy"
+          ),
+          fix_success_rate: parseValue("llm_finetune.fix_success_rate"),
+          hallucination_rate_max: parseValue("llm_finetune.hallucination_rate_max"),
+        },
+        rag_index: {
+          repo_qa_accuracy: parseValue("rag_index.repo_qa_accuracy"),
+          code_localization_accuracy: parseValue(
+            "rag_index.code_localization_accuracy"
+          ),
+          fix_success_rate: parseValue("rag_index.fix_success_rate"),
+          hallucination_rate_max: parseValue("rag_index.hallucination_rate_max"),
+        },
+      };
+      const updated = await updateSelfLearningEvaluationBaseline(payload);
+      setEvaluationBaseline(updated);
+      pushToast("Evaluation baseline updated", "success");
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : t("academy.common.unknownError");
+      pushToast(message, "error");
+    } finally {
+      setBaselineSaving(false);
+    }
+  }, [baselineDraft, pushToast, t]);
 
   useEffect(() => {
     if (!selectedRunId) {
@@ -319,6 +404,54 @@ export function SelfLearningPanel() {
       />
 
       <SelfLearningConsole logs={consoleLogs} status={consoleStatus} />
+
+      <div className="space-y-3 rounded-xl border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-[color:var(--text-heading)]">
+            Eval Baseline
+          </h3>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSaveBaseline}
+            disabled={baselineSaving || evaluationBaseline === null}
+          >
+            {baselineSaving ? "Saving..." : "Save baseline"}
+          </Button>
+        </div>
+        {evaluationBaseline === null ? (
+          <p className="text-xs text-hint">No baseline loaded.</p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {(["llm_finetune", "rag_index"] as const).map((mode) => (
+              <div key={mode} className="rounded-lg border border-[color:var(--ui-border)] p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--text-secondary)]">
+                  {mode}
+                </p>
+                <div className="grid gap-2">
+                  {BASELINE_FIELDS.map((field) => {
+                    const key = `${mode}.${field}`;
+                    return (
+                      <label key={key} className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
+                        <span>{field}</span>
+                        <input
+                          className="rounded-md border border-[color:var(--ui-border)] bg-transparent px-2 py-1 text-[color:var(--text-heading)]"
+                          type="number"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={baselineDraft[key] ?? ""}
+                          onChange={(event) => handleBaselineChange(key, event.target.value)}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <SelfLearningHistory
         runs={runs}

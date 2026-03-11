@@ -184,3 +184,22 @@ def test_knowledge_entries_federated_filtering_by_source_and_tag(tmp_path: Path)
     finally:
         client.close()
         app.dependency_overrides = {}
+
+
+def test_knowledge_entries_rejects_invalid_time_window(tmp_path: Path):
+    client, _, _, _, _ = _build_client(tmp_path)
+    try:
+        response = client.get(
+            "/api/v1/knowledge/entries?created_from=2026-03-10T12:00:00Z&created_to=not-an-iso"
+        )
+        assert response.status_code == 400
+        assert "created_to" in str(response.json()["detail"])
+
+        response = client.get(
+            "/api/v1/knowledge/entries?created_from=2026-03-11T12:00:00Z&created_to=2026-03-10T12:00:00Z"
+        )
+        assert response.status_code == 400
+        assert "created_from > created_to" in str(response.json()["detail"])
+    finally:
+        client.close()
+        app.dependency_overrides = {}

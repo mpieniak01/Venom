@@ -102,6 +102,37 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
+def _validate_entries_time_filters(
+    *, created_from: str | None, created_to: str | None
+) -> None:
+    def _parse_iso(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            normalized = value.replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+
+    from_dt = _parse_iso(created_from)
+    to_dt = _parse_iso(created_to)
+    if created_from and from_dt is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Nieprawidłowy format created_from (oczekiwano ISO-8601)",
+        )
+    if created_to and to_dt is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Nieprawidłowy format created_to (oczekiwano ISO-8601)",
+        )
+    if from_dt and to_dt and from_dt > to_dt:
+        raise HTTPException(
+            status_code=400,
+            detail="Nieprawidłowe okno czasowe: created_from > created_to",
+        )
+
+
 def _enforce_mutation_allowed(
     operation_name: str,
     req: Request = cast(Request, None),
@@ -505,6 +536,7 @@ def get_knowledge_entries(
         Query(ge=1, le=1000, description="Maksymalna liczba wpisów"),
     ] = 200,
 ):
+    _validate_entries_time_filters(created_from=created_from, created_to=created_to)
     parsed_tags = [item.strip() for item in (tags or "").split(",") if item.strip()]
     query = KnowledgeEntriesQuery(
         session_id=session_id,

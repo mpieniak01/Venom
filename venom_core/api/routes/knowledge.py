@@ -1,5 +1,6 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
+import os
 from datetime import datetime, timezone
 from typing import Annotated, Any, Optional, cast
 
@@ -16,13 +17,23 @@ from venom_core.api.routes.permission_denied_contract import (
     raise_permission_denied_http,
     resolve_actor_from_request,
 )
-from venom_core.api.schemas.knowledge import LearningToggleRequest
+from venom_core.api.schemas.knowledge import (
+    KnowledgeEntriesResponse,
+    KnowledgeEntryScope,
+    KnowledgeSourceOrigin,
+    LearningToggleRequest,
+)
 from venom_core.config import SETTINGS
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
+from venom_core.services.audit_stream import get_audit_stream
 from venom_core.services.config_manager import config_manager
 from venom_core.services.knowledge_context_service import (
     build_knowledge_context_map as _build_knowledge_context_map,
+)
+from venom_core.services.knowledge_entries_service import (
+    KnowledgeEntriesQuery,
+    list_federated_knowledge_entries,
 )
 from venom_core.services.knowledge_graph_service import (
     build_graph_edges as _build_graph_edges,
@@ -91,6 +102,67 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Nieprawidłowe parametry żądania"},
     **INTERNAL_ERROR_RESPONSES,
 }
+_LOCALHOST_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _is_localhost_request(req: Request | None) -> bool:
+    if req is None:
+        return False
+    client_host = str(getattr(getattr(req, "client", None), "host", "")).strip().lower()
+    if client_host in _LOCALHOST_HOSTS:
+        return True
+    # FastAPI TestClient default host.
+    return bool(os.getenv("PYTEST_CURRENT_TEST")) and client_host == "testclient"
+
+
+def _enforce_knowledge_entries_access(req: Request | None) -> None:
+    if _is_localhost_request(req):
+        return
+    raise_permission_denied_http(
+        PermissionError(
+            "Federated knowledge entries are available only for localhost requests."
+        ),
+        operation="knowledge.entries.list",
+        actor=resolve_actor_from_request(req),
+    )
+
+
+def _validate_entries_time_filters(
+    *, created_from: str | None, created_to: str | None
+) -> None:
+    def _parse_iso(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            normalized = value.replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+
+    def _as_utc_aware(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    from_dt = _as_utc_aware(_parse_iso(created_from))
+    to_dt = _as_utc_aware(_parse_iso(created_to))
+    if created_from and from_dt is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Nieprawidłowy format created_from (oczekiwano ISO-8601)",
+        )
+    if created_to and to_dt is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Nieprawidłowy format created_to (oczekiwano ISO-8601)",
+        )
+    if from_dt and to_dt and from_dt > to_dt:
+        raise HTTPException(
+            status_code=400,
+            detail="Nieprawidłowe okno czasowe: created_from > created_to",
+        )
 
 
 def _enforce_mutation_allowed(
@@ -105,6 +177,34 @@ def _enforce_mutation_allowed(
             operation=operation_name,
             actor=resolve_actor_from_request(req),
         )
+
+
+def _publish_lessons_mutation_audit(
+    *,
+    operation: str,
+    req: Request = cast(Request, None),
+    result: dict[str, Any],
+) -> None:
+    mutation = result.get("mutation") if isinstance(result, dict) else {}
+    details: dict[str, Any] = {
+        "operation": operation,
+        "mutation": mutation if isinstance(mutation, dict) else {},
+    }
+    if "deleted" in result:
+        details["deleted"] = result.get("deleted")
+    if "removed" in result:
+        details["removed"] = result.get("removed")
+    try:
+        get_audit_stream().publish(
+            source="knowledge.lessons",
+            action="mutation.applied",
+            actor=resolve_actor_from_request(req),
+            status="success",
+            context=operation,
+            details=details,
+        )
+    except Exception as exc:  # pragma: no cover - defensive path
+        logger.warning("Nie udało się opublikować audytu mutacji lessons: %s", exc)
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -457,6 +557,77 @@ def get_knowledge_context_map(
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
 
 
+@router.get(
+    "/knowledge/entries",
+    response_model=KnowledgeEntriesResponse,
+    responses=INTERNAL_ERROR_RESPONSES,
+)
+def get_knowledge_entries(
+    session_store: Annotated[Any, Depends(get_session_store)],
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    vector_store: Annotated[Any, Depends(get_vector_store)],
+    graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+    req: Request = cast(Request, None),
+    session_id: Annotated[str | None, Query(description="Filtr po session_id")] = None,
+    scope: Annotated[
+        KnowledgeEntryScope | None,
+        Query(description="Filtr zakresu wpisów: session/global/task"),
+    ] = None,
+    source: Annotated[
+        KnowledgeSourceOrigin | None,
+        Query(
+            description="Filtr źródła: session/lesson/vector/graph/training/external"
+        ),
+    ] = None,
+    tags: Annotated[
+        str | None,
+        Query(description="Lista tagów oddzielona przecinkami (OR logic)"),
+    ] = None,
+    created_from: Annotated[
+        str | None,
+        Query(description="Początek okna czasowego ISO-8601"),
+    ] = None,
+    created_to: Annotated[
+        str | None,
+        Query(description="Koniec okna czasowego ISO-8601"),
+    ] = None,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=1000, description="Maksymalna liczba wpisów"),
+    ] = 200,
+):
+    _enforce_knowledge_entries_access(req)
+    _validate_entries_time_filters(created_from=created_from, created_to=created_to)
+    parsed_tags = [item.strip() for item in (tags or "").split(",") if item.strip()]
+    query = KnowledgeEntriesQuery(
+        session_id=session_id,
+        scope=scope,
+        source=source,
+        tags=parsed_tags,
+        created_from=created_from,
+        created_to=created_to,
+        limit=limit,
+    )
+    try:
+        entries = list_federated_knowledge_entries(
+            session_store=session_store,
+            lessons_store=lessons_store,
+            vector_store=vector_store,
+            graph_store=graph_store,
+            query=query,
+        )
+        return KnowledgeEntriesResponse(count=len(entries), entries=entries)
+    except PermissionError as e:
+        raise_permission_denied_http(
+            e,
+            operation="knowledge.entries.list",
+            actor=resolve_actor_from_request(req),
+        )
+    except Exception as exc:
+        logger.exception("Błąd podczas pobierania federowanych wpisów wiedzy")
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from exc
+
+
 @router.get("/graph/summary", responses=INTERNAL_ERROR_RESPONSES)
 def get_graph_summary(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
@@ -723,11 +894,17 @@ def prune_latest_lessons(
     """
     _enforce_mutation_allowed("knowledge.lessons.prune_latest", req=req)
     try:
-        return _prune_latest_lessons_service(
+        result = _prune_latest_lessons_service(
             lessons_store=lessons_store,
             count=count,
             logger=logger,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.prune_latest",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas usuwania najnowszych lekcji")
         raise HTTPException(
@@ -767,7 +944,7 @@ def prune_lessons_by_range(
         ) from e
 
     try:
-        return _prune_lessons_by_range_service(
+        result = _prune_lessons_by_range_service(
             lessons_store=lessons_store,
             start=start,
             end=end,
@@ -775,6 +952,12 @@ def prune_lessons_by_range(
             end_dt=end_dt,
             logger=logger,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.prune_range",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas usuwania lekcji po zakresie czasu")
         raise HTTPException(
@@ -793,11 +976,17 @@ def prune_lessons_by_tag(
     """
     _enforce_mutation_allowed("knowledge.lessons.prune_tag", req=req)
     try:
-        return _prune_lessons_by_tag_service(
+        result = _prune_lessons_by_tag_service(
             lessons_store=lessons_store,
             tag=tag,
             logger=logger,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.prune_tag",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas usuwania lekcji po tagu")
         raise HTTPException(
@@ -824,10 +1013,16 @@ def purge_all_lessons(
 
     _enforce_mutation_allowed("knowledge.lessons.purge", req=req)
     try:
-        return _purge_all_lessons_service(
+        result = _purge_all_lessons_service(
             lessons_store=lessons_store,
             logger=logger,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.purge",
+            req=req,
+            result=result,
+        )
+        return result
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
@@ -846,10 +1041,16 @@ def prune_lessons_by_ttl(
     """Usuwa lekcje starsze niż TTL w dniach."""
     _enforce_mutation_allowed("knowledge.lessons.prune_ttl", req=req)
     try:
-        return _prune_lessons_by_ttl_service(
+        result = _prune_lessons_by_ttl_service(
             lessons_store=lessons_store,
             days=days,
         )
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.prune_ttl",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas usuwania lekcji po TTL")
         raise HTTPException(
@@ -865,7 +1066,13 @@ def dedupe_lessons(
     """Deduplikuje lekcje na podstawie podpisu treści."""
     _enforce_mutation_allowed("knowledge.lessons.dedupe", req=req)
     try:
-        return _dedupe_lessons_service(lessons_store=lessons_store)
+        result = _dedupe_lessons_service(lessons_store=lessons_store)
+        _publish_lessons_mutation_audit(
+            operation="knowledge.lessons.dedupe",
+            req=req,
+            result=result,
+        )
+        return result
     except Exception as e:
         logger.exception("Błąd podczas deduplikacji lekcji")
         raise HTTPException(

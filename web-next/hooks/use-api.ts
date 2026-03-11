@@ -24,6 +24,7 @@ import {
   LlmRuntimeOptionsResponse,
   LlmServerInfo,
   KnowledgeGraph,
+  KnowledgeEntriesResponse,
   LearningLogsResponse,
   LessonsResponse,
   LessonsStats,
@@ -48,6 +49,7 @@ import {
   HiddenPromptsResponse,
   ActiveLlmServerResponse,
 } from "@/lib/types";
+import { mapKnowledgeEntriesToLessons } from "@/lib/knowledge-entries";
 
 export const KNOWLEDGE_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT ?? "500");
 export const MEMORY_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_MEMORY_GRAPH_LIMIT ?? "100");
@@ -626,7 +628,12 @@ export function useKnowledgeGraphView(
 export function useLessons(limit = 5, intervalMs = 20000) {
   return usePolling<LessonsResponse>(
     "lessons",
-    () => apiFetch(`/api/v1/lessons?limit=${limit}`),
+    async () => {
+      const payload = await apiFetch<KnowledgeEntriesResponse>(
+        `/api/v1/knowledge/entries?source=lesson&limit=${limit}`,
+      );
+      return mapKnowledgeEntriesToLessons(payload);
+    },
     intervalMs,
   );
 }

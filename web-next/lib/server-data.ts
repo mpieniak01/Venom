@@ -5,6 +5,7 @@ import {
   GraphSummary,
   HistoryRequest,
   KnowledgeGraph,
+  KnowledgeEntriesResponse,
   LessonsResponse,
   LessonsStats,
   Metrics,
@@ -16,6 +17,7 @@ import {
   Task,
   TokenMetrics,
 } from "@/lib/types";
+import { mapKnowledgeEntriesToLessons } from "@/lib/knowledge-entries";
 import { getServerApiBaseUrl } from "@/lib/env";
 import { normalizeMetrics } from "@/lib/metrics-adapter";
 
@@ -208,17 +210,17 @@ export const EMPTY_BRAIN_INITIAL_DATA: BrainInitialData = {
 };
 
 export async function fetchBrainInitialData(): Promise<BrainInitialData> {
-  const [summary, knowledgeGraph, lessons, lessonsStats] = await Promise.all([
+  const [summary, knowledgeGraph, lessonsEntries, lessonsStats] = await Promise.all([
     fetchJson<GraphSummary>("/api/v1/graph/summary"),
     fetchJson<KnowledgeGraph>(`/api/v1/knowledge/graph?limit=${KNOWLEDGE_GRAPH_LIMIT}`),
-    fetchJson<LessonsResponse>("/api/v1/lessons?limit=5"),
+    fetchJson<KnowledgeEntriesResponse>("/api/v1/knowledge/entries?source=lesson&limit=5"),
     fetchJson<LessonsStats>("/api/v1/lessons/stats"),
   ]);
 
   return {
     summary,
     knowledgeGraph,
-    lessons,
+    lessons: lessonsEntries ? mapKnowledgeEntriesToLessons(lessonsEntries) : null,
     lessonsStats,
   };
 }

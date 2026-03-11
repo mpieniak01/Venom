@@ -24,11 +24,11 @@ Roll out canonical `KnowledgeEntry` contract safely:
    - `DELETE /api/v1/lessons/prune/latest?count=1` returns `mutation`.
    - Audit stream contains `knowledge.lessons / mutation.applied`.
 
-## Phase 2: UI gradual adoption
+## Phase 2: UI adoption (completed in 200B)
 
-1. Add read path in UI using `knowledge/entries` behind feature flag.
-2. Compare old vs new sources in staging (count, source distribution, session filters).
-3. Enable by default after parity checks pass.
+1. Use `knowledge/entries` as the default read path in UI for lessons/knowledge views.
+2. Keep mutation paths (`/api/v1/lessons/*`) unchanged during this phase.
+3. Verify parity via contract tests and staging smoke checks (count/source/session filters).
 
 ## Phase 3: Contract hardening
 
@@ -46,10 +46,9 @@ Roll out canonical `KnowledgeEntry` contract safely:
 
 ## Rollback
 
-1. Disable UI feature flag for `knowledge/entries`.
-2. Continue using legacy endpoint paths in UI.
-3. Keep backend deployed if mutation/audit contract remains compatible.
-4. If necessary, rollback backend to last known good tag.
+1. Revert UI read path to legacy endpoint mappings (retain backend endpoint deployed).
+2. Keep backend mutation/audit contract unchanged if compatible.
+3. If necessary, rollback backend to the last known good tag.
 
 ## Known risks
 

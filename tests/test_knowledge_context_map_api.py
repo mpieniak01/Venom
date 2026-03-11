@@ -203,3 +203,49 @@ def test_knowledge_entries_rejects_invalid_time_window(tmp_path: Path):
     finally:
         client.close()
         app.dependency_overrides = {}
+
+
+def test_knowledge_context_map_skips_expired_lesson_and_memory_records(tmp_path: Path):
+    client, vector_store, lessons_store, session_store, _ = _build_client(tmp_path)
+    try:
+        session_store.append_message(
+            "sess-exp",
+            {
+                "role": "user",
+                "content": "hello",
+                "request_id": "req-exp",
+                "timestamp": "2026-03-01T10:00:00+00:00",
+            },
+        )
+
+        lesson = Lesson(
+            situation="s",
+            action="a",
+            result="r",
+            feedback="f",
+            metadata={
+                "session_id": "sess-exp",
+                "task_id": "req-exp",
+                "retention_expires_at": "2020-01-01T00:00:00+00:00",
+            },
+        )
+        lessons_store.add_lesson(lesson)
+        vector_store.upsert(
+            text="expired memory",
+            metadata={
+                "session_id": "sess-exp",
+                "retention_expires_at": "2020-01-01T00:00:00+00:00",
+            },
+            collection_name="default",
+        )
+
+        response = client.get("/api/v1/knowledge/context-map/sess-exp")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["session_id"] == "sess-exp"
+        relations = {link["relation"] for link in payload["links"]}
+        assert "session->lesson" not in relations
+        assert "session->memory_entry" not in relations
+    finally:
+        client.close()
+        app.dependency_overrides = {}

@@ -24,11 +24,11 @@ Bezpieczne wdrożenie kanonicznego kontraktu `KnowledgeEntry`:
    - `DELETE /api/v1/lessons/prune/latest?count=1` zwraca blok `mutation`.
    - strumień audytu zawiera `knowledge.lessons / mutation.applied`.
 
-## Faza 2: stopniowa adopcja UI
+## Faza 2: adopcja UI (zrealizowana w 200B)
 
-1. Dodaj ścieżkę odczytu w UI przez `knowledge/entries` za feature flagą.
-2. Porównaj stare vs nowe źródła na stagingu (count, rozkład źródeł, filtry session).
-3. Włącz domyślnie po pozytywnym przejściu testów parytetu.
+1. Użyj `knowledge/entries` jako domyślnej ścieżki odczytu w widokach lessons/knowledge.
+2. Zachowaj niezmienione ścieżki mutacji (`/api/v1/lessons/*`) w tej fazie.
+3. Zweryfikuj parytet testami kontraktowymi i smoke na stagingu (count/źródła/filtry session).
 
 ## Faza 3: utwardzenie kontraktu
 
@@ -46,10 +46,9 @@ Bezpieczne wdrożenie kanonicznego kontraktu `KnowledgeEntry`:
 
 ## Rollback
 
-1. Wyłącz feature flagę UI dla `knowledge/entries`.
-2. UI wraca do ścieżek legacy.
-3. Backend może pozostać wdrożony, jeśli kontrakt mutacji/audytu jest kompatybilny.
-4. W razie potrzeby rollback backendu do ostatniego stabilnego taga.
+1. Cofnij ścieżkę odczytu UI do mapowania endpointów legacy (backend pozostaje wdrożony).
+2. Zachowaj kontrakt mutacji/audytu backendu, jeśli jest kompatybilny.
+3. W razie potrzeby wykonaj rollback backendu do ostatniego stabilnego taga.
 
 ## Znane ryzyka
 

@@ -165,6 +165,7 @@ tests/test_orchestrator_flows_regression.py
 tests/test_parallel_skill.py
 tests/test_persona_factory.py
 tests/test_platform_skill.py
+tests/test_policy_autonomy_contract.py
 tests/test_policy_gate_integration.py
 tests/test_port_authority.py
 tests/test_port_pids_script.py

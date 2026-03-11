@@ -113,6 +113,30 @@ GET /api/v1/system/autonomy/levels
 
 > **Ostrzeżenie dotyczące bezpieczeństwa:** Endpointy kontroli autonomii powinny być chronione autentykacją i ograniczone do localhost lub zaufanych sieci. Nieograniczony dostęp pozwala dowolnemu wywołującemu na podniesienie poziomu autonomii do ROOT, co omija wszystkie kontrole uprawnień dotyczące dostępu do sieci, zapisu plików i wykonywania komend shell.
 
+#### 4. Kanoniczny payload blokady (policy/autonomy)
+
+Mutujące trasy i guardowane ścieżki runtime używają jednego kontraktu blokady `HTTP 403`:
+
+```json
+{
+  "decision": "block",
+  "reason_code": "PERMISSION_DENIED",
+  "user_message": "Access denied",
+  "technical_context": {
+    "operation": "system.config.localhost_guard"
+  },
+  "tags": ["permission", "blocked"]
+}
+```
+
+Uwagi:
+- Dla blokad autonomii `reason_code` ma wartość `AUTONOMY_PERMISSION_DENIED`.
+- Helper blokad route-level publikuje kanoniczne eventy audytu:
+  - `source=api.permission`
+  - `action=policy.blocked.route` lub `action=autonomy.blocked`
+  - `status=blocked`
+  - `details` zgodne z payloadem blokady.
+
 ### Frontend
 
 #### 1. Selektor Autonomii

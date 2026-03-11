@@ -117,6 +117,30 @@ GET /api/v1/system/autonomy/levels
 
 > **Security Warning:** The autonomy control endpoints should be protected with authentication and restricted to localhost or trusted networks only. Unrestricted access allows any caller to raise the autonomy level to ROOT, bypassing all permission checks for network access, file writes, and shell execution.
 
+#### 4. Canonical deny payload (policy/autonomy)
+
+Mutating routes and guarded runtime paths use one backend deny contract for `HTTP 403`:
+
+```json
+{
+  "decision": "block",
+  "reason_code": "PERMISSION_DENIED",
+  "user_message": "Access denied",
+  "technical_context": {
+    "operation": "system.config.localhost_guard"
+  },
+  "tags": ["permission", "blocked"]
+}
+```
+
+Notes:
+- For autonomy-enforced denials, `reason_code` is `AUTONOMY_PERMISSION_DENIED`.
+- Route-level deny helper publishes canonical audit stream events:
+  - `source=api.permission`
+  - `action=policy.blocked.route` or `action=autonomy.blocked`
+  - `status=blocked`
+  - `details` equal to deny payload.
+
 ### Frontend
 
 #### 1. Autonomy Selector

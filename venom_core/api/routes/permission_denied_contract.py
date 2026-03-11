@@ -7,6 +7,10 @@ from typing import Any
 from fastapi import HTTPException
 
 from venom_core.core.autonomy_enforcement import AutonomyPermissionDenied
+from venom_core.services.audit_stream import get_audit_stream
+from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def build_permission_denied_detail(
@@ -43,7 +47,24 @@ def raise_permission_denied_http(
     operation: str | None = None,
 ) -> None:
     """Raise HTTP 403 with canonical deny payload."""
+    detail = build_permission_denied_detail(exc, operation=operation)
+    reason_code = str(detail.get("reason_code") or "PERMISSION_DENIED")
+    action = (
+        "autonomy.blocked"
+        if reason_code.startswith("AUTONOMY_")
+        else "policy.blocked.route"
+    )
+    try:
+        get_audit_stream().publish(
+            source="api.permission",
+            action=action,
+            actor="unknown",
+            status="blocked",
+            details=detail,
+        )
+    except Exception as audit_exc:  # pragma: no cover - defensive path
+        logger.warning("Nie udało się opublikować audytu deny: %s", audit_exc)
     raise HTTPException(
         status_code=403,
-        detail=build_permission_denied_detail(exc, operation=operation),
+        detail=detail,
     ) from exc

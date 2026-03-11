@@ -1936,3 +1936,56 @@ class TestSystemConfig:
             exc_info.value.detail["technical_context"]["operation"]
             == "system.config.localhost_guard"
         )
+
+    def test_raise_permission_denied_http_publishes_policy_audit(self):
+        from fastapi import HTTPException
+
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+
+        audit_stream = MagicMock()
+        with patch.object(denied_mod, "get_audit_stream", return_value=audit_stream):
+            with pytest.raises(HTTPException) as exc_info:
+                denied_mod.raise_permission_denied_http(
+                    PermissionError("blocked"),
+                    operation="route.policy.test",
+                )
+
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.detail["reason_code"] == "PERMISSION_DENIED"
+        audit_stream.publish.assert_called_once()
+        call_kwargs = audit_stream.publish.call_args.kwargs
+        assert call_kwargs["source"] == "api.permission"
+        assert call_kwargs["action"] == "policy.blocked.route"
+        assert call_kwargs["status"] == "blocked"
+
+    def test_raise_permission_denied_http_publishes_autonomy_audit(self):
+        from fastapi import HTTPException
+
+        from venom_core.api.routes import permission_denied_contract as denied_mod
+        from venom_core.core.autonomy_enforcement import AutonomyPermissionDenied
+        from venom_core.core.policy_autonomy_contract import (
+            build_autonomy_block_payload,
+        )
+
+        payload = build_autonomy_block_payload(
+            user_message="Autonomy blocked",
+            operation="route.autonomy.test",
+            required_level=40,
+            required_level_name="ROOT",
+            task_id="task-audit",
+            session_id="session-audit",
+        )
+        exc = AutonomyPermissionDenied(payload)
+        audit_stream = MagicMock()
+        with patch.object(denied_mod, "get_audit_stream", return_value=audit_stream):
+            with pytest.raises(HTTPException) as exc_info:
+                denied_mod.raise_permission_denied_http(
+                    exc,
+                    operation="route.autonomy.test",
+                )
+
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.detail["reason_code"] == "AUTONOMY_PERMISSION_DENIED"
+        audit_stream.publish.assert_called_once()
+        call_kwargs = audit_stream.publish.call_args.kwargs
+        assert call_kwargs["action"] == "autonomy.blocked"

@@ -117,7 +117,11 @@ Dodawanie nowego motywu:
    - workflow cache’uje binaria Playwright (`~/.cache/ms-playwright`), co skraca pipeline o czas ponownego pobierania przeglądarek.
    - workflow generuje raport trendu niestabilności (`test-results/e2e/flakiness-summary.json` + `flakiness-history.jsonl`).
    - dla profili `smoke/functional` workflow egzekwuje quality gate (`min tests` + `max flaky rate`).
-5. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.
+   - osobny workflow `Web Next Playwright Perf (Backend)` uruchamia profil wydajnościowy dla środowiska z backendem (manual `workflow_dispatch`).
+5. Profil perf (backend):
+   - używa `PERF_NEXT_BASE_URL`, `PERF_API_BASE` i dedykowanego progu `PERF_NEXT_LATENCY_BUDGET`,
+   - tworzy `test-results/e2e/perf-summary.json` i failuje run, gdy przekroczony zostanie próg latency.
+6. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.
 
 ## Testy unit + coverage pod Sonar
 Uruchamianie lokalne:

@@ -21,6 +21,15 @@ Coder Agent is the main implementation executor in the Venom system. It generate
 - `read_file(path)` - Reads existing code
 - `list_files(directory)` - Lists files in directory
 - `file_exists(path)` - Checks if file exists
+- `rename_path(source_path, target_path, dry_run=False, overwrite_policy='forbid')` - Renames path safely
+- `move_path(source_path, target_path, dry_run=False, overwrite_policy='forbid')` - Moves path safely
+- `copy_path(source_path, target_path, dry_run=False, overwrite_policy='forbid', recursive=False)` - Copies file/dir
+- `delete_path(file_path, dry_run=False, recursive=False)` - Deletes file/dir
+- `batch_file_operations(operations_json, dry_run=False, overwrite_policy='forbid', continue_on_error=False)` - Batch file ops with JSON report
+
+Notes:
+- Mutating operations are workspace-scoped and protected by autonomy permission gate.
+- File ops return deterministic JSON report (`status`, `changed`, `details`, optional rollback hints).
 
 **ShellSkill** (`venom_core/execution/skills/shell_skill.py`):
 - `run_shell(command)` - Executes shell command in sandbox

@@ -312,6 +312,7 @@ test-intelligence-report:
 		--output text
 
 architecture-drift-check:
+	@$(PYTHON_BIN) scripts/check_github_actions_node_runtime.py
 	@$(PYTHON_BIN) scripts/check_architecture_contracts.py \
 		--contracts config/architecture/contracts.yaml \
 		--source-root venom_core

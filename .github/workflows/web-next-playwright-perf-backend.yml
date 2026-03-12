@@ -20,6 +20,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: web-next-playwright-perf-backend-${{ github.ref }}
   cancel-in-progress: true
@@ -86,7 +89,7 @@ jobs:
 
       - name: Upload Playwright artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-perf-backend
           path: |

@@ -43,6 +43,83 @@ except ImportError:  # pragma: no cover - fallback for non-POSIX platforms
     fcntl = None
 
 
+def _resolve_workspace_root_for_ghost_state() -> Path:
+    """Resolve workspace root used for ghost runtime state path anchoring."""
+    workspace_root_raw = str(getattr(SETTINGS, "WORKSPACE_ROOT", "") or "").strip()
+    if workspace_root_raw:
+        with suppress(Exception):
+            return Path(workspace_root_raw).expanduser().resolve()
+    return Path(tempfile.gettempdir()).resolve()
+
+
+def _default_ghost_run_state_path() -> Path:
+    """Return default state file path under workspace-scoped runtime dir."""
+    return (
+        _resolve_workspace_root_for_ghost_state()
+        / ".venom"
+        / "runtime"
+        / "ghost_run_state.json"
+    )
+
+
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_ghost_run_state_path(raw_path: str | os.PathLike[str] | None) -> Path:
+    """
+    Resolve and validate Ghost runtime state path.
+
+    Accept only:
+    - relative paths anchored in WORKSPACE_ROOT
+    - absolute paths inside WORKSPACE_ROOT or system temp dir
+    """
+    default_path = _default_ghost_run_state_path().resolve()
+    if raw_path is None:
+        return default_path
+
+    raw = str(raw_path).strip()
+    if not raw:
+        return default_path
+
+    workspace_root = _resolve_workspace_root_for_ghost_state().resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    candidate = Path(raw).expanduser()
+
+    if candidate.is_absolute():
+        resolved = candidate.resolve()
+        if _path_is_within(resolved, workspace_root) or _path_is_within(
+            resolved, temp_root
+        ):
+            return resolved
+        logger.warning(
+            "Odrzucono GHOST_RUN_STATE_FILE poza dozwolonym root: '%s' -> fallback",
+            raw,
+        )
+        return default_path
+
+    # Relative path must stay in workspace root and must not use parent traversal.
+    if ".." in candidate.parts:
+        logger.warning(
+            "Odrzucono GHOST_RUN_STATE_FILE z parent traversal: '%s' -> fallback",
+            raw,
+        )
+        return default_path
+
+    resolved = (workspace_root / candidate).resolve()
+    if not _path_is_within(resolved, workspace_root):
+        logger.warning(
+            "Odrzucono GHOST_RUN_STATE_FILE poza WORKSPACE_ROOT: '%s' -> fallback",
+            raw,
+        )
+        return default_path
+    return resolved
+
+
 class _GhostRunStateStore:
     """Shared run-state store used by Ghost API across multiple workers."""
 
@@ -50,8 +127,10 @@ class _GhostRunStateStore:
     TERMINAL_STATUSES = {"completed", "cancelled", "failed"}
 
     def __init__(self, state_path: Path):
-        self._state_path = state_path
-        self._lock_path = state_path.with_suffix(f"{state_path.suffix}.lock")
+        self._state_path = _resolve_ghost_run_state_path(str(state_path))
+        self._lock_path = self._state_path.with_suffix(
+            f"{self._state_path.suffix}.lock"
+        )
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
@@ -89,12 +168,22 @@ class _GhostRunStateStore:
             return
 
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = self._state_path.with_suffix(f"{self._state_path.suffix}.tmp")
-        temp_path.write_text(
-            json.dumps(state, ensure_ascii=False, sort_keys=True),
-            encoding="utf-8",
+        fd, temp_raw = tempfile.mkstemp(
+            prefix=f"{self._state_path.name}.",
+            suffix=".tmp",
+            dir=str(self._state_path.parent),
         )
-        os.replace(temp_path, self._state_path)
+        os.close(fd)
+        temp_path = Path(temp_raw)
+        try:
+            temp_path.write_text(
+                json.dumps(state, ensure_ascii=False, sort_keys=True),
+                encoding="utf-8",
+            )
+            os.replace(temp_path, self._state_path)
+        finally:
+            with suppress(FileNotFoundError):
+                temp_path.unlink()
 
     def get(self) -> dict[str, Any] | None:
         with self._locked():
@@ -124,12 +213,8 @@ class _GhostRunStateStore:
             return current
 
 
-_ghost_run_state_path = Path(
-    getattr(
-        SETTINGS,
-        "GHOST_RUN_STATE_FILE",
-        str(Path(tempfile.gettempdir()) / "venom_ghost_run_state.json"),
-    )
+_ghost_run_state_path = _resolve_ghost_run_state_path(
+    getattr(SETTINGS, "GHOST_RUN_STATE_FILE", None)
 )
 _ghost_run_store = _GhostRunStateStore(_ghost_run_state_path)
 _ghost_local_tasks: dict[str, asyncio.Task[str]] = {}

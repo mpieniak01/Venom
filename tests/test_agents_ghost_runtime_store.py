@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -37,6 +38,39 @@ def test_ghost_run_state_store_invalid_json_returns_none(tmp_path):
     store = mod._GhostRunStateStore(state_path)
 
     assert store.get() is None
+
+
+def test_ghost_run_state_store_non_dict_payload_returns_none(tmp_path):
+    state_path = tmp_path / "list-state.json"
+    state_path.write_text('["not-a-dict"]', encoding="utf-8")
+    store = mod._GhostRunStateStore(state_path)
+
+    assert store.get() is None
+
+
+def test_ghost_run_state_path_resolution_guards(monkeypatch, tmp_path):
+    monkeypatch.setattr(mod.SETTINGS, "WORKSPACE_ROOT", str(tmp_path))
+    default_path = (tmp_path / ".venom" / "runtime" / "ghost_run_state.json").resolve()
+
+    assert mod._resolve_ghost_run_state_path(None) == default_path
+    assert mod._resolve_ghost_run_state_path("") == default_path
+    assert (
+        mod._resolve_ghost_run_state_path("state/custom.json")
+        == (tmp_path / "state" / "custom.json").resolve()
+    )
+    assert mod._resolve_ghost_run_state_path("../escape.json") == default_path
+    assert mod._resolve_ghost_run_state_path("/etc/passwd") == default_path
+
+
+def test_ghost_run_state_store_constructor_rejects_unsafe_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(mod.SETTINGS, "WORKSPACE_ROOT", str(tmp_path))
+    store = mod._GhostRunStateStore(Path("/etc/passwd"))
+
+    expected = (tmp_path / ".venom" / "runtime" / "ghost_run_state.json").resolve()
+    assert store._state_path == expected
+
+    assert store.try_start({"task_id": "t1", "status": "running"}) is True
+    assert expected.exists()
 
 
 @pytest.mark.asyncio

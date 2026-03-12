@@ -26,6 +26,7 @@ tests/test_academy_training_service.py
 tests/test_admin_audit.py
 tests/test_agent_improvements.py
 tests/test_agents.py
+tests/test_agents_ghost_runtime_store.py
 tests/test_agents_skill_manager_paths.py
 tests/test_agents_strategy_ux_contracts.py
 tests/test_analyst_agent.py

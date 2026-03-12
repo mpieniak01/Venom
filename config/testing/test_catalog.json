@@ -558,6 +558,20 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_agents_ghost_runtime_store.py",
+      "domain": "api",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_agents_release_integration_contracts.py",
       "domain": "agents",
       "test_type": "integration",
@@ -1019,6 +1033,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_check_github_actions_node_runtime.py",
+      "domain": "testing_tooling",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
       "path": "tests/test_changed_lines_quality_checker.py",

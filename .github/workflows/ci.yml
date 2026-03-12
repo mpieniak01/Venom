@@ -91,7 +91,7 @@ jobs:
   backend-lite:
     name: Backend lite (pytest)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     needs: [forbidden-paths]
     env:
       CI: "true"
@@ -134,35 +134,39 @@ jobs:
         run: |
           make test-preprod-readonly-smoke
 
-      - name: Run backend lite hard gate + Sonar new-code coverage
-        timeout-minutes: 10
+      - name: Run backend coverage pipeline (PR fast gate / main full sonar report)
+        timeout-minutes: 18
         run: |
           set -o pipefail
           # Global per-test timeout guard: prevents infinite hangs/deadlocks from
           # stalling the whole job. Timeout must still be tuned to avoid false positives.
           export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} --timeout=120 --timeout-method=thread"
           make audit-ci-lite
+
           mkdir -p test-results/sonar
-          DIFF_BASE="origin/main"
-          if [ "${{ github.event_name }}" = "push" ] && [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
-            DIFF_BASE="${{ github.event.before }}"
-          elif [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${{ github.base_ref }}" ]; then
-            DIFF_BASE="origin/${{ github.base_ref }}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Push on main: generating full backend Sonar report."
+            make sonar-reports-backend | tee test-results/sonar/backend-lite.log
+          else
+            DIFF_BASE="origin/main"
+            if [ -n "${{ github.base_ref }}" ]; then
+              DIFF_BASE="origin/${{ github.base_ref }}"
+            fi
+            echo "Pull request: running changed-lines gate with NEW_CODE_DIFF_BASE=${DIFF_BASE}"
+            make check-new-code-coverage \
+              NEW_CODE_INCLUDE_BASELINE=1 \
+              NEW_CODE_AUTO_INCLUDE_CHANGED=1 \
+              NEW_CODE_BASELINE_GROUP=config/pytest-groups/ci-lite.txt \
+              NEW_CODE_TEST_GROUP=config/pytest-groups/sonar-new-code.txt \
+              NEW_CODE_COV_TARGET=venom_core \
+              NEW_CODE_COVERAGE_MIN=0 \
+              NEW_CODE_CHANGED_LINES_MIN=80 \
+              NEW_CODE_TIME_BUDGET_SEC=0 \
+              NEW_CODE_EXCLUDE_SLOW_FASTLANE=0 \
+              NEW_CODE_MAX_TESTS=0 \
+              NEW_CODE_DIFF_BASE="${DIFF_BASE}" \
+            | tee test-results/sonar/backend-lite.log
           fi
-          echo "Using NEW_CODE_DIFF_BASE=${DIFF_BASE}"
-          make check-new-code-coverage \
-            NEW_CODE_INCLUDE_BASELINE=1 \
-            NEW_CODE_AUTO_INCLUDE_CHANGED=1 \
-            NEW_CODE_BASELINE_GROUP=config/pytest-groups/ci-lite.txt \
-            NEW_CODE_TEST_GROUP=config/pytest-groups/sonar-new-code.txt \
-            NEW_CODE_COV_TARGET=venom_core \
-            NEW_CODE_COVERAGE_MIN=0 \
-            NEW_CODE_CHANGED_LINES_MIN=80 \
-            NEW_CODE_TIME_BUDGET_SEC=0 \
-            NEW_CODE_EXCLUDE_SLOW_FASTLANE=0 \
-            NEW_CODE_MAX_TESTS=0 \
-            NEW_CODE_DIFF_BASE="${DIFF_BASE}" \
-          | tee test-results/sonar/backend-lite.log
 
       - name: Upload backend Sonar artifacts
         uses: actions/upload-artifact@v6

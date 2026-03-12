@@ -21,7 +21,7 @@ export default defineConfig({
   use: {
     baseURL: nextBase,
     viewport: { width: 1440, height: 900 },
-    trace: "off",
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
     extraHTTPHeaders: {

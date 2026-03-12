@@ -378,6 +378,126 @@ function useChatAdapterSelection({
   };
 }
 
+type ComposerLayoutClasses = {
+  labelClassName: string;
+  controlsWrapperClassName: string;
+  selectsRowClassName: string;
+  secondaryRowClassName: string;
+  controlStackClassName: string;
+  modelControlClassName: string;
+  actionsClassName: string;
+};
+
+function resolveComposerLayoutClasses(compactControls: boolean): ComposerLayoutClasses {
+  if (compactControls) {
+    return {
+      labelClassName: "sr-only",
+      controlsWrapperClassName: "mt-2 flex flex-wrap items-center gap-2",
+      selectsRowClassName: "flex flex-wrap items-center gap-2",
+      secondaryRowClassName: "flex flex-wrap items-center gap-2",
+      controlStackClassName: "flex min-w-[150px] flex-1 flex-col gap-2",
+      modelControlClassName: "flex min-w-[150px] flex-1 flex-col gap-2",
+      actionsClassName: "ml-auto flex flex-wrap items-center gap-2",
+    };
+  }
+
+  return {
+    labelClassName: "text-caption shrink-0 whitespace-nowrap",
+    controlsWrapperClassName: "mt-2 grid w-full max-w-full gap-2",
+    selectsRowClassName: "flex flex-wrap items-center gap-3",
+    secondaryRowClassName: "flex w-full flex-wrap items-center gap-2",
+    controlStackClassName: "flex min-w-0 items-center gap-1.5",
+    modelControlClassName: "flex min-w-0 items-center gap-1.5",
+    actionsClassName: "ml-auto flex flex-wrap items-center justify-end gap-2",
+  };
+}
+
+async function applyModelSelectionChange({
+  value,
+  noModelOptionValue,
+  selectedLlmModel,
+  selectedAdapter,
+  baseModelAdapterValue,
+  handleAdapterSelect,
+  onActivateModel,
+  setSelectedLlmModel,
+}: {
+  value: string;
+  noModelOptionValue: string;
+  selectedLlmModel: string;
+  selectedAdapter: string;
+  baseModelAdapterValue: string;
+  handleAdapterSelect: (value: string) => Promise<void>;
+  onActivateModel?: (value: string) => Promise<boolean> | boolean;
+  setSelectedLlmModel: (value: string) => void;
+}) {
+  const normalizedValue = value === noModelOptionValue ? "" : value;
+  if (normalizedValue === selectedLlmModel) {
+    return;
+  }
+  if (!normalizedValue) {
+    setSelectedLlmModel("");
+    return;
+  }
+  if (selectedAdapter !== baseModelAdapterValue) {
+    await handleAdapterSelect(baseModelAdapterValue);
+  }
+  if (!onActivateModel) {
+    setSelectedLlmModel(normalizedValue);
+    return;
+  }
+  await onActivateModel(normalizedValue);
+}
+
+function suggestionOptionClassName(isActive: boolean): string {
+  if (isActive) {
+    return "flex w-full items-center justify-between px-3 py-2 text-left text-xs transition bg-[color:var(--ui-menu-item-active)] text-[color:var(--text-primary)]";
+  }
+  return "flex w-full items-center justify-between px-3 py-2 text-left text-xs transition text-[color:var(--text-secondary)] hover:bg-[color:var(--ui-surface-hover)]";
+}
+
+function ActiveAdapterRuntimeCard({
+  activeAdapterAudit,
+  activeAdapterBlocked,
+  t,
+}: {
+  activeAdapterAudit: AdapterAuditItem | null;
+  activeAdapterBlocked: boolean;
+  t: ReturnType<typeof useTranslation>;
+}) {
+  const activeAdapterStateLabel = activeAdapterBlocked
+    ? t("cockpit.models.activeAdapterBlocked")
+    : t("cockpit.models.activeAdapterCompatible");
+  const activeAdapterStateClass = activeAdapterBlocked ? "mt-1 text-amber-300" : "mt-1 text-emerald-300";
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/10 p-2 text-[11px] text-theme-muted">
+      <p className="font-medium text-[color:var(--text-primary)]">
+        {t("cockpit.models.activeAdapterLabel")}
+      </p>
+      {activeAdapterAudit ? (
+        <>
+          <p className="mt-1 font-mono text-[color:var(--text-primary)]">
+            {activeAdapterAudit.adapter_id}
+          </p>
+          <p className="mt-1">
+            {t("academy.adapters.baseModel")}: {activeAdapterAudit.base_model}
+          </p>
+          <p className={activeAdapterStateClass}>{activeAdapterStateLabel}</p>
+          <p className="mt-1">{activeAdapterAudit.message}</p>
+          {activeAdapterBlocked ? (
+            <p className="mt-1 text-amber-200">
+              {t("cockpit.models.activeAdapterSwitchHint")}
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-1">{t("cockpit.models.activeAdapterNone")}</p>
+      )}
+    </div>
+  );
+}
+
 export const ChatComposer = memo(
   forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer(
     {
@@ -517,28 +637,53 @@ export const ChatComposer = memo(
       [applySlashSuggestion, handleSendClick, slashIndex, slashSuggestions],
     );
 
-    const labelClassName = compactControls ? "sr-only" : "text-caption shrink-0 whitespace-nowrap";
-    const controlsWrapperClassName = compactControls
-      ? "mt-2 flex flex-wrap items-center gap-2"
-      : "mt-2 grid w-full max-w-full gap-2";
-    const selectsRowClassName = compactControls
-      ? "flex flex-wrap items-center gap-2"
-      : "flex flex-wrap items-center gap-3";
-    const secondaryRowClassName = compactControls
-      ? "flex flex-wrap items-center gap-2"
-      : "flex w-full flex-wrap items-center gap-2";
-    const controlStackClassName = compactControls
-      ? "flex min-w-[150px] flex-1 flex-col gap-2"
-      : "flex min-w-0 items-center gap-1.5";
-    const modelControlClassName = compactControls
-      ? controlStackClassName
-      : "flex min-w-0 items-center gap-1.5";
-
-    const actionsClassName = compactControls
-      ? "ml-auto flex flex-wrap items-center gap-2"
-      : "ml-auto flex flex-wrap items-center justify-end gap-2";
-
+    const {
+      labelClassName,
+      controlsWrapperClassName,
+      selectsRowClassName,
+      secondaryRowClassName,
+      controlStackClassName,
+      modelControlClassName,
+      actionsClassName,
+    } = useMemo(() => resolveComposerLayoutClasses(compactControls), [compactControls]);
     const adapterDeployUnsupported = adapterDeploySupported === false;
+    const showAdapterRuntimeContext = Boolean(
+      adapterDeploySupported && selectedRuntimeId && selectedLlmModel,
+    );
+    const adapterUnsupportedReason = adapterDeployReason
+      || t("cockpit.models.adapterRuntimeNotSupported", { runtime: selectedLlmServer });
+    const adapterSelectionHint = selectedAdapter === baseModelAdapterValue
+      ? t("cockpit.models.adapterSelectionBaseHint")
+      : t("cockpit.models.adapterSelectionAdapterHint");
+
+    const handleModelSelect = useCallback((value: string) => {
+      applyModelSelectionChange({
+        value,
+        noModelOptionValue,
+        selectedLlmModel,
+        selectedAdapter,
+        baseModelAdapterValue,
+        handleAdapterSelect,
+        onActivateModel,
+        setSelectedLlmModel,
+      }).catch((error) => {
+        console.error("Model activation action failed:", error);
+      });
+    }, [
+      baseModelAdapterValue,
+      handleAdapterSelect,
+      noModelOptionValue,
+      onActivateModel,
+      selectedAdapter,
+      selectedLlmModel,
+      setSelectedLlmModel,
+    ]);
+
+    const handleAdapterMenuSelect = useCallback((value: string) => {
+      handleAdapterSelect(value).catch((error) => {
+        console.error("Adapter switch action failed:", error);
+      });
+    }, [handleAdapterSelect]);
 
     return (
       <div className="mt-3 shrink-0 border-t border-[color:var(--ui-border)] pt-3">
@@ -560,8 +705,7 @@ export const ChatComposer = memo(
                   key={suggestion.id}
                   type="button"
                   onClick={() => applySlashSuggestion(suggestion)}
-                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition ${index === slashIndex ? "bg-[color:var(--ui-menu-item-active)] text-[color:var(--text-primary)]" : "text-[color:var(--text-secondary)] hover:bg-[color:var(--ui-surface-hover)]"
-                    }`}
+                  className={suggestionOptionClassName(index === slashIndex)}
                 >
                   <span className="font-semibold text-[color:var(--text-heading)]">{suggestion.command}</span>
                   <span className="text-[11px] text-hint">{suggestion.detail}</span>
@@ -593,29 +737,7 @@ export const ChatComposer = memo(
               <SelectMenu
                 value={selectedLlmModel || noModelOptionValue}
                 options={llmModelOptions}
-                onChange={(value) => {
-                  const normalizedValue = value === noModelOptionValue ? "" : value;
-                  if (normalizedValue === selectedLlmModel) {
-                    return;
-                  }
-                  const activateModelSelection = async () => {
-                    if (!normalizedValue) {
-                      setSelectedLlmModel("");
-                      return;
-                    }
-                    if (selectedAdapter !== baseModelAdapterValue) {
-                      await handleAdapterSelect(baseModelAdapterValue);
-                    }
-                    if (!onActivateModel) {
-                      setSelectedLlmModel(normalizedValue);
-                      return;
-                    }
-                    await onActivateModel(normalizedValue);
-                  };
-                  activateModelSelection().catch((error) => {
-                    console.error("Model activation action failed:", error);
-                  });
-                }}
+                onChange={handleModelSelect}
                 ariaLabel={t("cockpit.actions.selectModel")}
                 buttonTestId="llm-model-select"
                 optionTestIdPrefix="llm-model-option"
@@ -631,11 +753,7 @@ export const ChatComposer = memo(
               <SelectMenu
                 value={selectedAdapter}
                 options={adapterOptions}
-                onChange={(value) => {
-                  handleAdapterSelect(value).catch((error) => {
-                    console.error("Adapter switch action failed:", error);
-                  });
-                }}
+                onChange={handleAdapterMenuSelect}
                 ariaLabel={t("cockpit.actions.selectAdapter")}
                 buttonTestId="chat-adapter-select"
                 optionTestIdPrefix="chat-adapter-option"
@@ -649,53 +767,19 @@ export const ChatComposer = memo(
                 buttonClassName="w-full justify-between rounded-lg border border-[color:var(--ui-border)] bg-[color:var(--ui-surface)] px-2.5 py-2 text-xs text-[color:var(--text-primary)] whitespace-nowrap"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />
-              {adapterDeployUnsupported && (
-                <p className="text-[11px] text-hint">
-                  {adapterDeployReason ||
-                    t("cockpit.models.adapterRuntimeNotSupported", {
-                      runtime: selectedLlmServer,
-                    })}
-                </p>
-              )}
+              {adapterDeployUnsupported && <p className="text-[11px] text-hint">{adapterUnsupportedReason}</p>}
               {adapterMutationError && !adapterDeployUnsupported ? (
                 <p className="text-[11px] text-red-300">{adapterMutationError}</p>
               ) : null}
-              {adapterDeploySupported && selectedRuntimeId && selectedLlmModel ? (
-                <p className="text-[11px] text-hint">
-                  {selectedAdapter === baseModelAdapterValue
-                    ? t("cockpit.models.adapterSelectionBaseHint")
-                    : t("cockpit.models.adapterSelectionAdapterHint")}
-                </p>
+              {showAdapterRuntimeContext ? (
+                <p className="text-[11px] text-hint">{adapterSelectionHint}</p>
               ) : null}
-              {adapterDeploySupported && selectedRuntimeId && selectedLlmModel ? (
-                <div className="rounded-lg border border-white/10 bg-black/10 p-2 text-[11px] text-theme-muted">
-                  <p className="font-medium text-[color:var(--text-primary)]">
-                    {t("cockpit.models.activeAdapterLabel")}
-                  </p>
-                  {activeAdapterAudit ? (
-                    <>
-                      <p className="mt-1 font-mono text-[color:var(--text-primary)]">
-                        {activeAdapterAudit.adapter_id}
-                      </p>
-                      <p className="mt-1">
-                        {t("academy.adapters.baseModel")}: {activeAdapterAudit.base_model}
-                      </p>
-                      <p className={activeAdapterBlocked ? "mt-1 text-amber-300" : "mt-1 text-emerald-300"}>
-                        {activeAdapterBlocked
-                          ? t("cockpit.models.activeAdapterBlocked")
-                          : t("cockpit.models.activeAdapterCompatible")}
-                      </p>
-                      <p className="mt-1">{activeAdapterAudit.message}</p>
-                      {activeAdapterBlocked ? (
-                        <p className="mt-1 text-amber-200">
-                          {t("cockpit.models.activeAdapterSwitchHint")}
-                        </p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <p className="mt-1">{t("cockpit.models.activeAdapterNone")}</p>
-                  )}
-                </div>
+              {showAdapterRuntimeContext ? (
+                <ActiveAdapterRuntimeCard
+                  activeAdapterAudit={activeAdapterAudit}
+                  activeAdapterBlocked={activeAdapterBlocked}
+                  t={t}
+                />
               ) : null}
             </div>
             <div className={controlStackClassName}>

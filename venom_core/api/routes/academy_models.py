@@ -203,7 +203,7 @@ async def validate_adapter_runtime_compatibility(
 
 async def list_adapters(mgr: Any) -> List[AdapterInfo]:
     """List available local adapters and mark active one."""
-    return await _management_service.list_adapters(
+    return _management_service.list_adapters(
         mgr=mgr,
         settings_obj=_resolve_settings_for_call(),
     )
@@ -233,17 +233,13 @@ def activate_adapter(
     deploy_to_chat_runtime: bool = False,
 ) -> Dict[str, Any]:
     """Activate adapter in model manager, returning API payload."""
-    return _management_service.activate_adapter(
-        mgr=mgr,
-        adapter_id=adapter_id,
-        runtime_id=runtime_id,
-        model_id=model_id,
-        deploy_to_chat_runtime=deploy_to_chat_runtime,
-        settings_obj=_resolve_settings_for_call(),
-        config_manager_obj=config_manager,
-        compute_llm_config_hash_fn=compute_llm_config_hash,
+    settings_obj = _resolve_settings_for_call()
+    runtime_deploy_deps = _management_service.RuntimeDeployDependencies(
         canonical_runtime_model_id_fn=_canonical_runtime_model_id,
         require_trusted_adapter_base_model_fn=_require_trusted_adapter_base_model,
+        settings_obj=settings_obj,
+        config_manager_obj=config_manager,
+        compute_llm_config_hash_fn=compute_llm_config_hash,
         resolve_runtime_for_adapter_deploy_fn=_resolve_runtime_for_adapter_deploy,
         runtime_endpoint_for_hash_fn=_runtime_endpoint_for_hash,
         build_vllm_runtime_model_from_adapter_fn=_build_vllm_runtime_model_from_adapter,
@@ -251,6 +247,15 @@ def activate_adapter(
         restart_vllm_runtime_fn=_restart_vllm_runtime,
         get_active_llm_runtime_fn=get_active_llm_runtime,
         deploy_adapter_to_vllm_runtime_fn=_deploy_adapter_to_vllm_runtime,
+    )
+    return _management_service.activate_adapter(
+        mgr=mgr,
+        adapter_id=adapter_id,
+        runtime_id=runtime_id,
+        model_id=model_id,
+        deploy_to_chat_runtime=deploy_to_chat_runtime,
+        settings_obj=settings_obj,
+        runtime_deploy_deps=runtime_deploy_deps,
     )
 
 

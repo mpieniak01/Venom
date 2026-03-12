@@ -675,7 +675,12 @@ class FileSkill(BaseSkill):
                     break
 
         succeeded = sum(1 for item in results if item.get("status") != "failed")
-        batch_status = "failed" if failures else ("dry_run" if dry_run else "success")
+        if failures:
+            batch_status = "failed"
+        elif dry_run:
+            batch_status = "dry_run"
+        else:
+            batch_status = "success"
         payload = {
             "operation": "batch_file_operations",
             "status": batch_status,

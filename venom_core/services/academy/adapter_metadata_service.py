@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
@@ -26,6 +27,18 @@ _BASE_MODEL_CONFIDENT_SOURCES: Set[str] = {
 }
 
 
+@dataclass(frozen=True)
+class AdapterMetadataContext:
+    run_id: str | None = None
+    requested_runtime_id: str | None = None
+    requested_base_model: str | None = None
+    effective_runtime_id: str | None = None
+    effective_base_model: str | None = None
+    dataset_path: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
 def _load_adapter_metadata(adapter_dir: Path) -> Dict[str, Any]:
     metadata_file = adapter_dir / "metadata.json"
     if not metadata_file.exists():
@@ -46,33 +59,34 @@ def build_canonical_adapter_metadata(
     created_at: str,
     source_flow: str,
     training_params: Dict[str, Any] | None = None,
-    run_id: str | None = None,
-    requested_runtime_id: str | None = None,
-    requested_base_model: str | None = None,
-    effective_runtime_id: str | None = None,
-    effective_base_model: str | None = None,
-    dataset_path: str | None = None,
-    started_at: str | None = None,
-    finished_at: str | None = None,
     source: str | None = None,
+    context: AdapterMetadataContext | None = None,
 ) -> Dict[str, Any]:
     """Build the canonical adapter metadata payload persisted after training."""
-    resolved_effective_base_model = (effective_base_model or base_model).strip()
+    resolved_context = context or AdapterMetadataContext()
+    resolved_effective_base_model = (
+        resolved_context.effective_base_model or base_model
+    ).strip()
     payload: Dict[str, Any] = {
         "metadata_version": CANONICAL_ADAPTER_METADATA_VERSION,
         "adapter_id": adapter_id,
-        "run_id": run_id or adapter_id,
+        "run_id": resolved_context.run_id or adapter_id,
         "source_flow": source_flow,
         "source": source or source_flow,
         "created_at": created_at,
-        "started_at": started_at,
-        "finished_at": finished_at,
+        "started_at": resolved_context.started_at,
+        "finished_at": resolved_context.finished_at,
         "base_model": resolved_effective_base_model,
-        "requested_base_model": (requested_base_model or resolved_effective_base_model),
+        "requested_base_model": (
+            resolved_context.requested_base_model or resolved_effective_base_model
+        ),
         "effective_base_model": resolved_effective_base_model,
-        "requested_runtime_id": requested_runtime_id,
-        "effective_runtime_id": effective_runtime_id or requested_runtime_id,
-        "dataset_path": dataset_path,
+        "requested_runtime_id": resolved_context.requested_runtime_id,
+        "effective_runtime_id": (
+            resolved_context.effective_runtime_id
+            or resolved_context.requested_runtime_id
+        ),
+        "dataset_path": resolved_context.dataset_path,
         "parameters": dict(training_params or {}),
     }
     return payload

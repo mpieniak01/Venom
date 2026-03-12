@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,6 +13,22 @@ from venom_core.services.academy import adapter_runtime_service as _runtime_serv
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class RuntimeDeployDependencies:
+    canonical_runtime_model_id_fn: Any
+    require_trusted_adapter_base_model_fn: Any
+    settings_obj: Any
+    config_manager_obj: Any
+    compute_llm_config_hash_fn: Any
+    resolve_runtime_for_adapter_deploy_fn: Any
+    runtime_endpoint_for_hash_fn: Any
+    build_vllm_runtime_model_from_adapter_fn: Any
+    is_runtime_model_dir_fn: Any
+    restart_vllm_runtime_fn: Any
+    get_active_llm_runtime_fn: Any
+    deploy_adapter_to_vllm_runtime_fn: Any
 
 
 def _is_canonical_adapter_metadata(metadata: dict[str, Any]) -> bool:
@@ -146,7 +163,7 @@ def purge_legacy_adapters(
     }
 
 
-async def list_adapters(
+def list_adapters(
     *,
     mgr: Any,
     settings_obj: Any,
@@ -215,17 +232,7 @@ def activate_adapter(
     model_id: str | None,
     deploy_to_chat_runtime: bool,
     settings_obj: Any,
-    config_manager_obj: Any,
-    compute_llm_config_hash_fn: Any,
-    canonical_runtime_model_id_fn: Any,
-    require_trusted_adapter_base_model_fn: Any,
-    resolve_runtime_for_adapter_deploy_fn: Any,
-    runtime_endpoint_for_hash_fn: Any,
-    build_vllm_runtime_model_from_adapter_fn: Any,
-    is_runtime_model_dir_fn: Any,
-    restart_vllm_runtime_fn: Any,
-    get_active_llm_runtime_fn: Any,
-    deploy_adapter_to_vllm_runtime_fn: Any,
+    runtime_deploy_deps: RuntimeDeployDependencies,
 ) -> dict[str, Any]:
     """Activate adapter in model manager and optionally deploy it to chat runtime."""
     models_dir = _runtime_service._resolve_academy_models_dir(settings_obj=settings_obj)
@@ -257,18 +264,7 @@ def activate_adapter(
 
     if deploy_to_chat_runtime:
         runtime_deploy_ctx = _build_runtime_deploy_ctx(
-            canonical_runtime_model_id_fn=canonical_runtime_model_id_fn,
-            require_trusted_adapter_base_model_fn=require_trusted_adapter_base_model_fn,
-            settings_obj=settings_obj,
-            config_manager_obj=config_manager_obj,
-            compute_llm_config_hash_fn=compute_llm_config_hash_fn,
-            resolve_runtime_for_adapter_deploy_fn=resolve_runtime_for_adapter_deploy_fn,
-            runtime_endpoint_for_hash_fn=runtime_endpoint_for_hash_fn,
-            build_vllm_runtime_model_from_adapter_fn=build_vllm_runtime_model_from_adapter_fn,
-            is_runtime_model_dir_fn=is_runtime_model_dir_fn,
-            restart_vllm_runtime_fn=restart_vllm_runtime_fn,
-            get_active_llm_runtime_fn=get_active_llm_runtime_fn,
-            deploy_adapter_to_vllm_runtime_fn=deploy_adapter_to_vllm_runtime_fn,
+            runtime_deploy_deps=runtime_deploy_deps,
         )
         deploy_payload = _deploy_adapter_to_chat_runtime_with_rollback(
             mgr=mgr,
@@ -332,32 +328,21 @@ def _deploy_adapter_to_chat_runtime_with_rollback(
 
 def _build_runtime_deploy_ctx(
     *,
-    canonical_runtime_model_id_fn: Any,
-    require_trusted_adapter_base_model_fn: Any,
-    settings_obj: Any,
-    config_manager_obj: Any,
-    compute_llm_config_hash_fn: Any,
-    resolve_runtime_for_adapter_deploy_fn: Any,
-    runtime_endpoint_for_hash_fn: Any,
-    build_vllm_runtime_model_from_adapter_fn: Any,
-    is_runtime_model_dir_fn: Any,
-    restart_vllm_runtime_fn: Any,
-    get_active_llm_runtime_fn: Any,
-    deploy_adapter_to_vllm_runtime_fn: Any,
+    runtime_deploy_deps: RuntimeDeployDependencies,
 ) -> dict[str, Any]:
     return {
-        "canonical_runtime_model_id_fn": canonical_runtime_model_id_fn,
-        "require_trusted_adapter_base_model_fn": require_trusted_adapter_base_model_fn,
-        "settings_obj": settings_obj,
-        "config_manager_obj": config_manager_obj,
-        "compute_llm_config_hash_fn": compute_llm_config_hash_fn,
-        "resolve_runtime_for_adapter_deploy_fn": resolve_runtime_for_adapter_deploy_fn,
-        "runtime_endpoint_for_hash_fn": runtime_endpoint_for_hash_fn,
-        "build_vllm_runtime_model_from_adapter_fn": build_vllm_runtime_model_from_adapter_fn,
-        "is_runtime_model_dir_fn": is_runtime_model_dir_fn,
-        "restart_vllm_runtime_fn": restart_vllm_runtime_fn,
-        "get_active_llm_runtime_fn": get_active_llm_runtime_fn,
-        "deploy_adapter_to_vllm_runtime_fn": deploy_adapter_to_vllm_runtime_fn,
+        "canonical_runtime_model_id_fn": runtime_deploy_deps.canonical_runtime_model_id_fn,
+        "require_trusted_adapter_base_model_fn": runtime_deploy_deps.require_trusted_adapter_base_model_fn,
+        "settings_obj": runtime_deploy_deps.settings_obj,
+        "config_manager_obj": runtime_deploy_deps.config_manager_obj,
+        "compute_llm_config_hash_fn": runtime_deploy_deps.compute_llm_config_hash_fn,
+        "resolve_runtime_for_adapter_deploy_fn": runtime_deploy_deps.resolve_runtime_for_adapter_deploy_fn,
+        "runtime_endpoint_for_hash_fn": runtime_deploy_deps.runtime_endpoint_for_hash_fn,
+        "build_vllm_runtime_model_from_adapter_fn": runtime_deploy_deps.build_vllm_runtime_model_from_adapter_fn,
+        "is_runtime_model_dir_fn": runtime_deploy_deps.is_runtime_model_dir_fn,
+        "restart_vllm_runtime_fn": runtime_deploy_deps.restart_vllm_runtime_fn,
+        "get_active_llm_runtime_fn": runtime_deploy_deps.get_active_llm_runtime_fn,
+        "deploy_adapter_to_vllm_runtime_fn": runtime_deploy_deps.deploy_adapter_to_vllm_runtime_fn,
     }
 
 

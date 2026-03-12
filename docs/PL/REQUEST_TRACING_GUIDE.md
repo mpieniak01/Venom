@@ -297,7 +297,7 @@ Hidden prompts (zatwierdzone pary prompt → odpowiedź) są agregowane z
 | `ComposeSkill` (`compose_skill.py`) | Docker Compose / stacki | `create_environment`, `destroy_environment`, `check_service_health`, `list_environments` |
 | `CoreSkill` (`core_skill.py`) | Operacje na kodzie Venom | `hot_patch`, `rollback`, `list_backups`, `restart_service`, `verify_syntax` |
 | `DocsSkill` (`docs_skill.py`) | Budowa dokumentacji | `generate_mkdocs_config`, `build_docs_site`, `serve_docs`, `check_docs_structure` |
-| `FileSkill` (`file_skill.py`) | Pliki workspace | `write_file`, `read_file`, `list_files`, `file_exists` |
+| `FileSkill` (`file_skill.py`) | Pliki workspace | `write_file`, `read_file`, `list_files`, `file_exists`, `rename_path`, `move_path`, `copy_path`, `delete_path`, `batch_file_operations` |
 | `GitSkill` (`git_skill.py`) | Git / repozytorium | `init_repo`, `checkout`, `get_status`, `get_diff`, `add_files`, `commit`, `push`, `pull`, `merge`, `reset` |
 | `GithubSkill` (`github_skill.py`) | GitHub (public API) | `search_repos`, `get_readme`, `get_trending` |
 | `GoogleCalendarSkill` (`google_calendar_skill.py`) | Kalendarz | `read_agenda`, `schedule_task` |

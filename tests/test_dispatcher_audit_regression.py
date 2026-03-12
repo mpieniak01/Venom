@@ -99,13 +99,13 @@ def test_prepare_skill_parameters_file_skill(dispatcher):
     params = dispatcher._prepare_skill_parameters(
         "FileSkill", "Read venom_core/main.py"
     )
-    assert params == {"path": "venom_core/main.py"}
+    assert params == {"file_path": "venom_core/main.py"}
 
     # Path with special chars
     params = dispatcher._prepare_skill_parameters(
         "FileSkill", "Zapisz plik-test_v1.txt"
     )
-    assert params == {"path": "plik-test_v1.txt"}
+    assert params == {"file_path": "plik-test_v1.txt"}
 
     # No path
     params = dispatcher._prepare_skill_parameters(
@@ -115,7 +115,7 @@ def test_prepare_skill_parameters_file_skill(dispatcher):
 
     # Multiple paths (take first)
     params = dispatcher._prepare_skill_parameters("FileSkill", "Compare a.py and b.py")
-    assert params == {"path": "a.py"}
+    assert params == {"file_path": "a.py"}
 
 
 def test_prepare_skill_parameters_shell_skill(dispatcher):

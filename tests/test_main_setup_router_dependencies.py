@@ -2,6 +2,8 @@ import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 import venom_core.main as main_module
 
 
@@ -354,6 +356,105 @@ def test_setup_router_dependencies_ignores_self_learning_refresh_error(monkeypat
     )
 
     main_module.setup_router_dependencies()
+
+
+def test_initialize_ghost_agent_if_enabled_returns_when_feature_disabled(monkeypatch):
+    monkeypatch.setattr(
+        main_module.SETTINGS, "ENABLE_GHOST_AGENT", False, raising=False
+    )
+    sentinel = object()
+    monkeypatch.setattr(main_module, "ghost_agent", sentinel)
+
+    def _kernel_should_not_be_called():
+        raise AssertionError("_get_orchestrator_kernel should not be called")
+
+    monkeypatch.setattr(
+        main_module, "_get_orchestrator_kernel", _kernel_should_not_be_called
+    )
+
+    main_module._initialize_ghost_agent_if_enabled()
+
+    assert main_module.ghost_agent is sentinel
+
+
+def test_initialize_ghost_agent_if_enabled_returns_when_kernel_missing(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_GHOST_AGENT", True, raising=False)
+    sentinel = object()
+    monkeypatch.setattr(main_module, "ghost_agent", sentinel)
+    monkeypatch.setattr(main_module, "_get_orchestrator_kernel", lambda: None)
+
+    main_module._initialize_ghost_agent_if_enabled()
+
+    assert main_module.ghost_agent is sentinel
+
+
+def test_initialize_ghost_agent_if_enabled_sets_ghost_agent(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_GHOST_AGENT", True, raising=False)
+    kernel = object()
+    monkeypatch.setattr(main_module, "_get_orchestrator_kernel", lambda: kernel)
+
+    class DummyGhostAgent:
+        def __init__(self, *, kernel):
+            self.kernel = kernel
+
+    monkeypatch.setattr(main_module, "GhostAgent", DummyGhostAgent)
+    monkeypatch.setattr(main_module, "ghost_agent", None)
+
+    main_module._initialize_ghost_agent_if_enabled()
+
+    assert isinstance(main_module.ghost_agent, DummyGhostAgent)
+    assert main_module.ghost_agent.kernel is kernel
+
+
+def test_initialize_ghost_agent_if_enabled_handles_init_exception(monkeypatch):
+    monkeypatch.setattr(main_module.SETTINGS, "ENABLE_GHOST_AGENT", True, raising=False)
+    monkeypatch.setattr(main_module, "_get_orchestrator_kernel", lambda: object())
+
+    class FailingGhostAgent:
+        def __init__(self, *, kernel):  # noqa: ARG002
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(main_module, "GhostAgent", FailingGhostAgent)
+    monkeypatch.setattr(main_module, "ghost_agent", object())
+
+    main_module._initialize_ghost_agent_if_enabled()
+
+    assert main_module.ghost_agent is None
+
+
+@pytest.mark.asyncio
+async def test_lifespan_invokes_ghost_init_step(monkeypatch):
+    monkeypatch.setattr(main_module, "validate_environment_policy", lambda: None)
+    monkeypatch.setattr(main_module, "_initialize_observability", AsyncMock())
+    monkeypatch.setattr(main_module, "_initialize_model_services", lambda: None)
+    monkeypatch.setattr(main_module, "_initialize_calendar_skill", lambda: None)
+    monkeypatch.setattr(main_module, "_initialize_node_manager", AsyncMock())
+    monkeypatch.setattr(main_module, "_initialize_orchestrator", lambda: None)
+    monkeypatch.setattr(main_module, "_ensure_storage_dirs", lambda: "/tmp/venom-tests")
+    monkeypatch.setattr(main_module, "_initialize_memory_stores", lambda: None)
+    monkeypatch.setattr(main_module, "_initialize_academy", lambda: None)
+    monkeypatch.setattr(main_module, "_initialize_token_economist", lambda: None)
+    monkeypatch.setattr(main_module, "_initialize_gardener_and_git", AsyncMock())
+    monkeypatch.setattr(main_module, "_initialize_background_scheduler", AsyncMock())
+    monkeypatch.setattr(main_module, "_initialize_documenter_and_watcher", AsyncMock())
+    monkeypatch.setattr(main_module, "_initialize_avatar_stack", AsyncMock())
+    monkeypatch.setattr(main_module, "_initialize_shadow_stack", AsyncMock())
+    ghost_init = MagicMock()
+    monkeypatch.setattr(main_module, "_initialize_ghost_agent_if_enabled", ghost_init)
+    setup_routes = MagicMock()
+    monkeypatch.setattr(main_module, "setup_router_dependencies", setup_routes)
+    monkeypatch.setattr(main_module, "_ensure_local_llm_ready", AsyncMock())
+    shutdown_runtime = AsyncMock()
+    monkeypatch.setattr(main_module, "_shutdown_runtime_components", shutdown_runtime)
+    monkeypatch.setattr(main_module.asyncio, "create_task", lambda _coro: MagicMock())
+
+    app = SimpleNamespace(state=SimpleNamespace())
+    async with main_module.lifespan(app):
+        pass
+
+    ghost_init.assert_called_once()
+    setup_routes.assert_called_once()
+    shutdown_runtime.assert_awaited_once()
 
 
 async def _done_task() -> None:

@@ -115,6 +115,7 @@ Dodawanie nowego motywu:
 4. CI:
    - workflow `Web Next Playwright E2E` uruchamia domyślnie profil `smoke` na `push/pull_request`,
    - workflow cache’uje binaria Playwright (`~/.cache/ms-playwright`), co skraca pipeline o czas ponownego pobierania przeglądarek.
+   - workflow generuje raport trendu niestabilności (`test-results/e2e/flakiness-summary.json` + `flakiness-history.jsonl`).
 5. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.
 
 ## Testy unit + coverage pod Sonar

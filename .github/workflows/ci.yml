@@ -282,7 +282,7 @@ jobs:
 
       - name: SonarCloud Scan (configpath)
         if: ${{ steps.sonar_guard.outputs.enabled == 'true' && !(github.event_name == 'workflow_dispatch' && github.event.inputs.sonar_architecture_mode == 'noconfig') }}
-        uses: SonarSource/sonarqube-scan-action@bfd4e558cda28cda6b5defafb9232d191be8c203
+        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
         with:
           args: >
             -Dsonar.newCode.referenceBranch=main
@@ -292,7 +292,7 @@ jobs:
 
       - name: SonarCloud Scan (noconfig)
         if: ${{ steps.sonar_guard.outputs.enabled == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.sonar_architecture_mode == 'noconfig' }}
-        uses: SonarSource/sonarqube-scan-action@bfd4e558cda28cda6b5defafb9232d191be8c203
+        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
         with:
           args: >
             -Dsonar.newCode.referenceBranch=main

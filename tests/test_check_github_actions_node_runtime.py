@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/upload-artifact@v6
       - uses: actions/download-artifact@v7
+      - uses: actions/cache@v5
 """.strip()
 
     issues = mod.validate_workflow(Path("wf.yml"), content)
@@ -28,14 +29,16 @@ jobs:
     steps:
       - uses: actions/upload-artifact@v5
       - uses: actions/download-artifact@v5
+      - uses: actions/cache@v4
 """.strip()
 
     issues = mod.validate_workflow(Path("wf.yml"), content)
 
-    assert len(issues) == 3
+    assert len(issues) == 4
     assert "upload-artifact@v5" in issues[0]
     assert "download-artifact@v5" in issues[1]
-    assert mod.FORCE_NODE24_ENV in issues[2]
+    assert "actions/cache@v4" in issues[2]
+    assert mod.FORCE_NODE24_ENV in issues[3]
 
 
 def test_run_check_scans_workflow_directory(tmp_path: Path):
@@ -49,6 +52,7 @@ jobs:
   sample:
     steps:
       - uses: actions/upload-artifact@v6
+      - uses: actions/cache@v5
 """.strip(),
         encoding="utf-8",
     )
@@ -58,11 +62,12 @@ jobs:
   sample:
     steps:
       - uses: actions/upload-artifact@v5
+      - uses: actions/cache@v4
 """.strip(),
         encoding="utf-8",
     )
 
     issues = mod.run_check(workflow_dir)
 
-    assert len(issues) == 2
+    assert len(issues) == 3
     assert any("bad.yml" in issue for issue in issues)

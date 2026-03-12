@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -1090,9 +1089,8 @@ class TestAgents:
     def _reset_agents(self):
         from venom_core.api.routes import agents as mod
 
-        isolated_store = mod._GhostRunStateStore(
-            Path(tempfile.mkdtemp(prefix="venom-ghost-test-")) / "ghost-run-state.json"
-        )
+        mod.SETTINGS.WORKSPACE_ROOT = tempfile.mkdtemp(prefix="venom-ghost-test-")
+        isolated_store = mod._GhostRunStateStore()
         originals = (
             mod._gardener_agent,
             mod._shadow_agent,

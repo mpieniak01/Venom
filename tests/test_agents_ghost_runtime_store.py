@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,8 +12,13 @@ import pytest
 from venom_core.api.routes import agents as mod
 
 
-def test_ghost_run_state_store_lifecycle(tmp_path):
-    store = mod._GhostRunStateStore(tmp_path / "ghost-state.json")
+def _make_store(monkeypatch, tmp_path):
+    monkeypatch.setattr(mod.SETTINGS, "WORKSPACE_ROOT", str(tmp_path))
+    return mod._GhostRunStateStore()
+
+
+def test_ghost_run_state_store_lifecycle(tmp_path, monkeypatch):
+    store = _make_store(monkeypatch, tmp_path)
 
     assert store.get() is None
     assert store.try_start({"task_id": "t1", "status": "running"}) is True
@@ -32,18 +38,22 @@ def test_ghost_run_state_store_lifecycle(tmp_path):
     assert store.get() is None
 
 
-def test_ghost_run_state_store_invalid_json_returns_none(tmp_path):
-    state_path = tmp_path / "broken-state.json"
+def test_ghost_run_state_store_invalid_json_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod.SETTINGS, "WORKSPACE_ROOT", str(tmp_path))
+    state_path = mod._resolve_ghost_run_state_path()
+    state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text("{not-json", encoding="utf-8")
-    store = mod._GhostRunStateStore(state_path)
+    store = mod._GhostRunStateStore()
 
     assert store.get() is None
 
 
-def test_ghost_run_state_store_non_dict_payload_returns_none(tmp_path):
-    state_path = tmp_path / "list-state.json"
+def test_ghost_run_state_store_non_dict_payload_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod.SETTINGS, "WORKSPACE_ROOT", str(tmp_path))
+    state_path = mod._resolve_ghost_run_state_path()
+    state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text('["not-a-dict"]', encoding="utf-8")
-    store = mod._GhostRunStateStore(state_path)
+    store = mod._GhostRunStateStore()
 
     assert store.get() is None
 
@@ -52,19 +62,24 @@ def test_ghost_run_state_path_resolution_guards(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.SETTINGS, "WORKSPACE_ROOT", str(tmp_path))
     default_path = (tmp_path / ".venom" / "runtime" / "ghost_run_state.json").resolve()
 
-    assert mod._resolve_ghost_run_state_path(None) == default_path
-    assert mod._resolve_ghost_run_state_path("") == default_path
-    assert (
-        mod._resolve_ghost_run_state_path("state/custom.json")
-        == (tmp_path / "state" / "custom.json").resolve()
-    )
-    assert mod._resolve_ghost_run_state_path("../escape.json") == default_path
-    assert mod._resolve_ghost_run_state_path("/etc/passwd") == default_path
+    assert mod._resolve_ghost_run_state_path() == default_path
 
 
-def test_ghost_run_state_store_constructor_rejects_unsafe_path(monkeypatch, tmp_path):
+def test_ghost_run_state_path_resolution_uses_tempdir_when_workspace_missing(
+    monkeypatch,
+):
+    monkeypatch.setattr(mod.SETTINGS, "WORKSPACE_ROOT", "")
+    expected = (
+        Path(tempfile.gettempdir()) / ".venom" / "runtime" / "ghost_run_state.json"
+    ).resolve()
+    assert mod._resolve_ghost_run_state_path() == expected
+
+
+def test_ghost_run_state_store_constructor_uses_workspace_scoped_path(
+    monkeypatch, tmp_path
+):
     monkeypatch.setattr(mod.SETTINGS, "WORKSPACE_ROOT", str(tmp_path))
-    store = mod._GhostRunStateStore(Path("/etc/passwd"))
+    store = mod._GhostRunStateStore()
 
     expected = (tmp_path / ".venom" / "runtime" / "ghost_run_state.json").resolve()
     assert store._state_path == expected
@@ -75,7 +90,7 @@ def test_ghost_run_state_store_constructor_rejects_unsafe_path(monkeypatch, tmp_
 
 @pytest.mark.asyncio
 async def test_run_ghost_process_with_cancel_watch_success(tmp_path, monkeypatch):
-    store = mod._GhostRunStateStore(tmp_path / "state.json")
+    store = _make_store(monkeypatch, tmp_path)
     monkeypatch.setattr(mod, "_ghost_run_store", store)
     mod._ghost_local_tasks.clear()
     store.try_start({"task_id": "task-ok", "status": "running"})
@@ -95,7 +110,7 @@ async def test_run_ghost_process_with_cancel_watch_success(tmp_path, monkeypatch
 
 @pytest.mark.asyncio
 async def test_run_ghost_process_with_cancel_watch_cancelled(tmp_path, monkeypatch):
-    store = mod._GhostRunStateStore(tmp_path / "state.json")
+    store = _make_store(monkeypatch, tmp_path)
     monkeypatch.setattr(mod, "_ghost_run_store", store)
     mod._ghost_local_tasks.clear()
     store.try_start({"task_id": "task-cancel", "status": "running"})
@@ -129,7 +144,7 @@ async def test_run_ghost_process_with_cancel_watch_cancelled(tmp_path, monkeypat
 
 @pytest.mark.asyncio
 async def test_run_ghost_job_updates_completed_state(tmp_path, monkeypatch):
-    store = mod._GhostRunStateStore(tmp_path / "state.json")
+    store = _make_store(monkeypatch, tmp_path)
     monkeypatch.setattr(mod, "_ghost_run_store", store)
     mod._ghost_local_tasks.clear()
     store.try_start(
@@ -162,7 +177,7 @@ async def test_run_ghost_job_updates_completed_state(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_ghost_job_updates_failed_state(tmp_path, monkeypatch):
-    store = mod._GhostRunStateStore(tmp_path / "state.json")
+    store = _make_store(monkeypatch, tmp_path)
     monkeypatch.setattr(mod, "_ghost_run_store", store)
     mod._ghost_local_tasks.clear()
     store.try_start(
@@ -198,7 +213,7 @@ async def test_run_ghost_job_updates_failed_state(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_ghost_job_updates_cancelled_state(tmp_path, monkeypatch):
-    store = mod._GhostRunStateStore(tmp_path / "state.json")
+    store = _make_store(monkeypatch, tmp_path)
     monkeypatch.setattr(mod, "_ghost_run_store", store)
     mod._ghost_local_tasks.clear()
     store.try_start(

@@ -495,7 +495,7 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
                     paths.append(candidate)
 
             if paths:
-                params["path"] = paths[0]
+                params["file_path"] = paths[0]
 
             # If we are writing, we might want to extract content, but that's hard safely via regex
             # and usually requires the Agent to structure the call.

@@ -595,6 +595,27 @@ def test_batch_file_operations_sets_audit_status_and_context(temp_workspace):
     assert entries[0].context == "batch:1"
 
 
+def test_batch_file_operations_audit_publish_is_best_effort(
+    temp_workspace, monkeypatch
+):
+    skill = FileSkill(workspace_root=temp_workspace)
+
+    class _BrokenAuditStream:
+        def publish(self, **kwargs):
+            raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr(
+        "venom_core.execution.skills.file_skill.get_audit_stream",
+        lambda: _BrokenAuditStream(),
+    )
+
+    operations = [{"action": "delete", "file_path": "missing.txt"}]
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+    assert report["operation"] == "batch_file_operations"
+    assert report["operations_total"] == 1
+
+
 def test_batch_file_operations_requires_list_payload(temp_workspace):
     skill = FileSkill(workspace_root=temp_workspace)
     result = skill.batch_file_operations('{"action":"delete","file_path":"x.txt"}')

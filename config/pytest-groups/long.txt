@@ -9,7 +9,6 @@ tests/test_agents_routes_integration_regression.py
 tests/test_architecture_contracts_guard.py
 tests/test_audit_lite_deps.py
 tests/test_browser_skill.py
-tests/test_check_github_actions_node_runtime.py
 tests/test_compose_integration.py
 tests/test_external_discovery_integration.py
 tests/test_file_operations_integration.py

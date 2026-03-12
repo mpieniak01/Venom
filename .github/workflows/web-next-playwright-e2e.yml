@@ -91,6 +91,19 @@ jobs:
         if: always()
         run: npm --prefix web-next run test:e2e:trend
 
+      - name: Enforce quality thresholds (smoke/functional)
+        if: ${{ success() && (env.E2E_PROFILE == 'smoke' || env.E2E_PROFILE == 'functional') }}
+        run: |
+          set -euo pipefail
+          if [ "${E2E_PROFILE}" = "smoke" ]; then
+            export E2E_MIN_TESTS=5
+            export E2E_MAX_FLAKY_RATE=15
+          else
+            export E2E_MIN_TESTS=8
+            export E2E_MAX_FLAKY_RATE=10
+          fi
+          npm --prefix web-next run test:e2e:quality-gate
+
       - name: Upload Playwright artifacts
         if: always()
         uses: actions/upload-artifact@v5

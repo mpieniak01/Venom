@@ -1,5 +1,6 @@
 """Integration Suite for Tool Reliability (Toolchain Check)."""
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -104,3 +105,63 @@ def test_add():
 
         assert "✅" in pass_test_result or "passed" in pass_test_result.lower()
         assert "Failed: 0" in pass_test_result
+
+
+@pytest.mark.asyncio
+async def test_toolchain_file_skill_batch_operations():
+    """
+    Verify new FileSkill batch file operations in an integration scenario:
+    1. dry-run does not mutate filesystem,
+    2. real execution mutates as expected,
+    3. resulting script is executable via ShellSkill.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+        file_skill = FileSkill(workspace_root=str(workspace))
+        shell_skill = ShellSkill(use_sandbox=False)
+
+        script_content = """
+if __name__ == "__main__":
+    print("batch-ok")
+"""
+        await file_skill.write_file("app.py", script_content)
+
+        operations = [
+            {
+                "action": "copy",
+                "source_path": "app.py",
+                "target_path": "app_copy.py",
+            },
+            {"action": "move", "source_path": "app.py", "target_path": "src/app.py"},
+        ]
+
+        # 1) Dry-run must not change files
+        dry_run_raw = file_skill.batch_file_operations(
+            json.dumps(operations), dry_run=True
+        )
+        dry_run_report = json.loads(dry_run_raw)
+        assert dry_run_report["operations_failed"] == 0
+        assert dry_run_report["operations_succeeded"] == 2
+        assert (workspace / "app.py").exists()
+        assert not (workspace / "src" / "app.py").exists()
+        assert not (workspace / "src" / "app_copy.py").exists()
+
+        # 2) Real execution should apply move+copy
+        execute_raw = file_skill.batch_file_operations(json.dumps(operations))
+        execute_report = json.loads(execute_raw)
+        assert execute_report["operations_failed"] == 0
+        assert execute_report["operations_succeeded"] == 2
+        assert execute_report["results"][0]["rollback"]["operation"] == "delete_path"
+        assert execute_report["results"][1]["rollback"]["target_path"] == "app.py"
+        assert not (workspace / "app.py").exists()
+        assert (workspace / "src" / "app.py").exists()
+        assert (workspace / "app_copy.py").exists()
+
+        # 3) Run moved script using ShellSkill
+        import shlex
+        import sys
+
+        safe_tmpdir = shlex.quote(str(tmpdir))
+        cmd = f"cd {safe_tmpdir} && {sys.executable} src/app.py"
+        shell_result = shell_skill.run_shell(cmd)
+        assert "batch-ok" in shell_result

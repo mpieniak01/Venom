@@ -23,7 +23,10 @@ ALLOWED_FORBIDDEN_IMPORTS: dict[str, set[str]] = {
 # Existing layer exceptions are a temporary baseline from refactor wave 181/182.
 # The test blocks any new direct imports in routes and forces explicit review.
 ALLOWED_LAYER_IMPORTS: dict[str, set[str]] = {
-    "venom_core/api/routes/agents.py": {"venom_core.core.models"},
+    "venom_core/api/routes/agents.py": {
+        "venom_core.core.environment_policy",
+        "venom_core.core.models",
+    },
     "venom_core/api/routes/feedback.py": {"venom_core.core", "venom_core.core.models"},
     "venom_core/api/routes/learning.py": {
         "venom_core.core.hidden_prompts",

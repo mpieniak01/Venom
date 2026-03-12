@@ -97,6 +97,16 @@ def require_shell_permission() -> None:
         )
 
 
+def require_desktop_input_permission() -> None:
+    """Require desktop input control capability (mouse/keyboard automation)."""
+    if not permission_guard.can_execute_shell():
+        _deny(
+            "AutonomyViolation: Brak uprawnień do automatyzacji desktop "
+            f"(Poziom: {permission_guard.get_current_level_name()})",
+            operation="desktop_input",
+        )
+
+
 def require_core_patch_permission() -> None:
     """Require highest autonomy level for core patching operations."""
     current_level = permission_guard.get_current_level()

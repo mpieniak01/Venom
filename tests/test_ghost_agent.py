@@ -318,3 +318,65 @@ class TestGhostAgent:
         with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
             mock_grab.return_value = Image.new("RGB", (100, 100))
             assert ghost_agent._verify_step_result(step, None) is True
+
+    @pytest.mark.asyncio
+    async def test_vision_click_success_with_located_coords(self, ghost_agent):
+        ghost_agent.vision.locate_element = AsyncMock(return_value=(320, 240))
+        ghost_agent.input_skill.mouse_click = AsyncMock(return_value="✅ Kliknięto")
+        ghost_agent.verification_enabled = False
+
+        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
+            mock_grab.return_value = Image.new("RGB", (300, 200))
+            payload = await ghost_agent.vision_click(
+                description="save button",
+                require_visual_confirmation=False,
+            )
+
+        assert payload["status"] == "success"
+        assert payload["coords"] == [320, 240]
+        assert payload["used_fallback"] is False
+        ghost_agent.input_skill.mouse_click.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_vision_click_fail_closed_blocks_fallback(self, ghost_agent):
+        ghost_agent.vision.locate_element = AsyncMock(return_value=None)
+        ghost_agent.critical_fail_closed = True
+
+        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
+            mock_grab.return_value = Image.new("RGB", (300, 200))
+            with pytest.raises(RuntimeError, match="Fail-closed"):
+                await ghost_agent.vision_click(
+                    description="login button",
+                    fallback_coords=(10, 20),
+                )
+
+    @pytest.mark.asyncio
+    async def test_vision_click_allows_fallback_in_power_mode(self, ghost_agent):
+        ghost_agent.vision.locate_element = AsyncMock(return_value=None)
+        ghost_agent.input_skill.mouse_click = AsyncMock(return_value="✅ Kliknięto")
+        ghost_agent.apply_runtime_profile("desktop_power")
+        ghost_agent.verification_enabled = False
+
+        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
+            mock_grab.return_value = Image.new("RGB", (300, 200))
+            payload = await ghost_agent.vision_click(
+                description="missing element",
+                fallback_coords=(50, 60),
+            )
+
+        assert payload["status"] == "success"
+        assert payload["used_fallback"] is True
+        assert payload["runtime_profile"] == "desktop_power"
+
+    def test_apply_runtime_profile_safe_mode(self, ghost_agent):
+        ghost_agent._explicit_overrides = {
+            "max_steps": False,
+            "step_delay": False,
+            "verification_enabled": False,
+            "critical_fail_closed": False,
+        }
+
+        payload = ghost_agent.apply_runtime_profile("desktop_safe")
+
+        assert payload["profile"] == "desktop_safe"
+        assert payload["critical_fail_closed"] is True

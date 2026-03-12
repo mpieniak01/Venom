@@ -39,6 +39,7 @@ jobs:
       CI: "true"
       NEXT_TELEMETRY_DISABLED: "1"
       E2E_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }}
+      PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/e2e/results-${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }}.json
 
     steps:
       - name: Checkout repository
@@ -72,19 +73,23 @@ jobs:
           set -euo pipefail
           case "${E2E_PROFILE}" in
             smoke)
-              npm --prefix web-next run test:e2e:smoke -- --reporter=line
+              npm --prefix web-next run test:e2e:smoke -- --reporter=json,line
               ;;
             functional)
-              npm --prefix web-next run test:e2e:functional -- --reporter=line
+              npm --prefix web-next run test:e2e:functional -- --reporter=json,line
               ;;
             full)
-              npm --prefix web-next run test:e2e:profile:full -- --reporter=line
+              npm --prefix web-next run test:e2e:profile:full
               ;;
             *)
               echo "Unsupported E2E_PROFILE=${E2E_PROFILE}" >&2
               exit 2
               ;;
           esac
+
+      - name: Build flaky trend summary
+        if: always()
+        run: npm --prefix web-next run test:e2e:trend
 
       - name: Upload Playwright artifacts
         if: always()

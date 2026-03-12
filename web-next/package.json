@@ -29,6 +29,7 @@
     "test:e2e:profile:smoke": "E2E_PROFILE=smoke node scripts/run-e2e.mjs",
     "test:e2e:profile:functional": "E2E_PROFILE=functional node scripts/run-e2e.mjs",
     "test:e2e:profile:full": "E2E_PROFILE=full node scripts/run-e2e.mjs",
+    "test:e2e:trend": "node scripts/e2e-trend-report.mjs",
     "test:e2e:prod": "npm run build && PLAYWRIGHT_MODE=prod playwright test",
     "test:dev:turbo:smoke": "node scripts/check-dev-turbo.mjs",
     "test:dev:turbo:smoke:clean": "TURBO_SMOKE_CLEAN_NEXT=1 node scripts/check-dev-turbo.mjs",

@@ -1,5 +1,7 @@
 """Unit tests for autonomy enforcement guard helpers."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from venom_core.core import autonomy_enforcement as ae
@@ -45,6 +47,39 @@ def test_require_desktop_input_permission_denies(monkeypatch):
     with pytest.raises(PermissionError) as exc:
         ae.require_desktop_input_permission()
     assert "automatyzacji desktop" in str(exc.value)
+
+
+def test_permission_guard_desktop_input_fallbacks_to_shell_when_flag_missing(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        ae.permission_guard,
+        "_levels",
+        {999: SimpleNamespace(permissions={"shell_enabled": True})},
+        raising=False,
+    )
+    monkeypatch.setattr(ae.permission_guard, "_current_level", 999, raising=False)
+
+    assert ae.permission_guard.can_control_desktop_input() is True
+
+
+def test_permission_guard_desktop_input_returns_false_for_unknown_level(monkeypatch):
+    monkeypatch.setattr(ae.permission_guard, "_levels", {}, raising=False)
+    monkeypatch.setattr(ae.permission_guard, "_current_level", 12345, raising=False)
+
+    assert ae.permission_guard.can_control_desktop_input() is False
+
+
+def test_permission_guard_desktop_input_uses_explicit_flag(monkeypatch):
+    monkeypatch.setattr(
+        ae.permission_guard,
+        "_levels",
+        {321: SimpleNamespace(permissions={"desktop_input_enabled": True})},
+        raising=False,
+    )
+    monkeypatch.setattr(ae.permission_guard, "_current_level", 321, raising=False)
+
+    assert ae.permission_guard.can_control_desktop_input() is True
 
 
 def test_require_core_patch_permission_allows(monkeypatch):

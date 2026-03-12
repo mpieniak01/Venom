@@ -60,6 +60,7 @@ tests/test_campaign_flow.py
 tests/test_changed_lines_quality_checker.py
 tests/test_changed_lines_quality_cli.py
 tests/test_changed_lines_quality_gate_runner.py
+tests/test_check_github_actions_node_runtime.py
 tests/test_chrono_skill.py
 tests/test_chronos.py
 tests/test_cloud_provisioner.py

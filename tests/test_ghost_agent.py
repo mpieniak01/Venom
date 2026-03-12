@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 from PIL import Image
 
 # Mock pyautogui for headless environment
@@ -15,6 +17,50 @@ mock_pyautogui = MagicMock()
 sys.modules["pyautogui"] = mock_pyautogui
 
 from venom_core.agents.ghost_agent import ActionStep, GhostAgent
+from venom_core.core.permission_guard import permission_guard
+
+
+def _ghost_client(mod, ghost=None) -> TestClient:
+    app = FastAPI()
+    mod.set_dependencies(None, None, None, None, None, ghost)
+    app.include_router(mod.router)
+    return TestClient(app)
+
+
+@pytest.fixture
+def ghost_routes_mod():
+    from venom_core.api.routes import agents as mod
+
+    originals = (
+        mod._gardener_agent,
+        mod._shadow_agent,
+        mod._file_watcher,
+        mod._documenter_agent,
+        mod._orchestrator,
+        mod._ghost_agent,
+        dict(mod._ghost_local_tasks),
+        getattr(mod.SETTINGS, "ENABLE_GHOST_API", False),
+        getattr(mod.SETTINGS, "ENABLE_GHOST_AGENT", False),
+        getattr(mod.SETTINGS, "GHOST_RUNTIME_PROFILE", "desktop_safe"),
+    )
+    mod._ghost_run_store.clear()
+    mod._ghost_local_tasks.clear()
+    yield mod
+    mod._ghost_run_store.clear()
+    mod._ghost_local_tasks.clear()
+    (
+        mod._gardener_agent,
+        mod._shadow_agent,
+        mod._file_watcher,
+        mod._documenter_agent,
+        mod._orchestrator,
+        mod._ghost_agent,
+        local_tasks,
+        mod.SETTINGS.ENABLE_GHOST_API,
+        mod.SETTINGS.ENABLE_GHOST_AGENT,
+        mod.SETTINGS.GHOST_RUNTIME_PROFILE,
+    ) = originals
+    mod._ghost_local_tasks.update(local_tasks)
 
 
 class TestActionStep:
@@ -428,3 +474,280 @@ class TestGhostAgent:
 
         assert payload["profile"] == "desktop_safe"
         assert payload["critical_fail_closed"] is True
+
+
+class _DummyCancelledTask:
+    def __init__(self):
+        self.cancel_called = False
+
+    def done(self) -> bool:
+        return False
+
+    def cancel(self) -> None:
+        self.cancel_called = True
+
+    def __await__(self):
+        async def _raise_cancel():
+            raise asyncio.CancelledError
+
+        return _raise_cancel().__await__()
+
+
+class TestGhostApiFastlaneCoverage:
+    def test_store_helpers_and_hash(self, ghost_routes_mod):
+        store = ghost_routes_mod._ghost_run_store
+        store.clear()
+
+        assert store.try_start({"task_id": "a1", "status": "running"}) is True
+        assert store.try_start({"task_id": "a2", "status": "running"}) is False
+
+        mismatch = store.update("other-task", {"status": "failed"})
+        assert mismatch is not None
+        assert mismatch["task_id"] == "a1"
+
+        store.clear()
+        assert store.update("missing", {"status": "failed"}) is None
+        assert ghost_routes_mod._get_runtime_profile("missing") is None
+        assert len(ghost_routes_mod._hash_content("sensitive")) == 64
+        assert (
+            ghost_routes_mod._GhostRunStateStore.is_active({"status": "running"})
+            is True
+        )
+        assert (
+            ghost_routes_mod._GhostRunStateStore.is_active({"status": "completed"})
+            is False
+        )
+
+    def test_store_invalid_json_and_non_dict_payload(self, ghost_routes_mod):
+        state_path = ghost_routes_mod._ghost_run_store._state_path
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text("{bad-json", encoding="utf-8")
+        assert ghost_routes_mod._ghost_run_store.get() is None
+        state_path.write_text('["not-a-dict"]', encoding="utf-8")
+        assert ghost_routes_mod._ghost_run_store.get() is None
+
+    @pytest.mark.asyncio
+    async def test_run_process_cancel_watch_and_job_error(self, ghost_routes_mod):
+        store = ghost_routes_mod._ghost_run_store
+        store.clear()
+        store.try_start({"task_id": "cancel-1", "status": "running"})
+
+        async def _slow_process(_content: str) -> str:
+            await asyncio.sleep(1.0)
+            return "never"
+
+        ghost = MagicMock()
+        ghost.process = AsyncMock(side_effect=_slow_process)
+        ghost.emergency_stop_trigger = MagicMock()
+
+        with patch.object(ghost_routes_mod, "_ghost_agent", ghost):
+            task = asyncio.create_task(
+                ghost_routes_mod._run_ghost_process_with_cancel_watch(
+                    task_id="cancel-1", content="open app"
+                )
+            )
+            await asyncio.sleep(0.05)
+            store.update("cancel-1", {"status": "cancelling"})
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        ghost.emergency_stop_trigger.assert_called_once()
+
+        store.clear()
+        store.try_start(
+            {
+                "task_id": "job-fail",
+                "status": "running",
+                "runtime_profile": "desktop_safe",
+            }
+        )
+        ghost_routes_mod._ghost_local_tasks["job-fail"] = MagicMock()
+        with (
+            patch.object(
+                ghost_routes_mod,
+                "_run_ghost_process_with_cancel_watch",
+                AsyncMock(side_effect=RuntimeError("boom")),
+            ),
+            patch.object(ghost_routes_mod, "_publish_ghost_audit", MagicMock()),
+        ):
+            with pytest.raises(RuntimeError, match="boom"):
+                await ghost_routes_mod._run_ghost_job(
+                    task_id="job-fail",
+                    payload=ghost_routes_mod.GhostRunRequest(content="do"),
+                    actor="tester",
+                )
+
+    def test_status_endpoint_branches(self, ghost_routes_mod):
+        ghost = MagicMock()
+        ghost.get_status.return_value = {"is_running": False}
+        client = _ghost_client(ghost_routes_mod, ghost=ghost)
+
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_API = False
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_AGENT = False
+        disabled = client.get("/api/v1/ghost/status")
+        assert disabled.status_code == 200
+        assert disabled.json()["run"] is None
+
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_API = True
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_AGENT = True
+        missing = _ghost_client(ghost_routes_mod).get("/api/v1/ghost/status")
+        assert missing.status_code == 503
+        client = _ghost_client(ghost_routes_mod, ghost=ghost)
+
+        store = ghost_routes_mod._ghost_run_store
+        store.clear()
+        store.try_start({"task_id": "task-1", "status": "running"})
+
+        class _DoneTask:
+            @staticmethod
+            def done() -> bool:
+                return True
+
+        ghost_routes_mod._ghost_local_tasks["task-1"] = _DoneTask()
+        ok = client.get("/api/v1/ghost/status")
+        assert ok.status_code == 200
+        assert ok.json()["task_active"] is False
+
+        with patch.object(ghost, "get_status", side_effect=RuntimeError("status fail")):
+            fail = client.get("/api/v1/ghost/status")
+        assert fail.status_code == 500
+
+    def test_start_endpoint_branches_and_accepts(self, ghost_routes_mod):
+        ghost = MagicMock()
+        ghost.apply_runtime_profile.return_value = {"profile": "desktop_safe"}
+        client = _ghost_client(ghost_routes_mod, ghost=ghost)
+
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_API = False
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_AGENT = False
+        assert (
+            client.post("/api/v1/ghost/start", json={"content": "open"}).status_code
+            == 503
+        )
+
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_API = True
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_AGENT = True
+        missing = _ghost_client(ghost_routes_mod).post(
+            "/api/v1/ghost/start", json={"content": "open"}
+        )
+        assert missing.status_code == 503
+        client = _ghost_client(ghost_routes_mod, ghost=ghost)
+
+        with (
+            patch.object(
+                ghost_routes_mod,
+                "ensure_data_mutation_allowed",
+                side_effect=PermissionError("deny"),
+            ),
+            patch.object(
+                ghost_routes_mod,
+                "raise_permission_denied_http",
+                side_effect=HTTPException(status_code=403, detail="deny"),
+            ),
+        ):
+            denied = client.post("/api/v1/ghost/start", json={"content": "open"})
+        assert denied.status_code == 403
+
+        with patch.object(
+            ghost_routes_mod._ghost_run_store,
+            "get",
+            return_value={"task_id": "x", "status": "running"},
+        ):
+            active = client.post("/api/v1/ghost/start", json={"content": "open"})
+        assert active.status_code == 409
+
+        with (
+            patch.object(ghost_routes_mod._ghost_run_store, "get", return_value=None),
+            patch.object(
+                ghost_routes_mod._ghost_run_store, "try_start", return_value=False
+            ),
+        ):
+            race = client.post("/api/v1/ghost/start", json={"content": "open"})
+        assert race.status_code == 409
+
+        with patch.object(
+            ghost_routes_mod, "_run_ghost_job", new=AsyncMock(return_value="ok")
+        ):
+            started = client.post(
+                "/api/v1/ghost/start",
+                json={"content": "very secret", "runtime_profile": "desktop_power"},
+            )
+        assert started.status_code == 200
+        state = ghost_routes_mod._ghost_run_store.get()
+        assert state is not None
+        assert state["content_length"] == len("very secret")
+        assert "content" not in state
+        assert "content_sha256" in state
+
+    def test_cancel_endpoint_branches_and_local_cancel(self, ghost_routes_mod):
+        ghost = MagicMock()
+        ghost.emergency_stop_trigger = MagicMock()
+        client = _ghost_client(ghost_routes_mod, ghost=ghost)
+
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_API = False
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_AGENT = False
+        assert client.post("/api/v1/ghost/cancel").status_code == 503
+
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_API = True
+        ghost_routes_mod.SETTINGS.ENABLE_GHOST_AGENT = True
+        assert (
+            _ghost_client(ghost_routes_mod).post("/api/v1/ghost/cancel").status_code
+            == 503
+        )
+        client = _ghost_client(ghost_routes_mod, ghost=ghost)
+
+        with (
+            patch.object(
+                ghost_routes_mod,
+                "ensure_data_mutation_allowed",
+                side_effect=PermissionError("deny"),
+            ),
+            patch.object(
+                ghost_routes_mod,
+                "raise_permission_denied_http",
+                side_effect=HTTPException(status_code=403, detail="deny"),
+            ),
+        ):
+            denied = client.post("/api/v1/ghost/cancel")
+        assert denied.status_code == 403
+
+        ghost_routes_mod._ghost_run_store.clear()
+        no_active = client.post("/api/v1/ghost/cancel")
+        assert no_active.status_code == 200
+        assert no_active.json()["cancelled"] is False
+
+        ghost_routes_mod._ghost_run_store.try_start(
+            {"task_id": "cancel-1", "status": "running"}
+        )
+        local_task = _DummyCancelledTask()
+        ghost_routes_mod._ghost_local_tasks["cancel-1"] = local_task
+        cancelled = client.post("/api/v1/ghost/cancel")
+        assert cancelled.status_code == 200
+        assert cancelled.json()["cancelled"] is True
+        assert local_task.cancel_called is True
+        ghost.emergency_stop_trigger.assert_called()
+
+
+class TestPermissionGuardFastlaneCoverage:
+    def test_can_control_desktop_input_explicit_flag(self, monkeypatch):
+        monkeypatch.setattr(
+            permission_guard,
+            "_levels",
+            {456: MagicMock(permissions={"desktop_input_enabled": True})},
+            raising=False,
+        )
+        monkeypatch.setattr(permission_guard, "_current_level", 456, raising=False)
+        assert permission_guard.can_control_desktop_input() is True
+
+    def test_can_control_desktop_input_fallback_shell(self, monkeypatch):
+        monkeypatch.setattr(
+            permission_guard,
+            "_levels",
+            {654: MagicMock(permissions={"shell_enabled": True})},
+            raising=False,
+        )
+        monkeypatch.setattr(permission_guard, "_current_level", 654, raising=False)
+        assert permission_guard.can_control_desktop_input() is True
+
+    def test_can_control_desktop_input_unknown_level(self, monkeypatch):
+        monkeypatch.setattr(permission_guard, "_levels", {}, raising=False)
+        monkeypatch.setattr(permission_guard, "_current_level", 9999, raising=False)
+        assert permission_guard.can_control_desktop_input() is False

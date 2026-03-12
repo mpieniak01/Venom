@@ -171,6 +171,7 @@ tests/test_orchestrator_components.py
 tests/test_orchestrator_core_scenarios.py
 tests/test_orchestrator_flows_regression.py
 tests/test_parallel_skill.py
+tests/test_permission_guard.py
 tests/test_persona_factory.py
 tests/test_platform_skill.py
 tests/test_policy_autonomy_contract.py

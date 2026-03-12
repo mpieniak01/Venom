@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 # ---------------------------------------------------------------------------
@@ -1408,6 +1408,51 @@ class TestAgents:
         assert data["task_active"] is True
         assert data["run"]["task_id"] == "remote-task"
 
+    def test_ghost_status_503_when_enabled_and_agent_missing(self):
+        from venom_core.api.routes import agents as mod
+
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+
+        client = self._setup_all()
+        response = client.get("/api/v1/ghost/status")
+        assert response.status_code == 503
+
+    def test_ghost_status_500_when_agent_get_status_raises(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        ghost.get_status.side_effect = RuntimeError("status failed")
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+
+        client = self._setup_all(ghost=ghost)
+        response = client.get("/api/v1/ghost/status")
+        assert response.status_code == 500
+
+    def test_ghost_status_marks_inactive_when_local_task_done(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        ghost.get_status.return_value = {"is_running": False}
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+        mod._ghost_run_store.try_start(
+            {
+                "task_id": "done-task",
+                "status": "running",
+                "runtime_profile": "desktop_safe",
+            }
+        )
+        done_task = MagicMock()
+        done_task.done.return_value = True
+        mod._ghost_local_tasks["done-task"] = done_task
+
+        client = self._setup_all(ghost=ghost)
+        response = client.get("/api/v1/ghost/status")
+        assert response.status_code == 200
+        assert response.json()["task_active"] is False
+
     def test_ghost_cancel_marks_cancelling_without_local_task(self):
         from venom_core.api.routes import agents as mod
 
@@ -1434,6 +1479,230 @@ class TestAgents:
         assert state is not None
         assert state["status"] == "cancelling"
         ghost.emergency_stop_trigger.assert_not_called()
+
+    def test_ghost_start_503_when_feature_flag_off(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        mod.SETTINGS.ENABLE_GHOST_API = False
+        mod.SETTINGS.ENABLE_GHOST_AGENT = False
+
+        client = self._setup_all(ghost=ghost)
+        response = client.post("/api/v1/ghost/start", json={"content": "open notepad"})
+        assert response.status_code == 503
+
+    def test_ghost_start_503_when_agent_missing(self):
+        from venom_core.api.routes import agents as mod
+
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+
+        client = self._setup_all()
+        response = client.post("/api/v1/ghost/start", json={"content": "open notepad"})
+        assert response.status_code == 503
+
+    def test_ghost_start_403_when_mutation_denied(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        ghost.apply_runtime_profile.return_value = {"profile": "desktop_safe"}
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+
+        with (
+            patch.object(
+                mod,
+                "ensure_data_mutation_allowed",
+                side_effect=PermissionError("blocked"),
+            ),
+            patch.object(
+                mod,
+                "raise_permission_denied_http",
+                side_effect=HTTPException(status_code=403, detail="blocked"),
+            ) as denied,
+        ):
+            client = self._setup_all(ghost=ghost)
+            response = client.post(
+                "/api/v1/ghost/start", json={"content": "open notepad"}
+            )
+
+        assert response.status_code == 403
+        assert denied.called
+
+    def test_ghost_start_409_when_try_start_race_conflict(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        ghost.apply_runtime_profile.return_value = {"profile": "desktop_safe"}
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+
+        with (
+            patch.object(mod._ghost_run_store, "get", return_value=None),
+            patch.object(mod._ghost_run_store, "try_start", return_value=False),
+        ):
+            client = self._setup_all(ghost=ghost)
+            response = client.post(
+                "/api/v1/ghost/start", json={"content": "open notepad"}
+            )
+
+        assert response.status_code == 409
+
+    def test_ghost_cancel_503_when_feature_flag_off(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        mod.SETTINGS.ENABLE_GHOST_API = False
+        mod.SETTINGS.ENABLE_GHOST_AGENT = False
+
+        client = self._setup_all(ghost=ghost)
+        response = client.post("/api/v1/ghost/cancel")
+        assert response.status_code == 503
+
+    def test_ghost_cancel_503_when_agent_missing(self):
+        from venom_core.api.routes import agents as mod
+
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+
+        client = self._setup_all()
+        response = client.post("/api/v1/ghost/cancel")
+        assert response.status_code == 503
+
+    def test_ghost_cancel_403_when_mutation_denied(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+
+        with (
+            patch.object(
+                mod,
+                "ensure_data_mutation_allowed",
+                side_effect=PermissionError("blocked"),
+            ),
+            patch.object(
+                mod,
+                "raise_permission_denied_http",
+                side_effect=HTTPException(status_code=403, detail="blocked"),
+            ) as denied,
+        ):
+            client = self._setup_all(ghost=ghost)
+            response = client.post("/api/v1/ghost/cancel")
+
+        assert response.status_code == 403
+        assert denied.called
+
+    def test_ghost_cancel_no_active_task_returns_cancelled_false(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+        mod._ghost_run_store.clear()
+
+        client = self._setup_all(ghost=ghost)
+        response = client.post("/api/v1/ghost/cancel")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "success",
+            "cancelled": False,
+            "task_id": None,
+        }
+
+    def test_ghost_store_and_runtime_profile_helper_branches(self):
+        from venom_core.api.routes import agents as mod
+
+        mod._ghost_run_store.clear()
+        assert mod._ghost_run_store.update("missing-task", {"status": "failed"}) is None
+        assert (
+            mod._ghost_run_store.try_start({"task_id": "t1", "status": "running"})
+            is True
+        )
+        assert (
+            mod._ghost_run_store.try_start({"task_id": "t2", "status": "running"})
+            is False
+        )
+        mismatch = mod._ghost_run_store.update("other-task", {"status": "failed"})
+        assert mismatch is not None
+        assert mismatch["task_id"] == "t1"
+        assert mod._get_runtime_profile("unknown-task") is None
+
+    def test_ghost_store_read_invalid_json_branch(self):
+        from venom_core.api.routes import agents as mod
+
+        state_path = mod._ghost_run_store._state_path
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text("{not-json", encoding="utf-8")
+        assert mod._ghost_run_store.get() is None
+
+    def test_ghost_internal_cancel_watch_path(self):
+        from venom_core.api.routes import agents as mod
+
+        async def _scenario():
+            mod._ghost_run_store.clear()
+            mod._ghost_run_store.try_start(
+                {"task_id": "internal-cancel", "status": "running"}
+            )
+
+            started = asyncio.Event()
+
+            async def _slow_process(_content: str) -> str:
+                started.set()
+                await asyncio.sleep(0.4)
+                return "done"
+
+            ghost = MagicMock()
+            ghost.process = AsyncMock(side_effect=_slow_process)
+            ghost.emergency_stop_trigger = MagicMock()
+
+            with patch.object(mod, "_ghost_agent", ghost):
+                task = asyncio.create_task(
+                    mod._run_ghost_process_with_cancel_watch(
+                        task_id="internal-cancel", content="open app"
+                    )
+                )
+                await started.wait()
+                mod._ghost_run_store.update("internal-cancel", {"status": "cancelling"})
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+
+            ghost.emergency_stop_trigger.assert_called_once()
+
+        asyncio.run(_scenario())
+
+    def test_ghost_internal_run_job_error_path(self):
+        from venom_core.api.routes import agents as mod
+
+        async def _scenario():
+            mod._ghost_run_store.clear()
+            mod._ghost_run_store.try_start(
+                {
+                    "task_id": "internal-fail",
+                    "status": "running",
+                    "runtime_profile": "desktop_safe",
+                }
+            )
+            mod._ghost_local_tasks["internal-fail"] = MagicMock()
+
+            with (
+                patch.object(
+                    mod,
+                    "_run_ghost_process_with_cancel_watch",
+                    AsyncMock(side_effect=RuntimeError("boom")),
+                ),
+                patch.object(mod, "_publish_ghost_audit", MagicMock()),
+            ):
+                with pytest.raises(RuntimeError, match="boom"):
+                    await mod._run_ghost_job(
+                        task_id="internal-fail",
+                        payload=mod.GhostRunRequest(content="run"),
+                        actor="tester",
+                    )
+
+        asyncio.run(_scenario())
 
 
 # ===========================================================================

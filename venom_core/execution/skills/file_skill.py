@@ -35,6 +35,8 @@ class FileSkill(BaseSkill):
     """
 
     ALLOWED_OVERWRITE_POLICIES = {"forbid", "overwrite", "skip"}
+    DRY_RUN_MESSAGE = "Dry-run: operacja zaplanowana, bez zmian na dysku"
+    SUCCESS_MESSAGE = "Operacja zakończona pomyślnie"
 
     def __init__(self, workspace_root: Optional[str] = None):
         """
@@ -224,7 +226,7 @@ class FileSkill(BaseSkill):
                 status="dry_run",
                 dry_run=True,
                 changed=False,
-                message="Dry-run: operacja zaplanowana, bez zmian na dysku",
+                message=self.DRY_RUN_MESSAGE,
                 rollback={
                     "operation": operation,
                     "source_path": target_path,
@@ -237,7 +239,10 @@ class FileSkill(BaseSkill):
         if safe_target.exists() and policy == "overwrite":
             self._remove_existing_path(safe_target)
 
-        safe_source.rename(safe_target)
+        if operation == "move_path":
+            shutil.move(str(safe_source), str(safe_target))
+        else:
+            safe_source.rename(safe_target)
         return self._build_result(
             operation=operation,
             source=safe_source,
@@ -245,7 +250,7 @@ class FileSkill(BaseSkill):
             status="success",
             dry_run=False,
             changed=True,
-            message="Operacja zakończona pomyślnie",
+            message=self.SUCCESS_MESSAGE,
             rollback={
                 "operation": operation,
                 "source_path": target_path,
@@ -300,7 +305,7 @@ class FileSkill(BaseSkill):
                 status="dry_run",
                 dry_run=True,
                 changed=False,
-                message="Dry-run: operacja zaplanowana, bez zmian na dysku",
+                message=self.DRY_RUN_MESSAGE,
                 rollback={
                     "operation": "delete_path",
                     "file_path": target_path,
@@ -329,7 +334,7 @@ class FileSkill(BaseSkill):
             status="success",
             dry_run=False,
             changed=True,
-            message="Operacja zakończona pomyślnie",
+            message=self.SUCCESS_MESSAGE,
             rollback={
                 "operation": "delete_path",
                 "file_path": target_path,
@@ -364,7 +369,7 @@ class FileSkill(BaseSkill):
                 status="dry_run",
                 dry_run=True,
                 changed=False,
-                message="Dry-run: operacja zaplanowana, bez zmian na dysku",
+                message=self.DRY_RUN_MESSAGE,
                 details={
                     "recursive": recursive,
                     "would_change": True,
@@ -383,7 +388,7 @@ class FileSkill(BaseSkill):
             status="success",
             dry_run=False,
             changed=True,
-            message="Operacja zakończona pomyślnie",
+            message=self.SUCCESS_MESSAGE,
             details={"recursive": recursive, "rollback_supported": False},
         )
 

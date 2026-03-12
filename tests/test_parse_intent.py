@@ -198,3 +198,14 @@ async def test_parse_intent_empty_content(dispatcher):
 
     assert isinstance(intent, Intent)
     assert intent.targets == []
+
+
+def test_prepare_skill_parameters_file_skill_uses_file_path_contract():
+    """Regresja kontraktu: Dispatcher powinien mapować do file_path."""
+    dispatcher = object.__new__(TaskDispatcher)
+
+    params = dispatcher._prepare_skill_parameters(
+        "FileSkill", "odczytaj venom_core/main.py"
+    )
+
+    assert params == {"file_path": "venom_core/main.py"}

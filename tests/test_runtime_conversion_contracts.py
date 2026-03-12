@@ -98,6 +98,61 @@ async def test_academy_conversion_selection_and_dataset_ids(tmp_path: Path):
     assert fallback == ["x"]
 
 
+def test_academy_conversion_list_files_payload_and_workspace_resolve(tmp_path: Path):
+    workspace = {
+        "base_dir": tmp_path,
+        "metadata_file": tmp_path / "files.json",
+        "source_dir": tmp_path / "source",
+        "converted_dir": tmp_path / "converted",
+    }
+    workspace["source_dir"].mkdir(parents=True, exist_ok=True)
+    workspace["converted_dir"].mkdir(parents=True, exist_ok=True)
+
+    items = [
+        {"file_id": "s1", "category": "source", "name": "source.json"},
+        {"file_id": "c1", "category": "converted", "name": "converted.jsonl"},
+    ]
+
+    payload = academy_conversion.list_conversion_files_for_user(
+        user_id="u1",
+        workspace=workspace,
+        user_conversion_metadata_lock_fn=_dummy_lock,
+        load_user_conversion_metadata_fn=lambda _path: items,
+        normalize_conversion_item_fn=lambda item: {"id": item["file_id"]},
+    )
+    assert payload["user_id"] == "u1"
+    assert payload["source_files"] == [{"id": "s1"}]
+    assert payload["converted_files"] == [{"id": "c1"}]
+
+    # Converted lookup uses global output dir first, then falls back to legacy per-user dir.
+    legacy_file = workspace["converted_dir"] / "legacy.jsonl"
+    legacy_file.write_text("{}", encoding="utf-8")
+    resolved = academy_conversion.resolve_workspace_file_path(
+        workspace,
+        file_id="legacy.jsonl",
+        category="converted",
+        get_conversion_output_dir_fn=lambda: tmp_path / "global-converted",
+    )
+    assert resolved == legacy_file
+
+
+def test_academy_conversion_resolve_workspace_invalid_category(tmp_path: Path):
+    workspace = {
+        "base_dir": tmp_path,
+        "metadata_file": tmp_path / "files.json",
+        "source_dir": tmp_path / "source",
+        "converted_dir": tmp_path / "converted",
+    }
+
+    with pytest.raises(ValueError, match="Invalid file category"):
+        academy_conversion.resolve_workspace_file_path(
+            workspace,
+            file_id="x",
+            category="other",
+            get_conversion_output_dir_fn=lambda: tmp_path,
+        )
+
+
 def test_model_registry_provider_generation_schema_edges():
     schema = model_registry_providers.create_default_generation_schema()
     assert schema["temperature"].default == 0.7

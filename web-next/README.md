@@ -109,9 +109,11 @@ Dodawanie nowego motywu:
 3. Profile uruchamiania:
    ```bash
    npm run test:e2e:smoke
+   npm run test:e2e:smoke:academy
    npm run test:e2e:functional
    npm run test:e2e:profile:full
    ```
+   `smoke` to szybki profil bez zależności od backend runtime; `smoke:academy` jest profilem backend-zależnym.
 4. CI:
    - workflow `Web Next Playwright E2E` uruchamia domyślnie profil `smoke` na `push/pull_request`,
    - workflow cache’uje binaria Playwright (`~/.cache/ms-playwright`), co skraca pipeline o czas ponownego pobierania przeglądarek.

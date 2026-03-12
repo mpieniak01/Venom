@@ -106,6 +106,16 @@ async function main() {
     process.exit(await run("npm run test:e2e:functional"));
   }
 
+  const smokeCode = await run("npm run test:e2e:smoke");
+  if (smokeCode !== 0) {
+    process.exit(smokeCode);
+  }
+
+  const academySmokeCode = await run("npm run test:e2e:smoke:academy");
+  if (academySmokeCode !== 0) {
+    process.exit(academySmokeCode);
+  }
+
   const latencyCode = await run("npm run test:e2e:latency");
   if (latencyCode !== 0) {
     process.exit(latencyCode);

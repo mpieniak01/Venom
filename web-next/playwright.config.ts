@@ -23,7 +23,8 @@ const webServerCommand = isProdServer
     `cp -r .next/static .next/standalone/web-next/.next/static`,
     `PORT=${devPort} HOSTNAME=${devHost} node .next/standalone/web-next/server.js`,
   ].join(" && ")
-  : `${devServerEnv} npm run dev -- --hostname ${devHost} --port ${devPort}`;
+  // Uruchamiamy Next bez npm lifecycle hooks, żeby predev nie modyfikował repo w trakcie testów E2E.
+  : `${devServerEnv} npx next dev --webpack --hostname ${devHost} --port ${devPort}`;
 
 const config: PlaywrightTestConfig = {
   testDir: "./tests",

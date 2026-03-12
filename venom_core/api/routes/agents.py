@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import tempfile
@@ -43,22 +44,13 @@ except ImportError:  # pragma: no cover - fallback for non-POSIX platforms
     fcntl = None
 
 
-def _resolve_workspace_root_for_ghost_state() -> Path:
-    """Resolve workspace root used for ghost runtime state path anchoring."""
-    workspace_root_raw = str(getattr(SETTINGS, "WORKSPACE_ROOT", "") or "").strip()
-    if workspace_root_raw:
-        with suppress(Exception):
-            return Path(workspace_root_raw).expanduser().resolve()
-    return Path(tempfile.gettempdir()).resolve()
-
-
 def _resolve_ghost_run_state_path() -> Path:
-    """Return canonical ghost runtime state path under workspace-scoped runtime dir."""
+    """Return canonical ghost runtime state path in process-scoped temp runtime dir."""
     return (
-        _resolve_workspace_root_for_ghost_state()
-        / ".venom"
+        Path(tempfile.gettempdir()).resolve()
+        / "venom"
         / "runtime"
-        / "ghost_run_state.json"
+        / f"ghost_run_state_{os.getpid()}.json"
     ).resolve()
 
 
@@ -155,7 +147,6 @@ class _GhostRunStateStore:
             return current
 
 
-_ghost_run_state_path = _resolve_ghost_run_state_path()
 _ghost_run_store = _GhostRunStateStore()
 _ghost_local_tasks: dict[str, asyncio.Task[str]] = {}
 
@@ -191,6 +182,10 @@ def _publish_ghost_audit(
 
 def _utc_iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _hash_content(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _get_runtime_profile(task_id: str) -> str | None:
@@ -478,19 +473,19 @@ def reject_shadow_suggestion(request: TaskRequest):
 )
 def get_ghost_status():
     """Zwraca status wykonania zadań Ghost Agent."""
-    run_state = _ghost_run_store.get()
     if not _ghost_api_enabled():
         return {
             "status": "disabled",
             "message": "Ghost API jest wyłączone (ENABLE_GHOST_API/ENABLE_GHOST_AGENT=false)",
             "ghost": None,
-            "run": run_state,
+            "run": None,
         }
 
     if _ghost_agent is None:
         raise HTTPException(status_code=503, detail="Ghost Agent nie jest dostępny")
 
     try:
+        run_state = _ghost_run_store.get()
         task_id = (run_state or {}).get("task_id")
         local_task = _ghost_local_tasks.get(str(task_id)) if task_id else None
         task_active = _GhostRunStateStore.is_active(run_state)
@@ -547,7 +542,8 @@ async def start_ghost_task(request: GhostRunRequest, req: Request):
     run_state = {
         "task_id": task_id,
         "status": "running",
-        "content": request.content,
+        "content_sha256": _hash_content(request.content),
+        "content_length": len(request.content),
         "runtime_profile": profile_payload["profile"],
         "started_at": started_at,
     }
@@ -566,7 +562,8 @@ async def start_ghost_task(request: GhostRunRequest, req: Request):
         context=task_id,
         details={
             "runtime_profile": profile_payload["profile"],
-            "content_excerpt": request.content[:300],
+            "content_sha256": _hash_content(request.content),
+            "content_length": len(request.content),
         },
     )
 

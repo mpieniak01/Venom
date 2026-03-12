@@ -99,7 +99,7 @@ def require_shell_permission() -> None:
 
 def require_desktop_input_permission() -> None:
     """Require desktop input control capability (mouse/keyboard automation)."""
-    if not permission_guard.can_execute_shell():
+    if not permission_guard.can_control_desktop_input():
         _deny(
             "AutonomyViolation: Brak uprawnień do automatyzacji desktop "
             f"(Poziom: {permission_guard.get_current_level_name()})",

@@ -52,72 +52,14 @@ def _resolve_workspace_root_for_ghost_state() -> Path:
     return Path(tempfile.gettempdir()).resolve()
 
 
-def _default_ghost_run_state_path() -> Path:
-    """Return default state file path under workspace-scoped runtime dir."""
+def _resolve_ghost_run_state_path() -> Path:
+    """Return canonical ghost runtime state path under workspace-scoped runtime dir."""
     return (
         _resolve_workspace_root_for_ghost_state()
         / ".venom"
         / "runtime"
         / "ghost_run_state.json"
-    )
-
-
-def _path_is_within(path: Path, root: Path) -> bool:
-    try:
-        path.resolve().relative_to(root.resolve())
-        return True
-    except ValueError:
-        return False
-
-
-def _resolve_ghost_run_state_path(raw_path: str | os.PathLike[str] | None) -> Path:
-    """
-    Resolve and validate Ghost runtime state path.
-
-    Accept only:
-    - relative paths anchored in WORKSPACE_ROOT
-    - absolute paths inside WORKSPACE_ROOT or system temp dir
-    """
-    default_path = _default_ghost_run_state_path().resolve()
-    if raw_path is None:
-        return default_path
-
-    raw = str(raw_path).strip()
-    if not raw:
-        return default_path
-
-    workspace_root = _resolve_workspace_root_for_ghost_state().resolve()
-    temp_root = Path(tempfile.gettempdir()).resolve()
-    candidate = Path(raw).expanduser()
-
-    if candidate.is_absolute():
-        resolved = candidate.resolve()
-        if _path_is_within(resolved, workspace_root) or _path_is_within(
-            resolved, temp_root
-        ):
-            return resolved
-        logger.warning(
-            "Odrzucono GHOST_RUN_STATE_FILE poza dozwolonym root: '%s' -> fallback",
-            raw,
-        )
-        return default_path
-
-    # Relative path must stay in workspace root and must not use parent traversal.
-    if ".." in candidate.parts:
-        logger.warning(
-            "Odrzucono GHOST_RUN_STATE_FILE z parent traversal: '%s' -> fallback",
-            raw,
-        )
-        return default_path
-
-    resolved = (workspace_root / candidate).resolve()
-    if not _path_is_within(resolved, workspace_root):
-        logger.warning(
-            "Odrzucono GHOST_RUN_STATE_FILE poza WORKSPACE_ROOT: '%s' -> fallback",
-            raw,
-        )
-        return default_path
-    return resolved
+    ).resolve()
 
 
 class _GhostRunStateStore:
@@ -126,8 +68,8 @@ class _GhostRunStateStore:
     ACTIVE_STATUSES = {"running", "cancelling"}
     TERMINAL_STATUSES = {"completed", "cancelled", "failed"}
 
-    def __init__(self, state_path: Path):
-        self._state_path = _resolve_ghost_run_state_path(str(state_path))
+    def __init__(self):
+        self._state_path = _resolve_ghost_run_state_path()
         self._lock_path = self._state_path.with_suffix(
             f"{self._state_path.suffix}.lock"
         )
@@ -213,10 +155,8 @@ class _GhostRunStateStore:
             return current
 
 
-_ghost_run_state_path = _resolve_ghost_run_state_path(
-    getattr(SETTINGS, "GHOST_RUN_STATE_FILE", None)
-)
-_ghost_run_store = _GhostRunStateStore(_ghost_run_state_path)
+_ghost_run_state_path = _resolve_ghost_run_state_path()
+_ghost_run_store = _GhostRunStateStore()
 _ghost_local_tasks: dict[str, asyncio.Task[str]] = {}
 
 

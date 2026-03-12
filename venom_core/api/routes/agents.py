@@ -30,6 +30,11 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["agents"])
 
+GHOST_API_DISABLED_DETAIL = (
+    "Ghost API jest wyłączone (ENABLE_GHOST_API/ENABLE_GHOST_AGENT=false)"
+)
+GHOST_AGENT_UNAVAILABLE_DETAIL = "Ghost Agent nie jest dostępny"
+
 # Dependencies - będą ustawione w main.py
 _gardener_agent = None
 _shadow_agent = None
@@ -469,20 +474,23 @@ def reject_shadow_suggestion(request: TaskRequest):
 
 @router.get(
     "/ghost/status",
-    responses={503: {"description": "Ghost API lub Ghost Agent nie jest dostępny"}},
+    responses={
+        503: {"description": "Ghost API lub Ghost Agent nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
+    },
 )
 def get_ghost_status():
     """Zwraca status wykonania zadań Ghost Agent."""
     if not _ghost_api_enabled():
         return {
             "status": "disabled",
-            "message": "Ghost API jest wyłączone (ENABLE_GHOST_API/ENABLE_GHOST_AGENT=false)",
+            "message": GHOST_API_DISABLED_DETAIL,
             "ghost": None,
             "run": None,
         }
 
     if _ghost_agent is None:
-        raise HTTPException(status_code=503, detail="Ghost Agent nie jest dostępny")
+        raise HTTPException(status_code=503, detail=GHOST_AGENT_UNAVAILABLE_DETAIL)
 
     try:
         run_state = _ghost_run_store.get()
@@ -515,10 +523,10 @@ async def start_ghost_task(request: GhostRunRequest, req: Request):
     if not _ghost_api_enabled():
         raise HTTPException(
             status_code=503,
-            detail="Ghost API jest wyłączone (ENABLE_GHOST_API/ENABLE_GHOST_AGENT=false)",
+            detail=GHOST_API_DISABLED_DETAIL,
         )
     if _ghost_agent is None:
-        raise HTTPException(status_code=503, detail="Ghost Agent nie jest dostępny")
+        raise HTTPException(status_code=503, detail=GHOST_AGENT_UNAVAILABLE_DETAIL)
     if _GhostRunStateStore.is_active(_ghost_run_store.get()):
         raise HTTPException(status_code=409, detail="Ghost Agent już wykonuje zadanie")
 
@@ -587,10 +595,10 @@ async def cancel_ghost_task(req: Request):
     if not _ghost_api_enabled():
         raise HTTPException(
             status_code=503,
-            detail="Ghost API jest wyłączone (ENABLE_GHOST_API/ENABLE_GHOST_AGENT=false)",
+            detail=GHOST_API_DISABLED_DETAIL,
         )
     if _ghost_agent is None:
-        raise HTTPException(status_code=503, detail="Ghost Agent nie jest dostępny")
+        raise HTTPException(status_code=503, detail=GHOST_AGENT_UNAVAILABLE_DETAIL)
 
     actor = resolve_actor_from_request(req)
     try:

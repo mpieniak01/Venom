@@ -9,6 +9,7 @@ from typing import Any
 
 from venom_core.services.academy import adapter_runtime_service as _adapter_runtime
 from venom_core.services.academy.adapter_metadata_service import (
+    AdapterMetadataContext,
     build_canonical_adapter_metadata,
     write_canonical_adapter_metadata,
 )
@@ -85,19 +86,21 @@ def save_adapter_metadata(job: dict[str, Any], adapter_path: Path) -> None:
     base_model = str(job.get("base_model") or "").strip()
     metadata = build_canonical_adapter_metadata(
         adapter_id=str(adapter_path.parent.name),
-        run_id=str(job.get("job_id") or adapter_path.parent.name),
         base_model=base_model,
         created_at=str(job.get("finished_at") or datetime.now().isoformat()),
         source_flow="training",
         source="academy",
         training_params=job.get("parameters", {}),
-        requested_runtime_id=runtime_id or None,
-        requested_base_model=base_model,
-        effective_runtime_id=runtime_id or None,
-        effective_base_model=base_model,
-        dataset_path=job.get("dataset_path"),
-        started_at=job.get("started_at"),
-        finished_at=job.get("finished_at"),
+        context=AdapterMetadataContext(
+            run_id=str(job.get("job_id") or adapter_path.parent.name),
+            requested_runtime_id=runtime_id or None,
+            requested_base_model=base_model,
+            effective_runtime_id=runtime_id or None,
+            effective_base_model=base_model,
+            dataset_path=job.get("dataset_path"),
+            started_at=job.get("started_at"),
+            finished_at=job.get("finished_at"),
+        ),
     )
     metadata["job_id"] = job.get("job_id")
     if runtime_id == "ollama":

@@ -20,6 +20,7 @@ PAID_CLOUD_PROVIDERS = {
 }
 PAID_MODEL_MARKERS = ("gpt-", "claude", "gemini")
 LOCAL_RUNTIME_PREFERENCE = ("vllm", "ollama", "onnx")
+_TRAINING_BASE_PROVIDERS = {"unsloth", "huggingface", "hf", "config", "unknown"}
 GEMMA_3_4B_HF_REPO = "google/gemma-3-4b-it"
 UNSLOTH_GEMMA_2_2B_REPO = "unsloth/gemma-2-2b-it"
 PHI_35_MINI_CANONICAL = "phi-3.5-mini-instruct"
@@ -350,72 +351,158 @@ def resolve_runtime_compatibility(
         return compatibility
 
     provider_lc = provider.strip().lower()
-    runtime_hint = ""
-    if model_metadata:
-        runtime_hint = str(model_metadata.get("runtime") or "").strip().lower()
-
-    preferred: Set[str] = set()
-    runtime_hint_id = _canonical_local_runtime_id(runtime_hint)
-    provider_hint_id = _canonical_local_runtime_id(provider_lc)
-
-    if runtime_hint_id:
-        preferred.add(runtime_hint_id)
-    if provider_hint_id:
-        preferred.add(provider_hint_id)
-
-    # HF/Unsloth training bases are always deployable to vLLM in current Academy contract.
-    if provider_lc in {"unsloth", "huggingface", "hf", "config", "unknown"}:
-        if "vllm" in compatibility:
-            preferred.add("vllm")
-        if "ollama" in compatibility and model_id and _looks_like_hf_repo_id(model_id):
-            preferred.add("ollama")
-    if (
-        "ollama" in compatibility
-        and provider_lc not in {"ollama", "onnx"}
-        and _ollama_runtime_family_available(
-            model_id=model_id
-            or str(model_metadata.get("name") if model_metadata else ""),
-            runtime_model_families=runtime_model_families,
-        )
-    ):
-        preferred.add("ollama")
-
-    # Local HuggingFace-layout folders discovered under vLLM remain valid
-    # training bases for the Academy -> Ollama adapter deploy path.
-    if (
-        _supports_ollama_adapter_deploy(
-            provider_lc=provider_lc,
-            model_metadata=model_metadata,
-        )
-        and "ollama" in compatibility
-    ):
-        preferred.add("ollama")
-
-    # For HF/Unsloth trainable families, vLLM is primary, but Ollama is also a valid
-    # deployment runtime for adapters in current contract (external training + runtime deploy).
-    if not preferred and provider_lc in {
-        "unsloth",
-        "huggingface",
-        "hf",
-        "config",
-        "unknown",
-    }:
-        if "vllm" in compatibility:
-            preferred.add("vllm")
-        if "ollama" in compatibility:
-            preferred.add("ollama")
+    runtime_hint = str((model_metadata or {}).get("runtime") or "").strip().lower()
+    runtime_model_id = _runtime_model_id_for_compatibility(
+        model_id=model_id,
+        model_metadata=model_metadata,
+    )
+    preferred = _resolve_preferred_runtimes(
+        provider_lc=provider_lc,
+        compatibility=compatibility,
+        runtime_hint=runtime_hint,
+        model_id=model_id,
+        runtime_model_id=runtime_model_id,
+        model_metadata=model_metadata,
+        runtime_model_families=runtime_model_families,
+    )
 
     for runtime_id in preferred:
         if runtime_id in compatibility:
             if runtime_id == "ollama" and not _ollama_runtime_family_available(
-                model_id=model_id
-                or str(model_metadata.get("name") if model_metadata else ""),
+                model_id=runtime_model_id,
                 runtime_model_families=runtime_model_families,
             ):
                 continue
             compatibility[runtime_id] = True
 
     return compatibility
+
+
+def _runtime_model_id_for_compatibility(
+    *,
+    model_id: str | None,
+    model_metadata: Optional[Dict[str, Any]],
+) -> str:
+    return model_id or str((model_metadata or {}).get("name") or "")
+
+
+def _resolve_preferred_runtimes(
+    *,
+    provider_lc: str,
+    compatibility: Dict[str, bool],
+    runtime_hint: str,
+    model_id: str | None,
+    runtime_model_id: str,
+    model_metadata: Optional[Dict[str, Any]],
+    runtime_model_families: Optional[Dict[str, Set[str]]],
+) -> Set[str]:
+    preferred: Set[str] = set()
+    _seed_preferred_runtime_hints(
+        preferred=preferred,
+        runtime_hint=runtime_hint,
+        provider_lc=provider_lc,
+    )
+    _add_provider_default_runtimes(
+        preferred=preferred,
+        provider_lc=provider_lc,
+        compatibility=compatibility,
+        model_id=model_id,
+    )
+    _add_ollama_family_runtime(
+        preferred=preferred,
+        provider_lc=provider_lc,
+        compatibility=compatibility,
+        runtime_model_id=runtime_model_id,
+        runtime_model_families=runtime_model_families,
+    )
+    _add_ollama_deploy_runtime(
+        preferred=preferred,
+        provider_lc=provider_lc,
+        compatibility=compatibility,
+        model_metadata=model_metadata,
+    )
+    _add_fallback_training_runtimes(
+        preferred=preferred,
+        provider_lc=provider_lc,
+        compatibility=compatibility,
+    )
+    return preferred
+
+
+def _seed_preferred_runtime_hints(
+    *,
+    preferred: Set[str],
+    runtime_hint: str,
+    provider_lc: str,
+) -> None:
+    runtime_hint_id = _canonical_local_runtime_id(runtime_hint)
+    provider_hint_id = _canonical_local_runtime_id(provider_lc)
+    if runtime_hint_id:
+        preferred.add(runtime_hint_id)
+    if provider_hint_id:
+        preferred.add(provider_hint_id)
+
+
+def _add_provider_default_runtimes(
+    *,
+    preferred: Set[str],
+    provider_lc: str,
+    compatibility: Dict[str, bool],
+    model_id: str | None,
+) -> None:
+    if provider_lc not in _TRAINING_BASE_PROVIDERS:
+        return
+    if "vllm" in compatibility:
+        preferred.add("vllm")
+    if "ollama" in compatibility and model_id and _looks_like_hf_repo_id(model_id):
+        preferred.add("ollama")
+
+
+def _add_ollama_family_runtime(
+    *,
+    preferred: Set[str],
+    provider_lc: str,
+    compatibility: Dict[str, bool],
+    runtime_model_id: str,
+    runtime_model_families: Optional[Dict[str, Set[str]]],
+) -> None:
+    if "ollama" not in compatibility or provider_lc in {"ollama", "onnx"}:
+        return
+    if _ollama_runtime_family_available(
+        model_id=runtime_model_id,
+        runtime_model_families=runtime_model_families,
+    ):
+        preferred.add("ollama")
+
+
+def _add_ollama_deploy_runtime(
+    *,
+    preferred: Set[str],
+    provider_lc: str,
+    compatibility: Dict[str, bool],
+    model_metadata: Optional[Dict[str, Any]],
+) -> None:
+    if "ollama" not in compatibility:
+        return
+    if _supports_ollama_adapter_deploy(
+        provider_lc=provider_lc,
+        model_metadata=model_metadata,
+    ):
+        preferred.add("ollama")
+
+
+def _add_fallback_training_runtimes(
+    *,
+    preferred: Set[str],
+    provider_lc: str,
+    compatibility: Dict[str, bool],
+) -> None:
+    if preferred or provider_lc not in _TRAINING_BASE_PROVIDERS:
+        return
+    if "vllm" in compatibility:
+        preferred.add("vllm")
+    if "ollama" in compatibility:
+        preferred.add("ollama")
 
 
 def infer_training_provider(model_id: str) -> str:

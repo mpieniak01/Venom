@@ -33,6 +33,7 @@ import psutil
 from venom_core.config import SETTINGS
 from venom_core.services.academy import adapter_runtime_service as _adapter_runtime
 from venom_core.services.academy.adapter_metadata_service import (
+    AdapterMetadataContext,
     build_canonical_adapter_metadata,
     write_canonical_adapter_metadata,
 )
@@ -1637,7 +1638,6 @@ class SelfLearningService:
     ) -> None:
         metadata_payload = build_canonical_adapter_metadata(
             adapter_id=output_dir.name,
-            run_id=run.run_id,
             base_model=base_model,
             created_at=run.finished_at or _utc_now_iso(),
             source_flow="self_learning",
@@ -1652,21 +1652,24 @@ class SelfLearningService:
                 "task_mix_preset": run.llm_config.task_mix_preset,
                 "training_base_model": run.artifacts.get("training_base_model"),
             },
-            requested_runtime_id=cast(
-                Optional[str], run.artifacts.get("requested_runtime_id")
+            context=AdapterMetadataContext(
+                run_id=run.run_id,
+                requested_runtime_id=cast(
+                    Optional[str], run.artifacts.get("requested_runtime_id")
+                ),
+                requested_base_model=cast(
+                    Optional[str], run.artifacts.get("requested_base_model")
+                ),
+                effective_runtime_id=cast(
+                    Optional[str], run.artifacts.get("effective_runtime_id")
+                ),
+                effective_base_model=cast(
+                    Optional[str], run.artifacts.get("effective_base_model")
+                ),
+                dataset_path=cast(Optional[str], run.artifacts.get("dataset_path")),
+                started_at=run.started_at,
+                finished_at=run.finished_at,
             ),
-            requested_base_model=cast(
-                Optional[str], run.artifacts.get("requested_base_model")
-            ),
-            effective_runtime_id=cast(
-                Optional[str], run.artifacts.get("effective_runtime_id")
-            ),
-            effective_base_model=cast(
-                Optional[str], run.artifacts.get("effective_base_model")
-            ),
-            dataset_path=cast(Optional[str], run.artifacts.get("dataset_path")),
-            started_at=run.started_at,
-            finished_at=run.finished_at,
         )
         write_canonical_adapter_metadata(
             adapter_dir=output_dir,

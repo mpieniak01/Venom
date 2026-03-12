@@ -100,6 +100,7 @@ Zadanie: "Otwórz notatnik i napisz 'Hello'"
 6. Wpisz "Hello"
 
 Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż ryzykować."""
+    AUDIT_ACTION_VISION_CLICK = "desktop.vision_click"
     RUNTIME_PROFILES: dict[str, dict[str, Any]] = {
         "desktop_safe": {
             "max_steps": 12,
@@ -256,7 +257,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
             if fallback_coords is None:
                 message = f"Nie znaleziono elementu: '{description}'"
                 self._publish_desktop_audit(
-                    action="desktop.vision_click",
+                    action=self.AUDIT_ACTION_VISION_CLICK,
                     status="failed",
                     context="vision",
                     details={
@@ -273,7 +274,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
                     "nie znalazł celu"
                 )
                 self._publish_desktop_audit(
-                    action="desktop.vision_click",
+                    action=self.AUDIT_ACTION_VISION_CLICK,
                     status="blocked",
                     context="vision",
                     details={
@@ -311,7 +312,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
         if "✅" in click_result:
             return
         self._publish_desktop_audit(
-            action="desktop.vision_click",
+            action=self.AUDIT_ACTION_VISION_CLICK,
             status="failed",
             context="input",
             details={
@@ -346,7 +347,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
             return verification
 
         self._publish_desktop_audit(
-            action="desktop.vision_click",
+            action=self.AUDIT_ACTION_VISION_CLICK,
             status="failed",
             context="verification",
             details={
@@ -417,7 +418,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
             "screenshot_ref": "in_memory",
         }
         self._publish_desktop_audit(
-            action="desktop.vision_click",
+            action=self.AUDIT_ACTION_VISION_CLICK,
             status="degraded" if used_fallback else "success",
             context="execution",
             details=payload,

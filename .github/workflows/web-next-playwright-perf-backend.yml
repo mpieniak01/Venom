@@ -1,0 +1,95 @@
+name: "Web Next Playwright Perf (Backend)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      next_base_url:
+        description: "Frontend URL (e.g. https://venom.example.com)"
+        required: true
+        type: string
+      api_base_url:
+        description: "Backend API URL (e.g. https://api.example.com)"
+        required: true
+        type: string
+      latency_budget_ms:
+        description: "Latency budget in ms for chat response"
+        required: false
+        default: "12000"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-next-playwright-perf-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perf-backend:
+    name: Perf backend profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+      E2E_PROFILE: "perf-backend"
+      PERF_NEXT_BASE_URL: ${{ inputs.next_base_url }}
+      PERF_API_BASE: ${{ inputs.api_base_url }}
+      PERF_NEXT_REQUIRED: "true"
+      PERF_NEXT_LATENCY_BUDGET: ${{ inputs.latency_budget_ms }}
+      PERF_MAX_LATENCY_MS: ${{ inputs.latency_budget_ms }}
+      PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/e2e/results-perf-backend.json
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: web-next/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix web-next ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('web-next/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browser (Chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npm --prefix web-next exec playwright install chromium
+
+      - name: Verify backend/frontend availability
+        run: |
+          set -euo pipefail
+          curl -fsSL "${PERF_NEXT_BASE_URL}" >/dev/null
+          curl -fsSL "${PERF_API_BASE}/healthz" >/dev/null
+
+      - name: Run perf profile (backend)
+        run: npm --prefix web-next run test:perf:ci:backend
+
+      - name: Build trend summary
+        if: always()
+        run: npm --prefix web-next run test:e2e:trend
+
+      - name: Build perf latency summary and enforce threshold
+        if: always()
+        run: npm --prefix web-next run test:perf:summary
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-perf-backend
+          path: |
+            web-next/test-results/**
+            web-next/playwright-report/**
+          if-no-files-found: ignore

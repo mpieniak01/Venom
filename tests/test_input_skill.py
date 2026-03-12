@@ -29,9 +29,17 @@ from venom_core.execution.skills.input_skill import InputSkill
 class TestInputSkill:
     """Testy dla InputSkill."""
 
+    @pytest.fixture(autouse=True)
+    def _allow_desktop_permission(self):
+        with patch(
+            "venom_core.execution.skills.input_skill.require_desktop_input_permission"
+        ):
+            yield
+
     @pytest.fixture
     def input_skill(self):
         """Fixture do tworzenia InputSkill."""
+        sys.modules["pyautogui"] = mock_pyautogui
         # Don't reset the whole mock, just reset call counts
         # Set up return values properly for each test
         mock_pyautogui.size.return_value = (1920, 1080)
@@ -44,8 +52,9 @@ class TestInputSkill:
         mock_pyautogui.write.reset_mock()
         mock_pyautogui.hotkey.reset_mock()
 
-        skill = InputSkill(safety_delay=0.1)
-        return skill
+        with patch("venom_core.execution.skills.input_skill.pyautogui", mock_pyautogui):
+            skill = InputSkill(safety_delay=0.1)
+            return skill
 
     def test_initialization(self, input_skill):
         """Test inicjalizacji InputSkill."""

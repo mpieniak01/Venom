@@ -383,6 +383,19 @@
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
+      "path": "tests/test_academy_conversion_light_coverage.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code"
+      ],
+      "legacy_targeted": true,
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite and Sonar new-code lanes."
+    },
+    {
       "path": "tests/test_academy_dataset_conversion.py",
       "domain": "academy",
       "test_type": "route_contract",
@@ -508,16 +521,16 @@
     },
     {
       "path": "tests/test_adapter_audit_service.py",
-      "domain": "academy",
-      "test_type": "unit",
-      "intent": "regression",
+      "domain": "audit",
+      "test_type": "service_contract",
+      "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
         "ci-lite"
       ],
       "legacy_targeted": false,
-      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane and CI-lite routing."
     },
     {
       "path": "tests/test_admin_audit.py",
@@ -536,8 +549,8 @@
     {
       "path": "tests/test_agent_improvements.py",
       "domain": "agents",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "route_contract",
+      "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
         "release"
@@ -548,14 +561,28 @@
     {
       "path": "tests/test_agents.py",
       "domain": "agents",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "route_contract",
+      "intent": "contract",
       "primary_lane": "release",
       "allowed_lanes": [
         "release"
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_agents_ghost_runtime_store.py",
+      "domain": "agents",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_agents_release_integration_contracts.py",
@@ -1055,6 +1082,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_check_github_actions_node_runtime.py",
+      "domain": "nodes",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
       "path": "tests/test_chrono_skill.py",
@@ -1952,8 +1993,8 @@
     {
       "path": "tests/test_file_skill.py",
       "domain": "skills",
-      "test_type": "unit",
-      "intent": "regression",
+      "test_type": "service_contract",
+      "intent": "contract",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
@@ -2093,14 +2134,16 @@
     {
       "path": "tests/test_ghost_agent.py",
       "domain": "agents",
-      "test_type": "unit",
-      "intent": "regression",
-      "primary_lane": "release",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_git_routes_logic.py",
@@ -2672,6 +2715,7 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
@@ -2712,6 +2756,7 @@
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
@@ -3968,12 +4013,14 @@
       "domain": "misc",
       "test_type": "unit",
       "intent": "regression",
-      "primary_lane": "release",
+      "primary_lane": "new-code",
       "allowed_lanes": [
+        "new-code",
+        "ci-lite",
         "release"
       ],
       "legacy_targeted": false,
-      "rationale": "Default release-lane regression coverage."
+      "rationale": "Permission guard regression and changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
       "path": "tests/test_persona_factory.py",
@@ -4084,17 +4131,17 @@
     },
     {
       "path": "tests/test_port_pids_script.py",
-      "domain": "testing_tooling",
+      "domain": "environment",
       "test_type": "unit",
-      "intent": "regression",
+      "intent": "legacy_coverage",
       "primary_lane": "new-code",
       "allowed_lanes": [
         "new-code",
         "ci-lite",
         "release"
       ],
-      "legacy_targeted": false,
-      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+      "legacy_targeted": true,
+      "rationale": "Legacy-targeted environment diagnostics coverage for fast lanes."
     },
     {
       "path": "tests/test_preprod_mutation_guards.py",

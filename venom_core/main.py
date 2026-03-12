@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
+from venom_core.agents.ghost_agent import GhostAgent
 from venom_core.agents.operator import OperatorAgent
 from venom_core.api import dependencies as api_deps
 from venom_core.api.audio_stream import AudioStreamHandler
@@ -167,6 +168,7 @@ node_manager = None
 shadow_agent = None
 desktop_sensor = None
 notifier = None
+ghost_agent = None
 
 # Inicjalizacja Service Health Monitor
 service_registry = None
@@ -699,6 +701,26 @@ async def _initialize_shadow_stack() -> None:
     )
 
 
+def _initialize_ghost_agent_if_enabled() -> None:
+    global ghost_agent
+    if not SETTINGS.ENABLE_GHOST_AGENT:
+        logger.info("Ghost Agent wyłączony (ENABLE_GHOST_AGENT=False)")
+        return
+
+    kernel = _get_orchestrator_kernel()
+    if kernel is None:
+        logger.warning(
+            "Ghost Agent nie został zainicjalizowany - brak kernel orchestratora"
+        )
+        return
+
+    try:
+        ghost_agent = GhostAgent(kernel=kernel)
+    except Exception as exc:
+        ghost_agent = None
+        logger.warning("Nie udało się zainicjalizować Ghost Agent: %s", exc)
+
+
 async def _ensure_local_llm_ready() -> None:
     runtime_profile = (
         (getattr(SETTINGS, "VENOM_RUNTIME_PROFILE", "") or "").strip().lower()
@@ -795,6 +817,7 @@ async def lifespan(app: FastAPI):
     await _initialize_documenter_and_watcher(workspace_path)
     await _initialize_avatar_stack()
     await _initialize_shadow_stack()
+    _initialize_ghost_agent_if_enabled()
     setup_router_dependencies()
     logger.info("Aplikacja uruchomiona - zależności routerów ustawione")
     app.state.startup_llm_task = asyncio.create_task(_ensure_local_llm_ready())
@@ -1032,6 +1055,7 @@ def setup_router_dependencies():
             dataset_curator=dataset_curator,
             gpu_habitat=gpu_habitat,
             self_learning_service=self_learning_service,
+            ghost_agent=ghost_agent,
         ),
     )
     if self_learning_service is not None:

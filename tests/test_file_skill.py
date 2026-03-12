@@ -8,6 +8,7 @@ import pytest
 
 from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.file_skill import FileSkill
+from venom_core.services.audit_stream import get_audit_stream
 
 
 @pytest.fixture
@@ -444,6 +445,22 @@ async def test_batch_delete_requires_file_path_or_path(temp_workspace):
 
 
 @pytest.mark.asyncio
+async def test_batch_delete_accepts_path_alias(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("to-delete.txt", "x")
+    operations = [
+        {"action": "delete", "path": "to-delete.txt"},
+    ]
+
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+
+    assert report["operations_failed"] == 0
+    assert report["results"][0]["status"] == "success"
+    assert not (Path(temp_workspace) / "to-delete.txt").exists()
+
+
+@pytest.mark.asyncio
 async def test_dry_run_report_is_deterministic(temp_workspace):
     skill = FileSkill(workspace_root=temp_workspace)
     await skill.write_file("input.txt", "payload")
@@ -559,6 +576,44 @@ def test_batch_file_operations_rejects_unknown_action(temp_workspace):
     report = _parse_report(raw)
     assert report["operations_failed"] == 1
     assert "Nieobsługiwana akcja batch" in report["results"][0]["message"]
+
+
+def test_batch_file_operations_sets_audit_status_and_context(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    audit_stream = get_audit_stream()
+    audit_stream.clear()
+    operations = [{"action": "delete", "file_path": "missing.txt"}]
+
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+    assert report["status"] == "failed"
+    assert report["context"] == "batch:1"
+
+    entries = audit_stream.get_entries(action="file.batch_file_operations", limit=1)
+    assert entries
+    assert entries[0].status == "failed"
+    assert entries[0].context == "batch:1"
+
+
+def test_batch_file_operations_audit_publish_is_best_effort(
+    temp_workspace, monkeypatch
+):
+    skill = FileSkill(workspace_root=temp_workspace)
+
+    class _BrokenAuditStream:
+        def publish(self, **kwargs):
+            raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr(
+        "venom_core.execution.skills.file_skill.get_audit_stream",
+        lambda: _BrokenAuditStream(),
+    )
+
+    operations = [{"action": "delete", "file_path": "missing.txt"}]
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+    assert report["operation"] == "batch_file_operations"
+    assert report["operations_total"] == 1
 
 
 def test_batch_file_operations_requires_list_payload(temp_workspace):

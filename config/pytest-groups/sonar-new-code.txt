@@ -10,6 +10,7 @@ tests/test_academy_api_dataset_edge_cases.py
 tests/test_academy_api_dataset_routes.py
 tests/test_academy_api_edges_contract.py
 tests/test_academy_conversion_contracts.py
+tests/test_academy_conversion_light_coverage.py
 tests/test_academy_file_resolution_service.py
 tests/test_academy_history_module.py
 tests/test_academy_models_module.py
@@ -20,6 +21,7 @@ tests/test_academy_self_learning_service.py
 tests/test_academy_training_service.py
 tests/test_adapter_audit_service.py
 tests/test_admin_audit.py
+tests/test_agents_ghost_runtime_store.py
 tests/test_agents_release_integration_contracts.py
 tests/test_agents_skill_manager_paths.py
 tests/test_agents_strategy_ux_contracts.py
@@ -41,6 +43,7 @@ tests/test_bootstrap_runtime_stack_modules.py
 tests/test_browser_skill.py
 tests/test_browser_skill_unit_contracts.py
 tests/test_campaign_flow.py
+tests/test_check_github_actions_node_runtime.py
 tests/test_chrono_skill.py
 tests/test_chronos.py
 tests/test_cloud_provisioner.py
@@ -80,6 +83,7 @@ tests/test_file_skill.py
 tests/test_flow_coordinator.py
 tests/test_forge_flow.py
 tests/test_generation_params_adapter.py
+tests/test_ghost_agent.py
 tests/test_git_skill_roi.py
 tests/test_github_skill_contracts.py
 tests/test_github_skill_optional_dep.py
@@ -167,6 +171,7 @@ tests/test_orchestrator_components.py
 tests/test_orchestrator_core_scenarios.py
 tests/test_orchestrator_flows_regression.py
 tests/test_parallel_skill.py
+tests/test_permission_guard.py
 tests/test_persona_factory.py
 tests/test_platform_skill.py
 tests/test_policy_autonomy_contract.py

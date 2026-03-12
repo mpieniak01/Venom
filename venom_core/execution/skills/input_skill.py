@@ -11,6 +11,7 @@ from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
 
+from venom_core.core.autonomy_enforcement import require_desktop_input_permission
 from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover - zależne od środowiska testowego
@@ -98,6 +99,8 @@ class InputSkill:
             pyautogui.FailSafeException: Jeśli mysz zostanie przesunięta do (0,0)
         """
         try:
+            require_desktop_input_permission()
+
             # Walidacja współrzędnych
             if not self._validate_coordinates(x, y):
                 return f"❌ Nieprawidłowe współrzędne: ({x}, {y})"
@@ -189,6 +192,8 @@ class InputSkill:
             pyautogui.FailSafeException: Jeśli mysz zostanie przesunięta do (0,0)
         """
         try:
+            require_desktop_input_permission()
+
             if not text:
                 return "❌ Brak tekstu do wpisania"
             if interval < 0:
@@ -237,6 +242,8 @@ class InputSkill:
             pyautogui.FailSafeException: Jeśli mysz zostanie przesunięta do (0,0)
         """
         try:
+            require_desktop_input_permission()
+
             if not keys:
                 return "❌ Brak klawiszy do naciśnięcia"
 

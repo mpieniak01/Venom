@@ -49,15 +49,36 @@ In `.env` or `config.py` file:
 ```python
 # Ghost Agent (Visual GUI Automation)
 ENABLE_GHOST_AGENT = False  # Enable Ghost Agent
+ENABLE_GHOST_API = False  # Enable public API endpoints /api/v1/ghost/*
 GHOST_MAX_STEPS = 20  # Maximum number of steps
 GHOST_STEP_DELAY = 1.0  # Delay between steps (seconds)
 GHOST_VERIFICATION_ENABLED = True  # Verification after each step
 GHOST_SAFETY_DELAY = 0.5  # Safety delay
 GHOST_VISION_CONFIDENCE = 0.7  # Confidence threshold for vision grounding
+GHOST_RUNTIME_PROFILE = "desktop_safe"  # desktop_safe|desktop_power
+GHOST_CRITICAL_FAIL_CLOSED = True  # Block fallback clicks in critical paths
 
 # OpenAI API (optional, for vision grounding)
 OPENAI_API_KEY = "sk-..."  # If you want to use GPT-4o Vision
 ```
+
+### Runtime profiles
+
+- `desktop_safe`:
+  - conservative limits,
+  - verification enabled,
+  - fail-closed behavior for critical actions.
+- `desktop_power`:
+  - higher throughput defaults,
+  - faster step pacing,
+  - fallback allowed when visual match is missing.
+
+### Governance and audit
+
+- `InputSkill` desktop mutations (`mouse_click`, `keyboard_type`, `keyboard_hotkey`) are protected by autonomy policy checks.
+- Ghost runtime and API publish canonical audit entries:
+  - desktop actions: `source=core.ghost`,
+  - API control plane: `source=api.ghost`.
 
 ## 🚀 Usage Examples
 
@@ -162,6 +183,33 @@ else:
     print("Element not found")
 ```
 
+### Example 5: `vision_click` with fallback policy
+
+```python
+# Safe mode: fail-closed if description is not found
+ghost.apply_runtime_profile("desktop_safe")
+await ghost.vision_click(
+    description="blue Submit button",
+    fallback_coords=(500, 300),
+)
+
+# Power mode: fallback may be used when locate fails
+ghost.apply_runtime_profile("desktop_power")
+await ghost.vision_click(
+    description="blue Submit button",
+    fallback_coords=(500, 300),
+    require_visual_confirmation=False,
+)
+```
+
+### Ghost API contract (feature-flagged)
+
+When `ENABLE_GHOST_API=True` and `ENABLE_GHOST_AGENT=True`:
+
+- `GET /api/v1/ghost/status` - runtime + execution status
+- `POST /api/v1/ghost/start` - start background Ghost task
+- `POST /api/v1/ghost/cancel` - cancel active task (emergency stop)
+
 ## 🧪 Testing
 
 Run tests:
@@ -241,6 +289,11 @@ class GhostAgent(BaseAgent):
     )
 
     async def process(input_text: str) -> str
+    async def vision_click(
+        description: str,
+        fallback_coords: tuple[int, int] | None = None
+    ) -> Dict[str, Any]
+    def apply_runtime_profile(profile: str) -> Dict[str, Any]
     def emergency_stop_trigger() -> None
     def get_status() -> Dict[str, Any]
 ```

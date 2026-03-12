@@ -367,6 +367,21 @@ class PermissionGuard:
         level = self._levels.get(self._current_level)
         return level.permissions.get("shell_enabled", False) if level else False
 
+    def can_control_desktop_input(self) -> bool:
+        """
+        Sprawdza czy aktualny poziom pozwala na automatyzację desktop input.
+
+        Jeśli flaga desktop_input_enabled nie jest zdefiniowana w macierzy,
+        zachowujemy kompatybilność i fallback do shell_enabled.
+        """
+        level = self._levels.get(self._current_level)
+        if not level:
+            return False
+        permissions = level.permissions
+        if "desktop_input_enabled" in permissions:
+            return bool(permissions.get("desktop_input_enabled"))
+        return bool(permissions.get("shell_enabled", False))
+
 
 # Globalna instancja (singleton)
 permission_guard = PermissionGuard()

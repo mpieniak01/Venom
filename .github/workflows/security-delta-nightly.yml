@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: security-delta-nightly-${{ github.ref }}
   cancel-in-progress: true
@@ -52,7 +55,7 @@ jobs:
         run: make security-delta-scan
 
       - name: Upload security delta artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: security-delta-latest
           path: logs/security-delta-latest.json

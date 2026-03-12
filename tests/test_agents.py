@@ -1,8 +1,11 @@
 """Testy jednostkowe dla agentów."""
 
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
@@ -300,6 +303,307 @@ async def test_chat_agent_combines_prompt_for_gemma(mock_kernel, mock_chat_servi
     message_content = str(chat_history.messages[0].content)
     assert "Venom" in message_content or "asystent" in message_content.lower()
     assert "Test question" in message_content
+
+
+def _ghost_client(mod, ghost=None):
+    app = FastAPI()
+    mod.set_dependencies(None, None, None, None, None, ghost)
+    app.include_router(mod.router)
+    return TestClient(app)
+
+
+@pytest.fixture
+def ghost_mod():
+    from venom_core.api.routes import agents as mod
+
+    originals = (
+        mod._gardener_agent,
+        mod._shadow_agent,
+        mod._file_watcher,
+        mod._documenter_agent,
+        mod._orchestrator,
+        mod._ghost_agent,
+        dict(mod._ghost_local_tasks),
+        getattr(mod.SETTINGS, "ENABLE_GHOST_API", False),
+        getattr(mod.SETTINGS, "ENABLE_GHOST_AGENT", False),
+    )
+    mod._ghost_run_store.clear()
+    mod._ghost_local_tasks.clear()
+    yield mod
+    mod._ghost_run_store.clear()
+    mod._ghost_local_tasks.clear()
+    (
+        mod._gardener_agent,
+        mod._shadow_agent,
+        mod._file_watcher,
+        mod._documenter_agent,
+        mod._orchestrator,
+        mod._ghost_agent,
+        local_tasks,
+        mod.SETTINGS.ENABLE_GHOST_API,
+        mod.SETTINGS.ENABLE_GHOST_AGENT,
+    ) = originals
+    mod._ghost_local_tasks.update(local_tasks)
+
+
+def test_ghost_store_branches_and_helpers(ghost_mod):
+    store = ghost_mod._ghost_run_store
+    store.clear()
+
+    assert store.try_start({"task_id": "t1", "status": "running"}) is True
+    assert store.try_start({"task_id": "t2", "status": "running"}) is False
+    assert store.update("missing", {"status": "failed"})["task_id"] == "t1"
+    store.clear()
+    assert store.update("missing", {"status": "failed"}) is None
+    assert ghost_mod._get_runtime_profile("missing") is None
+    assert len(ghost_mod._hash_content("abc")) == 64
+
+
+def test_ghost_store_invalid_json_read_returns_none(ghost_mod):
+    state_path = ghost_mod._ghost_run_store._state_path
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text("{not-json", encoding="utf-8")
+    assert ghost_mod._ghost_run_store.get() is None
+
+
+@pytest.mark.asyncio
+async def test_ghost_run_process_cancel_watch_branches(ghost_mod):
+    store = ghost_mod._ghost_run_store
+    store.clear()
+    store.try_start({"task_id": "cancel-me", "status": "running"})
+
+    started = asyncio.Event()
+
+    async def _slow_process(_content: str) -> str:
+        started.set()
+        await asyncio.sleep(0.4)
+        return "never"
+
+    ghost = MagicMock()
+    ghost.process = AsyncMock(side_effect=_slow_process)
+    ghost.emergency_stop_trigger = MagicMock()
+
+    with patch.object(ghost_mod, "_ghost_agent", ghost):
+        task = asyncio.create_task(
+            ghost_mod._run_ghost_process_with_cancel_watch(
+                task_id="cancel-me", content="open app"
+            )
+        )
+        await started.wait()
+        store.update("cancel-me", {"status": "cancelling"})
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    ghost.emergency_stop_trigger.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ghost_run_job_failure_and_cancelled_paths(ghost_mod):
+    store = ghost_mod._ghost_run_store
+    store.clear()
+    store.try_start(
+        {
+            "task_id": "f1",
+            "status": "running",
+            "runtime_profile": "desktop_safe",
+        }
+    )
+    ghost_mod._ghost_local_tasks["f1"] = MagicMock()
+
+    with (
+        patch.object(
+            ghost_mod,
+            "_run_ghost_process_with_cancel_watch",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch.object(ghost_mod, "_publish_ghost_audit", MagicMock()),
+    ):
+        with pytest.raises(RuntimeError, match="boom"):
+            await ghost_mod._run_ghost_job(
+                task_id="f1",
+                payload=ghost_mod.GhostRunRequest(content="do"),
+                actor="tester",
+            )
+
+    store.clear()
+    store.try_start(
+        {
+            "task_id": "c1",
+            "status": "running",
+            "runtime_profile": "desktop_safe",
+        }
+    )
+    ghost_mod._ghost_local_tasks["c1"] = MagicMock()
+    with (
+        patch.object(
+            ghost_mod,
+            "_run_ghost_process_with_cancel_watch",
+            AsyncMock(side_effect=asyncio.CancelledError),
+        ),
+        patch.object(ghost_mod, "_publish_ghost_audit", MagicMock()),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await ghost_mod._run_ghost_job(
+                task_id="c1",
+                payload=ghost_mod.GhostRunRequest(content="do"),
+                actor="tester",
+            )
+
+
+def test_ghost_status_endpoint_branches(ghost_mod):
+    ghost_mod.SETTINGS.ENABLE_GHOST_API = False
+    ghost_mod.SETTINGS.ENABLE_GHOST_AGENT = False
+    client = _ghost_client(ghost_mod)
+    assert client.get("/api/v1/ghost/status").status_code == 200
+
+    ghost_mod.SETTINGS.ENABLE_GHOST_API = True
+    ghost_mod.SETTINGS.ENABLE_GHOST_AGENT = True
+    assert client.get("/api/v1/ghost/status").status_code == 503
+
+    ghost = MagicMock()
+    ghost.get_status.side_effect = RuntimeError("status fail")
+    client = _ghost_client(ghost_mod, ghost=ghost)
+    assert client.get("/api/v1/ghost/status").status_code == 500
+
+    ghost.get_status.side_effect = None
+    ghost.get_status.return_value = {"is_running": False}
+    ghost_mod._ghost_run_store.clear()
+    ghost_mod._ghost_run_store.try_start(
+        {"task_id": "done-task", "status": "running", "runtime_profile": "desktop_safe"}
+    )
+    done_task = MagicMock()
+    done_task.done.return_value = True
+    ghost_mod._ghost_local_tasks["done-task"] = done_task
+    response = client.get("/api/v1/ghost/status")
+    assert response.status_code == 200
+    assert response.json()["task_active"] is False
+
+
+def test_ghost_start_endpoint_branches(ghost_mod):
+    ghost = MagicMock()
+    ghost.apply_runtime_profile.return_value = {"profile": "desktop_safe"}
+    client = _ghost_client(ghost_mod, ghost=ghost)
+
+    ghost_mod.SETTINGS.ENABLE_GHOST_API = False
+    ghost_mod.SETTINGS.ENABLE_GHOST_AGENT = False
+    assert (
+        client.post("/api/v1/ghost/start", json={"content": "open"}).status_code == 503
+    )
+
+    ghost_mod.SETTINGS.ENABLE_GHOST_API = True
+    ghost_mod.SETTINGS.ENABLE_GHOST_AGENT = True
+    client_missing = _ghost_client(ghost_mod)
+    assert (
+        client_missing.post("/api/v1/ghost/start", json={"content": "open"}).status_code
+        == 503
+    )
+    client = _ghost_client(ghost_mod, ghost=ghost)
+
+    ghost_mod._ghost_run_store.clear()
+    ghost_mod._ghost_run_store.try_start(
+        {"task_id": "active", "status": "running", "runtime_profile": "desktop_safe"}
+    )
+    assert (
+        client.post("/api/v1/ghost/start", json={"content": "open"}).status_code == 409
+    )
+
+    ghost_mod._ghost_run_store.clear()
+    with (
+        patch.object(
+            ghost_mod,
+            "ensure_data_mutation_allowed",
+            side_effect=PermissionError("deny"),
+        ),
+        patch.object(
+            ghost_mod,
+            "raise_permission_denied_http",
+            side_effect=HTTPException(status_code=403, detail="deny"),
+        ),
+    ):
+        assert (
+            client.post("/api/v1/ghost/start", json={"content": "open"}).status_code
+            == 403
+        )
+
+    with (
+        patch.object(ghost_mod._ghost_run_store, "get", return_value=None),
+        patch.object(ghost_mod._ghost_run_store, "try_start", return_value=False),
+    ):
+        assert (
+            client.post("/api/v1/ghost/start", json={"content": "open"}).status_code
+            == 409
+        )
+
+    with patch.object(ghost_mod, "_run_ghost_job", new=AsyncMock(return_value="ok")):
+        response = client.post("/api/v1/ghost/start", json={"content": "very secret"})
+    assert response.status_code == 200
+    state = ghost_mod._ghost_run_store.get()
+    assert state["content_length"] == len("very secret")
+    assert "content" not in state
+    assert "content_sha256" in state
+
+
+def test_ghost_cancel_endpoint_branches(ghost_mod):
+    ghost = MagicMock()
+    ghost.emergency_stop_trigger = MagicMock()
+    client = _ghost_client(ghost_mod, ghost=ghost)
+
+    ghost_mod.SETTINGS.ENABLE_GHOST_API = False
+    ghost_mod.SETTINGS.ENABLE_GHOST_AGENT = False
+    assert client.post("/api/v1/ghost/cancel").status_code == 503
+
+    ghost_mod.SETTINGS.ENABLE_GHOST_API = True
+    ghost_mod.SETTINGS.ENABLE_GHOST_AGENT = True
+    client_missing = _ghost_client(ghost_mod)
+    assert client_missing.post("/api/v1/ghost/cancel").status_code == 503
+    client = _ghost_client(ghost_mod, ghost=ghost)
+
+    with (
+        patch.object(
+            ghost_mod,
+            "ensure_data_mutation_allowed",
+            side_effect=PermissionError("deny"),
+        ),
+        patch.object(
+            ghost_mod,
+            "raise_permission_denied_http",
+            side_effect=HTTPException(status_code=403, detail="deny"),
+        ),
+    ):
+        assert client.post("/api/v1/ghost/cancel").status_code == 403
+
+    ghost_mod._ghost_run_store.clear()
+    response = client.post("/api/v1/ghost/cancel")
+    assert response.status_code == 200
+    assert response.json() == {"status": "success", "cancelled": False, "task_id": None}
+
+    class _PendingTask:
+        def __init__(self):
+            self._done = False
+
+        def done(self):
+            return self._done
+
+        def cancel(self):
+            self._done = True
+
+        def __await__(self):
+            if False:
+                yield None
+            raise asyncio.CancelledError
+
+    ghost_mod._ghost_run_store.clear()
+    ghost_mod._ghost_run_store.try_start(
+        {
+            "task_id": "cancel-active",
+            "status": "running",
+            "runtime_profile": "desktop_safe",
+        }
+    )
+    ghost_mod._ghost_local_tasks["cancel-active"] = _PendingTask()
+    response = client.post("/api/v1/ghost/cancel")
+    assert response.status_code == 200
+    assert response.json()["cancelled"] is True
 
 
 @pytest.mark.asyncio

@@ -427,6 +427,23 @@ async def test_batch_file_operations_blocks_path_traversal(temp_workspace):
 
 
 @pytest.mark.asyncio
+async def test_batch_delete_requires_file_path_or_path(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("to-delete.txt", "x")
+    operations = [
+        {"action": "delete", "source_path": "to-delete.txt"},
+    ]
+
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+
+    assert report["operations_failed"] == 1
+    assert report["results"][0]["status"] == "failed"
+    assert "wymaga file_path/path" in report["results"][0]["message"]
+    assert (Path(temp_workspace) / "to-delete.txt").exists()
+
+
+@pytest.mark.asyncio
 async def test_dry_run_report_is_deterministic(temp_workspace):
     skill = FileSkill(workspace_root=temp_workspace)
     await skill.write_file("input.txt", "payload")

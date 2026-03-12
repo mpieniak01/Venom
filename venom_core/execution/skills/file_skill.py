@@ -572,11 +572,9 @@ class FileSkill(BaseSkill):
                 recursive=recursive,
             )
 
-        file_path_raw = operation.get(
-            "file_path", operation.get("path", operation.get("source_path"))
-        )
+        file_path_raw = operation.get("file_path", operation.get("path"))
         if not isinstance(file_path_raw, str):
-            raise ValueError("Operacja delete_path wymaga file_path/path/source_path")
+            raise ValueError("Operacja delete_path wymaga file_path/path")
         recursive = self._coerce_bool(operation.get("recursive"), False)
         return self._delete_single(
             file_path=file_path_raw,

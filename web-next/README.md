@@ -106,7 +106,24 @@ Dodawanie nowego motywu:
    npm run test:e2e -- --reporter=list
    ```
    (opcjonalnie `BASE_URL=http://127.0.0.1:3001` gdy chcesz wymusić inny adres).
-3. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.
+3. Profile uruchamiania:
+   ```bash
+   npm run test:e2e:smoke
+   npm run test:e2e:smoke:academy
+   npm run test:e2e:functional
+   npm run test:e2e:profile:full
+   ```
+   `smoke` to szybki profil bez zależności od backend runtime; `smoke:academy` jest profilem backend-zależnym.
+4. CI:
+   - workflow `Web Next Playwright E2E` uruchamia domyślnie profil `smoke` na `push/pull_request`,
+   - workflow cache’uje binaria Playwright (`~/.cache/ms-playwright`), co skraca pipeline o czas ponownego pobierania przeglądarek.
+   - workflow generuje raport trendu niestabilności (`test-results/e2e/flakiness-summary.json` + `flakiness-history.jsonl`).
+   - dla profili `smoke/functional` workflow egzekwuje quality gate (`min tests` + `max flaky rate`).
+   - osobny workflow `Web Next Playwright Perf (Backend)` uruchamia profil wydajnościowy dla środowiska z backendem (manual `workflow_dispatch`).
+5. Profil perf (backend):
+   - używa `PERF_NEXT_BASE_URL`, `PERF_API_BASE` i dedykowanego progu `PERF_NEXT_LATENCY_BUDGET`,
+   - tworzy `test-results/e2e/perf-summary.json` i failuje run, gdy przekroczony zostanie próg latency.
+6. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.
 
 ## Testy unit + coverage pod Sonar
 Uruchamianie lokalne:

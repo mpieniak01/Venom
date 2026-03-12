@@ -10,6 +10,7 @@ from pathlib import Path
 RULES: dict[str, int] = {
     "actions/upload-artifact": 6,
     "actions/download-artifact": 7,
+    "actions/cache": 5,
 }
 FORCE_NODE24_ENV = "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"
 

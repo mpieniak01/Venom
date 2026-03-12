@@ -466,11 +466,14 @@ class Settings(BaseSettings):
 
     # Konfiguracja THE_GHOST (Visual GUI Automation)
     ENABLE_GHOST_AGENT: bool = False  # Włącz Ghost Agent (kontrola GUI)
+    ENABLE_GHOST_API: bool = False  # Włącz publiczne endpointy API /ghost/*
     GHOST_MAX_STEPS: int = 20  # Maksymalna liczba kroków w jednym zadaniu
     GHOST_STEP_DELAY: float = 1.0  # Opóźnienie między krokami (sekundy)
     GHOST_VERIFICATION_ENABLED: bool = True  # Weryfikacja po każdym kroku
     GHOST_SAFETY_DELAY: float = 0.5  # Opóźnienie bezpieczeństwa dla input operations
     GHOST_VISION_CONFIDENCE: float = 0.7  # Próg pewności dla vision grounding
+    GHOST_RUNTIME_PROFILE: str = "desktop_safe"  # desktop_safe|desktop_power
+    GHOST_CRITICAL_FAIL_CLOSED: bool = True  # Blokuj fallback przy krytycznych krokach
 
     # Konfiguracja THE_DREAMER (Synthetic Experience Replay & Active Learning)
     ENABLE_DREAMING: bool = (

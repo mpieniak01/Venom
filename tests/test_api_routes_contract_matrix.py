@@ -13,6 +13,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1093,6 +1094,11 @@ class TestAgents:
             mod._file_watcher,
             mod._documenter_agent,
             mod._orchestrator,
+            mod._ghost_agent,
+            mod._ghost_run_task,
+            mod._ghost_run_state,
+            getattr(mod.SETTINGS, "ENABLE_GHOST_API", False),
+            getattr(mod.SETTINGS, "ENABLE_GHOST_AGENT", False),
         )
         yield
         (
@@ -1101,6 +1107,11 @@ class TestAgents:
             mod._file_watcher,
             mod._documenter_agent,
             mod._orchestrator,
+            mod._ghost_agent,
+            mod._ghost_run_task,
+            mod._ghost_run_state,
+            mod.SETTINGS.ENABLE_GHOST_API,
+            mod.SETTINGS.ENABLE_GHOST_AGENT,
         ) = originals
 
     def _setup_all(
@@ -1110,10 +1121,11 @@ class TestAgents:
         watcher=None,
         documenter=None,
         orchestrator=None,
+        ghost=None,
     ):
         from venom_core.api.routes import agents as mod
 
-        mod.set_dependencies(gardener, shadow, watcher, documenter, orchestrator)
+        mod.set_dependencies(gardener, shadow, watcher, documenter, orchestrator, ghost)
         return _client(mod.router)
 
     # --- gardener ---
@@ -1261,6 +1273,69 @@ class TestAgents:
         )
 
         assert response.status_code == 500
+
+    # --- ghost ---
+
+    def test_ghost_status_disabled_when_feature_flag_off(self):
+        from venom_core.api.routes import agents as mod
+
+        mod.SETTINGS.ENABLE_GHOST_API = False
+        mod.SETTINGS.ENABLE_GHOST_AGENT = False
+        client = self._setup_all()
+        response = client.get("/api/v1/ghost/status")
+        assert response.status_code == 200
+        assert response.json()["status"] == "disabled"
+
+    def test_ghost_start_409_when_task_already_running(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        ghost.apply_runtime_profile.return_value = {"profile": "desktop_safe"}
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+        mod._ghost_run_task = MagicMock()
+        mod._ghost_run_task.done.return_value = False
+
+        client = self._setup_all(ghost=ghost)
+        response = client.post("/api/v1/ghost/start", json={"content": "open notepad"})
+        assert response.status_code == 409
+
+    def test_ghost_start_and_cancel_success(self):
+        from venom_core.api.routes import agents as mod
+
+        class _PendingTask:
+            def __init__(self):
+                self._done = False
+
+            def done(self):
+                return self._done
+
+            def cancel(self):
+                self._done = True
+
+            def __await__(self):
+                if False:
+                    yield None
+                raise asyncio.CancelledError
+
+        ghost = MagicMock()
+        ghost.get_status.return_value = {"is_running": False}
+        ghost.apply_runtime_profile.return_value = {"profile": "desktop_safe"}
+        ghost.emergency_stop_trigger = MagicMock()
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+
+        client = self._setup_all(ghost=ghost)
+        start = client.post("/api/v1/ghost/start", json={"content": "open notepad"})
+        assert start.status_code == 200
+        task_id = start.json()["task_id"]
+        assert task_id
+
+        mod._ghost_run_state = {"task_id": task_id, "status": "running"}
+        mod._ghost_run_task = _PendingTask()
+        cancel = client.post("/api/v1/ghost/cancel")
+        assert cancel.status_code == 200
+        assert cancel.json()["cancelled"] is True
 
 
 # ===========================================================================

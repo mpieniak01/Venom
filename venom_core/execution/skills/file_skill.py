@@ -15,6 +15,7 @@ from venom_core.execution.skills.base_skill import (
     async_safe_action,
     safe_action,
 )
+from venom_core.services.audit_stream import get_audit_stream
 
 
 class FileSkill(BaseSkill):
@@ -104,6 +105,27 @@ class FileSkill(BaseSkill):
     def _serialize_report(self, payload: dict[str, Any]) -> str:
         """Serializuje raport operacji do deterministycznego JSON."""
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    def _publish_fileop_audit(self, payload: dict[str, Any]) -> None:
+        """Publikuje canonical audit event dla operacji file ops."""
+        try:
+            operation = str(payload.get("operation") or "file_operation")
+            status = str(payload.get("status") or "unknown")
+            get_audit_stream().publish(
+                source="core.file_ops",
+                action=f"file.{operation}",
+                actor="file.skill",
+                status=status,
+                context=str(
+                    payload.get("source_path") or payload.get("target_path") or ""
+                ),
+                details=payload,
+            )
+        except Exception:
+            # Audyt ma być best-effort i nie może blokować operacji.
+            self.logger.debug(
+                "Nie udało się opublikować audytu file_ops", exc_info=True
+            )
 
     def _to_relative(self, path: Path) -> str:
         """Zwraca ścieżkę względną względem workspace."""
@@ -417,6 +439,7 @@ class FileSkill(BaseSkill):
             dry_run=dry_run,
             overwrite_policy=overwrite_policy,
         )
+        self._publish_fileop_audit(report)
         return self._serialize_report(report)
 
     @kernel_function(
@@ -444,6 +467,7 @@ class FileSkill(BaseSkill):
             dry_run=dry_run,
             overwrite_policy=overwrite_policy,
         )
+        self._publish_fileop_audit(report)
         return self._serialize_report(report)
 
     @kernel_function(
@@ -475,6 +499,7 @@ class FileSkill(BaseSkill):
             overwrite_policy=overwrite_policy,
             recursive=recursive,
         )
+        self._publish_fileop_audit(report)
         return self._serialize_report(report)
 
     @kernel_function(
@@ -499,6 +524,7 @@ class FileSkill(BaseSkill):
             dry_run=dry_run,
             recursive=recursive,
         )
+        self._publish_fileop_audit(report)
         return self._serialize_report(report)
 
     def _normalize_batch_action(self, action: str) -> str:
@@ -658,6 +684,7 @@ class FileSkill(BaseSkill):
             "changed": any(result.get("changed", False) for result in results),
             "results": results,
         }
+        self._publish_fileop_audit(payload)
         return self._serialize_report(payload)
 
     @kernel_function(

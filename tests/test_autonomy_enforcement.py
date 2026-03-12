@@ -34,6 +34,19 @@ def test_require_shell_permission_denies(monkeypatch):
     assert "Brak uprawnień do shella" in str(exc.value)
 
 
+def test_require_desktop_input_permission_allows(monkeypatch):
+    monkeypatch.setattr(ae.permission_guard, "can_execute_shell", lambda: True)
+    ae.require_desktop_input_permission()
+
+
+def test_require_desktop_input_permission_denies(monkeypatch):
+    monkeypatch.setattr(ae.permission_guard, "can_execute_shell", lambda: False)
+    monkeypatch.setattr(ae.permission_guard, "get_current_level_name", lambda: "SCOUT")
+    with pytest.raises(PermissionError) as exc:
+        ae.require_desktop_input_permission()
+    assert "automatyzacji desktop" in str(exc.value)
+
+
 def test_require_core_patch_permission_allows(monkeypatch):
     monkeypatch.setattr(ae.permission_guard, "get_current_level", lambda: 40)
     ae.require_core_patch_permission()

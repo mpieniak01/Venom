@@ -515,7 +515,7 @@ def list_jobs_handler(
         )
 
 
-async def list_adapters_handler(*, academy: Any) -> List[AdapterInfo]:
+def list_adapters_handler(*, academy: Any) -> List[AdapterInfo]:
     try:
         academy._ensure_academy_enabled()
         return academy.academy_models.list_adapters(mgr=academy._get_model_manager())

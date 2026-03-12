@@ -406,7 +406,7 @@ async def list_jobs(
     },
 )
 async def list_adapters() -> List[AdapterInfo]:
-    return await academy_route_handlers.list_adapters_handler(academy=_academy_module())
+    return academy_route_handlers.list_adapters_handler(academy=_academy_module())
 
 
 @router.get(

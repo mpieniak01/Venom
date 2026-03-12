@@ -125,15 +125,14 @@ def test_resolve_activation_runtime_id_falls_back_to_active_runtime_provider(
     assert route_handlers._resolve_activation_runtime_id(request=request) == "vllm"
 
 
-@pytest.mark.asyncio
-async def test_list_adapters_handler_maps_generic_error_to_http_500() -> None:
+def test_list_adapters_handler_maps_generic_error_to_http_500() -> None:
     academy = _build_academy_base()
     academy._get_model_manager = lambda: object()
     academy.academy_models = SimpleNamespace(
         list_adapters=Mock(side_effect=RuntimeError("boom"))
     )
     with pytest.raises(HTTPException) as exc:
-        await route_handlers.list_adapters_handler(academy=academy)
+        route_handlers.list_adapters_handler(academy=academy)
     assert exc.value.status_code == 500
     assert exc.value.detail == {
         "error": "ADAPTERS_LIST_FAILED",

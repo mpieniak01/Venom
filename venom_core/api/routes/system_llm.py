@@ -1032,7 +1032,7 @@ def _runtime_model_index(
     return index
 
 
-async def _build_adapter_catalog(
+def _build_adapter_catalog(
     *,
     model_manager: Any,
     trainable_models: list[dict[str, Any]],
@@ -1661,7 +1661,7 @@ async def _resolve_runtime_options_payload() -> dict[str, Any]:
         runtime_targets=runtime_targets,
         trainable_models=trainable_models,
     )
-    adapter_catalog = await _build_adapter_catalog(
+    adapter_catalog = _build_adapter_catalog(
         model_manager=model_manager,
         trainable_models=trainable_models,
         runtime_targets=runtime_targets,

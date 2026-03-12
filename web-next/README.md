@@ -106,7 +106,16 @@ Dodawanie nowego motywu:
    npm run test:e2e -- --reporter=list
    ```
    (opcjonalnie `BASE_URL=http://127.0.0.1:3001` gdy chcesz wymusić inny adres).
-3. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.
+3. Profile uruchamiania:
+   ```bash
+   npm run test:e2e:smoke
+   npm run test:e2e:functional
+   npm run test:e2e:profile:full
+   ```
+4. CI:
+   - workflow `Web Next Playwright E2E` uruchamia domyślnie profil `smoke` na `push/pull_request`,
+   - workflow cache’uje binaria Playwright (`~/.cache/ms-playwright`), co skraca pipeline o czas ponownego pobierania przeglądarek.
+5. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.
 
 ## Testy unit + coverage pod Sonar
 Uruchamianie lokalne:

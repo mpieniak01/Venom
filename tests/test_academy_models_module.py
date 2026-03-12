@@ -480,7 +480,7 @@ async def test_list_adapters_returns_empty_when_models_dir_missing(
 ):
     mock_settings.ACADEMY_MODELS_DIR = str(tmp_path / "does-not-exist")
     mock_settings.ACADEMY_DEFAULT_BASE_MODEL = "base-model"
-    adapters = await academy_models.list_adapters(mgr=None)
+    adapters = academy_models.list_adapters(mgr=None)
     assert adapters == []
 
 
@@ -504,7 +504,7 @@ async def test_list_adapters_skips_invalid_dirs_and_marks_active(
     mgr = MagicMock()
     mgr.get_active_adapter_info.return_value = {"adapter_id": "training_001"}
 
-    adapters = await academy_models.list_adapters(mgr=mgr)
+    adapters = academy_models.list_adapters(mgr=mgr)
 
     assert len(adapters) == 1
     assert adapters[0].adapter_id == "training_001"
@@ -529,7 +529,7 @@ async def test_list_adapters_marks_missing_metadata_as_incomplete(
         encoding="utf-8",
     )
 
-    adapters = await academy_models.list_adapters(mgr=None)
+    adapters = academy_models.list_adapters(mgr=None)
 
     assert len(adapters) == 1
     assert adapters[0].base_model == "unknown"
@@ -577,7 +577,7 @@ async def test_list_adapters_does_not_rescue_self_learning_from_run_snapshot(
         encoding="utf-8",
     )
 
-    adapters = await academy_models.list_adapters(mgr=None)
+    adapters = academy_models.list_adapters(mgr=None)
 
     assert len(adapters) == 1
     assert adapters[0].adapter_id == f"self_learning_{run_id}"

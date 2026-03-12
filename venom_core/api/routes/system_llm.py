@@ -1041,7 +1041,7 @@ async def _build_adapter_catalog(
     from venom_core.api.routes import academy_models
 
     try:
-        adapters_raw = await academy_models.list_adapters(model_manager)
+        adapters_raw = academy_models.list_adapters(model_manager)
     except Exception as exc:
         logger.warning("Failed to load adapter catalog for runtime options: %s", exc)
         return {

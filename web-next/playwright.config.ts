@@ -35,6 +35,7 @@ const config: PlaywrightTestConfig = {
   use: {
     baseURL,
     headless: true,
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },

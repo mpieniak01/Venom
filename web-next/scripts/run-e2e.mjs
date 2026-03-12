@@ -44,40 +44,73 @@ function run(command) {
   });
 }
 
+function resolveProfile() {
+  const rawProfile = String(process.env.E2E_PROFILE || "full").trim().toLowerCase();
+  const supportedProfiles = new Set(["smoke", "functional", "full"]);
+  if (!supportedProfiles.has(rawProfile)) {
+    console.error(
+      `Nieobsługiwany profil E2E: "${rawProfile}". ` +
+      "Użyj jednego z: smoke, functional, full.",
+    );
+    process.exit(2);
+  }
+  return rawProfile;
+}
+
+function shouldRunPreflight(profile) {
+  if (process.env.E2E_SKIP_PREFLIGHT === "1") {
+    return false;
+  }
+  if (process.env.E2E_FORCE_PREFLIGHT === "1") {
+    return true;
+  }
+  // Profile smoke/functional bazują na mockach i mogą działać bez backend stacku.
+  return profile === "full";
+}
+
 async function main() {
-  const preflightCode = await run("npm run test:e2e:preflight");
-  if (preflightCode === 2) {
-    // exit=2 means "skip due to environment preconditions", not test failure.
-    let reasonCode = "unknown";
-    if (existsSync(preflightStateFile)) {
-      try {
-        const payload = JSON.parse(readFileSync(preflightStateFile, "utf8"));
-        reasonCode = payload?.reason_code || "unknown";
-        const message = payload?.message || "brak dodatkowych informacji";
-        console.log(
-          `⏭️  Testy E2E pominięte (reason_code=${reasonCode}, state=${payload?.state || "n/a"}).`,
-        );
-        console.log(`   ${message}`);
-      } catch {
+  const profile = resolveProfile();
+  if (shouldRunPreflight(profile)) {
+    const preflightCode = await run("npm run test:e2e:preflight");
+    if (preflightCode === 2) {
+      // exit=2 means "skip due to environment preconditions", not test failure.
+      let reasonCode = "unknown";
+      if (existsSync(preflightStateFile)) {
+        try {
+          const payload = JSON.parse(readFileSync(preflightStateFile, "utf8"));
+          reasonCode = payload?.reason_code || "unknown";
+          const message = payload?.message || "brak dodatkowych informacji";
+          console.log(
+            `⏭️  Testy E2E pominięte (reason_code=${reasonCode}, state=${payload?.state || "n/a"}).`,
+          );
+          console.log(`   ${message}`);
+        } catch {
+          console.log("⏭️  Testy E2E pominięte (brak gotowego środowiska).");
+        }
+      } else {
         console.log("⏭️  Testy E2E pominięte (brak gotowego środowiska).");
       }
-    } else {
-      console.log("⏭️  Testy E2E pominięte (brak gotowego środowiska).");
+      bumpSkipReasonCount(reasonCode);
+      process.exit(0);
     }
-    bumpSkipReasonCount(reasonCode);
-    process.exit(0);
+    if (preflightCode !== 0) {
+      process.exit(preflightCode);
+    }
   }
-  if (preflightCode !== 0) {
-    process.exit(preflightCode);
+
+  if (profile === "smoke") {
+    process.exit(await run("npm run test:e2e:smoke"));
+  }
+
+  if (profile === "functional") {
+    process.exit(await run("npm run test:e2e:functional"));
   }
 
   const latencyCode = await run("npm run test:e2e:latency");
   if (latencyCode !== 0) {
     process.exit(latencyCode);
   }
-
-  const functionalCode = await run("npm run test:e2e:functional");
-  process.exit(functionalCode);
+  process.exit(await run("npm run test:e2e:functional"));
 }
 
 main().catch(() => process.exit(1));

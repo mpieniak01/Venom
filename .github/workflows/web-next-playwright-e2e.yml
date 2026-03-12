@@ -1,0 +1,97 @@
+name: "Web Next Playwright E2E"
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Playwright profile to run"
+        required: false
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - functional
+          - full
+  pull_request:
+    branches: [main]
+    paths:
+      - "web-next/**"
+      - ".github/workflows/web-next-playwright-e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web-next/**"
+      - ".github/workflows/web-next-playwright-e2e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-next-playwright-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright-e2e:
+    name: Playwright E2E (${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+      E2E_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: web-next/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix web-next ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('web-next/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browser (Chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npm --prefix web-next exec playwright install chromium
+
+      - name: Run E2E profile
+        run: |
+          set -euo pipefail
+          case "${E2E_PROFILE}" in
+            smoke)
+              npm --prefix web-next run test:e2e:smoke -- --reporter=line
+              ;;
+            functional)
+              npm --prefix web-next run test:e2e:functional -- --reporter=line
+              ;;
+            full)
+              npm --prefix web-next run test:e2e:profile:full -- --reporter=line
+              ;;
+            *)
+              echo "Unsupported E2E_PROFILE=${E2E_PROFILE}" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-e2e-${{ env.E2E_PROFILE }}
+          path: |
+            web-next/test-results/**
+            web-next/playwright-report/**
+          if-no-files-found: ignore

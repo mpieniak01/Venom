@@ -8,6 +8,7 @@ import pytest
 
 from venom_core.core.permission_guard import permission_guard
 from venom_core.execution.skills.file_skill import FileSkill
+from venom_core.services.audit_stream import get_audit_stream
 
 
 @pytest.fixture
@@ -575,6 +576,23 @@ def test_batch_file_operations_rejects_unknown_action(temp_workspace):
     report = _parse_report(raw)
     assert report["operations_failed"] == 1
     assert "Nieobsługiwana akcja batch" in report["results"][0]["message"]
+
+
+def test_batch_file_operations_sets_audit_status_and_context(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    audit_stream = get_audit_stream()
+    audit_stream.clear()
+    operations = [{"action": "delete", "file_path": "missing.txt"}]
+
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+    assert report["status"] == "failed"
+    assert report["context"] == "batch:1"
+
+    entries = audit_stream.get_entries(action="file.batch_file_operations", limit=1)
+    assert entries
+    assert entries[0].status == "failed"
+    assert entries[0].context == "batch:1"
 
 
 def test_batch_file_operations_requires_list_payload(temp_workspace):

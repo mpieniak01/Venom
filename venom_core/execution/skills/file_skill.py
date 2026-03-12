@@ -117,7 +117,10 @@ class FileSkill(BaseSkill):
                 actor="file.skill",
                 status=status,
                 context=str(
-                    payload.get("source_path") or payload.get("target_path") or ""
+                    payload.get("context")
+                    or payload.get("source_path")
+                    or payload.get("target_path")
+                    or ""
                 ),
                 details=payload,
             )
@@ -672,8 +675,11 @@ class FileSkill(BaseSkill):
                     break
 
         succeeded = sum(1 for item in results if item.get("status") != "failed")
+        batch_status = "failed" if failures else ("dry_run" if dry_run else "success")
         payload = {
             "operation": "batch_file_operations",
+            "status": batch_status,
+            "context": f"batch:{len(results)}",
             "dry_run": dry_run,
             "overwrite_policy": default_policy,
             "continue_on_error": continue_on_error,

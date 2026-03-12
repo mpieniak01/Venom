@@ -124,6 +124,14 @@ class TestPermissionGuard:
         permission_guard.set_level(40)  # ROOT
         assert permission_guard.can_execute_shell() is True
 
+    def test_can_control_desktop_input(self):
+        """Test jawnej flagi desktop_input_enabled."""
+        permission_guard.set_level(30)  # BUILDER
+        assert permission_guard.can_control_desktop_input() is False
+
+        permission_guard.set_level(40)  # ROOT
+        assert permission_guard.can_control_desktop_input() is True
+
     def test_get_all_levels(self):
         """Test pobierania wszystkich poziomów."""
         levels = permission_guard.get_all_levels()

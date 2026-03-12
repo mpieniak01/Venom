@@ -1292,7 +1292,9 @@ class TestAgents:
         client = self._setup_all()
         response = client.get("/api/v1/ghost/status")
         assert response.status_code == 200
-        assert response.json()["status"] == "disabled"
+        data = response.json()
+        assert data["status"] == "disabled"
+        assert data["run"] is None
 
     def test_ghost_start_409_when_task_already_running(self):
         from venom_core.api.routes import agents as mod
@@ -1358,6 +1360,30 @@ class TestAgents:
         cancel = client.post("/api/v1/ghost/cancel")
         assert cancel.status_code == 200
         assert cancel.json()["cancelled"] is True
+
+    def test_ghost_start_persists_redacted_content_metadata_only(self):
+        from venom_core.api.routes import agents as mod
+
+        ghost = MagicMock()
+        ghost.apply_runtime_profile.return_value = {"profile": "desktop_safe"}
+        mod.SETTINGS.ENABLE_GHOST_API = True
+        mod.SETTINGS.ENABLE_GHOST_AGENT = True
+
+        with patch.object(mod, "_run_ghost_job", new=AsyncMock(return_value="ok")):
+            client = self._setup_all(ghost=ghost)
+            response = client.post(
+                "/api/v1/ghost/start",
+                json={"content": "very sensitive instruction"},
+            )
+
+            assert response.status_code == 200
+            state = mod._ghost_run_store.get()
+            assert state is not None
+            assert "content" not in state
+            assert "content_excerpt" not in state
+            assert state["content_length"] == len("very sensitive instruction")
+            assert isinstance(state["content_sha256"], str)
+            assert len(state["content_sha256"]) == 64
 
     def test_ghost_status_active_when_shared_state_running(self):
         from venom_core.api.routes import agents as mod

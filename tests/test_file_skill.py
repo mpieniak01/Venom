@@ -452,3 +452,180 @@ async def test_dry_run_report_is_deterministic(temp_workspace):
     second = skill.copy_path("input.txt", "output.txt", dry_run=True)
 
     assert first == second
+
+
+@pytest.mark.asyncio
+async def test_rename_path_same_source_and_target_is_skipped(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("same.txt", "x")
+
+    raw = skill.rename_path("same.txt", "same.txt")
+    report = _parse_report(raw)
+
+    assert report["status"] == "skipped"
+    assert report["changed"] is False
+    assert "takie same" in report["message"]
+
+
+@pytest.mark.asyncio
+async def test_rename_path_missing_source_returns_error(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    result = skill.rename_path("missing.txt", "new.txt")
+
+    assert "Wystąpił błąd" in result
+    assert "Źródło nie istnieje" in result
+
+
+@pytest.mark.asyncio
+async def test_rename_path_forbid_when_target_exists(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("src.txt", "src")
+    await skill.write_file("dst.txt", "dst")
+
+    result = skill.rename_path("src.txt", "dst.txt", overwrite_policy="forbid")
+    assert "Wystąpił błąd" in result
+    assert "Cel już istnieje" in result
+
+
+@pytest.mark.asyncio
+async def test_rename_path_skip_when_target_exists(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("src.txt", "src")
+    await skill.write_file("dst.txt", "dst")
+
+    raw = skill.rename_path("src.txt", "dst.txt", overwrite_policy="skip")
+    report = _parse_report(raw)
+    assert report["status"] == "skipped"
+    assert report["changed"] is False
+    assert (Path(temp_workspace) / "src.txt").exists()
+    assert (Path(temp_workspace) / "dst.txt").read_text() == "dst"
+
+
+@pytest.mark.asyncio
+async def test_copy_path_forbid_when_target_exists(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("src.txt", "src")
+    await skill.write_file("dst.txt", "dst")
+
+    result = skill.copy_path("src.txt", "dst.txt", overwrite_policy="forbid")
+    assert "Wystąpił błąd" in result
+    assert "Cel już istnieje" in result
+
+
+@pytest.mark.asyncio
+async def test_copy_path_directory_overwrite_existing_directory(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("source_dir/new.txt", "new")
+    await skill.write_file("target_dir/old.txt", "old")
+
+    raw = skill.copy_path(
+        "source_dir", "target_dir", recursive=True, overwrite_policy="overwrite"
+    )
+    report = _parse_report(raw)
+
+    assert report["status"] == "success"
+    assert not (Path(temp_workspace) / "target_dir" / "old.txt").exists()
+    assert (Path(temp_workspace) / "target_dir" / "new.txt").read_text() == "new"
+
+
+@pytest.mark.asyncio
+async def test_delete_path_directory_requires_recursive(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("dir/file.txt", "x")
+
+    result = skill.delete_path("dir")
+    assert "Wystąpił błąd" in result
+    assert "recursive=True" in result
+
+
+@pytest.mark.asyncio
+async def test_delete_path_dry_run_does_not_mutate(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("dir/file.txt", "x")
+
+    raw = skill.delete_path("dir", dry_run=True, recursive=True)
+    report = _parse_report(raw)
+    assert report["status"] == "dry_run"
+    assert report["changed"] is False
+    assert report["details"]["rollback_supported"] is False
+    assert (Path(temp_workspace) / "dir").exists()
+
+
+def test_batch_file_operations_rejects_unknown_action(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    operations = [{"action": "compress", "file_path": "a.txt"}]
+
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+    assert report["operations_failed"] == 1
+    assert "Nieobsługiwana akcja batch" in report["results"][0]["message"]
+
+
+def test_batch_file_operations_requires_list_payload(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    result = skill.batch_file_operations('{"action":"delete","file_path":"x.txt"}')
+
+    assert "Wystąpił błąd" in result
+    assert "listę operacji JSON" in result
+
+
+def test_batch_file_operations_requires_non_empty_list(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    result = skill.batch_file_operations("[]")
+
+    assert "Wystąpił błąd" in result
+    assert "nie może być pusta" in result
+
+
+def test_batch_file_operations_requires_object_items(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    result = skill.batch_file_operations(json.dumps(["bad-item"]))
+
+    assert "Wystąpił błąd" in result
+    assert "nie jest obiektem" in result
+
+
+def test_batch_copy_requires_source_and_target(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    operations = [{"action": "copy", "source_path": "a.txt"}]
+
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+    assert report["operations_failed"] == 1
+    assert (
+        "wymaga source_path/source i target_path/target"
+        in report["results"][0]["message"]
+    )
+
+
+def test_batch_rejects_non_string_overwrite_policy(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    operations = [{"action": "delete", "file_path": "a.txt", "overwrite_policy": 123}]
+
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+    assert report["operations_failed"] == 1
+    assert "overwrite_policy musi być stringiem" in report["results"][0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_batch_accepts_string_flags_for_bool_fields(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("a.txt", "x")
+    operations = [{"action": "delete", "file_path": "a.txt", "dry_run": "true"}]
+
+    raw = skill.batch_file_operations(json.dumps(operations), continue_on_error=True)
+    report = _parse_report(raw)
+    assert report["operations_failed"] == 0
+    assert report["results"][0]["status"] == "dry_run"
+    assert report["results"][0]["dry_run"] is True
+    assert (Path(temp_workspace) / "a.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_list_files_returns_error_for_file_path(temp_workspace):
+    skill = FileSkill(workspace_root=temp_workspace)
+    await skill.write_file("single.txt", "x")
+
+    result = skill.list_files("single.txt")
+    assert "nie jest katalogiem" in result

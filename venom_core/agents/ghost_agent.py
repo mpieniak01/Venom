@@ -238,6 +238,130 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
             details=details,
         )
 
+    async def _resolve_vision_click_coords(
+        self,
+        *,
+        description: str,
+        fallback_coords: tuple[int, int] | None,
+        pre_action_screenshot,
+    ) -> tuple[int, int, bool]:
+        coords = None
+        if description:
+            coords = await self.vision.locate_element(
+                pre_action_screenshot, description
+            )
+
+        used_fallback = False
+        if coords is None:
+            if fallback_coords is None:
+                message = f"Nie znaleziono elementu: '{description}'"
+                self._publish_desktop_audit(
+                    action="desktop.vision_click",
+                    status="failed",
+                    context="vision",
+                    details={
+                        "description": description,
+                        "result": "element_not_found",
+                        "critical_fail_closed": self.critical_fail_closed,
+                        "screenshot_ref": "in_memory",
+                    },
+                )
+                raise RuntimeError(message)
+            if self.critical_fail_closed:
+                message = (
+                    "Fail-closed: zabronione użycie fallback_coords gdy locate_element "
+                    "nie znalazł celu"
+                )
+                self._publish_desktop_audit(
+                    action="desktop.vision_click",
+                    status="blocked",
+                    context="vision",
+                    details={
+                        "description": description,
+                        "result": "fallback_blocked",
+                        "critical_fail_closed": True,
+                        "fallback_coords": list(fallback_coords),
+                        "screenshot_ref": "in_memory",
+                    },
+                )
+                raise RuntimeError(message)
+            coords = fallback_coords
+            used_fallback = True
+
+        return int(coords[0]), int(coords[1]), used_fallback
+
+    async def _perform_vision_click(
+        self,
+        *,
+        x: int,
+        y: int,
+        description: str,
+        used_fallback: bool,
+        button: str,
+        double: bool,
+        move_duration: float,
+    ) -> None:
+        click_result = await self.input_skill.mouse_click(
+            x=x,
+            y=y,
+            button=button,
+            double=double,
+            move_duration=move_duration,
+        )
+        if "✅" in click_result:
+            return
+        self._publish_desktop_audit(
+            action="desktop.vision_click",
+            status="failed",
+            context="input",
+            details={
+                "description": description,
+                "coords": [x, y],
+                "used_fallback": used_fallback,
+                "click_result": click_result,
+                "screenshot_ref": "in_memory",
+            },
+        )
+        raise RuntimeError(click_result)
+
+    def _verify_vision_click(
+        self,
+        *,
+        require_visual_confirmation: bool,
+        pre_action_screenshot,
+        description: str,
+        x: int,
+        y: int,
+        used_fallback: bool,
+    ) -> str:
+        if not require_visual_confirmation:
+            return "not_requested"
+
+        post_action_screenshot = ImageGrab.grab()
+        verification_ok = self._verify_screen_change_step(
+            pre_action_screenshot, post_action_screenshot
+        )
+        verification = "passed" if verification_ok else "failed"
+        if verification_ok or not self.critical_fail_closed:
+            return verification
+
+        self._publish_desktop_audit(
+            action="desktop.vision_click",
+            status="failed",
+            context="verification",
+            details={
+                "description": description,
+                "coords": [x, y],
+                "used_fallback": used_fallback,
+                "verification": verification,
+                "critical_fail_closed": True,
+                "screenshot_ref": "in_memory",
+            },
+        )
+        raise RuntimeError(
+            "Fail-closed: weryfikacja kliknięcia nie wykryła oczekiwanej zmiany UI"
+        )
+
     async def vision_click(
         self,
         *,
@@ -259,96 +383,28 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
             raise ValueError("Wymagany description lub fallback_coords")
 
         pre_action_screenshot = ImageGrab.grab()
-        coords = None
-        if description_n:
-            coords = await self.vision.locate_element(
-                pre_action_screenshot, description_n
-            )
-
-        used_fallback = False
-        if coords is None:
-            if fallback_coords is None:
-                message = f"Nie znaleziono elementu: '{description_n}'"
-                self._publish_desktop_audit(
-                    action="desktop.vision_click",
-                    status="failed",
-                    context="vision",
-                    details={
-                        "description": description_n,
-                        "result": "element_not_found",
-                        "critical_fail_closed": self.critical_fail_closed,
-                        "screenshot_ref": "in_memory",
-                    },
-                )
-                raise RuntimeError(message)
-            if self.critical_fail_closed:
-                message = (
-                    "Fail-closed: zabronione użycie fallback_coords gdy locate_element "
-                    "nie znalazł celu"
-                )
-                self._publish_desktop_audit(
-                    action="desktop.vision_click",
-                    status="blocked",
-                    context="vision",
-                    details={
-                        "description": description_n,
-                        "result": "fallback_blocked",
-                        "critical_fail_closed": True,
-                        "fallback_coords": list(fallback_coords),
-                        "screenshot_ref": "in_memory",
-                    },
-                )
-                raise RuntimeError(message)
-            coords = fallback_coords
-            used_fallback = True
-
-        x, y = int(coords[0]), int(coords[1])
-        click_result = await self.input_skill.mouse_click(
+        x, y, used_fallback = await self._resolve_vision_click_coords(
+            description=description_n,
+            fallback_coords=fallback_coords,
+            pre_action_screenshot=pre_action_screenshot,
+        )
+        await self._perform_vision_click(
             x=x,
             y=y,
+            description=description_n,
+            used_fallback=used_fallback,
             button=button,
             double=double,
             move_duration=move_duration,
         )
-        if "✅" not in click_result:
-            self._publish_desktop_audit(
-                action="desktop.vision_click",
-                status="failed",
-                context="input",
-                details={
-                    "description": description_n,
-                    "coords": [x, y],
-                    "used_fallback": used_fallback,
-                    "click_result": click_result,
-                    "screenshot_ref": "in_memory",
-                },
-            )
-            raise RuntimeError(click_result)
-
-        verification = "not_requested"
-        if require_visual_confirmation:
-            post_action_screenshot = ImageGrab.grab()
-            verification_ok = self._verify_screen_change_step(
-                pre_action_screenshot, post_action_screenshot
-            )
-            verification = "passed" if verification_ok else "failed"
-            if not verification_ok and self.critical_fail_closed:
-                self._publish_desktop_audit(
-                    action="desktop.vision_click",
-                    status="failed",
-                    context="verification",
-                    details={
-                        "description": description_n,
-                        "coords": [x, y],
-                        "used_fallback": used_fallback,
-                        "verification": verification,
-                        "critical_fail_closed": True,
-                        "screenshot_ref": "in_memory",
-                    },
-                )
-                raise RuntimeError(
-                    "Fail-closed: weryfikacja kliknięcia nie wykryła oczekiwanej zmiany UI"
-                )
+        verification = self._verify_vision_click(
+            require_visual_confirmation=require_visual_confirmation,
+            pre_action_screenshot=pre_action_screenshot,
+            description=description_n,
+            x=x,
+            y=y,
+            used_fallback=used_fallback,
+        )
 
         payload = {
             "status": "success",

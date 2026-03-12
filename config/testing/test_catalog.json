@@ -383,6 +383,19 @@
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
+      "path": "tests/test_academy_conversion_light_coverage.py",
+      "domain": "academy",
+      "test_type": "route_contract",
+      "intent": "contract",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Coverage-floor anchor for academy_conversion in fast deterministic lane."
+    },
+    {
       "path": "tests/test_academy_dataset_conversion.py",
       "domain": "academy",
       "test_type": "route_contract",
@@ -1035,20 +1048,6 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
-      "path": "tests/test_check_github_actions_node_runtime.py",
-      "domain": "testing_tooling",
-      "test_type": "gate",
-      "intent": "gate",
-      "primary_lane": "ci-lite",
-      "allowed_lanes": [
-        "ci-lite",
-        "new-code",
-        "release"
-      ],
-      "legacy_targeted": false,
-      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
-    },
-    {
       "path": "tests/test_changed_lines_quality_checker.py",
       "domain": "misc",
       "test_type": "unit",
@@ -1083,6 +1082,20 @@
       ],
       "legacy_targeted": false,
       "rationale": "Default release-lane regression coverage."
+    },
+    {
+      "path": "tests/test_check_github_actions_node_runtime.py",
+      "domain": "testing_tooling",
+      "test_type": "gate",
+      "intent": "gate",
+      "primary_lane": "ci-lite",
+      "allowed_lanes": [
+        "ci-lite",
+        "new-code",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
       "path": "tests/test_chrono_skill.py",

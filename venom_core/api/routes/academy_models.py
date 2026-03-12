@@ -201,7 +201,7 @@ async def validate_adapter_runtime_compatibility(
     )
 
 
-async def list_adapters(mgr: Any) -> List[AdapterInfo]:
+def list_adapters(mgr: Any) -> List[AdapterInfo]:
     """List available local adapters and mark active one."""
     return _management_service.list_adapters(
         mgr=mgr,

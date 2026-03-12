@@ -456,15 +456,17 @@ function suggestionOptionClassName(isActive: boolean): string {
   return "flex w-full items-center justify-between px-3 py-2 text-left text-xs transition text-[color:var(--text-secondary)] hover:bg-[color:var(--ui-surface-hover)]";
 }
 
+type ActiveAdapterRuntimeCardProps = Readonly<{
+  activeAdapterAudit: AdapterAuditItem | null;
+  activeAdapterBlocked: boolean;
+  t: ReturnType<typeof useTranslation>;
+}>;
+
 function ActiveAdapterRuntimeCard({
   activeAdapterAudit,
   activeAdapterBlocked,
   t,
-}: {
-  activeAdapterAudit: AdapterAuditItem | null;
-  activeAdapterBlocked: boolean;
-  t: ReturnType<typeof useTranslation>;
-}) {
+}: ActiveAdapterRuntimeCardProps) {
   const activeAdapterStateLabel = activeAdapterBlocked
     ? t("cockpit.models.activeAdapterBlocked")
     : t("cockpit.models.activeAdapterCompatible");

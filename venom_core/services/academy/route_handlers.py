@@ -518,9 +518,7 @@ def list_jobs_handler(
 async def list_adapters_handler(*, academy: Any) -> List[AdapterInfo]:
     try:
         academy._ensure_academy_enabled()
-        return await academy.academy_models.list_adapters(
-            mgr=academy._get_model_manager()
-        )
+        return academy.academy_models.list_adapters(mgr=academy._get_model_manager())
 
     except academy.AcademyRouteError as e:
         raise academy._to_http_exception(e) from e

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const reportPath = resolve(
@@ -25,11 +25,7 @@ function parseJson(filePath) {
 function pushHistoryEntry(filePath, entry) {
   mkdirSync(dirname(filePath), { recursive: true });
   const line = `${JSON.stringify(entry)}\n`;
-  if (existsSync(filePath)) {
-    writeFileSync(filePath, `${readFileSync(filePath, "utf8")}${line}`, "utf8");
-    return;
-  }
-  writeFileSync(filePath, line, "utf8");
+  appendFileSync(filePath, line, "utf8");
 }
 
 function countTestOutcome(test) {

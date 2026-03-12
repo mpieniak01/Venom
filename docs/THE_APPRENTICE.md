@@ -311,6 +311,7 @@ Generated scripts use GhostAgent API:
 - `input_skill.keyboard_type(text)` - text input
 - `input_skill.keyboard_hotkey(keys)` - keyboard shortcut
 - `_wait(duration)` - delay
+- `apply_runtime_profile(profile)` - runtime mode (`desktop_safe` or `desktop_power`)
 
 ### Position Resilience
 
@@ -326,6 +327,8 @@ await ghost.vision_click(
     fallback_coords=(500, 300)  # Fallback if not found
 )
 ```
+
+In `desktop_safe` profile, fallback can be blocked (fail-closed) when visual locate fails.
 
 ## Limitations and Roadmap
 

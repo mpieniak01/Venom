@@ -49,15 +49,36 @@ W pliku `.env` lub `config.py`:
 ```python
 # Ghost Agent (Visual GUI Automation)
 ENABLE_GHOST_AGENT = False  # Włącz Ghost Agent
+ENABLE_GHOST_API = False  # Włącz publiczne endpointy API /api/v1/ghost/*
 GHOST_MAX_STEPS = 20  # Maksymalna liczba kroków
 GHOST_STEP_DELAY = 1.0  # Opóźnienie między krokami (sekundy)
 GHOST_VERIFICATION_ENABLED = True  # Weryfikacja po każdym kroku
 GHOST_SAFETY_DELAY = 0.5  # Opóźnienie bezpieczeństwa
 GHOST_VISION_CONFIDENCE = 0.7  # Próg pewności dla vision grounding
+GHOST_RUNTIME_PROFILE = "desktop_safe"  # desktop_safe|desktop_power
+GHOST_CRITICAL_FAIL_CLOSED = True  # Blokuj fallback kliknięć na ścieżkach krytycznych
 
 # OpenAI API (opcjonalne, dla vision grounding)
 OPENAI_API_KEY = "sk-..."  # Jeśli chcesz używać GPT-4o Vision
 ```
+
+### Profile runtime
+
+- `desktop_safe`:
+  - konserwatywne limity,
+  - włączona weryfikacja kroków,
+  - fail-closed dla akcji krytycznych.
+- `desktop_power`:
+  - wyższa przepustowość domyślna,
+  - szybsze tempo kroków,
+  - możliwość użycia fallback przy braku trafienia vision.
+
+### Governance i audit
+
+- Mutacje desktop w `InputSkill` (`mouse_click`, `keyboard_type`, `keyboard_hotkey`) są chronione gate policy autonomii.
+- Runtime Ghost i API publikują kanoniczne wpisy audytu:
+  - akcje desktop: `source=core.ghost`,
+  - kontrola API: `source=api.ghost`.
 
 ## 🚀 Przykłady Użycia
 
@@ -162,6 +183,33 @@ else:
     print("Element nie znaleziony")
 ```
 
+### Przykład 5: `vision_click` i polityka fallback
+
+```python
+# Tryb safe: fail-closed gdy description nie zostanie znaleziony
+ghost.apply_runtime_profile("desktop_safe")
+await ghost.vision_click(
+    description="niebieski przycisk Submit",
+    fallback_coords=(500, 300),
+)
+
+# Tryb power: fallback może zostać użyty przy braku locate
+ghost.apply_runtime_profile("desktop_power")
+await ghost.vision_click(
+    description="niebieski przycisk Submit",
+    fallback_coords=(500, 300),
+    require_visual_confirmation=False,
+)
+```
+
+### Kontrakt API Ghost (feature-flagged)
+
+Gdy `ENABLE_GHOST_API=True` i `ENABLE_GHOST_AGENT=True`:
+
+- `GET /api/v1/ghost/status` - status runtime i wykonania
+- `POST /api/v1/ghost/start` - start zadania Ghost w tle
+- `POST /api/v1/ghost/cancel` - anulowanie aktywnego zadania (emergency stop)
+
 ## 🧪 Testowanie
 
 Uruchom testy:
@@ -241,6 +289,11 @@ class GhostAgent(BaseAgent):
     )
 
     async def process(input_text: str) -> str
+    async def vision_click(
+        description: str,
+        fallback_coords: tuple[int, int] | None = None
+    ) -> Dict[str, Any]
+    def apply_runtime_profile(profile: str) -> Dict[str, Any]
     def emergency_stop_trigger() -> None
     def get_status() -> Dict[str, Any]
 ```

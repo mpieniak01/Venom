@@ -90,6 +90,27 @@ def test_file_skill_list_files_recursive_depth_limit(temp_workspace_with_structu
     assert "file5.txt" not in result
 
 
+def test_file_skill_publish_audit_is_best_effort_on_failure(
+    temp_workspace_with_structure,
+):
+    """Test że wyjątek audytu nie przerywa działania i trafia do debug loga."""
+    skill = FileSkill(workspace_root=temp_workspace_with_structure)
+    payload = {"operation": "batch_file_operations", "status": "failed"}
+    broken_stream = MagicMock()
+    broken_stream.publish.side_effect = RuntimeError("audit unavailable")
+
+    with (
+        patch(
+            "venom_core.execution.skills.file_skill.get_audit_stream",
+            return_value=broken_stream,
+        ),
+        patch.object(skill.logger, "debug") as debug_log,
+    ):
+        skill._publish_fileop_audit(payload)
+
+    debug_log.assert_called_once()
+
+
 # ===== BrowserSkill: Test automatic screenshots =====
 
 

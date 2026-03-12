@@ -311,6 +311,7 @@ Wygenerowane skrypty używają API GhostAgent:
 - `input_skill.keyboard_type(text)` - wpisanie tekstu
 - `input_skill.keyboard_hotkey(keys)` - skrót klawiszowy
 - `_wait(duration)` - opóźnienie
+- `apply_runtime_profile(profile)` - tryb runtime (`desktop_safe` lub `desktop_power`)
 
 ### Odporność na Pozycję
 
@@ -326,6 +327,8 @@ await ghost.vision_click(
     fallback_coords=(500, 300)  # Fallback jeśli nie znaleziono
 )
 ```
+
+W profilu `desktop_safe` fallback może zostać zablokowany (fail-closed), jeśli locate nie znajdzie elementu.
 
 ## Ograniczenia i Roadmap
 

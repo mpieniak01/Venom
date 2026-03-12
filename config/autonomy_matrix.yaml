@@ -12,6 +12,7 @@ levels:
       paid_api_enabled: false
       filesystem_mode: "read_only"
       shell_enabled: false
+      desktop_input_enabled: false
     risk_level: "zero"
     examples:
       - "FileRead"
@@ -28,6 +29,7 @@ levels:
       paid_api_enabled: false
       filesystem_mode: "read_only"
       shell_enabled: false
+      desktop_input_enabled: false
     risk_level: "low"
     examples:
       - "DuckDuckGo"
@@ -44,6 +46,7 @@ levels:
       paid_api_enabled: true
       filesystem_mode: "read_only"
       shell_enabled: false
+      desktop_input_enabled: false
     risk_level: "medium"
     examples:
       - "GPT-4o"
@@ -60,6 +63,7 @@ levels:
       paid_api_enabled: true
       filesystem_mode: "read_write"
       shell_enabled: false
+      desktop_input_enabled: false
     risk_level: "high"
     examples:
       - "FileWrite"
@@ -76,6 +80,7 @@ levels:
       paid_api_enabled: true
       filesystem_mode: "read_write"
       shell_enabled: true
+      desktop_input_enabled: true
     risk_level: "critical"
     examples:
       - "ShellExecute"

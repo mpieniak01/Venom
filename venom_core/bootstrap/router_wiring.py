@@ -52,6 +52,7 @@ class RuntimeDependencies:
     dataset_curator: Any
     gpu_habitat: Any
     self_learning_service: Any
+    ghost_agent: Any = None
 
 
 def apply_router_dependencies(
@@ -103,6 +104,7 @@ def apply_router_dependencies(
         runtime.file_watcher,
         runtime.documenter_agent,
         runtime.orchestrator,
+        runtime.ghost_agent,
     )
     system_deps.set_dependencies(
         runtime.background_scheduler,

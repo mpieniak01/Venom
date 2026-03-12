@@ -23,6 +23,7 @@ from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
 from venom_core.execution.skills.input_skill import InputSkill
 from venom_core.perception.vision_grounding import VisionGrounding
+from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -99,6 +100,20 @@ Zadanie: "Otwórz notatnik i napisz 'Hello'"
 6. Wpisz "Hello"
 
 Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż ryzykować."""
+    RUNTIME_PROFILES: dict[str, dict[str, Any]] = {
+        "desktop_safe": {
+            "max_steps": 12,
+            "step_delay": 1.0,
+            "verification_enabled": True,
+            "critical_fail_closed": True,
+        },
+        "desktop_power": {
+            "max_steps": 40,
+            "step_delay": 0.3,
+            "verification_enabled": False,
+            "critical_fail_closed": False,
+        },
+    }
 
     def __init__(
         self,
@@ -107,6 +122,8 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
         step_delay: Optional[float] = None,
         verification_enabled: Optional[bool] = None,
         safety_delay: Optional[float] = None,
+        runtime_profile: Optional[str] = None,
+        critical_fail_closed: Optional[bool] = None,
     ):
         """
         Inicjalizacja Ghost Agent.
@@ -142,6 +159,21 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
         self.safety_delay = (
             safety_delay if safety_delay is not None else SETTINGS.GHOST_SAFETY_DELAY
         )
+        self.runtime_profile = self._normalize_runtime_profile(
+            runtime_profile
+            or getattr(SETTINGS, "GHOST_RUNTIME_PROFILE", "desktop_safe")
+        )
+        self._explicit_overrides = {
+            "max_steps": max_steps is not None,
+            "step_delay": step_delay is not None,
+            "verification_enabled": verification_enabled is not None,
+            "critical_fail_closed": critical_fail_closed is not None,
+        }
+        self.critical_fail_closed = (
+            critical_fail_closed
+            if critical_fail_closed is not None
+            else bool(getattr(SETTINGS, "GHOST_CRITICAL_FAIL_CLOSED", True))
+        )
 
         # Inicjalizuj komponenty
         self.vision = VisionGrounding()
@@ -153,12 +185,244 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
         # Stan agenta
         self.is_running = False
         self.emergency_stop = False
+        self.apply_runtime_profile(self.runtime_profile)
 
         logger.info(
             f"GhostAgent zainicjalizowany (max_steps={self.max_steps}, "
             f"step_delay={self.step_delay}s, verification={self.verification_enabled}, "
-            f"safety_delay={self.safety_delay}s)"
+            f"safety_delay={self.safety_delay}s, profile={self.runtime_profile}, "
+            f"critical_fail_closed={self.critical_fail_closed})"
         )
+
+    def _normalize_runtime_profile(self, profile: str) -> str:
+        normalized = (profile or "").strip().lower()
+        if normalized in self.RUNTIME_PROFILES:
+            return normalized
+        return "desktop_safe"
+
+    def apply_runtime_profile(self, profile: str) -> dict[str, Any]:
+        """Apply desktop runtime profile while preserving explicit constructor overrides."""
+        normalized = self._normalize_runtime_profile(profile)
+        config = self.RUNTIME_PROFILES[normalized]
+        self.runtime_profile = normalized
+        if not self._explicit_overrides["max_steps"]:
+            self.max_steps = int(config["max_steps"])
+        if not self._explicit_overrides["step_delay"]:
+            self.step_delay = float(config["step_delay"])
+        if not self._explicit_overrides["verification_enabled"]:
+            self.verification_enabled = bool(config["verification_enabled"])
+        if not self._explicit_overrides["critical_fail_closed"]:
+            self.critical_fail_closed = bool(config["critical_fail_closed"])
+        return {
+            "profile": self.runtime_profile,
+            "max_steps": self.max_steps,
+            "step_delay": self.step_delay,
+            "verification_enabled": self.verification_enabled,
+            "critical_fail_closed": self.critical_fail_closed,
+        }
+
+    def _publish_desktop_audit(
+        self,
+        *,
+        action: str,
+        status: str,
+        details: dict[str, Any],
+        context: str | None = None,
+    ) -> None:
+        get_audit_stream().publish(
+            source="core.ghost",
+            action=action,
+            actor="ghost.agent",
+            status=status,
+            context=context,
+            details=details,
+        )
+
+    async def _resolve_vision_click_coords(
+        self,
+        *,
+        description: str,
+        fallback_coords: tuple[int, int] | None,
+        pre_action_screenshot,
+    ) -> tuple[int, int, bool]:
+        coords = None
+        if description:
+            coords = await self.vision.locate_element(
+                pre_action_screenshot, description
+            )
+
+        used_fallback = False
+        if coords is None:
+            if fallback_coords is None:
+                message = f"Nie znaleziono elementu: '{description}'"
+                self._publish_desktop_audit(
+                    action="desktop.vision_click",
+                    status="failed",
+                    context="vision",
+                    details={
+                        "description": description,
+                        "result": "element_not_found",
+                        "critical_fail_closed": self.critical_fail_closed,
+                        "screenshot_ref": "in_memory",
+                    },
+                )
+                raise RuntimeError(message)
+            if self.critical_fail_closed:
+                message = (
+                    "Fail-closed: zabronione użycie fallback_coords gdy locate_element "
+                    "nie znalazł celu"
+                )
+                self._publish_desktop_audit(
+                    action="desktop.vision_click",
+                    status="blocked",
+                    context="vision",
+                    details={
+                        "description": description,
+                        "result": "fallback_blocked",
+                        "critical_fail_closed": True,
+                        "fallback_coords": list(fallback_coords),
+                        "screenshot_ref": "in_memory",
+                    },
+                )
+                raise RuntimeError(message)
+            coords = fallback_coords
+            used_fallback = True
+
+        return int(coords[0]), int(coords[1]), used_fallback
+
+    async def _perform_vision_click(
+        self,
+        *,
+        x: int,
+        y: int,
+        description: str,
+        used_fallback: bool,
+        button: str,
+        double: bool,
+        move_duration: float,
+    ) -> None:
+        click_result = await self.input_skill.mouse_click(
+            x=x,
+            y=y,
+            button=button,
+            double=double,
+            move_duration=move_duration,
+        )
+        if "✅" in click_result:
+            return
+        self._publish_desktop_audit(
+            action="desktop.vision_click",
+            status="failed",
+            context="input",
+            details={
+                "description": description,
+                "coords": [x, y],
+                "used_fallback": used_fallback,
+                "click_result": click_result,
+                "screenshot_ref": "in_memory",
+            },
+        )
+        raise RuntimeError(click_result)
+
+    def _verify_vision_click(
+        self,
+        *,
+        require_visual_confirmation: bool,
+        pre_action_screenshot,
+        description: str,
+        x: int,
+        y: int,
+        used_fallback: bool,
+    ) -> str:
+        if not require_visual_confirmation:
+            return "not_requested"
+
+        post_action_screenshot = ImageGrab.grab()
+        verification_ok = self._verify_screen_change_step(
+            pre_action_screenshot, post_action_screenshot
+        )
+        verification = "passed" if verification_ok else "failed"
+        if verification_ok or not self.critical_fail_closed:
+            return verification
+
+        self._publish_desktop_audit(
+            action="desktop.vision_click",
+            status="failed",
+            context="verification",
+            details={
+                "description": description,
+                "coords": [x, y],
+                "used_fallback": used_fallback,
+                "verification": verification,
+                "critical_fail_closed": True,
+                "screenshot_ref": "in_memory",
+            },
+        )
+        raise RuntimeError(
+            "Fail-closed: weryfikacja kliknięcia nie wykryła oczekiwanej zmiany UI"
+        )
+
+    async def vision_click(
+        self,
+        *,
+        description: str,
+        fallback_coords: tuple[int, int] | None = None,
+        button: str = "left",
+        double: bool = False,
+        move_duration: float = 0.3,
+        require_visual_confirmation: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Locate UI element on current screenshot and click it.
+
+        In desktop_safe profile (critical_fail_closed=True), fallback coordinates are
+        blocked if visual locate fails.
+        """
+        description_n = (description or "").strip()
+        if not description_n and fallback_coords is None:
+            raise ValueError("Wymagany description lub fallback_coords")
+
+        pre_action_screenshot = ImageGrab.grab()
+        x, y, used_fallback = await self._resolve_vision_click_coords(
+            description=description_n,
+            fallback_coords=fallback_coords,
+            pre_action_screenshot=pre_action_screenshot,
+        )
+        await self._perform_vision_click(
+            x=x,
+            y=y,
+            description=description_n,
+            used_fallback=used_fallback,
+            button=button,
+            double=double,
+            move_duration=move_duration,
+        )
+        verification = self._verify_vision_click(
+            require_visual_confirmation=require_visual_confirmation,
+            pre_action_screenshot=pre_action_screenshot,
+            description=description_n,
+            x=x,
+            y=y,
+            used_fallback=used_fallback,
+        )
+
+        payload = {
+            "status": "success",
+            "description": description_n,
+            "coords": [x, y],
+            "used_fallback": used_fallback,
+            "verification": verification,
+            "runtime_profile": self.runtime_profile,
+            "critical_fail_closed": self.critical_fail_closed,
+            "screenshot_ref": "in_memory",
+        }
+        self._publish_desktop_audit(
+            action="desktop.vision_click",
+            status="degraded" if used_fallback else "success",
+            context="execution",
+            details=payload,
+        )
+        return payload
 
     async def process(self, input_text: str) -> str:
         """
@@ -661,6 +925,12 @@ SZCZEGÓŁY:
         logger.warning("🛑 EMERGENCY STOP AKTYWOWANY!")
         self.emergency_stop = True
         self.is_running = False
+        self._publish_desktop_audit(
+            action="desktop.emergency_stop",
+            status="success",
+            context="control",
+            details={"runtime_profile": self.runtime_profile},
+        )
 
     def get_status(self) -> Dict[str, Any]:
         """
@@ -675,6 +945,8 @@ SZCZEGÓŁY:
             "max_steps": self.max_steps,
             "step_delay": self.step_delay,
             "verification_enabled": self.verification_enabled,
+            "runtime_profile": self.runtime_profile,
+            "critical_fail_closed": self.critical_fail_closed,
             "action_history_length": len(self.action_history),
             "screen_size": self.input_skill.get_screen_size(),
         }

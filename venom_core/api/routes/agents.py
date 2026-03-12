@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
+import tempfile
+from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -31,8 +36,103 @@ _file_watcher = None
 _documenter_agent = None
 _orchestrator = None
 _ghost_agent = None
-_ghost_run_task: asyncio.Task[str] | None = None
-_ghost_run_state: dict[str, Any] | None = None
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - fallback for non-POSIX platforms
+    fcntl = None
+
+
+class _GhostRunStateStore:
+    """Shared run-state store used by Ghost API across multiple workers."""
+
+    ACTIVE_STATUSES = {"running", "cancelling"}
+    TERMINAL_STATUSES = {"completed", "cancelled", "failed"}
+
+    def __init__(self, state_path: Path):
+        self._state_path = state_path
+        self._lock_path = state_path.with_suffix(f"{state_path.suffix}.lock")
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def is_active(state: dict[str, Any] | None) -> bool:
+        return bool(
+            state and state.get("status") in _GhostRunStateStore.ACTIVE_STATUSES
+        )
+
+    @contextmanager
+    def _locked(self):
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock_path.open("a+", encoding="utf-8") as handle:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    def _read_state_unlocked(self) -> dict[str, Any] | None:
+        if not self._state_path.exists():
+            return None
+        try:
+            payload = json.loads(self._state_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Nie udało się odczytać ghost run state: %s", exc)
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _write_state_unlocked(self, state: dict[str, Any] | None) -> None:
+        if state is None:
+            with suppress(FileNotFoundError):
+                self._state_path.unlink()
+            return
+
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self._state_path.with_suffix(f"{self._state_path.suffix}.tmp")
+        temp_path.write_text(
+            json.dumps(state, ensure_ascii=False, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(temp_path, self._state_path)
+
+    def get(self) -> dict[str, Any] | None:
+        with self._locked():
+            return self._read_state_unlocked()
+
+    def clear(self) -> None:
+        with self._locked():
+            self._write_state_unlocked(None)
+
+    def try_start(self, state: dict[str, Any]) -> bool:
+        with self._locked():
+            current = self._read_state_unlocked()
+            if self.is_active(current):
+                return False
+            self._write_state_unlocked(state)
+            return True
+
+    def update(self, task_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:
+        with self._locked():
+            current = self._read_state_unlocked()
+            if current is None:
+                return None
+            if current.get("task_id") != task_id:
+                return current
+            current.update(patch)
+            self._write_state_unlocked(current)
+            return current
+
+
+_ghost_run_state_path = Path(
+    getattr(
+        SETTINGS,
+        "GHOST_RUN_STATE_FILE",
+        str(Path(tempfile.gettempdir()) / "venom_ghost_run_state.json"),
+    )
+)
+_ghost_run_store = _GhostRunStateStore(_ghost_run_state_path)
+_ghost_local_tasks: dict[str, asyncio.Task[str]] = {}
 
 
 class GhostRunRequest(BaseModel):
@@ -64,25 +164,55 @@ def _publish_ghost_audit(
     )
 
 
-async def _run_ghost_job(*, task_id: str, payload: GhostRunRequest, actor: str) -> str:
-    global _ghost_run_task
-    global _ghost_run_state
+def _utc_iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-    if _ghost_run_state is None:
-        _ghost_run_state = {
-            "task_id": task_id,
-            "status": "running",
-            "started_at": datetime.now(timezone.utc).isoformat(),
-        }
 
+def _get_runtime_profile(task_id: str) -> str | None:
+    state = _ghost_run_store.get()
+    if not state or state.get("task_id") != task_id:
+        return None
+    profile = state.get("runtime_profile")
+    return str(profile) if profile is not None else None
+
+
+async def _run_ghost_process_with_cancel_watch(*, task_id: str, content: str) -> str:
+    process_task = asyncio.create_task(_ghost_agent.process(content))
     try:
-        result = await _ghost_agent.process(payload.content)
-        _ghost_run_state.update(
+        while True:
+            done, _ = await asyncio.wait({process_task}, timeout=0.25)
+            if process_task in done:
+                return process_task.result()
+            run_state = _ghost_run_store.get()
+            if (
+                run_state
+                and run_state.get("task_id") == task_id
+                and run_state.get("status") == "cancelling"
+            ):
+                _ghost_agent.emergency_stop_trigger()
+                process_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await process_task
+                raise asyncio.CancelledError
+    finally:
+        if not process_task.done():
+            process_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await process_task
+
+
+async def _run_ghost_job(*, task_id: str, payload: GhostRunRequest, actor: str) -> str:
+    try:
+        result = await _run_ghost_process_with_cancel_watch(
+            task_id=task_id, content=payload.content
+        )
+        _ghost_run_store.update(
+            task_id,
             {
                 "status": "completed",
-                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": _utc_iso_now(),
                 "result": result,
-            }
+            },
         )
         _publish_ghost_audit(
             action="ghost.run.completed",
@@ -90,35 +220,37 @@ async def _run_ghost_job(*, task_id: str, payload: GhostRunRequest, actor: str) 
             actor=actor,
             context=task_id,
             details={
-                "runtime_profile": _ghost_run_state.get("runtime_profile"),
+                "runtime_profile": _get_runtime_profile(task_id),
                 "result_excerpt": result[:500],
             },
         )
         return result
     except asyncio.CancelledError:
-        _ghost_run_state.update(
+        _ghost_run_store.update(
+            task_id,
             {
                 "status": "cancelled",
-                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": _utc_iso_now(),
                 "result": "Cancelled by API emergency stop",
-            }
+            },
         )
         _publish_ghost_audit(
             action="ghost.run.cancelled",
             status="cancelled",
             actor=actor,
             context=task_id,
-            details={"runtime_profile": _ghost_run_state.get("runtime_profile")},
+            details={"runtime_profile": _get_runtime_profile(task_id)},
         )
         raise
     except Exception as e:
         logger.exception("Błąd podczas wykonywania zadania Ghost")
-        _ghost_run_state.update(
+        _ghost_run_store.update(
+            task_id,
             {
                 "status": "failed",
-                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": _utc_iso_now(),
                 "result": str(e),
-            }
+            },
         )
         _publish_ghost_audit(
             action="ghost.run.failed",
@@ -126,13 +258,13 @@ async def _run_ghost_job(*, task_id: str, payload: GhostRunRequest, actor: str) 
             actor=actor,
             context=task_id,
             details={
-                "runtime_profile": _ghost_run_state.get("runtime_profile"),
+                "runtime_profile": _get_runtime_profile(task_id),
                 "error": str(e),
             },
         )
         raise
     finally:
-        _ghost_run_task = None
+        _ghost_local_tasks.pop(task_id, None)
 
 
 def set_dependencies(
@@ -321,23 +453,29 @@ def reject_shadow_suggestion(request: TaskRequest):
 )
 def get_ghost_status():
     """Zwraca status wykonania zadań Ghost Agent."""
+    run_state = _ghost_run_store.get()
     if not _ghost_api_enabled():
         return {
             "status": "disabled",
             "message": "Ghost API jest wyłączone (ENABLE_GHOST_API/ENABLE_GHOST_AGENT=false)",
             "ghost": None,
-            "run": _ghost_run_state,
+            "run": run_state,
         }
 
     if _ghost_agent is None:
         raise HTTPException(status_code=503, detail="Ghost Agent nie jest dostępny")
 
     try:
+        task_id = (run_state or {}).get("task_id")
+        local_task = _ghost_local_tasks.get(str(task_id)) if task_id else None
+        task_active = _GhostRunStateStore.is_active(run_state)
+        if local_task is not None and local_task.done():
+            task_active = False
         return {
             "status": "success",
             "ghost": _ghost_agent.get_status(),
-            "run": _ghost_run_state,
-            "task_active": bool(_ghost_run_task and not _ghost_run_task.done()),
+            "run": run_state,
+            "task_active": task_active,
         }
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu Ghost Agent")
@@ -354,9 +492,6 @@ def get_ghost_status():
 )
 async def start_ghost_task(request: GhostRunRequest, req: Request):
     """Uruchamia zadanie Ghost Agent w tle."""
-    global _ghost_run_task
-    global _ghost_run_state
-
     if not _ghost_api_enabled():
         raise HTTPException(
             status_code=503,
@@ -364,7 +499,7 @@ async def start_ghost_task(request: GhostRunRequest, req: Request):
         )
     if _ghost_agent is None:
         raise HTTPException(status_code=503, detail="Ghost Agent nie jest dostępny")
-    if _ghost_run_task and not _ghost_run_task.done():
+    if _GhostRunStateStore.is_active(_ghost_run_store.get()):
         raise HTTPException(status_code=409, detail="Ghost Agent już wykonuje zadanie")
 
     actor = resolve_actor_from_request(req)
@@ -383,18 +518,21 @@ async def start_ghost_task(request: GhostRunRequest, req: Request):
     profile_payload = _ghost_agent.apply_runtime_profile(runtime_profile)
 
     task_id = str(uuid4())
-    started_at = datetime.now(timezone.utc).isoformat()
-    _ghost_run_state = {
+    started_at = _utc_iso_now()
+    run_state = {
         "task_id": task_id,
         "status": "running",
         "content": request.content,
         "runtime_profile": profile_payload["profile"],
         "started_at": started_at,
     }
+    if not _ghost_run_store.try_start(run_state):
+        raise HTTPException(status_code=409, detail="Ghost Agent już wykonuje zadanie")
 
-    _ghost_run_task = asyncio.create_task(
+    task = asyncio.create_task(
         _run_ghost_job(task_id=task_id, payload=request, actor=actor)
     )
+    _ghost_local_tasks[task_id] = task
 
     _publish_ghost_audit(
         action="ghost.run.start",
@@ -424,8 +562,6 @@ async def start_ghost_task(request: GhostRunRequest, req: Request):
 )
 async def cancel_ghost_task(req: Request):
     """Anuluje aktywne zadanie Ghost Agent i aktywuje emergency stop."""
-    global _ghost_run_task
-
     if not _ghost_api_enabled():
         raise HTTPException(
             status_code=503,
@@ -444,7 +580,8 @@ async def cancel_ghost_task(req: Request):
             actor=actor,
         )
 
-    if _ghost_run_task is None or _ghost_run_task.done():
+    run_state = _ghost_run_store.get()
+    if not _GhostRunStateStore.is_active(run_state):
         _publish_ghost_audit(
             action="ghost.run.cancel",
             status="success",
@@ -453,19 +590,33 @@ async def cancel_ghost_task(req: Request):
         )
         return {"status": "success", "cancelled": False, "task_id": None}
 
-    task_id = (_ghost_run_state or {}).get("task_id")
-    _ghost_agent.emergency_stop_trigger()
-    _ghost_run_task.cancel()
-    try:
-        await _ghost_run_task
-    except asyncio.CancelledError:
-        pass
+    task_id = str((run_state or {}).get("task_id") or "")
+    _ghost_run_store.update(
+        task_id,
+        {
+            "status": "cancelling",
+            "cancel_requested_at": _utc_iso_now(),
+        },
+    )
+
+    local_task = _ghost_local_tasks.get(task_id)
+    cancelled_local = False
+    if local_task is not None and not local_task.done():
+        _ghost_agent.emergency_stop_trigger()
+        local_task.cancel()
+        cancelled_local = True
+        with suppress(asyncio.CancelledError):
+            await local_task
 
     _publish_ghost_audit(
         action="ghost.run.cancel",
         status="success",
         actor=actor,
         context=str(task_id) if task_id else None,
-        details={"cancelled": True, "task_id": task_id},
+        details={
+            "cancelled": True,
+            "task_id": task_id,
+            "local_task_cancelled": cancelled_local,
+        },
     )
     return {"status": "success", "cancelled": True, "task_id": task_id}

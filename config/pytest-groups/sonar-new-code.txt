@@ -80,6 +80,7 @@ tests/test_file_skill.py
 tests/test_flow_coordinator.py
 tests/test_forge_flow.py
 tests/test_generation_params_adapter.py
+tests/test_ghost_agent.py
 tests/test_git_skill_roi.py
 tests/test_github_skill_contracts.py
 tests/test_github_skill_optional_dep.py

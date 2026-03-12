@@ -368,6 +368,54 @@ class TestGhostAgent:
         assert payload["used_fallback"] is True
         assert payload["runtime_profile"] == "desktop_power"
 
+    @pytest.mark.asyncio
+    async def test_vision_click_raises_when_click_execution_fails(self, ghost_agent):
+        ghost_agent.vision.locate_element = AsyncMock(return_value=(100, 120))
+        ghost_agent.input_skill.mouse_click = AsyncMock(return_value="❌ click failed")
+
+        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
+            mock_grab.return_value = Image.new("RGB", (300, 200))
+            with pytest.raises(RuntimeError, match="click failed"):
+                await ghost_agent.vision_click(
+                    description="save button",
+                    require_visual_confirmation=False,
+                )
+
+    @pytest.mark.asyncio
+    async def test_vision_click_fail_closed_blocks_failed_verification(
+        self, ghost_agent
+    ):
+        ghost_agent.vision.locate_element = AsyncMock(return_value=(200, 150))
+        ghost_agent.input_skill.mouse_click = AsyncMock(return_value="✅ Kliknięto")
+        ghost_agent.critical_fail_closed = True
+        ghost_agent._verify_screen_change_step = MagicMock(return_value=False)
+
+        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
+            mock_grab.return_value = Image.new("RGB", (300, 200))
+            with pytest.raises(
+                RuntimeError, match="Fail-closed: weryfikacja kliknięcia"
+            ):
+                await ghost_agent.vision_click(
+                    description="apply button",
+                    require_visual_confirmation=True,
+                )
+
+    @pytest.mark.asyncio
+    async def test_vision_click_with_fallback_only_description_empty(self, ghost_agent):
+        ghost_agent.input_skill.mouse_click = AsyncMock(return_value="✅ Kliknięto")
+        ghost_agent.apply_runtime_profile("desktop_power")
+
+        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
+            mock_grab.return_value = Image.new("RGB", (300, 200))
+            payload = await ghost_agent.vision_click(
+                description="",
+                fallback_coords=(11, 22),
+                require_visual_confirmation=False,
+            )
+
+        assert payload["coords"] == [11, 22]
+        assert payload["used_fallback"] is True
+
     def test_apply_runtime_profile_safe_mode(self, ghost_agent):
         ghost_agent._explicit_overrides = {
             "max_steps": False,

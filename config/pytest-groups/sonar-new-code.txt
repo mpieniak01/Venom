@@ -20,6 +20,7 @@ tests/test_academy_self_learning_service.py
 tests/test_academy_training_service.py
 tests/test_adapter_audit_service.py
 tests/test_admin_audit.py
+tests/test_agents_ghost_runtime_store.py
 tests/test_agents_release_integration_contracts.py
 tests/test_agents_skill_manager_paths.py
 tests/test_agents_strategy_ux_contracts.py
@@ -41,6 +42,7 @@ tests/test_bootstrap_runtime_stack_modules.py
 tests/test_browser_skill.py
 tests/test_browser_skill_unit_contracts.py
 tests/test_campaign_flow.py
+tests/test_check_github_actions_node_runtime.py
 tests/test_chrono_skill.py
 tests/test_chronos.py
 tests/test_cloud_provisioner.py

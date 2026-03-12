@@ -24,6 +24,9 @@ on:
           - configpath
           - noconfig
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   forbidden-paths:
     name: Forbidden Paths Guard
@@ -79,7 +82,7 @@ jobs:
           make architecture-sonar-export
 
       - name: Upload architecture summary artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: sonar-architecture-summary
           path: test-results/sonar/architecture-summary.json
@@ -162,7 +165,7 @@ jobs:
           | tee test-results/sonar/backend-lite.log
 
       - name: Upload backend Sonar artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: sonar-backend-reports
           path: test-results/sonar/**
@@ -235,7 +238,7 @@ jobs:
           npx --yes openapi-typescript@7.10.1 test-results/openapi/openapi.json -o test-results/openapi/api-types.d.ts
 
       - name: Upload OpenAPI contract artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: openapi-contract
           path: test-results/openapi/**
@@ -258,7 +261,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download backend Sonar artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: sonar-backend-reports
           path: test-results/sonar

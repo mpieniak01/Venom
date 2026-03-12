@@ -70,7 +70,7 @@ async def test_run_ghost_process_with_cancel_watch_cancelled(tmp_path, monkeypat
 
     async def _slow_process(_content: str) -> str:
         started.set()
-        await asyncio.sleep(5)
+        await asyncio.sleep(0.5)
         return "never"
 
     ghost = MagicMock()

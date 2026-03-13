@@ -200,6 +200,49 @@ def test_get_metrics_root_uses_cache(monkeypatch, client):
     assert collector.calls == 1
 
 
+def test_get_system_metrics_exposes_policy_observability(monkeypatch, client):
+    class DummyCollector:
+        def get_metrics(self):
+            return {
+                "status": "ok",
+                "policy": {
+                    "blocked_count": 4,
+                    "block_rate": 20.0,
+                    "deny_rate": 20.0,
+                    "top_reason_codes": [
+                        {
+                            "reason_code": "POLICY_TOOL_RESTRICTED",
+                            "count": 3,
+                            "share_rate": 75.0,
+                        }
+                    ],
+                    "false_positive_triage": {
+                        "candidate_count": 3,
+                        "candidate_rate": 75.0,
+                        "top_candidate_reasons": [
+                            {
+                                "reason_code": "POLICY_TOOL_RESTRICTED",
+                                "count": 3,
+                                "share_rate": 100.0,
+                            }
+                        ],
+                    },
+                },
+            }
+
+    metrics_routes.set_dependencies(token_economist=None)
+    monkeypatch.setattr(metrics_module, "metrics_collector", DummyCollector())
+
+    response = client.get("/api/v1/metrics/system")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["policy"]["deny_rate"] == pytest.approx(20.0)
+    assert (
+        data["policy"]["top_reason_codes"][0]["reason_code"] == "POLICY_TOOL_RESTRICTED"
+    )
+    assert data["policy"]["false_positive_triage"]["candidate_count"] == 3
+
+
 def test_get_token_metrics_economist_exception_returns_500(monkeypatch, client):
     class DummyCollector:
         def get_metrics(self):

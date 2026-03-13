@@ -4128,6 +4128,19 @@
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
+      "path": "tests/test_policy_gate_runtime_contract.py",
+      "domain": "governance",
+      "test_type": "unit",
+      "intent": "contract",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Runtime-only global policy checkpoint contract coverage for fast lanes."
+    },
+    {
       "path": "tests/test_port_authority.py",
       "domain": "misc",
       "test_type": "unit",

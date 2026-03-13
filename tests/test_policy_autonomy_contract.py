@@ -16,8 +16,8 @@ def test_build_policy_block_payload_sets_canonical_fields() -> None:
         payload = build_policy_block_payload(
             reason_code="POLICY_PROVIDER_RESTRICTED",
             user_message="Provider blocked",
-            phase="before_provider",
-            operation="provider_selection",
+            phase="global_pre_execution",
+            operation="orchestrator_execution",
             task_id="task-1",
             intent="RESEARCH",
             planned_provider="openai",
@@ -30,14 +30,14 @@ def test_build_policy_block_payload_sets_canonical_fields() -> None:
 
     assert payload.decision == EnforcementDecision.BLOCK
     assert payload.reason_code == "POLICY_PROVIDER_RESTRICTED"
-    assert payload.technical_context.phase == "before_provider"
-    assert payload.technical_context.operation == "provider_selection"
+    assert payload.technical_context.phase == "global_pre_execution"
+    assert payload.technical_context.operation == "orchestrator_execution"
     assert payload.technical_context.task_id == "task-1"
     assert payload.technical_context.session_id == "session-1"
     assert payload.technical_context.provider == "openai"
     assert "policy" in payload.tags
     assert "blocked" in payload.tags
-    assert "before_provider" in payload.tags
+    assert "global_pre_execution" in payload.tags
 
 
 def test_build_autonomy_block_payload_sets_reason_code_and_required_levels() -> None:
@@ -72,8 +72,8 @@ def test_to_audit_details_flattens_technical_context() -> None:
     payload = build_policy_block_payload(
         reason_code="POLICY_TOOL_RESTRICTED",
         user_message="Tool blocked",
-        phase="before_tool",
-        operation="tool_execution",
+        phase="global_pre_execution",
+        operation="orchestrator_execution",
         task_id="task-3",
         intent="EXECUTION",
         planned_provider="vllm",
@@ -86,8 +86,8 @@ def test_to_audit_details_flattens_technical_context() -> None:
     assert details["decision"] == "block"
     assert details["reason_code"] == "POLICY_TOOL_RESTRICTED"
     assert details["user_message"] == "Tool blocked"
-    assert details["phase"] == "before_tool"
-    assert details["operation"] == "tool_execution"
+    assert details["phase"] == "global_pre_execution"
+    assert details["operation"] == "orchestrator_execution"
     assert details["task_id"] == "task-3"
     assert details["session_id"] == "session-3"
     assert isinstance(details["technical_context"], dict)

@@ -5,6 +5,7 @@ export const configLocale = {
       services: "Usługi",
       parameters: "Parametry",
       audit: "Audyt",
+      permissions: "Uprawnienia",
     },
     services: {
       title: "Zarządzanie usługami",
@@ -264,6 +265,58 @@ export const configLocale = {
       module: {
         loadError: "Nie udało się załadować audytu modułu.",
         unavailable: "Endpoint audytu Brand Studio jest niedostępny (moduł nieaktywny lub wyłączony).",
+      },
+    },
+    permissions: {
+      title: "Uprawnienia i autonomia",
+      description: "Zarządzanie poziomem autonomii oraz prezentacja zdarzeń uprawnień z tego samego strumienia audytu.",
+      currentLevel: "Aktualny poziom",
+      setLevel: "Ustaw poziom",
+      levelsTitle: "Macierz uprawnień",
+      observability: {
+        title: "Obserwowalność polityk",
+        description: "KPI runtime dla 201D: deny rate, główne reason codes oraz heurystyczna kolejka przeglądu.",
+        topReasonsTitle: "Najczęstsze reason codes",
+        triageTitle: "Triage false positive",
+        empty: "Brak danych obserwowalności polityk.",
+        triageFallback: "Kolejka przeglądu jest budowana heurystycznie z przyczyn blokad, które zwykle wymagają doprecyzowania kontekstu albo kalibracji uprawnień.",
+        labels: {
+          denyRate: "Deny rate",
+          blocked: "Decyzje blokujące",
+          reviewQueue: "Kolejka przeglądu",
+          ofBlocks: "wszystkich blokad",
+          primaryReason: "Główna przyczyna",
+          blocks: "blokad",
+          reviewCandidates: "kandydatów do przeglądu",
+        },
+      },
+      eventsTitle: "Zdarzenia uprawnień (autonomy.*)",
+      emptyEvents: "Brak zdarzeń uprawnień w strumieniu audytu.",
+      actions: {
+        apply: "Zastosuj poziom",
+        saving: "Zapisywanie...",
+        grantAnalysis: "Nadaj uprawnienia do analizy",
+        refresh: "Odśwież dane",
+      },
+      messages: {
+        updated: "Poziom autonomii zaktualizowany.",
+      },
+      errors: {
+        load: "Nie udało się załadować danych uprawnień.",
+        update: "Nie udało się zaktualizować poziomu autonomii.",
+      },
+      columns: {
+        level: "Poziom",
+        risk: "Ryzyko",
+        network: "Sieć",
+        paidApi: "Płatne API",
+        filesystem: "System plików",
+        shell: "Shell",
+        desktop: "Desktop input",
+      },
+      values: {
+        enabled: "włączone",
+        disabled: "wyłączone",
       },
     },
     apiMap: {

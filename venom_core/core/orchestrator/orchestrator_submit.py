@@ -7,20 +7,8 @@ from typing import TYPE_CHECKING, Any, Coroutine
 from uuid import UUID
 
 from venom_core.config import SETTINGS
-from venom_core.core import metrics as metrics_module
 from venom_core.core import routing_integration
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
-from venom_core.core.policy_autonomy_contract import (
-    build_policy_block_payload,
-    to_audit_details,
-)
-from venom_core.core.policy_gate import (
-    PolicyDecision,
-    PolicyEvaluationContext,
-    policy_gate,
-)
-from venom_core.core.tracer import TraceStatus
-from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.helpers import get_utc_now, get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -60,123 +48,6 @@ def _prepare_runtime_context(request: TaskRequest, runtime_info) -> dict:
         runtime_context["expected_runtime_id"] = request.expected_runtime_id
     runtime_context["status"] = "ready"
     return runtime_context
-
-
-async def _check_policy_before_provider(
-    orch: "Orchestrator",
-    task,
-    request: TaskRequest,
-    policy_context: PolicyEvaluationContext,
-) -> TaskResponse | None:
-    """
-    Sprawdza policy przed wyborem providera.
-
-    Args:
-        orch: Orchestrator
-        task: Zadanie
-        request: Żądanie zadania
-        policy_context: Kontekst ewaluacji policy
-
-    Returns:
-        TaskResponse jeśli zablokowano, None jeśli można kontynuować
-    """
-    if not policy_gate.enabled:
-        return None
-
-    policy_result = policy_gate.evaluate_before_provider_selection(policy_context)
-
-    if policy_result.decision != PolicyDecision.BLOCK:
-        return None
-
-    # Zadanie zostało zablokowane
-    logger.warning(f"Policy gate blocked task {task.id}: {policy_result.reason_code}")
-    reason_code = (
-        getattr(policy_result.reason_code, "value", policy_result.reason_code)
-        if policy_result.reason_code
-        else None
-    )
-    payload = build_policy_block_payload(
-        reason_code=reason_code,
-        user_message=policy_result.message,
-        phase="before_provider",
-        operation="provider_selection",
-        task_id=str(task.id),
-        intent=getattr(policy_context, "intent", None),
-        planned_provider=getattr(policy_context, "planned_provider", None),
-        forced_provider=getattr(policy_context, "forced_provider", None),
-        forced_tool=getattr(policy_context, "forced_tool", None),
-        session_id=getattr(policy_context, "session_id", None),
-    )
-    get_audit_stream().publish(
-        source="core.policy",
-        action="policy.blocked.before_provider",
-        actor="system",
-        status="blocked",
-        details=to_audit_details(payload),
-    )
-    orch.state_manager.add_log(
-        task.id, f"🚫 Policy gate blocked: {policy_result.message}"
-    )
-
-    # Store policy block details in task context for UI retrieval
-    orch.state_manager.update_context(
-        task.id,
-        {
-            "policy_blocked": True,
-            "reason_code": policy_result.reason_code.value
-            if policy_result.reason_code
-            else None,
-            "user_message": policy_result.message,
-            "technical_context": payload.technical_context.model_dump(
-                exclude_none=True
-            ),
-        },
-    )
-
-    await orch.state_manager.update_status(
-        task.id,
-        TaskStatus.FAILED,
-        result=policy_result.message,
-    )
-
-    # Add assistant session history entry with policy block details
-    orch._append_session_history(
-        task.id,
-        role="assistant",
-        content=policy_result.message,
-        session_id=request.session_id,
-        policy_blocked=True,
-        reason_code=policy_result.reason_code.value
-        if policy_result.reason_code
-        else None,
-        user_message=policy_result.message,
-    )
-
-    # Increment policy blocked metric
-    if metrics_module.metrics_collector:
-        metrics_module.metrics_collector.increment_policy_blocked()
-
-    if orch.request_tracer:
-        orch.request_tracer.update_status(task.id, TraceStatus.FAILED)
-        orch.request_tracer.add_step(
-            task.id,
-            "PolicyGate",
-            "block_before_provider",
-            status="blocked",
-            details=f"Reason: {policy_result.reason_code}",
-        )
-
-    return TaskResponse(
-        task_id=task.id,
-        status=TaskStatus.FAILED,
-        decision=payload.decision.value,
-        policy_blocked=True,
-        reason_code=policy_result.reason_code.value
-        if policy_result.reason_code
-        else None,
-        user_message=policy_result.message,
-        technical_context=payload.technical_context.model_dump(exclude_none=True),
-    )
 
 
 def _init_request_trace(
@@ -330,22 +201,6 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
             "routing_decision": routing_decision.to_dict(),
         },
     )
-
-    # Policy Gate: Check before provider selection
-    policy_context = PolicyEvaluationContext(
-        content=request.content,
-        planned_provider=request.forced_provider or routing_decision.provider,
-        planned_tools=[request.forced_tool] if request.forced_tool else [],
-        session_id=request.session_id,
-        forced_tool=request.forced_tool,
-        forced_provider=request.forced_provider,
-    )
-
-    policy_response = await _check_policy_before_provider(
-        orch, task, request, policy_context
-    )
-    if policy_response is not None:
-        return policy_response
 
     _init_request_trace(orch, task, request, runtime_context)
     if orch.request_tracer:

@@ -1,5 +1,6 @@
 """Moduł: routes/system_governance - Cost Guard i AutonomyGate."""
 
+import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -17,9 +18,8 @@ from venom_core.api.schemas.governance import (
     CostModeSetResponse,
 )
 from venom_core.config import SETTINGS
-from venom_core.core import metrics as metrics_module
 from venom_core.core.permission_guard import permission_guard
-from venom_core.core.policy_gate import policy_gate
+from venom_core.services import tasks_service
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.logger import get_logger
 
@@ -218,7 +218,7 @@ def get_autonomy_observability() -> AutonomyObservabilityResponse:
     """
     Zwraca dedykowany snapshot observability policy/autonomy dla operacji (SRE/ops).
     """
-    collector = metrics_module.metrics_collector
+    collector = tasks_service.get_metrics_collector()
     if collector is None:
         raise HTTPException(
             status_code=503, detail="Metrics collector nie jest dostępny"
@@ -246,8 +246,8 @@ def get_autonomy_rollout_status() -> AutonomyRolloutStatusResponse:
     Zwraca status gotowości rollout runtime-only policy gate.
     """
     try:
-        observability_ready = metrics_module.metrics_collector is not None
-        policy_enabled = bool(policy_gate.enabled)
+        observability_ready = tasks_service.get_metrics_collector() is not None
+        policy_enabled = os.getenv("ENABLE_POLICY_GATE", "false").lower() == "true"
         readiness = (
             "ready" if policy_enabled and observability_ready else "attention_required"
         )

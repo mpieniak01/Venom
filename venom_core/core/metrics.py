@@ -9,6 +9,12 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+POLICY_FALSE_POSITIVE_REVIEW_CODES = {
+    "POLICY_MISSING_CONTEXT",
+    "POLICY_PROVIDER_RESTRICTED",
+    "POLICY_TOOL_RESTRICTED",
+}
+
 
 class MetricsCollector:
     """Zbiera metryki wydajności i użycia systemu."""
@@ -53,6 +59,8 @@ class MetricsCollector:
         }
         self.tool_usage: Dict[str, int] = {}
         self.agent_usage: Dict[str, int] = {}
+        self.policy_reason_codes: Dict[str, int] = {}
+        self.policy_review_candidate_reasons: Dict[str, int] = {}
         self.start_time = datetime.now()
         # Reentrant lock prevents self-deadlocks in methods that call other
         # synchronized helpers (e.g. get_all_provider_metrics -> get_provider_metrics).
@@ -122,10 +130,45 @@ class MetricsCollector:
             self.metrics["llm_first_token_ms_total"] += max(elapsed_ms, 0)
             self.metrics["llm_first_token_samples"] += 1
 
-    def increment_policy_blocked(self):
+    def increment_policy_blocked(
+        self,
+        reason_code: Optional[str] = None,
+        review_candidate: Optional[bool] = None,
+    ):
         """Inkrementuje licznik żądań zablokowanych przez policy gate."""
         with self._lock:
             self.metrics["policy_blocked_count"] += 1
+            normalized_reason = str(reason_code or "").strip().upper()
+            if normalized_reason:
+                self.policy_reason_codes[normalized_reason] = (
+                    self.policy_reason_codes.get(normalized_reason, 0) + 1
+                )
+
+            candidate = (
+                normalized_reason in POLICY_FALSE_POSITIVE_REVIEW_CODES
+                if review_candidate is None
+                else review_candidate
+            )
+            if candidate:
+                review_reason = normalized_reason or "UNSPECIFIED"
+                self.policy_review_candidate_reasons[review_reason] = (
+                    self.policy_review_candidate_reasons.get(review_reason, 0) + 1
+                )
+
+    def _build_reason_distribution(
+        self, counts: Dict[str, int], total: int
+    ) -> List[Dict[str, Any]]:
+        if total <= 0:
+            return []
+        ordered_counts = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        return [
+            {
+                "reason_code": reason_code,
+                "count": count,
+                "share_rate": round((count / total) * 100, 2),
+            }
+            for reason_code, count in ordered_counts[:5]
+        ]
 
     def record_ollama_runtime_sample(
         self,
@@ -462,6 +505,16 @@ class MetricsCollector:
                 if total_requests > 0
                 else 0.0
             )
+            top_reason_codes = self._build_reason_distribution(
+                self.policy_reason_codes,
+                policy_blocked,
+            )
+            review_candidate_total = sum(self.policy_review_candidate_reasons.values())
+            review_candidate_rate = (
+                round((review_candidate_total / policy_blocked) * 100, 2)
+                if policy_blocked > 0
+                else 0.0
+            )
 
             return {
                 "status": "ok",
@@ -486,6 +539,17 @@ class MetricsCollector:
                 "policy": {
                     "blocked_count": policy_blocked,
                     "block_rate": policy_block_rate,
+                    "deny_rate": policy_block_rate,
+                    "top_reason_codes": top_reason_codes,
+                    "false_positive_triage": {
+                        "candidate_count": review_candidate_total,
+                        "candidate_rate": review_candidate_rate,
+                        "top_candidate_reasons": self._build_reason_distribution(
+                            self.policy_review_candidate_reasons,
+                            review_candidate_total,
+                        ),
+                        "note": "Heuristic review queue for policy blocks that may require context expansion or permission review.",
+                    },
                 },
                 "models": {
                     "generation_params_updates": self.metrics["model_params_updates"],

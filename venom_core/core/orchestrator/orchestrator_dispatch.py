@@ -50,7 +50,7 @@ async def _handle_policy_block_before_tool_execution(
     policy_context: PolicyEvaluationContext,
 ) -> bool:
     """
-    Obsługuje blokadę policy przed wykonaniem narzędzia.
+    Obsługuje blokadę policy na globalnym checkpointcie pre-execution.
 
     Args:
         orch: Orchestrator
@@ -64,14 +64,14 @@ async def _handle_policy_block_before_tool_execution(
     if not policy_gate.enabled:
         return False
 
-    policy_result = policy_gate.evaluate_before_tool_execution(policy_context)
+    policy_result = policy_gate.evaluate_global_pre_execution(policy_context)
 
     if policy_result.decision != PolicyDecision.BLOCK:
         return False
 
     # Zadanie zostało zablokowane
     logger.warning(
-        f"Policy gate blocked tool execution for task {task_id}: {policy_result.reason_code}"
+        f"Policy gate blocked pre-execution for task {task_id}: {policy_result.reason_code}"
     )
     reason_code = (
         getattr(policy_result.reason_code, "value", policy_result.reason_code)
@@ -81,8 +81,9 @@ async def _handle_policy_block_before_tool_execution(
     payload = build_policy_block_payload(
         reason_code=reason_code,
         user_message=policy_result.message,
-        phase="before_tool",
-        operation="tool_execution",
+        remediation_hint=getattr(policy_result, "remediation_hint", None),
+        phase="global_pre_execution",
+        operation="orchestrator_execution",
         task_id=str(task_id),
         intent=getattr(policy_context, "intent", None),
         planned_provider=getattr(policy_context, "planned_provider", None),
@@ -92,14 +93,14 @@ async def _handle_policy_block_before_tool_execution(
     )
     get_audit_stream().publish(
         source="core.policy",
-        action="policy.blocked.before_tool",
+        action="policy.blocked.global_pre_execution",
         actor="system",
         status="blocked",
         details=to_audit_details(payload),
     )
     orch.state_manager.add_log(
         task_id,
-        f"🚫 Policy gate blocked tool execution: {policy_result.message}",
+        f"🚫 Policy gate blocked pre-execution: {policy_result.message}",
     )
 
     # Store policy block details in task context for UI retrieval
@@ -111,6 +112,7 @@ async def _handle_policy_block_before_tool_execution(
             if policy_result.reason_code
             else None,
             "user_message": policy_result.message,
+            "remediation_hint": getattr(policy_result, "remediation_hint", None),
             "technical_context": payload.technical_context.model_dump(
                 exclude_none=True
             ),
@@ -138,19 +140,53 @@ async def _handle_policy_block_before_tool_execution(
 
     # Increment policy blocked metric
     if metrics_module.metrics_collector:
-        metrics_module.metrics_collector.increment_policy_blocked()
+        metrics_module.metrics_collector.increment_policy_blocked(
+            reason_code=reason_code,
+        )
 
     if orch.request_tracer:
         orch.request_tracer.update_status(task_id, TraceStatus.FAILED)
         orch.request_tracer.add_step(
             task_id,
             "PolicyGate",
-            "block_before_tool_execution",
+            "block_global_pre_execution",
             status="blocked",
             details=f"Reason: {policy_result.reason_code}",
         )
 
     return True
+
+
+def _resolve_planned_provider(
+    orch: "Orchestrator", task_id: UUID, request: TaskRequest
+) -> str | None:
+    task = orch.state_manager.get_task(task_id)
+    routing_decision = (
+        getattr(task, "context_history", {}).get("routing_decision", {})
+        if task is not None
+        else {}
+    )
+    routed_provider = str(routing_decision.get("provider") or "").strip() or None
+    return request.forced_provider or routed_provider
+
+
+def _build_risk_context(
+    request: TaskRequest, intent: str, tool_required: bool
+) -> dict[str, bool]:
+    forced_tool = str(request.forced_tool or "").strip().lower()
+    intent_upper = str(intent or "").strip().upper()
+    return {
+        "desktop": forced_tool in {"desktop", "vision", "ghost", "ui"}
+        or intent_upper in {"DESKTOP_AUTOMATION", "VISION_CONTROL"},
+        "fileops": forced_tool in {"file", "fs", "filesystem", "fileops"}
+        or intent_upper
+        in {"FILE_OPERATIONS", "FILESYSTEM_OPERATION", "CODE_GENERATION"},
+        "shell": forced_tool in {"shell", "bash", "terminal", "command"}
+        or intent_upper in {"SHELL_EXECUTION", "SYSTEM_DIAGNOSTICS"},
+        "network": forced_tool in {"browser", "web", "http", "network"}
+        or intent_upper in {"RESEARCH", "WEB_RESEARCH", "NETWORK_OPERATION"},
+        "tool_required": tool_required,
+    }
 
 
 async def _prepare_intent_and_context(
@@ -294,22 +330,30 @@ async def run_task(
             session_id=request.session_id,
         )
 
-        # Policy Gate: Check before tool execution
-        if tool_required:
-            policy_context = PolicyEvaluationContext(
-                content=request.content,
-                intent=intent,
-                planned_tools=[request.forced_tool] if request.forced_tool else [],
-                session_id=request.session_id,
-                forced_tool=request.forced_tool,
-                forced_provider=request.forced_provider,
-            )
+        planned_provider = _resolve_planned_provider(orch, task_id, request)
+        planned_tools: list[str] = []
+        if request.forced_tool:
+            planned_tools.append(request.forced_tool)
+        elif tool_required:
+            planned_tools.append(intent)
 
-            # Check and handle policy block
-            if await _handle_policy_block_before_tool_execution(
-                orch, task_id, request, policy_context
-            ):
-                return  # Flow interrupted by policy block
+        policy_context = PolicyEvaluationContext(
+            content=request.content,
+            intent=intent,
+            planned_provider=planned_provider,
+            planned_tools=planned_tools,
+            session_id=request.session_id,
+            forced_tool=request.forced_tool,
+            forced_provider=request.forced_provider,
+            phase="global_pre_execution",
+            risk_context=_build_risk_context(request, intent, tool_required),
+        )
+
+        # Single global checkpoint before runtime execution.
+        if await _handle_policy_block_before_tool_execution(
+            orch, task_id, request, policy_context
+        ):
+            return
 
         result = await _execute_with_stream_callback(
             orch, task_id, intent, context, request

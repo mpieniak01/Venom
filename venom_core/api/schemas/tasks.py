@@ -124,6 +124,7 @@ class TaskResponse(BaseModel):
     policy_blocked: bool = False
     reason_code: str | None = None
     user_message: str | None = None
+    remediation_hint: str | None = None
     technical_context: dict | None = None
 
 

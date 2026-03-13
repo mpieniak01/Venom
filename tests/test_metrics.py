@@ -93,11 +93,25 @@ class TestMetricsCollector:
         collector = MetricsCollector()
 
         # Act
-        collector.increment_policy_blocked()
-        collector.increment_policy_blocked()
+        collector.increment_policy_blocked(reason_code="POLICY_TOOL_RESTRICTED")
+        collector.increment_policy_blocked(reason_code="POLICY_TOOL_RESTRICTED")
 
         # Assert
         assert collector.metrics["policy_blocked_count"] == 2
+        assert collector.policy_reason_codes["POLICY_TOOL_RESTRICTED"] == 2
+
+    def test_increment_policy_blocked_tracks_review_candidates(self):
+        collector = MetricsCollector()
+
+        collector.increment_policy_blocked(reason_code="POLICY_MISSING_CONTEXT")
+        collector.increment_policy_blocked(
+            reason_code="POLICY_UNSAFE_CONTENT",
+            review_candidate=False,
+        )
+
+        assert collector.policy_review_candidate_reasons == {
+            "POLICY_MISSING_CONTEXT": 1,
+        }
 
     def test_record_provider_request_success(self):
         """Test recording successful provider request."""
@@ -370,7 +384,7 @@ class TestMetricsCollector:
         collector = MetricsCollector()
         collector.increment_task_created()
         collector.increment_task_created()
-        collector.increment_policy_blocked()
+        collector.increment_policy_blocked(reason_code="POLICY_TOOL_RESTRICTED")
 
         # Act
         metrics = collector.get_metrics()
@@ -379,6 +393,14 @@ class TestMetricsCollector:
         assert "policy" in metrics
         assert metrics["policy"]["blocked_count"] == 1
         assert metrics["policy"]["block_rate"] == 50.0  # 1 blocked / 2 created * 100
+        assert metrics["policy"]["deny_rate"] == 50.0
+        assert metrics["policy"]["top_reason_codes"] == [
+            {
+                "reason_code": "POLICY_TOOL_RESTRICTED",
+                "count": 1,
+                "share_rate": 100.0,
+            }
+        ]
 
     def test_policy_block_rate_calculation(self):
         """Test obliczania policy block rate."""
@@ -388,8 +410,9 @@ class TestMetricsCollector:
         # 10 tasks created, 3 blocked
         for _ in range(10):
             collector.increment_task_created()
-        for _ in range(3):
-            collector.increment_policy_blocked()
+        collector.increment_policy_blocked(reason_code="POLICY_TOOL_RESTRICTED")
+        collector.increment_policy_blocked(reason_code="POLICY_TOOL_RESTRICTED")
+        collector.increment_policy_blocked(reason_code="POLICY_MISSING_CONTEXT")
 
         # Act
         metrics = collector.get_metrics()
@@ -397,6 +420,9 @@ class TestMetricsCollector:
         # Assert
         assert metrics["policy"]["blocked_count"] == 3
         assert metrics["policy"]["block_rate"] == 30.0  # 3/10 * 100
+        assert metrics["policy"]["deny_rate"] == 30.0
+        assert metrics["policy"]["false_positive_triage"]["candidate_count"] == 3
+        assert metrics["policy"]["false_positive_triage"]["candidate_rate"] == 100.0
 
     def test_policy_block_rate_zero_when_no_tasks(self):
         """Test że block rate jest 0 gdy brak tasków."""
@@ -408,6 +434,47 @@ class TestMetricsCollector:
 
         # Assert
         assert metrics["policy"]["block_rate"] == 0.0
+
+    def test_policy_observability_orders_top_reason_codes(self):
+        collector = MetricsCollector()
+
+        for _ in range(3):
+            collector.increment_policy_blocked(reason_code="POLICY_TOOL_RESTRICTED")
+        for _ in range(2):
+            collector.increment_policy_blocked(reason_code="POLICY_PROVIDER_RESTRICTED")
+        collector.increment_policy_blocked(reason_code="POLICY_UNSAFE_CONTENT")
+
+        observability = collector.get_metrics()["policy"]
+
+        assert observability["top_reason_codes"] == [
+            {
+                "reason_code": "POLICY_TOOL_RESTRICTED",
+                "count": 3,
+                "share_rate": 50.0,
+            },
+            {
+                "reason_code": "POLICY_PROVIDER_RESTRICTED",
+                "count": 2,
+                "share_rate": 33.33,
+            },
+            {
+                "reason_code": "POLICY_UNSAFE_CONTENT",
+                "count": 1,
+                "share_rate": 16.67,
+            },
+        ]
+        assert observability["false_positive_triage"]["top_candidate_reasons"] == [
+            {
+                "reason_code": "POLICY_TOOL_RESTRICTED",
+                "count": 3,
+                "share_rate": 60.0,
+            },
+            {
+                "reason_code": "POLICY_PROVIDER_RESTRICTED",
+                "count": 2,
+                "share_rate": 40.0,
+            },
+        ]
 
     def test_ollama_runtime_sample_is_exposed_in_metrics(self):
         collector = MetricsCollector()

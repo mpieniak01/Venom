@@ -71,23 +71,15 @@ class TestPolicyGate:
 
             assert result.decision == PolicyDecision.ALLOW
 
-    def test_evaluate_before_provider_selection(self):
-        """Test ewaluacji przed wyborem providera."""
-        context = PolicyEvaluationContext(
-            content="test request",
-            planned_provider="openai",
-        )
-        result = policy_gate.evaluate_before_provider_selection(context)
-        assert isinstance(result, PolicyEvaluationResult)
-
-    def test_evaluate_before_tool_execution(self):
-        """Test ewaluacji przed wykonaniem narzędzi."""
+    def test_evaluate_global_pre_execution(self):
+        """Test centralnej ewaluacji pre-execution."""
         context = PolicyEvaluationContext(
             content="test request",
             planned_tools=["git", "shell"],
         )
-        result = policy_gate.evaluate_before_tool_execution(context)
+        result = policy_gate.evaluate_global_pre_execution(context)
         assert isinstance(result, PolicyEvaluationResult)
+        assert context.phase == "global_pre_execution"
 
 
 class TestPolicyEvaluationContext:

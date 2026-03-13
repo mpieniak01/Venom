@@ -2,7 +2,7 @@
 
 import os
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -38,6 +38,8 @@ class PolicyEvaluationContext(BaseModel):
     session_id: Optional[str] = None
     forced_tool: Optional[str] = None
     forced_provider: Optional[str] = None
+    phase: str = "global_pre_execution"
+    risk_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class PolicyEvaluationResult(BaseModel):
@@ -46,6 +48,7 @@ class PolicyEvaluationResult(BaseModel):
     decision: PolicyDecision
     reason_code: Optional[PolicyReasonCode] = None
     message: str = ""
+    remediation_hint: Optional[str] = None
     technical_details: Optional[str] = None
 
 
@@ -112,34 +115,12 @@ class PolicyGate:
             message="Request allowed by policy gate",
         )
 
-    def evaluate_before_provider_selection(
+    def evaluate_global_pre_execution(
         self, context: PolicyEvaluationContext
     ) -> PolicyEvaluationResult:
-        """
-        Ewaluuje żądanie przed wyborem providera.
-
-        Args:
-            context: Kontekst żądania
-
-        Returns:
-            PolicyEvaluationResult z decyzją
-        """
-        logger.debug("PolicyGate: evaluating before provider selection")
-        return self.evaluate(context)
-
-    def evaluate_before_tool_execution(
-        self, context: PolicyEvaluationContext
-    ) -> PolicyEvaluationResult:
-        """
-        Ewaluuje żądanie przed wykonaniem narzędzi.
-
-        Args:
-            context: Kontekst żądania
-
-        Returns:
-            PolicyEvaluationResult z decyzją
-        """
-        logger.debug("PolicyGate: evaluating before tool execution")
+        """Ewaluuje żądanie raz, centralnie, tuż przed wykonaniem."""
+        logger.debug("PolicyGate: evaluating global pre-execution")
+        context.phase = "global_pre_execution"
         return self.evaluate(context)
 
 

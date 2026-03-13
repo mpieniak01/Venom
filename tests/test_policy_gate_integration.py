@@ -125,72 +125,8 @@ async def test_policy_gate_enabled_allow_path(mock_orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_policy_gate_enabled_block_before_provider(mock_orchestrator):
-    """Test: gdy gate blokuje przed wyborem providera, zadanie nie jest wykonywane."""
-    with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "true"}):
-        # Reset policy gate singleton
-        from venom_core.core.policy_gate import policy_gate
-
-        policy_gate._initialized = False
-        policy_gate.__init__()
-
-        # Mock evaluate to return BLOCK
-        with patch.object(
-            policy_gate,
-            "evaluate_before_provider_selection",
-            return_value=PolicyEvaluationResult(
-                decision=PolicyDecision.BLOCK,
-                reason_code=PolicyReasonCode.POLICY_UNSAFE_CONTENT,
-                message="Unsafe content detected",
-            ),
-        ):
-            request = TaskRequest(content="dangerous request")
-
-            with patch(
-                "venom_core.core.orchestrator.orchestrator_submit.get_active_llm_runtime"
-            ) as mock_runtime:
-                mock_runtime.return_value = MagicMock(
-                    provider="local",
-                    model_name="test-model",
-                    endpoint="http://localhost",
-                    to_payload=MagicMock(return_value={}),
-                )
-
-                response = await submit_task(mock_orchestrator, request)
-
-                assert (
-                    response.task_id
-                    == mock_orchestrator.state_manager.create_task.return_value.id
-                )
-                assert response.policy_blocked is True
-                assert response.decision == "block"
-                assert response.reason_code == "POLICY_UNSAFE_CONTENT"
-                assert response.user_message == "Unsafe content detected"
-                assert response.status == TaskStatus.FAILED
-                assert isinstance(response.technical_context, dict)
-                assert response.technical_context["phase"] == "before_provider"
-
-                # Verify task was marked as failed
-                mock_orchestrator.state_manager.update_status.assert_called_once()
-                entry = get_audit_stream().get_entries(
-                    action="policy.blocked.before_provider", limit=1
-                )[0]
-                assert entry.source == "core.policy"
-                assert entry.status == "blocked"
-                assert entry.details["decision"] == "block"
-                assert entry.details["reason_code"] == "POLICY_UNSAFE_CONTENT"
-                assert entry.details["operation"] == "provider_selection"
-                assert entry.details["phase"] == "before_provider"
-                assert "policy" in entry.details["tags"]
-                assert entry.details["task_id"] == str(response.task_id)
-                assert isinstance(entry.details["current_autonomy_level"], int)
-                assert entry.details["current_autonomy_level_name"]
-                assert isinstance(entry.details["technical_context"], dict)
-
-
-@pytest.mark.asyncio
 async def test_policy_gate_enabled_block_before_tool_emits_audit(mock_orchestrator):
-    """Test: blokada przed uruchomieniem narzędzia emituje wpis audytowy."""
+    """Test: blokada global pre-execution emituje wpis audytowy."""
     with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "true"}):
         from venom_core.core.policy_gate import policy_gate
 
@@ -199,7 +135,7 @@ async def test_policy_gate_enabled_block_before_tool_emits_audit(mock_orchestrat
 
         with patch.object(
             policy_gate,
-            "evaluate_before_tool_execution",
+            "evaluate_global_pre_execution",
             return_value=PolicyEvaluationResult(
                 decision=PolicyDecision.BLOCK,
                 reason_code=PolicyReasonCode.POLICY_TOOL_RESTRICTED,
@@ -230,7 +166,7 @@ async def test_policy_gate_enabled_block_before_tool_emits_audit(mock_orchestrat
 
             assert blocked is True
             entry = get_audit_stream().get_entries(
-                action="policy.blocked.before_tool", limit=1
+                action="policy.blocked.global_pre_execution", limit=1
             )[0]
             assert entry.source == "core.policy"
             assert entry.status == "blocked"
@@ -239,8 +175,8 @@ async def test_policy_gate_enabled_block_before_tool_emits_audit(mock_orchestrat
             assert entry.details["intent"] == "RESEARCH"
             assert entry.details["provider"] == "openai"
             assert entry.details["forced_tool"] == "browser"
-            assert entry.details["operation"] == "tool_execution"
-            assert entry.details["phase"] == "before_tool"
+            assert entry.details["operation"] == "orchestrator_execution"
+            assert entry.details["phase"] == "global_pre_execution"
             assert entry.details["session_id"] == "session-1"
             assert entry.details["task_id"] == str(task_id)
             assert isinstance(entry.details["current_autonomy_level"], int)
@@ -250,8 +186,11 @@ async def test_policy_gate_enabled_block_before_tool_emits_audit(mock_orchestrat
 
 @pytest.mark.asyncio
 async def test_policy_gate_logs_block_reason(mock_orchestrator):
-    """Test: blokada policy powinna być zalogowana."""
+    """Test: blokada policy na checkpointcie runtime powinna być zalogowana."""
     with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "true"}):
+        from venom_core.core.orchestrator import (
+            orchestrator_dispatch as dispatch_module,
+        )
         from venom_core.core.policy_gate import policy_gate
 
         policy_gate._initialized = False
@@ -259,38 +198,42 @@ async def test_policy_gate_logs_block_reason(mock_orchestrator):
 
         with patch.object(
             policy_gate,
-            "evaluate_before_provider_selection",
+            "evaluate_global_pre_execution",
             return_value=PolicyEvaluationResult(
                 decision=PolicyDecision.BLOCK,
                 reason_code=PolicyReasonCode.POLICY_TOOL_RESTRICTED,
                 message="Tool not allowed",
             ),
         ):
+            task_id = mock_orchestrator.state_manager.create_task.return_value.id
             request = TaskRequest(content="test", forced_tool="dangerous_tool")
+            context = PolicyEvaluationContext(
+                content=request.content,
+                intent="SYSTEM_DIAGNOSTICS",
+                planned_tools=[request.forced_tool],
+                forced_tool=request.forced_tool,
+            )
 
-            with patch(
-                "venom_core.core.orchestrator.orchestrator_submit.get_active_llm_runtime"
-            ) as mock_runtime:
-                mock_runtime.return_value = MagicMock(
-                    provider="local",
-                    model_name="test-model",
-                    endpoint="http://localhost",
-                    to_payload=MagicMock(return_value={}),
-                )
+            await dispatch_module._handle_policy_block_before_tool_execution(
+                mock_orchestrator,
+                task_id,
+                request,
+                context,
+            )
 
-                await submit_task(mock_orchestrator, request)
-
-                # Verify log was added
-                assert any(
-                    "Policy gate blocked" in str(call)
-                    for call in mock_orchestrator.state_manager.add_log.call_args_list
-                )
+            assert any(
+                "Policy gate blocked" in str(call)
+                for call in mock_orchestrator.state_manager.add_log.call_args_list
+            )
 
 
 @pytest.mark.asyncio
 async def test_policy_gate_tracer_step_on_block(mock_orchestrator):
-    """Test: blokada policy powinna dodać krok do tracera."""
+    """Test: blokada policy na checkpointcie runtime powinna dodać krok do tracera."""
     with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "true"}):
+        from venom_core.core.orchestrator import (
+            orchestrator_dispatch as dispatch_module,
+        )
         from venom_core.core.policy_gate import policy_gate
 
         policy_gate._initialized = False
@@ -298,33 +241,34 @@ async def test_policy_gate_tracer_step_on_block(mock_orchestrator):
 
         with patch.object(
             policy_gate,
-            "evaluate_before_provider_selection",
+            "evaluate_global_pre_execution",
             return_value=PolicyEvaluationResult(
                 decision=PolicyDecision.BLOCK,
                 reason_code=PolicyReasonCode.POLICY_PROVIDER_RESTRICTED,
                 message="Provider not allowed",
             ),
         ):
+            task_id = mock_orchestrator.state_manager.create_task.return_value.id
             request = TaskRequest(content="test", forced_provider="restricted")
+            context = PolicyEvaluationContext(
+                content=request.content,
+                intent="RESEARCH",
+                planned_provider="restricted",
+                forced_provider=request.forced_provider,
+            )
 
-            with patch(
-                "venom_core.core.orchestrator.orchestrator_submit.get_active_llm_runtime"
-            ) as mock_runtime:
-                mock_runtime.return_value = MagicMock(
-                    provider="local",
-                    model_name="test-model",
-                    endpoint="http://localhost",
-                    to_payload=MagicMock(return_value={}),
-                )
+            await dispatch_module._handle_policy_block_before_tool_execution(
+                mock_orchestrator,
+                task_id,
+                request,
+                context,
+            )
 
-                await submit_task(mock_orchestrator, request)
-
-                # Verify tracer was called
-                mock_orchestrator.request_tracer.add_step.assert_called()
-                mock_orchestrator.request_tracer.update_status.assert_called_with(
-                    mock_orchestrator.state_manager.create_task.return_value.id,
-                    TraceStatus.FAILED,
-                )
+            mock_orchestrator.request_tracer.add_step.assert_called()
+            mock_orchestrator.request_tracer.update_status.assert_called_with(
+                task_id,
+                TraceStatus.FAILED,
+            )
 
 
 @pytest.mark.asyncio
@@ -372,10 +316,10 @@ async def test_submit_task_stores_routing_decision_in_task_context(mock_orchestr
 
 
 @pytest.mark.asyncio
-async def test_submit_task_uses_routing_decision_provider_for_policy_context(
+async def test_submit_task_does_not_block_on_legacy_provider_stage(
     mock_orchestrator,
 ):
-    """planned_provider w PolicyEvaluationContext ma pochodzić z RoutingDecision."""
+    """Submit flow nie wykonuje już legacy provider-stage policy checks."""
     with patch.dict(os.environ, {"ENABLE_POLICY_GATE": "true"}):
         from venom_core.core.policy_gate import policy_gate
 
@@ -391,15 +335,6 @@ async def test_submit_task_uses_routing_decision_provider_for_policy_context(
             fallback_applied=False,
         )
 
-        seen_context = {}
-
-        def _capture_context(context):
-            seen_context["planned_provider"] = context.planned_provider
-            return PolicyEvaluationResult(
-                decision=PolicyDecision.ALLOW,
-                message="ok",
-            )
-
         with (
             patch(
                 "venom_core.core.orchestrator.orchestrator_submit.get_active_llm_runtime"
@@ -407,11 +342,6 @@ async def test_submit_task_uses_routing_decision_provider_for_policy_context(
             patch(
                 "venom_core.core.orchestrator.orchestrator_submit.routing_integration.build_routing_decision",
                 return_value=decision,
-            ),
-            patch.object(
-                policy_gate,
-                "evaluate_before_provider_selection",
-                side_effect=_capture_context,
             ),
         ):
             mock_runtime.return_value = MagicMock(
@@ -421,9 +351,13 @@ async def test_submit_task_uses_routing_decision_provider_for_policy_context(
                 to_payload=MagicMock(return_value={}),
             )
 
-            await submit_task(mock_orchestrator, request)
+            response = await submit_task(mock_orchestrator, request)
 
-            assert seen_context["planned_provider"] == "openai"
+            assert response.policy_blocked is False
+            assert (
+                response.task_id
+                == mock_orchestrator.state_manager.create_task.return_value.id
+            )
 
 
 @pytest.mark.asyncio

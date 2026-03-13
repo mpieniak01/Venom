@@ -5,6 +5,7 @@ export const configLocale = {
       services: "Services",
       parameters: "Parameters",
       audit: "Audit",
+      permissions: "Permissions",
     },
     services: {
       title: "Service Management",
@@ -264,6 +265,58 @@ export const configLocale = {
       module: {
         loadError: "Failed to load module audit.",
         unavailable: "Brand Studio audit endpoint is unavailable (module inactive or disabled).",
+      },
+    },
+    permissions: {
+      title: "Permissions and autonomy",
+      description: "Manage autonomy level and present permission events from the same audit stream.",
+      currentLevel: "Current level",
+      setLevel: "Set level",
+      levelsTitle: "Permission matrix",
+      observability: {
+        title: "Policy observability",
+        description: "Runtime KPIs for 201D: deny rate, top block reasons and heuristic review backlog.",
+        topReasonsTitle: "Top reason codes",
+        triageTitle: "False-positive triage",
+        empty: "No policy observability data yet.",
+        triageFallback: "Review queue is built heuristically from policy block reasons that often need extra context or permission calibration.",
+        labels: {
+          denyRate: "Deny rate",
+          blocked: "Blocked decisions",
+          reviewQueue: "Review queue",
+          ofBlocks: "of all blocks",
+          primaryReason: "Top reason",
+          blocks: "blocks",
+          reviewCandidates: "review candidates",
+        },
+      },
+      eventsTitle: "Permission events (autonomy.*)",
+      emptyEvents: "No permission events in the audit stream.",
+      actions: {
+        apply: "Apply level",
+        saving: "Saving...",
+        grantAnalysis: "Grant analysis permissions",
+        refresh: "Refresh data",
+      },
+      messages: {
+        updated: "Autonomy level updated.",
+      },
+      errors: {
+        load: "Failed to load permissions data.",
+        update: "Failed to update autonomy level.",
+      },
+      columns: {
+        level: "Level",
+        risk: "Risk",
+        network: "Network",
+        paidApi: "Paid API",
+        filesystem: "Filesystem",
+        shell: "Shell",
+        desktop: "Desktop input",
+      },
+      values: {
+        enabled: "enabled",
+        disabled: "disabled",
       },
     },
     apiMap: {

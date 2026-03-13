@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from typing import Any
 from weakref import WeakKeyDictionary
@@ -45,6 +46,7 @@ _ROUTER_CACHE: "WeakKeyDictionary[Any, tuple[int, HybridModelRouter]]" = (
     WeakKeyDictionary()
 )
 _ROUTER_CACHE_NO_STATE: dict[int, HybridModelRouter] = {}
+_ROUTER_CACHE_LOCK = threading.Lock()
 
 
 def _router_cache_enabled() -> bool:
@@ -121,26 +123,27 @@ def _get_router(state_manager: Any) -> HybridModelRouter:
     if not _router_cache_enabled():
         return router_cls(state_manager=state_manager)
 
-    router_cls_id = id(router_cls)
-    if state_manager is None:
-        cached = _ROUTER_CACHE_NO_STATE.get(router_cls_id)
-        if cached is not None:
-            return cached
+    with _ROUTER_CACHE_LOCK:
+        router_cls_id = id(router_cls)
+        if state_manager is None:
+            cached = _ROUTER_CACHE_NO_STATE.get(router_cls_id)
+            if cached is not None:
+                return cached
+            router = router_cls(state_manager=state_manager)
+            _ROUTER_CACHE_NO_STATE[router_cls_id] = router
+            return router
+
+        try:
+            cached = _ROUTER_CACHE.get(state_manager)
+        except TypeError:
+            return router_cls(state_manager=state_manager)
+
+        if cached is not None and cached[0] == router_cls_id:
+            return cached[1]
+
         router = router_cls(state_manager=state_manager)
-        _ROUTER_CACHE_NO_STATE[router_cls_id] = router
+        _ROUTER_CACHE[state_manager] = (router_cls_id, router)
         return router
-
-    try:
-        cached = _ROUTER_CACHE.get(state_manager)
-    except TypeError:
-        return router_cls(state_manager=state_manager)
-
-    if cached is not None and cached[0] == router_cls_id:
-        return cached[1]
-
-    router = router_cls(state_manager=state_manager)
-    _ROUTER_CACHE[state_manager] = (router_cls_id, router)
-    return router
 
 
 def build_routing_decision(

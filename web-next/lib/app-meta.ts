@@ -44,7 +44,8 @@ export function resolveBootstrappedMeta(): AppMeta | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
-  const merged = { ...fallbackMeta(), ...payload };
+  const merged: AppMeta = { ...fallbackMeta(), ...payload };
+  merged.environmentRole = normalizeEnvironmentRole(merged.environmentRole);
   cachedMeta = merged;
   return merged;
 }
@@ -58,7 +59,8 @@ async function loadMeta(): Promise<AppMeta> {
     const response = await fetch("/meta.json", { cache: "no-store" });
     if (!response.ok) throw new Error("meta fetch failed");
     const data: AppMeta = await response.json();
-    const merged = { ...fallbackMeta(), ...data };
+    const merged: AppMeta = { ...fallbackMeta(), ...data };
+    merged.environmentRole = normalizeEnvironmentRole(merged.environmentRole);
     cachedMeta = merged;
     return merged;
   } catch (err) {

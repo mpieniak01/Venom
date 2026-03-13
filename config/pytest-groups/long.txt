@@ -14,6 +14,7 @@ tests/test_external_discovery_integration.py
 tests/test_file_operations_integration.py
 tests/test_forge_integration.py
 tests/test_generation_params_integration.py
+tests/test_ghost_agent_hil.py
 tests/test_knowledge_memory_tasks_integration.py
 tests/test_lesson_management_api.py
 tests/test_motor_cortex_integration.py

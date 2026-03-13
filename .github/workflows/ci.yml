@@ -96,7 +96,7 @@ jobs:
     env:
       CI: "true"
       PYTHONUNBUFFERED: "1"
-      BACKEND_LITE_PYTEST_WORKERS: "2"
+      BACKEND_LITE_PYTEST_WORKERS: "4"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5

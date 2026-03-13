@@ -374,6 +374,8 @@ export interface RuntimeCatalogModelInfo {
 
 export interface UnifiedModelCatalogResponse {
   active?: {
+    model_id?: string | null;
+    resolved_model_id?: string | null;
     runtime_id?: string | null;
     active_server?: string | null;
     active_model?: string | null;
@@ -386,6 +388,7 @@ export interface UnifiedModelCatalogResponse {
     status: string;
     reason?: string | null;
     active: boolean;
+    models?: RuntimeCatalogModelInfo[];
     adapter_deploy_supported?: boolean;
     adapter_deploy_mode?: string;
     supports_native_training?: boolean;
@@ -769,6 +772,8 @@ function resolveSelectorFlow(payload: RuntimeOptionsPayload): string[] {
 
 type RuntimeOptionsPayload = {
   active?: {
+    model_id?: string | null;
+    resolved_model_id?: string | null;
     runtime_id?: string | null;
     active_server?: string | null;
     active_model?: string | null;
@@ -781,6 +786,7 @@ type RuntimeOptionsPayload = {
     status: string;
     reason?: string | null;
     active: boolean;
+    models?: RuntimeCatalogModelInfo[];
     adapter_deploy_supported?: boolean;
     adapter_deploy_mode?: string;
     supports_native_training?: boolean;

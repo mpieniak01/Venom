@@ -6,7 +6,7 @@
 
 ## 0. Introduction – Target Vision (Venom v2.0)
 > [!NOTE]
-> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.6.0) serves as the foundation (Foundation Layer) implementing key orchestration, **workflow management**, authentication, memory, and learning functions.
+> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.8.0) serves as the foundation (Foundation Layer) implementing key orchestration, **workflow management**, authentication, memory, and learning functions.
 Venom is a project to create an artificial intelligence organism that develops, supervises, and designs other AI systems.
 It's a meta-intelligence layer operating above Rider-PC (logic, code, AI) and Rider-Pi (physical world, sensors, movement).
 Venom can in the future encompass any other module in your ecosystem.
@@ -105,6 +105,7 @@ In practice, Large Language Model (LLM) engineering necessitated a hybrid approa
 
 ### 3.2. Memory layer (Memory Layer)
 GraphRAG + LanceDB – repository structure, dependencies, project knowledge.
+Canonical federation and lifecycle contracts are exposed through the Knowledge Entries API (`/api/v1/knowledge/entries`).
 
 ### 3.3. Agent layer (Agent Services Layer)
 - planner.arch
@@ -119,10 +120,12 @@ GraphRAG + LanceDB – repository structure, dependencies, project knowledge.
 ### 3.4. Execution layer (Execution Layer)
 Semantic Kernel – files, shell, git, tests.
 MCP Import – tools from Git (proxy generator + wrappers in `venom_core/skills/custom`, runtime-generated and optional in a fresh checkout).
+`FileSkill` includes safe operational primitives for filesystem automation (`rename/move/copy/delete`, single and batch modes, dry-run and overwrite policies).
 
 ### 3.5. Perception layer (Vision Layer)
 - Florence-2 ONNX – UI vision
 - YOLO ONNX – physical vision
+Desktop control pathways are available through Ghost runtime (`vision_click`, typed input/hotkeys, profile-based safety mode, and auditable control-plane API).
 
 ### 3.6. Metabolism layer (Performance Layer)
 Support for two computational engines:
@@ -161,6 +164,9 @@ Improves:
 - agent strategies,
 - policies.
 
+> [!NOTE]
+> The self-improvement toolset is implemented, but the fully automated end-to-end loop (`task -> code -> test -> PR -> memory -> policy`) remains a v2.0 completion target.
+
 ## 6. Venom pipeline
 1. User intent
 2. Orchestrator
@@ -183,6 +189,8 @@ Improves:
 - user ethics
 - testing policies
 - security
+
+Policy enforcement now covers route/skill boundaries and a central orchestrator-wide global pre-execution gate; route/skill gates remain active as defense in depth.
 
 ## 8. Integration of Rider-Pi and Google Home (IoT) - Venom 2.0
 Rider-Pi – physical body.

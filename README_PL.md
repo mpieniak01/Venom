@@ -439,14 +439,15 @@ make check-new-code-coverage
 - [x] Integracja ONNX Runtime jako trzeciego lokalnego silnika LLM (3-stack: Ollama + vLLM + ONNX).
 - [x] Aktualizacja strategii profili runtime i instalacji (minimum API-first + opcjonalne stosy lokalne).
 
-### ✅ v1.7 (obecna)
-- [x] Dowieziono obsługę modeli zdalnych (`/models` remote tab + status providerów, katalog, mapa spięć, walidacja dla ścieżek GPT/Gemini).
-- [x] Utwardzono globalną kontrolę ruchu inbound/outbound (limity, retry/circuit-breaker, bezpieczniejsze zachowanie pod obciążeniem).
-- [x] Rozszerzono obserwowalność konfiguracji i audytu (kanoniczny audit stream i lepsza widoczność zmian config/runtime).
-- [x] Domknięto falę hardeningu Academy/API (dekompozycja modułów, spójność kontraktów, bezpieczniejsze ścieżki upload/trening/historia).
-- [x] Sfinalizowano model pracy pre-prod na wspólnym stacku (separacja danych, podział `.env.dev`/`.env.preprod`, sterowanie Makefile, guard rails, backup/restore/smoke).
+### ✅ v1.8 (obecna)
+- [x] Domknięto governance runtime end-to-end: centralny `Global Policy Gate` w orchestratorze (`global_pre_execution`) + spójny kontrakt blokad (`reason_code`, `remediation_hint`) i audit eventy.
+- [x] Dodano operacyjną obserwowalność policy/autonomy: KPI endpoint (`/api/v1/system/autonomy/observability`), endpoint gotowości rollout (`/api/v1/system/autonomy/rollout-status`) i skrypt walidacji środowisk (`scripts/ops/verify_policy_rollout.py`).
+- [x] Dostarczono bezpieczne automatyzacje wykonawcze: `FileSkill` (`rename/move/copy/delete`, single/batch, dry-run, polityki nadpisywania) oraz kontrolowane desktop automation (`GhostAgent.vision_click`, profile bezpieczeństwa, fail-closed dla kroków krytycznych).
+- [x] Ujednolicono kontrakt wiedzy: kanoniczne DTO + federowany endpoint `GET /api/v1/knowledge/entries` i spójny lifecycle (TTL/prune/dedupe) z integracją audytu.
+- [x] Ustabilizowano ścieżkę uczenia Academy (zakres 197): spójny flow `training/self-learning -> adapter -> chat`, canonical-only adapter deploy i recovery state bez ręcznych obejść.
+- [x] Podniesiono przewidywalność dostarczania zmian: profile Playwright/Web E2E, quality gates i artefakty diagnostyczne spięte z pipeline CI.
 
-### 🚧 v1.8 (planowane detale)
+### 🚧 v1.9 (planowane detale)
 - [ ] Odpytywanie w tle dla GitHub Issues.
 - [ ] Panel dashboardu dla integracji zewnętrznych.
 - [ ] Rekurencyjne streszczanie długich dokumentów.

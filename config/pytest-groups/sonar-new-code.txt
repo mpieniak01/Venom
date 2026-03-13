@@ -75,6 +75,7 @@ tests/test_ensure_env_file_script.py
 tests/test_env_contract_sh.py
 tests/test_environment_policy.py
 tests/test_error_mappings.py
+tests/test_execution_mode_planner.py
 tests/test_executive_agent_roi.py
 tests/test_eyes.py
 tests/test_feedback_hidden_prompts.py
@@ -169,6 +170,7 @@ tests/test_orchestrator_compat_exports.py
 tests/test_orchestrator_compat_module.py
 tests/test_orchestrator_components.py
 tests/test_orchestrator_core_scenarios.py
+tests/test_orchestrator_decision_gates.py
 tests/test_orchestrator_flows_regression.py
 tests/test_parallel_skill.py
 tests/test_permission_guard.py

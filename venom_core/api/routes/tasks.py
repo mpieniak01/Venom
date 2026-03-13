@@ -25,6 +25,7 @@ from venom_core.api.schemas.tasks import (
 )
 from venom_core.execution.onnx_llm_client import OnnxLlmClient
 from venom_core.services import tasks_onnx_service, tasks_service
+from venom_core.services.execution_mode_planner import decide_execution_mode
 from venom_core.services.tasks_stream_service import (
     build_missing_task_payload as _build_missing_task_payload,
 )
@@ -58,14 +59,14 @@ from venom_core.services.tasks_stream_service import (
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
-logger = get_logger(__name__)
-
 TaskStatus = tasks_service.TaskStatus
 VenomTask = tasks_service.VenomTask
 Orchestrator = tasks_service.Orchestrator
 StateManager = tasks_service.StateManager
 RequestTracer = tasks_service.RequestTracer
 TraceStatus = tasks_service.TraceStatus
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["tasks"])
 _ONNX_EXECUTOR: ProcessPoolExecutor | None = None
@@ -343,6 +344,7 @@ def _submit_onnx_task(
             )
         ),
     )
+    execution_mode_decision = decide_execution_mode(request=request, intent=None)
     return TaskResponse(
         task_id=task.id,
         status=TaskStatus.PENDING.value,
@@ -350,6 +352,8 @@ def _submit_onnx_task(
         llm_provider=runtime.provider,
         llm_model=runtime.model_name,
         llm_endpoint=runtime.endpoint,
+        execution_mode=execution_mode_decision.execution_mode,
+        fallback_reason=execution_mode_decision.fallback_reason,
     )
 
 

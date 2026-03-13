@@ -1,6 +1,7 @@
 # AUTO-GENERATED from config/testing/test_catalog.json
 # Do not edit manually. Run: make test-groups-sync
 
+tests/test_compose_integration.py
 tests/integration/test_verify_backend.py
 tests/ollama_bench/test_common_and_scoreboard.py
 tests/ollama_bench/test_scheduler.py
@@ -9,7 +10,6 @@ tests/test_agents_routes_integration_regression.py
 tests/test_architecture_contracts_guard.py
 tests/test_audit_lite_deps.py
 tests/test_browser_skill.py
-tests/test_compose_integration.py
 tests/test_external_discovery_integration.py
 tests/test_file_operations_integration.py
 tests/test_forge_integration.py

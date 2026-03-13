@@ -27,6 +27,20 @@ HEADER_LINES = [
     "",
 ]
 
+PRIORITY_GROUP_ORDER: dict[str, list[str]] = {
+    # long group runs with 2 workers; keep the single slowest test first.
+    "long": [
+        "tests/test_compose_integration.py",
+    ],
+    # fast group runs with 6 workers; front-load 4 heaviest files.
+    "fast": [
+        "tests/test_core_nervous_system.py",
+        "tests/test_compose_skill.py",
+        "tests/test_stack_manager.py",
+        "tests/test_traffic_control_http_client.py",
+    ],
+}
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -65,8 +79,11 @@ def _release_bucket(entry: dict[str, Any], path: str) -> str:
     return "fast"
 
 
-def _render_group(paths: set[str]) -> str:
-    lines = [*HEADER_LINES, *sorted(paths)]
+def _render_group(group_name: str, paths: set[str]) -> str:
+    priority = PRIORITY_GROUP_ORDER.get(group_name, [])
+    priority_present = [path for path in priority if path in paths]
+    remaining = sorted(paths - set(priority_present))
+    lines = [*HEADER_LINES, *priority_present, *remaining]
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -187,7 +204,9 @@ def main() -> int:
         entries=entries, repo_root=repo_root
     )
 
-    expected_contents = {key: _render_group(paths) for key, paths in groups.items()}
+    expected_contents = {
+        key: _render_group(key, paths) for key, paths in groups.items()
+    }
 
     if args.check:
         for key, rel_path in GROUP_FILES.items():

@@ -1,6 +1,10 @@
 # AUTO-GENERATED from config/testing/test_catalog.json
 # Do not edit manually. Run: make test-groups-sync
 
+tests/test_core_nervous_system.py
+tests/test_compose_skill.py
+tests/test_stack_manager.py
+tests/test_traffic_control_http_client.py
 tests/api/test_academy_openapi_contract.py
 tests/api/test_memory_api_pruning.py
 tests/api/test_memory_openapi_contract.py
@@ -74,7 +78,6 @@ tests/test_coding_run_routes.py
 tests/test_coding_run_service.py
 tests/test_complexity_skill.py
 tests/test_component_engine.py
-tests/test_compose_skill.py
 tests/test_compose_skill_validation.py
 tests/test_computation_formatting.py
 tests/test_config_manager.py
@@ -86,7 +89,6 @@ tests/test_contracts_init.py
 tests/test_control_plane_audit.py
 tests/test_control_plane_compatibility.py
 tests/test_control_plane_service_edges.py
-tests/test_core_nervous_system.py
 tests/test_core_skill.py
 tests/test_cost_guard.py
 tests/test_council.py
@@ -339,7 +341,6 @@ tests/test_skills_init.py
 tests/test_slash_commands.py
 tests/test_sonar_agents_init.py
 tests/test_sonar_route_selection.py
-tests/test_stack_manager.py
 tests/test_stack_manager_safety.py
 tests/test_stack_stability_audit.py
 tests/test_state_and_orchestrator.py
@@ -369,7 +370,6 @@ tests/test_toolmaker_agent.py
 tests/test_tracer.py
 tests/test_tracer_persistence.py
 tests/test_traffic_control.py
-tests/test_traffic_control_http_client.py
 tests/test_traffic_control_routes.py
 tests/test_training_metrics_parser.py
 tests/test_translation_service.py

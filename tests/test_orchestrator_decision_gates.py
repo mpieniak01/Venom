@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tests.helpers.url_fixtures import MOCK_HTTP, local_runtime_id
+from venom_core.core.models import TaskRequest
 from venom_core.core.orchestrator import Orchestrator
+from venom_core.core.orchestrator.orchestrator_dispatch import (
+    _prepare_intent_and_context,
+)
 from venom_core.core.state_manager import StateManager
 from venom_core.core.tracer import RequestTracer
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
@@ -351,3 +355,49 @@ async def test_orchestrator_logs_classify_intent_step(orchestrator, request_trac
     step = classify_steps[0]
     assert step.component == "Orchestrator"
     assert "Intent: GENERAL_CHAT" in step.details
+
+
+@pytest.mark.asyncio
+async def test_prepare_intent_and_context_batches_context_updates(
+    orchestrator, request_tracer
+):
+    task = orchestrator.state_manager.create_task("find docs quickly")
+    task_id = task.id
+
+    request_tracer.create_trace(task_id, "find docs quickly")
+    orchestrator.intent_manager.classify_intent.return_value = "RESEARCH"
+    orchestrator.intent_manager.last_intent_debug = {"source": "heuristic"}
+    orchestrator.intent_manager.requires_tool.return_value = False
+    orchestrator.context_builder.build_context = AsyncMock(return_value="ctx")
+
+    original_update_context = orchestrator.state_manager.update_context
+    orchestrator.state_manager.update_context = MagicMock(wraps=original_update_context)
+
+    request = TaskRequest(
+        content="find docs quickly",
+        generation_params={"temperature": 0.1},
+    )
+
+    intent, context, tool_required, intent_debug = await _prepare_intent_and_context(
+        orchestrator,
+        task_id,
+        request,
+        request.content,
+        fast_path=False,
+    )
+
+    assert intent == "RESEARCH"
+    assert context == "ctx"
+    assert tool_required is False
+    assert intent_debug == {"source": "heuristic"}
+
+    orchestrator.state_manager.update_context.assert_called_once()
+    _, update_payload = orchestrator.state_manager.update_context.call_args.args
+    assert update_payload["intent_debug"] == {"source": "heuristic"}
+    assert update_payload["generation_params"] == {"temperature": 0.1}
+    assert update_payload["execution_mode"] == "browser_automation"
+    assert update_payload["browser_profile"] == "functional"
+    assert update_payload["tool_requirement"] == {
+        "required": False,
+        "intent": "RESEARCH",
+    }

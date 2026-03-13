@@ -60,6 +60,34 @@ test-preprod-readonly-smoke:
 test-perf:
 	pytest -m performance
 
+TEST_202B_GROUP ?= config/pytest-groups/202b-hotpaths.txt
+
+test-202b-gate:
+	@echo "🧪 Uruchamiam quality gate 202B (hot paths + performance regressions)..."
+	@TESTS=$$(grep -vE '^[[:space:]]*(#|$$)' "$(TEST_202B_GROUP)"); \
+	if [ -z "$$TESTS" ]; then \
+		echo "❌ Brak testów w $(TEST_202B_GROUP)"; \
+		exit 1; \
+	fi; \
+	$(PYTEST_BIN) -q $$TESTS
+
+test-202b-web-gate:
+	@echo "🧪 Uruchamiam frontend gate 202B (runtime selection hot path)..."
+	@cd $(WEB_DIR) && node --import tsx --test \
+		tests/app-meta-bootstrap.test.ts \
+		tests/cockpit-runtime-selection.test.ts \
+		tests/cockpit-chat-send-model-selection.test.ts \
+		tests/cockpit-model-option-labels.test.ts
+
+test-202b-web-perf:
+	@echo "🧪 Uruchamiam frontend perf 202B (runtime selection micro-benchmark, opt-in)..."
+	@cd $(WEB_DIR) && VENOM_ENABLE_WEB_RUNTIME_PERF_ASSERT=1 node --import tsx --test \
+		tests/cockpit-runtime-selection.test.ts
+
+test-202b-global-p95:
+	@echo "🧪 Uruchamiam globalny pomiar p95 dla ścieżki 202B..."
+	@$(PYTEST_BIN) -q tests/test_202b_global_latency_hotpath.py
+
 test-llm-manual:
 	@echo "🧪 Manual LLM/runtime tests (operator-triggered only)"
 	pytest -m manual_llm
@@ -67,10 +95,10 @@ test-llm-manual:
 test-duration-audit:
 	@echo "🕒 Duration audit (>120s) for long/heavy groups"
 	@echo "Long group:"
-	@pytest -q -n 1 $$(grep -vE '^\s*(#|$$)' config/pytest-groups/long.txt) --durations=0 --durations-min=120 || true
+	@pytest -q -n 1 $$(grep -vE '^[[:space:]]*(#|$$)' config/pytest-groups/long.txt) --durations=0 --durations-min=120 || true
 	@echo ""
 	@echo "Heavy group:"
-	@pytest -q -n 1 $$(grep -vE '^\s*(#|$$)' config/pytest-groups/heavy.txt) --durations=0 --durations-min=120 || true
+	@pytest -q -n 1 $$(grep -vE '^[[:space:]]*(#|$$)' config/pytest-groups/heavy.txt) --durations=0 --durations-min=120 || true
 	@echo ""
 	@echo "Manual exclusion list: config/pytest-groups/manual-long-running.txt"
 
@@ -286,7 +314,7 @@ e2e:
 test-optimal: pytest e2e
 
 test-ci-lite:
-	TESTS=$$(grep -vE '^\s*(#|$$)' config/pytest-groups/ci-lite.txt); \
+	TESTS=$$(grep -vE '^[[:space:]]*(#|$$)' config/pytest-groups/ci-lite.txt); \
 	if [ -z "$$TESTS" ]; then \
 		echo "❌ Brak testów w config/pytest-groups/ci-lite.txt"; \
 		exit 1; \

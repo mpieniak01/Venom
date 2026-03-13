@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from venom_core.core.models import TaskRequest
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ExecutionModeDecision:
     execution_mode: str
     fallback_reason: str | None = None
@@ -57,38 +57,51 @@ GUI_FALLBACK_INTENTS = {
     "VISION_CONTROL",
 }
 
+API_SKILL_DECISION = ExecutionModeDecision(execution_mode="api_skill")
+BROWSER_AUTOMATION_DECISION = ExecutionModeDecision(execution_mode="browser_automation")
+GUI_FALLBACK_FORCED_TOOL_DECISION = ExecutionModeDecision(
+    execution_mode="gui_fallback",
+    fallback_reason="forced_gui_tool",
+    reason_code="EXECUTION_MODE_GUI_FALLBACK_FORCED_TOOL",
+)
+GUI_FALLBACK_INTENT_DECISION = ExecutionModeDecision(
+    execution_mode="gui_fallback",
+    fallback_reason="intent_requires_gui_path",
+    reason_code="EXECUTION_MODE_GUI_FALLBACK_INTENT",
+)
+
+
+def _normalize_lower(value: object | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def _normalize_upper(value: object | None) -> str:
+    return str(value or "").strip().upper()
+
 
 def decide_execution_mode(
     request: TaskRequest, intent: str | None
 ) -> ExecutionModeDecision:
     """Select execution mode with deterministic priority: API/Skill -> Browser -> GUI fallback."""
-    forced_tool = str(request.forced_tool or "").strip().lower()
-    normalized_intent = str(intent or "").strip().upper()
+    forced_tool = _normalize_lower(request.forced_tool)
+    normalized_intent = _normalize_upper(intent)
 
     if forced_tool in API_SKILL_TOOLS:
-        return ExecutionModeDecision(execution_mode="api_skill")
+        return API_SKILL_DECISION
     if normalized_intent in API_SKILL_INTENTS:
-        return ExecutionModeDecision(execution_mode="api_skill")
+        return API_SKILL_DECISION
 
     if forced_tool in BROWSER_AUTOMATION_TOOLS:
-        return ExecutionModeDecision(execution_mode="browser_automation")
+        return BROWSER_AUTOMATION_DECISION
     if normalized_intent in BROWSER_AUTOMATION_INTENTS:
-        return ExecutionModeDecision(execution_mode="browser_automation")
+        return BROWSER_AUTOMATION_DECISION
 
     if forced_tool in GUI_FALLBACK_TOOLS:
-        return ExecutionModeDecision(
-            execution_mode="gui_fallback",
-            fallback_reason="forced_gui_tool",
-            reason_code="EXECUTION_MODE_GUI_FALLBACK_FORCED_TOOL",
-        )
+        return GUI_FALLBACK_FORCED_TOOL_DECISION
     if normalized_intent in GUI_FALLBACK_INTENTS:
-        return ExecutionModeDecision(
-            execution_mode="gui_fallback",
-            fallback_reason="intent_requires_gui_path",
-            reason_code="EXECUTION_MODE_GUI_FALLBACK_INTENT",
-        )
+        return GUI_FALLBACK_INTENT_DECISION
 
-    return ExecutionModeDecision(execution_mode="api_skill")
+    return API_SKILL_DECISION
 
 
 def resolve_gui_fallback_contract(

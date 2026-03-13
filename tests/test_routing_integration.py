@@ -234,3 +234,132 @@ def test_build_routing_decision_prefers_feedback_loop_alias_for_code_generation(
 
     assert decision.provider == "ollama"
     assert decision.model == "OpenCodeInterpreter-Qwen2.5-7B"
+
+
+def test_build_routing_decision_reuses_router_for_same_state_manager(monkeypatch):
+    init_calls = {"count": 0}
+
+    class DummyRouter:
+        def __init__(self, *args, **kwargs):
+            init_calls["count"] += 1
+
+        def route_task(self, task_type, prompt):
+            return {
+                "target": "local",
+                "model_name": "gemma3:4b",
+                "provider": "local",
+                "reason": "Tryb LOCAL - zadanie STANDARD",
+                "is_paid": False,
+            }
+
+        def calculate_complexity(self, prompt, task_type):
+            return 1
+
+    class DummyGovernance:
+        def select_provider_with_fallback(self, preferred_provider, reason=None):
+            return SimpleNamespace(
+                allowed=True,
+                provider=preferred_provider,
+                reason_code="PRIMARY_PROVIDER_SELECTED",
+                fallback_applied=False,
+                user_message="ok",
+            )
+
+    monkeypatch.setattr(
+        "venom_core.core.routing_integration.HybridModelRouter", DummyRouter
+    )
+    monkeypatch.setattr(
+        "venom_core.core.routing_integration.get_provider_governance",
+        lambda: DummyGovernance(),
+    )
+
+    class DummyStateManager:
+        pass
+
+    state_manager = DummyStateManager()
+    request = SimpleNamespace(
+        content="hello",
+        forced_intent=None,
+        forced_tool=None,
+        forced_provider=None,
+    )
+    runtime_info = SimpleNamespace(provider="ollama", model_name="gemma3:4b")
+
+    first = build_routing_decision(
+        request=request,
+        runtime_info=runtime_info,
+        state_manager=state_manager,
+    )
+    second = build_routing_decision(
+        request=request,
+        runtime_info=runtime_info,
+        state_manager=state_manager,
+    )
+
+    assert first.provider == "ollama"
+    assert second.provider == "ollama"
+    assert init_calls["count"] == 1
+
+
+def test_build_routing_decision_disables_router_cache_via_env(monkeypatch):
+    init_calls = {"count": 0}
+
+    class DummyRouter:
+        def __init__(self, *args, **kwargs):
+            init_calls["count"] += 1
+
+        def route_task(self, task_type, prompt):
+            return {
+                "target": "local",
+                "model_name": "gemma3:4b",
+                "provider": "local",
+                "reason": "Tryb LOCAL - zadanie STANDARD",
+                "is_paid": False,
+            }
+
+        def calculate_complexity(self, prompt, task_type):
+            return 1
+
+    class DummyGovernance:
+        def select_provider_with_fallback(self, preferred_provider, reason=None):
+            return SimpleNamespace(
+                allowed=True,
+                provider=preferred_provider,
+                reason_code="PRIMARY_PROVIDER_SELECTED",
+                fallback_applied=False,
+                user_message="ok",
+            )
+
+    monkeypatch.setattr(
+        "venom_core.core.routing_integration.HybridModelRouter", DummyRouter
+    )
+    monkeypatch.setattr(
+        "venom_core.core.routing_integration.get_provider_governance",
+        lambda: DummyGovernance(),
+    )
+    monkeypatch.setenv("VENOM_ROUTER_CACHE_ENABLED", "0")
+
+    class DummyStateManager:
+        pass
+
+    state_manager = DummyStateManager()
+    request = SimpleNamespace(
+        content="hello",
+        forced_intent=None,
+        forced_tool=None,
+        forced_provider=None,
+    )
+    runtime_info = SimpleNamespace(provider="ollama", model_name="gemma3:4b")
+
+    build_routing_decision(
+        request=request,
+        runtime_info=runtime_info,
+        state_manager=state_manager,
+    )
+    build_routing_decision(
+        request=request,
+        runtime_info=runtime_info,
+        state_manager=state_manager,
+    )
+
+    assert init_calls["count"] == 2

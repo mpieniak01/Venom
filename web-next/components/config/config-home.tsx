@@ -82,12 +82,7 @@ export function ConfigHome() {
         {activeTab === "services" && <ServicesPanel />}
         {activeTab === "parameters" && <ParametersPanel />}
         {activeTab === "apiMap" && <ApiMap />}
-        {activeTab === "audit" && (
-          <div className="space-y-6">
-            <AuditPanel />
-            <PermissionsPanel />
-          </div>
-        )}
+        {activeTab === "audit" && <AuditPanel />}
         {activeTab === "permissions" && <PermissionsPanel />}
       </div>
     </div>

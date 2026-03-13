@@ -226,7 +226,6 @@ def test_get_system_metrics_exposes_policy_observability(monkeypatch, client):
                                 "share_rate": 100.0,
                             }
                         ],
-                        "note": "Heuristic review queue",
                     },
                 },
             }

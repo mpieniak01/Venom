@@ -548,7 +548,6 @@ class MetricsCollector:
                             self.policy_review_candidate_reasons,
                             review_candidate_total,
                         ),
-                        "note": "Heuristic review queue for policy blocks that may require context expansion or permission review.",
                     },
                 },
                 "models": {

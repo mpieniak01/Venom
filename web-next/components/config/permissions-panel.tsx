@@ -65,7 +65,6 @@ type PolicyObservability = {
     candidate_count?: number;
     candidate_rate?: number;
     top_candidate_reasons?: PolicyReasonStat[];
-    note?: string;
   };
 };
 
@@ -369,7 +368,7 @@ export function PermissionsPanel() {
           <div className="rounded-2xl border border-theme bg-theme-overlay-strong p-3">
             <div className="mb-3 text-sm font-semibold text-theme-primary">{t("config.permissions.observability.triageTitle")}</div>
             <p className="mb-3 text-xs text-theme-muted">
-              {observability?.false_positive_triage?.note || t("config.permissions.observability.triageFallback")}
+              {t("config.permissions.observability.triageFallback")}
             </p>
             {!observability?.false_positive_triage?.top_candidate_reasons?.length ? (
               <p className="text-sm text-theme-muted">{t("config.permissions.observability.empty")}</p>

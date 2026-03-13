@@ -106,3 +106,52 @@ class AutonomyLevelsResponse(BaseModel):
     status: str
     levels: list[dict[str, Any]]
     count: int
+
+
+class PolicyReasonStat(BaseModel):
+    """Single reason code statistic for policy/autonomy blocks."""
+
+    reason_code: str
+    count: int
+    share_rate: float
+
+
+class PolicyFalsePositiveTriage(BaseModel):
+    """Triage snapshot for potential false-positive policy blocks."""
+
+    candidate_count: int = 0
+    candidate_rate: float = 0.0
+    top_candidate_reasons: list[PolicyReasonStat] = Field(default_factory=list)
+
+
+class AutonomyObservabilityPayload(BaseModel):
+    """Operational policy/autonomy observability payload."""
+
+    blocked_count: int = 0
+    deny_rate: float = 0.0
+    top_reason_codes: list[PolicyReasonStat] = Field(default_factory=list)
+    false_positive_triage: PolicyFalsePositiveTriage = Field(
+        default_factory=PolicyFalsePositiveTriage
+    )
+
+
+class AutonomyObservabilityResponse(BaseModel):
+    """Response for dedicated policy/autonomy observability endpoint."""
+
+    status: str = "success"
+    source: str = "runtime_policy_gate"
+    policy: AutonomyObservabilityPayload
+
+
+class AutonomyRolloutStatusResponse(BaseModel):
+    """Response for runtime-only policy gate rollout readiness."""
+
+    status: str = "success"
+    source: str = "runtime_policy_gate"
+    readiness: str
+    runtime_only_architecture: bool
+    policy_gate_enabled: bool
+    global_checkpoint_phase: str = "global_pre_execution"
+    legacy_submit_stage_removed: bool
+    observability_endpoint_available: bool
+    required_next_actions: list[str] = Field(default_factory=list)

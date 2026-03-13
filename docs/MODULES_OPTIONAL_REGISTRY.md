@@ -31,7 +31,7 @@ Notes:
 
 Core compares module manifest values with:
 - `CORE_MODULE_API_VERSION` (default `1.0.0`)
-- `CORE_RUNTIME_VERSION` (default `1.6.0`)
+- `CORE_RUNTIME_VERSION` (default `1.8.0`)
 - `backend.data_policy` (required):
   - `storage_mode=core_prefixed`
   - `mutation_guard=core_environment_policy`

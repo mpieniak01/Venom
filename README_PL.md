@@ -1,4 +1,4 @@
-# Venom v1.7.0 🐍
+# Venom v1.8.0 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -36,8 +36,8 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - 🔍 **Transparentność i pełna audytowalność** - śledzenie end-to-end decyzji, działań i wyników dla zaufania operacyjnego, compliance oraz szybszej analizy incydentów.
 - 🔌 **Rozszerzalność** - narzędzia lokalne i import MCP z repozytoriów Git.
 
-## Ostatnie wdrożenia (2026-02)
-- Kamień milowy 1.7.0: produkcyjna gotowość lokalnego 3-stack runtime, większa ciągłość działania i mniejsze ryzyko zależności od pojedynczego providera.
+## Ostatnie wdrożenia (2026-03)
+- Kamień milowy 1.8.0: rollout orchestration dla Global Policy Gate został operacyjnie zwalidowany (`rollout-status`, KPI observability, skrypt weryfikacji rollout), co wzmacnia governance runtime dla fixów wydawanych na `main`.
 - Uporządkowano bazę bezpieczeństwa i governance (`Policy Gate`, limity kosztów, fallback), co podnosi bezpieczeństwo operacyjne.
 - Uspójniono model operacyjny (`Workflow Control Plane`, monitoring, konfiguracja i aktywacja runtime).
 - Wdrożono wspólną warstwę kontroli ruchu API (anti-ban/anti-loop) dla komunikacji inbound i outbound.

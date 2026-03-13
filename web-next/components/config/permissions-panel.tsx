@@ -105,6 +105,10 @@ export function PermissionsPanel() {
   const analysisLevel = useMemo(() => {
     return levels.find((level) => level.name === "CONNECTED") ?? levels.find((level) => level.id === 10) ?? null;
   }, [levels]);
+  const topReasonCodes = observability?.top_reason_codes ?? [];
+  const topTriageCandidates = observability?.false_positive_triage?.top_candidate_reasons ?? [];
+  const hasTopReasonCodes = topReasonCodes.length > 0;
+  const hasTopTriageCandidates = topTriageCandidates.length > 0;
 
   const fetchAll = useCallback(async () => {
     setError(null);
@@ -348,11 +352,9 @@ export function PermissionsPanel() {
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-theme bg-theme-overlay-strong p-3">
             <div className="mb-3 text-sm font-semibold text-theme-primary">{t("config.permissions.observability.topReasonsTitle")}</div>
-            {!observability?.top_reason_codes?.length ? (
-              <p className="text-sm text-theme-muted">{t("config.permissions.observability.empty")}</p>
-            ) : (
+            {hasTopReasonCodes ? (
               <div className="space-y-2">
-                {observability.top_reason_codes.map((item) => (
+                {topReasonCodes.map((item) => (
                   <div key={item.reason_code} className="flex items-center justify-between rounded-xl border border-white/10 px-3 py-2">
                     <div>
                       <div className="text-sm font-medium text-theme-primary">{item.reason_code}</div>
@@ -362,6 +364,8 @@ export function PermissionsPanel() {
                   </div>
                 ))}
               </div>
+            ) : (
+              <p className="text-sm text-theme-muted">{t("config.permissions.observability.empty")}</p>
             )}
           </div>
 
@@ -370,11 +374,9 @@ export function PermissionsPanel() {
             <p className="mb-3 text-xs text-theme-muted">
               {t("config.permissions.observability.triageFallback")}
             </p>
-            {!observability?.false_positive_triage?.top_candidate_reasons?.length ? (
-              <p className="text-sm text-theme-muted">{t("config.permissions.observability.empty")}</p>
-            ) : (
+            {hasTopTriageCandidates ? (
               <div className="space-y-2">
-                {observability.false_positive_triage.top_candidate_reasons.map((item) => (
+                {topTriageCandidates.map((item) => (
                   <div key={item.reason_code} className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2">
                     <div>
                       <div className="text-sm font-medium text-theme-primary">{item.reason_code}</div>
@@ -384,6 +386,8 @@ export function PermissionsPanel() {
                   </div>
                 ))}
               </div>
+            ) : (
+              <p className="text-sm text-theme-muted">{t("config.permissions.observability.empty")}</p>
             )}
           </div>
         </div>

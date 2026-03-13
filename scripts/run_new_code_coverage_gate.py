@@ -43,6 +43,7 @@ def _run_pytest(
     junit_xml: str,
     cov_fail_under: float,
     cov_append: bool,
+    workers: int,
 ) -> float:
     if not tests:
         return 0.0
@@ -50,7 +51,7 @@ def _run_pytest(
     cmd = [
         pytest_bin,
         "-n",
-        "4",
+        str(max(1, workers)),
         *tests,
         "-o",
         "junit_family=xunit1",
@@ -242,6 +243,7 @@ def main() -> int:
     parser.add_argument("--coverage-html", default="")
     parser.add_argument("--junit-xml", default="")
     parser.add_argument("--cov-fail-under", type=float, default=0.0)
+    parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--min-coverage", type=float, default=80.0)
     parser.add_argument("--sonar-config", default="sonar-project.properties")
     parser.add_argument("--telemetry-json", default="")
@@ -293,6 +295,7 @@ def main() -> int:
             junit_xml=args.junit_xml,
             cov_fail_under=args.cov_fail_under,
             cov_append=False,
+            workers=args.workers,
         )
     except RuntimeError as exc:
         _print_pytest_failure_triage(
@@ -342,6 +345,7 @@ def main() -> int:
                     junit_xml=args.junit_xml,
                     cov_fail_under=args.cov_fail_under,
                     cov_append=True,
+                    workers=args.workers,
                 )
             except RuntimeError as exc:
                 _print_pytest_failure_triage(

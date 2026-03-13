@@ -96,6 +96,7 @@ jobs:
     env:
       CI: "true"
       PYTHONUNBUFFERED: "1"
+      BACKEND_LITE_PYTEST_WORKERS: "2"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -146,7 +147,9 @@ jobs:
           mkdir -p test-results/sonar
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "Push on main: generating full backend Sonar report."
-            make sonar-reports-backend | tee test-results/sonar/backend-lite.log
+            make sonar-reports-backend \
+              SONAR_BACKEND_PYTEST_WORKERS="${BACKEND_LITE_PYTEST_WORKERS}" \
+            | tee test-results/sonar/backend-lite.log
           else
             DIFF_BASE="origin/main"
             if [ -n "${{ github.base_ref }}" ]; then
@@ -154,6 +157,7 @@ jobs:
             fi
             echo "Pull request: running changed-lines gate with NEW_CODE_DIFF_BASE=${DIFF_BASE}"
             make check-new-code-coverage \
+              NEW_CODE_PYTEST_WORKERS="${BACKEND_LITE_PYTEST_WORKERS}" \
               NEW_CODE_INCLUDE_BASELINE=1 \
               NEW_CODE_AUTO_INCLUDE_CHANGED=1 \
               NEW_CODE_BASELINE_GROUP=config/pytest-groups/ci-lite.txt \

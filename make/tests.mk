@@ -149,9 +149,11 @@ test-all:
 
 sonar-reports-backend:
 	@mkdir -p test-results/sonar
-	pytest -m "not performance and not smoke" -o junit_family=xunit1 --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
+	pytest -n "$(SONAR_BACKEND_PYTEST_WORKERS)" -m "not performance and not smoke" -o junit_family=xunit1 --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
 
 NEW_CODE_COVERAGE_MIN ?= 0
+NEW_CODE_PYTEST_WORKERS ?= 4
+SONAR_BACKEND_PYTEST_WORKERS ?= 1
 NEW_CODE_TEST_GROUP ?= config/pytest-groups/sonar-new-code.txt
 NEW_CODE_BASELINE_GROUP ?= config/pytest-groups/ci-lite.txt
 NEW_CODE_INCLUDE_BASELINE ?= 1
@@ -199,6 +201,7 @@ test-fast-coverage:
 		--coverage-html "$(NEW_CODE_COVERAGE_HTML)" \
 		--junit-xml "$(NEW_CODE_JUNIT_XML)" \
 		--cov-fail-under "$(NEW_CODE_COVERAGE_MIN)" \
+		--workers "$(NEW_CODE_PYTEST_WORKERS)" \
 		--min-coverage "$(NEW_CODE_CHANGED_LINES_MIN)" \
 		--sonar-config "sonar-project.properties"
 

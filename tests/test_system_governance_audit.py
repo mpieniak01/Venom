@@ -177,10 +177,9 @@ def test_get_system_autonomy_observability_returns_policy_snapshot(monkeypatch) 
             }
 
     monkeypatch.setattr(
-        system_governance.metrics_module,
-        "metrics_collector",
-        _Collector(),
-        raising=False,
+        system_governance.tasks_service,
+        "get_metrics_collector",
+        lambda: _Collector(),
     )
 
     response = client.get("/api/v1/system/autonomy/observability")
@@ -202,10 +201,9 @@ def test_get_system_autonomy_observability_returns_503_without_metrics_collector
 ) -> None:
     client = TestClient(app)
     monkeypatch.setattr(
-        system_governance.metrics_module,
-        "metrics_collector",
-        None,
-        raising=False,
+        system_governance.tasks_service,
+        "get_metrics_collector",
+        lambda: None,
     )
 
     response = client.get("/api/v1/system/autonomy/observability")
@@ -216,17 +214,11 @@ def test_get_system_autonomy_observability_returns_503_without_metrics_collector
 def test_get_system_autonomy_rollout_status_ready(monkeypatch) -> None:
     client = TestClient(app)
 
+    monkeypatch.setenv("ENABLE_POLICY_GATE", "true")
     monkeypatch.setattr(
-        system_governance,
-        "policy_gate",
-        SimpleNamespace(enabled=True),
-        raising=False,
-    )
-    monkeypatch.setattr(
-        system_governance.metrics_module,
-        "metrics_collector",
-        object(),
-        raising=False,
+        system_governance.tasks_service,
+        "get_metrics_collector",
+        lambda: object(),
     )
 
     response = client.get("/api/v1/system/autonomy/rollout-status")
@@ -243,17 +235,11 @@ def test_get_system_autonomy_rollout_status_ready(monkeypatch) -> None:
 def test_get_system_autonomy_rollout_status_attention_required(monkeypatch) -> None:
     client = TestClient(app)
 
+    monkeypatch.setenv("ENABLE_POLICY_GATE", "false")
     monkeypatch.setattr(
-        system_governance,
-        "policy_gate",
-        SimpleNamespace(enabled=False),
-        raising=False,
-    )
-    monkeypatch.setattr(
-        system_governance.metrics_module,
-        "metrics_collector",
-        None,
-        raising=False,
+        system_governance.tasks_service,
+        "get_metrics_collector",
+        lambda: None,
     )
 
     response = client.get("/api/v1/system/autonomy/rollout-status")

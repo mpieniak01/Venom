@@ -258,6 +258,7 @@ jobs:
     env:
       CI: "true"
       PYTHONUNBUFFERED: "1"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -291,6 +292,7 @@ jobs:
           args: >
             -Dsonar.newCode.referenceBranch=main
         env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -302,5 +304,6 @@ jobs:
             -Dsonar.newCode.referenceBranch=main
             -Dsonar.architecture.noconfig=true
         env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

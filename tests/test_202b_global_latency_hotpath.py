@@ -199,10 +199,16 @@ def _run_global_path(iterations: int, optimized: bool) -> list[float]:
 
 
 def _write_report(report: dict[str, float]) -> None:
+    artifact_dir = os.getenv("VENOM_TEST_ARTIFACT_DIR", "").strip()
+    default_path = (
+        str(Path(artifact_dir) / "202b-global-latency.json")
+        if artifact_dir
+        else "test-results/perf/202b-global-latency.json"
+    )
     output = Path(
         os.getenv(
             "VENOM_202B_GLOBAL_P95_REPORT",
-            "test-results/perf/202b-global-latency.json",
+            default_path,
         )
     )
     output.parent.mkdir(parents=True, exist_ok=True)

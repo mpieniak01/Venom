@@ -23,7 +23,7 @@ describe("app meta bootstrap", () => {
     (globalThis as { __VENOM_APP_META__?: unknown }).__VENOM_APP_META__ = {
       version: "1.8.0",
       commit: "abc123",
-      environmentRole: "preprod",
+      environmentRole: "pre-prod",
       appName: "Venom Cockpit",
     };
 

@@ -4,8 +4,13 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from venom_core.api.schemas.metrics import MetricsResponse, TokenMetricsResponse
+from venom_core.api.schemas.metrics import (
+    ExecutionModeKPIResponse,
+    MetricsResponse,
+    TokenMetricsResponse,
+)
 from venom_core.core import metrics as metrics_module
+from venom_core.services.execution_mode_kpi import build_execution_mode_kpi_payload
 from venom_core.utils.logger import get_logger
 from venom_core.utils.ttl_cache import TTLCache
 
@@ -22,6 +27,10 @@ TOKEN_METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": TOKEN_METRICS_FETCH_ERROR},
 }
 SYSTEM_METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
+    503: {"description": METRICS_COLLECTOR_UNAVAILABLE},
+    500: {"description": SYSTEM_METRICS_FETCH_ERROR},
+}
+EXECUTION_MODE_KPI_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": METRICS_COLLECTOR_UNAVAILABLE},
     500: {"description": SYSTEM_METRICS_FETCH_ERROR},
 }
@@ -161,6 +170,25 @@ def get_system_metrics():
     try:
         metrics = collector.get_metrics()
         return metrics
+    except Exception as e:
+        logger.exception(SYSTEM_METRICS_FETCH_ERROR)
+        raise HTTPException(status_code=500, detail=SYSTEM_METRICS_FETCH_ERROR) from e
+
+
+@router.get(
+    "/execution-mode",
+    response_model=ExecutionModeKPIResponse,
+    responses=EXECUTION_MODE_KPI_RESPONSES,
+)
+def get_execution_mode_kpi():
+    """Zwraca KPI i alerty planera execution_mode dla dashboardu operacyjnego."""
+    collector = metrics_module.metrics_collector
+    if collector is None:
+        raise HTTPException(status_code=503, detail=METRICS_COLLECTOR_UNAVAILABLE)
+
+    try:
+        metrics = collector.get_metrics()
+        return build_execution_mode_kpi_payload(metrics)
     except Exception as e:
         logger.exception(SYSTEM_METRICS_FETCH_ERROR)
         raise HTTPException(status_code=500, detail=SYSTEM_METRICS_FETCH_ERROR) from e

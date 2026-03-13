@@ -59,6 +59,13 @@ class MetricsCollector:
         }
         self.tool_usage: Dict[str, int] = {}
         self.agent_usage: Dict[str, int] = {}
+        self.execution_mode_usage: Dict[str, int] = {
+            "api_skill": 0,
+            "browser_automation": 0,
+            "gui_fallback": 0,
+        }
+        self.execution_mode_manual_intervention_count = 0
+        self.execution_mode_retry_loop_count = 0
         self.policy_reason_codes: Dict[str, int] = {}
         self.policy_review_candidate_reasons: Dict[str, int] = {}
         self.start_time = datetime.now()
@@ -224,6 +231,26 @@ class MetricsCollector:
             if agent_name not in self.agent_usage:
                 self.agent_usage[agent_name] = 0
             self.agent_usage[agent_name] += 1
+
+    def increment_execution_mode_selected(self, execution_mode: str) -> None:
+        """Inkrementuje licznik wyboru ścieżki execution_mode."""
+        normalized_mode = str(execution_mode or "").strip()
+        if not normalized_mode:
+            return
+        with self._lock:
+            if normalized_mode not in self.execution_mode_usage:
+                self.execution_mode_usage[normalized_mode] = 0
+            self.execution_mode_usage[normalized_mode] += 1
+
+    def increment_execution_mode_manual_intervention(self) -> None:
+        """Inkrementuje licznik ręcznych interwencji wymaganych przez planner."""
+        with self._lock:
+            self.execution_mode_manual_intervention_count += 1
+
+    def increment_execution_mode_retry_loop(self) -> None:
+        """Inkrementuje licznik wykrytych retry-loop dla ścieżek wykonania."""
+        with self._lock:
+            self.execution_mode_retry_loop_count += 1
 
     def add_network_bytes_sent(self, bytes_count: int):
         """
@@ -505,6 +532,35 @@ class MetricsCollector:
                 if total_requests > 0
                 else 0.0
             )
+            execution_mode_total = sum(self.execution_mode_usage.values())
+            execution_mode_share_rate = {
+                mode: (
+                    round((count / execution_mode_total) * 100, 2)
+                    if execution_mode_total > 0
+                    else 0.0
+                )
+                for mode, count in self.execution_mode_usage.items()
+            }
+            manual_intervention_rate = (
+                round(
+                    (
+                        self.execution_mode_manual_intervention_count
+                        / execution_mode_total
+                    )
+                    * 100,
+                    2,
+                )
+                if execution_mode_total > 0
+                else 0.0
+            )
+            retry_loop_rate = (
+                round(
+                    (self.execution_mode_retry_loop_count / execution_mode_total) * 100,
+                    2,
+                )
+                if execution_mode_total > 0
+                else 0.0
+            )
             top_reason_codes = self._build_reason_distribution(
                 self.policy_reason_codes,
                 policy_blocked,
@@ -531,6 +587,14 @@ class MetricsCollector:
                     "llm_only": self.metrics["llm_only_requests"],
                     "tool_required": self.metrics["tool_required_requests"],
                     "learning_logged": self.metrics["learning_logged"],
+                    "execution_mode": {
+                        "total": execution_mode_total,
+                        "counts": self.execution_mode_usage.copy(),
+                        "share_rate": execution_mode_share_rate,
+                        "success_rate": self._calculate_success_rate(),
+                        "manual_intervention_rate": manual_intervention_rate,
+                        "retry_loop_rate": retry_loop_rate,
+                    },
                 },
                 "feedback": {
                     "up": self.metrics["feedback_up"],

@@ -23,8 +23,15 @@ from venom_core.core.policy_gate import (
 )
 from venom_core.core.tracer import TraceStatus
 from venom_core.services.audit_stream import get_audit_stream
-from venom_core.services.execution_mode_planner import decide_execution_mode
-from venom_core.services.execution_template_planner import resolve_api_skill_template
+from venom_core.services.execution_mode_planner import (
+    decide_execution_mode,
+    resolve_gui_fallback_contract,
+)
+from venom_core.services.execution_template_planner import (
+    resolve_api_skill_template,
+    resolve_browser_execution_contract,
+    resolve_browser_profile,
+)
 from venom_core.utils.logger import get_logger
 
 from .constants import (
@@ -235,9 +242,21 @@ def _store_execution_mode_metadata(
     orch: "Orchestrator", task_id: UUID, request: TaskRequest, intent: str
 ) -> None:
     decision = decide_execution_mode(request=request, intent=intent)
+    collector = metrics_module.metrics_collector
+    if collector is not None:
+        collector.increment_execution_mode_selected(decision.execution_mode)
+
     template_decision = None
+    browser_profile = None
+    browser_execution_contract = None
+    gui_fallback_contract = None
     if decision.execution_mode == "api_skill":
         template_decision = resolve_api_skill_template(request=request, intent=intent)
+    elif decision.execution_mode == "browser_automation":
+        browser_profile = resolve_browser_profile(request=request, intent=intent)
+        browser_execution_contract = resolve_browser_execution_contract(browser_profile)
+    elif decision.execution_mode == "gui_fallback":
+        gui_fallback_contract = resolve_gui_fallback_contract(decision)
 
     updates = {
         "execution_mode": decision.execution_mode,
@@ -249,6 +268,12 @@ def _store_execution_mode_metadata(
             "template_id": template_decision.template_id,
             "source": template_decision.source,
         }
+    if browser_profile is not None:
+        updates["browser_profile"] = browser_profile
+    if browser_execution_contract is not None:
+        updates["browser_execution_contract"] = browser_execution_contract
+    if gui_fallback_contract is not None:
+        updates["gui_fallback_contract"] = gui_fallback_contract
 
     orch.state_manager.update_context(
         task_id,
@@ -259,8 +284,19 @@ def _store_execution_mode_metadata(
             "execution_mode": decision.execution_mode,
             "fallback_reason": decision.fallback_reason,
             "reason_code": decision.reason_code,
-            "template_id": (
-                template_decision.template_id if template_decision is not None else None
+            "template_id": getattr(template_decision, "template_id", None),
+            "browser_profile": browser_profile,
+            "browser_timeout_seconds": (
+                browser_execution_contract.get("timeout_seconds")
+                if browser_execution_contract
+                else None
+            ),
+            "gui_fail_closed": (
+                gui_fallback_contract.get("safety", {}).get(
+                    "critical_steps_fail_closed"
+                )
+                if gui_fallback_contract
+                else None
             ),
         }
         orch.request_tracer.add_step(

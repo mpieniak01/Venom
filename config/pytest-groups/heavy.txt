@@ -11,3 +11,7 @@ tests/perf/test_llm_simple_e2e.py
 tests/perf/test_session_store_integrity_e2e.py
 tests/perf/test_state_integrity_e2e.py
 tests/perf/test_vector_memory_upsert_e2e.py
+tests/test_202b_global_latency_hotpath.py
+tests/test_execution_mode_planner_perf.py
+tests/test_orchestrator_risk_context_perf.py
+tests/test_routing_integration_perf.py

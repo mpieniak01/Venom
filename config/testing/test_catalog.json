@@ -285,6 +285,18 @@
       "rationale": "Fast deterministic regression check used by mandatory CI-lite lane."
     },
     {
+      "path": "tests/test_202b_global_latency_hotpath.py",
+      "domain": "api",
+      "test_type": "perf",
+      "intent": "performance",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Performance scenario kept outside fast lanes."
+    },
+    {
       "path": "tests/test_academy_adapter_runtime_service.py",
       "domain": "academy",
       "test_type": "service_contract",
@@ -1899,6 +1911,18 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_execution_mode_planner_perf.py",
+      "domain": "api",
+      "test_type": "perf",
+      "intent": "performance",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Performance scenario kept outside fast lanes."
     },
     {
       "path": "tests/test_executive_agent_roi.py",
@@ -3986,6 +4010,18 @@
       "rationale": "Default release-lane regression coverage."
     },
     {
+      "path": "tests/test_orchestrator_risk_context_perf.py",
+      "domain": "orchestrator",
+      "test_type": "perf",
+      "intent": "performance",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Performance scenario kept outside fast lanes."
+    },
+    {
       "path": "tests/test_ota_manager.py",
       "domain": "misc",
       "test_type": "unit",
@@ -4599,6 +4635,18 @@
       ],
       "legacy_targeted": false,
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
+      "path": "tests/test_routing_integration_perf.py",
+      "domain": "misc",
+      "test_type": "perf",
+      "intent": "performance",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Performance scenario kept outside fast lanes."
     },
     {
       "path": "tests/test_runtime_controller_api.py",

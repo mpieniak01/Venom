@@ -75,18 +75,38 @@ export function resolveCockpitActiveRuntimeInfo(
   fallback: ActiveRuntimeInfo,
 ): ActiveRuntimeInfo {
   const catalogRuntimes = catalog?.runtimes ?? [];
-  const declaredRuntimeId =
-    normalizeRuntimeId(catalog?.active?.runtime_id || catalog?.active?.active_server);
-  const activeRuntime =
-    catalogRuntimes.find(
-      (runtime) => normalizeRuntimeId(runtime.runtime_id) === declaredRuntimeId,
-    ) ??
-    catalogRuntimes.find((runtime) => runtime.active) ??
-    null;
+  const declaredRuntimeId = normalizeRuntimeId(
+    catalog?.active?.runtime_id || catalog?.active?.active_server,
+  );
+
+  let activeRuntime: CatalogRuntime | null = null;
+  let firstActiveRuntime: CatalogRuntime | null = null;
+  if (catalogRuntimes.length > 0) {
+    for (const runtime of catalogRuntimes) {
+      if (!firstActiveRuntime && runtime.active) {
+        firstActiveRuntime = runtime;
+      }
+      if (
+        declaredRuntimeId &&
+        normalizeRuntimeId(runtime.runtime_id) === declaredRuntimeId
+      ) {
+        activeRuntime = runtime;
+        break;
+      }
+    }
+  }
+  if (!activeRuntime) {
+    activeRuntime = firstActiveRuntime;
+  }
+
+  const activeRuntimeNormalizedId = normalizeRuntimeId(activeRuntime?.runtime_id || "");
+  const fallbackRuntimeId = normalizeRuntimeId(
+    fallback?.active_server || fallback?.runtime_id || "",
+  );
   const activeRuntimeId =
     declaredRuntimeId ||
-    normalizeRuntimeId(activeRuntime?.runtime_id || "") ||
-    normalizeRuntimeId(fallback?.active_server || fallback?.runtime_id || "");
+    activeRuntimeNormalizedId ||
+    fallbackRuntimeId;
 
   if (!activeRuntimeId) {
     return fallback;
@@ -96,8 +116,7 @@ export function resolveCockpitActiveRuntimeInfo(
   const declaredActiveModel = (catalog?.active?.active_model || "").trim();
   const runtimeActiveModel = runtimeModels.find((model) => model.active)?.name || "";
   const activeModelFromCatalog = declaredActiveModel || runtimeActiveModel.trim();
-  const fallbackMatchesActiveRuntime =
-    normalizeRuntimeId(fallback?.active_server || fallback?.runtime_id || "") === activeRuntimeId;
+  const fallbackMatchesActiveRuntime = fallbackRuntimeId === activeRuntimeId;
   let resolvedActiveModel: string | null = null;
   if (activeModelFromCatalog) {
     resolvedActiveModel = activeModelFromCatalog;

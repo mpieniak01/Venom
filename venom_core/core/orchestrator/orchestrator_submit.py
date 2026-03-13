@@ -195,12 +195,13 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
         runtime_info=runtime_info,
         state_manager=orch.state_manager,
     )
+    routing_payload = routing_decision.to_dict()
     execution_mode_decision = decide_execution_mode(request=request, intent=None)
     orch.state_manager.update_context(
         task.id,
         {
             "llm_runtime": runtime_context,
-            "routing_decision": routing_decision.to_dict(),
+            "routing_decision": routing_payload,
             "execution_mode": execution_mode_decision.execution_mode,
             "fallback_reason": execution_mode_decision.fallback_reason,
             "execution_mode_reason_code": execution_mode_decision.reason_code,
@@ -214,7 +215,7 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
             "RoutingDecision",
             "compute",
             status="ok",
-            details=str(routing_decision.to_dict()),
+            details=str(routing_payload),
         )
 
     log_message = f"Zadanie uruchomione: {get_utc_now_iso()}"

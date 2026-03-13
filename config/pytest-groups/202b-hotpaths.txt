@@ -1,0 +1,12 @@
+# 202B quality gate: hot-path functional + perf regressions
+
+tests/test_execution_mode_planner.py
+tests/test_execution_mode_planner_perf.py
+tests/test_orchestrator_decision_gates.py
+tests/test_policy_gate_integration.py
+tests/test_orchestrator_risk_context_perf.py
+tests/test_routing_integration.py
+tests/test_routing_integration_perf.py
+tests/test_routing_contract.py
+tests/test_orchestrator_core_scenarios.py
+tests/test_202b_global_latency_hotpath.py

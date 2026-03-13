@@ -15,6 +15,10 @@ export type AppMeta = {
 let cachedMeta: AppMeta | null = null;
 let metaLoadPromise: Promise<AppMeta> | null = null;
 
+declare global {
+  var __VENOM_APP_META__: AppMeta | undefined;
+}
+
 export function normalizeEnvironmentRole(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   const normalized = raw.trim().toLowerCase();
@@ -35,7 +39,21 @@ function fallbackMeta(): AppMeta {
   };
 }
 
+export function resolveBootstrappedMeta(): AppMeta | null {
+  const payload = globalThis.__VENOM_APP_META__;
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const merged = { ...fallbackMeta(), ...payload };
+  cachedMeta = merged;
+  return merged;
+}
+
 async function loadMeta(): Promise<AppMeta> {
+  const bootstrapped = resolveBootstrappedMeta();
+  if (bootstrapped) {
+    return bootstrapped;
+  }
   try {
     const response = await fetch("/meta.json", { cache: "no-store" });
     if (!response.ok) throw new Error("meta fetch failed");
@@ -54,7 +72,9 @@ async function loadMeta(): Promise<AppMeta> {
 }
 
 export function useAppMeta() {
-  const [meta, setMeta] = useState<AppMeta | null>(cachedMeta ?? fallbackMeta());
+  const [meta, setMeta] = useState<AppMeta | null>(
+    cachedMeta ?? resolveBootstrappedMeta() ?? fallbackMeta(),
+  );
 
   useEffect(() => {
     let active = true;

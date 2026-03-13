@@ -60,6 +60,29 @@ test-preprod-readonly-smoke:
 test-perf:
 	pytest -m performance
 
+TEST_202B_GROUP ?= config/pytest-groups/202b-hotpaths.txt
+
+test-202b-gate:
+	@echo "🧪 Uruchamiam quality gate 202B (hot paths + performance regressions)..."
+	@TESTS=$$(grep -vE '^\s*(#|$$)' "$(TEST_202B_GROUP)"); \
+	if [ -z "$$TESTS" ]; then \
+		echo "❌ Brak testów w $(TEST_202B_GROUP)"; \
+		exit 1; \
+	fi; \
+	$(PYTEST_BIN) -q $$TESTS
+
+test-202b-web-gate:
+	@echo "🧪 Uruchamiam frontend gate 202B (runtime selection hot path)..."
+	@cd $(WEB_DIR) && node --import tsx --test \
+		tests/app-meta-bootstrap.test.ts \
+		tests/cockpit-runtime-selection.test.ts \
+		tests/cockpit-chat-send-model-selection.test.ts \
+		tests/cockpit-model-option-labels.test.ts
+
+test-202b-global-p95:
+	@echo "🧪 Uruchamiam globalny pomiar p95 dla ścieżki 202B..."
+	@$(PYTEST_BIN) -q tests/test_202b_global_latency_hotpath.py
+
 test-llm-manual:
 	@echo "🧪 Manual LLM/runtime tests (operator-triggered only)"
 	pytest -m manual_llm

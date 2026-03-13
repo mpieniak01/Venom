@@ -39,6 +39,11 @@ export default function RootLayout({
 }>) {
   const serializedThemeIds = JSON.stringify(THEME_IDS);
   const serializedThemeAliases = JSON.stringify(LEGACY_THEME_ALIASES);
+  const serializedAppMeta = JSON.stringify({
+    version: process.env.NEXT_PUBLIC_APP_VERSION,
+    commit: process.env.NEXT_PUBLIC_APP_COMMIT,
+    environmentRole: process.env.NEXT_PUBLIC_ENVIRONMENT_ROLE,
+  });
   const themeBootstrapScript = `
     (function () {
       var validThemes = ${serializedThemeIds};
@@ -62,6 +67,15 @@ export default function RootLayout({
       }
     })();
   `;
+  const appMetaBootstrapScript = `
+    (function () {
+      try {
+        globalThis.__VENOM_APP_META__ = ${serializedAppMeta};
+      } catch (e) {
+        globalThis.__VENOM_APP_META__ = {};
+      }
+    })();
+  `;
 
   return (
     <html lang="pl" data-theme={DEFAULT_THEME} suppressHydrationWarning>
@@ -70,6 +84,11 @@ export default function RootLayout({
           id="venom-theme-bootstrap"
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: themeBootstrapScript }}
+        />
+        <Script
+          id="venom-app-meta-bootstrap"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: appMetaBootstrapScript }}
         />
       </head>
       <body className={`${inter.variable} ${jetBrains.variable} font-sans antialiased`}>

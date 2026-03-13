@@ -1,4 +1,4 @@
-# Venom v1.7.0 🐍
+# Venom v1.8 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -36,15 +36,15 @@ To nie jest "czarna skrzynka". W praktyce dostajesz jawne sterowanie procesem (W
 - 🔍 **Transparentność i pełna audytowalność** - śledzenie end-to-end decyzji, działań i wyników dla zaufania operacyjnego, compliance oraz szybszej analizy incydentów.
 - 🔌 **Rozszerzalność** - narzędzia lokalne i import MCP z repozytoriów Git.
 
-## Ostatnie wdrożenia (2026-02)
-- Kamień milowy 1.7.0: produkcyjna gotowość lokalnego 3-stack runtime, większa ciągłość działania i mniejsze ryzyko zależności od pojedynczego providera.
-- Uporządkowano bazę bezpieczeństwa i governance (`Policy Gate`, limity kosztów, fallback), co podnosi bezpieczeństwo operacyjne.
-- Uspójniono model operacyjny (`Workflow Control Plane`, monitoring, konfiguracja i aktywacja runtime).
-- Wdrożono wspólną warstwę kontroli ruchu API (anti-ban/anti-loop) dla komunikacji inbound i outbound.
-- Wzmocniono tor jakości i uczenia (`Academy`, router intencji, polityka artefaktów testowych) dla większej powtarzalności dostarczeń.
-- Ustabilizowano profile onboardingowe runtime (`light/llm_off/full`) w launcherze `venom.sh` (PL/EN/DE, tryb headless).
-- Domknięto API Contract Wave-1 (synchronizacja OpenAPI/codegen, jawne schematy odpowiedzi, cleanup DI).
-- Otworzono platformę modułów opcjonalnych: moduły własne można włączać przez registry sterowane środowiskiem.
+## Ostatnie wdrożenia (2026-03, v1.8)
+- Global Policy Gate działa jako jeden centralny checkpoint runtime w przepływie orchestratora (`global_pre_execution`).
+- Ujednolicono kontrakt blokad policy/autonomy (`reason_code`, `user_message`, `technical_context`, `remediation_hint`) oraz zapis audytowy.
+- Dodano endpointy operacyjne dla rollout i KPI policy:
+  - `GET /api/v1/system/autonomy/rollout-status`
+  - `GET /api/v1/system/autonomy/observability`
+- Dostarczono skrypt walidacji rollout: `scripts/ops/verify_policy_rollout.py`.
+- Uproszczono ścieżkę wykonawczą do governance runtime-only (usunięto legacy submit-level policy block ze ścieżki wykonania).
+- Rozszerzono UI `/config` o zakładkę `Uprawnienia` i sterowanie autonomią/audytem na tym samym strumieniu zdarzeń.
 
 ## Dokumentacja
 ### Start i operacje
@@ -439,14 +439,22 @@ make check-new-code-coverage
 - [x] Integracja ONNX Runtime jako trzeciego lokalnego silnika LLM (3-stack: Ollama + vLLM + ONNX).
 - [x] Aktualizacja strategii profili runtime i instalacji (minimum API-first + opcjonalne stosy lokalne).
 
-### ✅ v1.7 (obecna)
+### ✅ v1.7
 - [x] Dowieziono obsługę modeli zdalnych (`/models` remote tab + status providerów, katalog, mapa spięć, walidacja dla ścieżek GPT/Gemini).
 - [x] Utwardzono globalną kontrolę ruchu inbound/outbound (limity, retry/circuit-breaker, bezpieczniejsze zachowanie pod obciążeniem).
 - [x] Rozszerzono obserwowalność konfiguracji i audytu (kanoniczny audit stream i lepsza widoczność zmian config/runtime).
 - [x] Domknięto falę hardeningu Academy/API (dekompozycja modułów, spójność kontraktów, bezpieczniejsze ścieżki upload/trening/historia).
 - [x] Sfinalizowano model pracy pre-prod na wspólnym stacku (separacja danych, podział `.env.dev`/`.env.preprod`, sterowanie Makefile, guard rails, backup/restore/smoke).
 
-### 🚧 v1.8 (planowane detale)
+### ✅ v1.8 (obecna)
+- [x] Zmniejszono ryzyko nieautoryzowanego wykonania zadań i kosztów błędów operacyjnych dzięki jednolitym zasadom decyzji runtime.
+- [x] Skrócono czas diagnozy incydentów i blokad dzięki spójnemu feedbackowi, lepszej widoczności powodów decyzji i pełniejszemu audytowi.
+- [x] Zwiększono bezpieczeństwo automatyzacji działań na plikach i desktopie, co ogranicza liczbę awarii oraz ręcznych interwencji operatora.
+- [x] Podniesiono jakość odpowiedzi i powtarzalność pracy przez spójny model wiedzy oraz stabilniejszą ścieżkę uczenia systemu.
+- [x] Zwiększono przewidywalność wydań i wdrożeń dzięki mocniejszym bramkom jakości oraz operacyjnej walidacji gotowości rollout.
+- [x] Ułatwiono skalowanie pracy zespołu: mniej wyjątków ad-hoc, bardziej jednolite procesy i szybsze przekazywanie odpowiedzialności między rolami.
+
+### 🚧 v1.9 (planowane detale)
 - [ ] Odpytywanie w tle dla GitHub Issues.
 - [ ] Panel dashboardu dla integracji zewnętrznych.
 - [ ] Rekurencyjne streszczanie długich dokumentów.

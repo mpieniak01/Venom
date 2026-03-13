@@ -1,4 +1,4 @@
-# Venom v1.7.0 🐍
+# Venom v1.8 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -36,15 +36,15 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - 🔍 **Transparency and full auditability** - end-to-end trace of decisions, actions, and outcomes for operational trust, compliance, and faster incident review.
 - 🔌 **Extensibility** - local tools and MCP import from Git repositories.
 
-## Recent updates (2026-02)
-- Release 1.7.0 milestone: local 3-stack runtime is production-ready, giving teams better continuity and lower provider risk.
-- Security/governance baseline was hardened (`Policy Gate`, cost limits, fallback policy) to improve operational safety.
-- Workflow Control Plane and runtime governance were unified into one operating model (monitoring + configuration + activation flow).
-- API traffic control and anti-ban guardrails were integrated as a shared core layer for inbound/outbound communication.
-- Quality and learning track was strengthened (`Academy`, intent routing rollout, test-artifact policy) to improve repeatability of delivery.
-- Runtime onboarding profiles (`light/llm_off/full`) were stabilized in `venom.sh` (PL/EN/DE + headless mode).
-- API Contract Wave-1 was closed (OpenAPI/codegen sync, explicit response schemas, DI cleanup).
-- Optional modules platform was opened: custom modules can be enabled through environment-driven registry.
+## Recent updates (2026-03, v1.8)
+- Global Policy Gate is active as one central runtime checkpoint in orchestrator flow (`global_pre_execution`).
+- Deny contract was unified across policy/autonomy (`reason_code`, `user_message`, `technical_context`, `remediation_hint`) with consistent audit eventing.
+- Operational endpoints for policy rollout and KPI were added:
+  - `GET /api/v1/system/autonomy/rollout-status`
+  - `GET /api/v1/system/autonomy/observability`
+- Rollout verification script was delivered: `scripts/ops/verify_policy_rollout.py`.
+- Runtime path was simplified to runtime-only governance (legacy submit-level policy block path removed from execution flow).
+- Permissions UI in `/config` was expanded with the `Permissions` tab and autonomy/audit controls aligned with the same audit stream.
 
 ## Documentation
 ### Start and operations
@@ -435,14 +435,22 @@ make check-new-code-coverage
 - [x] Runtime profiles and installation strategy update (minimal/API-first + optional local stacks).
 - [x] Runtime control-plane improvements and provider/runtime governance stabilization.
 
-### ✅ v1.7 (current)
+### ✅ v1.7
 - [x] Remote models capabilities delivered (`/models` remote tab + provider status/catalog/connectivity/validation for GPT/Gemini paths).
 - [x] Global traffic-control hardening for inbound/outbound requests (limits, retry/circuit-breaker policies, safer runtime behavior under load).
 - [x] Configuration/audit observability expanded (canonical audit stream and stronger operational visibility for config/runtime changes).
 - [x] Academy/API hardening wave completed (module decomposition, contract consistency, safer upload/training/history paths).
 - [x] Pre-prod operating model finalized on shared stack (data isolation, env split `.env.dev`/`.env.preprod`, Makefile control, guard rails, backup/restore/smoke).
 
-### 🚧 v1.8 (planned details)
+### ✅ v1.8 (current)
+- [x] Reduced operational and compliance risk by enforcing one consistent decision model for runtime execution.
+- [x] Shortened incident triage time with clearer decision feedback, stronger audit visibility, and more actionable blocking context.
+- [x] Improved execution safety for file and desktop automation, reducing failure rate and manual operator intervention.
+- [x] Increased response quality and repeatability by stabilizing the learning path and unifying knowledge behavior.
+- [x] Improved release predictability through stronger quality gates and explicit operational rollout-readiness validation.
+- [x] Increased team delivery throughput with fewer ad-hoc exceptions, more consistent flows, and cleaner ownership handovers.
+
+### 🚧 v1.9 (planned details)
 - [ ] Background polling for GitHub Issues.
 - [ ] Dashboard panel for external integrations.
 - [ ] Recursive long-document summarization.

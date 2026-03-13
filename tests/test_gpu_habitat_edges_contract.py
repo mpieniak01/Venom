@@ -602,7 +602,9 @@ def test_check_local_dependencies_missing_core_packages_message_contains_interpr
         return object()
 
     monkeypatch.setattr(gpu_habitat_mod.importlib, "import_module", _fake_import)
-    with pytest.raises(RuntimeError, match="Zainstaluj je w aktywnym interpreterze") as exc_info:
+    with pytest.raises(
+        RuntimeError, match="Zainstaluj je w aktywnym interpreterze"
+    ) as exc_info:
         habitat._check_local_dependencies()
     assert sys.executable in str(exc_info.value)
     assert " -m pip install " in str(exc_info.value)

@@ -51,7 +51,10 @@ export function AdaptersPanel() {
       catalog.active?.runtime_id || catalog.active?.active_server || "",
     ).trim();
     const activeModelId = String(
-      catalog.active?.model_id || catalog.active?.active_model || "",
+      catalog.active?.model_id ||
+      catalog.active?.resolved_model_id ||
+      catalog.active?.active_model ||
+      "",
     ).trim();
     const resolvedRuntime =
       runtimeOverride ||

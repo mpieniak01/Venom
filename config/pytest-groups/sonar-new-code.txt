@@ -170,6 +170,7 @@ tests/test_orchestrator_compat_exports.py
 tests/test_orchestrator_compat_module.py
 tests/test_orchestrator_components.py
 tests/test_orchestrator_core_scenarios.py
+tests/test_orchestrator_decision_gates.py
 tests/test_orchestrator_flows_regression.py
 tests/test_parallel_skill.py
 tests/test_permission_guard.py

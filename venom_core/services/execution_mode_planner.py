@@ -89,3 +89,29 @@ def decide_execution_mode(
         )
 
     return ExecutionModeDecision(execution_mode="api_skill")
+
+
+def resolve_gui_fallback_contract(
+    decision: ExecutionModeDecision,
+) -> dict[str, object] | None:
+    """Build a deterministic governance contract for gui_fallback mode."""
+    if decision.execution_mode != "gui_fallback":
+        return None
+
+    return {
+        "entry_gate": {
+            "api_skill_available": False,
+            "browser_stable_path_available": False,
+            "entry_validated": True,
+        },
+        "fallback_reason": decision.fallback_reason,
+        "reason_code": decision.reason_code,
+        "autonomy": {
+            "required_level": "elevated",
+            "audit_trail_required": True,
+        },
+        "safety": {
+            "critical_steps_fail_closed": True,
+            "terminal_blocks_retryable": False,
+        },
+    }

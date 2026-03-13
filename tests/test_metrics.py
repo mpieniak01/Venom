@@ -501,3 +501,35 @@ class TestMetricsCollector:
         assert ollama["prompt_eval_count_total"] == 15
         assert ollama["eval_count_total"] == 29
         assert ollama["load_duration_avg_ms"] == 10.0
+
+    def test_execution_mode_metrics_are_exposed_in_routing(self):
+        collector = MetricsCollector()
+        collector.increment_task_created()
+        collector.increment_task_created()
+        collector.increment_task_completed()
+        collector.increment_execution_mode_selected("api_skill")
+        collector.increment_execution_mode_selected("browser_automation")
+        collector.increment_execution_mode_manual_intervention()
+
+        execution_mode_metrics = collector.get_metrics()["routing"]["execution_mode"]
+
+        assert execution_mode_metrics["total"] == 2
+        assert execution_mode_metrics["counts"]["api_skill"] == 1
+        assert execution_mode_metrics["counts"]["browser_automation"] == 1
+        assert execution_mode_metrics["share_rate"]["api_skill"] == 50.0
+        assert execution_mode_metrics["share_rate"]["browser_automation"] == 50.0
+        assert execution_mode_metrics["success_rate"] == 50.0
+        assert execution_mode_metrics["manual_intervention_rate"] == 50.0
+        assert execution_mode_metrics["retry_loop_rate"] == 0.0
+
+    def test_execution_mode_metrics_handle_zero_total(self):
+        collector = MetricsCollector()
+
+        execution_mode_metrics = collector.get_metrics()["routing"]["execution_mode"]
+
+        assert execution_mode_metrics["total"] == 0
+        assert execution_mode_metrics["share_rate"]["api_skill"] == 0.0
+        assert execution_mode_metrics["share_rate"]["browser_automation"] == 0.0
+        assert execution_mode_metrics["share_rate"]["gui_fallback"] == 0.0
+        assert execution_mode_metrics["manual_intervention_rate"] == 0.0
+        assert execution_mode_metrics["retry_loop_rate"] == 0.0

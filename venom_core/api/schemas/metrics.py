@@ -68,3 +68,13 @@ class TokenMetricsResponse(BaseModel):
     session_cost_usd: float | None = None
     models_breakdown: dict[str, dict[str, Any]] = Field(default_factory=dict)
     note: str | None = None
+
+
+class ExecutionModeKPIResponse(BaseModel):
+    """Execution mode planner KPI payload for operational dashboarding."""
+
+    model_config = ConfigDict(extra="allow")
+
+    status: str | None = None
+    kpi: dict[str, Any] = Field(default_factory=dict)
+    alerts: dict[str, Any] = Field(default_factory=dict)

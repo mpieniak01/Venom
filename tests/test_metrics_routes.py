@@ -258,3 +258,48 @@ def test_get_token_metrics_economist_exception_returns_500(monkeypatch, client):
 
     response = client.get("/api/v1/metrics/tokens")
     assert response.status_code == 500
+
+
+def test_get_execution_mode_kpi_requires_collector(monkeypatch, client):
+    metrics_routes.set_dependencies(token_economist=None)
+    monkeypatch.setattr(metrics_module, "metrics_collector", None)
+
+    response = client.get("/api/v1/metrics/execution-mode")
+    assert response.status_code == 503
+
+
+def test_get_execution_mode_kpi_returns_dashboard_payload(monkeypatch, client):
+    class DummyCollector:
+        def get_metrics(self):
+            return {
+                "routing": {
+                    "execution_mode": {
+                        "total": 10,
+                        "counts": {
+                            "api_skill": 6,
+                            "browser_automation": 2,
+                            "gui_fallback": 2,
+                        },
+                        "share_rate": {
+                            "api_skill": 60.0,
+                            "browser_automation": 20.0,
+                            "gui_fallback": 20.0,
+                        },
+                        "success_rate": 90.0,
+                        "manual_intervention_rate": 10.0,
+                        "retry_loop_rate": 0.0,
+                    }
+                }
+            }
+
+    metrics_routes.set_dependencies(token_economist=None)
+    monkeypatch.setattr(metrics_module, "metrics_collector", DummyCollector())
+
+    response = client.get("/api/v1/metrics/execution-mode")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["kpi"]["total"] == 10
+    assert data["kpi"]["share_rate"]["gui_fallback"] == pytest.approx(20.0)
+    assert data["alerts"]["gui_fallback_overuse"]["active"] is True
+    assert data["alerts"]["gui_fallback_overuse"]["severity"] == "high"

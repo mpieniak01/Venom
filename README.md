@@ -1,4 +1,4 @@
-# Venom v1.8.0 🐍
+# Venom v1.8 🐍
 [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
 [![OpenAPI Contract](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/ci.yml?branch=main&logo=swagger&logoColor=white&label=OpenAPI%20Contract)](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml)
 [![SonarCloud Quality](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
@@ -36,15 +36,15 @@ It is not a black box. You get explicit process control (Workflow Control Plane)
 - 🔍 **Transparency and full auditability** - end-to-end trace of decisions, actions, and outcomes for operational trust, compliance, and faster incident review.
 - 🔌 **Extensibility** - local tools and MCP import from Git repositories.
 
-## Recent updates (2026-03)
-- Release 1.8.0 milestone: Global Policy Gate rollout orchestration is operationally validated (`rollout-status`, observability KPI, rollout verification script), strengthening runtime governance for mainline fix releases.
-- Security/governance baseline was hardened (`Policy Gate`, cost limits, fallback policy) to improve operational safety.
-- Workflow Control Plane and runtime governance were unified into one operating model (monitoring + configuration + activation flow).
-- API traffic control and anti-ban guardrails were integrated as a shared core layer for inbound/outbound communication.
-- Quality and learning track was strengthened (`Academy`, intent routing rollout, test-artifact policy) to improve repeatability of delivery.
-- Runtime onboarding profiles (`light/llm_off/full`) were stabilized in `venom.sh` (PL/EN/DE + headless mode).
-- API Contract Wave-1 was closed (OpenAPI/codegen sync, explicit response schemas, DI cleanup).
-- Optional modules platform was opened: custom modules can be enabled through environment-driven registry.
+## Recent updates (2026-03, v1.8)
+- Global Policy Gate is active as one central runtime checkpoint in orchestrator flow (`global_pre_execution`).
+- Deny contract was unified across policy/autonomy (`reason_code`, `user_message`, `technical_context`, `remediation_hint`) with consistent audit eventing.
+- Operational endpoints for policy rollout and KPI were added:
+  - `GET /api/v1/system/autonomy/rollout-status`
+  - `GET /api/v1/system/autonomy/observability`
+- Rollout verification script was delivered: `scripts/ops/verify_policy_rollout.py`.
+- Runtime path was simplified to runtime-only governance (legacy submit-level policy block path removed from execution flow).
+- Permissions UI in `/config` was expanded with the `Permissions` tab and autonomy/audit controls aligned with the same audit stream.
 
 ## Documentation
 ### Start and operations

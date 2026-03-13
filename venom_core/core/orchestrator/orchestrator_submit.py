@@ -9,6 +9,7 @@ from uuid import UUID
 from venom_core.config import SETTINGS
 from venom_core.core import routing_integration
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
+from venom_core.services.execution_mode_planner import decide_execution_mode
 from venom_core.utils.helpers import get_utc_now, get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -194,11 +195,15 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
         runtime_info=runtime_info,
         state_manager=orch.state_manager,
     )
+    execution_mode_decision = decide_execution_mode(request=request, intent=None)
     orch.state_manager.update_context(
         task.id,
         {
             "llm_runtime": runtime_context,
             "routing_decision": routing_decision.to_dict(),
+            "execution_mode": execution_mode_decision.execution_mode,
+            "fallback_reason": execution_mode_decision.fallback_reason,
+            "execution_mode_reason_code": execution_mode_decision.reason_code,
         },
     )
 
@@ -231,13 +236,20 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
     # Handle queue or pause
     queue_response = await _handle_queue_or_pause(orch, task, request, runtime_info)
     if queue_response is not None:
+        queue_response.execution_mode = execution_mode_decision.execution_mode
+        queue_response.fallback_reason = execution_mode_decision.fallback_reason
         return queue_response
 
     # Schedule execution
     _schedule_task_execution(orch, task.id, request)
 
     logger.info("Zadanie %s przyjęte do wykonania", task.id)
-    return _build_task_response(task, runtime_info)
+    return _build_task_response(
+        task,
+        runtime_info,
+        execution_mode=execution_mode_decision.execution_mode,
+        fallback_reason=execution_mode_decision.fallback_reason,
+    )
 
 
 async def run_task_with_queue(
@@ -302,7 +314,12 @@ def should_use_fast_path(request: TaskRequest) -> bool:
     return len(request.content) <= 500
 
 
-def _build_task_response(task, runtime_info) -> TaskResponse:
+def _build_task_response(
+    task,
+    runtime_info,
+    execution_mode: str | None = None,
+    fallback_reason: str | None = None,
+) -> TaskResponse:
     return TaskResponse(
         task_id=task.id,
         status=task.status,
@@ -310,4 +327,6 @@ def _build_task_response(task, runtime_info) -> TaskResponse:
         llm_provider=runtime_info.provider,
         llm_model=runtime_info.model_name,
         llm_endpoint=runtime_info.endpoint,
+        execution_mode=execution_mode,
+        fallback_reason=fallback_reason,
     )

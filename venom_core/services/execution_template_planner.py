@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from venom_core.core.models import TaskRequest
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ExecutionTemplateDecision:
     template_id: str
     source: str
@@ -78,43 +78,66 @@ BROWSER_PROFILE_POLICY = {
     },
 }
 
+FORCED_TOOL_TEMPLATE_DECISIONS = {
+    tool: ExecutionTemplateDecision(template_id=template_id, source="forced_tool")
+    for tool, template_id in FORCED_TOOL_TEMPLATE_MAP.items()
+}
+
+INTENT_TEMPLATE_DECISIONS = {
+    intent: ExecutionTemplateDecision(template_id=template_id, source="intent")
+    for intent, template_id in INTENT_TEMPLATE_MAP.items()
+}
+
+TOKEN_SEPARATOR_TRANSLATION = str.maketrans({"_": " ", "-": " "})
+
+
+def _normalize_lower(value: object | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def _normalize_upper(value: object | None) -> str:
+    return str(value or "").strip().upper()
+
+
+def _content_tokens(content: str) -> list[str]:
+    return content.translate(TOKEN_SEPARATOR_TRANSLATION).split()
+
 
 def resolve_api_skill_template(
     request: TaskRequest,
     intent: str,
 ) -> ExecutionTemplateDecision | None:
     """Resolve deterministic API/Skill template for top integration paths."""
-    forced_tool = str(request.forced_tool or "").strip().lower()
-    normalized_intent = str(intent or "").strip().upper()
+    forced_tool = _normalize_lower(request.forced_tool)
+    normalized_intent = _normalize_upper(intent)
 
-    forced_tool_template = FORCED_TOOL_TEMPLATE_MAP.get(forced_tool)
+    forced_tool_template = FORCED_TOOL_TEMPLATE_DECISIONS.get(forced_tool)
     if forced_tool_template is not None:
-        return ExecutionTemplateDecision(
-            template_id=forced_tool_template,
-            source="forced_tool",
-        )
+        return forced_tool_template
 
-    intent_template = INTENT_TEMPLATE_MAP.get(normalized_intent)
+    intent_template = INTENT_TEMPLATE_DECISIONS.get(normalized_intent)
     if intent_template is not None:
-        return ExecutionTemplateDecision(
-            template_id=intent_template,
-            source="intent",
-        )
+        return intent_template
 
     return None
 
 
 def resolve_browser_profile(request: TaskRequest, intent: str) -> str:
     """Resolve deterministic browser profile: smoke, functional or critical."""
-    normalized_intent = str(intent or "").strip().upper()
-    content_lower = str(request.content or "").strip().lower()
-    tokens = set(content_lower.replace("_", " ").replace("-", " ").split())
+    normalized_intent = _normalize_upper(intent)
+    content_lower = _normalize_lower(request.content)
 
-    if normalized_intent == "E2E_TESTING" or tokens.intersection(
-        CRITICAL_BROWSER_KEYWORDS
-    ):
+    if normalized_intent == "E2E_TESTING":
         return "critical"
-    if tokens.intersection(SMOKE_BROWSER_KEYWORDS):
+
+    has_smoke_keyword = False
+    for token in _content_tokens(content_lower):
+        if token in CRITICAL_BROWSER_KEYWORDS:
+            return "critical"
+        if token in SMOKE_BROWSER_KEYWORDS:
+            has_smoke_keyword = True
+
+    if has_smoke_keyword:
         return "smoke"
     return "functional"
 

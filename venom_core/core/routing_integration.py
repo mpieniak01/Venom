@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from venom_core.api.schemas.tasks import TaskRequest
 from venom_core.contracts.routing import ReasonCode, RoutingDecision, RuntimeTarget
@@ -31,6 +33,24 @@ _REASON_CODE_FROM_GOVERNANCE: dict[str, ReasonCode] = {
     "FALLBACK_RATE_LIMIT": ReasonCode.FALLBACK_RATE_LIMIT,
 }
 
+_KNOWN_PROVIDERS = {"openai", "google", "ollama", "vllm"}
+_RESEARCH_TOOLS = {"browser", "web", "research"}
+_RUNTIME_TARGET_BY_PROVIDER: dict[str, RuntimeTarget] = {
+    "ollama": RuntimeTarget.LOCAL_OLLAMA,
+    "vllm": RuntimeTarget.LOCAL_VLLM,
+    "openai": RuntimeTarget.CLOUD_OPENAI,
+    "google": RuntimeTarget.CLOUD_GOOGLE,
+}
+_ROUTER_CACHE: "WeakKeyDictionary[Any, tuple[int, HybridModelRouter]]" = (
+    WeakKeyDictionary()
+)
+_ROUTER_CACHE_NO_STATE: dict[int, HybridModelRouter] = {}
+
+
+def _router_cache_enabled() -> bool:
+    raw = os.getenv("VENOM_ROUTER_CACHE_ENABLED", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
 
 def _build_fallback_chain(
     *,
@@ -51,22 +71,15 @@ def _build_fallback_chain(
 
 def _to_runtime_target(provider: str | None) -> RuntimeTarget | None:
     provider_key = (provider or "").strip().lower()
-    if provider_key == "ollama":
-        return RuntimeTarget.LOCAL_OLLAMA
-    if provider_key == "vllm":
-        return RuntimeTarget.LOCAL_VLLM
-    if provider_key == "openai":
-        return RuntimeTarget.CLOUD_OPENAI
-    if provider_key == "google":
-        return RuntimeTarget.CLOUD_GOOGLE
-    return None
+    return _RUNTIME_TARGET_BY_PROVIDER.get(provider_key)
 
 
 def _to_task_type(request: TaskRequest) -> TaskType:
     forced_intent = str(request.forced_intent or "").strip().upper()
     if forced_intent in _TASK_TYPE_FROM_FORCED_INTENT:
         return _TASK_TYPE_FROM_FORCED_INTENT[forced_intent]
-    if request.forced_tool in {"browser", "web", "research"}:
+    forced_tool = str(request.forced_tool or "").strip().lower()
+    if forced_tool in _RESEARCH_TOOLS:
         return TaskType.RESEARCH
     return TaskType.STANDARD
 
@@ -86,7 +99,7 @@ def _to_reason_code(routing_info: dict[str, Any]) -> ReasonCode:
 
 def _resolve_decision_model(
     *,
-    request: TaskRequest,
+    is_code_generation: bool,
     selected_provider: str,
     routing_info: dict[str, Any],
     runtime_info: Any,
@@ -94,13 +107,40 @@ def _resolve_decision_model(
     base_model = str(
         routing_info.get("model_name") or getattr(runtime_info, "model_name", "")
     )
-    if str(request.forced_intent or "").strip().upper() != "CODE_GENERATION":
+    if not is_code_generation:
         return base_model
     if selected_provider != "ollama":
         return base_model
     if is_feedback_loop_ready(base_model):
         return base_model
     return FEEDBACK_LOOP_REQUESTED_ALIAS
+
+
+def _get_router(state_manager: Any) -> HybridModelRouter:
+    router_cls = HybridModelRouter
+    if not _router_cache_enabled():
+        return router_cls(state_manager=state_manager)
+
+    router_cls_id = id(router_cls)
+    if state_manager is None:
+        cached = _ROUTER_CACHE_NO_STATE.get(router_cls_id)
+        if cached is not None:
+            return cached
+        router = router_cls(state_manager=state_manager)
+        _ROUTER_CACHE_NO_STATE[router_cls_id] = router
+        return router
+
+    try:
+        cached = _ROUTER_CACHE.get(state_manager)
+    except TypeError:
+        return router_cls(state_manager=state_manager)
+
+    if cached is not None and cached[0] == router_cls_id:
+        return cached[1]
+
+    router = router_cls(state_manager=state_manager)
+    _ROUTER_CACHE[state_manager] = (router_cls_id, router)
+    return router
 
 
 def build_routing_decision(
@@ -113,18 +153,20 @@ def build_routing_decision(
     Build RoutingDecision for governance/policy/observability without changing runtime execution.
     """
     start = time.perf_counter()
-    router = HybridModelRouter(state_manager=state_manager)
+    router = _get_router(state_manager)
     task_type = _to_task_type(request)
-    routing_info = router.route_task(task_type, request.content)
-    complexity_score = float(router.calculate_complexity(request.content, task_type))
+    request_content = request.content
+    routing_info = router.route_task(task_type, request_content)
+    complexity_score = float(router.calculate_complexity(request_content, task_type))
+    forced_intent_upper = str(request.forced_intent or "").strip().upper()
     is_sensitive = bool(
-        task_type == TaskType.SENSITIVE or request.forced_intent == "SENSITIVE"
+        task_type == TaskType.SENSITIVE or forced_intent_upper == "SENSITIVE"
     )
 
     preferred_provider = normalize_forced_provider(request.forced_provider)
     if not preferred_provider:
         routed_provider = str(routing_info.get("provider", "")).strip().lower()
-        if routed_provider in {"openai", "google", "ollama", "vllm"}:
+        if routed_provider in _KNOWN_PROVIDERS:
             preferred_provider = routed_provider
         else:
             preferred_provider = (
@@ -132,12 +174,15 @@ def build_routing_decision(
             )
 
     governance = get_provider_governance()
+    routing_reason = str(routing_info.get("reason") or "")
     governance_decision = governance.select_provider_with_fallback(
         preferred_provider=preferred_provider,
-        reason=str(routing_info.get("reason") or ""),
+        reason=routing_reason,
     )
 
-    selected_provider = governance_decision.provider or preferred_provider
+    selected_provider = (
+        str(governance_decision.provider or preferred_provider or "").strip().lower()
+    )
     reason_code = _REASON_CODE_FROM_GOVERNANCE.get(
         str(governance_decision.reason_code or ""),
         _to_reason_code(routing_info),
@@ -147,7 +192,7 @@ def build_routing_decision(
         target_runtime=_to_runtime_target(selected_provider),
         provider=selected_provider,
         model=_resolve_decision_model(
-            request=request,
+            is_code_generation=forced_intent_upper == "CODE_GENERATION",
             selected_provider=selected_provider,
             routing_info=routing_info,
             runtime_info=runtime_info,

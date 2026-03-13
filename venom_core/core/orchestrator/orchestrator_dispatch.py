@@ -51,6 +51,25 @@ from .task_pipeline.execution_strategy import ExecutionStrategy
 
 logger = get_logger(__name__)
 
+_RISK_DESKTOP_TOOLS = frozenset({"desktop", "vision", "ghost", "ui"})
+_RISK_DESKTOP_INTENTS = frozenset({"DESKTOP_AUTOMATION", "VISION_CONTROL"})
+_RISK_FILEOPS_TOOLS = frozenset({"file", "fs", "filesystem", "fileops"})
+_RISK_FILEOPS_INTENTS = frozenset(
+    {"FILE_OPERATIONS", "FILESYSTEM_OPERATION", "CODE_GENERATION"}
+)
+_RISK_SHELL_TOOLS = frozenset({"shell", "bash", "terminal", "command"})
+_RISK_SHELL_INTENTS = frozenset({"SHELL_EXECUTION", "SYSTEM_DIAGNOSTICS"})
+_RISK_NETWORK_TOOLS = frozenset({"browser", "web", "http", "network"})
+_RISK_NETWORK_INTENTS = frozenset({"RESEARCH", "WEB_RESEARCH", "NETWORK_OPERATION"})
+
+
+def _normalize_lower(value: object | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def _normalize_upper(value: object | None) -> str:
+    return str(value or "").strip().upper()
+
 
 async def _handle_policy_block_global_pre_execution(
     orch: "Orchestrator",
@@ -182,18 +201,17 @@ def _resolve_planned_provider(
 def _build_risk_context(
     request: TaskRequest, intent: str, tool_required: bool
 ) -> dict[str, bool]:
-    forced_tool = str(request.forced_tool or "").strip().lower()
-    intent_upper = str(intent or "").strip().upper()
+    forced_tool = _normalize_lower(request.forced_tool)
+    intent_upper = _normalize_upper(intent)
     return {
-        "desktop": forced_tool in {"desktop", "vision", "ghost", "ui"}
-        or intent_upper in {"DESKTOP_AUTOMATION", "VISION_CONTROL"},
-        "fileops": forced_tool in {"file", "fs", "filesystem", "fileops"}
-        or intent_upper
-        in {"FILE_OPERATIONS", "FILESYSTEM_OPERATION", "CODE_GENERATION"},
-        "shell": forced_tool in {"shell", "bash", "terminal", "command"}
-        or intent_upper in {"SHELL_EXECUTION", "SYSTEM_DIAGNOSTICS"},
-        "network": forced_tool in {"browser", "web", "http", "network"}
-        or intent_upper in {"RESEARCH", "WEB_RESEARCH", "NETWORK_OPERATION"},
+        "desktop": forced_tool in _RISK_DESKTOP_TOOLS
+        or intent_upper in _RISK_DESKTOP_INTENTS,
+        "fileops": forced_tool in _RISK_FILEOPS_TOOLS
+        or intent_upper in _RISK_FILEOPS_INTENTS,
+        "shell": forced_tool in _RISK_SHELL_TOOLS
+        or intent_upper in _RISK_SHELL_INTENTS,
+        "network": forced_tool in _RISK_NETWORK_TOOLS
+        or intent_upper in _RISK_NETWORK_INTENTS,
         "tool_required": tool_required,
     }
 
@@ -226,21 +244,32 @@ async def _prepare_intent_and_context(
         orch, task_id, request, request_content, intent, fast_path
     )
 
-    _store_generation_params_if_present(orch, task_id, request)
-    _set_non_llm_metadata_if_applicable(orch, task_id, intent, intent_debug)
+    context_updates: dict[str, object] = {}
+    if intent_debug:
+        context_updates["intent_debug"] = intent_debug
 
-    _store_execution_mode_metadata(orch, task_id, request, intent)
+    context_updates.update(_collect_generation_params_context_updates(task_id, request))
+    context_updates.update(
+        _collect_non_llm_metadata_updates(orch, task_id, intent, intent_debug)
+    )
+    context_updates.update(
+        _build_execution_mode_metadata(orch, task_id, request, intent)
+    )
 
-    tool_required, intent = _evaluate_tool_requirement_and_routing(
+    tool_required, intent, tool_updates = _evaluate_tool_requirement_and_routing(
         orch, task_id, intent
     )
+    context_updates.update(tool_updates)
+
+    if context_updates:
+        orch.state_manager.update_context(task_id, context_updates)
 
     return intent, context, tool_required, intent_debug
 
 
-def _store_execution_mode_metadata(
+def _build_execution_mode_metadata(
     orch: "Orchestrator", task_id: UUID, request: TaskRequest, intent: str
-) -> None:
+) -> dict[str, object]:
     decision = decide_execution_mode(request=request, intent=intent)
     collector = metrics_module.metrics_collector
     if collector is not None:
@@ -258,7 +287,7 @@ def _store_execution_mode_metadata(
     elif decision.execution_mode == "gui_fallback":
         gui_fallback_contract = resolve_gui_fallback_contract(decision)
 
-    updates = {
+    updates: dict[str, object] = {
         "execution_mode": decision.execution_mode,
         "fallback_reason": decision.fallback_reason,
         "execution_mode_reason_code": decision.reason_code,
@@ -275,10 +304,6 @@ def _store_execution_mode_metadata(
     if gui_fallback_contract is not None:
         updates["gui_fallback_contract"] = gui_fallback_contract
 
-    orch.state_manager.update_context(
-        task_id,
-        updates,
-    )
     if orch.request_tracer:
         details = {
             "execution_mode": decision.execution_mode,
@@ -306,6 +331,8 @@ def _store_execution_mode_metadata(
             status="ok",
             details=json.dumps(details, ensure_ascii=False),
         )
+
+    return updates
 
 
 def _emit_classification_trace(
@@ -479,7 +506,6 @@ async def _classify_intent_and_log(
         intent = await orch.intent_manager.classify_intent(request_content)
         intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
     if intent_debug:
-        orch.state_manager.update_context(task_id, {"intent_debug": intent_debug})
         if orch.request_tracer:
             try:
                 details = json.dumps(intent_debug, ensure_ascii=False)
@@ -508,44 +534,45 @@ async def _build_context_for_intent(
     return await orch.context_builder.build_context(task_id, request, fast_path)
 
 
-def _store_generation_params_if_present(
-    orch: "Orchestrator", task_id: UUID, request: TaskRequest
-) -> None:
+def _collect_generation_params_context_updates(
+    task_id: UUID, request: TaskRequest
+) -> dict[str, object]:
     if not request.generation_params:
-        return
-    orch.state_manager.update_context(
-        task_id, {"generation_params": request.generation_params}
-    )
+        return {}
     logger.info(
         "Zapisano parametry generacji dla zadania %s: %s",
         task_id,
         request.generation_params,
     )
+    return {"generation_params": request.generation_params}
 
 
-def _set_non_llm_metadata_if_applicable(
+def _collect_non_llm_metadata_updates(
     orch: "Orchestrator", task_id: UUID, intent: str, intent_debug: dict
-) -> None:
+) -> dict[str, object]:
     if not orch.request_tracer:
-        return
+        return {}
     if intent not in orch.NON_LLM_INTENTS or intent_debug.get("source") == "llm":
-        return
+        return {}
     orch.request_tracer.set_llm_metadata(
         task_id, provider=None, model=None, endpoint=None
     )
-    orch.state_manager.update_context(
-        task_id,
-        {"llm_runtime": {"status": "skipped", "error": None, "last_success_at": None}},
-    )
+    return {
+        "llm_runtime": {
+            "status": "skipped",
+            "error": None,
+            "last_success_at": None,
+        }
+    }
 
 
 def _evaluate_tool_requirement_and_routing(
     orch: "Orchestrator", task_id: UUID, intent: str
-) -> tuple[bool, str]:
+) -> tuple[bool, str, dict[str, object]]:
     tool_required = orch.intent_manager.requires_tool(intent)
-    orch.state_manager.update_context(
-        task_id, {"tool_requirement": {"required": tool_required, "intent": intent}}
-    )
+    tool_requirement_update = {
+        "tool_requirement": {"required": tool_required, "intent": intent}
+    }
     if orch.request_tracer:
         orch.request_tracer.add_step(
             task_id,
@@ -563,7 +590,7 @@ def _evaluate_tool_requirement_and_routing(
             collector.increment_llm_only_request()
 
     if not tool_required:
-        return tool_required, intent
+        return tool_required, intent, tool_requirement_update
 
     agent = orch.task_dispatcher.agent_map.get(intent)
     if agent is None or agent.__class__.__name__ == "UnsupportedAgent":
@@ -580,7 +607,7 @@ def _evaluate_tool_requirement_and_routing(
                 details=f"Tool required but missing for intent={intent}",
             )
         intent = "UNSUPPORTED_TASK"
-    return tool_required, intent
+    return tool_required, intent, tool_requirement_update
 
 
 async def _broadcast_intent(orch: "Orchestrator", task_id: UUID, intent: str) -> None:

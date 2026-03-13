@@ -122,6 +122,7 @@ tests/test_env_contract_sh.py
 tests/test_env_report_diff.py
 tests/test_environment_policy.py
 tests/test_error_mappings.py
+tests/test_execution_mode_planner.py
 tests/test_executive_agent_roi.py
 tests/test_eyes.py
 tests/test_feedback_hidden_prompts.py

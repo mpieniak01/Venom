@@ -144,3 +144,124 @@ def test_get_system_autonomy_levels_returns_500_on_guard_exception(monkeypatch) 
     response = client.get("/api/v1/system/autonomy/levels")
     assert response.status_code == 500
     assert "Błąd wewnętrzny" in response.json()["detail"]
+
+
+def test_get_system_autonomy_observability_returns_policy_snapshot(monkeypatch) -> None:
+    client = TestClient(app)
+
+    class _Collector:
+        def get_metrics(self):
+            return {
+                "policy": {
+                    "blocked_count": 7,
+                    "deny_rate": 12.34,
+                    "top_reason_codes": [
+                        {
+                            "reason_code": "POLICY_TOOL_RESTRICTED",
+                            "count": 4,
+                            "share_rate": 57.14,
+                        }
+                    ],
+                    "false_positive_triage": {
+                        "candidate_count": 2,
+                        "candidate_rate": 28.57,
+                        "top_candidate_reasons": [
+                            {
+                                "reason_code": "POLICY_TOOL_RESTRICTED",
+                                "count": 1,
+                                "share_rate": 50.0,
+                            }
+                        ],
+                    },
+                }
+            }
+
+    monkeypatch.setattr(
+        system_governance.metrics_module,
+        "metrics_collector",
+        _Collector(),
+        raising=False,
+    )
+
+    response = client.get("/api/v1/system/autonomy/observability")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert payload["source"] == "runtime_policy_gate"
+    assert payload["policy"]["blocked_count"] == 7
+    assert payload["policy"]["deny_rate"] == 12.34
+    assert (
+        payload["policy"]["top_reason_codes"][0]["reason_code"]
+        == "POLICY_TOOL_RESTRICTED"
+    )
+    assert payload["policy"]["false_positive_triage"]["candidate_count"] == 2
+
+
+def test_get_system_autonomy_observability_returns_503_without_metrics_collector(
+    monkeypatch,
+) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(
+        system_governance.metrics_module,
+        "metrics_collector",
+        None,
+        raising=False,
+    )
+
+    response = client.get("/api/v1/system/autonomy/observability")
+    assert response.status_code == 503
+    assert "Metrics collector nie jest dostępny" in response.json()["detail"]
+
+
+def test_get_system_autonomy_rollout_status_ready(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        system_governance,
+        "policy_gate",
+        SimpleNamespace(enabled=True),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        system_governance.metrics_module,
+        "metrics_collector",
+        object(),
+        raising=False,
+    )
+
+    response = client.get("/api/v1/system/autonomy/rollout-status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["readiness"] == "ready"
+    assert payload["runtime_only_architecture"] is True
+    assert payload["legacy_submit_stage_removed"] is True
+    assert payload["policy_gate_enabled"] is True
+    assert payload["observability_endpoint_available"] is True
+    assert isinstance(payload["required_next_actions"], list)
+
+
+def test_get_system_autonomy_rollout_status_attention_required(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        system_governance,
+        "policy_gate",
+        SimpleNamespace(enabled=False),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        system_governance.metrics_module,
+        "metrics_collector",
+        None,
+        raising=False,
+    )
+
+    response = client.get("/api/v1/system/autonomy/rollout-status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["readiness"] == "attention_required"
+    assert payload["policy_gate_enabled"] is False
+    assert payload["observability_endpoint_available"] is False
+    assert any(
+        "ENABLE_POLICY_GATE=true" in item for item in payload["required_next_actions"]
+    )

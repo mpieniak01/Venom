@@ -47,7 +47,7 @@ detect_release_version() {
       return 0
     fi
   fi
-  echo "1.6.0"
+  echo "1.8.0"
 }
 
 if ! command -v docker >/dev/null 2>&1; then

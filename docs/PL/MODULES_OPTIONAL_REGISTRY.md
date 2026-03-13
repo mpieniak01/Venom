@@ -31,7 +31,7 @@ Uwaga:
 
 Core porównuje manifest modułu z:
 - `CORE_MODULE_API_VERSION` (domyślnie `1.0.0`)
-- `CORE_RUNTIME_VERSION` (domyślnie `1.6.0`)
+- `CORE_RUNTIME_VERSION` (domyślnie `1.8.0`)
 - `backend.data_policy` (wymagane):
   - `storage_mode=core_prefixed`
   - `mutation_guard=core_environment_policy`

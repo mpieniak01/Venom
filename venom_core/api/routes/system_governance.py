@@ -10,12 +10,16 @@ from venom_core.api.schemas.governance import (
     AutonomyLevelResponse,
     AutonomyLevelSetResponse,
     AutonomyLevelsResponse,
+    AutonomyObservabilityResponse,
+    AutonomyRolloutStatusResponse,
     CostModeRequest,
     CostModeResponse,
     CostModeSetResponse,
 )
 from venom_core.config import SETTINGS
+from venom_core.core import metrics as metrics_module
 from venom_core.core.permission_guard import permission_guard
+from venom_core.core.policy_gate import policy_gate
 from venom_core.services.audit_stream import get_audit_stream
 from venom_core.utils.logger import get_logger
 
@@ -39,6 +43,13 @@ AUTONOMY_SET_RESPONSES: dict[int | str, dict[str, Any]] = {
 AUTONOMY_LEVELS_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas pobierania listy poziomów"},
 }
+AUTONOMY_OBSERVABILITY_RESPONSES: dict[int | str, dict[str, Any]] = {
+    503: {"description": "Metrics collector nie jest dostępny"},
+    500: {"description": "Błąd wewnętrzny podczas pobierania observability policy"},
+}
+AUTONOMY_ROLLOUT_STATUS_RESPONSES: dict[int | str, dict[str, Any]] = {
+    500: {"description": "Błąd wewnętrzny podczas pobierania statusu rollout policy"},
+}
 
 
 def _extract_actor_from_request(request: Request) -> str:
@@ -53,6 +64,49 @@ def _extract_actor_from_request(request: Request) -> str:
     except Exception:
         logger.warning("Nie udało się wyekstrahować aktora dla audytu autonomii")
     return "unknown"
+
+
+def _normalize_policy_observability(policy_data: Any) -> dict[str, Any]:
+    raw = policy_data if isinstance(policy_data, dict) else {}
+    blocked_count = int(raw.get("blocked_count") or 0)
+    deny_rate = float(raw.get("deny_rate") or raw.get("block_rate") or 0.0)
+
+    top_reason_codes_raw = raw.get("top_reason_codes")
+    top_reason_codes = (
+        top_reason_codes_raw if isinstance(top_reason_codes_raw, list) else []
+    )
+
+    triage_raw = raw.get("false_positive_triage")
+    triage = triage_raw if isinstance(triage_raw, dict) else {}
+    top_candidate_reasons_raw = triage.get("top_candidate_reasons")
+    top_candidate_reasons = (
+        top_candidate_reasons_raw if isinstance(top_candidate_reasons_raw, list) else []
+    )
+
+    return {
+        "blocked_count": blocked_count,
+        "deny_rate": round(deny_rate, 2),
+        "top_reason_codes": top_reason_codes,
+        "false_positive_triage": {
+            "candidate_count": int(triage.get("candidate_count") or 0),
+            "candidate_rate": float(triage.get("candidate_rate") or 0.0),
+            "top_candidate_reasons": top_candidate_reasons,
+        },
+    }
+
+
+def _build_rollout_next_actions(
+    *, policy_enabled: bool, observability_ready: bool
+) -> list[str]:
+    actions: list[str] = []
+    if not policy_enabled:
+        actions.append("Enable runtime policy gate (set ENABLE_POLICY_GATE=true).")
+    if not observability_ready:
+        actions.append("Initialize metrics collector before rollout validation.")
+    actions.append(
+        "Validate rollout on staging/preprod/prod using /api/v1/system/autonomy/rollout-status."
+    )
+    return actions
 
 
 @router.get(
@@ -153,6 +207,67 @@ def get_autonomy_level():
     except Exception as e:
         logger.exception("Błąd podczas pobierania poziomu autonomii")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.get(
+    "/system/autonomy/observability",
+    response_model=AutonomyObservabilityResponse,
+    responses=AUTONOMY_OBSERVABILITY_RESPONSES,
+)
+def get_autonomy_observability() -> AutonomyObservabilityResponse:
+    """
+    Zwraca dedykowany snapshot observability policy/autonomy dla operacji (SRE/ops).
+    """
+    collector = metrics_module.metrics_collector
+    if collector is None:
+        raise HTTPException(
+            status_code=503, detail="Metrics collector nie jest dostępny"
+        )
+
+    try:
+        metrics = collector.get_metrics()
+        policy = _normalize_policy_observability(metrics.get("policy"))
+        return AutonomyObservabilityResponse(policy=policy)
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania observability policy")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Błąd wewnętrzny: {str(e)}",
+        ) from e
+
+
+@router.get(
+    "/system/autonomy/rollout-status",
+    response_model=AutonomyRolloutStatusResponse,
+    responses=AUTONOMY_ROLLOUT_STATUS_RESPONSES,
+)
+def get_autonomy_rollout_status() -> AutonomyRolloutStatusResponse:
+    """
+    Zwraca status gotowości rollout runtime-only policy gate.
+    """
+    try:
+        observability_ready = metrics_module.metrics_collector is not None
+        policy_enabled = bool(policy_gate.enabled)
+        readiness = (
+            "ready" if policy_enabled and observability_ready else "attention_required"
+        )
+        return AutonomyRolloutStatusResponse(
+            readiness=readiness,
+            runtime_only_architecture=True,
+            policy_gate_enabled=policy_enabled,
+            legacy_submit_stage_removed=True,
+            observability_endpoint_available=observability_ready,
+            required_next_actions=_build_rollout_next_actions(
+                policy_enabled=policy_enabled,
+                observability_ready=observability_ready,
+            ),
+        )
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu rollout policy")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Błąd wewnętrzny: {str(e)}",
+        ) from e
 
 
 @router.post(

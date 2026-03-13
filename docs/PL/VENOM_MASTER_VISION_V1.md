@@ -6,7 +6,7 @@
 
 ## 0. Wprowadzenie – Wizja Docelowa (Venom v2.0)
 > [!NOTE]
-> **Status:** Poniższy opis przedstawia docelową formę organizmu (v2.0). Obecna wersja (v1.6.0) stanowi fundament (Fundament Layer) realizujący kluczowe funkcje orkiestracji, **zarządzania workflow**, uwierzytelniania, pamięci i uczenia się.
+> **Status:** Poniższy opis przedstawia docelową formę organizmu (v2.0). Obecna wersja (v1.8.0) stanowi fundament (Fundament Layer) realizujący kluczowe funkcje orkiestracji, **zarządzania workflow**, uwierzytelniania, pamięci i uczenia się.
 Venom to projekt stworzenia organizmu sztucznej inteligencji, który rozwija, nadzoruje i projektuje inne systemy AI.
 To warstwa meta-inteligencji działająca nad Rider-PC (logika, kod, AI) oraz Rider-Pi (świat fizyczny, sensory, ruch).
 Venom może w przyszłości objąć każdym innym modułem Twojego ekosystemu.
@@ -105,6 +105,7 @@ W praktyce, inżynieria modeli językowych (LLM) wymusiła podejście hybrydowe.
 
 ### 3.2. Warstwa pamięci (Memory Layer)
 GraphRAG + LanceDB – struktura repo, zależności, wiedza projektowa.
+Kanoniczna federacja i kontrakt lifecycle są wystawione przez Knowledge Entries API (`/api/v1/knowledge/entries`).
 
 ### 3.3. Warstwa agentów (Agent Services Layer)
 - planner.arch
@@ -119,10 +120,12 @@ GraphRAG + LanceDB – struktura repo, zależności, wiedza projektowa.
 ### 3.4. Warstwa wykonawcza (Execution Layer)
 Semantic Kernel – pliki, shell, git, testy.
 MCP Import – narzędzia z Git (generator proxy + wrappery w `venom_core/skills/custom`, generowane runtime i opcjonalne na świeżym checkout).
+`FileSkill` zawiera bezpieczne prymitywy operacyjne filesystem (`rename/move/copy/delete`, tryb single i batch, dry-run oraz polityki nadpisywania).
 
 ### 3.5. Warstwa percepcji (Vision Layer)
 - Florence-2 ONNX – UI vision
 - YOLO ONNX – physical vision
+Ścieżki sterowania desktopem są dostępne przez runtime Ghost (`vision_click`, input/hotkey, profile bezpieczeństwa i audytowalny control-plane API).
 
 ### 3.6. Warstwa metabolizmu (Performance Layer)
 Obsługa dwóch silników obliczeniowych:
@@ -161,6 +164,9 @@ Ulepsza:
 - strategie agentów,
 - polityki.
 
+> [!NOTE]
+> Zestaw narzędzi self-improvement jest zaimplementowany, ale pełna automatyczna pętla end-to-end (`task -> code -> test -> PR -> memory -> policy`) pozostaje celem v2.0.
+
 ## 6. Pipeline Venoma
 1. Intencja użytkownika
 2. Orchestrator
@@ -183,6 +189,8 @@ Ulepsza:
 - user ethics
 - polityki testów
 - bezpieczeństwo
+
+Wymuszanie policy obejmuje granice route/skill oraz centralny, globalny pre-execution gate na poziomie orkiestratora; warstwy route/skill pozostają aktywne jako defense-in-depth.
 
 ## 8. Integracja Rider-Pi i Google Home (IoT)- Venom 2.0
 Rider-Pi – ciało fizyczne.

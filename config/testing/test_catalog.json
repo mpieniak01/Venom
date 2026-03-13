@@ -2146,6 +2146,18 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_ghost_agent_hil.py",
+      "domain": "agents",
+      "test_type": "integration",
+      "intent": "integration",
+      "primary_lane": "release",
+      "allowed_lanes": [
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Manual hardware-in-loop desktop scenarios for Ghost runtime."
+    },
+    {
       "path": "tests/test_git_routes_logic.py",
       "domain": "api",
       "test_type": "route_contract",

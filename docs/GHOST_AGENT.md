@@ -226,11 +226,18 @@ pytest tests/test_vision_grounding.py -v
 
 # All tests together
 pytest tests/test_ghost_agent.py tests/test_input_skill.py tests/test_vision_grounding.py -v
+
+# Manual hardware-in-loop scenarios (desktop required)
+VENOM_GHOST_HIL=1 .venv/bin/pytest tests/test_ghost_agent_hil.py -v
 ```
 
 **Results:**
 - 42 unit and integration tests
 - 100% passing rate ✅
+
+Operational runbook:
+
+- `docs/runbooks/ghost-desktop-automation.md`
 
 ## ⚠️ Limitations and Known Issues
 

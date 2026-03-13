@@ -46,6 +46,7 @@ class EnforcementBlockPayload(BaseModel):
     decision: EnforcementDecision = EnforcementDecision.BLOCK
     reason_code: str | None = None
     user_message: str
+    remediation_hint: str | None = None
     technical_context: EnforcementTechnicalContext
     tags: list[str] = Field(default_factory=list)
 
@@ -61,6 +62,7 @@ def build_policy_block_payload(
     *,
     reason_code: str | None,
     user_message: str,
+    remediation_hint: str | None = None,
     phase: str,
     operation: str,
     task_id: str | None,
@@ -88,6 +90,7 @@ def build_policy_block_payload(
     return EnforcementBlockPayload(
         reason_code=reason_code,
         user_message=user_message,
+        remediation_hint=remediation_hint,
         technical_context=technical_context,
         tags=["policy", "blocked", phase],
     )
@@ -146,6 +149,7 @@ def to_audit_details(payload: EnforcementBlockPayload) -> dict[str, Any]:
         "decision": payload.decision.value,
         "reason_code": payload.reason_code,
         "user_message": payload.user_message,
+        "remediation_hint": payload.remediation_hint,
         "technical_context": technical,
         "tags": payload.tags,
     }

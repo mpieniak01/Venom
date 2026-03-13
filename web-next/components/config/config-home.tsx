@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, Server, FileCode, Network, ShieldCheck } from "lucide-react";
+import { Settings, Server, FileCode, Network, ShieldCheck, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { THEME_TAB_BAR_CLASS, getThemeTabClass } from "@/lib/theme-ui";
@@ -11,10 +11,11 @@ import { ServicesPanel } from "./services-panel";
 import { ParametersPanel } from "./parameters-panel";
 import { ApiMap } from "./api-map";
 import { AuditPanel } from "./audit-panel";
+import { PermissionsPanel } from "./permissions-panel";
 
 export function ConfigHome() {
   const t = useTranslation();
-  const [activeTab, setActiveTab] = useState<"services" | "parameters" | "apiMap" | "audit">("services");
+  const [activeTab, setActiveTab] = useState<"services" | "parameters" | "apiMap" | "audit" | "permissions">("services");
 
   return (
     <div className="space-y-6">
@@ -65,6 +66,15 @@ export function ConfigHome() {
           <ShieldCheck className="h-4 w-4" />
           {t("config.tabs.audit")}
         </Button>
+        <Button
+          onClick={() => setActiveTab("permissions")}
+          variant="ghost"
+          size="sm"
+          className={cn(getThemeTabClass(activeTab === "permissions"))}
+        >
+          <KeyRound className="h-4 w-4" />
+          {t("config.tabs.permissions")}
+        </Button>
       </div>
 
       {/* Content */}
@@ -73,6 +83,7 @@ export function ConfigHome() {
         {activeTab === "parameters" && <ParametersPanel />}
         {activeTab === "apiMap" && <ApiMap />}
         {activeTab === "audit" && <AuditPanel />}
+        {activeTab === "permissions" && <PermissionsPanel />}
       </div>
     </div>
   );

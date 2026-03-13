@@ -176,6 +176,7 @@ tests/test_persona_factory.py
 tests/test_platform_skill.py
 tests/test_policy_autonomy_contract.py
 tests/test_policy_gate_integration.py
+tests/test_policy_gate_runtime_contract.py
 tests/test_port_authority.py
 tests/test_port_pids_script.py
 tests/test_preprod_mutation_guards.py

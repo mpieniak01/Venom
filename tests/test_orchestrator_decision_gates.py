@@ -272,6 +272,42 @@ async def test_orchestrator_logs_decision_gate_for_standard_agent_routing(
     gate = routing_gates[0]
     assert gate.action == "route_to_agent"
     assert "ResearcherAgent" in gate.details
+    task_after = orchestrator.state_manager.get_task(task_id)
+    assert task_after is not None
+    assert task_after.context_history.get("execution_mode") == "browser_automation"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_sets_gui_fallback_metadata_for_desktop_automation_intent(
+    orchestrator, request_tracer
+):
+    task = orchestrator.state_manager.create_task("Kliknij przycisk")
+    task_id = task.id
+
+    orchestrator.intent_manager.classify_intent.return_value = "DESKTOP_AUTOMATION"
+    mock_agent = MagicMock()
+    mock_agent.__class__.__name__ = "AssistantAgent"
+    orchestrator.task_dispatcher.agent_map["DESKTOP_AUTOMATION"] = mock_agent
+
+    request_tracer.create_trace(task_id, "Kliknij przycisk")
+
+    from venom_core.core.models import TaskRequest
+
+    await orchestrator._run_task(
+        task_id,
+        TaskRequest(content="Kliknij przycisk"),
+    )
+
+    task_after = orchestrator.state_manager.get_task(task_id)
+    assert task_after is not None
+    assert task_after.context_history.get("execution_mode") == "gui_fallback"
+    assert (
+        task_after.context_history.get("fallback_reason") == "intent_requires_gui_path"
+    )
+    assert (
+        task_after.context_history.get("execution_mode_reason_code")
+        == "EXECUTION_MODE_GUI_FALLBACK_INTENT"
+    )
 
 
 @pytest.mark.asyncio

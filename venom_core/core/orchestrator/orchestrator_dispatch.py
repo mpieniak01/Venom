@@ -23,6 +23,8 @@ from venom_core.core.policy_gate import (
 )
 from venom_core.core.tracer import TraceStatus
 from venom_core.services.audit_stream import get_audit_stream
+from venom_core.services.execution_mode_planner import decide_execution_mode
+from venom_core.services.execution_template_planner import resolve_api_skill_template
 from venom_core.utils.logger import get_logger
 
 from .constants import (
@@ -220,11 +222,54 @@ async def _prepare_intent_and_context(
     _store_generation_params_if_present(orch, task_id, request)
     _set_non_llm_metadata_if_applicable(orch, task_id, intent, intent_debug)
 
+    _store_execution_mode_metadata(orch, task_id, request, intent)
+
     tool_required, intent = _evaluate_tool_requirement_and_routing(
         orch, task_id, intent
     )
 
     return intent, context, tool_required, intent_debug
+
+
+def _store_execution_mode_metadata(
+    orch: "Orchestrator", task_id: UUID, request: TaskRequest, intent: str
+) -> None:
+    decision = decide_execution_mode(request=request, intent=intent)
+    template_decision = None
+    if decision.execution_mode == "api_skill":
+        template_decision = resolve_api_skill_template(request=request, intent=intent)
+
+    updates = {
+        "execution_mode": decision.execution_mode,
+        "fallback_reason": decision.fallback_reason,
+        "execution_mode_reason_code": decision.reason_code,
+    }
+    if template_decision is not None:
+        updates["execution_template"] = {
+            "template_id": template_decision.template_id,
+            "source": template_decision.source,
+        }
+
+    orch.state_manager.update_context(
+        task_id,
+        updates,
+    )
+    if orch.request_tracer:
+        details = {
+            "execution_mode": decision.execution_mode,
+            "fallback_reason": decision.fallback_reason,
+            "reason_code": decision.reason_code,
+            "template_id": (
+                template_decision.template_id if template_decision is not None else None
+            ),
+        }
+        orch.request_tracer.add_step(
+            task_id,
+            "DecisionGate",
+            "execution_mode_selector",
+            status="ok",
+            details=json.dumps(details, ensure_ascii=False),
+        )
 
 
 def _emit_classification_trace(

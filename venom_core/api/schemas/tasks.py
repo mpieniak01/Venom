@@ -126,6 +126,8 @@ class TaskResponse(BaseModel):
     user_message: str | None = None
     remediation_hint: str | None = None
     technical_context: dict | None = None
+    execution_mode: str | None = None
+    fallback_reason: str | None = None
 
 
 class HistoryRequestSummary(BaseModel):

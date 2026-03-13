@@ -1887,6 +1887,20 @@
       "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
     },
     {
+      "path": "tests/test_execution_mode_planner.py",
+      "domain": "orchestrator",
+      "test_type": "unit",
+      "intent": "regression",
+      "primary_lane": "new-code",
+      "allowed_lanes": [
+        "new-code",
+        "ci-lite",
+        "release"
+      ],
+      "legacy_targeted": false,
+      "rationale": "Changed-scope coverage reinforcement for Sonar new-code lane."
+    },
+    {
       "path": "tests/test_executive_agent_roi.py",
       "domain": "agents",
       "test_type": "unit",

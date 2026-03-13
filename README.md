@@ -435,13 +435,20 @@ make check-new-code-coverage
 - [x] Runtime profiles and installation strategy update (minimal/API-first + optional local stacks).
 - [x] Runtime control-plane improvements and provider/runtime governance stabilization.
 
+### ✅ v1.7
+- [x] Remote models capabilities delivered (`/models` remote tab + provider status/catalog/connectivity/validation for GPT/Gemini paths).
+- [x] Global traffic-control hardening for inbound/outbound requests (limits, retry/circuit-breaker policies, safer runtime behavior under load).
+- [x] Configuration/audit observability expanded (canonical audit stream and stronger operational visibility for config/runtime changes).
+- [x] Academy/API hardening wave completed (module decomposition, contract consistency, safer upload/training/history paths).
+- [x] Pre-prod operating model finalized on shared stack (data isolation, env split `.env.dev`/`.env.preprod`, Makefile control, guard rails, backup/restore/smoke).
+
 ### ✅ v1.8 (current)
-- [x] Runtime governance was closed end-to-end: central `Global Policy Gate` in orchestrator flow (`global_pre_execution`) with unified deny contract (`reason_code`, `remediation_hint`) and consistent audit events.
-- [x] Operational policy/autonomy observability was added: KPI endpoint (`/api/v1/system/autonomy/observability`), rollout-readiness endpoint (`/api/v1/system/autonomy/rollout-status`), and environment validation script (`scripts/ops/verify_policy_rollout.py`).
-- [x] Safe execution automation was delivered: `FileSkill` primitives (`rename/move/copy/delete`, single/batch, dry-run, overwrite policies) and controlled desktop automation (`GhostAgent.vision_click`, safety profiles, fail-closed critical steps).
-- [x] Knowledge contract was unified: canonical DTOs + federated `GET /api/v1/knowledge/entries` endpoint and consistent lifecycle handling (TTL/prune/dedupe) integrated with audit.
-- [x] Academy learning path was stabilized (scope 197): coherent `training/self-learning -> adapter -> chat` flow, canonical-only adapter deployment, and state recovery without manual workarounds.
-- [x] Delivery predictability improved: Playwright/Web E2E profiles, quality gates, and diagnostic artifacts integrated into CI pipeline.
+- [x] Reduced operational and compliance risk by enforcing one consistent decision model for runtime execution.
+- [x] Shortened incident triage time with clearer decision feedback, stronger audit visibility, and more actionable blocking context.
+- [x] Improved execution safety for file and desktop automation, reducing failure rate and manual operator intervention.
+- [x] Increased response quality and repeatability by stabilizing the learning path and unifying knowledge behavior.
+- [x] Improved release predictability through stronger quality gates and explicit operational rollout-readiness validation.
+- [x] Increased team delivery throughput with fewer ad-hoc exceptions, more consistent flows, and cleaner ownership handovers.
 
 ### 🚧 v1.9 (planned details)
 - [ ] Background polling for GitHub Issues.

@@ -159,8 +159,8 @@ async def test_policy_gate_enabled_block_before_tool_emits_audit(mock_orchestrat
             )
             handler = __import__(
                 "venom_core.core.orchestrator.orchestrator_dispatch",
-                fromlist=["_handle_policy_block_before_tool_execution"],
-            )._handle_policy_block_before_tool_execution
+                fromlist=["_handle_policy_block_global_pre_execution"],
+            )._handle_policy_block_global_pre_execution
 
             blocked = await handler(mock_orchestrator, task_id, request, context)
 
@@ -214,7 +214,7 @@ async def test_policy_gate_logs_block_reason(mock_orchestrator):
                 forced_tool=request.forced_tool,
             )
 
-            await dispatch_module._handle_policy_block_before_tool_execution(
+            await dispatch_module._handle_policy_block_global_pre_execution(
                 mock_orchestrator,
                 task_id,
                 request,
@@ -257,7 +257,7 @@ async def test_policy_gate_tracer_step_on_block(mock_orchestrator):
                 forced_provider=request.forced_provider,
             )
 
-            await dispatch_module._handle_policy_block_before_tool_execution(
+            await dispatch_module._handle_policy_block_global_pre_execution(
                 mock_orchestrator,
                 task_id,
                 request,

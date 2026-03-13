@@ -43,7 +43,7 @@ from .task_pipeline.execution_strategy import ExecutionStrategy
 logger = get_logger(__name__)
 
 
-async def _handle_policy_block_before_tool_execution(
+async def _handle_policy_block_global_pre_execution(
     orch: "Orchestrator",
     task_id: UUID,
     request: TaskRequest,
@@ -334,8 +334,6 @@ async def run_task(
         planned_tools: list[str] = []
         if request.forced_tool:
             planned_tools.append(request.forced_tool)
-        elif tool_required:
-            planned_tools.append(intent)
 
         policy_context = PolicyEvaluationContext(
             content=request.content,
@@ -350,7 +348,7 @@ async def run_task(
         )
 
         # Single global checkpoint before runtime execution.
-        if await _handle_policy_block_before_tool_execution(
+        if await _handle_policy_block_global_pre_execution(
             orch, task_id, request, policy_context
         ):
             return

@@ -30,8 +30,13 @@ class MetricsFeedbackSection(BaseModel):
 class MetricsPolicySection(BaseModel):
     """Policy-related metrics section."""
 
+    model_config = ConfigDict(extra="allow")
+
     blocked_count: int | None = None
     block_rate: float | None = None
+    deny_rate: float | None = None
+    top_reason_codes: list[dict[str, Any]] = Field(default_factory=list)
+    false_positive_triage: dict[str, Any] = Field(default_factory=dict)
 
 
 class MetricsNetworkSection(BaseModel):

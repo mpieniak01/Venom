@@ -5,6 +5,7 @@ export const configLocale = {
       services: "Dienste",
       parameters: "Parameter",
       audit: "Audit",
+      permissions: "Berechtigungen",
     },
     services: {
       title: "Dienstverwaltung",
@@ -264,6 +265,58 @@ export const configLocale = {
       module: {
         loadError: "Modul-Audit konnte nicht geladen werden.",
         unavailable: "Brand-Studio-Audit-Endpunkt ist nicht verfügbar (Modul inaktiv oder deaktiviert).",
+      },
+    },
+    permissions: {
+      title: "Berechtigungen und Autonomie",
+      description: "Autonomielevel verwalten und Berechtigungsereignisse aus demselben Audit-Stream anzeigen.",
+      currentLevel: "Aktuelles Level",
+      setLevel: "Level setzen",
+      levelsTitle: "Berechtigungsmatrix",
+      observability: {
+        title: "Policy-Observability",
+        description: "Runtime-KPI für 201D: Deny-Rate, häufigste Reason Codes und heuristische Review-Warteschlange.",
+        topReasonsTitle: "Häufigste Reason Codes",
+        triageTitle: "False-Positive-Triage",
+        empty: "Noch keine Policy-Observability-Daten.",
+        triageFallback: "Die Review-Warteschlange wird heuristisch aus Blockierungsgründen aufgebaut, die oft zusätzlichen Kontext oder eine Berechtigungskalibrierung benötigen.",
+        labels: {
+          denyRate: "Deny-Rate",
+          blocked: "Blockierte Entscheidungen",
+          reviewQueue: "Review-Warteschlange",
+          ofBlocks: "aller Blockierungen",
+          primaryReason: "Hauptgrund",
+          blocks: "Blockierungen",
+          reviewCandidates: "Review-Kandidaten",
+        },
+      },
+      eventsTitle: "Berechtigungsereignisse (autonomy.*)",
+      emptyEvents: "Keine Berechtigungsereignisse im Audit-Stream.",
+      actions: {
+        apply: "Level anwenden",
+        saving: "Speichere...",
+        grantAnalysis: "Analyse-Berechtigungen vergeben",
+        refresh: "Daten aktualisieren",
+      },
+      messages: {
+        updated: "Autonomielevel aktualisiert.",
+      },
+      errors: {
+        load: "Berechtigungsdaten konnten nicht geladen werden.",
+        update: "Autonomielevel konnte nicht aktualisiert werden.",
+      },
+      columns: {
+        level: "Level",
+        risk: "Risiko",
+        network: "Netzwerk",
+        paidApi: "Bezahlte API",
+        filesystem: "Dateisystem",
+        shell: "Shell",
+        desktop: "Desktop input",
+      },
+      values: {
+        enabled: "aktiv",
+        disabled: "inaktiv",
       },
     },
     apiMap: {

@@ -505,15 +505,14 @@ async def _classify_intent_and_log(
     else:
         intent = await orch.intent_manager.classify_intent(request_content)
         intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
-    if intent_debug:
-        if orch.request_tracer:
-            try:
-                details = json.dumps(intent_debug, ensure_ascii=False)
-            except Exception:
-                details = str(intent_debug)
-            orch.request_tracer.add_step(
-                task_id, "DecisionGate", "intent_debug", status="ok", details=details
-            )
+    if intent_debug and orch.request_tracer:
+        try:
+            details = json.dumps(intent_debug, ensure_ascii=False)
+        except Exception:
+            details = str(intent_debug)
+        orch.request_tracer.add_step(
+            task_id, "DecisionGate", "intent_debug", status="ok", details=details
+        )
     return intent, intent_debug
 
 

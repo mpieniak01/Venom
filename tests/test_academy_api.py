@@ -413,11 +413,16 @@ def test_localhost_guard_blocks_mutating_endpoints(mock_settings, strict_client)
         "/api/v1/academy/adapters/activate",
         json={"adapter_id": "a", "adapter_path": "/tmp/a"},
     )
+    r_sign = strict_client.post(
+        "/api/v1/academy/adapters/a/sign",
+        json={"runtime_id": "ollama"},
+    )
     r_deactivate = strict_client.post("/api/v1/academy/adapters/deactivate")
     r_cancel = strict_client.delete("/api/v1/academy/train/job1")
 
     assert r_train.status_code == 403
     assert r_activate.status_code == 403
+    assert r_sign.status_code == 403
     assert r_deactivate.status_code == 403
     assert r_cancel.status_code == 403
 

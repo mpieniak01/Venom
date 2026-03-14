@@ -64,7 +64,13 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 		monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend openapi-export openapi-codegen-types ensure-env-file \
 		ensure-preprod-env-file \
 		env-audit audit-dead-code audit-dead-code-vulture-install audit-dead-code-full make-targets-audit security-delta-scan security-delta-scan-strict env-clean-safe env-clean-docker-safe env-clean-deep env-report-diff stack-stability-audit llm-runtime-stability-audit llm-runtime-stability-cycle-start llm-runtime-stability-cycle-start2 test-preprod-readonly-smoke help \
-		modules-status modules-pull modules-branches modules-exec architecture-drift-check architecture-sonar-export optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor
+		modules-status modules-pull modules-branches modules-exec architecture-drift-check architecture-sonar-export optional-modules-contracts-check test-lane-contracts-check test-catalog-sync test-catalog-check test-groups-sync test-groups-check test-dynamic-preview check-file-coverage-floor \
+		test-202c-diagnostics-contract test-202c-diagnostics-runtime test-202c-diagnostics-perf test-202c-diagnostics-report test-202c-diagnostics-all \
+		test-202c1-parity-semantic test-202c1-perf-warm test-202c1-model-selection test-202c1-lora-path test-202c1-all \
+		test-202c2-parity-judge test-202c2-perf-tuning test-202c2-all \
+		test-202c3-perf-profile test-202c3-all \
+		test-202c4-automation-matrix test-202c4-decision-refined test-202c4-all \
+		test-202c5-lora-runtime-gap test-202c6-signature-contract-smoke test-202c7-signed-activation-success
 
 lint:
 	pre-commit run --all-files

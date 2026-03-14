@@ -270,3 +270,37 @@ def deactivate_adapter(
         deploy_to_chat_runtime=deploy_to_chat_runtime,
         rollback_chat_runtime_after_adapter_deactivation_fn=_rollback_chat_runtime_after_adapter_deactivation,
     )
+
+
+def sign_adapter_for_chat(
+    *,
+    mgr: Any,
+    adapter_id: str,
+    runtime_id: str,
+    model_id: str | None,
+    signer: str | None,
+    conversion_mode: str,
+) -> Dict[str, Any]:
+    return _management_service.sign_adapter_for_chat(
+        mgr=mgr,
+        adapter_id=adapter_id,
+        runtime_id=runtime_id,
+        model_id=model_id,
+        signer=signer,
+        conversion_mode=conversion_mode,
+        settings_obj=_resolve_settings_for_call(),
+    )
+
+
+def ensure_adapter_signed_for_chat(
+    *,
+    adapter_id: str,
+    runtime_id: str,
+    model_id: str | None,
+) -> Dict[str, Any]:
+    return _management_service.ensure_adapter_signed_for_chat(
+        settings_obj=_resolve_settings_for_call(),
+        adapter_id=adapter_id,
+        runtime_id=runtime_id,
+        model_id=model_id,
+    )

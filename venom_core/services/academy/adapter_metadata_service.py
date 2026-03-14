@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
@@ -103,6 +104,62 @@ def write_canonical_adapter_metadata(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def get_adapter_chat_signature(*, adapter_dir: Path) -> Dict[str, Any] | None:
+    metadata = _load_adapter_metadata(adapter_dir)
+    signature = metadata.get("chat_signature")
+    if not isinstance(signature, dict):
+        return None
+    return signature
+
+
+def write_adapter_chat_signature(
+    *,
+    adapter_dir: Path,
+    runtime_id: str,
+    model_id: str | None,
+    signer: str | None,
+    conversion_mode: str,
+) -> Dict[str, Any]:
+    metadata = _load_adapter_metadata(adapter_dir)
+    signature = {
+        "signed": True,
+        "signed_at": datetime.now(timezone.utc).isoformat(),
+        "runtime_id": str(runtime_id).strip().lower(),
+        "model_id": str(model_id or "").strip() or None,
+        "signer": str(signer or "system").strip() or "system",
+        "conversion_mode": str(conversion_mode or "none").strip().lower() or "none",
+    }
+    metadata["chat_signature"] = signature
+    write_canonical_adapter_metadata(adapter_dir=adapter_dir, payload=metadata)
+    return signature
+
+
+def ensure_adapter_chat_signature(
+    *,
+    adapter_dir: Path,
+    runtime_id: str,
+    model_id: str | None,
+) -> Dict[str, Any]:
+    signature = get_adapter_chat_signature(adapter_dir=adapter_dir)
+    if not signature or not bool(signature.get("signed")):
+        raise ValueError(
+            "ADAPTER_NOT_SIGNED_FOR_CHAT: Adapter must be signed for chat usage before deploy."
+        )
+    signed_runtime = str(signature.get("runtime_id") or "").strip().lower()
+    requested_runtime = str(runtime_id or "").strip().lower()
+    if signed_runtime and requested_runtime and signed_runtime != requested_runtime:
+        raise ValueError(
+            "ADAPTER_SIGNATURE_RUNTIME_MISMATCH: Adapter signature runtime differs from requested runtime."
+        )
+    signed_model = str(signature.get("model_id") or "").strip()
+    requested_model = str(model_id or "").strip()
+    if signed_model and requested_model and signed_model != requested_model:
+        raise ValueError(
+            "ADAPTER_SIGNATURE_MODEL_MISMATCH: Adapter signature model differs from requested model."
+        )
+    return signature
 
 
 def _read_json_file(path: Path) -> Dict[str, Any]:

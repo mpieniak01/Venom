@@ -29,6 +29,10 @@ class TrainingRequest(BaseModel):
     dataset_path: str | None = None
     base_model: str | None = None
     runtime_id: str | None = Field(default=None, min_length=1, max_length=32)
+    onnx_conversion_mode: Literal["none", "merge_export"] = "none"
+    auto_sign_for_chat: bool = False
+    chat_signer: str | None = Field(default=None, max_length=128)
+    chat_target_model_id: str | None = Field(default=None, max_length=256)
     lora_rank: int = Field(default=8, ge=4, le=64)
     learning_rate: float = Field(default=2e-4, gt=0, le=1e-2)
     num_epochs: int = Field(default=2, ge=1, le=20)
@@ -110,6 +114,24 @@ class ActivateAdapterRequest(BaseModel):
     runtime_id: str | None = None
     model_id: str | None = None
     deploy_to_chat_runtime: bool = False
+    require_chat_signature: bool = False
+
+
+class AdapterChatSignRequest(BaseModel):
+    """Request to sign adapter for chat runtime usage."""
+
+    runtime_id: str
+    model_id: str | None = None
+    signer: str | None = Field(default=None, max_length=128)
+    conversion_mode: Literal["none", "merge_export", "gguf"] = "none"
+
+
+class AdapterChatSignResponse(BaseModel):
+    """Response after signing adapter for chat usage."""
+
+    success: bool
+    adapter_id: str
+    signature: dict[str, Any] = Field(default_factory=dict)
 
 
 class UploadFileInfo(BaseModel):

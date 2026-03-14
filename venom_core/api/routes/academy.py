@@ -27,6 +27,8 @@ from venom_core.api.schemas.academy import (
     AcademyJobsListResponse,
     AcademyJobSummary,
     ActivateAdapterRequest,
+    AdapterChatSignRequest,
+    AdapterChatSignResponse,
     AdapterInfo,
     DatasetConversionFileInfo,
     DatasetConversionListResponse,
@@ -444,6 +446,34 @@ async def activate_adapter(
         request=request,
         req=req,
         academy=_academy_module(),
+    )
+
+
+@router.post(
+    "/adapters/{adapter_id}/sign",
+    responses={
+        400: RESP_400_BAD_REQUEST,
+        403: RESP_403_LOCALHOST_ONLY,
+        404: RESP_404_ADAPTER_NOT_FOUND,
+        500: RESP_500_INTERNAL,
+        503: RESP_503_ACADEMY_UNAVAILABLE,
+    },
+)
+async def sign_adapter_for_chat(
+    adapter_id: str,
+    request: AdapterChatSignRequest,
+    req: Request,
+) -> AdapterChatSignResponse:
+    payload = academy_route_handlers.sign_adapter_for_chat_handler(
+        adapter_id=adapter_id,
+        request=request,
+        req=req,
+        academy=_academy_module(),
+    )
+    return AdapterChatSignResponse(
+        success=bool(payload.get("success")),
+        adapter_id=str(payload.get("adapter_id") or adapter_id),
+        signature=dict(payload.get("signature") or {}),
     )
 
 

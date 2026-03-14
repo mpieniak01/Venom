@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Play, Loader2, RefreshCw, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
@@ -106,6 +107,10 @@ export function TrainingPanel() {
   const [learningRate, setLearningRate] = useState(0.0002);
   const [numEpochs, setNumEpochs] = useState(2);
   const [batchSize, setBatchSize] = useState(1);
+  const [onnxConversionMode, setOnnxConversionMode] = useState<"none" | "merge_export">("none");
+  const [autoSignForChat, setAutoSignForChat] = useState(false);
+  const [chatSigner, setChatSigner] = useState("academy-ui");
+  const [chatTargetModelId, setChatTargetModelId] = useState("");
   const [viewingLogs, setViewingLogs] = useState<string | null>(null);
   const [trainableModels, setTrainableModels] = useState<TrainableModelInfo[]>([]);
   const [runtimeOptions, setRuntimeOptions] = useState<Array<{ id: string; label: string }>>([]);
@@ -246,9 +251,19 @@ export function TrainingPanel() {
     if (!selectedBaseModel) return;
     try {
       setLoading(true);
+      const trimmedSigner = chatSigner.trim();
+      const trimmedChatTargetModelId = chatTargetModelId.trim();
       const response = await startTraining({
         base_model: selectedBaseModel,
         runtime_id: selectedRuntime || null,
+        onnx_conversion_mode: onnxConversionMode,
+        auto_sign_for_chat: autoSignForChat,
+        chat_signer: autoSignForChat
+          ? (trimmedSigner || "academy-ui")
+          : null,
+        chat_target_model_id: autoSignForChat
+          ? (trimmedChatTargetModelId || null)
+          : null,
         lora_rank: loraRank,
         learning_rate: learningRate,
         num_epochs: numEpochs,
@@ -341,6 +356,7 @@ export function TrainingPanel() {
   }
   const selectedRuntimeCapabilities = runtimeCapabilities[selectedRuntime] ?? {};
   const hasRuntimeCompatibleModels = trainableModels.length > 0;
+  const isOnnxRuntimeSelected = normalizeRuntimeId(selectedRuntime) === "onnx";
   const selectedModel = trainableModels.find((model) => model.model_id === selectedBaseModel) ?? null;
   const selectedModelCompatibilityLabel = selectedModel
     ? (() => {
@@ -579,6 +595,84 @@ export function TrainingPanel() {
               className="mt-2"
             />
             <p className="mt-1 text-xs text-hint">{t("academy.training.batchSizeHint")}</p>
+          </div>
+          <div>
+            <Label htmlFor="onnx-conversion-mode" className="text-[color:var(--text-secondary)]">
+              {t("academy.training.onnxConversionMode")}
+            </Label>
+            <SelectMenu
+              value={onnxConversionMode}
+              options={[
+                {
+                  value: "none",
+                  label: t("academy.training.onnxConversionNone"),
+                },
+                {
+                  value: "merge_export",
+                  label: t("academy.training.onnxConversionMergeExport"),
+                },
+              ]}
+              onChange={(value) => {
+                setOnnxConversionMode(value === "merge_export" ? "merge_export" : "none");
+              }}
+              placeholder={t("academy.training.onnxConversionMode")}
+              ariaLabel={t("academy.training.onnxConversionMode")}
+              buttonTestId="academy-training-onnx-conversion-mode-select"
+              optionTestIdPrefix="academy-training-onnx-conversion-mode-option"
+              buttonClassName="mt-2 h-10 w-full justify-between rounded-md border border-[color:var(--ui-border)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)] ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--primary)] focus-visible:ring-offset-2"
+              menuClassName="w-[min(980px,96vw)] max-h-[320px] overflow-y-auto rounded-md border border-[color:var(--ui-border-strong)] bg-[color:var(--bg-panel)] p-1 shadow-card backdrop-blur-md"
+              optionClassName="rounded-md px-3 py-2 text-[color:var(--text-primary)] hover:bg-[color:var(--ui-surface-hover)]"
+            />
+            <p className="mt-1 text-xs text-hint">
+              {isOnnxRuntimeSelected
+                ? t("academy.training.onnxConversionHintOnnx")
+                : t("academy.training.onnxConversionHint")}
+            </p>
+          </div>
+          <div className="sm:col-span-2 xl:col-span-2">
+            <div className="rounded-md border border-[color:var(--ui-border)] bg-[color:var(--bg-panel)] p-3">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="training-auto-sign-for-chat"
+                  checked={autoSignForChat}
+                  onCheckedChange={(value) => setAutoSignForChat(Boolean(value))}
+                />
+                <Label htmlFor="training-auto-sign-for-chat" className="text-[color:var(--text-secondary)]">
+                  {t("academy.training.autoSignForChat")}
+                </Label>
+              </div>
+              <p className="mt-1 text-xs text-hint">
+                {t("academy.training.autoSignForChatHint")}
+              </p>
+              {autoSignForChat ? (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="chat-signer" className="text-[color:var(--text-secondary)]">
+                      {t("academy.training.chatSigner")}
+                    </Label>
+                    <Input
+                      id="chat-signer"
+                      value={chatSigner}
+                      onChange={(event) => setChatSigner(event.target.value)}
+                      placeholder="academy-ui"
+                      className="mt-2"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="chat-target-model-id" className="text-[color:var(--text-secondary)]">
+                      {t("academy.training.chatTargetModelId")}
+                    </Label>
+                    <Input
+                      id="chat-target-model-id"
+                      value={chatTargetModelId}
+                      onChange={(event) => setChatTargetModelId(event.target.value)}
+                      placeholder={t("academy.training.chatTargetModelIdPlaceholder")}
+                      className="mt-2"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
           <div className="sm:col-span-2 xl:col-span-1 xl:self-end">
             <Button

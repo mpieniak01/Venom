@@ -38,6 +38,10 @@ export interface TrainingParams {
   dataset_path?: string;
   base_model?: string;
   runtime_id?: string | null;
+  onnx_conversion_mode?: "none" | "merge_export";
+  auto_sign_for_chat?: boolean;
+  chat_signer?: string | null;
+  chat_target_model_id?: string | null;
   lora_rank?: number;
   learning_rate?: number;
   num_epochs?: number;
@@ -237,6 +241,7 @@ export async function activateAdapter(params: {
   runtime_id?: string;
   model_id?: string;
   deploy_to_chat_runtime?: boolean;
+  require_chat_signature?: boolean;
 }): Promise<{
   success: boolean;
   message: string;
@@ -251,6 +256,28 @@ export async function activateAdapter(params: {
     runtime_id?: string;
     chat_model?: string;
   }>("/api/v1/academy/adapters/activate", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function signAdapterForChat(
+  adapterId: string,
+  params: {
+    runtime_id?: string;
+    model_id?: string;
+    signer?: string;
+  },
+): Promise<{
+  success: boolean;
+  message: string;
+  signature: Record<string, unknown>;
+}> {
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    signature: Record<string, unknown>;
+  }>(`/api/v1/academy/adapters/${encodeURIComponent(adapterId)}/sign`, {
     method: "POST",
     body: JSON.stringify(params),
   });

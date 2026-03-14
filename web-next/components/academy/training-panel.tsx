@@ -48,6 +48,91 @@ export const MODEL_SECTION_ORDER: ModelSectionKey[] = [
   "cloudOther",
 ];
 
+export function resolveTrainingEngineKey(provider: string): SupportedEngine {
+  const normalized = provider.trim().toLowerCase();
+  if (
+    normalized === "unsloth" ||
+    normalized === "huggingface" ||
+    normalized === "onnx" ||
+    normalized === "vllm" ||
+    normalized === "ollama" ||
+    normalized === "openai" ||
+    normalized === "google" ||
+    normalized === "config"
+  ) {
+    return normalized;
+  }
+  return "unknown";
+}
+
+export function getTrainingStatusColor(status: TrainingJobStatus): string {
+  switch (status) {
+    case "queued":
+      return "text-amber-300 bg-amber-500/10";
+    case "preparing":
+      return "text-indigo-300 bg-indigo-500/10";
+    case "finished":
+      return "text-emerald-400 bg-emerald-500/10";
+    case "running":
+      return "text-blue-400 bg-blue-500/10";
+    case "failed":
+      return "text-red-400 bg-red-500/10";
+    case "cancelled":
+      return "text-orange-300 bg-orange-500/10";
+    default:
+      return "text-zinc-400 bg-zinc-500/10";
+  }
+}
+
+export function getTrainingStatusLabel(
+  status: TrainingJobStatus,
+  t: TranslateFn,
+): string {
+  const labels: Record<TrainingJobStatus, string> = {
+    queued: t("academy.training.status.queued"),
+    preparing: t("academy.training.status.preparing"),
+    running: t("academy.training.status.running"),
+    finished: t("academy.training.status.finished"),
+    failed: t("academy.training.status.failed"),
+    cancelled: t("academy.training.status.cancelled"),
+  };
+  return labels[status];
+}
+
+export function getModelCompatibility(model: TrainableModelInfo): string[] {
+  const entries = Object.entries(model.runtime_compatibility ?? {})
+    .filter(([, isCompatible]) => Boolean(isCompatible))
+    .map(([runtimeId]) => runtimeId);
+  const runtimeOrder: Record<string, number> = {
+    vllm: 0,
+    ollama: 1,
+    onnx: 2,
+  };
+  return entries.sort((left, right) => {
+    const leftOrder = runtimeOrder[left] ?? 99;
+    const rightOrder = runtimeOrder[right] ?? 99;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.localeCompare(right);
+  });
+}
+
+export function getSelectedModelCompatibilityLabel(
+  selectedModel: TrainableModelInfo | null,
+  getRuntimeDisplayName: (runtimeId: string) => string,
+  t: TranslateFn,
+): string {
+  if (!selectedModel) {
+    return "";
+  }
+  const compatibility = getModelCompatibility(selectedModel);
+  if (compatibility.length === 0) {
+    return t("academy.training.runtimeUnknown");
+  }
+  return compatibility.map((runtime) => getRuntimeDisplayName(runtime)).join(" • ");
+}
+
 export function getTrainingModelSectionKey(model: TrainableModelInfo): ModelSectionKey {
   if (model.installed_local) return "localFirst";
   if (model.cost_tier === "free") return "cloudFree";
@@ -127,25 +212,8 @@ export function TrainingPanel() {
   const [selectedBaseModel, setSelectedBaseModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
 
-  const resolveEngineKey = (provider: string): SupportedEngine => {
-    const normalized = provider.trim().toLowerCase();
-    if (
-      normalized === "unsloth" ||
-      normalized === "huggingface" ||
-      normalized === "onnx" ||
-      normalized === "vllm" ||
-      normalized === "ollama" ||
-      normalized === "openai" ||
-      normalized === "google" ||
-      normalized === "config"
-    ) {
-      return normalized;
-    }
-    return "unknown";
-  };
-
   const getRuntimeDisplayName = useCallback((runtimeId: string): string => {
-    const engineKey = resolveEngineKey(runtimeId);
+    const engineKey = resolveTrainingEngineKey(runtimeId);
     if (engineKey === "unknown") {
       return runtimeId;
     }
@@ -282,56 +350,6 @@ export function TrainingPanel() {
     }
   }
 
-  const getStatusColor = (status: TrainingJobStatus) => {
-    switch (status) {
-      case "queued":
-        return "text-amber-300 bg-amber-500/10";
-      case "preparing":
-        return "text-indigo-300 bg-indigo-500/10";
-      case "finished":
-        return "text-emerald-400 bg-emerald-500/10";
-      case "running":
-        return "text-blue-400 bg-blue-500/10";
-      case "failed":
-        return "text-red-400 bg-red-500/10";
-      case "cancelled":
-        return "text-orange-300 bg-orange-500/10";
-      default:
-        return "text-zinc-400 bg-zinc-500/10";
-    }
-  };
-
-  const getStatusLabel = (status: TrainingJobStatus) => {
-    const labels: Record<TrainingJobStatus, string> = {
-      queued: t("academy.training.status.queued"),
-      preparing: t("academy.training.status.preparing"),
-      running: t("academy.training.status.running"),
-      finished: t("academy.training.status.finished"),
-      failed: t("academy.training.status.failed"),
-      cancelled: t("academy.training.status.cancelled"),
-    };
-    return labels[status];
-  };
-
-  const getModelCompatibility = (model: TrainableModelInfo): string[] => {
-    const entries = Object.entries(model.runtime_compatibility ?? {})
-      .filter(([, isCompatible]) => Boolean(isCompatible))
-      .map(([runtimeId]) => runtimeId);
-    const runtimeOrder: Record<string, number> = {
-      vllm: 0,
-      ollama: 1,
-      onnx: 2,
-    };
-    return entries.sort((left, right) => {
-      const leftOrder = runtimeOrder[left] ?? 99;
-      const rightOrder = runtimeOrder[right] ?? 99;
-      if (leftOrder !== rightOrder) {
-        return leftOrder - rightOrder;
-      }
-      return left.localeCompare(right);
-    });
-  };
-
   const getModelRuntimeBadgeLabel = (model: TrainableModelInfo): string => {
     if (selectedRuntime && model.runtime_compatibility?.[selectedRuntime]) {
       return getRuntimeDisplayName(selectedRuntime);
@@ -343,7 +361,7 @@ export function TrainingPanel() {
     if (compatibility.length > 0) {
       return getRuntimeDisplayName(compatibility[0]);
     }
-    return t(`academy.training.engineNames.${resolveEngineKey(model.provider)}`);
+    return t(`academy.training.engineNames.${resolveTrainingEngineKey(model.provider)}`);
   };
 
   const modelPickerOptions = buildTrainingModelPickerOptions(trainableModels, t);
@@ -358,13 +376,11 @@ export function TrainingPanel() {
   const hasRuntimeCompatibleModels = trainableModels.length > 0;
   const isOnnxRuntimeSelected = normalizeRuntimeId(selectedRuntime) === "onnx";
   const selectedModel = trainableModels.find((model) => model.model_id === selectedBaseModel) ?? null;
-  const selectedModelCompatibilityLabel = selectedModel
-    ? (() => {
-      const compatibility = getModelCompatibility(selectedModel);
-      if (compatibility.length === 0) return t("academy.training.runtimeUnknown");
-      return compatibility.map((runtime) => getRuntimeDisplayName(runtime)).join(" • ");
-    })()
-    : "";
+  const selectedModelCompatibilityLabel = getSelectedModelCompatibilityLabel(
+    selectedModel,
+    getRuntimeDisplayName,
+    t,
+  );
   let selectedModelInstallStateLabel = "";
   if (selectedModel) {
     selectedModelInstallStateLabel = selectedModel.installed_local
@@ -517,7 +533,7 @@ export function TrainingPanel() {
                   <span className="text-[color:var(--text-secondary)]">
                     {t("academy.training.engineLabel")}:
                   </span>{" "}
-                  {t(`academy.training.engineNames.${resolveEngineKey(selectedModel.provider)}`)} •{" "}
+                  {t(`academy.training.engineNames.${resolveTrainingEngineKey(selectedModel.provider)}`)} •{" "}
                   <span className="text-[color:var(--text-secondary)]">
                     {t("academy.training.compatibilityLabel")}:
                   </span>{" "}
@@ -715,8 +731,8 @@ export function TrainingPanel() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm text-[color:var(--text-primary)]">{job.job_id}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getStatusColor(job.status)}`}>
-                        {getStatusLabel(job.status)}
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTrainingStatusColor(job.status)}`}>
+                        {getTrainingStatusLabel(job.status, t)}
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-hint">

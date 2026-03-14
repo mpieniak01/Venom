@@ -80,19 +80,80 @@ def update_job_in_history(
         logger.error("Failed to update job in history: %s", exc)
 
 
+def _training_parameters(job: dict[str, Any]) -> dict[str, Any]:
+    parameters = job.get("parameters")
+    return parameters if isinstance(parameters, dict) else {}
+
+
+def _apply_onnx_conversion_plan(
+    *, metadata: dict[str, Any], parameters: dict[str, Any]
+) -> str:
+    onnx_conversion_mode = (
+        str(parameters.get("onnx_conversion_mode") or "none").strip().lower()
+    )
+    if onnx_conversion_mode != "none":
+        metadata["onnx_conversion_plan"] = {
+            "mode": onnx_conversion_mode,
+            "status": "planned",
+            "target_runtime": "onnx",
+        }
+    return onnx_conversion_mode
+
+
+def _append_optional_ollama_metadata(
+    *,
+    metadata: dict[str, Any],
+    runtime_id: str,
+    adapter_dir: Path,
+    base_model: str,
+) -> None:
+    if runtime_id != "ollama":
+        return
+    gguf_path = _adapter_runtime._ensure_ollama_adapter_gguf(
+        adapter_dir=adapter_dir,
+        from_model=base_model,
+    )
+    metadata["ollama_adapter_gguf_path"] = str(gguf_path)
+
+
+def _write_optional_chat_signature(
+    *,
+    parameters: dict[str, Any],
+    adapter_dir: Path,
+    runtime_id: str,
+    onnx_conversion_mode: str,
+) -> None:
+    if not bool(parameters.get("auto_sign_for_chat")):
+        return
+    from venom_core.services.academy.adapter_metadata_service import (
+        write_adapter_chat_signature,
+    )
+
+    write_adapter_chat_signature(
+        adapter_dir=adapter_dir,
+        runtime_id=runtime_id or "vllm",
+        model_id=str(parameters.get("chat_target_model_id") or "").strip() or None,
+        signer=str(parameters.get("chat_signer") or "system").strip() or "system",
+        conversion_mode=("gguf" if runtime_id == "ollama" else onnx_conversion_mode)
+        or "none",
+    )
+
+
 def save_adapter_metadata(job: dict[str, Any], adapter_path: Path) -> None:
     """Persist deterministic adapter metadata after successful training."""
-    runtime_id = str(job.get("parameters", {}).get("runtime_id") or "").strip().lower()
+    parameters = _training_parameters(job)
+    runtime_id = str(parameters.get("runtime_id") or "").strip().lower()
     base_model = str(job.get("base_model") or "").strip()
+    adapter_dir = adapter_path.parent
     metadata = build_canonical_adapter_metadata(
-        adapter_id=str(adapter_path.parent.name),
+        adapter_id=str(adapter_dir.name),
         base_model=base_model,
         created_at=str(job.get("finished_at") or datetime.now().isoformat()),
         source_flow="training",
         source="academy",
-        training_params=job.get("parameters", {}),
+        training_params=parameters,
         context=AdapterMetadataContext(
-            run_id=str(job.get("job_id") or adapter_path.parent.name),
+            run_id=str(job.get("job_id") or adapter_dir.name),
             requested_runtime_id=runtime_id or None,
             requested_base_model=base_model,
             effective_runtime_id=runtime_id or None,
@@ -103,35 +164,20 @@ def save_adapter_metadata(job: dict[str, Any], adapter_path: Path) -> None:
         ),
     )
     metadata["job_id"] = job.get("job_id")
-    parameters = (
-        job.get("parameters", {}) if isinstance(job.get("parameters"), dict) else {}
+    onnx_conversion_mode = _apply_onnx_conversion_plan(
+        metadata=metadata,
+        parameters=parameters,
     )
-    onnx_conversion_mode = (
-        str(parameters.get("onnx_conversion_mode") or "none").strip().lower()
+    _append_optional_ollama_metadata(
+        metadata=metadata,
+        runtime_id=runtime_id,
+        adapter_dir=adapter_dir,
+        base_model=base_model,
     )
-    if onnx_conversion_mode != "none":
-        metadata["onnx_conversion_plan"] = {
-            "mode": onnx_conversion_mode,
-            "status": "planned",
-            "target_runtime": "onnx",
-        }
-    if runtime_id == "ollama":
-        gguf_path = _adapter_runtime._ensure_ollama_adapter_gguf(
-            adapter_dir=adapter_path.parent,
-            from_model=base_model,
-        )
-        metadata["ollama_adapter_gguf_path"] = str(gguf_path)
-    write_canonical_adapter_metadata(adapter_dir=adapter_path.parent, payload=metadata)
-    if bool(parameters.get("auto_sign_for_chat")):
-        from venom_core.services.academy.adapter_metadata_service import (
-            write_adapter_chat_signature,
-        )
-
-        write_adapter_chat_signature(
-            adapter_dir=adapter_path.parent,
-            runtime_id=runtime_id or "vllm",
-            model_id=str(parameters.get("chat_target_model_id") or "").strip() or None,
-            signer=str(parameters.get("chat_signer") or "system").strip() or "system",
-            conversion_mode=("gguf" if runtime_id == "ollama" else onnx_conversion_mode)
-            or "none",
-        )
+    write_canonical_adapter_metadata(adapter_dir=adapter_dir, payload=metadata)
+    _write_optional_chat_signature(
+        parameters=parameters,
+        adapter_dir=adapter_dir,
+        runtime_id=runtime_id,
+        onnx_conversion_mode=onnx_conversion_mode,
+    )

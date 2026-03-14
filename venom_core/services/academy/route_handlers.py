@@ -108,6 +108,37 @@ def _runtime_error_detail_with_reason_code(
     )
 
 
+def _require_adapter_signing_manager(academy: Any) -> Any:
+    manager = academy._get_model_manager()
+    if manager:
+        return manager
+    raise academy.AcademyRouteError(
+        status_code=503,
+        detail="ModelManager not available for adapter signing",
+    )
+
+
+def _parse_adapter_signature_request(
+    request: Any,
+) -> tuple[str, str | None, str | None, str]:
+    runtime_id = str(getattr(request, "runtime_id", "") or "").strip().lower()
+    if not runtime_id:
+        raise ValueError(
+            "ADAPTER_SIGNATURE_RUNTIME_REQUIRED: Select target runtime for adapter signature."
+        )
+    model_id = str(getattr(request, "model_id", "") or "").strip() or None
+    signer = str(getattr(request, "signer", "") or "").strip() or None
+    conversion_mode = str(getattr(request, "conversion_mode", "none") or "none")
+    return runtime_id, model_id, signer, conversion_mode.strip().lower()
+
+
+def _map_adapter_signing_file_error(exc: FileNotFoundError) -> NoReturn:
+    message = str(exc).strip() or ADAPTER_NOT_FOUND_DETAIL
+    if message == ADAPTER_NOT_FOUND_DETAIL:
+        raise HTTPException(status_code=404, detail=ADAPTER_NOT_FOUND_DETAIL) from None
+    raise HTTPException(status_code=500, detail=message) from exc
+
+
 def _collect_scope_counts(
     *,
     curator: Any,
@@ -803,26 +834,17 @@ def sign_adapter_for_chat_handler(
     try:
         academy._ensure_academy_enabled()
         academy.require_localhost_request(req)
-        manager = academy._get_model_manager()
-        if not manager:
-            raise academy.AcademyRouteError(
-                status_code=503,
-                detail="ModelManager not available for adapter signing",
-            )
-        runtime_id = str(getattr(request, "runtime_id", "") or "").strip().lower()
-        if not runtime_id:
-            raise ValueError(
-                "ADAPTER_SIGNATURE_RUNTIME_REQUIRED: Select target runtime for adapter signature."
-            )
+        manager = _require_adapter_signing_manager(academy)
+        runtime_id, model_id, signer, conversion_mode = (
+            _parse_adapter_signature_request(request)
+        )
         return academy.academy_models.sign_adapter_for_chat(
             mgr=manager,
             adapter_id=adapter_id,
             runtime_id=runtime_id,
-            model_id=str(getattr(request, "model_id", "") or "").strip() or None,
-            signer=str(getattr(request, "signer", "") or "").strip() or None,
-            conversion_mode=str(getattr(request, "conversion_mode", "none") or "none")
-            .strip()
-            .lower(),
+            model_id=model_id,
+            signer=signer,
+            conversion_mode=conversion_mode,
         )
     except academy.AcademyRouteError as e:
         raise academy._to_http_exception(e) from e
@@ -841,12 +863,7 @@ def sign_adapter_for_chat_handler(
             ),
         ) from e
     except FileNotFoundError as e:
-        message = str(e).strip() or ADAPTER_NOT_FOUND_DETAIL
-        if message == ADAPTER_NOT_FOUND_DETAIL:
-            raise HTTPException(
-                status_code=404, detail=ADAPTER_NOT_FOUND_DETAIL
-            ) from None
-        raise HTTPException(status_code=500, detail=message) from e
+        _map_adapter_signing_file_error(e)
     except Exception as e:
         academy.logger.error(f"Failed to sign adapter for chat: {e}", exc_info=True)
         raise HTTPException(

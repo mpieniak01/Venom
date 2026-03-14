@@ -761,7 +761,7 @@ def test_activate_adapter_with_chat_runtime_deploy_vllm(mock_settings, tmp_path)
 
 
 @patch("venom_core.config.SETTINGS")
-def test_activate_adapter_with_chat_runtime_deploy_onnx_skipped(
+def test_activate_adapter_with_chat_runtime_deploy_onnx_raises_metadata_incomplete(
     mock_settings, tmp_path
 ):
     """202D regression: ONNX deploy is no longer silently skipped.

@@ -415,7 +415,7 @@ class TestRollbackOnnxAdapterDeploy:
         assert update_call["PREVIOUS_ONNX_LLM_MODEL_PATH"] == ""
         assert update_call["PREVIOUS_MODEL_ONNX"] == ""
 
-    def test_rollback_disables_onnx_when_no_previous_path(self) -> None:
+    def test_rollback_fails_when_previous_path_missing(self) -> None:
         from venom_core.services.academy.adapter_runtime_service import (
             _rollback_onnx_adapter_deploy,
         )
@@ -436,9 +436,9 @@ class TestRollbackOnnxAdapterDeploy:
             runtime_endpoint_for_hash_fn=lambda *a, **kw: None,
         )
 
-        assert result["rolled_back"] is True
-        update_call = config_mgr.update_config.call_args[0][0]
-        assert update_call["ONNX_LLM_ENABLED"] is False
+        assert result["rolled_back"] is False
+        assert result["reason"] == "previous_path_missing"
+        config_mgr.update_config.assert_not_called()
 
     def test_rollback_fails_gracefully_when_no_previous_info(self) -> None:
         from venom_core.services.academy.adapter_runtime_service import (

@@ -661,9 +661,9 @@ def _resolve_onnx_builder_script(*, settings_obj: Any | None = None) -> Path:
     if tools_path.exists():
         return tools_path
     raise FileNotFoundError(
-        "ONNX genai builder.py not found. "
-        "Set ONNX_GENAI_BUILDER_SCRIPT env var or place builder under "
-        "third_party/onnxruntime-genai/src/python/py/models/builder.py."
+        "ONNX genai builder.py not found. Searched ONNX_GENAI_BUILDER_SCRIPT env var, "
+        "ONNX_BUILDER_SCRIPT setting, and default paths "
+        f"('{default_rel}', 'tools/onnx_builder/builder.py')."
     )
 
 

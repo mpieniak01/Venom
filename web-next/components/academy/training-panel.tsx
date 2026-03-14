@@ -133,6 +133,54 @@ export function getSelectedModelCompatibilityLabel(
   return compatibility.map((runtime) => getRuntimeDisplayName(runtime)).join(" • ");
 }
 
+export function resolveTrainingBaseModelPlaceholder(
+  modelsLoading: boolean,
+  trainableModelsCount: number,
+  t: TranslateFn,
+): string {
+  if (modelsLoading) {
+    return t("academy.training.loadingModels");
+  }
+  if (trainableModelsCount === 0) {
+    return t("academy.training.noTrainableModels");
+  }
+  return t("academy.training.chooseBaseModel");
+}
+
+export function getTrainingModelRuntimeBadgeLabel(
+  model: TrainableModelInfo,
+  selectedRuntime: string,
+  getRuntimeDisplayName: (runtimeId: string) => string,
+  t: TranslateFn,
+): string {
+  if (selectedRuntime && model.runtime_compatibility?.[selectedRuntime]) {
+    return getRuntimeDisplayName(selectedRuntime);
+  }
+  if (
+    model.recommended_runtime &&
+    model.runtime_compatibility?.[model.recommended_runtime]
+  ) {
+    return getRuntimeDisplayName(model.recommended_runtime);
+  }
+  const compatibility = getModelCompatibility(model);
+  if (compatibility.length > 0) {
+    return getRuntimeDisplayName(compatibility[0]);
+  }
+  return t(`academy.training.engineNames.${resolveTrainingEngineKey(model.provider)}`);
+}
+
+export function getTrainingModelInstallStateLabel(
+  selectedModel: TrainableModelInfo | null,
+  t: TranslateFn,
+): string {
+  if (!selectedModel) {
+    return "";
+  }
+  return selectedModel.installed_local
+    ? t("academy.training.installState.localInstalled")
+    : t("academy.training.installState.catalogDownload");
+}
+
 type RuntimeOption = { id: string; label: string };
 type RuntimeCapabilityMap = Record<
   string,
@@ -394,28 +442,12 @@ export function TrainingPanel() {
     }
   }
 
-  const getModelRuntimeBadgeLabel = (model: TrainableModelInfo): string => {
-    if (selectedRuntime && model.runtime_compatibility?.[selectedRuntime]) {
-      return getRuntimeDisplayName(selectedRuntime);
-    }
-    if (model.recommended_runtime && model.runtime_compatibility?.[model.recommended_runtime]) {
-      return getRuntimeDisplayName(model.recommended_runtime);
-    }
-    const compatibility = getModelCompatibility(model);
-    if (compatibility.length > 0) {
-      return getRuntimeDisplayName(compatibility[0]);
-    }
-    return t(`academy.training.engineNames.${resolveTrainingEngineKey(model.provider)}`);
-  };
-
   const modelPickerOptions = buildTrainingModelPickerOptions(trainableModels, t);
-
-  let baseModelPlaceholder = t("academy.training.loadingModels");
-  if (!modelsLoading && trainableModels.length === 0) {
-    baseModelPlaceholder = t("academy.training.noTrainableModels");
-  } else if (!modelsLoading) {
-    baseModelPlaceholder = t("academy.training.chooseBaseModel");
-  }
+  const baseModelPlaceholder = resolveTrainingBaseModelPlaceholder(
+    modelsLoading,
+    trainableModels.length,
+    t,
+  );
   const selectedRuntimeCapabilities = runtimeCapabilities[selectedRuntime] ?? {};
   const hasRuntimeCompatibleModels = trainableModels.length > 0;
   const isOnnxRuntimeSelected = normalizeRuntimeId(selectedRuntime) === "onnx";
@@ -425,12 +457,10 @@ export function TrainingPanel() {
     getRuntimeDisplayName,
     t,
   );
-  let selectedModelInstallStateLabel = "";
-  if (selectedModel) {
-    selectedModelInstallStateLabel = selectedModel.installed_local
-      ? t("academy.training.installState.localInstalled")
-      : t("academy.training.installState.catalogDownload");
-  }
+  const selectedModelInstallStateLabel = getTrainingModelInstallStateLabel(
+    selectedModel,
+    t,
+  );
 
   return (
     <div className="space-y-6">
@@ -524,7 +554,12 @@ export function TrainingPanel() {
                         {selectedOption.model.model_id}
                       </span>
                       <span className="shrink-0 text-[11px] text-[color:var(--ui-muted)]">
-                        {getModelRuntimeBadgeLabel(selectedOption.model)}
+                        {getTrainingModelRuntimeBadgeLabel(
+                          selectedOption.model,
+                          selectedRuntime,
+                          getRuntimeDisplayName,
+                          t,
+                        )}
                       </span>
                     </div>
                   );
@@ -558,7 +593,12 @@ export function TrainingPanel() {
                       </span>
                       <div className="flex shrink-0 items-center gap-2 text-right">
                         <span className="text-[11px] text-[color:var(--ui-muted)]">
-                          {getModelRuntimeBadgeLabel(model)}
+                          {getTrainingModelRuntimeBadgeLabel(
+                            model,
+                            selectedRuntime,
+                            getRuntimeDisplayName,
+                            t,
+                          )}
                         </span>
                         <span className="text-[11px] text-hint/80">
                           {model.installed_local

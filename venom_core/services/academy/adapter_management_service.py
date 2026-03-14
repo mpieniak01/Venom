@@ -358,6 +358,62 @@ def _rollback_active_adapter(*, mgr: Any, adapter_id: str) -> None:
         )
 
 
+def sign_adapter_for_chat(
+    *,
+    mgr: Any,
+    adapter_id: str,
+    runtime_id: str,
+    model_id: str | None,
+    signer: str | None,
+    conversion_mode: str,
+    settings_obj: Any,
+) -> dict[str, Any]:
+    models_dir = _runtime_service._resolve_academy_models_dir(settings_obj=settings_obj)
+    adapter_dir = _runtime_service._resolve_adapter_dir(
+        models_dir=models_dir,
+        adapter_id=adapter_id,
+    )
+    adapter_path = (adapter_dir / "adapter").resolve()
+    if not adapter_path.exists():
+        raise FileNotFoundError(_metadata_service.ADAPTER_NOT_FOUND_DETAIL)
+
+    signature = _metadata_service.write_adapter_chat_signature(
+        adapter_dir=adapter_dir,
+        runtime_id=runtime_id,
+        model_id=model_id,
+        signer=signer,
+        conversion_mode=conversion_mode,
+    )
+    return {
+        "success": True,
+        "adapter_id": adapter_id,
+        "signature": signature,
+    }
+
+
+def ensure_adapter_signed_for_chat(
+    *,
+    settings_obj: Any,
+    adapter_id: str,
+    runtime_id: str,
+    model_id: str | None,
+) -> dict[str, Any]:
+    models_dir = _runtime_service._resolve_academy_models_dir(settings_obj=settings_obj)
+    adapter_dir = _runtime_service._resolve_adapter_dir(
+        models_dir=models_dir,
+        adapter_id=adapter_id,
+    )
+    adapter_path = (adapter_dir / "adapter").resolve()
+    if not adapter_path.exists():
+        raise FileNotFoundError(_metadata_service.ADAPTER_NOT_FOUND_DETAIL)
+    signature = _metadata_service.ensure_adapter_chat_signature(
+        adapter_dir=adapter_dir,
+        runtime_id=runtime_id,
+        model_id=model_id,
+    )
+    return signature
+
+
 def _deploy_status_message(*, adapter_id: str, deploy_payload: dict[str, Any]) -> str:
     if deploy_payload.get("deployed"):
         return (

@@ -471,6 +471,10 @@ export const pl = {
         completedLabel: "Zakończone",
         liveHint: "Aktualizowane strumieniem SSE",
         startHint: "Start: {{timestamp}}",
+        emptyTitle: "Nie wybrano kroku",
+      },
+      raw: {
+        title: "Surowe dane",
       },
     },
     actions: {
@@ -485,6 +489,7 @@ export const pl = {
       zoomIn: "Przybliż",
       zoomOut: "Oddal",
       reset: "Resetuj",
+      contracts: "Kontrakty",
     },
   },
   docs: {

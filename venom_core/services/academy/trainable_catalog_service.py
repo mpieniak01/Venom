@@ -456,6 +456,11 @@ def _add_provider_default_runtimes(
         preferred.add("vllm")
     if "ollama" in compatibility and model_id and _looks_like_hf_repo_id(model_id):
         preferred.add("ollama")
+    # 202D: ONNX is a valid deploy target for HF/unsloth providers (merge→export pipeline).
+    # Excluded: "unknown" and "config" — cannot guarantee PEFT-merge suitability for those.
+    _ONNX_MERGE_EXPORT_PROVIDERS = {"huggingface", "hf", "unsloth"}
+    if "onnx" in compatibility and provider_lc in _ONNX_MERGE_EXPORT_PROVIDERS:
+        preferred.add("onnx")
 
 
 def _add_ollama_family_runtime(

@@ -103,6 +103,19 @@ export const academy = {
     loraHint: "4-64 (wyższy = więcej parametrów)",
     learningRate: "Learning Rate",
     batchSizeHint: "1-32 (mniejszy = mniej VRAM)",
+    onnxConversionMode: "Tryb konwersji ONNX",
+    onnxConversionNone: "Brak konwersji",
+    onnxConversionMergeExport: "Scal adapter i eksportuj ONNX",
+    onnxConversionHint:
+      "Opcja konwersji jest zapisywana w jobie i może zostać użyta po treningu podczas publikacji artefaktów.",
+    onnxConversionHintOnnx:
+      "Dla runtime ONNX zalecany jest tryb 'Scal adapter i eksportuj ONNX'.",
+    autoSignForChat: "Automatycznie podpisz adapter pod chat",
+    autoSignForChatHint:
+      "Po treningu Academy podpisze adapter, aby aktywacja z wymaganym podpisem działała bez ręcznych kroków.",
+    chatSigner: "Podpisujący (signer)",
+    chatTargetModelId: "Docelowy model chat",
+    chatTargetModelIdPlaceholder: "np. gemma3:latest",
     starting: "Uruchamianie...",
     start: "Start Training",
     history: "Historia Treningów ({{count}})",
@@ -139,6 +152,10 @@ export const academy = {
     blocked: "Zablokowany dla aktualnego wyboru",
     runtimeSelectionRequired: "Wybierz serwer przed aktywacją adaptera.",
     modelSelectionRequired: "Wybierz model runtime przed aktywacją adaptera.",
+    requireChatSignature: "Wymagaj podpisu adaptera przy aktywacji",
+    requireChatSignatureHint:
+      "Jeśli zaznaczone, panel najpierw podpisze adapter dla wybranego runtime/modelu, a potem wyśle aktywację z wymuszonym podpisem.",
+    chatSigner: "Signer podpisu",
     metadataIncomplete: "Adapter wymaga nowego canonical manifest",
     metadataIncompleteDescription:
       "Ten adapter nie ma kompletnego metadata.json w nowym formacie i nie jest traktowany jako poprawny artefakt do aktywacji.",

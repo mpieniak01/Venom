@@ -1,4 +1,17 @@
 export const brainLocale = {
+    details: {
+      selectNode: "Klicken Sie auf einen Knoten, um Details zu sehen.",
+      properties: "Eigenschaften",
+      relations: "Beziehungen",
+      noRelations: "Keine Beziehungen.",
+      clearSession: "Gesamte Sitzung löschen",
+      clearing: "Bereinigung...",
+      actions: {
+        pin: "Anheften",
+        unpin: "Lösen",
+        delete: "Löschen",
+      },
+    },
     title: "Wissensgraph",
     description: "Visualisierung von Abhängigkeiten in Speicher und Repository",
     stats: {

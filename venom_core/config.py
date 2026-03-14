@@ -231,6 +231,9 @@ class Settings(BaseSettings):
     PREVIOUS_MODEL_OLLAMA: str = ""  # Poprzedni model Ollama (fallback)
     PREVIOUS_MODEL_VLLM: str = ""  # Poprzedni model vLLM (fallback)
     PREVIOUS_MODEL_ONNX: str = ""  # Poprzedni model ONNX (fallback)
+    PREVIOUS_ONNX_LLM_MODEL_PATH: str = (
+        ""  # Poprzednia ścieżka modelu ONNX (rollback po deploy adaptera)
+    )
     ACTIVE_LLM_SERVER: str = ""  # Ostatnio aktywowany serwer LLM
     LLM_CONFIG_HASH: str = (
         ""  # Hash aktywnej konfiguracji LLM (endpoint+model+provider)

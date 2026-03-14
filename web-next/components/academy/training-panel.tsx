@@ -654,7 +654,6 @@ export function TrainingPanel() {
                       id="chat-signer"
                       value={chatSigner}
                       onChange={(event) => setChatSigner(event.target.value)}
-                      placeholder="academy-ui"
                       className="mt-2"
                     />
                   </div>

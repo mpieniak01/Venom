@@ -62,10 +62,10 @@ test-perf:
 
 TEST_202B_GROUP ?= config/pytest-groups/202b-hotpaths.txt
 TEST_202C_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
-TEST_202C1_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
-TEST_202C2_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
-TEST_202C3_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
-TEST_202C4_PROMPTS ?= tests/data/202c/gemma3_eval_prompts.jsonl
+TEST_202C1_PROMPTS ?= $(TEST_202C_PROMPTS)
+TEST_202C2_PROMPTS ?= $(TEST_202C_PROMPTS)
+TEST_202C3_PROMPTS ?= $(TEST_202C_PROMPTS)
+TEST_202C4_PROMPTS ?= $(TEST_202C_PROMPTS)
 
 test-202b-gate:
 	@echo "🧪 Uruchamiam quality gate 202B (hot paths + performance regressions)..."

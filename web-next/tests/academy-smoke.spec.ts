@@ -472,7 +472,7 @@ test.describe("Academy smoke", () => {
         contentType: "application/json",
         body: JSON.stringify({
           success: true,
-          message: "Adapter signed for chat",
+          adapter_id: adapterId,
           signature: {
             adapter_id: adapterId,
             runtime_id: "ollama",
